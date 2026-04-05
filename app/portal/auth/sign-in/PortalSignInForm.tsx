@@ -7,10 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import {
-  resolvePortalMode,
-  type PortalMode,
-} from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "#C57A4A";
 const SHOP_USER_DOMAIN = "local.profix-internal";
@@ -24,9 +20,8 @@ function safeRedirectPath(v: string | null): string | null {
   return v;
 }
 
-function isAllowedRedirectForMode(path: string, mode: PortalMode) {
-  if (mode === "fleet") return path.startsWith("/portal/fleet");
-  return path.startsWith("/portal") && !path.startsWith("/portal/fleet");
+function isAllowedRedirectForMode(path: string) {
+  return path.startsWith("/portal");
 }
 
 export default function PortalSignInPage() {
@@ -85,36 +80,15 @@ export default function PortalSignInPage() {
     }
 
     // ✅ Determine actual portal mode for this account (source of truth = DB)
-    let mode: PortalMode = "customer";
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("No authenticated user after sign-in");
-
-      mode = await resolvePortalMode(supabase, user.id);
-    } catch {
-      mode = "customer";
-    }
 
     // If user selected Fleet but their account isn't fleet-enabled, block + sign out
-    if (portalType === "fleet" && mode !== "fleet") {
-      await supabase.auth.signOut().catch(() => null);
-      setError(
-        "This account doesn't have Fleet Portal access. Switch to Customer, or contact your shop/dispatch to enable fleet access.",
-      );
-      setLoading(false);
-      return;
-    }
 
     // Respect middleware redirect param if it matches the resolved mode
     const redirectParam = safeRedirectPath(searchParams.get("redirect"));
-    const fallback = mode === "fleet" ? "/portal/fleet" : "/portal";
+    const fallback = "/portal";
 
     const to =
-      redirectParam && isAllowedRedirectForMode(redirectParam, mode)
+      redirectParam && isAllowedRedirectForMode(redirectParam)
         ? redirectParam
         : fallback;
 

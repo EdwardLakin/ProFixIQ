@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 
 type DB = Database;
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
@@ -59,19 +60,15 @@ export default function FleetUnitNewPage(): JSX.Element {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
+      const actor = await resolveCurrentActor(supabase);
 
-      if (profileError || !profile?.shop_id) {
+      if (!actor.shopId) {
         setError("Unable to resolve your shop. Check your profile settings.");
         setLoading(false);
         return;
       }
 
-      const shopId = profile.shop_id;
+      const shopId = actor.shopId;
       setCreatorShopId(shopId);
 
       const { data: fleetRows, error: fleetError } = await supabase

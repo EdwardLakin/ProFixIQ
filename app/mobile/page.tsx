@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 
 import {
   MobileTechHome,
@@ -89,32 +90,22 @@ export default function MobileHome() {
 
     (async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getUser();
+        const actor = await resolveCurrentActor(supabase);
         if (!alive) return;
 
-        if (!sessionData?.user) {
+        if (!actor.user) {
           setProfile(null);
           setShop(null);
           return;
         }
 
-        const uid = sessionData.user.id;
+        setProfile(actor.profile ?? null);
 
-        const { data: profileRow } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", uid)
-          .maybeSingle();
-
-        if (!alive) return;
-
-        setProfile(profileRow ?? null);
-
-        if (profileRow?.shop_id) {
+        if (actor.shopId) {
           const { data: shopRow } = await supabase
             .from("shops")
             .select("*")
-            .eq("id", profileRow.shop_id)
+            .eq("id", actor.shopId)
             .maybeSingle();
 
           if (!alive) return;

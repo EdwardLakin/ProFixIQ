@@ -1,9 +1,9 @@
-// app/fleet/tower/page.tsx
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Container from "@shared/components/ui/Container";
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 
 type DB = Database;
 
@@ -16,19 +16,16 @@ type ProfileWithShop = {
 
 export default async function FleetTowerPage() {
   const supabase = createServerComponentClient<DB>({ cookies });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const actor = await resolveCurrentActor(supabase);
 
   let shopName = "Fleet";
-  let shopId: string | null = null;
+  let shopId: string | null = actor.shopId ?? null;
 
-  if (user) {
+  if (actor.user) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, shop_id, shops(name), shop_name")
-      .eq("user_id", user.id)
+      .or(`id.eq.${actor.user.id},user_id.eq.${actor.user.id}`)
       .maybeSingle<ProfileWithShop>();
 
     if (profile?.shop_id) {
@@ -36,7 +33,6 @@ export default async function FleetTowerPage() {
     }
 
     const fromJoin = profile?.shops?.name ?? profile?.shop_name ?? null;
-
     if (fromJoin && typeof fromJoin === "string") {
       shopName = fromJoin;
     }

@@ -1,17 +1,13 @@
-// app/fleet/service-requests/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 
 type DB = Database;
-
 type FleetServiceRequest =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 export default function FleetServiceRequestsPage() {
   const [requests, setRequests] = useState<FleetServiceRequest[]>([]);
@@ -28,31 +24,15 @@ export default function FleetServiceRequestsPage() {
         setLoading(true);
         setError(null);
 
-        const client = supabase as SupabaseClient<DB>;
-
-        // 🔐 user
-        const {
-          data: { user },
-          error: userError,
-        } = await client.auth.getUser();
-        if (userError || !user) throw new Error("Not signed in");
-
-        // 🔍 find user's shop (use user_id)
-        const { data: profile, error: profileErr } = await client
-          .from("profiles")
-          .select("id, shop_id")
-          .eq("user_id", user.id)
-          .maybeSingle<ProfileRow>();
-
-        if (profileErr || !profile?.shop_id) {
+        const actor = await resolveCurrentActor(supabase);
+        if (!actor.user || !actor.shopId) {
           throw new Error("Must belong to a shop to view fleet requests.");
         }
 
-        // 🚚 fleet requests by shop
-        let query = client
+        let query = supabase
           .from("fleet_service_requests")
           .select("*")
-          .eq("shop_id", profile.shop_id)
+          .eq("shop_id", actor.shopId)
           .order("created_at", { ascending: false });
 
         if (statusFilter !== "all") {
@@ -89,7 +69,6 @@ export default function FleetServiceRequestsPage() {
           Fleet Service Requests
         </h1>
 
-        {/* Status filter */}
         <div className="mb-4 flex flex-wrap gap-3">
           {(["all", "open", "scheduled", "completed"] as const).map((st) => (
             <button
@@ -106,23 +85,18 @@ export default function FleetServiceRequestsPage() {
           ))}
         </div>
 
-        {/* Error state */}
         {error && <p className="text-sm text-red-400">Error: {error}</p>}
 
-        {/* Loading */}
         {loading && (
           <p className="text-sm text-neutral-400">Loading requests…</p>
         )}
 
-        {/* Empty */}
         {!loading && requests.length === 0 && (
           <p className="mt-4 text-sm text-neutral-400">
-            No service requests{" "}
-            {statusFilter !== "all" ? `(${statusFilter})` : ""}.
+            No service requests {statusFilter !== "all" ? `(${statusFilter})` : ""}.
           </p>
         )}
 
-        {/* List */}
         <div className="mt-4 space-y-3">
           {requests.map((req) => (
             <div

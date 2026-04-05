@@ -4,13 +4,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 // or: import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
 
-import { resolvePortalMode } from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "var(--accent-copper-light)";
 
@@ -18,8 +16,6 @@ type DB = Database;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-
-type PortalMode = "customer" | "fleet";
 
 
 function StatCard({
@@ -98,11 +94,8 @@ function formatWoRef(
 
 export default function PortalHomePage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<PortalMode>("customer");
-
   const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);
   const [nextBookingAt, setNextBookingAt] = useState<string | null>(null);
   const [activeWo, setActiveWo] = useState<
@@ -129,22 +122,10 @@ export default function PortalHomePage() {
         setVehiclesCount(null);
         setNextBookingAt(null);
         setActiveWo(null);
-        setMode("customer");
         setLoading(false);
         return;
       }
 
-      const resolved = await resolvePortalMode(supabase, user.id);
-
-      if (!mounted) return;
-
-      if (resolved === "fleet") {
-        setMode("fleet");
-        router.replace("/portal/fleet");
-        return;
-      }
-
-      setMode("customer");
 
       // Customer lookup
       const { data: cust, error: custErr } = await supabase
@@ -212,7 +193,7 @@ export default function PortalHomePage() {
     return () => {
       mounted = false;
     };
-  }, [supabase, router]);
+  }, [supabase]);
 
   if (loading) {
     return (
@@ -222,22 +203,6 @@ export default function PortalHomePage() {
             Home
           </h1>
           <p className="mt-1 text-sm text-neutral-400">Loading…</p>
-        </div>
-      </div>
-    );
-  }
-
-  // If we’re redirecting fleet users, keep customer UI from flashing.
-  if (mode === "fleet") {
-    return (
-      <div className="space-y-6 text-white">
-        <div>
-          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
-            Redirecting…
-          </h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            Taking you to the fleet portal.
-          </p>
         </div>
       </div>
     );
