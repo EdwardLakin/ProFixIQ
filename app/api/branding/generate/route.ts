@@ -11,6 +11,7 @@ type GenerateLogoBody = {
   prompt?: string;
   stylePreset?: string | null;
   count?: number;
+  transparentBackground?: boolean;
 };
 
 function decodeBase64Image(b64: string): Buffer {
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
   }
 
   const count = Math.min(Math.max(Number(body.count ?? 3) || 3, 1), 4);
+  const transparentBackground = Boolean(body.transparentBackground);
 
   const { data: shop, error: shopErr } = await auth.supabase
     .from("shops")
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
     shopName,
     prompt: userPrompt,
     stylePreset: body.stylePreset ?? null,
+    transparentBackground,
   });
 
   try {
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
       size: "1024x1024",
       quality: "medium",
       output_format: "png",
+      background: transparentBackground ? "transparent" : "auto",
       user: auth.userId,
     });
 
@@ -117,6 +121,7 @@ export async function POST(req: Request) {
           metadata: {
             generated: true,
             style_preset: body.stylePreset ?? null,
+            transparent_background: transparentBackground,
             model: "gpt-image-1.5",
             final_prompt: finalPrompt,
           },

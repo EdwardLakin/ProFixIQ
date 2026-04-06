@@ -11,6 +11,7 @@ type BuildLogoPromptInput = {
   shopName?: string | null;
   prompt: string;
   stylePreset?: string | null;
+  transparentBackground?: boolean;
 };
 
 const PRESET_GUIDANCE: Record<LogoPreset, string> = {
@@ -48,7 +49,6 @@ export function buildLogoPrompt(input: BuildLogoPromptInput): string {
     "Output a clean, premium logo mark suitable for SaaS dashboard branding, invoice headers, inspection PDFs, and customer portal use.",
     "Design requirements:",
     "- centered composition",
-    "- transparent or very clean background look",
     "- strong silhouette",
     "- legible at small sizes",
     "- no mockup walls, paper, business cards, shirts, buildings, or 3D scene staging",
@@ -56,6 +56,9 @@ export function buildLogoPrompt(input: BuildLogoPromptInput): string {
     "- avoid clutter and tiny unreadable text",
     "- prefer icon + wordmark or strong standalone emblem",
     "- automotive / shop appropriate but not childish",
+    input.transparentBackground
+      ? "- use a transparent background with no backdrop card or scene"
+      : "- use a very clean simple background and keep focus on the logo only",
     "Deliver a polished production-ready logo image."
   ].join("\n");
 }

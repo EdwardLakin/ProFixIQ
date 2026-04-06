@@ -15,6 +15,12 @@ type BrandAsset = {
   is_active: boolean;
   created_at: string;
   file_name: string | null;
+  generation_provider?: string | null;
+  metadata?: {
+    generated?: boolean;
+    transparent_background?: boolean;
+    [key: string]: unknown;
+  } | null;
 };
 
 type BrandProfileResponse = {
@@ -44,14 +50,30 @@ const STYLE_PRESETS = [
 ];
 
 const PROMPT_PRESETS = [
-  "Bold industrial repair shop logo with a strong shield emblem",
-  "Clean modern service brand with a premium OEM feel",
-  "Aggressive performance shop logo with speed-inspired shapes",
-  "Heavy-duty fleet service logo with a dependable commercial look",
+  {
+    label: "Shield",
+    prompt: "Bold industrial repair shop logo with a strong shield emblem",
+  },
+  {
+    label: "Minimal",
+    prompt: "Clean minimal automotive service logo with a modern premium OEM feel",
+  },
+  {
+    label: "Performance",
+    prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
+  },
+  {
+    label: "Fleet",
+    prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
+  },
 ];
 
 function notifyBrandRefresh() {
   window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
+}
+
+function isGeneratedAsset(asset: BrandAsset): boolean {
+  return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
 }
 
 export default function BrandStudioCard() {
@@ -65,6 +87,7 @@ export default function BrandStudioCard() {
   const [accentColor, setAccentColor] = useState("#E2A164");
   const [stylePreset, setStylePreset] = useState("industrial-dark");
   const [logoPrompt, setLogoPrompt] = useState("Bold industrial repair shop logo with a strong shield emblem");
+  const [transparentBackground, setTransparentBackground] = useState(true);
   const [assets, setAssets] = useState<BrandAsset[]>([]);
 
   const activeLogo = useMemo(
@@ -189,6 +212,7 @@ export default function BrandStudioCard() {
           prompt: logoPrompt,
           stylePreset,
           count: 3,
+          transparentBackground,
         }),
       });
 
@@ -325,15 +349,25 @@ export default function BrandStudioCard() {
             <div className="flex flex-wrap gap-2">
               {PROMPT_PRESETS.map((preset) => (
                 <button
-                  key={preset}
+                  key={preset.label}
                   type="button"
-                  onClick={() => setLogoPrompt(preset)}
+                  onClick={() => setLogoPrompt(preset.prompt)}
                   className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                 >
-                  {preset}
+                  {preset.label}
                 </button>
               ))}
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                checked={transparentBackground}
+                onChange={(e) => setTransparentBackground(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-neutral-950"
+              />
+              Transparent background
+            </label>
           </div>
 
           <div className="flex items-end">
@@ -435,51 +469,74 @@ export default function BrandStudioCard() {
             <div className="text-sm text-neutral-400">No logos yet.</div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {assets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className={`rounded-2xl border p-3 ${
-                    asset.is_active
-                      ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10"
-                      : "border-white/10 bg-white/[0.03]"
-                  }`}
-                >
-                  <div className="flex h-28 items-center justify-center rounded-xl bg-black/30 p-3">
-                    {asset.file_url ? (
-                      <Image
-                        src={asset.file_url}
-                        alt={asset.file_name || "Brand asset"}
-                        width={180}
-                        height={80}
-                        className="max-h-20 w-auto object-contain"
-                        unoptimized
-                      />
-                    ) : (
-                      <div className="text-xs text-neutral-500">No preview</div>
-                    )}
-                  </div>
+              {assets.map((asset) => {
+                const generated = isGeneratedAsset(asset);
+                const transparent = Boolean(asset.metadata?.transparent_background);
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-white">
-                        {asset.file_name || "Logo"}
-                      </div>
-                      <div className="text-xs text-neutral-500">
-                        {asset.is_active ? "Active" : "Saved"}
-                      </div>
+                return (
+                  <div
+                    key={asset.id}
+                    className={`rounded-2xl border p-3 ${
+                      asset.is_active
+                        ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10"
+                        : "border-white/10 bg-white/[0.03]"
+                    }`}
+                  >
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {generated ? (
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300">
+                          AI Generated
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-300">
+                          Uploaded
+                        </span>
+                      )}
+
+                      {transparent ? (
+                        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-300">
+                          Transparent
+                        </span>
+                      ) : null}
                     </div>
 
-                    <Button
-                      type="button"
-                      onClick={() => void activateLogo(asset.id)}
-                      disabled={asset.is_active}
-                      className="shrink-0"
-                    >
-                      {asset.is_active ? "Applied" : "Apply"}
-                    </Button>
+                    <div className="flex h-28 items-center justify-center rounded-xl bg-black/30 p-3">
+                      {asset.file_url ? (
+                        <Image
+                          src={asset.file_url}
+                          alt={asset.file_name || "Brand asset"}
+                          width={180}
+                          height={80}
+                          className="max-h-20 w-auto object-contain"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="text-xs text-neutral-500">No preview</div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-white">
+                          {asset.file_name || "Logo"}
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                          {asset.is_active ? "Active" : "Saved"}
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={() => void activateLogo(asset.id)}
+                        disabled={asset.is_active}
+                        className="shrink-0"
+                      >
+                        {asset.is_active ? "Applied" : "Apply"}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
