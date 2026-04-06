@@ -170,53 +170,6 @@ function locationName(s: { shop_name?: string | null; name?: string | null }) {
   return (s.shop_name ?? s.name ?? "").trim() || "Untitled location";
 }
 
-function SettingsSection({
-  id,
-  title,
-  description,
-  action,
-  children,
-}: {
-  id?: string;
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.18)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-50">{title}</h2>
-          {description ? (
-            <p className="text-[11px] text-neutral-400">{description}</p>
-          ) : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SettingsStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-      <div className="text-[11px] text-neutral-400">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
-    </div>
-  );
-}
-
 export default function OwnerSettingsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -335,6 +288,7 @@ export default function OwnerSettingsPage() {
   const navChipClass =
     "inline-flex items-center rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-black/40 hover:text-white";
   const sectionClass = "space-y-3 rounded-2xl border border-white/10 bg-black/25 p-5";
+  const subCardClass = "rounded-xl border border-white/10 bg-black/25 p-3";
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -1022,7 +976,7 @@ try {
   })();
 
     return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 text-foreground lg:p-6">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-foreground">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-5 py-4">
         <div>
           <h1 className="text-2xl font-blackops text-orange-400">Shop Settings</h1>
@@ -1162,7 +1116,7 @@ try {
               {locations.length === 0 ? (
                 <div className="text-xs text-neutral-500">No locations found.</div>
               ) : (
-                <ul className="space-y-3">
+                <ul className="space-y-2">
                   {locations.map((loc) => {
                     const isCurrent = loc.id === shopId;
                     const status = parseStripeStatus(loc.stripe_subscription_status);
@@ -1248,8 +1202,8 @@ try {
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.7fr_0.95fr] lg:items-start">
-        <div className="space-y-5">
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex-1 space-y-6">
           <section id="shop-info" className={sectionClass}>
             <h2 className="text-sm font-semibold text-neutral-50">Shop info</h2>
 
@@ -1285,7 +1239,7 @@ try {
               </div>
             </div>
 
-            <div className="space-y-3 text-sm">
+            <div className="space-y-2 text-sm">
               <Input
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
@@ -1375,7 +1329,7 @@ try {
           <div className="grid gap-6 md:grid-cols-2">
             <section className={sectionClass}>
               <h2 className="text-sm font-semibold text-neutral-50">Billing defaults</h2>
-              <div className="grid gap-3 md:grid-cols-2 text-sm">
+              <div className="grid gap-2 md:grid-cols-2 text-sm">
                 <Input
                   value={laborRate}
                   onChange={(e) => setLaborRate(e.target.value)}
@@ -1420,7 +1374,7 @@ try {
                 </Button>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[160px_1fr] text-sm">
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] text-sm">
                 <Input
                   type="number"
                   min={1}
@@ -1527,7 +1481,7 @@ try {
               </Button>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-7">
+            <div className="grid gap-2 md:grid-cols-7">
               {hours.map((row, idx) => {
                 const closed = !!row.closed;
                 return (
@@ -1593,7 +1547,7 @@ try {
           <section id="timeoff-settings" className={sectionClass}>
             <h2 className="text-sm font-semibold text-neutral-50">Time off / blackouts</h2>
 
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-2 md:grid-cols-4">
               <input
                 type="datetime-local"
                 className="rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
@@ -1655,28 +1609,53 @@ try {
           </section>
         </div>
 
-        <div className="space-y-5 lg:sticky lg:top-20">
-          <SettingsSection
-            id="billing-stripe"
-            title="Billing & Stripe"
-            description="Subscription and payment setup for this location."
-            action={<div className="flex items-center gap-2">{billingPill}</div>}
-          >
+        <div className="w-full space-y-6 lg:w-80">
+          <section id="billing-stripe" className={sectionClass}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-50">Billing & Stripe</h2>
+                <p className="text-[11px] text-neutral-400">
+                  Subscription and payment setup for this location.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">{billingPill}</div>
+            </div>
+
             <div className="grid gap-2">
-              <SettingsStat label="Status" value={String(subStatus).toUpperCase()} />
-              <SettingsStat
-                label="Stripe Connect"
-                value={stripeAccountId ? "Connected" : "Not connected"}
-              />
-              <SettingsStat label="Trial ends" value={formatDate(trialEndIso)} />
-              <SettingsStat
-                label="Current period ends"
-                value={formatDate(periodEndIso)}
-              />
-              <SettingsStat
-                label="Connected payout account"
-                value={stripeAccountId || "No Stripe Connect account linked yet"}
-              />
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Status</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {String(subStatus).toUpperCase()}
+                </div>
+              </div>
+
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Stripe Connect</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {stripeAccountId ? "Connected" : "Not connected"}
+                </div>
+              </div>
+
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Trial ends</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {formatDate(trialEndIso)}
+                </div>
+              </div>
+
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Current period ends</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {formatDate(periodEndIso)}
+                </div>
+              </div>
+
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Connected payout account</div>
+                <div className="mt-1 break-all text-sm font-semibold text-neutral-100">
+                  {stripeAccountId || "No Stripe Connect account linked yet"}
+                </div>
+              </div>
 
               <div className="flex flex-col gap-2">
                 <Button onClick={openStripeConnect} disabled={!isUnlocked || connectLoading}>
@@ -1704,25 +1683,43 @@ try {
                 </Button>
               </div>
             </div>
-          </SettingsSection>
+          </section>
 
-          <SettingsSection
-            title="Plan & seats"
-            description="Plan limits and active staff seats."
-          >
-            <div className="grid gap-2">
-              <SettingsStat label="Plan" value={planLabel(plan)} />
-              <SettingsStat label="Seats used" value={seatsUsed} />
-              <SettingsStat
-                label="Seat limit"
-                value={seatsLimit == null ? "Unlimited" : seatsLimit}
-              />
-              <SettingsStat
-                label="Remaining"
-                value={seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
-              />
+          <section className={sectionClass}>
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-50">Plan & seats</h2>
+              <p className="text-[11px] text-neutral-400">
+                Plan limits and active staff seats.
+              </p>
             </div>
-          </SettingsSection>
+
+            <div className="grid gap-2">
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Plan</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {planLabel(plan)}
+                </div>
+              </div>
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Seats used</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {seatsUsed}
+                </div>
+              </div>
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Seat limit</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {seatsLimit == null ? "Unlimited" : seatsLimit}
+                </div>
+              </div>
+              <div className={subCardClass}>
+                <div className="text-[11px] text-neutral-400">Remaining</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
+                </div>
+              </div>
+            </div>
+          </section>
 
           <section className={sectionClass}>
             <div className="flex flex-wrap items-center justify-between gap-3">
