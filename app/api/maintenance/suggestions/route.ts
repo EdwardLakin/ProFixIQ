@@ -112,13 +112,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Create flow: use latest cached vehicle suggestions if present
-    const { data: suggestionRow, error: suggestionError } = await supabase
+    const { data: suggestionRows, error: suggestionError } = await supabase
       .from("maintenance_suggestions")
-      .select("id, vehicle_id, suggestions, created_at")
+      .select("id, vehicle_id, suggestions")
       .eq("vehicle_id", vehicleId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    const suggestionRow =
+      Array.isArray(suggestionRows) && suggestionRows.length > 0
+        ? suggestionRows[0]
+        : null;
 
     if (suggestionError) throw suggestionError;
 
