@@ -12,9 +12,8 @@ import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
+import OwnerPinBadge from "@shared/components/OwnerPinBadge";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
-import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/OwnerSettingsHeader";
-import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
 
 type FileInputChangeEvent = {
   target: {
@@ -92,6 +91,17 @@ const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Edmonton",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Vancouver",
+  "America/Toronto",
+  "America/Halifax",
+] as const;
 
 function parseStripeStatus(v: unknown): StripeSubStatus {
   const s = String(v ?? "").trim().toLowerCase();
@@ -1046,13 +1056,26 @@ try {
 
     return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 text-foreground lg:p-6">
-      <OwnerSettingsHeader
-        isUnlocked={isUnlocked}
-        pinExpiresAt={pinExpiresAt}
-        onUnlock={() => setPinModalOpen(true)}
-        onLock={() => void lockOwnerSettings()}
-        onSave={handleSave}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-5 py-4">
+        <div>
+          <h1 className="text-2xl font-blackops text-orange-400">Shop Settings</h1>
+          <p className="text-xs text-neutral-400">
+            Location (US/CA), billing defaults, and scheduling.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <OwnerPinBadge expiresAt={pinExpiresAt} />
+          <Button size="sm" onClick={() => setPinModalOpen(true)}>
+            {isUnlocked ? "Re-unlock" : "Unlock"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => void lockOwnerSettings()}>
+            Lock
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={!isUnlocked}>
+            {isUnlocked ? "Save all" : "Unlock to save"}
+          </Button>
+        </div>
+      </div>
 
       <section className={sectionClass}>
         <div className="flex flex-wrap items-center gap-2">
@@ -1260,35 +1283,128 @@ try {
 
       <div className="grid gap-5 lg:grid-cols-[1.7fr_0.95fr] lg:items-start">
         <div className="space-y-5">
-          <OwnerSettingsBusinessSection
-            isUnlocked={isUnlocked}
-            country={country}
-            timezone={timezone}
-            shopName={shopName}
-            address={address}
-            city={city}
-            province={province}
-            postalCode={postalCode}
-            phone={phone}
-            email={email}
-            logoUrl={logoUrl}
-            provinceLabel={provinceLabel}
-            postalLabel={postalLabel}
-            selectClass={selectClass}
-            labelClass={labelClass}
-            onCountryChange={setCountry}
-            onTimezoneChange={setTimezone}
-            onShopNameChange={setShopName}
-            onAddressChange={setAddress}
-            onCityChange={setCity}
-            onProvinceChange={setProvince}
-            onPostalCodeChange={setPostalCode}
-            onPhoneChange={setPhone}
-            onEmailChange={setEmail}
-            onLogoUrlChange={setLogoUrl}
-            onLogoUpload={handleLogoUpload}
-            onGenerateLogo={handleGenerateLogo}
-          />
+          <section id="shop-info" className={sectionClass}>
+            <h2 className="text-sm font-semibold text-neutral-50">Shop info</h2>
+
+            {/* NA row */}
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-1">
+                <div className={labelClass}>Country</div>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value as "US" | "CA")}
+                  className={selectClass}
+                  disabled={!isUnlocked}
+                >
+                  <option value="US">United States</option>
+                  <option value="CA">Canada</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <div className={labelClass}>Timezone</div>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className={selectClass}
+                  disabled={!isUnlocked}
+                >
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <Input
+                value={shopName}
+                onChange={(e) => setShopName(e.target.value)}
+                placeholder="Shop name"
+                disabled={!isUnlocked}
+              />
+              <Input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Street address"
+                disabled={!isUnlocked}
+              />
+
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City"
+                  disabled={!isUnlocked}
+                />
+                <Input
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                  placeholder={provinceLabel}
+                  disabled={!isUnlocked}
+                />
+                <Input
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder={postalLabel}
+                  disabled={!isUnlocked}
+                />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone number"
+                  disabled={!isUnlocked}
+                />
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  disabled={!isUnlocked}
+                />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="Logo URL"
+                  disabled={!isUnlocked}
+                />
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  disabled={!isUnlocked}
+                />
+              </div>
+
+              <Button
+                onClick={handleGenerateLogo}
+                variant="secondary"
+                className="mt-1"
+                disabled={!isUnlocked}
+              >
+                Generate logo with AI
+              </Button>
+
+              {logoUrl && (
+                <Image
+                  src={logoUrl}
+                  alt="Logo"
+                  width={128}
+                  height={80}
+                  unoptimized
+                  className="mt-2 h-20 w-32 rounded bg-white p-1 object-contain"
+                />
+              )}
+            </div>
+          </section>
+
           <div className="grid gap-6 md:grid-cols-2">
             <section className={sectionClass}>
               <h2 className="text-sm font-semibold text-neutral-50">Billing defaults</h2>
