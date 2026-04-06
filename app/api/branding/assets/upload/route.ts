@@ -1,0 +1,100 @@
+import { NextResponse } from "next/server";
+import type { Database } from "@shared/types/types/supabase";
+import {
+  requireBrandShopAccess,
+  safeFilePart,
+} from "@/features/branding/server/brand";
+import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+
+type DB = Database;
+type BrandAssetKind = DB["public"]["Enums"]["brand_asset_kind"];
+
+const ALLOWED_KINDS = new Set<BrandAssetKind>([
+  "logo",
+  "icon",
+  "wordmark",
+  "badge",
+  "favicon",
+  "watermark",
+]);
+
+export async function POST(req: Request) {
+  const auth = await requireBrandShopAccess();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, auth.shopId);
+  if (!pinCheck.ok) {
+    return pinCheck.response;
+  }
+
+  const form = await req.formData();
+  const shopId = String(form.get("shopId") ?? "").trim();
+  const kind = String(form.get("kind") ?? "").trim() as BrandAssetKind;
+  const isActive = String(form.get("isActive") ?? "").trim() === "true";
+  const file = form.get("file");
+
+  if (!shopId || shopId !== auth.shopId) {
+    return NextResponse.json({ error: "Invalid shopId" }, { status: 400 });
+  }
+
+  if (!ALLOWED_KINDS.has(kind)) {
+    return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
+  }
+
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "File is required" }, { status: 400 });
+  }
+
+  const ext =
+    file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() ?? "bin" : "bin";
+
+  const filePart = safeFilePart(file.name.replace(/\.[^.]+$/, "") || `${kind}_${Date.now()}`);
+  const path = `shops/${safeFilePart(auth.shopId)}/branding/${kind}/${Date.now()}_${filePart}.${ext}`;
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  const { error: uploadErr } = await auth.supabase.storage
+    .from("branding")
+    .upload(path, bytes, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (uploadErr) {
+    return NextResponse.json({ error: uploadErr.message }, { status: 500 });
+  }
+
+  const { data: publicData } = auth.supabase.storage.from("branding").getPublicUrl(path);
+
+  const insert: DB["public"]["Tables"]["shop_brand_assets"]["Insert"] = {
+    shop_id: auth.shopId,
+    kind,
+    file_url: publicData.publicUrl,
+    storage_bucket: "branding",
+    storage_path: path,
+    source_app: "profixiq",
+    mime_type: file.type || null,
+    file_name: file.name,
+    file_size_bytes: file.size,
+    is_active: isActive,
+    created_by: auth.userId,
+    metadata: {},
+  };
+
+  const { data: asset, error: insertErr } = await auth.supabase
+    .from("shop_brand_assets")
+    .insert(insert)
+    .select("*")
+    .single();
+
+  if (insertErr) {
+    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    asset,
+  });
+}

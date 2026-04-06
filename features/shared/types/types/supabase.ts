@@ -9278,6 +9278,192 @@ export type Database = {
           },
         ]
       }
+      shop_brand_assets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_name: string | null
+          file_size_bytes: number | null
+          file_url: string | null
+          generation_prompt: string | null
+          generation_provider: string | null
+          height: number | null
+          id: string
+          is_active: boolean
+          kind: Database["public"]["Enums"]["brand_asset_kind"]
+          metadata: Json
+          mime_type: string | null
+          shop_id: string
+          source_app: Database["public"]["Enums"]["brand_source_app"]
+          storage_bucket: string | null
+          storage_path: string | null
+          updated_at: string
+          width: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_url?: string | null
+          generation_prompt?: string | null
+          generation_provider?: string | null
+          height?: number | null
+          id?: string
+          is_active?: boolean
+          kind: Database["public"]["Enums"]["brand_asset_kind"]
+          metadata?: Json
+          mime_type?: string | null
+          shop_id: string
+          source_app?: Database["public"]["Enums"]["brand_source_app"]
+          storage_bucket?: string | null
+          storage_path?: string | null
+          updated_at?: string
+          width?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_url?: string | null
+          generation_prompt?: string | null
+          generation_provider?: string | null
+          height?: number | null
+          id?: string
+          is_active?: boolean
+          kind?: Database["public"]["Enums"]["brand_asset_kind"]
+          metadata?: Json
+          mime_type?: string | null
+          shop_id?: string
+          source_app?: Database["public"]["Enums"]["brand_source_app"]
+          storage_bucket?: string | null
+          storage_path?: string | null
+          updated_at?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_brand_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_assets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_assets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_brand_profiles: {
+        Row: {
+          accent_color: string | null
+          created_at: string
+          icon_asset_id: string | null
+          logo_asset_id: string | null
+          metadata: Json
+          primary_color: string | null
+          secondary_color: string | null
+          shop_id: string
+          style_preset: string | null
+          updated_at: string
+          updated_by: string | null
+          watermark_asset_id: string | null
+          wordmark_asset_id: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          created_at?: string
+          icon_asset_id?: string | null
+          logo_asset_id?: string | null
+          metadata?: Json
+          primary_color?: string | null
+          secondary_color?: string | null
+          shop_id: string
+          style_preset?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          watermark_asset_id?: string | null
+          wordmark_asset_id?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          created_at?: string
+          icon_asset_id?: string | null
+          logo_asset_id?: string | null
+          metadata?: Json
+          primary_color?: string | null
+          secondary_color?: string | null
+          shop_id?: string
+          style_preset?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          watermark_asset_id?: string | null
+          wordmark_asset_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_brand_profiles_icon_asset_id_fkey"
+            columns: ["icon_asset_id"]
+            isOneToOne: false
+            referencedRelation: "shop_brand_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_logo_asset_id_fkey"
+            columns: ["logo_asset_id"]
+            isOneToOne: false
+            referencedRelation: "shop_brand_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_watermark_asset_id_fkey"
+            columns: ["watermark_asset_id"]
+            isOneToOne: false
+            referencedRelation: "shop_brand_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_brand_profiles_wordmark_asset_id_fkey"
+            columns: ["wordmark_asset_id"]
+            isOneToOne: false
+            referencedRelation: "shop_brand_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_content_signals: {
         Row: {
           avg_engagement_score: number | null
@@ -17169,6 +17355,14 @@ export type Database = {
         | "rank"
         | "lead"
         | "other"
+      brand_asset_kind:
+        | "logo"
+        | "icon"
+        | "wordmark"
+        | "badge"
+        | "favicon"
+        | "watermark"
+      brand_source_app: "profixiq" | "shopreel"
       content_asset_type:
         | "image"
         | "video"
@@ -17491,6 +17685,15 @@ export const Constants = {
         "lead",
         "other",
       ],
+      brand_asset_kind: [
+        "logo",
+        "icon",
+        "wordmark",
+        "badge",
+        "favicon",
+        "watermark",
+      ],
+      brand_source_app: ["profixiq", "shopreel"],
       content_asset_type: [
         "image",
         "video",
