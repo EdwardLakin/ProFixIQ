@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type SuggestionRow = {
   serviceCode: string;
@@ -18,12 +18,14 @@ type SuggestionsResponse = {
 
 type Props = {
   vehicleId: string | null;
+  enabled: boolean;
   selectedServiceCodes: string[];
   onChange: (codes: string[]) => void;
 };
 
 export default function CreateFlowMaintenanceSelector({
   vehicleId,
+  enabled,
   selectedServiceCodes,
   onChange,
 }: Props) {
@@ -31,55 +33,50 @@ export default function CreateFlowMaintenanceSelector({
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [rows, setRows] = useState<SuggestionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    if (!vehicleId) {
+  const canLoad = enabled && !!vehicleId;
+
+  const load = useCallback(async () => {
+    if (!canLoad || !vehicleId) {
       setRows([]);
       setError(null);
       return;
     }
 
-    let cancelled = false;
+    try {
+      setLoading(true);
+      setError(null);
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
+      const res = await fetch("/api/maintenance/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicleId }),
+        cache: "no-store",
+      });
 
-        const res = await fetch("/api/maintenance/suggestions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vehicleId }),
-          cache: "no-store",
-        });
+      const json = (await res.json().catch(() => null)) as SuggestionsResponse | null;
 
-        const json = (await res.json().catch(() => null)) as SuggestionsResponse | null;
-
-        if (!res.ok) {
-          throw new Error("Failed to load maintenance suggestions.");
-        }
-
-        if (cancelled) return;
-
-        const next = Array.isArray(json?.suggestions)
-          ? json!.suggestions.filter((item) => !item?.suppressed)
-          : [];
-
-        setRows(next);
-      } catch (e) {
-        if (!cancelled) {
-          setRows([]);
-          setError(e instanceof Error ? e.message : "Failed to load maintenance suggestions.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (!res.ok) {
+        throw new Error("Failed to load maintenance suggestions.");
       }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [vehicleId]);
+      const next = Array.isArray(json?.suggestions)
+        ? json!.suggestions.filter((item) => !item?.suppressed)
+        : [];
+
+      setRows(next);
+    } catch (e) {
+      setRows([]);
+      setError(e instanceof Error ? e.message : "Failed to load maintenance suggestions.");
+    } finally {
+      setLoading(false);
+    }
+  }, [canLoad, vehicleId]);
+
+  useEffect(() => {
+    void load();
+  }, [load, reloadKey]);
 
   const selectedSet = useMemo(() => new Set(selectedServiceCodes), [selectedServiceCodes]);
 
@@ -130,7 +127,7 @@ export default function CreateFlowMaintenanceSelector({
     }
   }
 
-  if (!vehicleId) return null;
+  if (!enabled) return null;
 
   return (
     <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
@@ -145,6 +142,14 @@ export default function CreateFlowMaintenanceSelector({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setReloadKey((v) => v + 1)}
+            disabled={!canLoad || loading}
+            className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
+          >
+            Refresh
+          </button>
           <button
             type="button"
             onClick={() => toggleAll(true)}
@@ -164,13 +169,15 @@ export default function CreateFlowMaintenanceSelector({
         </div>
       </div>
 
-      {error ? (
+      {!canLoad ? (
+        <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-neutral-400">
+          Save customer and vehicle first to load maintenance suggestions.
+        </div>
+      ) : error ? (
         <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {error}
         </div>
-      ) : null}
-
-      {loading ? (
+      ) : loading ? (
         <div className="text-sm text-neutral-400">Loading suggestions...</div>
       ) : rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-neutral-400">

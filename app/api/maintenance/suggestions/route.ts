@@ -118,12 +118,18 @@ export async function POST(req: NextRequest) {
       .eq("vehicle_id", vehicleId)
       .limit(1);
 
+    if (suggestionError) {
+      return NextResponse.json({
+        ok: true,
+        vehicleId,
+        suggestions: [],
+      });
+    }
+
     const suggestionRow =
       Array.isArray(suggestionRows) && suggestionRows.length > 0
         ? suggestionRows[0]
         : null;
-
-    if (suggestionError) throw suggestionError;
 
     if (!suggestionRow) {
       return NextResponse.json({

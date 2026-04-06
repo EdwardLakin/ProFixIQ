@@ -1874,6 +1874,7 @@ useEffect(() => {
             {/* Create-flow maintenance suggestions */}
             <CreateFlowMaintenanceSelector
               vehicleId={vehicleIdProp}
+              enabled={!!customerId && !!vehicleIdProp}
               selectedServiceCodes={selectedMaintenanceCodes}
               onChange={setSelectedMaintenanceCodes}
             />
