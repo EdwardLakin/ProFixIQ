@@ -3053,36 +3053,76 @@ export type Database = {
       }
       email_logs: {
         Row: {
-          created_at: string | null
-          email: string
-          error: string | null
-          event_type: string
+          created_at: string
+          created_by: string | null
+          error_text: string | null
           id: string
-          sg_event_id: string | null
-          status: string | null
-          timestamp: string
+          metadata: Json
+          provider: string
+          provider_message_id: string | null
+          sent_at: string | null
+          shop_id: string
+          status: string
+          subject: string | null
+          template_id: string | null
+          template_key: string
+          to_email: string
         }
         Insert: {
-          created_at?: string | null
-          email: string
-          error?: string | null
-          event_type: string
+          created_at?: string
+          created_by?: string | null
+          error_text?: string | null
           id?: string
-          sg_event_id?: string | null
-          status?: string | null
-          timestamp: string
+          metadata?: Json
+          provider?: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          shop_id: string
+          status?: string
+          subject?: string | null
+          template_id?: string | null
+          template_key: string
+          to_email: string
         }
         Update: {
-          created_at?: string | null
-          email?: string
-          error?: string | null
-          event_type?: string
+          created_at?: string
+          created_by?: string | null
+          error_text?: string | null
           id?: string
-          sg_event_id?: string | null
-          status?: string | null
-          timestamp?: string
+          metadata?: Json
+          provider?: string
+          provider_message_id?: string | null
+          sent_at?: string | null
+          shop_id?: string
+          status?: string
+          subject?: string | null
+          template_id?: string | null
+          template_key?: string
+          to_email?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_suppressions: {
         Row: {
@@ -5692,6 +5732,8 @@ export type Database = {
           default_job_type: string
           default_labor_hours: number | null
           default_notes: string | null
+          interval_km: number | null
+          interval_months: number | null
           label: string
         }
         Insert: {
@@ -5699,6 +5741,8 @@ export type Database = {
           default_job_type?: string
           default_labor_hours?: number | null
           default_notes?: string | null
+          interval_km?: number | null
+          interval_months?: number | null
           label: string
         }
         Update: {
@@ -5706,6 +5750,8 @@ export type Database = {
           default_job_type?: string
           default_labor_hours?: number | null
           default_notes?: string | null
+          interval_km?: number | null
+          interval_months?: number | null
           label?: string
         }
         Relationships: []
@@ -9475,6 +9521,84 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_shop_boost_overview"
             referencedColumns: ["intake_id"]
+          },
+        ]
+      }
+      shop_maintenance_service_map: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          is_active: boolean
+          label_override: string | null
+          match_source: string
+          menu_item_id: string | null
+          menu_repair_item_id: string | null
+          service_code: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label_override?: string | null
+          match_source?: string
+          menu_item_id?: string | null
+          menu_repair_item_id?: string | null
+          service_code: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label_override?: string | null
+          match_source?: string
+          menu_item_id?: string | null
+          menu_repair_item_id?: string | null
+          service_code?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_maintenance_service_map_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_maintenance_service_map_menu_repair_item_id_fkey"
+            columns: ["menu_repair_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_maintenance_service_map_service_code_fkey"
+            columns: ["service_code"]
+            isOneToOne: false
+            referencedRelation: "maintenance_services"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "shop_maintenance_service_map_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_maintenance_service_map_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
           },
         ]
       }

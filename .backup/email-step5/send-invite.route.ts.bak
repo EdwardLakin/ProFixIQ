@@ -2,13 +2,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { sendPortalInviteEmail } from "@/features/email/server";
-
-type DB = Database;
 
 type Body = {
   email?: string;
@@ -60,60 +55,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle<{ shop_id: string | null }>();
-
-    if (profileError) {
-      return NextResponse.json(
-        { ok: false, error: profileError.message },
-        { status: 500 },
-      );
-    }
-
-    const shopId = profile?.shop_id ?? null;
-
-    if (!shopId) {
-      return NextResponse.json(
-        { ok: false, error: "No active shop found for user" },
-        { status: 400 },
-      );
-    }
-
-    const { data: shop, error: shopError } = await supabase
-      .from("shops")
-      .select("id, shop_name, name")
-      .eq("id", shopId)
-      .maybeSingle<{ id: string; shop_name: string | null; name: string | null }>();
-
-    if (shopError) {
-      return NextResponse.json(
-        { ok: false, error: shopError.message },
-        { status: 500 },
-      );
-    }
-
-    const shopName =
-      (shop?.shop_name ?? "").trim() ||
-      (shop?.name ?? "").trim() ||
-      "ProFixIQ";
-
     const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
     const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
     const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(
@@ -147,18 +88,15 @@ export async function POST(req: Request) {
     }
 
     await sendPortalInviteEmail({
-      shopId,
+      shopId: "e4d23a6d-9418-49a5-8a1b-6a2640615b5b",
       to: email,
       portalLink,
-      shopName,
-      createdBy: user.id,
+      shopName: "ProFixIQ",
     });
 
     return NextResponse.json({
       ok: true,
       email,
-      shopId,
-      shopName,
       redirectTo,
     });
   } catch (error) {

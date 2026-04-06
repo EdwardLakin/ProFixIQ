@@ -265,23 +265,6 @@ export default function OwnerSettingsPage() {
   const [emailLogs, setEmailLogs] = useState<EmailLogRow[]>([]);
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
 
-  const fetchEmailLogs = useCallback(async () => {
-    try {
-      setEmailLogsLoading(true);
-      const res = await fetch("/api/email/logs?limit=25", { cache: "no-store" });
-      if (!res.ok) return;
-
-      const j = await res.json();
-      if (Array.isArray(j?.items)) {
-        setEmailLogs(j.items);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setEmailLogsLoading(false);
-    }
-  }, []);
-
   // Shared UI classes for selects (fix: dark inputs + consistent font colors)
   const selectClass =
     "w-full rounded-md border border-border bg-neutral-950/60 px-3 py-2 text-sm text-neutral-100 shadow-inner outline-none transition focus:border-white/20 focus:ring-1 focus:ring-white/10 disabled:opacity-50";
@@ -534,10 +517,21 @@ try {
     }
 
     // email logs
-    await fetchEmailLogs();
+    try {
+      setEmailLogsLoading(true);
+      const res = await fetch("/api/email/logs?limit=25", { cache: "no-store" });
+      if (res.ok) {
+        const j = await res.json();
+        if (Array.isArray(j?.items)) setEmailLogs(j.items);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setEmailLogsLoading(false);
+    }
 
     setLoading(false);
-  }, [supabase, fetchEmailLogs]);
+  }, [supabase]);
 
   // initial load
   useEffect(() => {
@@ -1745,15 +1739,6 @@ try {
               Recent transactional emails for this location.
             </p>
           </div>
-
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void fetchEmailLogs()}
-            disabled={emailLogsLoading}
-          >
-            {emailLogsLoading ? "Refreshing..." : "Refresh"}
-          </Button>
         </div>
 
         {emailLogsLoading ? (

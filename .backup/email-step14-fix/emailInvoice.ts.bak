@@ -1,0 +1,124 @@
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+import { sendInvoiceReadyEmail } from "@/features/email/server";
+
+type DB = Database;
+
+const supabaseAdmin = createClient<DB>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+type EmailInvoiceInput = {
+  workOrderId: string;
+  shopId: string;
+  to: string;
+};
+
+function safeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export async function emailInvoice(input: EmailInvoiceInput) {
+  const workOrderId = safeString(input.workOrderId);
+  const shopId = safeString(input.shopId);
+  const to = safeString(input.to).toLowerCase();
+
+  if (!workOrderId || !shopId || !to) {
+    throw new Error("workOrderId, shopId, and to are required");
+  }
+
+  const { data: wo, error: woErr } = await supabaseAdmin
+    .from("work_orders")
+    .select(
+      "id, labor_total, parts_total, invoice_total, customer_id, customer_name"
+    )
+    .eq("id", workOrderId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (woErr) {
+    throw new Error(woErr.message);
+  }
+  if (!wo) {
+    throw new Error("Work order not found");
+  }
+
+  const { data: shop, error: shopErr } = await supabaseAdmin
+    .from("shops")
+    .select("shop_name, name")
+    .eq("id", shopId)
+    .maybeSingle();
+
+  if (shopErr) {
+    throw new Error(shopErr.message);
+  }
+
+  let customerName = safeString(wo.customer_name);
+
+  if (!customerName && wo.customer_id) {
+    const { data: customer } = await supabaseAdmin
+      .from("customers")
+      .select("name, first_name, last_name, business_name")
+      .eq("id", wo.customer_id)
+      .maybeSingle();
+
+    if (customer) {
+      customerName =
+        safeString(customer.name) ||
+        safeString(customer.business_name) ||
+        [safeString(customer.first_name), safeString(customer.last_name)]
+          .filter(Boolean)
+          .join(" ");
+    }
+  }
+
+  const shopName =
+    safeString(shop?.shop_name) ||
+    safeString(shop?.name) ||
+    "ProFixIQ";
+
+  const laborTotal = Number(wo.labor_total ?? 0);
+  const partsTotal = Number(wo.parts_total ?? 0);
+  const invoiceTotal =
+    Number(wo.invoice_total ?? 0) > 0
+      ? Number(wo.invoice_total ?? 0)
+      : laborTotal + partsTotal;
+
+  const siteUrl =
+    safeString(process.env.NEXT_PUBLIC_SITE_URL) || "https://profixiq.com";
+  const portalUrl = `${siteUrl.replace(/\/+$/, "")}/portal/invoices/${workOrderId}`;
+
+  await sendInvoiceReadyEmail({
+    shopId,
+    to,
+    portalUrl,
+    workOrderId,
+    invoiceTotal,
+    laborTotal,
+    partsTotal,
+    customerName: customerName || undefined,
+    shopName,
+  });
+
+  const { error: updateErr } = await supabaseAdmin
+    .from("work_orders")
+    .update({
+      invoice_sent_at: new Date().toISOString(),
+      invoice_last_sent_to: to,
+      invoice_url: portalUrl,
+    } as DB["public"]["Tables"]["work_orders"]["Update"])
+    .eq("id", workOrderId)
+    .eq("shop_id", shopId);
+
+  if (updateErr) {
+    throw new Error(updateErr.message);
+  }
+
+  return {
+    ok: true,
+    workOrderId,
+    to,
+    portalUrl,
+  };
+}

@@ -37,20 +37,6 @@ type TimeOffRow = {
   notes?: string | null;
 };
 
-type EmailLogRow = {
-  id: string;
-  to_email: string;
-  subject: string | null;
-  template_key: string;
-  status: string;
-  provider: string;
-  provider_message_id: string | null;
-  error_text: string | null;
-  created_at: string;
-  sent_at: string | null;
-  metadata?: Record<string, unknown> | null;
-};
-
 type StripeSubStatus =
   | "incomplete"
   | "incomplete_expired"
@@ -261,26 +247,6 @@ export default function OwnerSettingsPage() {
   const [newOffStart, setNewOffStart] = useState("");
   const [newOffEnd, setNewOffEnd] = useState("");
   const [newOffReason, setNewOffReason] = useState("");
-
-  const [emailLogs, setEmailLogs] = useState<EmailLogRow[]>([]);
-  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
-
-  const fetchEmailLogs = useCallback(async () => {
-    try {
-      setEmailLogsLoading(true);
-      const res = await fetch("/api/email/logs?limit=25", { cache: "no-store" });
-      if (!res.ok) return;
-
-      const j = await res.json();
-      if (Array.isArray(j?.items)) {
-        setEmailLogs(j.items);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setEmailLogsLoading(false);
-    }
-  }, []);
 
   // Shared UI classes for selects (fix: dark inputs + consistent font colors)
   const selectClass =
@@ -533,11 +499,8 @@ try {
       // ignore
     }
 
-    // email logs
-    await fetchEmailLogs();
-
     setLoading(false);
-  }, [supabase, fetchEmailLogs]);
+  }, [supabase]);
 
   // initial load
   useEffect(() => {
@@ -1735,66 +1698,6 @@ try {
           )}
         </div>
       </div>
-
-
-      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-50">Email activity</h2>
-            <p className="text-[11px] text-neutral-400">
-              Recent transactional emails for this location.
-            </p>
-          </div>
-
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void fetchEmailLogs()}
-            disabled={emailLogsLoading}
-          >
-            {emailLogsLoading ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-
-        {emailLogsLoading ? (
-          <div className="text-xs text-neutral-500">Loading emails…</div>
-        ) : emailLogs.length === 0 ? (
-          <div className="text-xs text-neutral-500">No email activity yet.</div>
-        ) : (
-          <div className="space-y-2">
-            {emailLogs.map((e) => (
-              <div
-                key={e.id}
-                className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-neutral-100">
-                    {e.template_key.replaceAll("_", " ")}
-                  </div>
-                  <div className="text-[11px] text-neutral-400">
-                    {new Date(e.created_at).toLocaleString()}
-                  </div>
-                </div>
-
-                <div className="mt-1 text-xs text-neutral-300">
-                  To: {e.to_email}
-                </div>
-
-                <div className="mt-1 text-[11px] text-neutral-400">
-                  Status: <span className="text-neutral-200">{e.status}</span>
-                  {e.subject ? <> • Subject: <span className="text-neutral-200">{e.subject}</span></> : null}
-                </div>
-
-                {e.error_text ? (
-                  <div className="mt-2 text-[11px] text-red-300">
-                    Error: {e.error_text}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <OwnerPinModal
         shopId={shopId}

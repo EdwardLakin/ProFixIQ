@@ -1,20 +1,45 @@
+// app/api/invoices/send/route.ts  ✅ FULL FILE REPLACEMENT
+// - Sets work_orders.status = "invoiced" after successful SendGrid send
+// - Attaches latest inspection PDF (if present) from inspections.pdf_storage_path
+// - Keeps strict typing (no `any`)
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { sendInvoiceReadyEmail } from "@/features/email/server";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 const supabaseAdmin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY ?? "";
+const SENDGRID_TEMPLATE_ID =
+  process.env.SENDGRID_INVOICE_TEMPLATE_ID ??
+  "d-b4fc5385e0964ea880f930b1ea59a37c";
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
+
+const SENDGRID_FROM_EMAIL =
+  process.env.SENDGRID_FROM_EMAIL || "support@profixiq.com";
+const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || "ProFixIQ";
+
+const INSPECTION_PDF_BUCKET = "inspection_pdfs";
+
+if (!SENDGRID_API_KEY)
+  console.warn("[invoices/send] SENDGRID_API_KEY is not set");
+if (!SENDGRID_TEMPLATE_ID)
+  console.warn("[invoices/send] SENDGRID_INVOICE_TEMPLATE_ID is not set");
+
+/* ------------------------------------------------------------------ */
+/* Types + runtime guards (no `any`) */
+/* ------------------------------------------------------------------ */
 
 type VehicleInfo = {
   year?: string;
@@ -33,6 +58,16 @@ type CustomerInfo = {
   phone?: string;
   email?: string;
   business_name?: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+};
+
+type ShopInfo = {
+  name?: string;
+  phone_number?: string;
+  email?: string;
   street?: string;
   city?: string;
   province?: string;
@@ -99,6 +134,7 @@ function sanitizeVehicleInfo(x: unknown): VehicleInfo | undefined {
   if (make) out.make = make;
   if (model) out.model = model;
   if (vin) out.vin = vin;
+
   if (license_plate) out.license_plate = license_plate;
   if (unit_number) out.unit_number = unit_number;
   if (mileage) out.mileage = mileage;
@@ -120,17 +156,21 @@ function sanitizeLines(x: unknown): InvoiceLinePayload[] | undefined {
     const cause = asString(item.cause)?.trim();
     const correction = asString(item.correction)?.trim();
 
-    const laborTimeRaw = item.labor_time;
-    const laborTimeNum = asNumber(laborTimeRaw);
-    const laborTimeStr =
-      typeof laborTimeRaw === "string" ? laborTimeRaw.trim() : undefined;
+    const labor_time_raw = item.labor_time;
+    const labor_time_num = asNumber(labor_time_raw);
+    const labor_time_str =
+      typeof labor_time_raw === "string" ? labor_time_raw.trim() : undefined;
 
     const lineId =
       (typeof item.lineId === "string" ? item.lineId.trim() : undefined) ??
-      (typeof item.id === "string" ? String(item.id).trim() : undefined) ??
-      (typeof item.line_id === "string" ? String(item.line_id).trim() : undefined) ??
-      (typeof item.work_order_line_id === "string"
-        ? String(item.work_order_line_id).trim()
+      (typeof (item as Record<string, unknown>).id === "string"
+        ? String((item as Record<string, unknown>).id).trim()
+        : undefined) ??
+      (typeof (item as Record<string, unknown>).line_id === "string"
+        ? String((item as Record<string, unknown>).line_id).trim()
+        : undefined) ??
+      (typeof (item as Record<string, unknown>).work_order_line_id === "string"
+        ? String((item as Record<string, unknown>).work_order_line_id).trim()
         : undefined);
 
     out.push({
@@ -138,10 +178,10 @@ function sanitizeLines(x: unknown): InvoiceLinePayload[] | undefined {
       cause: cause?.length ? cause : null,
       correction: correction?.length ? correction : null,
       labor_time:
-        laborTimeNum !== undefined
-          ? laborTimeNum
-          : laborTimeStr?.length
-            ? laborTimeStr
+        labor_time_num !== undefined
+          ? labor_time_num
+          : labor_time_str?.length
+            ? labor_time_str
             : null,
       lineId: lineId?.length ? lineId : null,
     });
@@ -217,6 +257,67 @@ function pickCustomerPhone(
   return out.length ? out : undefined;
 }
 
+async function blobToBase64(b: Blob): Promise<string> {
+  const ab = await b.arrayBuffer();
+  return Buffer.from(ab).toString("base64");
+}
+
+async function loadLatestInspectionPdfAttachment(
+  workOrderId: string,
+): Promise<
+  | { filename: string; contentBase64: string; storagePath: string }
+  | null
+> {
+  // Pick the latest finalized/locked PDF for the WO
+  const { data: insp, error: inspErr } = await supabaseAdmin
+    .from("inspections")
+    .select("id, pdf_storage_path, finalized_at, created_at, locked, completed, is_draft")
+    .eq("work_order_id", workOrderId)
+    .not("pdf_storage_path", "is", null)
+    .order("finalized_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<
+      Pick<
+        InspectionRow,
+        | "id"
+        | "pdf_storage_path"
+        | "finalized_at"
+        | "created_at"
+        | "locked"
+        | "completed"
+        | "is_draft"
+      >
+    >();
+
+  if (inspErr) {
+    console.warn("[invoices/send] inspections lookup failed:", inspErr.message);
+    return null;
+  }
+
+  const path = (insp?.pdf_storage_path ?? "").trim();
+  if (!path) return null;
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(INSPECTION_PDF_BUCKET)
+    .download(path);
+
+  if (error || !data) {
+    console.warn(
+      "[invoices/send] inspection pdf download failed:",
+      error?.message ?? "no data",
+    );
+    return null;
+  }
+
+  const contentBase64 = await blobToBase64(data);
+  const filename = `inspection-${workOrderId}.pdf`;
+
+  return { filename, contentBase64, storagePath: path };
+}
+
+/* ------------------------------------------------------------------ */
+
 export async function POST(req: Request) {
   try {
     const raw = (await req.json().catch(() => null)) as unknown;
@@ -237,6 +338,16 @@ export async function POST(req: Request) {
       signatureImage,
     } = parsed.body;
 
+    if (!SENDGRID_API_KEY || !SENDGRID_TEMPLATE_ID) {
+      return NextResponse.json(
+        { error: "Email service is not configured" },
+        { status: 500 },
+      );
+    }
+
+    // ------------------------------------------------------------------
+    // 1) Fetch work order
+    // ------------------------------------------------------------------
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
       .select(
@@ -273,6 +384,9 @@ export async function POST(req: Request) {
           ? Number(wo.invoice_total ?? 0)
           : laborTotal + partsTotal;
 
+    // ------------------------------------------------------------------
+    // 2) Fetch shop details
+    // ------------------------------------------------------------------
     const { data: shop, error: shopErr } = await supabaseAdmin
       .from("shops")
       .select(
@@ -301,6 +415,19 @@ export async function POST(req: Request) {
     const resolvedShopName =
       (shopName ?? "").trim() || pickShopName(shop ?? null) || "ProFixIQ";
 
+    const shopInfo: ShopInfo = {
+      name: resolvedShopName,
+      phone_number: (shop?.phone_number ?? "").trim() || undefined,
+      email: (shop?.email ?? "").trim() || undefined,
+      street: (shop?.street ?? "").trim() || undefined,
+      city: (shop?.city ?? "").trim() || undefined,
+      province: (shop?.province ?? "").trim() || undefined,
+      postal_code: (shop?.postal_code ?? "").trim() || undefined,
+    };
+
+    // ------------------------------------------------------------------
+    // 3) Resolve portal user + fetch customer details
+    // ------------------------------------------------------------------
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
 
@@ -356,10 +483,13 @@ export async function POST(req: Request) {
       }
     }
 
+    // ------------------------------------------------------------------
+    // 4) Fetch vehicle details (if missing)
+    // ------------------------------------------------------------------
     let resolvedVehicleInfo: VehicleInfo | undefined = vehicleInfo;
 
     if (!resolvedVehicleInfo && wo.vehicle_id) {
-      const { data: vehicle, error: vehicleErr } = await supabaseAdmin
+      const { data: v, error: vErr } = await supabaseAdmin
         .from("vehicles")
         .select(
           "year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours",
@@ -380,40 +510,119 @@ export async function POST(req: Request) {
           >
         >();
 
-      if (!vehicleErr && vehicle) {
+      if (!vErr && v) {
         resolvedVehicleInfo = {
-          year: vehicle.year !== null && vehicle.year !== undefined ? String(vehicle.year) : undefined,
-          make: (vehicle.make ?? "").trim() || undefined,
-          model: (vehicle.model ?? "").trim() || undefined,
-          vin: (vehicle.vin ?? "").trim() || undefined,
-          license_plate: (vehicle.license_plate ?? "").trim() || undefined,
-          unit_number: (vehicle.unit_number ?? "").trim() || undefined,
-          mileage: (vehicle.mileage ?? "").trim() || undefined,
-          color: (vehicle.color ?? "").trim() || undefined,
+          year: v.year !== null && v.year !== undefined ? String(v.year) : undefined,
+          make: (v.make ?? "").trim() || undefined,
+          model: (v.model ?? "").trim() || undefined,
+          vin: (v.vin ?? "").trim() || undefined,
+          license_plate: (v.license_plate ?? "").trim() || undefined,
+          unit_number: (v.unit_number ?? "").trim() || undefined,
+          mileage: (v.mileage ?? "").trim() || undefined,
+          color: (v.color ?? "").trim() || undefined,
           engine_hours:
-            vehicle.engine_hours !== null && vehicle.engine_hours !== undefined
-              ? String(vehicle.engine_hours)
+            v.engine_hours !== null && v.engine_hours !== undefined
+              ? String(v.engine_hours)
               : undefined,
         };
       }
     }
 
+    // ------------------------------------------------------------------
+    // 5) Portal URL (ABSOLUTE)
+    // ------------------------------------------------------------------
     const base = SITE_URL.trim().replace(/\/+$/, "");
     const portalInvoiceUrl = `${base}/portal/invoices/${workOrderId}`;
 
-    await sendInvoiceReadyEmail({
-      shopId: wo.shop_id ?? "",
-      to: customerEmail,
-      portalUrl: portalInvoiceUrl,
-      workOrderId,
-      invoiceTotal: computedInvoiceTotal,
-      laborTotal,
-      partsTotal,
-      customerName:
-        (resolvedCustomerInfo?.name ?? (customerName ?? "").trim()) || undefined,
-      shopName: resolvedShopName,
+    // ------------------------------------------------------------------
+    // 6) Attach latest inspection PDF (if present)
+    // ------------------------------------------------------------------
+    const inspectionPdf = await loadLatestInspectionPdfAttachment(workOrderId);
+
+    // ------------------------------------------------------------------
+    // 7) Send invoice email via SendGrid
+    // ------------------------------------------------------------------
+    const emailPayload: {
+      personalizations: Array<{
+        to: Array<{ email: string }>;
+        dynamic_template_data: Record<string, unknown>;
+      }>;
+      from: { email: string; name: string };
+      template_id: string;
+      attachments?: Array<{
+        content: string;
+        filename: string;
+        type: string;
+        disposition: "attachment";
+      }>;
+    } = {
+      personalizations: [
+        {
+          to: [{ email: customerEmail }],
+          dynamic_template_data: {
+            workOrderId,
+            customerName:
+              (resolvedCustomerInfo?.name ?? (customerName ?? "").trim()) || null,
+            shopName: resolvedShopName,
+
+            laborTotal,
+            partsTotal,
+            invoiceTotal: computedInvoiceTotal,
+
+            customerInfo: resolvedCustomerInfo ?? null,
+            vehicleInfo: resolvedVehicleInfo ?? null,
+            shopInfo,
+
+            lines: lines ?? null,
+            portalUrl: portalInvoiceUrl,
+
+            // optional for template display/debug
+            inspectionPdfPath: inspectionPdf?.storagePath ?? null,
+            signatureImage: signatureImage ?? null,
+          },
+        },
+      ],
+      from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
+      template_id: SENDGRID_TEMPLATE_ID,
+      ...(inspectionPdf
+        ? {
+            attachments: [
+              {
+                content: inspectionPdf.contentBase64,
+                filename: inspectionPdf.filename,
+                type: "application/pdf",
+                disposition: "attachment",
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const sgRes = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(emailPayload),
     });
 
+    const resBody = await sgRes.text().catch(() => "");
+    if (!sgRes.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[invoices/send] SendGrid error:",
+        sgRes.status,
+        sgRes.statusText,
+        resBody,
+      );
+      throw new Error(`SendGrid error: ${sgRes.status} ${sgRes.statusText}`);
+    }
+
+    // ------------------------------------------------------------------
+    // 8) Update invoice metadata on the work order
+    //    ✅ ALSO set status = "invoiced"
+    // ------------------------------------------------------------------
     await supabaseAdmin
       .from("work_orders")
       .update({
@@ -425,6 +634,9 @@ export async function POST(req: Request) {
       } as DB["public"]["Tables"]["work_orders"]["Update"])
       .eq("id", workOrderId);
 
+    // ------------------------------------------------------------------
+    // 9) Create portal notification (if we have a portal user)
+    // ------------------------------------------------------------------
     if (portalUserId) {
       await supabaseAdmin.from("portal_notifications").insert({
         user_id: portalUserId,
@@ -436,14 +648,11 @@ export async function POST(req: Request) {
       });
     }
 
-    void lines;
-    void resolvedVehicleInfo;
-    void signatureImage;
-
     return NextResponse.json({ ok: true } satisfies SendInvoiceResponse);
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Unknown error sending invoice";
+    // eslint-disable-next-line no-console
     console.error("[invoices/send] Invoice Send Failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -1,3 +1,4 @@
+// app/api/admin/staff-invite-candidates/[id]/resend-invite/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -7,7 +8,7 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
-import { sendUserInviteEmail } from "@/features/email/server";
+import sgMail from "@sendgrid/mail";
 
 type DB = Database;
 
@@ -22,6 +23,12 @@ const INVITE_STATUS = {
 
 type RouteContext = { params: { id: string } };
 
+function mustEnv(name: string): string {
+  const v = process.env[name];
+  if (!v || v.trim() === "") throw new Error(`Missing required env: ${name}`);
+  return v;
+}
+
 function safeLower(v: string | null | undefined): string {
   return String(v ?? "").trim().toLowerCase();
 }
@@ -31,7 +38,7 @@ function isValidEmail(v: string): boolean {
 }
 
 export async function POST(req: NextRequest, context: unknown) {
-  void req;
+  void req; // ✅ satisfy “declared but never read” without underscores
 
   try {
     const { params } = context as RouteContext;
@@ -41,6 +48,7 @@ export async function POST(req: NextRequest, context: unknown) {
       return NextResponse.json({ error: "Missing candidate id" }, { status: 400 });
     }
 
+    // caller auth
     const supabaseUser = createServerSupabaseRoute();
     const {
       data: { user },
@@ -53,15 +61,12 @@ export async function POST(req: NextRequest, context: unknown) {
 
     const { data: me, error: meErr } = await supabaseUser
       .from("profiles")
-      .select("id, role, shop_id, full_name, first_name, last_name")
+      .select("id, role, shop_id")
       .eq("id", user.id)
       .maybeSingle();
 
     if (meErr || !me || !me.shop_id) {
-      return NextResponse.json(
-        { error: "Profile for current user not found" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Profile for current user not found" }, { status: 403 });
     }
 
     const callerRole = String(me.role ?? "").toLowerCase();
@@ -71,6 +76,7 @@ export async function POST(req: NextRequest, context: unknown) {
 
     const admin = createAdminSupabase();
 
+    // load candidate (must be same shop)
     const { data: candidate, error: candErr } = await admin
       .from("staff_invite_candidates")
       .select("*")
@@ -78,13 +84,10 @@ export async function POST(req: NextRequest, context: unknown) {
       .eq("shop_id", me.shop_id)
       .maybeSingle();
 
-    if (candErr) {
-      return NextResponse.json({ error: candErr.message }, { status: 500 });
-    }
-    if (!candidate) {
-      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
-    }
+    if (candErr) return NextResponse.json({ error: candErr.message }, { status: 500 });
+    if (!candidate) return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
 
+    // Must already have created user/profile
     if (!candidate.created_user_id || !candidate.created_profile_id) {
       return NextResponse.json(
         { error: "Candidate has no created_user_id yet. Use Create User first." },
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest, context: unknown) {
 
     const email = safeLower(candidate.email ?? candidate.email_lc ?? "");
     const username = safeLower(candidate.username ?? candidate.username_lc ?? "");
-    const fullName = (candidate.full_name ?? null) || null;
+    const full_name = (candidate.full_name ?? null) || null;
 
     if (!isValidEmail(email)) {
       await admin
@@ -107,10 +110,7 @@ export async function POST(req: NextRequest, context: unknown) {
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
-      return NextResponse.json(
-        { error: "Candidate has no valid email. Fix email first." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Candidate has no valid email. Fix email first." }, { status: 400 });
     }
 
     if (!username) {
@@ -124,45 +124,32 @@ export async function POST(req: NextRequest, context: unknown) {
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
-      return NextResponse.json(
-        { error: "Candidate has no username. Fix username first." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Candidate has no username. Fix username first." }, { status: 400 });
     }
 
+    // resend has no temp password (we should not store it)
+    const SENDGRID_API_KEY = mustEnv("SENDGRID_API_KEY");
+    const TEMPLATE_ID = mustEnv("SENDGRID_USER_INVITE_TEMPLATE_ID");
+    const FROM_EMAIL = mustEnv("SENDGRID_FROM_EMAIL");
+    const FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "ProFixIQ";
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
-    const { data: shop } = await admin
-      .from("shops")
-      .select("shop_name, name")
-      .eq("id", me.shop_id)
-      .maybeSingle<{ shop_name: string | null; name: string | null }>();
+    sgMail.setApiKey(SENDGRID_API_KEY);
 
-    const shopName =
-      (shop?.shop_name ?? "").trim() ||
-      (shop?.name ?? "").trim() ||
-      "ProFixIQ";
-
-    const inviterName =
-      String(me.full_name ?? "").trim() ||
-      [String(me.first_name ?? "").trim(), String(me.last_name ?? "").trim()]
-        .filter(Boolean)
-        .join(" ")
-        .trim() ||
-      "ProFixIQ";
-
-    await sendUserInviteEmail({
-      shopId: me.shop_id,
+    await sgMail.send({
       to: email,
-      loginUrl: `${SITE_URL}/login`,
-      username,
-      tempPassword: null,
-      role: candidate.role ?? "mechanic",
-      shopName,
-      inviterName,
-      fullName: fullName ?? username,
-      resend: true,
-      createdBy: user.id,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      replyTo: FROM_EMAIL,
+      templateId: TEMPLATE_ID,
+      dynamicTemplateData: {
+        full_name: full_name ?? username,
+        username,
+        temp_password: null,
+        login_url: `${SITE_URL}/login`,
+        role: candidate.role ?? "mechanic",
+        shop_id: me.shop_id,
+        resend: true,
+      },
     });
 
     await admin

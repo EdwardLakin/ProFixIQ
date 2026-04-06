@@ -7,39 +7,21 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
-import sgMail from "@sendgrid/mail";
+import { sendUserInviteEmail } from "@/features/email/server";
 
 type DB = Database;
 
 const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
-// ✅ Canonical invite statuses (status is TEXT in DB)
 const INVITE_STATUS = {
   pending: "pending",
-  invited: "invited", // ✅ user created + email sent
-  created: "created", // user created but email send failed / skipped
+  invited: "invited",
+  created: "created",
   error: "error",
 } as const;
 
 type InviteStatus = (typeof INVITE_STATUS)[keyof typeof INVITE_STATUS];
-
 type RouteContext = { params: { id: string } };
-
-type Body = {
-  password: string;
-  // Optional overrides from UI (if you edit inline)
-  full_name?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  username?: string | null;
-  role?: DB["public"]["Enums"]["user_role_enum"] | null;
-};
-
-function mustEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.trim() === "") throw new Error(`Missing required env: ${name}`);
-  return v;
-}
 
 function safeLower(v: string | null | undefined): string {
   return String(v ?? "").trim().toLowerCase();
@@ -49,7 +31,19 @@ function isValidEmail(v: string): boolean {
   return !!v && v.includes("@");
 }
 
+function makeTempPassword(length = 12): string {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest, context: unknown) {
+  void req;
+
   try {
     const { params } = context as RouteContext;
     const candidateId = params?.id;
@@ -58,15 +52,6 @@ export async function POST(req: NextRequest, context: unknown) {
       return NextResponse.json({ error: "Missing candidate id" }, { status: 400 });
     }
 
-    const body = (await req.json().catch(() => null)) as Body | null;
-    if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-
-    const password = (body.password ?? "").trim();
-    if (!password) {
-      return NextResponse.json({ error: "Password is required." }, { status: 400 });
-    }
-
-    // caller auth (tenant-safe)
     const supabaseUser = createServerSupabaseRoute();
     const {
       data: { user },
@@ -79,12 +64,15 @@ export async function POST(req: NextRequest, context: unknown) {
 
     const { data: me, error: meErr } = await supabaseUser
       .from("profiles")
-      .select("id, role, shop_id")
+      .select("id, role, shop_id, full_name, first_name, last_name")
       .eq("id", user.id)
       .maybeSingle();
 
     if (meErr || !me || !me.shop_id) {
-      return NextResponse.json({ error: "Profile for current user not found" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Profile for current user not found" },
+        { status: 403 },
+      );
     }
 
     const callerRole = String(me.role ?? "").toLowerCase();
@@ -94,190 +82,171 @@ export async function POST(req: NextRequest, context: unknown) {
 
     const admin = createAdminSupabase();
 
-    // load candidate (must be pending + same shop)
     const { data: candidate, error: candErr } = await admin
       .from("staff_invite_candidates")
       .select("*")
       .eq("id", candidateId)
       .eq("shop_id", me.shop_id)
-      .eq("status", INVITE_STATUS.pending)
       .maybeSingle();
 
     if (candErr) {
       return NextResponse.json({ error: candErr.message }, { status: 500 });
     }
-
     if (!candidate) {
-      return NextResponse.json({ error: "Pending candidate not found" }, { status: 404 });
+      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
 
-    // merge candidate + overrides from UI
-    const full_name = (body.full_name ?? candidate.full_name ?? null) || null;
-    const phone = (body.phone ?? candidate.phone ?? null) || null;
+    const email = safeLower(candidate.email ?? candidate.email_lc ?? "");
+    const username = safeLower(candidate.username ?? candidate.username_lc ?? "");
+    const fullName = (candidate.full_name ?? null) || null;
 
-    const username = safeLower(body.username ?? candidate.username ?? "");
-    const email = safeLower(body.email ?? candidate.email ?? "");
-
-    const role = (body.role ?? candidate.role ?? null) as DB["public"]["Enums"]["user_role_enum"] | null;
-
-    // invite email requires email
     if (!isValidEmail(email)) {
       await admin
         .from("staff_invite_candidates")
         .update({
-          status: INVITE_STATUS.error as InviteStatus,
+          status: INVITE_STATUS.error,
           error: "Missing/invalid email. Cannot send invite.",
           updated_at: new Date().toISOString(),
           created_by: user.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
-      return NextResponse.json({ error: "Candidate has no valid email. Fix email first." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Candidate has no valid email. Fix email first." },
+        { status: 400 },
+      );
     }
 
     if (!username) {
       await admin
         .from("staff_invite_candidates")
         .update({
-          status: INVITE_STATUS.error as InviteStatus,
-          error: "Missing username. Cannot create account.",
+          status: INVITE_STATUS.error,
+          error: "Missing username. Cannot send invite.",
           updated_at: new Date().toISOString(),
           created_by: user.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
-      return NextResponse.json({ error: "Candidate has no username. Fix username first." }, { status: 400 });
-    }
-
-    // ensure username unique
-    const { data: existingProfile, error: existingErr } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("username", username)
-      .maybeSingle<{ id: string }>();
-
-    if (existingErr) {
-      return NextResponse.json({ error: existingErr.message }, { status: 500 });
-    }
-    if (existingProfile?.id) {
-      await admin
-        .from("staff_invite_candidates")
-        .update({
-          status: INVITE_STATUS.error as InviteStatus,
-          error: `Username already exists: ${username}`,
-          updated_at: new Date().toISOString(),
-          created_by: user.id,
-        } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
-        .eq("id", candidateId);
-
-      return NextResponse.json({ error: "Username already exists in profiles." }, { status: 400 });
-    }
-
-    // create auth user
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name,
-        phone,
-        role,
-        shop_id: me.shop_id,
-        username,
-      },
-    });
-
-    if (createErr || !created?.user) {
-      await admin
-        .from("staff_invite_candidates")
-        .update({
-          status: INVITE_STATUS.error as InviteStatus,
-          error: createErr?.message ?? "Auth create failed",
-          updated_at: new Date().toISOString(),
-          created_by: user.id,
-        } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
-        .eq("id", candidateId);
-
-      return NextResponse.json({ error: createErr?.message ?? "Failed to create auth user" }, { status: 400 });
-    }
-
-    const newUserId = created.user.id;
-
-    // upsert profile row
-    const { error: profileErr } = await admin
-      .from("profiles")
-      .upsert(
-        {
-          id: newUserId,
-          email,
-          full_name,
-          phone,
-          role,
-          shop_id: me.shop_id,
-          username,
-          must_change_password: true,
-          updated_at: new Date().toISOString(),
-        } as DB["public"]["Tables"]["profiles"]["Insert"],
-        { onConflict: "id" },
+      return NextResponse.json(
+        { error: "Candidate has no username. Fix username first." },
+        { status: 400 },
       );
+    }
 
-    if (profileErr) {
+    if (candidate.created_user_id && candidate.created_profile_id) {
+      return NextResponse.json(
+        { error: "User already created for this candidate. Use resend invite." },
+        { status: 400 },
+      );
+    }
+
+    const tempPassword = makeTempPassword(14);
+
+    const { data: createdUser, error: createUserErr } =
+      await admin.auth.admin.createUser({
+        email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          username,
+          full_name: fullName ?? username,
+        },
+      });
+
+    if (createUserErr || !createdUser.user) {
       await admin
         .from("staff_invite_candidates")
         .update({
-          status: INVITE_STATUS.error as InviteStatus,
-          error: `Profile upsert failed: ${profileErr.message}`,
+          status: INVITE_STATUS.error,
+          error: createUserErr?.message ?? "Failed to create auth user",
           updated_at: new Date().toISOString(),
           created_by: user.id,
-          created_user_id: newUserId,
-          created_profile_id: newUserId,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
-      return NextResponse.json({ error: profileErr.message }, { status: 400 });
+      return NextResponse.json(
+        { error: createUserErr?.message ?? "Failed to create user" },
+        { status: 500 },
+      );
     }
 
-    // send email invite (SendGrid template)
-    const SENDGRID_API_KEY = mustEnv("SENDGRID_API_KEY");
+    const profileInsert: DB["public"]["Tables"]["profiles"]["Insert"] = {
+      id: createdUser.user.id,
+      shop_id: me.shop_id,
+      role: candidate.role ?? "mechanic",
+      email,
+      username,
+      full_name: fullName ?? username,
+      must_change_password: true,
+    };
 
-    // ✅ Use env if set; otherwise fall back to the known correct template id you showed.
-    const TEMPLATE_ID =
-      process.env.SENDGRID_USER_INVITE_TEMPLATE_ID?.trim() ||
-      "d-d76d1c40019f400c9b1106703efa4041";
+    const { error: profileInsertErr } = await admin
+      .from("profiles")
+      .upsert(profileInsert, { onConflict: "id" });
 
-    const FROM_EMAIL = mustEnv("SENDGRID_FROM_EMAIL");
-    const FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "ProFixIQ";
+    if (profileInsertErr) {
+      await admin
+        .from("staff_invite_candidates")
+        .update({
+          status: INVITE_STATUS.error,
+          error: profileInsertErr.message,
+          updated_at: new Date().toISOString(),
+          created_by: user.id,
+        } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
+        .eq("id", candidateId);
+
+      return NextResponse.json(
+        { error: profileInsertErr.message },
+        { status: 500 },
+      );
+    }
+
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
-    sgMail.setApiKey(SENDGRID_API_KEY);
+    const { data: shop } = await admin
+      .from("shops")
+      .select("shop_name, name")
+      .eq("id", me.shop_id)
+      .maybeSingle<{ shop_name: string | null; name: string | null }>();
+
+    const shopName =
+      (shop?.shop_name ?? "").trim() ||
+      (shop?.name ?? "").trim() ||
+      "ProFixIQ";
+
+    const inviterName =
+      String(me.full_name ?? "").trim() ||
+      [String(me.first_name ?? "").trim(), String(me.last_name ?? "").trim()]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      "ProFixIQ";
 
     let finalStatus: InviteStatus = INVITE_STATUS.invited;
     let sendErrMsg: string | null = null;
 
     try {
-      await sgMail.send({
+      await sendUserInviteEmail({
+        shopId: me.shop_id,
         to: email,
-        from: { email: FROM_EMAIL, name: FROM_NAME },
-        replyTo: FROM_EMAIL,
-        templateId: TEMPLATE_ID,
-        dynamicTemplateData: {
-          full_name: full_name ?? username,
-          username,
-          temp_password: password,
-          login_url: `${SITE_URL}/login`,
-          role: role ?? "mechanic",
-          shop_id: me.shop_id,
-          resend: false,
-        },
+        loginUrl: `${SITE_URL}/login`,
+        username,
+        tempPassword,
+        role: candidate.role ?? "mechanic",
+        shopName,
+        inviterName,
+        fullName: fullName ?? username,
+        resend: false,
+        createdBy: user.id,
       });
-    } catch (e) {
-      finalStatus = INVITE_STATUS.created;
-      sendErrMsg = e instanceof Error ? e.message : "SendGrid send failed";
-      // eslint-disable-next-line no-console
-      console.warn("[staff invite] sendgrid failed", e);
+    } catch (error) {
+      finalStatus = INVITE_STATUS.error;
+      sendErrMsg =
+        error instanceof Error ? error.message : "Invite email failed";
+      console.warn("[staff invite] sendgrid failed", error);
     }
 
-    // update candidate status
     await admin
       .from("staff_invite_candidates")
       .update({
@@ -285,8 +254,8 @@ export async function POST(req: NextRequest, context: unknown) {
         error: sendErrMsg,
         updated_at: new Date().toISOString(),
         created_by: user.id,
-        created_user_id: newUserId,
-        created_profile_id: newUserId,
+        created_user_id: createdUser.user.id,
+        created_profile_id: createdUser.user.id,
         email_lc: email,
         username_lc: username,
       } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
@@ -294,9 +263,14 @@ export async function POST(req: NextRequest, context: unknown) {
 
     return NextResponse.json({
       ok: true,
-      user_id: newUserId,
       status: finalStatus,
-      ...(sendErrMsg ? { warning: "User created but invite failed to send", send_error: sendErrMsg } : {}),
+      created_user_id: createdUser.user.id,
+      ...(sendErrMsg
+        ? {
+            warning: "User created but invite failed to send",
+            send_error: sendErrMsg,
+          }
+        : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
