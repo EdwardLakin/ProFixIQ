@@ -1,4 +1,4 @@
-// /app/api/quotes/send/route.ts (FULL FILE)
+// /app/api/quotes/send/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -42,8 +42,9 @@ const SENDGRID_QUOTE_TEMPLATE_ID =
   "d-0e31b4d9b1dc4d59970eb25016b5fee6";
 
 if (!SENDGRID_API_KEY) console.warn("[quotes/send] SENDGRID_API_KEY is not set");
-if (!SENDGRID_QUOTE_TEMPLATE_ID)
+if (!SENDGRID_QUOTE_TEMPLATE_ID) {
   console.warn("[quotes/send] SENDGRID_QUOTE_TEMPLATE_ID is not set");
+}
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -81,7 +82,6 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json().catch(() => null)) as RequestBody | null;
-
     const workOrderId = safeStr(body?.workOrderId).trim();
 
     if (!workOrderId) {
@@ -111,7 +111,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1) Load WO
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
       .select("id, customer_id, shop_id, vehicle_id, quote_url")
@@ -136,21 +135,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Load customer (email, portal user mapping)
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
-    let customerEmail =
-      safeStr(body?.customerEmail).trim() || "";
-
-    let customerName =
-      safeStr(body?.customerName).trim() || "";
+    let customerEmail = safeStr(body?.customerEmail).trim() || "";
+    let customerName = safeStr(body?.customerName).trim() || "";
 
     if (wo.customer_id) {
       const { data: customer, error: customerErr } = await supabaseAdmin
         .from("customers")
-        .select("id, user_id, email, first_name, last_name")
+        .select("id, user_id, email, first_name, last_name, business_name")
         .eq("id", wo.customer_id)
-        .maybeSingle<Pick<CustomerRow, "id" | "user_id" | "email" | "first_name" | "last_name">>();
+        .maybeSingle<
+          Pick<
+            CustomerRow,
+            "id" | "user_id" | "email" | "first_name" | "last_name" | "business_name"
+          >
+        >();
 
       if (!customerErr && customer) {
         portalCustomerId = customer.id;
@@ -173,7 +173,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Load shop name + labor rate (optional; used to compute totals)
     let shopName = safeStr(body?.shopName).trim() || "";
     let laborRate = 0;
 
@@ -190,7 +189,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4) Vehicle info (optional)
     let vehicleInfo: VehicleInfo | undefined = body?.vehicleInfo;
     if (!vehicleInfo && wo.vehicle_id) {
       const { data: v } = await supabaseAdmin
@@ -208,30 +206,52 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5) Compute lines + totals if not provided
     let lines: QuoteLine[] | undefined = body?.lines;
     let quoteTotal: number | undefined = body?.quoteTotal;
 
     if (!lines || lines.length === 0 || typeof quoteTotal !== "number") {
-      const [linesRes, allocsRes] = await Promise.all([
-        supabaseAdmin
-          .from("work_order_lines")
-          .select("id, description, complaint, labor_time")
-          .eq("work_order_id", workOrderId)
-          .order("created_at", { ascending: true }),
-        supabaseAdmin
+      const { data: lineRowsRaw, error: linesErr } = await supabaseAdmin
+        .from("work_order_lines")
+        .select("id, description, complaint, labor_time, price_estimate, line_no")
+        .eq("work_order_id", workOrderId)
+        .order("line_no", { ascending: true });
+
+      if (linesErr) {
+        return NextResponse.json(
+          { ok: false, trace, error: "Failed to load work order lines", detail: linesErr.message },
+          { status: 500 },
+        );
+      }
+
+      const lineRows = (lineRowsRaw ?? []) as Array<
+        Pick<LineRow, "id" | "description" | "complaint" | "labor_time" | "price_estimate" | "line_no">
+      >;
+
+      const lineIds = lineRows
+        .map((l) => l.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      let allocRows: Array<
+        Pick<AllocRow, "work_order_line_id" | "qty" | "unit_cost">
+      > = [];
+
+      if (lineIds.length > 0) {
+        const { data: allocsRes, error: allocErr } = await supabaseAdmin
           .from("work_order_part_allocations")
           .select("work_order_line_id, qty, unit_cost")
-          .eq("work_order_id", workOrderId),
-      ]);
+          .in("work_order_line_id", lineIds);
 
-      const lineRows = (linesRes.data ?? []) as Array<
-        Pick<LineRow, "id" | "description" | "complaint" | "labor_time">
-      >;
+        if (allocErr) {
+          return NextResponse.json(
+            { ok: false, trace, error: "Failed to load part allocations", detail: allocErr.message },
+            { status: 500 },
+          );
+        }
 
-      const allocRows = (allocsRes.data ?? []) as Array<
-        Pick<AllocRow, "work_order_line_id" | "qty" | "unit_cost">
-      >;
+        allocRows = (allocsRes ?? []) as Array<
+          Pick<AllocRow, "work_order_line_id" | "qty" | "unit_cost">
+        >;
+      }
 
       const partsByLine = new Map<string, number>();
       for (const a of allocRows) {
@@ -256,7 +276,12 @@ export async function POST(req: Request) {
         const laborAmt = hrs * laborRate;
         const partsAmt = partsByLine.get(l.id) ?? 0;
 
-        const amount = laborAmt + partsAmt;
+        const priceEstimate =
+          typeof l.price_estimate === "number" && Number.isFinite(l.price_estimate)
+            ? l.price_estimate
+            : null;
+
+        const amount = priceEstimate != null ? priceEstimate : laborAmt + partsAmt;
         computedTotal += amount;
 
         const desc =
@@ -273,7 +298,6 @@ export async function POST(req: Request) {
 
     const pdfUrl = body?.pdfUrl ?? null;
 
-    // 6) Build portal quote URL
     const appUrlEnv =
       process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
     const normalizedAppUrl = appUrlEnv ? appUrlEnv.replace(/\/$/, "") : "";
@@ -281,7 +305,6 @@ export async function POST(req: Request) {
       ? `${normalizedAppUrl}/portal/quotes/${workOrderId}`
       : null;
 
-    // 7) Send via SendGrid
     const emailPayload = {
       personalizations: [
         {
@@ -319,7 +342,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 8) Update quote_url on work order
     const newQuoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? null;
 
     if (newQuoteUrl !== wo.quote_url) {
@@ -341,7 +363,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // 9) Create portal notification (if portal user exists)
     if (portalUserId) {
       const { error: notifErr } = await supabaseAdmin
         .from("portal_notifications")

@@ -1,29 +1,60 @@
-//features/portal/app/quotes/[id]/QuotePageClient.tsx
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import Link from "next/link";
-
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
-import { calculateTax, getTaxAmount, isProvinceCode, type ProvinceCode } from "@/features/integrations/tax";
+import {
+  calculateTax,
+  getTaxAmount,
+  isProvinceCode,
+  type ProvinceCode,
+} from "@/features/integrations/tax";
 
 const COPPER = "#C57A4A";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+
+type ParamsShape = Record<string, string | string[] | undefined>;
 
 type QuoteLineRow = Pick<
   WorkOrderLineRow,
-  "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no" | "approval_state" | "status"
+  "id" | "description" | "complaint" | "labor_time" | "price_estimate" | "line_no" | "approval_state" | "status"
 >;
 
-type ParamsShape = Record<string, string | string[] | undefined>;
+type AllocationWithPart = Pick<
+  AllocationRow,
+  "id" | "work_order_line_id" | "qty" | "unit_cost"
+> & {
+  parts: Pick<PartRow, "name" | "part_number" | "sku">[] | Pick<PartRow, "name" | "part_number" | "sku"> | null;
+};
+
+type LineView = {
+  id: string;
+  lineNo: number | null;
+  title: string;
+  complaint: string | null;
+  laborHours: number;
+  laborAmount: number;
+  partsAmount: number;
+  totalAmount: number;
+  approvalState: "pending" | "approved" | "declined" | null;
+  status: string | null;
+  parts: Array<{
+    name: string;
+    qty: number;
+    unitCost: number;
+    total: number;
+    meta: string | null;
+  }>;
+};
 
 function paramToString(value: string | string[] | undefined): string | null {
   if (!value) return null;
@@ -32,6 +63,11 @@ function paramToString(value: string | string[] | undefined): string | null {
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
+}
+
+function asNumber(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -50,6 +86,10 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
+function labelize(v: string | null | undefined): string {
+  return (v ?? "").replaceAll("_", " ").trim() || "—";
+}
+
 function getShopProvinceCode(shop: ShopRow | null): ProvinceCode | null {
   const s = shop as unknown as { province_code?: unknown; province?: unknown } | null;
   const raw = safeTrim(s?.province_code ?? s?.province ?? "").toUpperCase();
@@ -57,18 +97,34 @@ function getShopProvinceCode(shop: ShopRow | null): ProvinceCode | null {
   return isProvinceCode(raw) ? raw : null;
 }
 
+function getPartName(parts: AllocationWithPart["parts"]): string {
+  if (Array.isArray(parts)) {
+    return safeTrim(parts[0]?.name) || "Part";
+  }
+  if (parts && typeof parts === "object") {
+    return safeTrim(parts.name) || "Part";
+  }
+  return "Part";
+}
+
+function getPartMeta(parts: AllocationWithPart["parts"]): string | null {
+  const source = Array.isArray(parts) ? parts[0] : parts;
+  if (!source || typeof source !== "object") return null;
+  const pn = safeTrim((source as { part_number?: unknown }).part_number);
+  const sku = safeTrim((source as { sku?: unknown }).sku);
+  return [pn, sku].filter(Boolean).join(" • ") || null;
+}
+
 export default function QuotePageClient(): JSX.Element {
   const router = useRouter();
   const params = useParams();
-
   const workOrderId = useMemo(() => paramToString((params as ParamsShape).id), [params]);
-
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
   const [shop, setShop] = useState<ShopRow | null>(null);
-  const [quoteLines, setQuoteLines] = useState<QuoteLineRow[]>([]);
+  const [lines, setLines] = useState<LineView[]>([]);
 
   const load = useCallback(async () => {
     if (!workOrderId) {
@@ -78,7 +134,6 @@ export default function QuotePageClient(): JSX.Element {
 
     setLoading(true);
 
-    // 1) Authed user
     const {
       data: { user },
       error: userErr,
@@ -89,7 +144,6 @@ export default function QuotePageClient(): JSX.Element {
       return;
     }
 
-    // 2) Customer for this user
     const { data: customer, error: custErr } = await supabase
       .from("customers")
       .select("id")
@@ -101,7 +155,6 @@ export default function QuotePageClient(): JSX.Element {
       return;
     }
 
-    // 3) Work order owned by this customer
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select("*")
@@ -116,46 +169,100 @@ export default function QuotePageClient(): JSX.Element {
 
     setWorkOrder(wo as WorkOrderRow);
 
-    // 3b) Shop (for province tax)
+    let shopRow: ShopRow | null = null;
+    let laborRate = 0;
+
     if (wo.shop_id) {
-      const { data: shopRow } = await supabase.from("shops").select("*").eq("id", wo.shop_id).maybeSingle();
-      setShop((shopRow ?? null) as ShopRow | null);
-    } else {
-      setShop(null);
+      const { data } = await supabase.from("shops").select("*").eq("id", wo.shop_id).maybeSingle();
+      shopRow = (data ?? null) as ShopRow | null;
+      laborRate = asNumber((data as { labor_rate?: unknown } | null)?.labor_rate);
     }
 
-    // 4) Quote line items (include approval_state/status)
-    const { data: lineRows } = await supabase
+    setShop(shopRow);
+
+    const { data: lineRowsRaw, error: lineErr } = await supabase
       .from("work_order_lines")
-      .select("id, description, job_type, labor_time, price_estimate, line_no, approval_state, status")
+      .select("id, description, complaint, labor_time, price_estimate, line_no, approval_state, status")
       .eq("work_order_id", workOrderId)
       .order("line_no", { ascending: true });
 
-    const mapped: QuoteLineRow[] =
-      lineRows?.map((line) => ({
-        id: line.id,
-        description: line.description,
-        job_type: line.job_type,
-        labor_time: line.labor_time,
-        price_estimate: line.price_estimate,
-        line_no: line.line_no,
-        approval_state: line.approval_state,
-        status: line.status,
-      })) ?? [];
+    if (lineErr) {
+      setLines([]);
+      setLoading(false);
+      return;
+    }
 
-    setQuoteLines(mapped);
+    const lineRows = (lineRowsRaw ?? []) as QuoteLineRow[];
+    const lineIds = lineRows.map((l) => l.id).filter(Boolean);
+
+    let allocRows: AllocationWithPart[] = [];
+    if (lineIds.length > 0) {
+      const { data: allocs } = await supabase
+        .from("work_order_part_allocations")
+        .select("id, work_order_line_id, qty, unit_cost, parts(name, part_number, sku)")
+        .in("work_order_line_id", lineIds);
+
+      allocRows = (allocs ?? []) as AllocationWithPart[];
+    }
+
+    const byLine = new Map<string, AllocationWithPart[]>();
+    for (const a of allocRows) {
+      const lineId = safeTrim(a.work_order_line_id);
+      if (!lineId) continue;
+      const bucket = byLine.get(lineId) ?? [];
+      bucket.push(a);
+      byLine.set(lineId, bucket);
+    }
+
+    const mapped: LineView[] = lineRows.map((line) => {
+      const allocs = byLine.get(line.id) ?? [];
+      const parts = allocs.map((a) => {
+        const qty = asNumber(a.qty);
+        const unitCost = asNumber(a.unit_cost);
+        return {
+          name: getPartName(a.parts),
+          qty,
+          unitCost,
+          total: qty * unitCost,
+          meta: getPartMeta(a.parts),
+        };
+      });
+
+      const partsAmount = parts.reduce((sum, p) => sum + p.total, 0);
+      const laborHours = asNumber(line.labor_time);
+      const computedLabor = laborHours * laborRate;
+      const explicitLineTotal =
+        typeof line.price_estimate === "number" && Number.isFinite(line.price_estimate)
+          ? line.price_estimate
+          : null;
+
+      const totalAmount = explicitLineTotal != null ? explicitLineTotal : computedLabor + partsAmount;
+      const laborAmount = Math.max(0, totalAmount - partsAmount);
+
+      return {
+        id: line.id,
+        lineNo: typeof line.line_no === "number" ? line.line_no : asNumber(line.line_no) || null,
+        title: safeTrim(line.description) || safeTrim(line.complaint) || "Line item",
+        complaint: safeTrim(line.complaint) || null,
+        laborHours,
+        laborAmount,
+        partsAmount,
+        totalAmount,
+        approvalState:
+          line.approval_state === "approved" || line.approval_state === "declined" || line.approval_state === "pending"
+            ? line.approval_state
+            : null,
+        status: line.status,
+        parts,
+      };
+    });
+
+    setLines(mapped);
     setLoading(false);
   }, [router, supabase, workOrderId]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (cancelled) return;
-      await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void load();
   }, [load]);
 
   if (!workOrderId) {
@@ -165,17 +272,16 @@ export default function QuotePageClient(): JSX.Element {
   if (loading || !workOrder) {
     return (
       <div className="min-h-screen px-4 py-10 flex items-center justify-center text-neutral-300">
-        Loading quote…
+        Loading quote...
       </div>
     );
   }
 
   const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
-  const subtotal = quoteLines.reduce<number>((sum, line) => {
-    const price = line.price_estimate;
-    return sum + (price == null ? 0 : Number(price));
-  }, 0);
+  const subtotal = lines.reduce((sum, line) => sum + line.totalAmount, 0);
+  const laborSubtotal = lines.reduce((sum, line) => sum + line.laborAmount, 0);
+  const partsSubtotal = lines.reduce((sum, line) => sum + line.partsAmount, 0);
 
   const provinceCode = getShopProvinceCode(shop);
   const taxRes = provinceCode ? calculateTax(subtotal, provinceCode) : null;
@@ -190,7 +296,7 @@ export default function QuotePageClient(): JSX.Element {
         bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
       "
     >
-      <div className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center py-10">
+      <div className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center py-10">
         <div
           className="
             w-full rounded-3xl border
@@ -203,26 +309,14 @@ export default function QuotePageClient(): JSX.Element {
           <div className="mb-5 flex items-center justify-between gap-3">
             <Link
               href="/portal"
-              className="
-                inline-flex items-center gap-2 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/60 px-3 py-1.5 text-[11px]
-                uppercase tracking-[0.2em] text-neutral-200
-                hover:bg-black/70 hover:text-white
-              "
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
             >
               <span aria-hidden className="text-base leading-none">←</span>
               Back
             </Link>
 
             <div
-              className="
-                inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/70 px-3 py-1 text-[11px]
-                uppercase tracking-[0.22em]
-                text-neutral-300
-              "
+              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-neutral-300"
               style={{ color: COPPER }}
             >
               Quote
@@ -230,18 +324,26 @@ export default function QuotePageClient(): JSX.Element {
           </div>
 
           <div className="mb-6 space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-semibold text-white" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+            <h1
+              className="text-2xl sm:text-3xl font-semibold text-white"
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
+            >
               {titleLabel}
             </h1>
             <p className="text-xs text-neutral-400 sm:text-sm">
-              Review your inspection summary and quote for this work order.
+              Review your quote with parts, labor, and totals.
             </p>
           </div>
 
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Subtotal</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(subtotal)}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Labor</div>
+              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(laborSubtotal)}</div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Parts</div>
+              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(partsSubtotal)}</div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
@@ -259,61 +361,87 @@ export default function QuotePageClient(): JSX.Element {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Line Items</div>
-              <div className="text-[11px] text-neutral-500">
-                {quoteLines.length === 0 ? "No line items recorded yet" : `${quoteLines.length} items`}
-              </div>
-            </div>
-
-            {quoteLines.length > 0 ? (
-              <div className="space-y-2">
-                {quoteLines.map((line) => (
-                  <div
-                    key={line.id}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-neutral-100">{line.description || "Line item"}</div>
-                      <div className="text-[11px] text-neutral-500">
-                        {line.job_type ?? "—"}
-                        {line.labor_time != null ? ` • ${line.labor_time} hr` : ""}
-                        {" • "}
-                        <span style={{ color: COPPER }} className="font-semibold">
-                          {safeTrim(line.approval_state ?? "pending")}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-right text-xs text-neutral-300">
-                      <div className="text-sm font-semibold">{formatCurrency(line.price_estimate)}</div>
-                      {line.line_no != null ? <div className="text-[11px] text-neutral-500">Line #{line.line_no}</div> : null}
-                    </div>
-                  </div>
-                ))}
+          <div className="space-y-4">
+            {lines.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-sm text-neutral-400">
+                No quote lines are available yet.
               </div>
             ) : (
-              <div className="text-xs text-neutral-400">
-                Once your shop prepares the quote, you&apos;ll see a breakdown of the recommended work and estimated costs here.
-              </div>
+              lines.map((line) => (
+                <div key={line.id} className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-white">
+                        {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
+                      </div>
+                      {line.complaint ? (
+                        <div className="mt-1 text-xs text-neutral-400">{line.complaint}</div>
+                      ) : null}
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-white">{formatCurrency(line.totalAmount)}</div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        {labelize(line.approvalState)} • {labelize(line.status)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor</div>
+                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.laborAmount)}</div>
+                      <div className="mt-1 text-xs text-neutral-400">{line.laborHours.toFixed(1)} hr</div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Parts</div>
+                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.partsAmount)}</div>
+                      <div className="mt-1 text-xs text-neutral-400">{line.parts.length} item(s)</div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Line total</div>
+                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.totalAmount)}</div>
+                    </div>
+                  </div>
+
+                  {line.parts.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Parts breakdown</div>
+                      {line.parts.map((part, idx) => (
+                        <div key={`${line.id}-${idx}`} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium text-white">{part.name}</div>
+                              {part.meta ? <div className="mt-1 text-xs text-neutral-400">{part.meta}</div> : null}
+                              <div className="mt-1 text-xs text-neutral-500">
+                                Qty {part.qty} × {formatCurrency(part.unitCost)}
+                              </div>
+                            </div>
+                            <div className="text-sm font-medium text-white">{formatCurrency(part.total)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))
             )}
           </div>
 
-          <div className="mt-6">
-            <QuoteApprovalActions
-              workOrderId={workOrderId}
-              lines={quoteLines.map((l) => ({
-                id: l.id,
-                description: l.description,
-                approval_state: (l.approval_state ?? "pending") as "pending" | "approved" | "declined" | null,
-                status: l.status ?? null,
-              }))}
-              onChanged={() => void load()}
-            />
-          </div>
-
-          <div className="mt-6 text-[11px] text-neutral-500">Last updated: {formatDate(workOrder.updated_at)}</div>
+          <QuoteApprovalActions
+            workOrderId={workOrder.id}
+            lines={lines.map((line) => ({
+              id: line.id,
+              description: line.title,
+              approval_state: line.approvalState,
+              status: line.status,
+            }))}
+            onChanged={() => {
+              void load();
+            }}
+          />
         </div>
       </div>
     </div>

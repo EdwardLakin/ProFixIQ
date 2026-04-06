@@ -5,10 +5,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-function getStringParam(
-  params: Record<string, string>,
-  key: string,
-): string | null {
+function getStringParam(params: Record<string, string>, key: string): string | null {
   const v = params[key];
   return typeof v === "string" && v.trim().length > 0 ? v : null;
 }
@@ -31,8 +28,35 @@ export async function POST(
   const lineId = getStringParam(params, "lineId");
   if (!lineId) return NextResponse.json({ error: "Missing lineId" }, { status: 400 });
 
-  return NextResponse.json(
-    { error: "Line decline is not supported. Decline individual part_request_items instead." },
-    { status: 400 },
-  );
+  const { data: customer, error: custErr } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (custErr || !customer?.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { data: line, error: lineErr } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id, work_orders!inner(id, customer_id)")
+    .eq("id", lineId)
+    .eq("work_orders.customer_id", customer.id)
+    .maybeSingle();
+
+  if (lineErr || !line?.id) {
+    return NextResponse.json({ error: "Line item not found" }, { status: 404 });
+  }
+
+  const { error: updErr } = await supabase
+    .from("work_order_lines")
+    .update({ approval_state: "declined", status: "declined" })
+    .eq("id", lineId);
+
+  if (updErr) {
+    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

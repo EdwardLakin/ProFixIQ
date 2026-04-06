@@ -1,8 +1,6 @@
-//features/portal/components/QuoteApprovalActions.tsx
-
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 type Decision = "approve" | "decline" | "defer";
 
@@ -16,10 +14,8 @@ type LineLite = {
 type Props = {
   workOrderId: string;
   lines: LineLite[];
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
 };
-
-const COPPER = "#C57A4A";
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
@@ -40,10 +36,8 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
   const [loadingLineId, setLoadingLineId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const hasLines = useMemo(() => Array.isArray(lines) && lines.length > 0, [lines]);
-
   const runDecision = async (lineId: string, decision: Decision) => {
-    if (loadingLineId) return;
+    if (!lineId || loadingLineId) return;
 
     setLoadingLineId(lineId);
     setError(null);
@@ -53,6 +47,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineId, decision }),
+        cache: "no-store",
       });
 
       const json = (await res.json().catch(() => null)) as
@@ -60,36 +55,27 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
         | null;
 
       if (!res.ok || !json?.ok) {
-        const msg = json?.error ?? "Unable to update line decision.";
-        setError(msg);
-        alert(msg);
+        setError(json?.error ?? "Unable to update line decision.");
         return;
       }
 
-      onChanged?.();
+      await onChanged?.();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unexpected error updating decision.";
-      setError(msg);
-      alert(msg);
+      setError(e instanceof Error ? e.message : "Unexpected error updating decision.");
     } finally {
       setLoadingLineId(null);
     }
   };
 
-  if (!hasLines) {
-    return (
-      <div className="mt-6 space-y-2">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Quote decisions</div>
-        <div className="text-xs text-neutral-400">
-          No line items yet. Once your shop prepares the quote, you’ll be able to approve/decline items here.
-        </div>
-      </div>
-    );
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return null;
   }
 
   return (
     <div className="mt-6 space-y-3">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Quote decisions</div>
+      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+        Quote decisions
+      </div>
 
       <div className="space-y-2">
         {lines.map((l) => {
@@ -112,7 +98,6 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] ${pillClass(
                         ap,
                       )}`}
-                      style={{ color: COPPER }}
                       title={`approval_state=${ap} status=${l.status ?? "null"}`}
                     >
                       {labelize(ap)} • {labelize(l.status)}
@@ -125,46 +110,27 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                     type="button"
                     onClick={() => void runDecision(l.id, "approve")}
                     disabled={!!loadingLineId || ap === "approved"}
-                    className="
-                      inline-flex items-center justify-center rounded-full
-                      border border-emerald-400/70 bg-emerald-500/10
-                      px-4 py-1.5 text-xs font-semibold text-emerald-100
-                      shadow-[0_0_16px_rgba(16,185,129,0.25)]
-                      transition hover:bg-emerald-500/20 disabled:opacity-50
-                    "
+                    className="inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
                   >
-                    {isBusy ? "Saving…" : ap === "approved" ? "Approved" : "Approve"}
+                    {isBusy ? "Saving..." : ap === "approved" ? "Approved" : "Approve"}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => void runDecision(l.id, "decline")}
                     disabled={!!loadingLineId || ap === "declined"}
-                    className="
-                      inline-flex items-center justify-center rounded-full
-                      border border-red-400/70 bg-red-500/10
-                      px-4 py-1.5 text-xs font-semibold text-red-100
-                      shadow-[0_0_16px_rgba(248,113,113,0.25)]
-                      transition hover:bg-red-500/20 disabled:opacity-50
-                    "
+                    className="inline-flex items-center justify-center rounded-full border border-red-400/70 bg-red-500/10 px-4 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
                   >
-                    {isBusy ? "Saving…" : ap === "declined" ? "Declined" : "Decline"}
+                    {isBusy ? "Saving..." : ap === "declined" ? "Declined" : "Decline"}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => void runDecision(l.id, "defer")}
                     disabled={!!loadingLineId || ap === "pending"}
-                    className="
-                      inline-flex items-center justify-center rounded-full
-                      border border-amber-300/60 bg-amber-500/10
-                      px-4 py-1.5 text-xs font-semibold text-amber-100
-                      shadow-[0_0_16px_rgba(251,191,36,0.18)]
-                      transition hover:bg-amber-500/20 disabled:opacity-50
-                    "
-                    title="Set this item back to pending"
+                    className="inline-flex items-center justify-center rounded-full border border-amber-300/60 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:opacity-50"
                   >
-                    {isBusy ? "Saving…" : "Defer"}
+                    {isBusy ? "Saving..." : "Defer"}
                   </button>
                 </div>
               </div>
@@ -173,7 +139,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
         })}
       </div>
 
-      {error && <div className="text-[11px] text-red-300">{error}</div>}
+      {error ? <div className="text-[11px] text-red-300">{error}</div> : null}
     </div>
   );
 }

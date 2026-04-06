@@ -1,13 +1,37 @@
-// /app/api/work-orders/[id]/send-quote/route.ts (FULL FILE)
-// Wrapper route so legacy UI calls keep working.
-// Forwards request to /api/quotes/send with workOrderId = params.id.
-
+// /app/api/work-orders/[id]/send-quote/route.ts
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     v,
   );
+}
+
+async function resolveWorkOrderId(rawId: string): Promise<string | null> {
+  const id = rawId.trim();
+  if (!id) return null;
+  if (isUuid(id)) return id;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url || !key) return null;
+
+  const sb = createClient<DB>(url, key);
+
+  const { data, error } = await sb
+    .from("work_orders")
+    .select("id")
+    .eq("custom_id", id)
+    .maybeSingle<{ id: string }>();
+
+  if (error) return null;
+  return data?.id ?? null;
 }
 
 type ForwardBody = {
@@ -34,15 +58,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     .toString(16)
     .slice(2)}`;
 
-  console.log(`[send-quote wrapper] HIT trace=${trace} id=${id}`);
+  const resolvedId = await resolveWorkOrderId(id);
 
-  if (!id || !isUuid(id)) {
-    console.log(`[send-quote wrapper] BAD_ID trace=${trace} id=${id}`);
+  if (!resolvedId) {
     return NextResponse.json(
       {
         ok: false,
         trace,
-        error: "Invalid work order id (expected UUID in URL).",
+        error: "Invalid work order id. Expected UUID or existing custom_id.",
         received: id,
         route: "/api/work-orders/[id]/send-quote",
       },
@@ -59,15 +82,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const forwardBody: ForwardBody = {
     ...body,
-    workOrderId: id, // ✅ FORCE UUID from URL
+    workOrderId: resolvedId,
   };
 
-  // Forward to /api/quotes/send (same deployment)
   const url = new URL(req.url);
   url.pathname = "/api/quotes/send";
   url.search = "";
-
-  console.log(`[send-quote wrapper] FORWARD trace=${trace} -> ${url.pathname}`);
 
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -80,12 +100,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   });
 
   const text = await res.text();
-  console.log(
-    `[send-quote wrapper] RESULT trace=${trace} status=${res.status} body=${text.slice(
-      0,
-      500,
-    )}`,
-  );
 
   return new NextResponse(text, {
     status: res.status,
