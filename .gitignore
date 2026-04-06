@@ -34,3 +34,8 @@ inspection_*.txt
 tire-voice-debug.txt
 profixiq-full-dump.txt
 *.txt
+
+# backups
+.backup/
+*.bak
+tsconfig.tsbuildinfo
