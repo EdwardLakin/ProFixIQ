@@ -17,6 +17,7 @@ type SuggestionsResponse = {
 };
 
 type Props = {
+  workOrderId: string | null;
   vehicleId: string | null;
   enabled: boolean;
   selectedServiceCodes: string[];
@@ -24,6 +25,7 @@ type Props = {
 };
 
 export default function CreateFlowMaintenanceSelector({
+  workOrderId,
   vehicleId,
   enabled,
   selectedServiceCodes,
@@ -35,10 +37,10 @@ export default function CreateFlowMaintenanceSelector({
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const canLoad = enabled && !!vehicleId;
+  const canLoad = enabled && (!!workOrderId || !!vehicleId);
 
   const load = useCallback(async () => {
-    if (!canLoad || !vehicleId) {
+    if (!canLoad) {
       setRows([]);
       setError(null);
       return;
@@ -48,10 +50,12 @@ export default function CreateFlowMaintenanceSelector({
       setLoading(true);
       setError(null);
 
+      const payload = workOrderId ? { workOrderId } : { vehicleId };
+
       const res = await fetch("/api/maintenance/suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vehicleId }),
+        body: JSON.stringify(payload),
         cache: "no-store",
       });
 
@@ -72,7 +76,7 @@ export default function CreateFlowMaintenanceSelector({
     } finally {
       setLoading(false);
     }
-  }, [canLoad, vehicleId]);
+  }, [canLoad, workOrderId, vehicleId]);
 
   useEffect(() => {
     void load();
