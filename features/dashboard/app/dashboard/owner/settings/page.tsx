@@ -838,12 +838,23 @@ try {
         () => ({} as { ok?: boolean; error?: string; onboardingUrl?: string }),
       );
 
-      if (!res.ok || !j?.ok || !j?.onboardingUrl) {
-        toast.error(j?.error || "Failed to start Stripe onboarding");
+      if (res.ok && j?.ok && j?.onboardingUrl) {
+        window.location.href = j.onboardingUrl;
         return;
       }
 
-      window.location.href = j.onboardingUrl;
+      const message = String(j?.error ?? "Failed to start Stripe onboarding");
+
+      if (
+        message.toLowerCase().includes("signed up for connect") ||
+        message.toLowerCase().includes("dashboard.stripe.com/connect")
+      ) {
+        toast.info("Opening Stripe Connect setup…");
+        window.open("https://dashboard.stripe.com/connect", "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      toast.error(message);
     } finally {
       setConnectLoading(false);
     }
@@ -864,12 +875,23 @@ try {
         () => ({} as { ok?: boolean; error?: string; url?: string }),
       );
 
-      if (!res.ok || !j?.ok || !j?.url) {
-        toast.error(j?.error || "Failed to open billing portal");
+      if (res.ok && j?.ok && j?.url) {
+        window.location.href = j.url;
         return;
       }
 
-      window.location.href = j.url;
+      const message = String(j?.error ?? "Failed to open billing portal");
+
+      if (
+        message.toLowerCase().includes("no stripe customer") ||
+        message.toLowerCase().includes("no billing portal") ||
+        message.toLowerCase().includes("not configured")
+      ) {
+        toast.error("Billing portal is not available yet. Complete subscription checkout first.");
+        return;
+      }
+
+      toast.error(message);
     } finally {
       setPortalLoading(false);
     }
@@ -881,11 +903,13 @@ try {
     try {
       setCheckoutLoading(true);
 
+      const selectedPlan = plan === "unknown" ? "starter" : plan;
+
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          planKey: plan === "unknown" ? "starter" : plan,
+          planKey: selectedPlan,
           shopId,
           successPath: "/dashboard/owner/settings#billing",
           cancelPath: "/dashboard/owner/settings#billing",
@@ -897,12 +921,21 @@ try {
         () => ({} as { ok?: boolean; error?: string; details?: string; url?: string }),
       );
 
-      if (!res.ok || !j?.ok || !j?.url) {
-        toast.error(j?.error || j?.details || "Failed to start checkout");
+      if (res.ok && j?.ok && j?.url) {
+        window.location.href = j.url;
         return;
       }
 
-      window.location.href = j.url;
+      const message = String(j?.error ?? j?.details ?? "Failed to start checkout");
+
+      if (message.toLowerCase().includes("no active stripe price found")) {
+        toast.error(
+          `Stripe checkout is not configured for the ${selectedPlan} plan yet. Add the active Stripe price ID for this plan in your environment/settings first.`,
+        );
+        return;
+      }
+
+      toast.error(message);
     } finally {
       setCheckoutLoading(false);
     }
@@ -1683,17 +1716,23 @@ try {
                   {connectLoading
                     ? "Opening Stripe..."
                     : stripeAccountId
-                    ? "Resume Stripe setup"
-                    : "Connect Stripe"}
+                    ? "Manage payout setup"
+                    : "Connect payouts"}
                 </Button>
+                <p className="text-[11px] text-neutral-500">
+                  Set up or resume Stripe Connect for shop payouts.
+                </p>
 
                 <Button
                   variant="secondary"
                   onClick={startSubscriptionCheckout}
                   disabled={!isUnlocked || checkoutLoading}
                 >
-                  {checkoutLoading ? "Opening checkout..." : "Open subscription checkout"}
+                  {checkoutLoading ? "Opening checkout..." : "Manage subscription"}
                 </Button>
+                <p className="text-[11px] text-neutral-500">
+                  Start or update the ProFixIQ subscription for this location.
+                </p>
 
                 <Button
                   variant="secondary"
@@ -1702,6 +1741,9 @@ try {
                 >
                   {portalLoading ? "Opening portal..." : "Open billing portal"}
                 </Button>
+                <p className="text-[11px] text-neutral-500">
+                  Review invoices, payment methods, and subscription billing history.
+                </p>
               </div>
             </div>
           </SettingsSection>
@@ -1724,27 +1766,39 @@ try {
             </div>
           </SettingsSection>
 
-          <section className={sectionClass}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-50">Organization</h2>
-                <p className="text-[11px] text-neutral-400">
-                  Linked organization and locations.
-                </p>
-              </div>
-              <div className="text-xs text-neutral-300">
-                {orgId ? (
-                  <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                    Org: <span className="text-neutral-100">{orgName || "—"}</span>
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                    No organization linked
-                  </span>
-                )}
-              </div>
-            </div>
+          <SettingsSection
+            title="Organization"
+            description={
+              orgId
+                ? "Linked organization and locations."
+                : "Use organizations to group multiple shop locations under one account."
+            }
+            action={
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-neutral-300">
+                  {orgId ? (
+                    <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
+                      Org: <span className="text-neutral-100">{orgName || "—"}</span>
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
+                      No organization linked
+                    </span>
+                  )}
+                </div>
 
+                {!orgId ? (
+                  <Button
+                    size="sm"
+                    onClick={() => router.push("/dashboard/owner/organization/create")}
+                    disabled={!isUnlocked}
+                  >
+                    Create organization
+                  </Button>
+                ) : null}
+              </div>
+            }
+          >
             {orgId ? (
               <div className="space-y-2">
                 {locations.length === 0 ? (
@@ -1790,11 +1844,12 @@ try {
                 )}
               </div>
             ) : (
-              <div className="text-xs text-neutral-500">
-                This account is not linked to an organization yet.
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-400">
+                Create an organization when you want to manage multiple locations together.
+                Your current shop will be linked automatically.
               </div>
             )}
-          </section>
+          </SettingsSection>
 
           {shopId && (
             <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
