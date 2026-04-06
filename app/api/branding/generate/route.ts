@@ -12,6 +12,7 @@ type GenerateLogoBody = {
   stylePreset?: string | null;
   count?: number;
   transparentBackground?: boolean;
+  basedOnAssetId?: string | null;
 };
 
 function decodeBase64Image(b64: string): Buffer {
@@ -31,13 +32,31 @@ export async function POST(req: Request) {
     return pinCheck.response;
   }
 
-  const userPrompt = String(body.prompt ?? "").trim();
+  let userPrompt = String(body.prompt ?? "").trim();
+  let stylePreset = body.stylePreset ?? null;
+  let transparentBackground = Boolean(body.transparentBackground);
+  const count = Math.min(Math.max(Number(body.count ?? 3) || 3, 1), 4);
+
+  if (body.basedOnAssetId?.trim()) {
+    const { data: baseAsset } = await auth.supabase
+      .from("shop_brand_assets")
+      .select("id, generation_prompt, metadata")
+      .eq("id", body.basedOnAssetId.trim())
+      .eq("shop_id", auth.shopId)
+      .single();
+
+    if (baseAsset) {
+      const meta = (baseAsset.metadata ?? {}) as Record<string, unknown>;
+      userPrompt = userPrompt || String(baseAsset.generation_prompt ?? "").trim();
+      stylePreset = stylePreset ?? (typeof meta.style_preset === "string" ? meta.style_preset : null);
+      transparentBackground =
+        body.transparentBackground ?? Boolean(meta.transparent_background);
+    }
+  }
+
   if (!userPrompt) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
-
-  const count = Math.min(Math.max(Number(body.count ?? 3) || 3, 1), 4);
-  const transparentBackground = Boolean(body.transparentBackground);
 
   const { data: shop, error: shopErr } = await auth.supabase
     .from("shops")
@@ -53,7 +72,7 @@ export async function POST(req: Request) {
   const finalPrompt = buildLogoPrompt({
     shopName,
     prompt: userPrompt,
-    stylePreset: body.stylePreset ?? null,
+    stylePreset,
     transparentBackground,
   });
 
@@ -120,10 +139,11 @@ export async function POST(req: Request) {
           created_by: auth.userId,
           metadata: {
             generated: true,
-            style_preset: body.stylePreset ?? null,
+            style_preset: stylePreset,
             transparent_background: transparentBackground,
             model: "gpt-image-1.5",
             final_prompt: finalPrompt,
+            based_on_asset_id: body.basedOnAssetId ?? null,
           },
         })
         .select("*")
@@ -132,7 +152,7 @@ export async function POST(req: Request) {
       if (insertErr || !asset) {
         return NextResponse.json(
           { error: insertErr?.message || "Failed to save generated asset" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 

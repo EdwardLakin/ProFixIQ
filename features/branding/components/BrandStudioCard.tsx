@@ -13,12 +13,16 @@ type BrandAsset = {
   file_url: string | null;
   storage_path: string | null;
   is_active: boolean;
+  is_favorite?: boolean;
+  archived_at?: string | null;
   created_at: string;
   file_name: string | null;
   generation_provider?: string | null;
+  generation_prompt?: string | null;
   metadata?: {
     generated?: boolean;
     transparent_background?: boolean;
+    style_preset?: string;
     [key: string]: unknown;
   } | null;
 };
@@ -50,23 +54,14 @@ const STYLE_PRESETS = [
 ];
 
 const PROMPT_PRESETS = [
-  {
-    label: "Shield",
-    prompt: "Bold industrial repair shop logo with a strong shield emblem",
-  },
-  {
-    label: "Minimal",
-    prompt: "Clean minimal automotive service logo with a modern premium OEM feel",
-  },
-  {
-    label: "Performance",
-    prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
-  },
-  {
-    label: "Fleet",
-    prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
-  },
+  { label: "Shield", prompt: "Bold industrial repair shop logo with a strong shield emblem" },
+  { label: "Minimal", prompt: "Clean minimal automotive service logo with a modern premium OEM feel" },
+  { label: "Performance", prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy" },
+  { label: "Fleet", prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry" },
 ];
+
+const FILTERS = ["all", "active", "generated", "uploaded", "favorites", "archived"] as const;
+type FilterKey = (typeof FILTERS)[number];
 
 function notifyBrandRefresh() {
   window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
@@ -88,12 +83,29 @@ export default function BrandStudioCard() {
   const [stylePreset, setStylePreset] = useState("industrial-dark");
   const [logoPrompt, setLogoPrompt] = useState("Bold industrial repair shop logo with a strong shield emblem");
   const [transparentBackground, setTransparentBackground] = useState(true);
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [assets, setAssets] = useState<BrandAsset[]>([]);
 
   const activeLogo = useMemo(
     () => assets.find((asset) => asset.kind === "logo" && asset.is_active) ?? null,
-    [assets]
+    [assets],
   );
+
+  const filteredAssets = useMemo(() => {
+    return assets.filter((asset) => {
+      const generated = isGeneratedAsset(asset);
+      const archived = Boolean(asset.archived_at);
+      const favorite = Boolean(asset.is_favorite);
+
+      if (filter === "all") return !archived;
+      if (filter === "active") return asset.is_active && !archived;
+      if (filter === "generated") return generated && !archived;
+      if (filter === "uploaded") return !generated && !archived;
+      if (filter === "favorites") return favorite && !archived;
+      if (filter === "archived") return archived;
+      return true;
+    });
+  }, [assets, filter]);
 
   async function load() {
     setLoading(true);
@@ -137,9 +149,7 @@ export default function BrandStudioCard() {
       });
 
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to save branding");
-      }
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save branding");
 
       toast.success("Brand profile updated");
       notifyBrandRefresh();
@@ -164,9 +174,7 @@ export default function BrandStudioCard() {
       });
 
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to upload logo");
-      }
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to upload logo");
 
       toast.success("Logo uploaded");
       await load();
@@ -180,14 +188,9 @@ export default function BrandStudioCard() {
 
   async function activateLogo(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/activate`, {
-        method: "POST",
-      });
-
+      const res = await fetch(`/api/branding/assets/${assetId}/activate`, { method: "POST" });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to activate logo");
-      }
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to activate logo");
 
       toast.success("Logo applied");
       await load();
@@ -197,8 +200,51 @@ export default function BrandStudioCard() {
     }
   }
 
-  async function generateLogos() {
-    if (!logoPrompt.trim()) {
+  async function setFavorite(assetId: string, isFavorite: boolean) {
+    try {
+      const res = await fetch(`/api/branding/assets/${assetId}/favorite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isFavorite }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update favorite");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update favorite");
+    }
+  }
+
+  async function setArchived(assetId: string, archived: boolean) {
+    try {
+      const res = await fetch(`/api/branding/assets/${assetId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update archive");
+      toast.success(archived ? "Logo archived" : "Logo restored");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update archive");
+    }
+  }
+
+  async function deleteAsset(assetId: string) {
+    try {
+      const res = await fetch(`/api/branding/assets/${assetId}/delete`, { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to delete logo");
+      toast.success("Logo deleted");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete logo");
+    }
+  }
+
+  async function generateLogos(basedOnAssetId?: string) {
+    if (!logoPrompt.trim() && !basedOnAssetId) {
       toast.error("Enter a logo prompt first");
       return;
     }
@@ -213,15 +259,14 @@ export default function BrandStudioCard() {
           stylePreset,
           count: 3,
           transparentBackground,
+          basedOnAssetId: basedOnAssetId ?? null,
         }),
       });
 
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to generate logos");
-      }
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to generate logos");
 
-      toast.success("Logo concepts generated");
+      toast.success(basedOnAssetId ? "Generated more like this" : "Logo concepts generated");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to generate logos");
@@ -239,7 +284,7 @@ export default function BrandStudioCard() {
           </div>
           <h2 className="mt-1 text-2xl font-semibold text-white">Customize your shop identity</h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Upload or generate logo concepts, then apply the one that fits your shop best.
+            Upload or generate logo concepts, then manage, favorite, archive, and apply the best one.
           </p>
         </div>
 
@@ -267,16 +312,10 @@ export default function BrandStudioCard() {
             </div>
 
             <div className="mt-4 flex gap-2">
-              <span
-                className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-black"
-                style={{ backgroundColor: accentColor }}
-              >
+              <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-black" style={{ backgroundColor: accentColor }}>
                 Accent
               </span>
-              <span
-                className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-white"
-                style={{ backgroundColor: primaryColor }}
-              >
+              <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-white" style={{ backgroundColor: primaryColor }}>
                 Primary
               </span>
             </div>
@@ -288,19 +327,10 @@ export default function BrandStudioCard() {
 
           <div
             className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-white/10 p-6"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, rgba(2,6,23,0.82) 100%)`,
-            }}
+            style={{ backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, rgba(2,6,23,0.82) 100%)` }}
           >
             {activeLogo?.file_url ? (
-              <Image
-                src={activeLogo.file_url}
-                alt="Active shop logo"
-                width={320}
-                height={160}
-                className="max-h-28 w-auto object-contain"
-                unoptimized
-              />
+              <Image src={activeLogo.file_url} alt="Active shop logo" width={320} height={160} className="max-h-28 w-auto object-contain" unoptimized />
             ) : (
               <div className="text-center">
                 <div className="text-xl font-semibold text-white">ProFixIQ</div>
@@ -311,9 +341,7 @@ export default function BrandStudioCard() {
 
           <div className="mt-4 grid gap-3">
             <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Upload logo
-              </span>
+              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Upload logo</span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
@@ -326,10 +354,6 @@ export default function BrandStudioCard() {
                 }}
               />
             </label>
-
-            <div className="text-xs text-neutral-500">
-              PNG, JPG, WEBP, or SVG. Uploading as active immediately updates the shared shop logo mirror.
-            </div>
           </div>
         </div>
       </div>
@@ -382,63 +406,38 @@ export default function BrandStudioCard() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Primary color
-              </label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Primary color</label>
               <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="h-11 w-16 rounded border border-white/10 bg-transparent"
-                />
+                <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
                 <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} />
               </div>
             </div>
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Secondary color
-              </label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Secondary color</label>
               <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={secondaryColor}
-                  onChange={(e) => setSecondaryColor(e.target.value)}
-                  className="h-11 w-16 rounded border border-white/10 bg-transparent"
-                />
+                <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
                 <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} />
               </div>
             </div>
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Accent color
-              </label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Accent color</label>
               <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={accentColor}
-                  onChange={(e) => setAccentColor(e.target.value)}
-                  className="h-11 w-16 rounded border border-white/10 bg-transparent"
-                />
+                <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
                 <Input value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
               </div>
             </div>
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Style preset
-              </label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Style preset</label>
               <select
                 value={stylePreset}
                 onChange={(e) => setStylePreset(e.target.value)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
                 {STYLE_PRESETS.map((preset) => (
-                  <option key={preset.value} value={preset.value}>
-                    {preset.label}
-                  </option>
+                  <option key={preset.value} value={preset.value}>{preset.label}</option>
                 ))}
               </select>
             </div>
@@ -448,30 +447,44 @@ export default function BrandStudioCard() {
             <Button type="button" onClick={() => void saveProfile()} disabled={saving}>
               {saving ? "Saving…" : "Save brand profile"}
             </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void load()}
-              disabled={loading || uploading || saving || generating}
-            >
+            <Button type="button" variant="outline" onClick={() => void load()} disabled={loading || uploading || saving || generating}>
               Refresh
             </Button>
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-3 text-sm font-medium text-white">Saved logos</div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-medium text-white">Saved logos</div>
+            <div className="flex flex-wrap gap-2">
+              {FILTERS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(key)}
+                  className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${
+                    filter === key
+                      ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10 text-white"
+                      : "border-white/10 bg-white/[0.04] text-neutral-400"
+                  }`}
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {loading ? (
             <div className="text-sm text-neutral-400">Loading brand assets…</div>
-          ) : assets.length === 0 ? (
-            <div className="text-sm text-neutral-400">No logos yet.</div>
+          ) : filteredAssets.length === 0 ? (
+            <div className="text-sm text-neutral-400">No logos in this view.</div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {assets.map((asset) => {
+              {filteredAssets.map((asset) => {
                 const generated = isGeneratedAsset(asset);
                 const transparent = Boolean(asset.metadata?.transparent_background);
+                const archived = Boolean(asset.archived_at);
+                const favorite = Boolean(asset.is_favorite);
 
                 return (
                   <div
@@ -498,6 +511,18 @@ export default function BrandStudioCard() {
                           Transparent
                         </span>
                       ) : null}
+
+                      {favorite ? (
+                        <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-300">
+                          Favorite
+                        </span>
+                      ) : null}
+
+                      {archived ? (
+                        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-300">
+                          Archived
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="flex h-28 items-center justify-center rounded-xl bg-black/30 p-3">
@@ -515,24 +540,52 @@ export default function BrandStudioCard() {
                       )}
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">
-                          {asset.file_name || "Logo"}
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          {asset.is_active ? "Active" : "Saved"}
-                        </div>
+                    <div className="mt-3">
+                      <div className="truncate text-sm font-medium text-white">
+                        {asset.file_name || "Logo"}
                       </div>
+                      <div className="text-xs text-neutral-500">
+                        {asset.is_active ? "Active" : archived ? "Archived" : "Saved"}
+                      </div>
+                    </div>
 
-                      <Button
-                        type="button"
-                        onClick={() => void activateLogo(asset.id)}
-                        disabled={asset.is_active}
-                        className="shrink-0"
-                      >
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" onClick={() => void activateLogo(asset.id)} disabled={asset.is_active || archived} className="shrink-0">
                         {asset.is_active ? "Applied" : "Apply"}
                       </Button>
+
+                      <Button type="button" variant="outline" onClick={() => void setFavorite(asset.id, !favorite)}>
+                        {favorite ? "Unfavorite" : "Favorite"}
+                      </Button>
+
+                      {generated && !archived ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void generateLogos(asset.id)}
+                          disabled={generating}
+                        >
+                          More like this
+                        </Button>
+                      ) : null}
+
+                      {!asset.is_active ? (
+                        archived ? (
+                          <Button type="button" variant="outline" onClick={() => void setArchived(asset.id, false)}>
+                            Restore
+                          </Button>
+                        ) : (
+                          <Button type="button" variant="outline" onClick={() => void setArchived(asset.id, true)}>
+                            Archive
+                          </Button>
+                        )
+                      ) : null}
+
+                      {!asset.is_active && archived ? (
+                        <Button type="button" variant="outline" onClick={() => void deleteAsset(asset.id)}>
+                          Delete
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 );

@@ -5,9 +5,10 @@ export const runtime = "nodejs";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
 
 import type { Database } from "@shared/types/types/supabase";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
 
@@ -260,6 +261,7 @@ export async function GET(
     >();
 
   const shopName = pickShopName(shop ?? null) ?? "ProFixIQ";
+  const brand = await getActiveBrandForRender(wo.shop_id);
   const shopAddress = compactCsv([
     (shop?.street ?? "").trim() || undefined,
     (shop?.city ?? "").trim() || undefined,
@@ -596,11 +598,21 @@ export async function GET(
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+  const hexToRgb01 = (hex: string): PdfRgb => {
+    const raw = String(hex || "").trim().replace("#", "");
+    const base = raw.length >= 6 ? raw.slice(0, 6) : "C97A3D";
+    const r = Number.parseInt(base.slice(0, 2), 16);
+    const g = Number.parseInt(base.slice(2, 4), 16);
+    const b = Number.parseInt(base.slice(4, 6), 16);
+    if ([r, g, b].some((v) => Number.isNaN(v))) return rgb(0.78, 0.48, 0.28);
+    return rgb(r / 255, g / 255, b / 255);
+  };
+
   const C_TEXT: PdfRgb = rgb(0.08, 0.08, 0.08);
   const C_MUTED: PdfRgb = rgb(0.35, 0.35, 0.35);
   const C_LIGHT: PdfRgb = rgb(0.7, 0.7, 0.7);
-  const C_COPPER: PdfRgb = rgb(0.78, 0.48, 0.28);
-  const C_HEADER_BG: PdfRgb = rgb(0.05, 0.07, 0.1);
+  const C_COPPER: PdfRgb = hexToRgb01(brand.colors.primary);
+  const C_HEADER_BG: PdfRgb = hexToRgb01(brand.colors.secondary);
   const C_WHITE: PdfRgb = rgb(1, 1, 1);
 
   const lineH = (size: number) => size + 6;
@@ -621,6 +633,23 @@ export async function GET(
   const footerH = 34;
   const rightX = 360;
 
+  let headerLogo: PDFImage | null = null;
+  if (brand.logoUrl) {
+    try {
+      const imgRes = await fetch(brand.logoUrl);
+      if (imgRes.ok) {
+        const bytes = new Uint8Array(await imgRes.arrayBuffer());
+        try {
+          headerLogo = await pdfDoc.embedPng(bytes);
+        } catch {
+          headerLogo = await pdfDoc.embedJpg(bytes);
+        }
+      }
+    } catch {
+      headerLogo = null;
+    }
+  }
+
   const drawHeader = (page: ReturnType<PDFDocument["addPage"]>) => {
     const headerY = PAGE_H - headerH;
 
@@ -628,7 +657,21 @@ export async function GET(
 
     const headerTop = PAGE_H - 26;
 
-    page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
+    if (headerLogo) {
+      const maxW = 120;
+      const maxH = 36;
+      const scale = Math.min(maxW / headerLogo.width, maxH / headerLogo.height, 1);
+      const w = headerLogo.width * scale;
+      const h = headerLogo.height * scale;
+      page.drawImage(headerLogo, {
+        x: marginX,
+        y: headerTop - 6,
+        width: w,
+        height: h,
+      });
+    } else {
+      page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
+    }
 
     if (shopAddress.trim().length) {
       page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });

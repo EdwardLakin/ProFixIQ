@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
 type DB = Database;
@@ -168,9 +169,14 @@ export async function POST(req: NextRequest) {
   }
 
   const inspectionId = ensured.id;
+  const brand = await getActiveBrandForRender(shopId);
 
   // 5) Generate PDF
-  const pdfBytes = await generateInspectionPDF(summary);
+  const pdfBytes = await generateInspectionPDF(summary, {
+    logoUrl: brand.logoUrl,
+    shopName: "Inspection Report",
+    colors: brand.colors,
+  });
 
   // 6) Upload to storage (Policy-based: path includes shop id)
   const bucket = "inspection_pdfs";

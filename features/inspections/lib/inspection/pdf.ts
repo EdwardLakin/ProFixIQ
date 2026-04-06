@@ -7,6 +7,16 @@ import type {
   InspectionSection,
 } from "./types";
 
+type InspectionPdfBrand = {
+  logoUrl?: string | null;
+  shopName?: string | null;
+  colors?: {
+    primary?: string | null;
+    secondary?: string | null;
+    accent?: string | null;
+  } | null;
+};
+
 function safeStr(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -46,6 +56,16 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === "string");
 }
 
+function hexToRgbColor(hex: string | null | undefined) {
+  const raw = String(hex ?? "").trim().replace("#", "");
+  const base = raw.length >= 6 ? raw.slice(0, 6) : "C97A3D";
+  const r = Number.parseInt(base.slice(0, 2), 16);
+  const g = Number.parseInt(base.slice(2, 4), 16);
+  const b = Number.parseInt(base.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return rgb(0.78, 0.48, 0.28);
+  return rgb(r / 255, g / 255, b / 255);
+}
+
 async function tryEmbedImage(pdfDoc: PDFDocument, url: string): Promise<PDFImage> {
   // Node runtime supports fetch in Next (nodejs runtime).
   const res = await fetch(url);
@@ -62,6 +82,7 @@ async function tryEmbedImage(pdfDoc: PDFDocument, url: string): Promise<PDFImage
 
 export async function generateInspectionPDF(
   session: InspectionSession,
+  brand?: InspectionPdfBrand,
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
 
@@ -78,6 +99,8 @@ export async function generateInspectionPDF(
   const C_TEXT = rgb(0.05, 0.05, 0.05);
   const C_MUTED = rgb(0.35, 0.35, 0.35);
   const C_RULE = rgb(0.85, 0.85, 0.85);
+  const C_PRIMARY = hexToRgbColor(brand?.colors?.primary);
+  const C_SECONDARY = hexToRgbColor(brand?.colors?.secondary);
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - margin;
@@ -128,7 +151,59 @@ export async function generateInspectionPDF(
   };
 
   // ---- Header ---------------------------------------------------------------
-  drawLine("Inspection Report", { bold: true });
+  ensureSpace(96);
+
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_H - 92,
+    width: PAGE_W,
+    height: 92,
+    color: C_SECONDARY,
+  });
+
+  if (brand?.logoUrl) {
+    try {
+      const img = await tryEmbedImage(pdfDoc, brand.logoUrl);
+      const maxW = 120;
+      const maxH = 36;
+      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      page.drawImage(img, {
+        x: margin,
+        y: PAGE_H - 56,
+        width: w,
+        height: h,
+      });
+    } catch {
+      page.drawText(safeStr(brand?.shopName).trim() || "ProFixIQ", {
+        x: margin,
+        y: PAGE_H - 42,
+        size: 18,
+        font: bold,
+        color: C_PRIMARY,
+      });
+    }
+  } else {
+    page.drawText(safeStr(brand?.shopName).trim() || "ProFixIQ", {
+      x: margin,
+      y: PAGE_H - 42,
+      size: 18,
+      font: bold,
+      color: C_PRIMARY,
+    });
+  }
+
+  page.drawText("Inspection Report", {
+    x: PAGE_W - 170,
+    y: PAGE_H - 42,
+    size: 18,
+    font: bold,
+    color: rgb(1, 1, 1),
+  });
+
+  y = PAGE_H - 112;
+
   drawLine(`Template: ${safeStr(session.templateName).trim() || "—"}`, {
     color: C_MUTED,
   });
