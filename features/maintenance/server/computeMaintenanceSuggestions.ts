@@ -163,23 +163,26 @@ function evaluateDue(
     rule,
   );
 
-  let triggerAgeMonths: number | null = null;
-  if (lastCompletedAt) {
-    const monthsSince = monthsBetween(lastCompletedAt, now);
-    const ageInterval = rule.time_months_severe ?? rule.time_months_normal ?? null;
-    triggerAgeMonths =
-      monthsSince != null && ageInterval != null ? monthsSince + ageInterval : null;
-  } else {
-    triggerAgeMonths = rule.first_due_months ?? null;
-  }
+  const ageIntervalMonths =
+    rule.time_months_severe ?? rule.time_months_normal ?? null;
+
+  const monthsSinceLastCompleted =
+    lastCompletedAt ? monthsBetween(lastCompletedAt, now) : null;
+
+  const triggerAgeMonths = lastCompletedAt
+    ? ageIntervalMonths
+    : rule.first_due_months ?? null;
 
   const mileageDue =
     currentMileageKm != null && triggerMileageKm != null
       ? currentMileageKm >= triggerMileageKm
       : false;
 
-  const ageDue =
-    currentAgeMonths != null && triggerAgeMonths != null
+  const ageDue = lastCompletedAt
+    ? monthsSinceLastCompleted != null && ageIntervalMonths != null
+      ? monthsSinceLastCompleted >= ageIntervalMonths
+      : false
+    : currentAgeMonths != null && triggerAgeMonths != null
       ? currentAgeMonths >= triggerAgeMonths
       : false;
 
@@ -190,8 +193,11 @@ function evaluateDue(
       ? currentMileageKm > triggerMileageKm
       : false;
 
-  const ageOverdue =
-    currentAgeMonths != null && triggerAgeMonths != null
+  const ageOverdue = lastCompletedAt
+    ? monthsSinceLastCompleted != null && ageIntervalMonths != null
+      ? monthsSinceLastCompleted > ageIntervalMonths
+      : false
+    : currentAgeMonths != null && triggerAgeMonths != null
       ? currentAgeMonths > triggerAgeMonths
       : false;
 

@@ -212,7 +212,7 @@ export default function CreateFlowMaintenancePanel({
                   disabled={busy}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-200 disabled:opacity-50"
                 >
-                  Completed previously
+                  Mark done elsewhere
                 </button>
               </div>
             </div>

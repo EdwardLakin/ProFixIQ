@@ -138,10 +138,10 @@ export default function CreateFlowMaintenanceSelector({
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
-            Maintenance suggestions
+            Scheduled maintenance due
           </h2>
           <p className="mt-1 text-[11px] text-neutral-500">
-            Select recommended services now. They’ll be added after submit as pending approval items.
+            History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
           </p>
         </div>
 
@@ -230,7 +230,7 @@ export default function CreateFlowMaintenanceSelector({
                     disabled={!!busyCode}
                     className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
                   >
-                    {busyCode === item.serviceCode ? "Saving..." : "Completed previously"}
+                    {busyCode === item.serviceCode ? "Saving..." : "Mark done elsewhere"}
                   </button>
                 </div>
               </div>
