@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireBrandShopAccess } from "@/features/branding/server/brand";
+import { requireBrandShopWriteAccess } from "@/features/branding/server/brand";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 
 type Params = {
@@ -8,7 +8,7 @@ type Params = {
 
 export async function POST(req: Request, { params }: Params) {
   const { id } = await params;
-  const auth = await requireBrandShopAccess();
+  const auth = await requireBrandShopWriteAccess();
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -49,11 +49,14 @@ export async function POST(req: Request, { params }: Params) {
   if (Object.keys(profilePatch).length > 0) {
     const { error: profileErr } = await auth.supabase
       .from("shop_brand_profiles")
-      .upsert({
-        shop_id: auth.shopId,
-        ...profilePatch,
-        updated_by: auth.userId,
-      }, { onConflict: "shop_id" });
+      .upsert(
+        {
+          shop_id: auth.shopId,
+          ...profilePatch,
+          updated_by: auth.userId,
+        },
+        { onConflict: "shop_id" }
+      );
 
     if (profileErr) {
       return NextResponse.json({ error: profileErr.message }, { status: 500 });

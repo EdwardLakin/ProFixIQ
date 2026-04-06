@@ -3,10 +3,9 @@ import type { Database } from "@shared/types/types/supabase";
 import { getRouteHandlerCookies } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
+const WRITE_ROLES = new Set(["owner", "admin", "manager"]);
 
-const ADMIN_ROLES = new Set(["owner", "admin", "manager"]);
-
-export type BrandScopedAuth =
+export type BrandReadAuth =
   | {
       ok: true;
       supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
@@ -20,9 +19,11 @@ export type BrandScopedAuth =
       error: string;
     };
 
-export async function requireBrandShopAccess(
+export type BrandWriteAuth = BrandReadAuth;
+
+export async function requireBrandShopReadAccess(
   requestedShopId?: string | null
-): Promise<BrandScopedAuth> {
+): Promise<BrandReadAuth> {
   const supabase = createRouteHandlerClient<DB>({ cookies: getRouteHandlerCookies() });
 
   const {
@@ -38,19 +39,14 @@ export async function requireBrandShopAccess(
     .from("profiles")
     .select("id, role, shop_id")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
   if (profileErr || !profile?.shop_id) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
 
-  const shopId = requestedShopId?.trim() ?? profile.shop_id;
-  if (!shopId || profile.shop_id !== shopId) {
-    return { ok: false, status: 403, error: "Forbidden" };
-  }
-
-  const role = String(profile.role ?? "").toLowerCase();
-  if (!ADMIN_ROLES.has(role)) {
+  const shopId = requestedShopId?.trim() || profile.shop_id;
+  if (shopId !== profile.shop_id) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
 
@@ -59,16 +55,39 @@ export async function requireBrandShopAccess(
     supabase,
     userId: user.id,
     shopId,
-    role,
+    role: String(profile.role ?? "").toLowerCase(),
   };
+}
+
+export async function requireBrandShopWriteAccess(
+  requestedShopId?: string | null
+): Promise<BrandWriteAuth> {
+  const auth = await requireBrandShopReadAccess(requestedShopId);
+  if (!auth.ok) return auth;
+  if (!WRITE_ROLES.has(auth.role)) {
+    return { ok: false, status: 403, error: "Forbidden" };
+  }
+  return auth;
 }
 
 export function normalizeHexColor(value: unknown): string | null {
   const s = String(value ?? "").trim();
   if (!s) return null;
-  return /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(s) ? s : null;
+  return /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(s) ? s.toUpperCase() : null;
 }
 
 export function safeFilePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
+export function hexToRgbTuple(hex: string | null): [number, number, number] | null {
+  if (!hex) return null;
+  const s = hex.replace("#", "");
+  if (s.length !== 6 && s.length !== 8) return null;
+  const base = s.slice(0, 6);
+  const r = Number.parseInt(base.slice(0, 2), 16);
+  const g = Number.parseInt(base.slice(2, 4), 16);
+  const b = Number.parseInt(base.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+  return [r, g, b];
 }

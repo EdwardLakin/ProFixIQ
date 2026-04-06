@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireBrandShopAccess } from "@/features/branding/server/brand";
+import { requireBrandShopReadAccess } from "@/features/branding/server/brand";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const shopId = url.searchParams.get("shopId");
 
-  const auth = await requireBrandShopAccess(shopId);
+  const auth = await requireBrandShopReadAccess(shopId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -30,9 +30,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: assetsErr.message }, { status: 500 });
   }
 
+  const logo = (assets ?? []).find((asset) => asset.kind === "logo") ?? null;
+
   return NextResponse.json({
     ok: true,
+    shopId: auth.shopId,
     profile: profile ?? null,
     assets: assets ?? [],
+    logoUrl: logo?.file_url ?? null,
   });
 }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 import {
-  requireBrandShopAccess,
+  requireBrandShopReadAccess,
+  requireBrandShopWriteAccess,
   normalizeHexColor,
 } from "@/features/branding/server/brand";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
@@ -25,14 +26,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const shopId = url.searchParams.get("shopId");
 
-  const auth = await requireBrandShopAccess(shopId);
+  const auth = await requireBrandShopReadAccess(shopId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const { supabase } = auth;
-
-  const { data, error } = await supabase
+  const { data, error } = await auth.supabase
     .from("shop_brand_profiles")
     .select(`
       *,
@@ -50,13 +49,14 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    shopId: auth.shopId,
     profile: data ?? null,
   });
 }
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as ProfilePayload;
-  const auth = await requireBrandShopAccess(body.shopId);
+  const auth = await requireBrandShopWriteAccess(body.shopId);
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });

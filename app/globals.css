@@ -246,3 +246,46 @@ select {
     background: rgba(0, 0, 0, 0.6);
   }
 }
+
+:root {
+  --brand-primary: var(--accent-copper, #c97a3d);
+  --brand-secondary: #0f172a;
+  --brand-accent: var(--accent-copper-light, #e2a164);
+  --brand-surface: rgba(15, 23, 42, 0.92);
+}
+
+html[data-style-preset="industrial-dark"] body {
+  background-image:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 16%, transparent), transparent 56%),
+    radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 78%);
+}
+
+html[data-style-preset="performance"] body {
+  background-image:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-accent) 18%, transparent), transparent 56%),
+    radial-gradient(circle at bottom, rgba(12,12,18,0.96), #05070c 78%);
+}
+
+html[data-style-preset="modern-tech"] body {
+  background-image:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 14%, transparent), transparent 56%),
+    radial-gradient(circle at bottom, rgba(6,10,22,0.96), #020617 78%);
+}
+
+html[data-style-preset="clean-oem"] body,
+html[data-style-preset="fleet-utility"] body {
+  background-image:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 58%),
+    radial-gradient(circle at bottom, rgba(10,15,25,0.96), #020617 80%);
+}
+
+.brand-logo-slot {
+  min-height: 40px;
+  min-width: 140px;
+}
+
+.brand-logo-slot img {
+  max-height: 40px;
+  width: auto;
+  object-fit: contain;
+}

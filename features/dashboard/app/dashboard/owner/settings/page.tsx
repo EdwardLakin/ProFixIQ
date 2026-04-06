@@ -16,6 +16,7 @@ import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
+import BrandStudioCard from "@/features/branding/components/BrandStudioCard";
 
 type FileInputChangeEvent = {
   target: {
@@ -106,7 +107,9 @@ function parseStripeStatus(v: unknown): StripeSubStatus {
     "paused",
     "unknown",
   ];
-  return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
+  <BrandStudioCard />
+
+return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
 }
 
 function parsePlan(v: unknown): PlanName {

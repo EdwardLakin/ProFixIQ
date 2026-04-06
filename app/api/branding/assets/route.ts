@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { Database, Json } from "@shared/types/types/supabase";
-import { requireBrandShopAccess } from "@/features/branding/server/brand";
+import {
+  requireBrandShopReadAccess,
+  requireBrandShopWriteAccess,
+} from "@/features/branding/server/brand";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
@@ -39,7 +42,7 @@ export async function GET(req: Request) {
   const shopId = url.searchParams.get("shopId");
   const kind = url.searchParams.get("kind");
 
-  const auth = await requireBrandShopAccess(shopId);
+  const auth = await requireBrandShopReadAccess(shopId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -60,12 +63,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, assets: data ?? [] });
+  return NextResponse.json({ ok: true, shopId: auth.shopId, assets: data ?? [] });
 }
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as CreateAssetBody;
-  const auth = await requireBrandShopAccess(body.shopId);
+  const auth = await requireBrandShopWriteAccess(body.shopId);
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });

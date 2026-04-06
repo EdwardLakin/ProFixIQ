@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
-  requireBrandShopAccess,
+  requireBrandShopWriteAccess,
   safeFilePart,
 } from "@/features/branding/server/brand";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
@@ -19,7 +19,10 @@ const ALLOWED_KINDS = new Set<BrandAssetKind>([
 ]);
 
 export async function POST(req: Request) {
-  const auth = await requireBrandShopAccess();
+  const form = await req.formData();
+  const requestedShopId = String(form.get("shopId") ?? "").trim() || null;
+
+  const auth = await requireBrandShopWriteAccess(requestedShopId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -29,15 +32,9 @@ export async function POST(req: Request) {
     return pinCheck.response;
   }
 
-  const form = await req.formData();
-  const shopId = String(form.get("shopId") ?? "").trim();
   const kind = String(form.get("kind") ?? "").trim() as BrandAssetKind;
   const isActive = String(form.get("isActive") ?? "").trim() === "true";
   const file = form.get("file");
-
-  if (!shopId || shopId !== auth.shopId) {
-    return NextResponse.json({ error: "Invalid shopId" }, { status: 400 });
-  }
 
   if (!ALLOWED_KINDS.has(kind)) {
     return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
