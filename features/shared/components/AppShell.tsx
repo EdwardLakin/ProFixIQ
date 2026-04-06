@@ -411,16 +411,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               )}
 
               {/* ✅ Hide Planner + AI Planner ONLY for tech */}
-              {!isTech && (
-                <ActionButton
-                  onClick={() => router.push("/dashboard/appointments")}
-                  title="Planner / appointments"
-                >
-                  📅 <span className="hidden lg:inline">Planner</span>
-                </ActionButton>
-              )}
-
-              {!isTech && (
+                            {!isTech && (
                 <ActionButton
                   onClick={() => router.push("/agent/planner")}
                   title="AI Planner"
