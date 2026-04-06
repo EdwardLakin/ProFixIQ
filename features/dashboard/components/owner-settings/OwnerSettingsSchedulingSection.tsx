@@ -59,7 +59,7 @@ type Props = {
   newOffStart: string;
   newOffEnd: string;
   newOffReason: string;
-  onHoursChange: (updater: (prev: HourRow[]) => HourRow[]) => void;
+  onHoursChange: (updater: (prev: HourRow[]) => HourRow[]) => HourRow[] | void;
   onNewOffStartChange: (value: string) => void;
   onNewOffEndChange: (value: string) => void;
   onNewOffReasonChange: (value: string) => void;
@@ -95,17 +95,28 @@ export default function OwnerSettingsSchedulingSection({
           </Button>
         }
       >
-        <div className="grid gap-3 md:grid-cols-7">
-          {hours.map((row, idx) => {
-            const closed = !!row.closed;
-            return (
-              <div
-                key={row.weekday}
-                className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
-              >
-                <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-orange-300">
-                  <span>{WEEKDAYS[row.weekday]}</span>
-                  <label className="flex items-center gap-1 text-[10px] text-neutral-300">
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
+          <div className="hidden grid-cols-[90px_110px_1fr_1fr] gap-3 border-b border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 md:grid">
+            <div>Day</div>
+            <div>Closed</div>
+            <div>Open</div>
+            <div>Close</div>
+          </div>
+
+          <div className="divide-y divide-white/10">
+            {hours.map((row, idx) => {
+              const closed = !!row.closed;
+
+              return (
+                <div
+                  key={row.weekday}
+                  className="grid gap-3 px-4 py-3 md:grid-cols-[90px_110px_1fr_1fr] md:items-center"
+                >
+                  <div className="text-sm font-semibold text-neutral-100">
+                    {WEEKDAYS[row.weekday]}
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm text-neutral-300">
                     <input
                       type="checkbox"
                       checked={closed}
@@ -119,42 +130,48 @@ export default function OwnerSettingsSchedulingSection({
                       }}
                       disabled={!isUnlocked}
                     />
-                    Closed
+                    <span>{closed ? "Closed" : "Open"}</span>
                   </label>
+
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-neutral-500 md:hidden">Open</div>
+                    <input
+                      type="time"
+                      className="w-full rounded-md border border-white/10 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 disabled:opacity-40"
+                      value={row.open_time}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        onHoursChange((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], open_time: value };
+                          return copy;
+                        });
+                      }}
+                      disabled={!isUnlocked || closed}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-neutral-500 md:hidden">Close</div>
+                    <input
+                      type="time"
+                      className="w-full rounded-md border border-white/10 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 disabled:opacity-40"
+                      value={row.close_time}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        onHoursChange((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], close_time: value };
+                          return copy;
+                        });
+                      }}
+                      disabled={!isUnlocked || closed}
+                    />
+                  </div>
                 </div>
-                <label className="mb-1 block text-[10px] text-neutral-400">Open</label>
-                <input
-                  type="time"
-                  className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
-                  value={row.open_time}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onHoursChange((prev) => {
-                      const copy = [...prev];
-                      copy[idx] = { ...copy[idx], open_time: v };
-                      return copy;
-                    });
-                  }}
-                  disabled={!isUnlocked || closed}
-                />
-                <label className="mb-1 block text-[10px] text-neutral-400">Close</label>
-                <input
-                  type="time"
-                  className="w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
-                  value={row.close_time}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onHoursChange((prev) => {
-                      const copy = [...prev];
-                      copy[idx] = { ...copy[idx], close_time: v };
-                      return copy;
-                    });
-                  }}
-                  disabled={!isUnlocked || closed}
-                />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </SectionShell>
 
@@ -166,14 +183,14 @@ export default function OwnerSettingsSchedulingSection({
         <div className="grid gap-3 md:grid-cols-4">
           <input
             type="datetime-local"
-            className="rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+            className="rounded-md border border-white/10 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
             value={newOffStart}
             onChange={(e) => onNewOffStartChange(e.target.value)}
             disabled={!isUnlocked}
           />
           <input
             type="datetime-local"
-            className="rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+            className="rounded-md border border-white/10 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
             value={newOffEnd}
             onChange={(e) => onNewOffEndChange(e.target.value)}
             disabled={!isUnlocked}
@@ -196,10 +213,11 @@ export default function OwnerSettingsSchedulingSection({
             {timeOff.map((t) => {
               const start = new Date(t.start_date);
               const end = new Date(t.end_date);
+
               return (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm"
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm"
                 >
                   <div>
                     <div className="text-neutral-100">
