@@ -14,7 +14,7 @@ import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
 
-import MaintenanceSuggestionsCard from "@/features/maintenance/components/MaintenanceSuggestionsCard";
+import CreateFlowMaintenanceSelector from "@/features/maintenance/components/CreateFlowMaintenanceSelector";
 // UI
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
@@ -453,6 +453,7 @@ export default function CreateWorkOrderPage() {
   const [inviteNotice, setInviteNotice] =
     useTabState<string>("inviteNotice", "");
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
+  const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<string[]>([]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -1254,6 +1255,7 @@ useEffect(() => {
     setUploadSummary(null);
     setInviteNotice("");
     setSendInvite(false);
+    setSelectedMaintenanceCodes([]);
     setIsWaiter(false);
     cvDraft.reset();
   }, [
@@ -1439,6 +1441,39 @@ useEffect(() => {
       if (latestErr) throw latestErr;
       if (!latest?.customer_id || !latest?.vehicle_id) {
         throw new Error("Please link a customer and vehicle first.");
+      }
+
+      if (selectedMaintenanceCodes.length > 0) {
+        const maintRes = await fetch("/api/work-orders/maintenance-suggestions/add-bundle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: latest.id,
+            serviceCodes: selectedMaintenanceCodes,
+          }),
+        });
+
+        const maintJson = (await maintRes.json().catch(() => null)) as
+          | {
+              ok?: boolean;
+              added?: Array<{ serviceCode: string }>;
+              skipped?: Array<{ serviceCode: string; error: string }>;
+              error?: string;
+            }
+          | null;
+
+        if (!maintRes.ok || !maintJson?.ok) {
+          throw new Error(maintJson?.error || "Failed to attach maintenance suggestions.");
+        }
+
+        if (Array.isArray(maintJson.skipped) && maintJson.skipped.length > 0) {
+          const detail = maintJson.skipped
+            .map((item) => `${item.serviceCode}: ${item.error}`)
+            .join("; ");
+          setInviteNotice(
+            `Work order created. Some maintenance items were skipped: ${detail}`,
+          );
+        }
       }
 
       if (vehicleId && (photoFiles.length || docFiles.length)) {
@@ -1836,6 +1871,13 @@ useEffect(() => {
               </label>
             </section>
 
+            {/* Create-flow maintenance suggestions */}
+            <CreateFlowMaintenanceSelector
+              vehicleId={vehicleIdProp}
+              selectedServiceCodes={selectedMaintenanceCodes}
+              onChange={setSelectedMaintenanceCodes}
+            />
+
             {/* Uploads */}
             <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
@@ -1907,7 +1949,6 @@ useEffect(() => {
                   <span className="text-[11px] text-neutral-500">Saved services</span>
                 </div>
                 <MenuQuickAdd workOrderId={wo.id} />
-      <MaintenanceSuggestionsCard className="mt-4" />
               </section>
             )}
 

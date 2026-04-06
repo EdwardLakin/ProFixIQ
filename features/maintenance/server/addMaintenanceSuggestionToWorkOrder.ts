@@ -39,15 +39,32 @@ export async function addMaintenanceSuggestionToWorkOrder(
   if (!workOrder) throw new Error("Work order not found");
   if (!workOrder.shop_id) throw new Error("Work order is missing shop_id");
 
-  const { data: suggestionCache, error: suggestionCacheError } = await supabase
+  let suggestionCache: { suggestions?: unknown } | null = null;
+
+  const byWorkOrder = await supabase
     .from("maintenance_suggestions")
     .select("id, suggestions")
     .eq("work_order_id", workOrderId)
     .maybeSingle();
 
-  if (suggestionCacheError) throw suggestionCacheError;
+  if (byWorkOrder.error) throw byWorkOrder.error;
+  suggestionCache = (byWorkOrder.data as { suggestions?: unknown } | null) ?? null;
+
+  if (!suggestionCache && workOrder.vehicle_id) {
+    const byVehicle = await supabase
+      .from("maintenance_suggestions")
+      .select("id, suggestions")
+      .eq("vehicle_id", workOrder.vehicle_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (byVehicle.error) throw byVehicle.error;
+    suggestionCache = (byVehicle.data as { suggestions?: unknown } | null) ?? null;
+  }
+
   if (!suggestionCache) {
-    throw new Error("No maintenance suggestion record found for this work order");
+    throw new Error("No maintenance suggestion record found for this vehicle/work order");
   }
 
   const suggestions = Array.isArray(suggestionCache.suggestions)
@@ -87,6 +104,62 @@ export async function addMaintenanceSuggestionToWorkOrder(
     throw new Error("A matching maintenance line already exists on this work order");
   }
 
+  if (workOrder.vehicle_id) {
+    const { data: vehicle } = await supabase
+      .from("vehicles")
+      .select("year, make, model, engine")
+      .eq("id", workOrder.vehicle_id)
+      .maybeSingle();
+
+    const rpc = await supabase.rpc("add_repair_line_from_vehicle_service", {
+      p_work_order_id: workOrderId,
+      p_vehicle_year:
+        typeof vehicle?.year === "number"
+          ? vehicle.year
+          : vehicle?.year
+            ? Number(vehicle.year)
+            : 0,
+      p_vehicle_make: vehicle?.make ?? null,
+      p_vehicle_model: vehicle?.model ?? null,
+      p_engine_family: vehicle?.engine ?? null,
+      p_service_code: normalizedCode,
+      p_qty: 1,
+    });
+
+    if (!rpc.error) {
+      const payload = rpc.data as
+        | {
+            ok?: boolean;
+            work_order_line_id?: string;
+          }
+        | null;
+
+      if (payload?.ok && payload.work_order_line_id) {
+        await supabase
+          .from("work_order_lines")
+          .update({
+            approval_state: "pending",
+            status: "awaiting_approval",
+            line_status: "pending",
+            source: "maintenance_suggestion",
+            created_by: userId,
+            quoted_hours: suggestion.laborHours ?? null,
+            estimated_hours: suggestion.laborHours ?? null,
+            service_code: normalizedCode,
+            note: suggestion.notes ?? null,
+          })
+          .eq("id", payload.work_order_line_id);
+
+        return {
+          ok: true,
+          addedLineId: payload.work_order_line_id,
+          addPath: "menu_item",
+          serviceCode: normalizedCode,
+        };
+      }
+    }
+  }
+
   const insertPayload = {
     work_order_id: workOrderId,
     shop_id: workOrder.shop_id,
@@ -99,10 +172,12 @@ export async function addMaintenanceSuggestionToWorkOrder(
     quoted_hours: suggestion.laborHours ?? null,
     service_code: normalizedCode,
     note: suggestion.notes ?? null,
-    status: "pending",
+    status: "awaiting_approval",
     line_status: "pending",
+    approval_state: "pending",
     source: "maintenance_suggestion",
     created_by: userId,
+    punchable: false,
   };
 
   const { data: insertedLine, error: insertError } = await supabase

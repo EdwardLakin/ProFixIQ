@@ -242,6 +242,7 @@ function CustomerSearch({
     }, 150);
 
     return () => window.clearTimeout(t);
+
   }, [value, shopId, supabase]);
 
   useEffect(() => {
