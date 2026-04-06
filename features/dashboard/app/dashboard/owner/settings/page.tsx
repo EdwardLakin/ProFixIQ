@@ -4,7 +4,6 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
@@ -12,9 +11,11 @@ import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
-import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
 import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/OwnerSettingsHeader";
 import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
+import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
+import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
+import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
 
 type FileInputChangeEvent = {
   target: {
@@ -90,7 +91,6 @@ const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
   unlimited: null,
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 
 function parseStripeStatus(v: unknown): StripeSubStatus {
@@ -160,52 +160,6 @@ function locationName(s: { shop_name?: string | null; name?: string | null }) {
   return (s.shop_name ?? s.name ?? "").trim() || "Untitled location";
 }
 
-function SettingsSection({
-  id,
-  title,
-  description,
-  action,
-  children,
-}: {
-  id?: string;
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.18)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-50">{title}</h2>
-          {description ? (
-            <p className="text-[11px] text-neutral-400">{description}</p>
-          ) : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SettingsStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-      <div className="text-[11px] text-neutral-400">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
-    </div>
-  );
-}
 
 export default function OwnerSettingsPage() {
   const router = useRouter();
@@ -1289,126 +1243,34 @@ try {
             onLogoUpload={handleLogoUpload}
             onGenerateLogo={handleGenerateLogo}
           />
-          <div className="grid gap-6 md:grid-cols-2">
-            <section className={sectionClass}>
-              <h2 className="text-sm font-semibold text-neutral-50">Billing defaults</h2>
-              <div className="grid gap-3 md:grid-cols-2 text-sm">
-                <Input
-                  value={laborRate}
-                  onChange={(e) => setLaborRate(e.target.value)}
-                  placeholder={`Labor rate (${currency}/hr)`}
-                  disabled={!isUnlocked}
-                />
-                <Input
-                  value={suppliesPercent}
-                  onChange={(e) => setSuppliesPercent(e.target.value)}
-                  placeholder="Shop supplies (%)"
-                  disabled={!isUnlocked}
-                />
-                <Input
-                  value={diagnosticFee}
-                  onChange={(e) => setDiagnosticFee(e.target.value)}
-                  placeholder={`Diagnostic fee (${currency})`}
-                  disabled={!isUnlocked}
-                />
-                <Input
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(e.target.value)}
-                  placeholder={taxLabel}
-                  disabled={!isUnlocked}
-                />
-              </div>
-            </section>
-
-            <section className={sectionClass}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-neutral-50">Pricing validity</h2>
-                  <p className="text-[11px] text-neutral-400">
-                    Controls how many days menu repair pricing stays fresh before it becomes stale or expired.
-                  </p>
-                </div>
-                <Button
-                  onClick={savePricingValidDays}
-                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
-                  size="sm"
-                >
-                  {pricingValidDaysSaving ? "Saving..." : "Save pricing"}
-                </Button>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-[160px_1fr] text-sm">
-                <Input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={String(pricingValidDays)}
-                  onChange={(e) => {
-                    const next = Number(e.target.value);
-                    setPricingValidDays(Number.isFinite(next) ? next : 30);
-                  }}
-                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
-                />
-                <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-[11px] text-neutral-400">
-                  Default is 30 days. Allowed range is 1 to 90 days. Fresh pricing can auto-flow faster; stale or expired pricing requires more review.
-                </div>
-              </div>
-            </section>
-
-            
-
-            <section className={sectionClass}>
-              <h2 className="text-sm font-semibold text-neutral-50">Workflow</h2>
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={useAi}
-                  onChange={(e) => setUseAi(e.target.checked)}
-                  disabled={!isUnlocked}
-                />
-                Use AI features
-              </label>
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={requireCauseCorrection}
-                  onChange={(e) => setRequireCauseCorrection(e.target.checked)}
-                  disabled={!isUnlocked}
-                />
-                Require cause / correction on lines
-              </label>
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={requireAuthorization}
-                  onChange={(e) => setRequireAuthorization(e.target.checked)}
-                  disabled={!isUnlocked}
-                />
-                Require customer authorization
-              </label>
-            
-              <div className="pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">Automation</div>
-<label className="flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                type="checkbox"
-                checked={autoGeneratePdf}
-                onChange={(e) => setAutoGeneratePdf(e.target.checked)}
-                disabled={!isUnlocked}
-              />
-              Auto-generate quote PDF
-            </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                type="checkbox"
-                checked={autoSendQuoteEmail}
-                onChange={(e) => setAutoSendQuoteEmail(e.target.checked)}
-                disabled={!isUnlocked}
-              />
-              Auto-send quote email
-            </label>
-            </section>
-          </div>
-
+          <OwnerSettingsOperationsSection
+            isUnlocked={isUnlocked}
+            currency={currency}
+            taxLabel={taxLabel}
+            laborRate={laborRate}
+            suppliesPercent={suppliesPercent}
+            diagnosticFee={diagnosticFee}
+            taxRate={taxRate}
+            pricingValidDays={pricingValidDays}
+            pricingValidDaysLoading={pricingValidDaysLoading}
+            pricingValidDaysSaving={pricingValidDaysSaving}
+            useAi={useAi}
+            requireCauseCorrection={requireCauseCorrection}
+            requireAuthorization={requireAuthorization}
+            autoGeneratePdf={autoGeneratePdf}
+            autoSendQuoteEmail={autoSendQuoteEmail}
+            onLaborRateChange={setLaborRate}
+            onSuppliesPercentChange={setSuppliesPercent}
+            onDiagnosticFeeChange={setDiagnosticFee}
+            onTaxRateChange={setTaxRate}
+            onPricingValidDaysChange={setPricingValidDays}
+            onSavePricingValidDays={savePricingValidDays}
+            onUseAiChange={setUseAi}
+            onRequireCauseCorrectionChange={setRequireCauseCorrection}
+            onRequireAuthorizationChange={setRequireAuthorization}
+            onAutoGeneratePdfChange={setAutoGeneratePdf}
+            onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
+          />
           <section id="communication-branding" className={sectionClass}>
             <h2 className="text-sm font-semibold text-neutral-50">Communication & branding</h2>
             <Input
@@ -1434,395 +1296,65 @@ try {
             </label>
           </section>
 
-          <section id="hours-settings" className={sectionClass}>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-neutral-50">
-                Hours (controls public booking slots)
-              </h2>
-              <Button onClick={saveHours} disabled={!isUnlocked} size="sm">
-                Save hours
-              </Button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-7">
-              {hours.map((row, idx) => {
-                const closed = !!row.closed;
-                return (
-                  <div
-                    key={row.weekday}
-                    className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
-                  >
-                    <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-orange-300">
-                      <span>{WEEKDAYS[row.weekday]}</span>
-                      <label className="flex items-center gap-1 text-[10px] text-neutral-300">
-                        <input
-                          type="checkbox"
-                          checked={closed}
-                          onChange={(e) => {
-                            const isClosed = e.target.checked;
-                            setHours((prev) => {
-                              const copy = [...prev];
-                              copy[idx] = { ...copy[idx], closed: isClosed };
-                              return copy;
-                            });
-                          }}
-                          disabled={!isUnlocked}
-                        />
-                        Closed
-                      </label>
-                    </div>
-                    <label className="mb-1 block text-[10px] text-neutral-400">Open</label>
-                    <input
-                      type="time"
-                      className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
-                      value={row.open_time}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setHours((prev) => {
-                          const copy = [...prev];
-                          copy[idx] = { ...copy[idx], open_time: v };
-                          return copy;
-                        });
-                      }}
-                      disabled={!isUnlocked || closed}
-                    />
-                    <label className="mb-1 block text-[10px] text-neutral-400">Close</label>
-                    <input
-                      type="time"
-                      className="w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
-                      value={row.close_time}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setHours((prev) => {
-                          const copy = [...prev];
-                          copy[idx] = { ...copy[idx], close_time: v };
-                          return copy;
-                        });
-                      }}
-                      disabled={!isUnlocked || closed}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <section id="timeoff-settings" className={sectionClass}>
-            <h2 className="text-sm font-semibold text-neutral-50">Time off / blackouts</h2>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <input
-                type="datetime-local"
-                className="rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-                value={newOffStart}
-                onChange={(e) => setNewOffStart(e.target.value)}
-                disabled={!isUnlocked}
-              />
-              <input
-                type="datetime-local"
-                className="rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-                value={newOffEnd}
-                onChange={(e) => setNewOffEnd(e.target.value)}
-                disabled={!isUnlocked}
-              />
-              <Input
-                placeholder="Reason (optional)"
-                value={newOffReason}
-                onChange={(e) => setNewOffReason(e.target.value)}
-                disabled={!isUnlocked}
-              />
-              <Button onClick={addTimeOff} disabled={!isUnlocked}>
-                Add
-              </Button>
-            </div>
-
-            {timeOff.length === 0 ? (
-              <p className="text-xs text-neutral-500">No time-off entries.</p>
-            ) : (
-              <ul className="space-y-2">
-                {timeOff.map((t) => {
-                  const start = new Date(t.start_date);
-                  const end = new Date(t.end_date);
-                  return (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm"
-                    >
-                      <div>
-                        <div className="text-neutral-100">
-                          {start.toLocaleString()} → {end.toLocaleString()}
-                        </div>
-                        {t.label && (
-                          <div className="text-xs text-neutral-400">Reason: {t.label}</div>
-                        )}
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => void deleteTimeOff(t.id)}
-                        disabled={!isUnlocked}
-                      >
-                        Remove
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          <OwnerSettingsSchedulingSection
+            isUnlocked={isUnlocked}
+            hours={hours}
+            timeOff={timeOff}
+            newOffStart={newOffStart}
+            newOffEnd={newOffEnd}
+            newOffReason={newOffReason}
+            onHoursChange={setHours}
+            onNewOffStartChange={setNewOffStart}
+            onNewOffEndChange={setNewOffEnd}
+            onNewOffReasonChange={setNewOffReason}
+            onSaveHours={saveHours}
+            onAddTimeOff={addTimeOff}
+            onDeleteTimeOff={deleteTimeOff}
+          />
         </div>
 
-        <div className="space-y-5 lg:sticky lg:top-20">
-          <SettingsSection
-            id="billing-stripe"
-            title="Billing & Stripe"
-            description="Subscription and payment setup for this location."
-            action={<div className="flex items-center gap-2">{billingPill}</div>}
-          >
-            <div className="grid gap-2">
-              <SettingsStat label="Status" value={String(subStatus).toUpperCase()} />
-              <SettingsStat
-                label="Stripe Connect"
-                value={stripeAccountId ? "Connected" : "Not connected"}
-              />
-              <SettingsStat label="Trial ends" value={formatDate(trialEndIso)} />
-              <SettingsStat
-                label="Current period ends"
-                value={formatDate(periodEndIso)}
-              />
-              <SettingsStat
-                label="Connected payout account"
-                value={stripeAccountId || "No Stripe Connect account linked yet"}
-              />
-
-              <div className="flex flex-col gap-2">
-                <Button onClick={openStripeConnect} disabled={!isUnlocked || connectLoading}>
-                  {connectLoading
-                    ? "Opening Stripe..."
-                    : stripeAccountId
-                    ? "Manage payout setup"
-                    : "Connect payouts"}
-                </Button>
-                <p className="text-[11px] text-neutral-500">
-                  Set up or resume Stripe Connect for shop payouts.
-                </p>
-
-                <Button
-                  variant="secondary"
-                  onClick={startSubscriptionCheckout}
-                  disabled={!isUnlocked || checkoutLoading}
-                >
-                  {checkoutLoading ? "Opening checkout..." : "Manage subscription"}
-                </Button>
-                <p className="text-[11px] text-neutral-500">
-                  Start or update the ProFixIQ subscription for this location.
-                </p>
-
-                <Button
-                  variant="secondary"
-                  onClick={openStripePortal}
-                  disabled={!isUnlocked || portalLoading}
-                >
-                  {portalLoading ? "Opening portal..." : "Open billing portal"}
-                </Button>
-                <p className="text-[11px] text-neutral-500">
-                  Review invoices, payment methods, and subscription billing history.
-                </p>
-              </div>
-            </div>
-          </SettingsSection>
-
-          <SettingsSection
-            title="Plan & seats"
-            description="Plan limits and active staff seats."
-          >
-            <div className="grid gap-2">
-              <SettingsStat label="Plan" value={planLabel(plan)} />
-              <SettingsStat label="Seats used" value={seatsUsed} />
-              <SettingsStat
-                label="Seat limit"
-                value={seatsLimit == null ? "Unlimited" : seatsLimit}
-              />
-              <SettingsStat
-                label="Remaining"
-                value={seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
-              />
-            </div>
-          </SettingsSection>
-
-          <SettingsSection
-            title="Organization"
-            description={
-              orgId
-                ? "Linked organization and locations."
-                : "Use organizations to group multiple shop locations under one account."
-            }
-            action={
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-neutral-300">
-                  {orgId ? (
-                    <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                      Org: <span className="text-neutral-100">{orgName || "—"}</span>
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                      No organization linked
-                    </span>
-                  )}
-                </div>
-
-                {!orgId ? (
-                  <Button
-                    size="sm"
-                    onClick={() => router.push("/dashboard/owner/organization/create")}
-                    disabled={!isUnlocked}
-                  >
-                    Create organization
-                  </Button>
-                ) : null}
-              </div>
-            }
-          >
-            {orgId ? (
-              <div className="space-y-2">
-                {locations.length === 0 ? (
-                  <div className="text-xs text-neutral-500">No locations found.</div>
-                ) : (
-                  <ul className="space-y-2">
-                    {locations.map((loc) => {
-                      const isCurrent = loc.id === shopId;
-                      const status = parseStripeStatus(loc.stripe_subscription_status);
-
-                      return (
-                        <li
-                          key={loc.id}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-neutral-100">
-                              {locationName(loc)}
-                            </div>
-                            <div className="text-xs text-neutral-400">
-                              {formatLocationLine({
-                                city: loc.city ?? null,
-                                province: loc.province ?? null,
-                              })}
-                            </div>
-                            <div className="mt-1 text-[10px] text-neutral-500">
-                              {String(status).toUpperCase()}
-                            </div>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            variant={isCurrent ? "secondary" : "default"}
-                            disabled={!isUnlocked || isCurrent}
-                            onClick={() => void switchLocation(loc.id)}
-                          >
-                            {isCurrent ? "Selected" : "Switch"}
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-400">
-                Create an organization when you want to manage multiple locations together.
-                Your current shop will be linked automatically.
-              </div>
-            )}
-          </SettingsSection>
-
-          {shopId && (
-            <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
-          )}
-
-          <section className="space-y-2 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold text-neutral-50">Invoice preview</h2>
-            <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
-              {logoUrl && (
-                <Image
-                  src={logoUrl}
-                  alt="Logo"
-                  width={160}
-                  height={48}
-                  unoptimized
-                  className="h-12 object-contain"
-                />
-              )}
-              <div className="font-semibold">{shopName || "Your shop name"}</div>
-              <div>
-                {address}
-                {address && ","} {city} {province} {postalCode}
-              </div>
-              <div>
-                {phone} {phone && email && "•"} {email}
-              </div>
-              <hr className="my-2" />
-              <div className="font-semibold text-black">Invoice terms</div>
-              <p>{invoiceTerms || "—"}</p>
-              <div className="font-semibold text-black">Footer</div>
-              <p>{invoiceFooter || "—"}</p>
-            </div>
-          </section>
-        </div>
+        <OwnerSettingsSidebar
+          shopId={shopId}
+          isUnlocked={isUnlocked}
+          billingPill={billingPill}
+          subStatus={subStatus}
+          stripeAccountId={stripeAccountId}
+          trialEndIso={trialEndIso}
+          periodEndIso={periodEndIso}
+          connectLoading={connectLoading}
+          checkoutLoading={checkoutLoading}
+          portalLoading={portalLoading}
+          plan={plan}
+          seatsUsed={seatsUsed}
+          seatsLimit={seatsLimit}
+          orgId={orgId}
+          orgName={orgName}
+          locations={locations}
+          shopName={shopName}
+          address={address}
+          city={city}
+          province={province}
+          postalCode={postalCode}
+          phone={phone}
+          email={email}
+          logoUrl={logoUrl}
+          invoiceTerms={invoiceTerms}
+          invoiceFooter={invoiceFooter}
+          emailLogs={emailLogs}
+          emailLogsLoading={emailLogsLoading}
+          onOpenStripeConnect={openStripeConnect}
+          onStartSubscriptionCheckout={startSubscriptionCheckout}
+          onOpenStripePortal={openStripePortal}
+          onCreateOrganization={() => router.push("/dashboard/owner/organization/create")}
+          onSwitchLocation={(id) => void switchLocation(id)}
+          onRefreshEmailLogs={() => void fetchEmailLogs()}
+          planLabel={planLabel}
+          parseStripeStatus={parseStripeStatus}
+          formatDate={formatDate}
+          formatLocationLine={formatLocationLine}
+          locationName={locationName}
+        />
       </div>
-
-
-          <section id="email-activity" className={sectionClass}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-50">Email activity</h2>
-                <p className="text-[11px] text-neutral-400">
-                  Recent transactional emails.
-                </p>
-              </div>
-
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => void fetchEmailLogs()}
-                disabled={emailLogsLoading}
-              >
-                {emailLogsLoading ? "Refreshing..." : "Refresh"}
-              </Button>
-            </div>
-
-            {emailLogsLoading ? (
-              <div className="text-xs text-neutral-500">Loading…</div>
-            ) : emailLogs.length === 0 ? (
-              <div className="text-xs text-neutral-500">No emails yet.</div>
-            ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                {emailLogs.map((e) => (
-                  <div
-                    key={e.id}
-                    className="rounded-lg border border-white/10 bg-black/25 p-2 text-xs"
-                  >
-                    <div className="flex justify-between">
-                      <span className="text-neutral-200">
-                        {e.template_key.replaceAll("_", " ")}
-                      </span>
-                      <span className="text-neutral-500">
-                        {new Date(e.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    <div className="text-neutral-400">
-                      {e.to_email}
-                    </div>
-
-                    <div className="text-[10px] text-neutral-500">
-                      {e.status}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
 
       <OwnerPinModal
         shopId={shopId}
