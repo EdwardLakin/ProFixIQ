@@ -36,6 +36,26 @@ type BrandProfileResponse = {
     accent_color?: string | null;
     style_preset?: string | null;
     logo_asset_id?: string | null;
+
+    surface_color?: string | null;
+    surface_color_2?: string | null;
+    sidebar_color?: string | null;
+    topbar_color?: string | null;
+    page_background?: string | null;
+    card_background?: string | null;
+    card_border_color?: string | null;
+    text_primary?: string | null;
+    text_secondary?: string | null;
+    button_primary_bg?: string | null;
+    button_primary_text?: string | null;
+    button_secondary_bg?: string | null;
+    button_secondary_text?: string | null;
+    input_background?: string | null;
+    input_border?: string | null;
+    input_text?: string | null;
+    radius_scale?: string | null;
+    shadow_style?: string | null;
+    theme_mode?: string | null;
   } | null;
 };
 
@@ -53,14 +73,57 @@ const STYLE_PRESETS = [
   { value: "modern-tech", label: "Modern Tech" },
 ];
 
-const PROMPT_PRESETS = [
-  { label: "Shield", prompt: "Bold industrial repair shop logo with a strong shield emblem" },
-  { label: "Minimal", prompt: "Clean minimal automotive service logo with a modern premium OEM feel" },
-  { label: "Performance", prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy" },
-  { label: "Fleet", prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry" },
+const THEME_MODES = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "custom", label: "Custom" },
 ];
 
-const FILTERS = ["all", "active", "generated", "uploaded", "favorites", "archived"] as const;
+const RADIUS_SCALES = [
+  { value: "none", label: "None" },
+  { value: "sm", label: "Small" },
+  { value: "md", label: "Medium" },
+  { value: "lg", label: "Large" },
+  { value: "xl", label: "XL" },
+];
+
+const SHADOW_STYLES = [
+  { value: "none", label: "None" },
+  { value: "soft", label: "Soft" },
+  { value: "medium", label: "Medium" },
+  { value: "strong", label: "Strong" },
+];
+
+const PROMPT_PRESETS = [
+  {
+    label: "Shield",
+    prompt: "Bold industrial repair shop logo with a strong shield emblem",
+  },
+  {
+    label: "Minimal",
+    prompt: "Clean minimal automotive service logo with a modern premium OEM feel",
+  },
+  {
+    label: "Performance",
+    prompt:
+      "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
+  },
+  {
+    label: "Fleet",
+    prompt:
+      "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
+  },
+];
+
+const FILTERS = [
+  "all",
+  "active",
+  "generated",
+  "uploaded",
+  "favorites",
+  "archived",
+] as const;
+
 type FilterKey = (typeof FILTERS)[number];
 
 function notifyBrandRefresh() {
@@ -69,6 +132,33 @@ function notifyBrandRefresh() {
 
 function isGeneratedAsset(asset: BrandAsset): boolean {
   return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
+}
+
+function ThemeColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+        {label}
+      </label>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-16 rounded border border-white/10 bg-transparent"
+        />
+        <Input value={value} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    </div>
+  );
 }
 
 export default function BrandStudioCard() {
@@ -81,7 +171,30 @@ export default function BrandStudioCard() {
   const [secondaryColor, setSecondaryColor] = useState("#0F172A");
   const [accentColor, setAccentColor] = useState("#E2A164");
   const [stylePreset, setStylePreset] = useState("industrial-dark");
-  const [logoPrompt, setLogoPrompt] = useState("Bold industrial repair shop logo with a strong shield emblem");
+
+  const [surfaceColor, setSurfaceColor] = useState("#111827");
+  const [surfaceColor2, setSurfaceColor2] = useState("#0B1220");
+  const [sidebarColor, setSidebarColor] = useState("#0F172A");
+  const [topbarColor, setTopbarColor] = useState("#0F172A");
+  const [pageBackground, setPageBackground] = useState("#020617");
+  const [cardBackground, setCardBackground] = useState("#111827");
+  const [cardBorderColor, setCardBorderColor] = useState("#C97A3D");
+  const [textPrimary, setTextPrimary] = useState("#FFFFFF");
+  const [textSecondary, setTextSecondary] = useState("#CBD5E1");
+  const [buttonPrimaryBg, setButtonPrimaryBg] = useState("#C97A3D");
+  const [buttonPrimaryText, setButtonPrimaryText] = useState("#000000");
+  const [buttonSecondaryBg, setButtonSecondaryBg] = useState("#111827");
+  const [buttonSecondaryText, setButtonSecondaryText] = useState("#FFFFFF");
+  const [inputBackground, setInputBackground] = useState("#0B1220");
+  const [inputBorder, setInputBorder] = useState("#334155");
+  const [inputText, setInputText] = useState("#FFFFFF");
+  const [radiusScale, setRadiusScale] = useState("md");
+  const [shadowStyle, setShadowStyle] = useState("soft");
+  const [themeMode, setThemeMode] = useState("dark");
+
+  const [logoPrompt, setLogoPrompt] = useState(
+    "Bold industrial repair shop logo with a strong shield emblem",
+  );
   const [transparentBackground, setTransparentBackground] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [assets, setAssets] = useState<BrandAsset[]>([]);
@@ -119,10 +232,31 @@ export default function BrandStudioCard() {
       const assetsJson = (await assetsRes.json().catch(() => ({}))) as BrandAssetsResponse;
 
       if (profileJson?.ok && profileJson.profile) {
-        setPrimaryColor(profileJson.profile.primary_color || "#C97A3D");
-        setSecondaryColor(profileJson.profile.secondary_color || "#0F172A");
-        setAccentColor(profileJson.profile.accent_color || "#E2A164");
-        setStylePreset(profileJson.profile.style_preset || "industrial-dark");
+        const profile = profileJson.profile;
+        setPrimaryColor(profile.primary_color || "#C97A3D");
+        setSecondaryColor(profile.secondary_color || "#0F172A");
+        setAccentColor(profile.accent_color || "#E2A164");
+        setStylePreset(profile.style_preset || "industrial-dark");
+
+        setSurfaceColor(profile.surface_color || "#111827");
+        setSurfaceColor2(profile.surface_color_2 || "#0B1220");
+        setSidebarColor(profile.sidebar_color || "#0F172A");
+        setTopbarColor(profile.topbar_color || "#0F172A");
+        setPageBackground(profile.page_background || "#020617");
+        setCardBackground(profile.card_background || "#111827");
+        setCardBorderColor(profile.card_border_color || profile.primary_color || "#C97A3D");
+        setTextPrimary(profile.text_primary || "#FFFFFF");
+        setTextSecondary(profile.text_secondary || "#CBD5E1");
+        setButtonPrimaryBg(profile.button_primary_bg || profile.primary_color || "#C97A3D");
+        setButtonPrimaryText(profile.button_primary_text || "#000000");
+        setButtonSecondaryBg(profile.button_secondary_bg || "#111827");
+        setButtonSecondaryText(profile.button_secondary_text || "#FFFFFF");
+        setInputBackground(profile.input_background || "#0B1220");
+        setInputBorder(profile.input_border || "#334155");
+        setInputText(profile.input_text || "#FFFFFF");
+        setRadiusScale(profile.radius_scale || "md");
+        setShadowStyle(profile.shadow_style || "soft");
+        setThemeMode(profile.theme_mode || "dark");
       }
 
       if (assetsJson?.ok && Array.isArray(assetsJson.assets)) {
@@ -145,11 +279,42 @@ export default function BrandStudioCard() {
       const res = await fetch("/api/branding/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ primaryColor, secondaryColor, accentColor, stylePreset }),
+        body: JSON.stringify({
+          primaryColor,
+          secondaryColor,
+          accentColor,
+          stylePreset,
+
+          surfaceColor,
+          surfaceColor2,
+          sidebarColor,
+          topbarColor,
+          pageBackground,
+          cardBackground,
+          cardBorderColor,
+          textPrimary,
+          textSecondary,
+          buttonPrimaryBg,
+          buttonPrimaryText,
+          buttonSecondaryBg,
+          buttonSecondaryText,
+          inputBackground,
+          inputBorder,
+          inputText,
+          radiusScale,
+          shadowStyle,
+          themeMode,
+        }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save branding");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save branding");
+      }
 
       toast.success("Brand profile updated");
       notifyBrandRefresh();
@@ -173,8 +338,14 @@ export default function BrandStudioCard() {
         body: form,
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to upload logo");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to upload logo");
+      }
 
       toast.success("Logo uploaded");
       await load();
@@ -188,9 +359,17 @@ export default function BrandStudioCard() {
 
   async function activateLogo(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/activate`, { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to activate logo");
+      const res = await fetch(`/api/branding/assets/${assetId}/activate`, {
+        method: "POST",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to activate logo");
+      }
 
       toast.success("Logo applied");
       await load();
@@ -207,8 +386,16 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isFavorite }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update favorite");
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to update favorite");
+      }
+
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update favorite");
@@ -222,8 +409,16 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archived }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update archive");
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to update archive");
+      }
+
       toast.success(archived ? "Logo archived" : "Logo restored");
       await load();
     } catch (error) {
@@ -233,9 +428,19 @@ export default function BrandStudioCard() {
 
   async function deleteAsset(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/delete`, { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to delete logo");
+      const res = await fetch(`/api/branding/assets/${assetId}/delete`, {
+        method: "POST",
+      });
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to delete logo");
+      }
+
       toast.success("Logo deleted");
       await load();
     } catch (error) {
@@ -263,10 +468,18 @@ export default function BrandStudioCard() {
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to generate logos");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
 
-      toast.success(basedOnAssetId ? "Generated more like this" : "Logo concepts generated");
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to generate logos");
+      }
+
+      toast.success(
+        basedOnAssetId ? "Generated more like this" : "Logo concepts generated",
+      );
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to generate logos");
@@ -282,9 +495,11 @@ export default function BrandStudioCard() {
           <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--accent-copper-light)]">
             Brand Studio
           </div>
-          <h2 className="mt-1 text-2xl font-semibold text-white">Customize your shop identity</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-white">
+            Customize your shop identity
+          </h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Upload or generate logo concepts, then manage, favorite, archive, and apply the best one.
+            Full theme control for colors, surfaces, borders, buttons, text, and logos.
           </p>
         </div>
 
@@ -296,26 +511,47 @@ export default function BrandStudioCard() {
       <div className="mb-5 grid gap-4 lg:grid-cols-3">
         <div
           className="rounded-2xl border border-white/10 p-4"
-          style={{ background: `linear-gradient(135deg, ${secondaryColor}, rgba(2,6,23,0.88))` }}
+          style={{
+            background: `linear-gradient(135deg, ${secondaryColor}, ${pageBackground})`,
+          }}
         >
-          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">Preview surface</div>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+            Preview surface
+          </div>
+          <div
+            className="mt-4 rounded-2xl border p-4"
+            style={{
+              background: cardBackground,
+              borderColor: cardBorderColor,
+              color: textPrimary,
+            }}
+          >
             <div className="flex items-center gap-3">
               <div
                 className="h-10 w-10 rounded-xl border border-white/10"
                 style={{ backgroundColor: primaryColor }}
               />
               <div>
-                <div className="text-sm font-semibold text-white">Shop identity</div>
-                <div className="text-xs text-neutral-400">{stylePreset}</div>
+                <div className="text-sm font-semibold" style={{ color: textPrimary }}>
+                  Shop identity
+                </div>
+                <div className="text-xs" style={{ color: textSecondary }}>
+                  {stylePreset}
+                </div>
               </div>
             </div>
 
             <div className="mt-4 flex gap-2">
-              <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-black" style={{ backgroundColor: accentColor }}>
+              <span
+                className="inline-flex rounded-full px-3 py-1 text-xs font-medium"
+                style={{ backgroundColor: accentColor, color: buttonPrimaryText }}
+              >
                 Accent
               </span>
-              <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium text-white" style={{ backgroundColor: primaryColor }}>
+              <span
+                className="inline-flex rounded-full px-3 py-1 text-xs font-medium"
+                style={{ backgroundColor: primaryColor, color: "#FFFFFF" }}
+              >
                 Primary
               </span>
             </div>
@@ -327,21 +563,34 @@ export default function BrandStudioCard() {
 
           <div
             className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-white/10 p-6"
-            style={{ backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, rgba(2,6,23,0.82) 100%)` }}
+            style={{
+              backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${pageBackground} 100%)`,
+            }}
           >
             {activeLogo?.file_url ? (
-              <Image src={activeLogo.file_url} alt="Active shop logo" width={320} height={160} className="max-h-28 w-auto object-contain" unoptimized />
+              <Image
+                src={activeLogo.file_url}
+                alt="Active shop logo"
+                width={320}
+                height={160}
+                className="max-h-28 w-auto object-contain"
+                unoptimized
+              />
             ) : (
               <div className="text-center">
                 <div className="text-xl font-semibold text-white">ProFixIQ</div>
-                <div className="mt-2 text-sm text-neutral-400">Upload or generate a logo to brand the app</div>
+                <div className="mt-2 text-sm text-neutral-400">
+                  Upload or generate a logo to brand the app
+                </div>
               </div>
             )}
           </div>
 
           <div className="mt-4 grid gap-3">
             <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Upload logo</span>
+              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Upload logo
+              </span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
@@ -395,7 +644,11 @@ export default function BrandStudioCard() {
           </div>
 
           <div className="flex items-end">
-            <Button type="button" onClick={() => void generateLogos()} disabled={generating}>
+            <Button
+              type="button"
+              onClick={() => void generateLogos()}
+              disabled={generating}
+            >
               {generating ? "Generating…" : "Generate 3 logos"}
             </Button>
           </div>
@@ -404,40 +657,93 @@ export default function BrandStudioCard() {
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1.15fr]">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mb-4 text-sm font-medium text-white">Theme controls</div>
+
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Primary color</label>
-              <div className="flex items-center gap-3">
-                <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
-                <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} />
-              </div>
-            </div>
+            <ThemeColorField label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
+            <ThemeColorField label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
+            <ThemeColorField label="Accent color" value={accentColor} onChange={setAccentColor} />
+            <ThemeColorField label="Surface color" value={surfaceColor} onChange={setSurfaceColor} />
+            <ThemeColorField label="Surface color 2" value={surfaceColor2} onChange={setSurfaceColor2} />
+            <ThemeColorField label="Sidebar color" value={sidebarColor} onChange={setSidebarColor} />
+            <ThemeColorField label="Topbar color" value={topbarColor} onChange={setTopbarColor} />
+            <ThemeColorField label="Page background" value={pageBackground} onChange={setPageBackground} />
+            <ThemeColorField label="Card background" value={cardBackground} onChange={setCardBackground} />
+            <ThemeColorField label="Card border" value={cardBorderColor} onChange={setCardBorderColor} />
+            <ThemeColorField label="Text primary" value={textPrimary} onChange={setTextPrimary} />
+            <ThemeColorField label="Text secondary" value={textSecondary} onChange={setTextSecondary} />
+            <ThemeColorField label="Primary button bg" value={buttonPrimaryBg} onChange={setButtonPrimaryBg} />
+            <ThemeColorField label="Primary button text" value={buttonPrimaryText} onChange={setButtonPrimaryText} />
+            <ThemeColorField label="Secondary button bg" value={buttonSecondaryBg} onChange={setButtonSecondaryBg} />
+            <ThemeColorField label="Secondary button text" value={buttonSecondaryText} onChange={setButtonSecondaryText} />
+            <ThemeColorField label="Input background" value={inputBackground} onChange={setInputBackground} />
+            <ThemeColorField label="Input border" value={inputBorder} onChange={setInputBorder} />
+            <ThemeColorField label="Input text" value={inputText} onChange={setInputText} />
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Secondary color</label>
-              <div className="flex items-center gap-3">
-                <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
-                <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Accent color</label>
-              <div className="flex items-center gap-3">
-                <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="h-11 w-16 rounded border border-white/10 bg-transparent" />
-                <Input value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">Style preset</label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Style preset
+              </label>
               <select
                 value={stylePreset}
                 onChange={(e) => setStylePreset(e.target.value)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
                 {STYLE_PRESETS.map((preset) => (
-                  <option key={preset.value} value={preset.value}>{preset.label}</option>
+                  <option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Theme mode
+              </label>
+              <select
+                value={themeMode}
+                onChange={(e) => setThemeMode(e.target.value)}
+                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+              >
+                {THEME_MODES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Radius scale
+              </label>
+              <select
+                value={radiusScale}
+                onChange={(e) => setRadiusScale(e.target.value)}
+                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+              >
+                {RADIUS_SCALES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Shadow style
+              </label>
+              <select
+                value={shadowStyle}
+                onChange={(e) => setShadowStyle(e.target.value)}
+                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+              >
+                {SHADOW_STYLES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -447,7 +753,12 @@ export default function BrandStudioCard() {
             <Button type="button" onClick={() => void saveProfile()} disabled={saving}>
               {saving ? "Saving…" : "Save brand profile"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => void load()} disabled={loading || uploading || saving || generating}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void load()}
+              disabled={loading || uploading || saving || generating}
+            >
               Refresh
             </Button>
           </div>
@@ -550,11 +861,20 @@ export default function BrandStudioCard() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button type="button" onClick={() => void activateLogo(asset.id)} disabled={asset.is_active || archived} className="shrink-0">
+                      <Button
+                        type="button"
+                        onClick={() => void activateLogo(asset.id)}
+                        disabled={asset.is_active || archived}
+                        className="shrink-0"
+                      >
                         {asset.is_active ? "Applied" : "Apply"}
                       </Button>
 
-                      <Button type="button" variant="outline" onClick={() => void setFavorite(asset.id, !favorite)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void setFavorite(asset.id, !favorite)}
+                      >
                         {favorite ? "Unfavorite" : "Favorite"}
                       </Button>
 
@@ -571,18 +891,30 @@ export default function BrandStudioCard() {
 
                       {!asset.is_active ? (
                         archived ? (
-                          <Button type="button" variant="outline" onClick={() => void setArchived(asset.id, false)}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void setArchived(asset.id, false)}
+                          >
                             Restore
                           </Button>
                         ) : (
-                          <Button type="button" variant="outline" onClick={() => void setArchived(asset.id, true)}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void setArchived(asset.id, true)}
+                          >
                             Archive
                           </Button>
                         )
                       ) : null}
 
                       {!asset.is_active && archived ? (
-                        <Button type="button" variant="outline" onClick={() => void deleteAsset(asset.id)}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void deleteAsset(asset.id)}
+                        >
                           Delete
                         </Button>
                       ) : null}
