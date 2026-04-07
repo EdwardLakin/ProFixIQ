@@ -107,7 +107,6 @@ function parseStripeStatus(v: unknown): StripeSubStatus {
     "paused",
     "unknown",
   ];
-  <BrandStudioCard />
 
 return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
 }
@@ -1276,6 +1275,10 @@ try {
           />
           <section id="communication-branding" className={sectionClass}>
             <h2 className="text-sm font-semibold text-neutral-50">Communication & branding</h2>
+
+            <div className="mt-3">
+              <BrandStudioCard />
+            </div>
             <Input
               value={invoiceTerms}
               onChange={(e) => setInvoiceTerms(e.target.value)}
