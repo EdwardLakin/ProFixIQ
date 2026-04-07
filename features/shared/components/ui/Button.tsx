@@ -24,22 +24,24 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  "inline-flex items-center justify-center font-semibold transition duration-150 ease-in-out " +
+  "inline-flex items-center justify-center rounded-[var(--theme-radius-md,0.5rem)] font-semibold transition duration-150 ease-in-out " +
   "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-  "focus:ring-offset-black";
+  "focus:ring-[var(--brand-primary,#C97A3D)] focus:ring-offset-black";
 
 const variantClasses: Record<Exclude<Variant, "copper">, string> = {
   default: clsx(
-    "text-[var(--theme-text-primary)]",
-    "border border-[var(--theme-border-soft)]",
-    "bg-[var(--theme-input-bg)]",
-    "hover:bg-white/5",
+    "border",
+    "text-[var(--theme-button-primary-text,#000000)]",
+    "border-[var(--theme-card-border,#334155)]",
+    "bg-[var(--theme-button-primary-bg,var(--brand-primary,#C97A3D))]",
+    "hover:brightness-110",
   ),
   secondary: clsx(
-    "text-[var(--theme-text-secondary)]",
-    "border border-[var(--theme-border-strong)]",
-    "bg-[color:var(--theme-panel-bg-start)]",
-    "hover:bg-white/5",
+    "border",
+    "text-[var(--theme-button-secondary-text,#FFFFFF)]",
+    "border-[var(--theme-card-border,#334155)]",
+    "bg-[var(--theme-button-secondary-bg,var(--theme-card-bg,#111827))]",
+    "hover:brightness-110",
   ),
   destructive: clsx(
     "text-white",
@@ -48,32 +50,35 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "hover:bg-red-600/70",
   ),
   ghost: clsx(
-    "text-[var(--theme-text-secondary)]",
-    "border border-[var(--theme-border-soft)]",
+    "border",
+    "text-[var(--theme-text-primary,#FFFFFF)]",
+    "border-[var(--theme-card-border,#334155)]",
     "bg-transparent",
     "hover:bg-white/5",
   ),
   outline: clsx(
-    "text-[var(--theme-text-primary)]",
-    "border border-[var(--theme-border-strong)]",
+    "border",
+    "text-[var(--theme-text-primary,#FFFFFF)]",
+    "border-[var(--theme-card-border,#334155)]",
     "bg-transparent",
     "hover:bg-white/5",
   ),
 };
 
 const copperClass = clsx(
-  "text-black",
-  "bg-[var(--brand-primary)]",
+  "border",
+  "text-[var(--theme-button-primary-text,#000000)]",
+  "bg-[var(--theme-button-primary-bg,var(--brand-primary,#C97A3D))]",
+  "border-[var(--theme-card-border,#334155)]",
   "hover:brightness-110",
-  "border border-[color:var(--brand-primary)]/35",
-  "shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary)_12%,transparent),0_0_16px_var(--theme-glow)]",
+  "shadow-[var(--theme-shadow-soft,0_0_0_1px_rgba(193,102,59,0.12),0_0_16px_rgba(193,102,59,0.18))]",
 );
 
 const sizeClasses: Record<Size, string> = {
-  xs: "text-xs px-2 py-1 rounded-[var(--theme-radius-sm)]",
-  sm: "text-sm px-3 py-1.5 rounded-[var(--theme-radius-md)]",
-  md: "text-sm px-4 py-2 rounded-[var(--theme-radius-md)]",
-  lg: "text-base px-5 py-3 rounded-[var(--theme-radius-lg)]",
+  xs: "text-xs px-2 py-1",
+  sm: "text-sm px-3 py-1.5",
+  md: "text-sm px-4 py-2",
+  lg: "text-base px-5 py-3",
 };
 
 export function buttonClasses({
@@ -98,7 +103,6 @@ export function buttonClasses({
     base,
     applied,
     sizeClasses[size],
-    "focus:ring-[var(--theme-ring)]",
     disabled || isLoading ? "cursor-not-allowed opacity-50" : "",
     className,
   );

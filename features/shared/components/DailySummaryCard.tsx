@@ -14,23 +14,26 @@ export default function DailySummaryCard() {
 
   return (
     <section
-      className="rounded-2xl border p-3 shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl md:p-4"
+      className="border p-3 md:p-4"
       style={{
-        borderColor:
-          "color-mix(in srgb, var(--brand-primary, #C1663B) 24%, rgba(255,255,255,0.10))",
-        background:
-          "linear-gradient(135deg, rgba(0,0,0,0.44), color-mix(in srgb, var(--brand-secondary, #0F172A) 70%, black))",
+        borderColor: "var(--theme-card-border,#334155)",
+        background: "var(--theme-card-bg,#111827)",
+        borderRadius: "var(--theme-radius-xl,1rem)",
+        boxShadow: "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
       }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
           <div
             className="text-xs font-semibold uppercase tracking-[0.18em]"
-            style={{ color: "var(--brand-accent, #E39A6E)" }}
+            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
           >
             Daily Summary
           </div>
-          <div className="mt-0.5 text-xs text-neutral-400">
+          <div
+            className="mt-0.5 text-xs"
+            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+          >
             Role-aware operational snapshot for today
           </div>
         </div>
@@ -38,11 +41,11 @@ export default function DailySummaryCard() {
         <button
           type="button"
           onClick={() => void reload()}
-          className="rounded-full border px-2.5 py-1 text-[11px] text-neutral-200 transition hover:text-white"
+          className="rounded-full border px-2.5 py-1 text-[11px] hover:brightness-110"
           style={{
-            borderColor: "rgba(255,255,255,0.10)",
-            background:
-              "color-mix(in srgb, var(--brand-secondary, #0F172A) 45%, rgba(0,0,0,0.45))",
+            borderColor: "var(--theme-card-border,#334155)",
+            background: "var(--theme-surface-2,#0B1220)",
+            color: "var(--theme-text-primary,#FFFFFF)",
           }}
         >
           Refresh
@@ -50,39 +53,62 @@ export default function DailySummaryCard() {
       </div>
 
       {loading ? (
-        <div className="mt-3 text-sm text-neutral-400">Loading summary…</div>
+        <div
+          className="mt-3 text-sm"
+          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        >
+          Loading summary…
+        </div>
       ) : error ? (
         <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {error}
         </div>
       ) : !data ? (
-        <div className="mt-3 text-sm text-neutral-400">No summary available.</div>
+        <div
+          className="mt-3 text-sm"
+          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        >
+          No summary available.
+        </div>
       ) : (
         <>
           <div
-            className="mt-3 rounded-2xl border p-3"
+            className="mt-3 border p-3"
             style={{
-              borderColor: "rgba(255,255,255,0.10)",
-              background:
-                "linear-gradient(135deg, rgba(0,0,0,0.28), color-mix(in srgb, var(--brand-secondary, #0F172A) 62%, black))",
+              borderColor: "var(--theme-card-border,#334155)",
+              background: "var(--theme-surface-2,#0B1220)",
+              borderRadius: "var(--theme-radius-xl,1rem)",
             }}
           >
-            <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+            <div
+              className="text-xs uppercase tracking-[0.16em]"
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
               {data.role}
             </div>
-            <p className="mt-1.5 whitespace-pre-line text-sm leading-6 text-neutral-100">
+            <p
+              className="mt-1.5 whitespace-pre-line text-sm leading-6"
+              style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+            >
               {data.summaryText}
             </p>
           </div>
 
           {data.actionItems.length > 0 ? (
             <div className="mt-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+              <div
+                className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
+                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              >
                 Action Items
               </div>
               <ul className="grid gap-1.5 md:grid-cols-2">
                 {data.actionItems.slice(0, 5).map((item, index) => (
-                  <li key={`${item}-${index}`} className="text-sm leading-5 text-neutral-200">
+                  <li
+                    key={`${item}-${index}`}
+                    className="text-sm leading-5"
+                    style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+                  >
                     • {item}
                   </li>
                 ))}
@@ -92,7 +118,10 @@ export default function DailySummaryCard() {
 
           {data.links.length > 0 ? (
             <div className="mt-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+              <div
+                className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
+                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              >
                 Quick Links
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -100,13 +129,11 @@ export default function DailySummaryCard() {
                   <Link
                     key={`${link.href}-${index}`}
                     href={link.href}
-                    className="rounded-full border px-2.5 py-1 text-[11px] transition"
+                    className="rounded-full border px-2.5 py-1 text-[11px] hover:brightness-110"
                     style={{
-                      borderColor:
-                        "color-mix(in srgb, var(--brand-primary, #C1663B) 42%, transparent)",
-                      background:
-                        "color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent)",
-                      color: "var(--brand-accent, #E39A6E)",
+                      borderColor: "var(--brand-primary,#C97A3D)",
+                      background: "color-mix(in srgb, var(--brand-primary,#C97A3D) 16%, transparent)",
+                      color: "var(--brand-primary,#C97A3D)",
                     }}
                   >
                     {link.label}
@@ -118,7 +145,10 @@ export default function DailySummaryCard() {
 
           {data.notifications.length > 0 ? (
             <div className="mt-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+              <div
+                className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
+                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              >
                 Alerts
               </div>
               <div className="space-y-1.5">

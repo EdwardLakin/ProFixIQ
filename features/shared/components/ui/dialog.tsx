@@ -39,18 +39,16 @@ export const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         "fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 border p-6 backdrop-blur-xl",
-        "rounded-[var(--theme-radius-xl)] border-[var(--theme-border-soft)]",
-        "text-[var(--theme-text-primary)]",
-        "shadow-[0_24px_70px_rgba(0,0,0,0.85),0_0_26px_var(--theme-glow)]",
+        "rounded-[var(--theme-radius-xl,1rem)]",
+        "border-[var(--theme-card-border,#334155)]",
+        "bg-[var(--theme-card-bg,#111827)]",
+        "text-[var(--theme-text-primary,#FFFFFF)]",
+        "shadow-[var(--theme-shadow-strong,0_24px_70px_rgba(0,0,0,0.85))]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
         "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
         className,
       )}
-      style={{
-        backgroundImage:
-          "radial-gradient(circle at top, var(--theme-panel-bg-start), var(--theme-dialog-bg))",
-      }}
       {...props}
     >
       {children}
@@ -64,7 +62,11 @@ export const DialogHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col gap-1 border-b border-[var(--theme-border-soft)] pb-3", className)}
+    className={cn(
+      "flex flex-col gap-1 border-b pb-3",
+      "border-[var(--theme-card-border,#334155)]",
+      className,
+    )}
     {...props}
   />
 );
@@ -76,7 +78,8 @@ export const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-primary)]",
+      "text-lg font-semibold uppercase tracking-[0.16em]",
+      "text-[var(--theme-text-primary,#FFFFFF)]",
       className,
     )}
     {...props}
@@ -90,7 +93,7 @@ export const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-[var(--theme-text-muted)]", className)}
+    className={cn("text-sm text-[var(--theme-text-secondary,#94A3B8)]", className)}
     {...props}
   />
 ));
@@ -102,7 +105,8 @@ export const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "mt-4 flex w-full items-center justify-end gap-2 border-t border-[var(--theme-border-soft)] pt-3",
+      "mt-4 flex w-full items-center justify-end gap-2 border-t pt-3",
+      "border-[var(--theme-card-border,#334155)]",
       className,
     )}
     {...props}

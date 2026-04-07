@@ -61,40 +61,40 @@ export default function SuggestedActionsPanel({
   }, [data]);
 
   const effectiveMax = maxItems ?? (compact ? 4 : items.length);
-  const visibleItems =
-    collapsible && !expanded ? items.slice(0, effectiveMax) : items;
-
+  const visibleItems = collapsible && !expanded ? items.slice(0, effectiveMax) : items;
   const hasHiddenItems = collapsible && items.length > visibleItems.length;
 
-  const sectionClass = compact
-    ? "rounded-2xl border p-3 shadow-[0_14px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl"
-    : "rounded-2xl border p-5 shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
+  const sectionStyle = {
+    borderColor: "var(--theme-card-border,#334155)",
+    background: "var(--theme-card-bg,#111827)",
+    borderRadius: "var(--theme-radius-xl,1rem)",
+    boxShadow: compact
+      ? "var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))"
+      : "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
+  } as const;
 
-  const itemClass = compact
-    ? "rounded-xl border px-3 py-2.5"
-    : "rounded-2xl border p-4";
+  const itemStyle = {
+    borderColor: "var(--theme-card-border,#334155)",
+    background: "var(--theme-surface-2,#0B1220)",
+    borderRadius: "var(--theme-radius-xl,1rem)",
+  } as const;
 
   return (
-    <section
-      className={sectionClass}
-      style={{
-        borderColor:
-          "color-mix(in srgb, var(--brand-primary, #C1663B) 22%, rgba(255,255,255,0.10))",
-        background:
-          "linear-gradient(135deg, rgba(0,0,0,0.40), color-mix(in srgb, var(--brand-secondary, #0F172A) 68%, black))",
-      }}
-    >
+    <section className={compact ? "border p-3" : "border p-5"} style={sectionStyle}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div
             className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-            style={{ color: "var(--brand-accent, #E39A6E)" }}
+            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
           >
             {title}
           </div>
 
           {!hideDescription && (
-            <div className={compact ? "mt-0.5 text-xs text-neutral-400" : "mt-1 text-sm text-neutral-300"}>
+            <div
+              className={compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
               {description}
             </div>
           )}
@@ -105,11 +105,11 @@ export default function SuggestedActionsPanel({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="rounded-full border px-3 py-1 text-[11px] text-neutral-200 transition hover:text-white"
+              className="rounded-full border px-3 py-1 text-[11px] hover:brightness-110"
               style={{
-                borderColor: "rgba(255,255,255,0.10)",
-                background:
-                  "color-mix(in srgb, var(--brand-secondary, #0F172A) 45%, rgba(0,0,0,0.45))",
+                borderColor: "var(--theme-card-border,#334155)",
+                background: "var(--theme-surface-2,#0B1220)",
+                color: "var(--theme-text-primary,#FFFFFF)",
               }}
             >
               {expanded ? "Show less" : `Show all (${items.length})`}
@@ -119,11 +119,11 @@ export default function SuggestedActionsPanel({
           <button
             type="button"
             onClick={() => void reload()}
-            className="rounded-full border px-3 py-1 text-[11px] text-neutral-200 transition hover:text-white"
+            className="rounded-full border px-3 py-1 text-[11px] hover:brightness-110"
             style={{
-              borderColor: "rgba(255,255,255,0.10)",
-              background:
-                "color-mix(in srgb, var(--brand-secondary, #0F172A) 45%, rgba(0,0,0,0.45))",
+              borderColor: "var(--theme-card-border,#334155)",
+              background: "var(--theme-surface-2,#0B1220)",
+              color: "var(--theme-text-primary,#FFFFFF)",
             }}
           >
             Refresh
@@ -132,7 +132,10 @@ export default function SuggestedActionsPanel({
       </div>
 
       {loading ? (
-        <div className={compact ? "mt-3 text-xs text-neutral-400" : "mt-4 text-sm text-neutral-400"}>
+        <div
+          className={compact ? "mt-3 text-xs" : "mt-4 text-sm"}
+          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        >
           Loading suggestions…
         </div>
       ) : data && "error" in data ? (
@@ -140,7 +143,10 @@ export default function SuggestedActionsPanel({
           {data.error}
         </div>
       ) : !data || items.length === 0 ? (
-        <div className={compact ? "mt-3 text-xs text-neutral-400" : "mt-4 text-sm text-neutral-400"}>
+        <div
+          className={compact ? "mt-3 text-xs" : "mt-4 text-sm"}
+          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        >
           No suggested actions right now.
         </div>
       ) : (
@@ -148,17 +154,18 @@ export default function SuggestedActionsPanel({
           {visibleItems.map((item) => (
             <div
               key={item.id}
-              className={itemClass}
-              style={{
-                borderColor: "rgba(255,255,255,0.10)",
-                background:
-                  "linear-gradient(135deg, rgba(0,0,0,0.22), color-mix(in srgb, var(--brand-secondary, #0F172A) 56%, black))",
-              }}
+              className={compact ? "border px-3 py-2.5" : "border p-4"}
+              style={itemStyle}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-sm font-semibold text-white">{item.title}</div>
+                    <div
+                      className="text-sm font-semibold"
+                      style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+                    >
+                      {item.title}
+                    </div>
 
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${levelClasses(item.level)}`}
@@ -167,7 +174,10 @@ export default function SuggestedActionsPanel({
                     </span>
                   </div>
 
-                  <div className={compact ? "mt-1 line-clamp-1 text-xs text-neutral-400" : "mt-1 text-xs text-neutral-300"}>
+                  <div
+                    className={compact ? "mt-1 line-clamp-1 text-xs" : "mt-1 text-xs"}
+                    style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                  >
                     {item.description}
                   </div>
                 </div>
@@ -176,15 +186,11 @@ export default function SuggestedActionsPanel({
               <div className={compact ? "mt-2 flex flex-wrap gap-1.5" : "mt-3 flex flex-wrap gap-2"}>
                 <Link
                   href={item.href}
-                  className={
-                    compact
-                      ? "rounded-full border px-2.5 py-1 text-[11px] text-neutral-100 transition hover:text-white"
-                      : "rounded-full border px-3 py-1 text-xs text-neutral-100 transition hover:text-white"
-                  }
+                  className={compact ? "rounded-full border px-2.5 py-1 text-[11px]" : "rounded-full border px-3 py-1 text-xs"}
                   style={{
-                    borderColor: "rgba(255,255,255,0.10)",
-                    background:
-                      "color-mix(in srgb, var(--brand-secondary, #0F172A) 42%, rgba(0,0,0,0.45))",
+                    borderColor: "var(--theme-card-border,#334155)",
+                    background: "var(--theme-surface-2,#0B1220)",
+                    color: "var(--theme-text-primary,#FFFFFF)",
                   }}
                 >
                   Open
@@ -193,17 +199,11 @@ export default function SuggestedActionsPanel({
                 {item.plannerHref ? (
                   <Link
                     href={withAutorun(item.plannerHref)}
-                    className={
-                      compact
-                        ? "rounded-full border px-2.5 py-1 text-[11px] transition"
-                        : "rounded-full border px-3 py-1 text-xs transition"
-                    }
+                    className={compact ? "rounded-full border px-2.5 py-1 text-[11px]" : "rounded-full border px-3 py-1 text-xs"}
                     style={{
-                      borderColor:
-                        "color-mix(in srgb, var(--brand-primary, #C1663B) 45%, transparent)",
-                      background:
-                        "color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent)",
-                      color: "var(--brand-accent, #E39A6E)",
+                      borderColor: "var(--brand-primary,#C97A3D)",
+                      background: "color-mix(in srgb, var(--brand-primary,#C97A3D) 16%, transparent)",
+                      color: "var(--brand-primary,#C97A3D)",
                     }}
                   >
                     Fix Now
@@ -214,7 +214,10 @@ export default function SuggestedActionsPanel({
           ))}
 
           {hasHiddenItems ? (
-            <div className="pt-1 text-xs text-neutral-500">
+            <div
+              className="pt-1 text-xs"
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
               Showing top {visibleItems.length} of {items.length}.
             </div>
           ) : null}

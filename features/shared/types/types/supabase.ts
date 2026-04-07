@@ -12355,6 +12355,55 @@ export type Database = {
         }
         Relationships: []
       }
+      user_theme_preferences: {
+        Row: {
+          radius_scale: string | null
+          shadow_style: string | null
+          shop_id: string
+          theme_mode: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          radius_scale?: string | null
+          shadow_style?: string | null
+          shop_id: string
+          theme_mode?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          radius_scale?: string | null
+          shadow_style?: string | null
+          shop_id?: string
+          theme_mode?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_theme_preferences_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_theme_preferences_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_theme_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_widget_layouts: {
         Row: {
           id: string
