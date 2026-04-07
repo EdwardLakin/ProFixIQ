@@ -2,14 +2,12 @@ import { NextResponse } from "next/server";
 import { requireBrandShopWriteAccess } from "@/features/branding/server/brand";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 
-type RouteContext = {
-  params: {
-    id: string;
-  };
-};
-
-export async function POST(req: Request, context: RouteContext) {
-  const assetId = String(context.params?.id ?? "").trim();
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const assetId = String(id ?? "").trim();
 
   if (!assetId) {
     return NextResponse.json({ error: "Missing asset id" }, { status: 400 });
@@ -61,7 +59,10 @@ export async function POST(req: Request, context: RouteContext) {
     .neq("id", asset.id);
 
   if (deactivateError) {
-    return NextResponse.json({ error: deactivateError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: deactivateError.message },
+      { status: 500 },
+    );
   }
 
   const { data: updated, error: activateError } = await auth.supabase
@@ -91,7 +92,9 @@ export async function POST(req: Request, context: RouteContext) {
   if (asset.kind === "logo") profilePatch.logo_asset_id = asset.id;
   if (asset.kind === "icon") profilePatch.icon_asset_id = asset.id;
   if (asset.kind === "wordmark") profilePatch.wordmark_asset_id = asset.id;
-  if (asset.kind === "watermark") profilePatch.watermark_asset_id = asset.id;
+  if (asset.kind === "watermark") {
+    profilePatch.watermark_asset_id = asset.id;
+  }
 
   const { error: profileError } = await auth.supabase
     .from("shop_brand_profiles")
