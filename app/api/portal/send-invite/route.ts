@@ -7,6 +7,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { sendPortalInviteEmail } from "@/features/email/server";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
 
@@ -114,6 +115,8 @@ export async function POST(req: Request) {
       (shop?.name ?? "").trim() ||
       "ProFixIQ";
 
+    const brand = await getActiveBrandForRender(shopId);
+
     const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
     const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
     const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(
@@ -151,6 +154,9 @@ export async function POST(req: Request) {
       to: email,
       portalLink,
       shopName,
+      brandLogoUrl: brand?.logoUrl ?? null,
+      brandPrimaryColor: brand?.colors.primary ?? null,
+      brandSecondaryColor: brand?.colors.secondary ?? null,
       createdBy: user.id,
     });
 

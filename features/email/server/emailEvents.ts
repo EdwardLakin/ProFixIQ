@@ -6,6 +6,9 @@ export async function sendPortalInviteEmail(input: {
   to: string;
   portalLink: string;
   shopName?: string | null;
+  brandLogoUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSecondaryColor?: string | null;
   year?: number;
   createdBy?: string | null;
 }) {
@@ -21,6 +24,9 @@ export async function sendPortalInviteEmail(input: {
     dynamicTemplateData: {
       portal_link: input.portalLink,
       shop_name: input.shopName ?? "",
+      brand_logo_url: input.brandLogoUrl ?? "",
+      brand_primary_color: input.brandPrimaryColor ?? "",
+      brand_secondary_color: input.brandSecondaryColor ?? "",
       year: input.year ?? new Date().getFullYear(),
     },
   });

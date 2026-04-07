@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendInvoiceReadyEmail } from "@/features/email/server";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -298,8 +299,13 @@ export async function POST(req: Request) {
       console.warn("[invoices/send] shops lookup failed:", shopErr.message);
     }
 
+    let brand: Awaited<ReturnType<typeof getActiveBrandForRender>> | null = null;
     const resolvedShopName =
       (shopName ?? "").trim() || pickShopName(shop ?? null) || "ProFixIQ";
+
+    if (wo.shop_id) {
+      brand = await getActiveBrandForRender(wo.shop_id);
+    }
 
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
@@ -412,6 +418,9 @@ export async function POST(req: Request) {
       customerName:
         (resolvedCustomerInfo?.name ?? (customerName ?? "").trim()) || undefined,
       shopName: resolvedShopName,
+      brandLogoUrl: brand?.logoUrl ?? null,
+      brandPrimaryColor: brand?.colors.primary ?? null,
+      brandSecondaryColor: brand?.colors.secondary ?? null,
     });
 
     await supabaseAdmin
