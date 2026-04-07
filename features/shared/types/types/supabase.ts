@@ -9385,13 +9385,18 @@ export type Database = {
       shop_brand_profiles: {
         Row: {
           accent_color: string | null
+          app_background: string | null
+          app_background_secondary: string | null
           button_primary_bg: string | null
           button_primary_text: string | null
           button_secondary_bg: string | null
           button_secondary_text: string | null
           card_background: string | null
+          card_border: string | null
           card_border_color: string | null
           created_at: string
+          header_background: string | null
+          header_text: string | null
           icon_asset_id: string | null
           input_background: string | null
           input_border: string | null
@@ -9404,10 +9409,16 @@ export type Database = {
           secondary_color: string | null
           shadow_style: string | null
           shop_id: string
+          sidebar_active_background: string | null
+          sidebar_active_text: string | null
+          sidebar_background: string | null
           sidebar_color: string | null
+          sidebar_text: string | null
           style_preset: string | null
+          surface_2_background: string | null
           surface_color: string | null
           surface_color_2: string | null
+          text_muted: string | null
           text_primary: string | null
           text_secondary: string | null
           theme_mode: string | null
@@ -9419,13 +9430,18 @@ export type Database = {
         }
         Insert: {
           accent_color?: string | null
+          app_background?: string | null
+          app_background_secondary?: string | null
           button_primary_bg?: string | null
           button_primary_text?: string | null
           button_secondary_bg?: string | null
           button_secondary_text?: string | null
           card_background?: string | null
+          card_border?: string | null
           card_border_color?: string | null
           created_at?: string
+          header_background?: string | null
+          header_text?: string | null
           icon_asset_id?: string | null
           input_background?: string | null
           input_border?: string | null
@@ -9438,10 +9454,16 @@ export type Database = {
           secondary_color?: string | null
           shadow_style?: string | null
           shop_id: string
+          sidebar_active_background?: string | null
+          sidebar_active_text?: string | null
+          sidebar_background?: string | null
           sidebar_color?: string | null
+          sidebar_text?: string | null
           style_preset?: string | null
+          surface_2_background?: string | null
           surface_color?: string | null
           surface_color_2?: string | null
+          text_muted?: string | null
           text_primary?: string | null
           text_secondary?: string | null
           theme_mode?: string | null
@@ -9453,13 +9475,18 @@ export type Database = {
         }
         Update: {
           accent_color?: string | null
+          app_background?: string | null
+          app_background_secondary?: string | null
           button_primary_bg?: string | null
           button_primary_text?: string | null
           button_secondary_bg?: string | null
           button_secondary_text?: string | null
           card_background?: string | null
+          card_border?: string | null
           card_border_color?: string | null
           created_at?: string
+          header_background?: string | null
+          header_text?: string | null
           icon_asset_id?: string | null
           input_background?: string | null
           input_border?: string | null
@@ -9472,10 +9499,16 @@ export type Database = {
           secondary_color?: string | null
           shadow_style?: string | null
           shop_id?: string
+          sidebar_active_background?: string | null
+          sidebar_active_text?: string | null
+          sidebar_background?: string | null
           sidebar_color?: string | null
+          sidebar_text?: string | null
           style_preset?: string | null
+          surface_2_background?: string | null
           surface_color?: string | null
           surface_color_2?: string | null
+          text_muted?: string | null
           text_primary?: string | null
           text_secondary?: string | null
           theme_mode?: string | null

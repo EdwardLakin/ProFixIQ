@@ -35,17 +35,20 @@ type BrandProfileResponse = {
     secondary_color?: string | null;
     accent_color?: string | null;
     style_preset?: string | null;
-    logo_asset_id?: string | null;
-
-    surface_color?: string | null;
-    surface_color_2?: string | null;
-    sidebar_color?: string | null;
-    topbar_color?: string | null;
-    page_background?: string | null;
+    app_background?: string | null;
+    app_background_secondary?: string | null;
+    sidebar_background?: string | null;
+    sidebar_text?: string | null;
+    sidebar_active_background?: string | null;
+    sidebar_active_text?: string | null;
+    header_background?: string | null;
+    header_text?: string | null;
     card_background?: string | null;
-    card_border_color?: string | null;
+    card_border?: string | null;
+    surface_2_background?: string | null;
     text_primary?: string | null;
     text_secondary?: string | null;
+    text_muted?: string | null;
     button_primary_bg?: string | null;
     button_primary_text?: string | null;
     button_secondary_bg?: string | null;
@@ -53,9 +56,6 @@ type BrandProfileResponse = {
     input_background?: string | null;
     input_border?: string | null;
     input_text?: string | null;
-    radius_scale?: string | null;
-    shadow_style?: string | null;
-    theme_mode?: string | null;
   } | null;
 };
 
@@ -63,6 +63,15 @@ type BrandAssetsResponse = {
   ok?: boolean;
   shopId?: string;
   assets?: BrandAsset[];
+};
+
+type UserPreferenceResponse = {
+  ok?: boolean;
+  preferences?: {
+    theme_mode?: string | null;
+    radius_scale?: string | null;
+    shadow_style?: string | null;
+  } | null;
 };
 
 const STYLE_PRESETS = [
@@ -76,7 +85,7 @@ const STYLE_PRESETS = [
 const THEME_MODES = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
-  { value: "custom", label: "Custom" },
+  { value: "system", label: "System" },
 ];
 
 const RADIUS_SCALES = [
@@ -105,13 +114,11 @@ const PROMPT_PRESETS = [
   },
   {
     label: "Performance",
-    prompt:
-      "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
+    prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
   },
   {
     label: "Fleet",
-    prompt:
-      "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
+    prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
   },
 ];
 
@@ -134,14 +141,14 @@ function isGeneratedAsset(asset: BrandAsset): boolean {
   return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
 }
 
-function ThemeColorField({
+function ColorField({
   label,
   value,
   onChange,
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (next: string) => void;
 }) {
   return (
     <div>
@@ -164,6 +171,7 @@ function ThemeColorField({
 export default function BrandStudioCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -172,25 +180,31 @@ export default function BrandStudioCard() {
   const [accentColor, setAccentColor] = useState("#E2A164");
   const [stylePreset, setStylePreset] = useState("industrial-dark");
 
-  const [surfaceColor, setSurfaceColor] = useState("#111827");
-  const [surfaceColor2, setSurfaceColor2] = useState("#0B1220");
-  const [sidebarColor, setSidebarColor] = useState("#0F172A");
-  const [topbarColor, setTopbarColor] = useState("#0F172A");
-  const [pageBackground, setPageBackground] = useState("#020617");
+  const [appBackground, setAppBackground] = useState("#050910");
+  const [appBackgroundSecondary, setAppBackgroundSecondary] = useState("#020617");
+  const [sidebarBackground, setSidebarBackground] = useState("#020617");
+  const [sidebarText, setSidebarText] = useState("#D4D4D8");
+  const [sidebarActiveBackground, setSidebarActiveBackground] = useState("#C97A3D");
+  const [sidebarActiveText, setSidebarActiveText] = useState("#000000");
+  const [headerBackground, setHeaderBackground] = useState("#020617");
+  const [headerText, setHeaderText] = useState("#FFFFFF");
   const [cardBackground, setCardBackground] = useState("#111827");
-  const [cardBorderColor, setCardBorderColor] = useState("#C97A3D");
+  const [cardBorder, setCardBorder] = useState("#334155");
+  const [surface2Background, setSurface2Background] = useState("#0B1220");
   const [textPrimary, setTextPrimary] = useState("#FFFFFF");
-  const [textSecondary, setTextSecondary] = useState("#CBD5E1");
+  const [textSecondary, setTextSecondary] = useState("#94A3B8");
+  const [textMuted, setTextMuted] = useState("#64748B");
   const [buttonPrimaryBg, setButtonPrimaryBg] = useState("#C97A3D");
   const [buttonPrimaryText, setButtonPrimaryText] = useState("#000000");
-  const [buttonSecondaryBg, setButtonSecondaryBg] = useState("#111827");
+  const [buttonSecondaryBg, setButtonSecondaryBg] = useState("#1E293B");
   const [buttonSecondaryText, setButtonSecondaryText] = useState("#FFFFFF");
   const [inputBackground, setInputBackground] = useState("#0B1220");
   const [inputBorder, setInputBorder] = useState("#334155");
   const [inputText, setInputText] = useState("#FFFFFF");
-  const [radiusScale, setRadiusScale] = useState("md");
-  const [shadowStyle, setShadowStyle] = useState("soft");
+
   const [themeMode, setThemeMode] = useState("dark");
+  const [radiusScale, setRadiusScale] = useState("md");
+  const [shadowStyle, setShadowStyle] = useState("medium");
 
   const [logoPrompt, setLogoPrompt] = useState(
     "Bold industrial repair shop logo with a strong shield emblem",
@@ -223,40 +237,50 @@ export default function BrandStudioCard() {
   async function load() {
     setLoading(true);
     try {
-      const [profileRes, assetsRes] = await Promise.all([
+      const [profileRes, assetsRes, prefRes] = await Promise.all([
         fetch("/api/branding/profile", { cache: "no-store" }),
         fetch("/api/branding/assets?kind=logo", { cache: "no-store" }),
+        fetch("/api/branding/user-preferences", { cache: "no-store" }),
       ]);
 
       const profileJson = (await profileRes.json().catch(() => ({}))) as BrandProfileResponse;
       const assetsJson = (await assetsRes.json().catch(() => ({}))) as BrandAssetsResponse;
+      const prefJson = (await prefRes.json().catch(() => ({}))) as UserPreferenceResponse;
 
       if (profileJson?.ok && profileJson.profile) {
-        const profile = profileJson.profile;
-        setPrimaryColor(profile.primary_color || "#C97A3D");
-        setSecondaryColor(profile.secondary_color || "#0F172A");
-        setAccentColor(profile.accent_color || "#E2A164");
-        setStylePreset(profile.style_preset || "industrial-dark");
+        const p = profileJson.profile;
+        setPrimaryColor(p.primary_color || "#C97A3D");
+        setSecondaryColor(p.secondary_color || "#0F172A");
+        setAccentColor(p.accent_color || "#E2A164");
+        setStylePreset(p.style_preset || "industrial-dark");
 
-        setSurfaceColor(profile.surface_color || "#111827");
-        setSurfaceColor2(profile.surface_color_2 || "#0B1220");
-        setSidebarColor(profile.sidebar_color || "#0F172A");
-        setTopbarColor(profile.topbar_color || "#0F172A");
-        setPageBackground(profile.page_background || "#020617");
-        setCardBackground(profile.card_background || "#111827");
-        setCardBorderColor(profile.card_border_color || profile.primary_color || "#C97A3D");
-        setTextPrimary(profile.text_primary || "#FFFFFF");
-        setTextSecondary(profile.text_secondary || "#CBD5E1");
-        setButtonPrimaryBg(profile.button_primary_bg || profile.primary_color || "#C97A3D");
-        setButtonPrimaryText(profile.button_primary_text || "#000000");
-        setButtonSecondaryBg(profile.button_secondary_bg || "#111827");
-        setButtonSecondaryText(profile.button_secondary_text || "#FFFFFF");
-        setInputBackground(profile.input_background || "#0B1220");
-        setInputBorder(profile.input_border || "#334155");
-        setInputText(profile.input_text || "#FFFFFF");
-        setRadiusScale(profile.radius_scale || "md");
-        setShadowStyle(profile.shadow_style || "soft");
-        setThemeMode(profile.theme_mode || "dark");
+        setAppBackground(p.app_background || "#050910");
+        setAppBackgroundSecondary(p.app_background_secondary || "#020617");
+        setSidebarBackground(p.sidebar_background || "#020617");
+        setSidebarText(p.sidebar_text || "#D4D4D8");
+        setSidebarActiveBackground(p.sidebar_active_background || p.primary_color || "#C97A3D");
+        setSidebarActiveText(p.sidebar_active_text || "#000000");
+        setHeaderBackground(p.header_background || "#020617");
+        setHeaderText(p.header_text || "#FFFFFF");
+        setCardBackground(p.card_background || "#111827");
+        setCardBorder(p.card_border || "#334155");
+        setSurface2Background(p.surface_2_background || "#0B1220");
+        setTextPrimary(p.text_primary || "#FFFFFF");
+        setTextSecondary(p.text_secondary || "#94A3B8");
+        setTextMuted(p.text_muted || "#64748B");
+        setButtonPrimaryBg(p.button_primary_bg || p.primary_color || "#C97A3D");
+        setButtonPrimaryText(p.button_primary_text || "#000000");
+        setButtonSecondaryBg(p.button_secondary_bg || "#1E293B");
+        setButtonSecondaryText(p.button_secondary_text || "#FFFFFF");
+        setInputBackground(p.input_background || "#0B1220");
+        setInputBorder(p.input_border || "#334155");
+        setInputText(p.input_text || "#FFFFFF");
+      }
+
+      if (prefJson?.ok && prefJson.preferences) {
+        setThemeMode(prefJson.preferences.theme_mode || "dark");
+        setRadiusScale(prefJson.preferences.radius_scale || "md");
+        setShadowStyle(prefJson.preferences.shadow_style || "medium");
       }
 
       if (assetsJson?.ok && Array.isArray(assetsJson.assets)) {
@@ -284,37 +308,33 @@ export default function BrandStudioCard() {
           secondaryColor,
           accentColor,
           stylePreset,
-
-          surfaceColor,
-          surfaceColor2,
-          sidebarColor,
-          topbarColor,
-          pageBackground,
-          cardBackground,
-          cardBorderColor,
-          textPrimary,
-          textSecondary,
-          buttonPrimaryBg,
-          buttonPrimaryText,
-          buttonSecondaryBg,
-          buttonSecondaryText,
-          inputBackground,
-          inputBorder,
-          inputText,
-          radiusScale,
-          shadowStyle,
-          themeMode,
+          metadata: {},
+          app_background: appBackground,
+          app_background_secondary: appBackgroundSecondary,
+          sidebar_background: sidebarBackground,
+          sidebar_text: sidebarText,
+          sidebar_active_background: sidebarActiveBackground,
+          sidebar_active_text: sidebarActiveText,
+          header_background: headerBackground,
+          header_text: headerText,
+          card_background: cardBackground,
+          card_border: cardBorder,
+          surface_2_background: surface2Background,
+          text_primary: textPrimary,
+          text_secondary: textSecondary,
+          text_muted: textMuted,
+          button_primary_bg: buttonPrimaryBg,
+          button_primary_text: buttonPrimaryText,
+          button_secondary_bg: buttonSecondaryBg,
+          button_secondary_text: buttonSecondaryText,
+          input_background: inputBackground,
+          input_border: inputBorder,
+          input_text: inputText,
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to save branding");
-      }
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save branding");
 
       toast.success("Brand profile updated");
       notifyBrandRefresh();
@@ -322,6 +342,33 @@ export default function BrandStudioCard() {
       toast.error(error instanceof Error ? error.message : "Failed to save branding");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function savePreferences() {
+    setSavingPrefs(true);
+    try {
+      const res = await fetch("/api/branding/user-preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          themeMode,
+          radiusScale,
+          shadowStyle,
+        }),
+      });
+
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save theme preferences");
+      }
+
+      toast.success("Theme preferences updated");
+      notifyBrandRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save theme preferences");
+    } finally {
+      setSavingPrefs(false);
     }
   }
 
@@ -338,14 +385,8 @@ export default function BrandStudioCard() {
         body: form,
       });
 
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to upload logo");
-      }
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to upload logo");
 
       toast.success("Logo uploaded");
       await load();
@@ -359,17 +400,9 @@ export default function BrandStudioCard() {
 
   async function activateLogo(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/activate`, {
-        method: "POST",
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to activate logo");
-      }
+      const res = await fetch(`/api/branding/assets/${assetId}/activate`, { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to activate logo");
 
       toast.success("Logo applied");
       await load();
@@ -386,16 +419,8 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isFavorite }),
       });
-
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to update favorite");
-      }
-
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update favorite");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update favorite");
@@ -409,16 +434,8 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archived }),
       });
-
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to update archive");
-      }
-
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update archive");
       toast.success(archived ? "Logo archived" : "Logo restored");
       await load();
     } catch (error) {
@@ -428,19 +445,9 @@ export default function BrandStudioCard() {
 
   async function deleteAsset(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/delete`, {
-        method: "POST",
-      });
-
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to delete logo");
-      }
-
+      const res = await fetch(`/api/branding/assets/${assetId}/delete`, { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to delete logo");
       toast.success("Logo deleted");
       await load();
     } catch (error) {
@@ -468,18 +475,10 @@ export default function BrandStudioCard() {
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to generate logos");
 
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to generate logos");
-      }
-
-      toast.success(
-        basedOnAssetId ? "Generated more like this" : "Logo concepts generated",
-      );
+      toast.success(basedOnAssetId ? "Generated more like this" : "Logo concepts generated");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to generate logos");
@@ -495,11 +494,9 @@ export default function BrandStudioCard() {
           <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--accent-copper-light)]">
             Brand Studio
           </div>
-          <h2 className="mt-1 text-2xl font-semibold text-white">
-            Customize your shop identity
-          </h2>
+          <h2 className="mt-1 text-2xl font-semibold text-white">Customize your shop identity</h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Full theme control for colors, surfaces, borders, buttons, text, and logos.
+            Full shop-level visual control plus per-user theme preferences.
           </p>
         </div>
 
@@ -512,17 +509,15 @@ export default function BrandStudioCard() {
         <div
           className="rounded-2xl border border-white/10 p-4"
           style={{
-            background: `linear-gradient(135deg, ${secondaryColor}, ${pageBackground})`,
+            background: `linear-gradient(135deg, ${appBackground}, ${appBackgroundSecondary})`,
           }}
         >
-          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">
-            Preview surface
-          </div>
+          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">Preview surface</div>
           <div
             className="mt-4 rounded-2xl border p-4"
             style={{
+              borderColor: cardBorder,
               background: cardBackground,
-              borderColor: cardBorderColor,
               color: textPrimary,
             }}
           >
@@ -550,7 +545,7 @@ export default function BrandStudioCard() {
               </span>
               <span
                 className="inline-flex rounded-full px-3 py-1 text-xs font-medium"
-                style={{ backgroundColor: primaryColor, color: "#FFFFFF" }}
+                style={{ backgroundColor: primaryColor, color: buttonPrimaryText }}
               >
                 Primary
               </span>
@@ -563,9 +558,7 @@ export default function BrandStudioCard() {
 
           <div
             className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-white/10 p-6"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${pageBackground} 100%)`,
-            }}
+            style={{ backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${appBackgroundSecondary} 100%)` }}
           >
             {activeLogo?.file_url ? (
               <Image
@@ -644,59 +637,17 @@ export default function BrandStudioCard() {
           </div>
 
           <div className="flex items-end">
-            <Button
-              type="button"
-              onClick={() => void generateLogos()}
-              disabled={generating}
-            >
+            <Button type="button" onClick={() => void generateLogos()} disabled={generating}>
               {generating ? "Generating…" : "Generate 3 logos"}
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_1.15fr]">
+      <div className="grid gap-5">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">Theme controls</div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <ThemeColorField label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
-            <ThemeColorField label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
-            <ThemeColorField label="Accent color" value={accentColor} onChange={setAccentColor} />
-            <ThemeColorField label="Surface color" value={surfaceColor} onChange={setSurfaceColor} />
-            <ThemeColorField label="Surface color 2" value={surfaceColor2} onChange={setSurfaceColor2} />
-            <ThemeColorField label="Sidebar color" value={sidebarColor} onChange={setSidebarColor} />
-            <ThemeColorField label="Topbar color" value={topbarColor} onChange={setTopbarColor} />
-            <ThemeColorField label="Page background" value={pageBackground} onChange={setPageBackground} />
-            <ThemeColorField label="Card background" value={cardBackground} onChange={setCardBackground} />
-            <ThemeColorField label="Card border" value={cardBorderColor} onChange={setCardBorderColor} />
-            <ThemeColorField label="Text primary" value={textPrimary} onChange={setTextPrimary} />
-            <ThemeColorField label="Text secondary" value={textSecondary} onChange={setTextSecondary} />
-            <ThemeColorField label="Primary button bg" value={buttonPrimaryBg} onChange={setButtonPrimaryBg} />
-            <ThemeColorField label="Primary button text" value={buttonPrimaryText} onChange={setButtonPrimaryText} />
-            <ThemeColorField label="Secondary button bg" value={buttonSecondaryBg} onChange={setButtonSecondaryBg} />
-            <ThemeColorField label="Secondary button text" value={buttonSecondaryText} onChange={setButtonSecondaryText} />
-            <ThemeColorField label="Input background" value={inputBackground} onChange={setInputBackground} />
-            <ThemeColorField label="Input border" value={inputBorder} onChange={setInputBorder} />
-            <ThemeColorField label="Input text" value={inputText} onChange={setInputText} />
-
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
-                Style preset
-              </label>
-              <select
-                value={stylePreset}
-                onChange={(e) => setStylePreset(e.target.value)}
-                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
-              >
-                {STYLE_PRESETS.map((preset) => (
-                  <option key={preset.value} value={preset.value}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          <div className="mb-4 text-sm font-medium text-white">User theme preferences</div>
+          <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
                 Theme mode
@@ -706,9 +657,9 @@ export default function BrandStudioCard() {
                 onChange={(e) => setThemeMode(e.target.value)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
-                {THEME_MODES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {THEME_MODES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
                   </option>
                 ))}
               </select>
@@ -723,9 +674,9 @@ export default function BrandStudioCard() {
                 onChange={(e) => setRadiusScale(e.target.value)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
-                {RADIUS_SCALES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {RADIUS_SCALES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
                   </option>
                 ))}
               </select>
@@ -740,13 +691,114 @@ export default function BrandStudioCard() {
                 onChange={(e) => setShadowStyle(e.target.value)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
-                {SHADOW_STYLES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {SHADOW_STYLES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
                   </option>
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="mt-5">
+            <Button type="button" onClick={() => void savePreferences()} disabled={savingPrefs}>
+              {savingPrefs ? "Saving…" : "Save user preferences"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mb-4 text-sm font-medium text-white">Brand colors</div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <ColorField label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
+            <ColorField label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
+            <ColorField label="Accent color" value={accentColor} onChange={setAccentColor} />
+          </div>
+
+          <div className="mt-4">
+            <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              Style preset
+            </label>
+            <select
+              value={stylePreset}
+              onChange={(e) => setStylePreset(e.target.value)}
+              className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+            >
+              {STYLE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mb-4 text-sm font-medium text-white">Surface colors</div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <ColorField label="App background" value={appBackground} onChange={setAppBackground} />
+            <ColorField
+              label="App background secondary"
+              value={appBackgroundSecondary}
+              onChange={setAppBackgroundSecondary}
+            />
+            <ColorField
+              label="Sidebar background"
+              value={sidebarBackground}
+              onChange={setSidebarBackground}
+            />
+            <ColorField label="Sidebar text" value={sidebarText} onChange={setSidebarText} />
+            <ColorField
+              label="Sidebar active background"
+              value={sidebarActiveBackground}
+              onChange={setSidebarActiveBackground}
+            />
+            <ColorField
+              label="Sidebar active text"
+              value={sidebarActiveText}
+              onChange={setSidebarActiveText}
+            />
+            <ColorField label="Header background" value={headerBackground} onChange={setHeaderBackground} />
+            <ColorField label="Header text" value={headerText} onChange={setHeaderText} />
+            <ColorField label="Card background" value={cardBackground} onChange={setCardBackground} />
+            <ColorField label="Card border" value={cardBorder} onChange={setCardBorder} />
+            <ColorField
+              label="Secondary surface"
+              value={surface2Background}
+              onChange={setSurface2Background}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mb-4 text-sm font-medium text-white">Text, buttons, and inputs</div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <ColorField label="Text primary" value={textPrimary} onChange={setTextPrimary} />
+            <ColorField label="Text secondary" value={textSecondary} onChange={setTextSecondary} />
+            <ColorField label="Text muted" value={textMuted} onChange={setTextMuted} />
+            <ColorField
+              label="Button primary background"
+              value={buttonPrimaryBg}
+              onChange={setButtonPrimaryBg}
+            />
+            <ColorField
+              label="Button primary text"
+              value={buttonPrimaryText}
+              onChange={setButtonPrimaryText}
+            />
+            <ColorField
+              label="Button secondary background"
+              value={buttonSecondaryBg}
+              onChange={setButtonSecondaryBg}
+            />
+            <ColorField
+              label="Button secondary text"
+              value={buttonSecondaryText}
+              onChange={setButtonSecondaryText}
+            />
+            <ColorField label="Input background" value={inputBackground} onChange={setInputBackground} />
+            <ColorField label="Input border" value={inputBorder} onChange={setInputBorder} />
+            <ColorField label="Input text" value={inputText} onChange={setInputText} />
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -757,7 +809,7 @@ export default function BrandStudioCard() {
               type="button"
               variant="outline"
               onClick={() => void load()}
-              disabled={loading || uploading || saving || generating}
+              disabled={loading || uploading || saving || generating || savingPrefs}
             >
               Refresh
             </Button>

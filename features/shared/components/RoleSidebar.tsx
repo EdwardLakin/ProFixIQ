@@ -17,13 +17,19 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 function normalizeRole(raw: string | null | undefined): Role | null {
   const r = String(raw ?? "").toLowerCase().trim();
   if (!r) return null;
+
   if (r === "tech" || r === "technician") return "mechanic";
   if (r === "fleet pm" || r === "fleet_pm") return "fleet_manager";
+
   return r as Role;
 }
 
 export default function RoleSidebar() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    [],
+  );
+
   const pathname = usePathname();
 
   const [role, setRole] = useState<Role | null>(null);
@@ -108,7 +114,14 @@ export default function RoleSidebar() {
   }, [pathname, sortedGroups]);
 
   if (!role) {
-    return <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>;
+    return (
+      <div
+        className="p-4 text-xs"
+        style={{ color: "var(--theme-sidebar-text,#d4d4d8)" }}
+      >
+        Loading navigation…
+      </div>
+    );
   }
 
   const toggleSection = (key: string) => {
@@ -117,10 +130,10 @@ export default function RoleSidebar() {
 
   return (
     <nav
-      className="metal-scroll flex-1 space-y-3 overflow-y-auto py-4"
+      className="flex-1 overflow-y-auto space-y-3 py-4"
       style={{
         background:
-          "linear-gradient(180deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.75))",
+          "linear-gradient(to bottom, color-mix(in srgb, var(--theme-sidebar-bg,#020617) 92%, black), var(--theme-sidebar-bg,#020617), color-mix(in srgb, var(--theme-sidebar-bg,#020617) 80%, black))",
       }}
     >
       {sortedGroups.map(([group, groupTiles]) => {
@@ -135,19 +148,22 @@ export default function RoleSidebar() {
               type="button"
               onClick={() => toggleSection(group)}
               className={cn(
-                "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
-                "text-[0.65rem] uppercase tracking-[0.16em]",
-                "border text-neutral-300 transition-colors",
+                "flex w-full items-center justify-between px-2.5 py-2 text-left transition-colors",
+                "border",
               )}
               style={{
+                borderRadius: "var(--theme-radius-lg,0.75rem)",
                 borderColor: hasActive
-                  ? "color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)"
-                  : "var(--metal-border-soft, rgba(148,163,184,0.3))",
+                  ? "var(--brand-primary,#C1663B)"
+                  : "var(--theme-card-border,#334155)",
                 background: hasActive
-                  ? "linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent), rgba(0,0,0,0.38))"
-                  : "rgba(0,0,0,0.28)",
+                  ? "color-mix(in srgb, var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B)) 16%, transparent)"
+                  : "color-mix(in srgb, var(--theme-sidebar-bg,#020617) 70%, transparent)",
+                color: hasActive
+                  ? "var(--theme-text-primary,#FFFFFF)"
+                  : "var(--theme-sidebar-text,#D4D4D8)",
                 boxShadow: hasActive
-                  ? "0 0 20px color-mix(in srgb, var(--brand-primary, #C1663B) 24%, transparent)"
+                  ? "var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))"
                   : "none",
               }}
             >
@@ -156,18 +172,27 @@ export default function RoleSidebar() {
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full"
                     style={{
-                      background: "var(--brand-primary, #C1663B)",
+                      background: "var(--brand-primary,#C1663B)",
                       boxShadow:
-                        "0 0 14px color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)",
+                        "0 0 14px color-mix(in srgb, var(--brand-primary,#C1663B) 70%, transparent)",
                     }}
                   />
                 ) : null}
-                <span>{group}</span>
+                <span className="text-[0.65rem] uppercase tracking-[0.16em]">
+                  {group}
+                </span>
               </span>
+
               {open ? (
-                <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
+                <ChevronDown
+                  className="h-3.5 w-3.5"
+                  style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                />
               ) : (
-                <ChevronRight className="h-3.5 w-3.5 text-neutral-500" />
+                <ChevronRight
+                  className="h-3.5 w-3.5"
+                  style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                />
               )}
             </button>
 
@@ -181,26 +206,33 @@ export default function RoleSidebar() {
                     <Link
                       key={t.href}
                       href={t.href}
-                      className={cn(
-                        "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
-                        "border",
-                      )}
+                      className="group flex items-center justify-between gap-2 border px-2.5 py-1.5 transition-colors"
                       style={{
+                        borderRadius: "var(--theme-radius-md,0.5rem)",
                         borderColor: active
-                          ? "color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)"
-                          : "rgba(255,255,255,0.05)",
+                          ? "var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B))"
+                          : "var(--theme-card-border,#334155)",
                         background: active
-                          ? "linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent), rgba(0,0,0,0.38))"
-                          : "linear-gradient(135deg, rgba(0,0,0,0.24), color-mix(in srgb, var(--brand-secondary, #0F172A) 34%, black))",
-                        color: active ? "#ffffff" : "#a3a3a3",
+                          ? "var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B))"
+                          : "color-mix(in srgb, var(--theme-sidebar-bg,#020617) 55%, transparent)",
+                        color: active
+                          ? "var(--theme-sidebar-active-text,#000000)"
+                          : "var(--theme-sidebar-text,#D4D4D8)",
                         boxShadow: active
-                          ? "0 0 25px color-mix(in srgb, var(--brand-primary, #C1663B) 24%, transparent)"
+                          ? "var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))"
                           : "none",
                       }}
                     >
-                      <span className="truncate">{t.title}</span>
+                      <span className="truncate text-[0.8rem]">{t.title}</span>
                       {t.cta ? (
-                        <span className="text-[0.7rem] text-neutral-500 group-hover:text-neutral-200">
+                        <span
+                          className="text-[0.7rem]"
+                          style={{
+                            color: active
+                              ? "var(--theme-sidebar-active-text,#000000)"
+                              : "var(--theme-text-secondary,#94A3B8)",
+                          }}
+                        >
                           {t.cta}
                         </span>
                       ) : null}

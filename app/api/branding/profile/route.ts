@@ -19,37 +19,50 @@ type ProfilePayload = {
   iconAssetId?: string | null;
   wordmarkAssetId?: string | null;
   watermarkAssetId?: string | null;
-
-  surfaceColor?: string | null;
-  surfaceColor2?: string | null;
-  sidebarColor?: string | null;
-  topbarColor?: string | null;
-  pageBackground?: string | null;
-  cardBackground?: string | null;
-  cardBorderColor?: string | null;
-  textPrimary?: string | null;
-  textSecondary?: string | null;
-  buttonPrimaryBg?: string | null;
-  buttonPrimaryText?: string | null;
-  buttonSecondaryBg?: string | null;
-  buttonSecondaryText?: string | null;
-  inputBackground?: string | null;
-  inputBorder?: string | null;
-  inputText?: string | null;
-  radiusScale?: string | null;
-  shadowStyle?: string | null;
-  themeMode?: string | null;
-
   metadata?: Json;
+
+  app_background?: string | null;
+  app_background_secondary?: string | null;
+  sidebar_background?: string | null;
+  sidebar_text?: string | null;
+  sidebar_active_background?: string | null;
+  sidebar_active_text?: string | null;
+  header_background?: string | null;
+  header_text?: string | null;
+  card_background?: string | null;
+  card_border?: string | null;
+  surface_2_background?: string | null;
+  text_primary?: string | null;
+  text_secondary?: string | null;
+  text_muted?: string | null;
+  button_primary_bg?: string | null;
+  button_primary_text?: string | null;
+  button_secondary_bg?: string | null;
+  button_secondary_text?: string | null;
+  input_background?: string | null;
+  input_border?: string | null;
+  input_text?: string | null;
+  radius_scale?: string | null;
+  shadow_style?: string | null;
+  theme_mode?: string | null;
 };
 
-function normalizeEnum(
-  value: unknown,
-  allowed: readonly string[],
-): string | null {
-  const raw = String(value ?? "").trim().toLowerCase();
-  if (!raw) return null;
-  return allowed.includes(raw) ? raw : null;
+function normalizeThemeMode(value: unknown): "light" | "dark" | "system" | null {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "light" || v === "dark" || v === "system") return v;
+  return null;
+}
+
+function normalizeRadiusScale(value: unknown): "none" | "sm" | "md" | "lg" | "xl" | null {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "none" || v === "sm" || v === "md" || v === "lg" || v === "xl") return v;
+  return null;
+}
+
+function normalizeShadowStyle(value: unknown): "none" | "soft" | "medium" | "strong" | null {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "none" || v === "soft" || v === "medium" || v === "strong") return v;
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -111,29 +124,33 @@ export async function POST(req: Request) {
     icon_asset_id: body.iconAssetId?.trim() || null,
     wordmark_asset_id: body.wordmarkAssetId?.trim() || null,
     watermark_asset_id: body.watermarkAssetId?.trim() || null,
-
-    surface_color: normalizeHexColor(body.surfaceColor),
-    surface_color_2: normalizeHexColor(body.surfaceColor2),
-    sidebar_color: normalizeHexColor(body.sidebarColor),
-    topbar_color: normalizeHexColor(body.topbarColor),
-    page_background: normalizeHexColor(body.pageBackground),
-    card_background: normalizeHexColor(body.cardBackground),
-    card_border_color: normalizeHexColor(body.cardBorderColor),
-    text_primary: normalizeHexColor(body.textPrimary),
-    text_secondary: normalizeHexColor(body.textSecondary),
-    button_primary_bg: normalizeHexColor(body.buttonPrimaryBg),
-    button_primary_text: normalizeHexColor(body.buttonPrimaryText),
-    button_secondary_bg: normalizeHexColor(body.buttonSecondaryBg),
-    button_secondary_text: normalizeHexColor(body.buttonSecondaryText),
-    input_background: normalizeHexColor(body.inputBackground),
-    input_border: normalizeHexColor(body.inputBorder),
-    input_text: normalizeHexColor(body.inputText),
-    radius_scale: normalizeEnum(body.radiusScale, ["none", "sm", "md", "lg", "xl"]),
-    shadow_style: normalizeEnum(body.shadowStyle, ["none", "soft", "medium", "strong"]),
-    theme_mode: normalizeEnum(body.themeMode, ["dark", "light", "custom"]),
-
     updated_by: auth.userId,
     metadata: body.metadata ?? {},
+
+    app_background: normalizeHexColor(body.app_background),
+    app_background_secondary: normalizeHexColor(body.app_background_secondary),
+    sidebar_background: normalizeHexColor(body.sidebar_background),
+    sidebar_text: normalizeHexColor(body.sidebar_text),
+    sidebar_active_background: normalizeHexColor(body.sidebar_active_background),
+    sidebar_active_text: normalizeHexColor(body.sidebar_active_text),
+    header_background: normalizeHexColor(body.header_background),
+    header_text: normalizeHexColor(body.header_text),
+    card_background: normalizeHexColor(body.card_background),
+    card_border: normalizeHexColor(body.card_border),
+    surface_2_background: normalizeHexColor(body.surface_2_background),
+    text_primary: normalizeHexColor(body.text_primary),
+    text_secondary: normalizeHexColor(body.text_secondary),
+    text_muted: normalizeHexColor(body.text_muted),
+    button_primary_bg: normalizeHexColor(body.button_primary_bg),
+    button_primary_text: normalizeHexColor(body.button_primary_text),
+    button_secondary_bg: normalizeHexColor(body.button_secondary_bg),
+    button_secondary_text: normalizeHexColor(body.button_secondary_text),
+    input_background: normalizeHexColor(body.input_background),
+    input_border: normalizeHexColor(body.input_border),
+    input_text: normalizeHexColor(body.input_text),
+    radius_scale: normalizeRadiusScale(body.radius_scale),
+    shadow_style: normalizeShadowStyle(body.shadow_style),
+    theme_mode: normalizeThemeMode(body.theme_mode),
   };
 
   const { data, error } = await auth.supabase
