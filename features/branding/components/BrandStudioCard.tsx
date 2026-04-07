@@ -65,16 +65,26 @@ type BrandAssetsResponse = {
   assets?: BrandAsset[];
 };
 
+type ThemeMode = "dark" | "light" | "system";
+type RadiusScale = "none" | "sm" | "md" | "lg" | "xl";
+type ShadowStyle = "none" | "soft" | "medium" | "strong";
+type StylePreset =
+  | "industrial-dark"
+  | "clean-oem"
+  | "performance"
+  | "fleet-utility"
+  | "modern-tech";
+
 type UserPreferenceResponse = {
   ok?: boolean;
   preferences?: {
-    theme_mode?: string | null;
-    radius_scale?: string | null;
-    shadow_style?: string | null;
+    theme_mode?: ThemeMode | null;
+    radius_scale?: RadiusScale | null;
+    shadow_style?: ShadowStyle | null;
   } | null;
 };
 
-const STYLE_PRESETS = [
+const STYLE_PRESETS: ReadonlyArray<{ value: StylePreset; label: string }> = [
   { value: "industrial-dark", label: "Industrial Dark" },
   { value: "clean-oem", label: "Clean OEM" },
   { value: "performance", label: "Performance" },
@@ -82,13 +92,13 @@ const STYLE_PRESETS = [
   { value: "modern-tech", label: "Modern Tech" },
 ];
 
-const THEME_MODES = [
+const THEME_MODES: ReadonlyArray<{ value: ThemeMode; label: string }> = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
   { value: "system", label: "System" },
 ];
 
-const RADIUS_SCALES = [
+const RADIUS_SCALES: ReadonlyArray<{ value: RadiusScale; label: string }> = [
   { value: "none", label: "None" },
   { value: "sm", label: "Small" },
   { value: "md", label: "Medium" },
@@ -96,7 +106,7 @@ const RADIUS_SCALES = [
   { value: "xl", label: "XL" },
 ];
 
-const SHADOW_STYLES = [
+const SHADOW_STYLES: ReadonlyArray<{ value: ShadowStyle; label: string }> = [
   { value: "none", label: "None" },
   { value: "soft", label: "Soft" },
   { value: "medium", label: "Medium" },
@@ -114,13 +124,15 @@ const PROMPT_PRESETS = [
   },
   {
     label: "Performance",
-    prompt: "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
+    prompt:
+      "Aggressive performance shop logo with speed-inspired shapes and motorsport energy",
   },
   {
     label: "Fleet",
-    prompt: "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
+    prompt:
+      "Heavy-duty fleet service logo with a dependable commercial look and strong geometry",
   },
-];
+] as const;
 
 const FILTERS = [
   "all",
@@ -133,12 +145,56 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number];
 
+const DEFAULT_THEME = {
+  primaryColor: "#C97A3D",
+  secondaryColor: "#0F172A",
+  accentColor: "#E2A164",
+  stylePreset: "industrial-dark" as StylePreset,
+
+  appBackground: "#050910",
+  appBackgroundSecondary: "#020617",
+  sidebarBackground: "#020617",
+  sidebarText: "#D4D4D8",
+  sidebarActiveBackground: "#C97A3D",
+  sidebarActiveText: "#000000",
+  headerBackground: "#020617",
+  headerText: "#FFFFFF",
+  cardBackground: "#111827",
+  cardBorder: "#334155",
+  surface2Background: "#0B1220",
+  textPrimary: "#FFFFFF",
+  textSecondary: "#94A3B8",
+  textMuted: "#64748B",
+  buttonPrimaryBg: "#C97A3D",
+  buttonPrimaryText: "#000000",
+  buttonSecondaryBg: "#1E293B",
+  buttonSecondaryText: "#FFFFFF",
+  inputBackground: "#0B1220",
+  inputBorder: "#334155",
+  inputText: "#FFFFFF",
+
+  themeMode: "dark" as ThemeMode,
+  radiusScale: "md" as RadiusScale,
+  shadowStyle: "medium" as ShadowStyle,
+};
+
 function notifyBrandRefresh() {
   window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
 }
 
 function isGeneratedAsset(asset: BrandAsset): boolean {
-  return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
+  return (
+    Boolean(asset.metadata?.generated) || asset.generation_provider === "openai"
+  );
+}
+
+function randomHexColor(): string {
+  const value = Math.floor(Math.random() * 0xffffff);
+  return `#${value.toString(16).padStart(6, "0").toUpperCase()}`;
+}
+
+function randomFromList<T>(items: readonly T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 function ColorField({
@@ -169,47 +225,70 @@ function ColorField({
 }
 
 export default function BrandStudioCard() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [savingPrefs, setSavingPrefs] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [savingPrefs, setSavingPrefs] = useState<boolean>(false);
+  const [restoringDefaults, setRestoringDefaults] = useState<boolean>(false);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [generating, setGenerating] = useState<boolean>(false);
 
-  const [primaryColor, setPrimaryColor] = useState("#C97A3D");
-  const [secondaryColor, setSecondaryColor] = useState("#0F172A");
-  const [accentColor, setAccentColor] = useState("#E2A164");
-  const [stylePreset, setStylePreset] = useState("industrial-dark");
+  const [primaryColor, setPrimaryColor] = useState<string>(DEFAULT_THEME.primaryColor);
+  const [secondaryColor, setSecondaryColor] = useState<string>(DEFAULT_THEME.secondaryColor);
+  const [accentColor, setAccentColor] = useState<string>(DEFAULT_THEME.accentColor);
+  const [stylePreset, setStylePreset] = useState<StylePreset>(DEFAULT_THEME.stylePreset);
 
-  const [appBackground, setAppBackground] = useState("#050910");
-  const [appBackgroundSecondary, setAppBackgroundSecondary] = useState("#020617");
-  const [sidebarBackground, setSidebarBackground] = useState("#020617");
-  const [sidebarText, setSidebarText] = useState("#D4D4D8");
-  const [sidebarActiveBackground, setSidebarActiveBackground] = useState("#C97A3D");
-  const [sidebarActiveText, setSidebarActiveText] = useState("#000000");
-  const [headerBackground, setHeaderBackground] = useState("#020617");
-  const [headerText, setHeaderText] = useState("#FFFFFF");
-  const [cardBackground, setCardBackground] = useState("#111827");
-  const [cardBorder, setCardBorder] = useState("#334155");
-  const [surface2Background, setSurface2Background] = useState("#0B1220");
-  const [textPrimary, setTextPrimary] = useState("#FFFFFF");
-  const [textSecondary, setTextSecondary] = useState("#94A3B8");
-  const [textMuted, setTextMuted] = useState("#64748B");
-  const [buttonPrimaryBg, setButtonPrimaryBg] = useState("#C97A3D");
-  const [buttonPrimaryText, setButtonPrimaryText] = useState("#000000");
-  const [buttonSecondaryBg, setButtonSecondaryBg] = useState("#1E293B");
-  const [buttonSecondaryText, setButtonSecondaryText] = useState("#FFFFFF");
-  const [inputBackground, setInputBackground] = useState("#0B1220");
-  const [inputBorder, setInputBorder] = useState("#334155");
-  const [inputText, setInputText] = useState("#FFFFFF");
+  const [appBackground, setAppBackground] = useState<string>(DEFAULT_THEME.appBackground);
+  const [appBackgroundSecondary, setAppBackgroundSecondary] = useState<string>(
+    DEFAULT_THEME.appBackgroundSecondary,
+  );
+  const [sidebarBackground, setSidebarBackground] = useState<string>(
+    DEFAULT_THEME.sidebarBackground,
+  );
+  const [sidebarText, setSidebarText] = useState<string>(DEFAULT_THEME.sidebarText);
+  const [sidebarActiveBackground, setSidebarActiveBackground] = useState<string>(
+    DEFAULT_THEME.sidebarActiveBackground,
+  );
+  const [sidebarActiveText, setSidebarActiveText] = useState<string>(
+    DEFAULT_THEME.sidebarActiveText,
+  );
+  const [headerBackground, setHeaderBackground] = useState<string>(
+    DEFAULT_THEME.headerBackground,
+  );
+  const [headerText, setHeaderText] = useState<string>(DEFAULT_THEME.headerText);
+  const [cardBackground, setCardBackground] = useState<string>(DEFAULT_THEME.cardBackground);
+  const [cardBorder, setCardBorder] = useState<string>(DEFAULT_THEME.cardBorder);
+  const [surface2Background, setSurface2Background] = useState<string>(
+    DEFAULT_THEME.surface2Background,
+  );
+  const [textPrimary, setTextPrimary] = useState<string>(DEFAULT_THEME.textPrimary);
+  const [textSecondary, setTextSecondary] = useState<string>(DEFAULT_THEME.textSecondary);
+  const [textMuted, setTextMuted] = useState<string>(DEFAULT_THEME.textMuted);
+  const [buttonPrimaryBg, setButtonPrimaryBg] = useState<string>(
+    DEFAULT_THEME.buttonPrimaryBg,
+  );
+  const [buttonPrimaryText, setButtonPrimaryText] = useState<string>(
+    DEFAULT_THEME.buttonPrimaryText,
+  );
+  const [buttonSecondaryBg, setButtonSecondaryBg] = useState<string>(
+    DEFAULT_THEME.buttonSecondaryBg,
+  );
+  const [buttonSecondaryText, setButtonSecondaryText] = useState<string>(
+    DEFAULT_THEME.buttonSecondaryText,
+  );
+  const [inputBackground, setInputBackground] = useState<string>(
+    DEFAULT_THEME.inputBackground,
+  );
+  const [inputBorder, setInputBorder] = useState<string>(DEFAULT_THEME.inputBorder);
+  const [inputText, setInputText] = useState<string>(DEFAULT_THEME.inputText);
 
-  const [themeMode, setThemeMode] = useState("dark");
-  const [radiusScale, setRadiusScale] = useState("md");
-  const [shadowStyle, setShadowStyle] = useState("medium");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME.themeMode);
+  const [radiusScale, setRadiusScale] = useState<RadiusScale>(DEFAULT_THEME.radiusScale);
+  const [shadowStyle, setShadowStyle] = useState<ShadowStyle>(DEFAULT_THEME.shadowStyle);
 
-  const [logoPrompt, setLogoPrompt] = useState(
+  const [logoPrompt, setLogoPrompt] = useState<string>(
     "Bold industrial repair shop logo with a strong shield emblem",
   );
-  const [transparentBackground, setTransparentBackground] = useState(true);
+  const [transparentBackground, setTransparentBackground] = useState<boolean>(true);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [assets, setAssets] = useState<BrandAsset[]>([]);
 
@@ -234,6 +313,90 @@ export default function BrandStudioCard() {
     });
   }, [assets, filter]);
 
+  function applyDefaultThemeToState() {
+    setPrimaryColor(DEFAULT_THEME.primaryColor);
+    setSecondaryColor(DEFAULT_THEME.secondaryColor);
+    setAccentColor(DEFAULT_THEME.accentColor);
+    setStylePreset(DEFAULT_THEME.stylePreset);
+
+    setAppBackground(DEFAULT_THEME.appBackground);
+    setAppBackgroundSecondary(DEFAULT_THEME.appBackgroundSecondary);
+    setSidebarBackground(DEFAULT_THEME.sidebarBackground);
+    setSidebarText(DEFAULT_THEME.sidebarText);
+    setSidebarActiveBackground(DEFAULT_THEME.sidebarActiveBackground);
+    setSidebarActiveText(DEFAULT_THEME.sidebarActiveText);
+    setHeaderBackground(DEFAULT_THEME.headerBackground);
+    setHeaderText(DEFAULT_THEME.headerText);
+    setCardBackground(DEFAULT_THEME.cardBackground);
+    setCardBorder(DEFAULT_THEME.cardBorder);
+    setSurface2Background(DEFAULT_THEME.surface2Background);
+    setTextPrimary(DEFAULT_THEME.textPrimary);
+    setTextSecondary(DEFAULT_THEME.textSecondary);
+    setTextMuted(DEFAULT_THEME.textMuted);
+    setButtonPrimaryBg(DEFAULT_THEME.buttonPrimaryBg);
+    setButtonPrimaryText(DEFAULT_THEME.buttonPrimaryText);
+    setButtonSecondaryBg(DEFAULT_THEME.buttonSecondaryBg);
+    setButtonSecondaryText(DEFAULT_THEME.buttonSecondaryText);
+    setInputBackground(DEFAULT_THEME.inputBackground);
+    setInputBorder(DEFAULT_THEME.inputBorder);
+    setInputText(DEFAULT_THEME.inputText);
+
+    setThemeMode(DEFAULT_THEME.themeMode);
+    setRadiusScale(DEFAULT_THEME.radiusScale);
+    setShadowStyle(DEFAULT_THEME.shadowStyle);
+  }
+
+  function randomizeTheme() {
+    const nextPrimary = randomHexColor();
+    const nextAccent = randomHexColor();
+    const nextSecondary = randomHexColor();
+    const nextAppBg = randomHexColor();
+    const nextAppBgSecondary = randomHexColor();
+    const nextSidebarBg = randomHexColor();
+    const nextHeaderBg = randomHexColor();
+    const nextCardBg = randomHexColor();
+    const nextSurface2 = randomHexColor();
+    const nextBorder = randomHexColor();
+    const nextTextPrimary = randomHexColor();
+    const nextTextSecondary = randomHexColor();
+    const nextTextMuted = randomHexColor();
+    const nextButtonSecondaryBg = randomHexColor();
+    const nextInputBg = randomHexColor();
+
+    setPrimaryColor(nextPrimary);
+    setAccentColor(nextAccent);
+    setSecondaryColor(nextSecondary);
+    setStylePreset(randomFromList(STYLE_PRESETS).value);
+
+    setAppBackground(nextAppBg);
+    setAppBackgroundSecondary(nextAppBgSecondary);
+    setSidebarBackground(nextSidebarBg);
+    setSidebarText(nextTextPrimary);
+    setSidebarActiveBackground(nextPrimary);
+    setSidebarActiveText(randomHexColor());
+    setHeaderBackground(nextHeaderBg);
+    setHeaderText(nextTextPrimary);
+    setCardBackground(nextCardBg);
+    setCardBorder(nextBorder);
+    setSurface2Background(nextSurface2);
+    setTextPrimary(nextTextPrimary);
+    setTextSecondary(nextTextSecondary);
+    setTextMuted(nextTextMuted);
+    setButtonPrimaryBg(nextPrimary);
+    setButtonPrimaryText(randomHexColor());
+    setButtonSecondaryBg(nextButtonSecondaryBg);
+    setButtonSecondaryText(randomHexColor());
+    setInputBackground(nextInputBg);
+    setInputBorder(nextBorder);
+    setInputText(nextTextPrimary);
+
+    setThemeMode(randomFromList(THEME_MODES).value);
+    setRadiusScale(randomFromList(RADIUS_SCALES).value);
+    setShadowStyle(randomFromList(SHADOW_STYLES).value);
+
+    toast.success("Random theme generated");
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -249,45 +412,73 @@ export default function BrandStudioCard() {
 
       if (profileJson?.ok && profileJson.profile) {
         const p = profileJson.profile;
-        setPrimaryColor(p.primary_color || "#C97A3D");
-        setSecondaryColor(p.secondary_color || "#0F172A");
-        setAccentColor(p.accent_color || "#E2A164");
-        setStylePreset(p.style_preset || "industrial-dark");
+        setPrimaryColor(p.primary_color || DEFAULT_THEME.primaryColor);
+        setSecondaryColor(p.secondary_color || DEFAULT_THEME.secondaryColor);
+        setAccentColor(p.accent_color || DEFAULT_THEME.accentColor);
+        setStylePreset((p.style_preset as StylePreset | null) || DEFAULT_THEME.stylePreset);
 
-        setAppBackground(p.app_background || "#050910");
-        setAppBackgroundSecondary(p.app_background_secondary || "#020617");
-        setSidebarBackground(p.sidebar_background || "#020617");
-        setSidebarText(p.sidebar_text || "#D4D4D8");
-        setSidebarActiveBackground(p.sidebar_active_background || p.primary_color || "#C97A3D");
-        setSidebarActiveText(p.sidebar_active_text || "#000000");
-        setHeaderBackground(p.header_background || "#020617");
-        setHeaderText(p.header_text || "#FFFFFF");
-        setCardBackground(p.card_background || "#111827");
-        setCardBorder(p.card_border || "#334155");
-        setSurface2Background(p.surface_2_background || "#0B1220");
-        setTextPrimary(p.text_primary || "#FFFFFF");
-        setTextSecondary(p.text_secondary || "#94A3B8");
-        setTextMuted(p.text_muted || "#64748B");
-        setButtonPrimaryBg(p.button_primary_bg || p.primary_color || "#C97A3D");
-        setButtonPrimaryText(p.button_primary_text || "#000000");
-        setButtonSecondaryBg(p.button_secondary_bg || "#1E293B");
-        setButtonSecondaryText(p.button_secondary_text || "#FFFFFF");
-        setInputBackground(p.input_background || "#0B1220");
-        setInputBorder(p.input_border || "#334155");
-        setInputText(p.input_text || "#FFFFFF");
+        setAppBackground(p.app_background || DEFAULT_THEME.appBackground);
+        setAppBackgroundSecondary(
+          p.app_background_secondary || DEFAULT_THEME.appBackgroundSecondary,
+        );
+        setSidebarBackground(p.sidebar_background || DEFAULT_THEME.sidebarBackground);
+        setSidebarText(p.sidebar_text || DEFAULT_THEME.sidebarText);
+        setSidebarActiveBackground(
+          p.sidebar_active_background ||
+            p.primary_color ||
+            DEFAULT_THEME.sidebarActiveBackground,
+        );
+        setSidebarActiveText(
+          p.sidebar_active_text || DEFAULT_THEME.sidebarActiveText,
+        );
+        setHeaderBackground(p.header_background || DEFAULT_THEME.headerBackground);
+        setHeaderText(p.header_text || DEFAULT_THEME.headerText);
+        setCardBackground(p.card_background || DEFAULT_THEME.cardBackground);
+        setCardBorder(p.card_border || DEFAULT_THEME.cardBorder);
+        setSurface2Background(
+          p.surface_2_background || DEFAULT_THEME.surface2Background,
+        );
+        setTextPrimary(p.text_primary || DEFAULT_THEME.textPrimary);
+        setTextSecondary(p.text_secondary || DEFAULT_THEME.textSecondary);
+        setTextMuted(p.text_muted || DEFAULT_THEME.textMuted);
+        setButtonPrimaryBg(
+          p.button_primary_bg ||
+            p.primary_color ||
+            DEFAULT_THEME.buttonPrimaryBg,
+        );
+        setButtonPrimaryText(
+          p.button_primary_text || DEFAULT_THEME.buttonPrimaryText,
+        );
+        setButtonSecondaryBg(
+          p.button_secondary_bg || DEFAULT_THEME.buttonSecondaryBg,
+        );
+        setButtonSecondaryText(
+          p.button_secondary_text || DEFAULT_THEME.buttonSecondaryText,
+        );
+        setInputBackground(
+          p.input_background || DEFAULT_THEME.inputBackground,
+        );
+        setInputBorder(p.input_border || DEFAULT_THEME.inputBorder);
+        setInputText(p.input_text || DEFAULT_THEME.inputText);
       }
 
       if (prefJson?.ok && prefJson.preferences) {
-        setThemeMode(prefJson.preferences.theme_mode || "dark");
-        setRadiusScale(prefJson.preferences.radius_scale || "md");
-        setShadowStyle(prefJson.preferences.shadow_style || "medium");
+        setThemeMode(prefJson.preferences.theme_mode || DEFAULT_THEME.themeMode);
+        setRadiusScale(
+          prefJson.preferences.radius_scale || DEFAULT_THEME.radiusScale,
+        );
+        setShadowStyle(
+          prefJson.preferences.shadow_style || DEFAULT_THEME.shadowStyle,
+        );
       }
 
       if (assetsJson?.ok && Array.isArray(assetsJson.assets)) {
         setAssets(assetsJson.assets);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load branding");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load branding",
+      );
     } finally {
       setLoading(false);
     }
@@ -308,7 +499,6 @@ export default function BrandStudioCard() {
           secondaryColor,
           accentColor,
           stylePreset,
-          metadata: {},
           app_background: appBackground,
           app_background_secondary: appBackgroundSecondary,
           sidebar_background: sidebarBackground,
@@ -330,16 +520,25 @@ export default function BrandStudioCard() {
           input_background: inputBackground,
           input_border: inputBorder,
           input_text: inputText,
+          metadata: {},
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save branding");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save branding");
+      }
 
       toast.success("Brand profile updated");
       notifyBrandRefresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save branding");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save branding",
+      );
     } finally {
       setSaving(false);
     }
@@ -358,7 +557,11 @@ export default function BrandStudioCard() {
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Failed to save theme preferences");
       }
@@ -366,9 +569,44 @@ export default function BrandStudioCard() {
       toast.success("Theme preferences updated");
       notifyBrandRefresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save theme preferences");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to save theme preferences",
+      );
     } finally {
       setSavingPrefs(false);
+    }
+  }
+
+  async function restoreUserDefaults() {
+    setRestoringDefaults(true);
+    try {
+      const res = await fetch("/api/branding/user-preferences/reset", {
+        method: "POST",
+      });
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to restore defaults");
+      }
+
+      setThemeMode(DEFAULT_THEME.themeMode);
+      setRadiusScale(DEFAULT_THEME.radiusScale);
+      setShadowStyle(DEFAULT_THEME.shadowStyle);
+
+      toast.success("User theme preferences restored");
+      notifyBrandRefresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to restore defaults",
+      );
+    } finally {
+      setRestoringDefaults(false);
     }
   }
 
@@ -385,14 +623,22 @@ export default function BrandStudioCard() {
         body: form,
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to upload logo");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to upload logo");
+      }
 
       toast.success("Logo uploaded");
       await load();
       notifyBrandRefresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to upload logo");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload logo",
+      );
     } finally {
       setUploading(false);
     }
@@ -400,15 +646,25 @@ export default function BrandStudioCard() {
 
   async function activateLogo(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/activate`, { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to activate logo");
+      const res = await fetch(`/api/branding/assets/${assetId}/activate`, {
+        method: "POST",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to activate logo");
+      }
 
       toast.success("Logo applied");
       await load();
       notifyBrandRefresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to activate logo");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to activate logo",
+      );
     }
   }
 
@@ -419,11 +675,20 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isFavorite }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update favorite");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to update favorite");
+      }
+
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update favorite");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update favorite",
+      );
     }
   }
 
@@ -434,24 +699,44 @@ export default function BrandStudioCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archived }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update archive");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to update archive");
+      }
+
       toast.success(archived ? "Logo archived" : "Logo restored");
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update archive");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update archive",
+      );
     }
   }
 
   async function deleteAsset(assetId: string) {
     try {
-      const res = await fetch(`/api/branding/assets/${assetId}/delete`, { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to delete logo");
+      const res = await fetch(`/api/branding/assets/${assetId}/delete`, {
+        method: "POST",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to delete logo");
+      }
+
       toast.success("Logo deleted");
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete logo");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete logo",
+      );
     }
   }
 
@@ -475,13 +760,25 @@ export default function BrandStudioCard() {
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to generate logos");
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
 
-      toast.success(basedOnAssetId ? "Generated more like this" : "Logo concepts generated");
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to generate logos");
+      }
+
+      toast.success(
+        basedOnAssetId
+          ? "Generated more like this"
+          : "Logo concepts generated",
+      );
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to generate logos");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to generate logos",
+      );
     } finally {
       setGenerating(false);
     }
@@ -494,7 +791,9 @@ export default function BrandStudioCard() {
           <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--accent-copper-light)]">
             Brand Studio
           </div>
-          <h2 className="mt-1 text-2xl font-semibold text-white">Customize your shop identity</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-white">
+            Customize your shop identity
+          </h2>
           <p className="mt-1 text-sm text-neutral-400">
             Full shop-level visual control plus per-user theme preferences.
           </p>
@@ -512,7 +811,9 @@ export default function BrandStudioCard() {
             background: `linear-gradient(135deg, ${appBackground}, ${appBackgroundSecondary})`,
           }}
         >
-          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">Preview surface</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+            Preview surface
+          </div>
           <div
             className="mt-4 rounded-2xl border p-4"
             style={{
@@ -554,11 +855,15 @@ export default function BrandStudioCard() {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 lg:col-span-2">
-          <div className="mb-3 text-sm font-medium text-white">Active logo preview</div>
+          <div className="mb-3 text-sm font-medium text-white">
+            Active logo preview
+          </div>
 
           <div
             className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-white/10 p-6"
-            style={{ backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${appBackgroundSecondary} 100%)` }}
+            style={{
+              backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${appBackgroundSecondary} 100%)`,
+            }}
           >
             {activeLogo?.file_url ? (
               <Image
@@ -601,7 +906,22 @@ export default function BrandStudioCard() {
       </div>
 
       <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-        <div className="mb-3 text-sm font-medium text-white">Generate logo concepts</div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm font-medium text-white">
+            Generate logo concepts
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setLogoPrompt(randomFromList(PROMPT_PRESETS).prompt);
+              setStylePreset(randomFromList(STYLE_PRESETS).value);
+              toast.success("Random logo prompt selected");
+            }}
+          >
+            Random prompt
+          </Button>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
           <div className="space-y-3">
@@ -637,7 +957,11 @@ export default function BrandStudioCard() {
           </div>
 
           <div className="flex items-end">
-            <Button type="button" onClick={() => void generateLogos()} disabled={generating}>
+            <Button
+              type="button"
+              onClick={() => void generateLogos()}
+              disabled={generating}
+            >
               {generating ? "Generating…" : "Generate 3 logos"}
             </Button>
           </div>
@@ -646,7 +970,20 @@ export default function BrandStudioCard() {
 
       <div className="grid gap-5">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">User theme preferences</div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-medium text-white">
+              User theme preferences
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void restoreUserDefaults()}
+              disabled={restoringDefaults || savingPrefs}
+            >
+              {restoringDefaults ? "Restoring…" : "Restore defaults"}
+            </Button>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
@@ -654,7 +991,7 @@ export default function BrandStudioCard() {
               </label>
               <select
                 value={themeMode}
-                onChange={(e) => setThemeMode(e.target.value)}
+                onChange={(e) => setThemeMode(e.target.value as ThemeMode)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
                 {THEME_MODES.map((item) => (
@@ -671,7 +1008,7 @@ export default function BrandStudioCard() {
               </label>
               <select
                 value={radiusScale}
-                onChange={(e) => setRadiusScale(e.target.value)}
+                onChange={(e) => setRadiusScale(e.target.value as RadiusScale)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
                 {RADIUS_SCALES.map((item) => (
@@ -688,7 +1025,7 @@ export default function BrandStudioCard() {
               </label>
               <select
                 value={shadowStyle}
-                onChange={(e) => setShadowStyle(e.target.value)}
+                onChange={(e) => setShadowStyle(e.target.value as ShadowStyle)}
                 className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
               >
                 {SHADOW_STYLES.map((item) => (
@@ -700,19 +1037,50 @@ export default function BrandStudioCard() {
             </div>
           </div>
 
-          <div className="mt-5">
-            <Button type="button" onClick={() => void savePreferences()} disabled={savingPrefs}>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button
+              type="button"
+              onClick={() => void savePreferences()}
+              disabled={savingPrefs}
+            >
               {savingPrefs ? "Saving…" : "Save user preferences"}
             </Button>
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">Brand colors</div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-medium text-white">Brand colors</div>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" variant="outline" onClick={randomizeTheme}>
+                Randomize theme
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={applyDefaultThemeToState}
+              >
+                Reset form defaults
+              </Button>
+            </div>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ColorField label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
-            <ColorField label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
-            <ColorField label="Accent color" value={accentColor} onChange={setAccentColor} />
+            <ColorField
+              label="Primary color"
+              value={primaryColor}
+              onChange={setPrimaryColor}
+            />
+            <ColorField
+              label="Secondary color"
+              value={secondaryColor}
+              onChange={setSecondaryColor}
+            />
+            <ColorField
+              label="Accent color"
+              value={accentColor}
+              onChange={setAccentColor}
+            />
           </div>
 
           <div className="mt-4">
@@ -721,7 +1089,7 @@ export default function BrandStudioCard() {
             </label>
             <select
               value={stylePreset}
-              onChange={(e) => setStylePreset(e.target.value)}
+              onChange={(e) => setStylePreset(e.target.value as StylePreset)}
               className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
             >
               {STYLE_PRESETS.map((preset) => (
@@ -734,7 +1102,9 @@ export default function BrandStudioCard() {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">Surface colors</div>
+          <div className="mb-4 text-sm font-medium text-white">
+            Surface colors
+          </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <ColorField label="App background" value={appBackground} onChange={setAppBackground} />
             <ColorField
@@ -758,9 +1128,17 @@ export default function BrandStudioCard() {
               value={sidebarActiveText}
               onChange={setSidebarActiveText}
             />
-            <ColorField label="Header background" value={headerBackground} onChange={setHeaderBackground} />
+            <ColorField
+              label="Header background"
+              value={headerBackground}
+              onChange={setHeaderBackground}
+            />
             <ColorField label="Header text" value={headerText} onChange={setHeaderText} />
-            <ColorField label="Card background" value={cardBackground} onChange={setCardBackground} />
+            <ColorField
+              label="Card background"
+              value={cardBackground}
+              onChange={setCardBackground}
+            />
             <ColorField label="Card border" value={cardBorder} onChange={setCardBorder} />
             <ColorField
               label="Secondary surface"
@@ -771,7 +1149,9 @@ export default function BrandStudioCard() {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">Text, buttons, and inputs</div>
+          <div className="mb-4 text-sm font-medium text-white">
+            Text, buttons, and inputs
+          </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <ColorField label="Text primary" value={textPrimary} onChange={setTextPrimary} />
             <ColorField label="Text secondary" value={textSecondary} onChange={setTextSecondary} />
@@ -796,7 +1176,11 @@ export default function BrandStudioCard() {
               value={buttonSecondaryText}
               onChange={setButtonSecondaryText}
             />
-            <ColorField label="Input background" value={inputBackground} onChange={setInputBackground} />
+            <ColorField
+              label="Input background"
+              value={inputBackground}
+              onChange={setInputBackground}
+            />
             <ColorField label="Input border" value={inputBorder} onChange={setInputBorder} />
             <ColorField label="Input text" value={inputText} onChange={setInputText} />
           </div>

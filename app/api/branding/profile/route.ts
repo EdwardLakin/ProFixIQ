@@ -42,9 +42,10 @@ type ProfilePayload = {
   input_background?: string | null;
   input_border?: string | null;
   input_text?: string | null;
+
+  theme_mode?: string | null;
   radius_scale?: string | null;
   shadow_style?: string | null;
-  theme_mode?: string | null;
 };
 
 function normalizeThemeMode(value: unknown): "light" | "dark" | "system" | null {
@@ -148,9 +149,10 @@ export async function POST(req: Request) {
     input_background: normalizeHexColor(body.input_background),
     input_border: normalizeHexColor(body.input_border),
     input_text: normalizeHexColor(body.input_text),
+
+    theme_mode: normalizeThemeMode(body.theme_mode),
     radius_scale: normalizeRadiusScale(body.radius_scale),
     shadow_style: normalizeShadowStyle(body.shadow_style),
-    theme_mode: normalizeThemeMode(body.theme_mode),
   };
 
   const { data, error } = await auth.supabase
