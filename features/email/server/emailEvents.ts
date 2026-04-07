@@ -33,6 +33,9 @@ export async function sendQuoteReadyEmail(input: {
   quoteTotal?: string | number | null;
   vehicleLabel?: string | null;
   shopName?: string | null;
+  brandLogoUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSecondaryColor?: string | null;
   year?: number;
   createdBy?: string | null;
 }) {
@@ -50,6 +53,9 @@ export async function sendQuoteReadyEmail(input: {
       quote_total: input.quoteTotal ?? "",
       vehicle_label: input.vehicleLabel ?? "",
       shop_name: input.shopName ?? "",
+      brand_logo_url: input.brandLogoUrl ?? "",
+      brand_primary_color: input.brandPrimaryColor ?? "",
+      brand_secondary_color: input.brandSecondaryColor ?? "",
       year: input.year ?? new Date().getFullYear(),
     },
   });
@@ -65,6 +71,9 @@ export async function sendInvoiceReadyEmail(input: {
   partsTotal?: number | null;
   customerName?: string | null;
   shopName?: string | null;
+  brandLogoUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSecondaryColor?: string | null;
   year?: number;
   createdBy?: string | null;
 }) {
@@ -87,6 +96,9 @@ export async function sendInvoiceReadyEmail(input: {
       partsTotal: input.partsTotal ?? "",
       customerName: input.customerName ?? "",
       shopName: input.shopName ?? "",
+      brand_logo_url: input.brandLogoUrl ?? "",
+      brand_primary_color: input.brandPrimaryColor ?? "",
+      brand_secondary_color: input.brandSecondaryColor ?? "",
       year: input.year ?? new Date().getFullYear(),
     },
   });

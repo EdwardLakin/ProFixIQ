@@ -1,12 +1,13 @@
-// app/portal/PortalShell.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PortalNotificationsBell from "@/features/portal/components/PortalNotificationsBell";
+import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 
 type DB = Database;
 
@@ -30,8 +31,6 @@ const NAV: NavItem[] = [
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
-
-const COPPER = "#C57A4A";
 
 function isPortalAuth(pathname: string) {
   return pathname === "/portal/auth" || pathname.startsWith("/portal/auth/");
@@ -75,7 +74,7 @@ function NavPill({
           "h-2 w-2 rounded-full transition-opacity",
           active ? "opacity-100" : "opacity-0 group-hover:opacity-70",
         )}
-        style={{ backgroundColor: COPPER }}
+        style={{ backgroundColor: "var(--brand-primary, #C57A4A)" }}
       />
     </Link>
   );
@@ -93,13 +92,14 @@ export default function PortalShell({
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClientComponentClient<DB>();
+  const { data: brand } = useActiveBrand();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const hideNav =
-    isPortalAuth(pathname) || pathname.startsWith("/portal/shop/");
+  const hideNav = isPortalAuth(pathname) || pathname.startsWith("/portal/shop/");
+  const brandLogoUrl = brand?.logoUrl ?? null;
 
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);
@@ -122,30 +122,44 @@ export default function PortalShell({
     }
   };
 
-  const ShellCard =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
-
-  // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
-      <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+      <div className="relative min-h-dvh app-metal-bg overflow-hidden text-white">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.18),transparent_60%)]" />
+          <div
+            className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #C57A4A) 20%, transparent), transparent 60%)",
+            }}
+          />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_68%)]" />
         </div>
 
-        {/* ✅ Removed `relative` to satisfy cssConflict lint */}
         <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
-          <div className="flex flex-col leading-none">
-            <span
-              className="font-blackops text-xs tracking-[0.22em]"
-              style={{ color: COPPER }}
-            >
-              PROFIXIQ
-            </span>
-            <span className="text-[0.65rem] text-neutral-300">
-              Customer Portal
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-14 items-center justify-center">
+              {brandLogoUrl ? (
+                <Image
+                  src={brandLogoUrl}
+                  alt="Shop logo"
+                  width={56}
+                  height={36}
+                  className="max-h-8 w-auto object-contain"
+                  unoptimized
+                />
+              ) : null}
+            </div>
+
+            <div className="flex flex-col leading-none">
+              <span
+                className="font-blackops text-xs tracking-[0.22em]"
+                style={{ color: "var(--brand-primary, #C57A4A)" }}
+              >
+                PROFIXIQ
+              </span>
+              <span className="text-[0.65rem] text-neutral-300">Customer Portal</span>
+            </div>
           </div>
 
           <button
@@ -157,22 +171,31 @@ export default function PortalShell({
           </button>
         </header>
 
-        <main className="relative min-h-[calc(100dvh-52px)] w-full">
-          {children}
-        </main>
+        <main className="relative min-h-[calc(100dvh-52px)] w-full">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+    <div className="relative min-h-dvh app-metal-bg overflow-hidden text-white">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
-        <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
+        <div
+          className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--brand-primary, #C57A4A) 16%, transparent), transparent 62%)",
+          }}
+        />
+        <div
+          className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--brand-accent, #E2A164) 10%, transparent), transparent 60%)",
+          }}
+        />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
       </div>
 
-      {/* ✅ Removed `relative` to satisfy cssConflict lint */}
       <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
           <button
@@ -188,16 +211,29 @@ export default function PortalShell({
             type="button"
             onClick={() => setDesktopOpen((v) => !v)}
             aria-label="Toggle sidebar"
-            className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95"
+            className="hidden h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95 md:inline-flex"
           >
             <MenuIcon />
           </button>
 
-          <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">
-              {title}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-16 items-center justify-center">
+              {brandLogoUrl ? (
+                <Image
+                  src={brandLogoUrl}
+                  alt="Shop logo"
+                  width={64}
+                  height={40}
+                  className="max-h-8 w-auto object-contain"
+                  unoptimized
+                />
+              ) : null}
             </div>
-            <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
+
+            <div>
+              <div className="text-[0.75rem] font-medium text-neutral-100">{title}</div>
+              <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
+            </div>
           </div>
         </div>
 
@@ -208,14 +244,14 @@ export default function PortalShell({
             href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
-            <span style={{ color: COPPER }}>Request</span>
+            <span style={{ color: "var(--brand-primary, #C57A4A)" }}>Request</span>
           </Link>
 
           <Link
             href="/portal/approvals"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
-            <span style={{ color: COPPER }}>Approvals</span>
+            <span style={{ color: "var(--brand-primary, #C57A4A)" }}>Approvals</span>
           </Link>
 
           <button
@@ -233,10 +269,8 @@ export default function PortalShell({
       <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
         <aside
           className={cx(
-            "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
-            desktopOpen
-              ? "w-72"
-              : "w-0 border-transparent bg-transparent shadow-none",
+            "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card transition-all duration-300 md:flex md:flex-col",
+            desktopOpen ? "w-72" : "w-0 border-transparent bg-transparent shadow-none",
           )}
         >
           <div
@@ -246,14 +280,29 @@ export default function PortalShell({
             )}
           >
             <div className="px-5 py-5">
-              <div
-                className="font-blackops text-lg tracking-[0.16em]"
-                style={{ color: COPPER }}
-              >
-                PROFIXIQ
-              </div>
-              <div className="mt-1 text-xs text-neutral-400">
-                Customer Portal
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-16 items-center justify-center">
+                  {brandLogoUrl ? (
+                    <Image
+                      src={brandLogoUrl}
+                      alt="Shop logo"
+                      width={64}
+                      height={40}
+                      className="max-h-8 w-auto object-contain"
+                      unoptimized
+                    />
+                  ) : null}
+                </div>
+
+                <div>
+                  <div
+                    className="font-blackops text-lg tracking-[0.16em]"
+                    style={{ color: "var(--brand-primary, #C57A4A)" }}
+                  >
+                    PROFIXIQ
+                  </div>
+                  <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
+                </div>
               </div>
             </div>
 
@@ -268,31 +317,40 @@ export default function PortalShell({
               ))}
             </nav>
 
-            <div className="px-5 pb-5 text-xs text-neutral-500">
-              Powered by ProFixIQ
-            </div>
+            <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
           </div>
         </aside>
 
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setMobileOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
             <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-                <div>
-                  <div
-                    className="font-blackops text-lg tracking-[0.16em]"
-                    style={{ color: COPPER }}
-                  >
-                    PROFIXIQ
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-16 items-center justify-center">
+                    {brandLogoUrl ? (
+                      <Image
+                        src={brandLogoUrl}
+                        alt="Shop logo"
+                        width={64}
+                        height={40}
+                        className="max-h-8 w-auto object-contain"
+                        unoptimized
+                      />
+                    ) : null}
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">
-                    Customer Portal
+
+                  <div>
+                    <div
+                      className="font-blackops text-lg tracking-[0.16em]"
+                      style={{ color: "var(--brand-primary, #C57A4A)" }}
+                    >
+                      PROFIXIQ
+                    </div>
+                    <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
                   </div>
                 </div>
+
                 <button
                   className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-neutral-100"
                   onClick={() => setMobileOpen(false)}
@@ -318,22 +376,20 @@ export default function PortalShell({
                   type="button"
                   onClick={() => void signOut()}
                   disabled={signingOut}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+                  className="w-full rounded-full border border-white/15 bg-black/40 px-4 py-2 text-sm text-neutral-100"
                 >
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
-
-                <div className="mt-3 text-xs text-neutral-500">
-                  Powered by ProFixIQ
-                </div>
               </div>
             </div>
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
-          <div className={ShellCard}>{children}</div>
-        </div>
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto max-w-5xl">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

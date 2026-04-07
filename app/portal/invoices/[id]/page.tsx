@@ -12,6 +12,8 @@ import {
 } from "@/features/portal/server/portalAuth";
 
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
+import BrandSurfaceHeader from "@/features/branding/components/BrandSurfaceHeader";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 export const dynamic = "force-dynamic";
 
@@ -158,6 +160,7 @@ export default async function PortalInvoicePage({
 
   // ✅ declare outside try so it’s usable later
   let partsTotalFromAlloc = 0;
+  let brand: Awaited<ReturnType<typeof getActiveBrandForRender>> | null = null;
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
@@ -217,6 +220,10 @@ export default async function PortalInvoicePage({
       : normalizeCurrencyFromCountry(shopCountry);
 
     stripeCurrency = currency === "CAD" ? "cad" : "usd";
+
+    if (workOrder.shop_id) {
+      brand = await getActiveBrandForRender(workOrder.shop_id);
+    }
 
     // Lines
     const { data: wol, error: wolErr } = await supabase
@@ -455,14 +462,15 @@ export default async function PortalInvoicePage({
             </div>
           </div>
 
-          <div className="mb-6 space-y-1">
-            <h1
-              className="text-2xl font-semibold text-white sm:text-3xl"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              {titleLabel}
-            </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">View your invoice details and history for this work order.</p>
+          <div className="mb-6">
+            <BrandSurfaceHeader
+              title={titleLabel}
+              subtitle="Review your invoice, download the PDF, or complete payment online."
+              logoUrl={brand?.logoUrl ?? null}
+              primaryColor={brand?.colors.primary ?? null}
+              secondaryColor={brand?.colors.secondary ?? null}
+              accentColor={brand?.colors.accent ?? null}
+            />
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-3">

@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
+import BrandSurfaceHeader from "@/features/branding/components/BrandSurfaceHeader";
+import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import {
   calculateTax,
   getTaxAmount,
@@ -120,6 +122,7 @@ export default function QuotePageClient(): JSX.Element {
   const params = useParams();
   const workOrderId = useMemo(() => paramToString((params as ParamsShape).id), [params]);
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const { data: brand } = useActiveBrand();
 
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
@@ -323,16 +326,15 @@ export default function QuotePageClient(): JSX.Element {
             </div>
           </div>
 
-          <div className="mb-6 space-y-1">
-            <h1
-              className="text-2xl sm:text-3xl font-semibold text-white"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              {titleLabel}
-            </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">
-              Review your quote with parts, labor, and totals.
-            </p>
+          <div className="mb-6">
+            <BrandSurfaceHeader
+              title={titleLabel}
+              subtitle="Review your quote with parts, labor, and totals."
+              logoUrl={brand?.logoUrl ?? null}
+              primaryColor={brand?.profile?.primary_color ?? null}
+              secondaryColor={brand?.profile?.secondary_color ?? null}
+              accentColor={brand?.profile?.accent_color ?? null}
+            />
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">

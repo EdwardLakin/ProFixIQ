@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendQuoteReadyEmail } from "@/features/email/server";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
 
@@ -172,6 +173,7 @@ export async function POST(req: Request) {
 
     let shopName = safeStr(body?.shopName).trim() || "";
     let laborRate = 0;
+    let brand: Awaited<ReturnType<typeof getActiveBrandForRender>> | null = null;
 
     if (wo.shop_id) {
       const { data: shop, error: shopErr } = await supabaseAdmin
@@ -189,6 +191,8 @@ export async function POST(req: Request) {
           safeStr(shop.name).trim();
         laborRate = asNumber(shop.labor_rate) ?? 0;
       }
+
+      brand = await getActiveBrandForRender(wo.shop_id);
     }
 
     let vehicleInfo: VehicleInfo | undefined = body?.vehicleInfo;
@@ -331,6 +335,9 @@ export async function POST(req: Request) {
       quoteTotal: quoteTotal ?? null,
       vehicleLabel: buildVehicleLabel(vehicleInfo),
       shopName: shopName || undefined,
+      brandLogoUrl: brand?.logoUrl ?? null,
+      brandPrimaryColor: brand?.colors.primary ?? null,
+      brandSecondaryColor: brand?.colors.secondary ?? null,
     });
 
     const newQuoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? null;
