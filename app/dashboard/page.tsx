@@ -316,12 +316,17 @@ export default function DashboardPage() {
 
   return (
     <>
-      <section className="flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+      <section className="flex items-center justify-between gap-4 rounded-2xl border px-5 py-4 backdrop-blur-xl"
+        style={{
+          borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 45%, rgba(148,163,184,0.30))",
+          background: "linear-gradient(to right, rgba(0,0,0,0.82), color-mix(in srgb, var(--brand-secondary, #0F172A) 88%, black), rgba(0,0,0,0.82))",
+          boxShadow: "0 22px 45px rgba(0,0,0,0.9), 0 0 32px color-mix(in srgb, var(--brand-primary, #C1663B) 22%, transparent)"
+        }}>
         <div>
           <h1 className="text-2xl font-semibold text-white">
             {firstName ? `Welcome back, ${firstName} 👋` : "Welcome 👋"}
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-neutral-300" style={{ color: "color-mix(in srgb, var(--brand-primary, #C1663B) 35%, #d4d4d8)" }}>
             Here’s a quick view of what matters today.
           </p>
         </div>

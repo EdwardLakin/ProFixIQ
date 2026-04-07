@@ -161,7 +161,7 @@ export default function RoleSidebar() {
                 "hover:border-[var(--accent-copper-soft)] hover:bg-white/5",
                 "text-neutral-400 hover:text-white transition-colors",
                 hasActive &&
-                  "border-[var(--accent-copper)]/80 text-white shadow-[0_0_18px_rgba(212,118,49,0.45)]",
+                  "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]",
               )}
             >
               <span className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export default function RoleSidebar() {
                         "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
                         "border bg-gradient-to-r from-slate-950/70 via-black/70 to-slate-950/70",
                         active
-                          ? "border-[var(--accent-copper)]/75 text-white shadow-[0_0_25px_rgba(212,118,49,0.45)]"
+                          ? "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_25px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]"
                           : "border-white/5 text-neutral-400 hover:text-white hover:border-[var(--accent-copper-soft)] hover:bg-black/80",
                       )}
                     >

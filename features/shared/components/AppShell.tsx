@@ -50,7 +50,7 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+    className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--brand-primary,#C1663B)] hover:text-white hover:bg-black/80"
   >
     {children}
   </button>
@@ -378,7 +378,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Main column (CRITICAL: min-w-0 so content can shrink + not push sidebar off) */}
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           {/* Top bar */}
-          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
+          <header
+            className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b px-4 backdrop-blur-xl md:flex"
+            style={{
+              borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
+              background: "linear-gradient(to right, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.95))",
+              boxShadow: "0 18px 40px rgba(0,0,0,0.95), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)"
+            }}
+          >
             <div className="flex items-center gap-3">
               {/* Sidebar toggle */}
               <button
