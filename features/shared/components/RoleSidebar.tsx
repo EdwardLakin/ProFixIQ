@@ -158,7 +158,7 @@ export default function RoleSidebar() {
                 "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
                 "text-[0.65rem] uppercase tracking-[0.16em]",
                 "border border-[var(--metal-border-soft)] bg-black/40",
-                "hover:border-[var(--accent-copper-soft)] hover:bg-white/5",
+                "hover:border-[var(--brand-accent,#E39A6E)] hover:bg-white/5",
                 "text-neutral-400 hover:text-white transition-colors",
                 hasActive &&
                   "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]",
@@ -166,7 +166,7 @@ export default function RoleSidebar() {
             >
               <span className="flex items-center gap-2">
                 {hasActive && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-copper)] shadow-[0_0_14px_rgba(212,118,49,0.75)]" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-primary,#C1663B)] shadow-[0_0_14px_color-mix(in_srgb,var(--brand-primary,#C1663B)_70%,transparent)]" />
                 )}
                 <span>{group}</span>
               </span>
@@ -193,7 +193,7 @@ export default function RoleSidebar() {
                         "border bg-gradient-to-r from-slate-950/70 via-black/70 to-slate-950/70",
                         active
                           ? "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_25px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]"
-                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[var(--accent-copper-soft)] hover:bg-black/80",
+                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[var(--brand-accent,#E39A6E)] hover:bg-black/80",
                       )}
                     >
                       <span className="truncate">{t.title}</span>

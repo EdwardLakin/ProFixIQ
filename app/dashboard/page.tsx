@@ -355,7 +355,8 @@ export default function DashboardPage() {
       <div className="relative space-y-8 fade-in">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+          className="pointer-events-none absolute inset-0 -z-10"
+          style={{ backgroundImage: "var(--app-shell-bg)" }}
         />
 
         {!tech && showOwnerDashboard && shopId && (
@@ -560,12 +561,16 @@ function ActiveJobCard({
   return (
     <Link
       href={href}
-      className="group relative block overflow-hidden rounded-2xl border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_24px_45px_rgba(0,0,0,0.95),0_0_35px_rgba(249,115,22,0.55)]"
+      className="group relative block overflow-hidden rounded-2xl border bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3"
+      style={{
+        borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 75%, transparent)",
+        boxShadow: "0 24px 45px rgba(0,0,0,0.95), 0 0 35px color-mix(in srgb, var(--brand-primary, #C1663B) 45%, transparent)"
+      }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
       <div className="relative flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--brand-primary,#C1663B)]">
             Active job
           </p>
           <p className="mt-1 line-clamp-1 text-sm font-semibold text-white">
@@ -576,7 +581,7 @@ function ActiveJobCard({
             {vehicleLabel ? ` • ${vehicleLabel}` : ""}
           </p>
         </div>
-        <span className="text-xs text-[color:var(--accent-copper,#f97316)]">
+        <span className="text-xs text-[color:var(--brand-primary,#C1663B)]">
           Open →
         </span>
       </div>
@@ -594,7 +599,7 @@ function OverviewCard({
   href?: string;
 }) {
   const content = (
-    <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85 px-4 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl transition hover:border-[color:var(--accent-copper,#f97316)]/80 hover:shadow-[0_0_35px_rgba(249,115,22,0.55)]">
+    <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85 px-4 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl transition hover:border-[color:var(--brand-primary,#C1663B)]/80 hover:shadow-[0_0_35px_color-mix(in_srgb,var(--brand-primary,#C1663B)_45%,transparent)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
       <div className="relative">
         <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
@@ -625,7 +630,7 @@ function QuickButton({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-gradient-to-r from-black/70 via-slate-950/90 to-black/80 px-4 py-2 text-sm text-white shadow-[0_12px_28px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-[color:var(--accent-copper,#f97316)]/15 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
+      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--brand-primary,#C1663B)]/70 bg-gradient-to-r from-black/70 via-slate-950/90 to-black/80 px-4 py-2 text-sm text-white shadow-[0_12px_28px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-[color:var(--brand-primary,#C1663B)]/15 hover:border-[color:var(--brand-accent,#E39A6E)]"
     >
       {children}
     </Link>
