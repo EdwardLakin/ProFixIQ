@@ -1,4 +1,3 @@
-// app/layout.tsx
 import "./globals.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
@@ -7,6 +6,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
+import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
 
 import { Toaster } from "sonner";
 
@@ -45,20 +45,18 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className="
-          min-h-screen
-          bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_70%)]
-          text-white
-          antialiased
-        "
+        className="min-h-screen text-white antialiased"
+        style={{
+          backgroundImage:
+            "var(--app-shell-bg, radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",
+        }}
       >
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
-            {/* AppShell decides whether to wrap content in TabsBridge */}
+            <BrandThemeBoot />
             <AppShell>{children}</AppShell>
           </VoiceProvider>
 
-          {/* ✅ Global Sonner toaster (single source of truth) */}
           <Toaster
             position="bottom-center"
             theme="dark"

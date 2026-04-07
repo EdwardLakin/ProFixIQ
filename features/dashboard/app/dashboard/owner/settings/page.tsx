@@ -16,7 +16,7 @@ import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
-import BrandStudioCard from "@/features/branding/components/BrandStudioCard";
+import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 
 type FileInputChangeEvent = {
   target: {
@@ -1210,6 +1210,7 @@ try {
           <a href="#hours-settings" className={navChipClass}>Hours</a>
           <a href="#timeoff-settings" className={navChipClass}>Time off</a>
           <a href="#billing-stripe" className={navChipClass}>Billing</a>
+          <a href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</a>
           <a href="#email-activity" className={navChipClass}>Activity</a>
         </div>
       </div>
@@ -1273,12 +1274,10 @@ try {
             onAutoGeneratePdfChange={setAutoGeneratePdf}
             onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
           />
-          <section id="communication-branding" className={sectionClass}>
-            <h2 className="text-sm font-semibold text-neutral-50">Communication & branding</h2>
+          <BrandStudioSummaryCard />
 
-            <div className="mt-3">
-              <BrandStudioCard />
-            </div>
+          <section id="communication-branding" className={sectionClass}>
+            <h2 className="text-sm font-semibold text-neutral-50">Communication</h2>
             <Input
               value={invoiceTerms}
               onChange={(e) => setInvoiceTerms(e.target.value)}

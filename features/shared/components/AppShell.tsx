@@ -2,6 +2,8 @@
 //features/shared/components/AppShell.tsx
 "use client";
 
+import Image from "next/image";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +19,7 @@ import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
+import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 
 const NON_APP_ROUTES = [
   "/",
@@ -75,6 +78,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
+  const { data: activeBrand } = useActiveBrand();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -348,7 +352,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   color: "#c1663b",
                 }}
               >
-                ProFixIQ
+                {activeBrand?.logoUrl ? (
+                  <div className="flex h-9 max-w-[148px] items-center">
+                    <Image
+                      src={activeBrand.logoUrl}
+                      alt="Shop logo"
+                      width={148}
+                      height={36}
+                      className="max-h-9 w-auto object-contain"
+                      unoptimized
+                    />
+                  </div>
+                ) : (
+                  "ProFixIQ"
+                )}
               </Link>
             </div>
 
