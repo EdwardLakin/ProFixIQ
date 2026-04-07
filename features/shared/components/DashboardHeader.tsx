@@ -2,9 +2,7 @@
 
 import OpsNotificationsBell from "./OpsNotificationsBell";
 
-
 export default function DashboardHeader() {
-
   return (
     <header className="mb-6 w-full rounded-2xl border border-white/10 bg-black/30 p-6 text-white shadow-card backdrop-blur-xl">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">

@@ -8,8 +8,6 @@ import type { Database } from "@shared/types/types/supabase";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
-import BrandSurfaceHeader from "@/features/branding/components/BrandSurfaceHeader";
-import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 
 type DB = Database;
@@ -214,7 +212,6 @@ export default function InvoicePreviewPageClient({
 }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const { data: brand } = useActiveBrand();
 
   const [loading, setLoading] = useState(false);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -279,27 +276,6 @@ export default function InvoicePreviewPageClient({
     const n = (shopInfo?.name ?? "").trim();
     return n.length ? n : undefined;
   }, [shopInfo?.name]);
-
-  const vehicleLabel = useMemo(() => {
-    const year =
-      typeof effectiveVehicleInfo?.year === "string"
-        ? effectiveVehicleInfo.year.trim()
-        : "";
-    const make =
-      typeof effectiveVehicleInfo?.make === "string"
-        ? effectiveVehicleInfo.make.trim()
-        : "";
-    const model =
-      typeof effectiveVehicleInfo?.model === "string"
-        ? effectiveVehicleInfo.model.trim()
-        : "";
-
-    return [year, make, model].filter(Boolean).join(" ") || "Invoice Preview";
-  }, [
-    effectiveVehicleInfo?.year,
-    effectiveVehicleInfo?.make,
-    effectiveVehicleInfo?.model,
-  ]);
 
   const refreshInspectionPdf = useCallback(async (): Promise<void> => {
     if (!workOrderId) return;
@@ -705,8 +681,6 @@ export default function InvoicePreviewPageClient({
   const canTakePayment = Boolean(shopId && stripeAccountId);
   const canProceed = canTakePayment && reviewOk && !reviewLoading;
 
-
-
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
@@ -807,21 +781,6 @@ export default function InvoicePreviewPageClient({
   return (
     <div className="min-h-[calc(100vh-0px)] bg-black px-3 py-3 sm:px-4 sm:py-4">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-3">
-        <BrandSurfaceHeader
-          title={effectiveShopName ?? "Invoice Preview"}
-          subtitle={vehicleLabel}
-          logoUrl={brand?.logoUrl ?? null}
-          primaryColor={brand?.profile?.primary_color ?? null}
-          secondaryColor={brand?.profile?.secondary_color ?? null}
-          accentColor={brand?.profile?.accent_color ?? null}
-          rightSlot={
-            <div className="text-right text-xs text-neutral-300">
-              <div className="uppercase tracking-[0.18em] text-neutral-400">Work Order</div>
-              <div className="mt-1 font-medium text-white">{workOrderId.slice(0, 8)}…</div>
-            </div>
-          }
-        />
-
         {/* Top action row */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
           <div className="flex items-center gap-3">

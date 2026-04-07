@@ -55,7 +55,7 @@ export default async function RootLayout({
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
             {/* AppShell decides whether to wrap content in TabsBridge */}
-            <AppShell>          {children}</AppShell>
+            <AppShell>{children}</AppShell>
           </VoiceProvider>
 
           {/* ✅ Global Sonner toaster (single source of truth) */}

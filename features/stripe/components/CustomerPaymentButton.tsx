@@ -6,7 +6,6 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
-import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 
 type Props = {
   shopId: string;
@@ -30,7 +29,6 @@ function formatCurrencyLabel(currency: "usd" | "cad"): string {
 
 export default function CustomerPaymentButton(props: Props) {
   const currency = props.currency ?? "usd";
-  const { data: brand } = useActiveBrand();
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState<string>(() => {
@@ -82,18 +80,9 @@ export default function CustomerPaymentButton(props: Props) {
   }
 
   return (
-    <div
-      className="rounded-2xl border border-white/10 p-3 backdrop-blur"
-      style={{
-        background:
-          "radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary, #C57A4A) 10%, transparent), transparent 42%), linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.28))",
-      }}
-    >
+    <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 p-3 backdrop-blur">
       <div className="flex items-center justify-between gap-2">
-        <div
-          className="text-xs font-semibold uppercase tracking-[0.22em]"
-          style={{ color: brand?.profile?.primary_color ?? "var(--brand-primary, #C57A4A)" }}
-        >
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-200">
           Take payment
         </div>
         <Button
