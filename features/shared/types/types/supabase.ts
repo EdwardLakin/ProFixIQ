@@ -9280,6 +9280,8 @@ export type Database = {
       }
       shop_brand_assets: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           created_by: string | null
           file_name: string | null
@@ -9290,6 +9292,7 @@ export type Database = {
           height: number | null
           id: string
           is_active: boolean
+          is_favorite: boolean
           kind: Database["public"]["Enums"]["brand_asset_kind"]
           metadata: Json
           mime_type: string | null
@@ -9301,6 +9304,8 @@ export type Database = {
           width: number | null
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           created_by?: string | null
           file_name?: string | null
@@ -9311,6 +9316,7 @@ export type Database = {
           height?: number | null
           id?: string
           is_active?: boolean
+          is_favorite?: boolean
           kind: Database["public"]["Enums"]["brand_asset_kind"]
           metadata?: Json
           mime_type?: string | null
@@ -9322,6 +9328,8 @@ export type Database = {
           width?: number | null
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           created_by?: string | null
           file_name?: string | null
@@ -9332,6 +9340,7 @@ export type Database = {
           height?: number | null
           id?: string
           is_active?: boolean
+          is_favorite?: boolean
           kind?: Database["public"]["Enums"]["brand_asset_kind"]
           metadata?: Json
           mime_type?: string | null
@@ -9343,6 +9352,13 @@ export type Database = {
           width?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "shop_brand_assets_archived_by_fkey"
+            columns: ["archived_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "shop_brand_assets_created_by_fkey"
             columns: ["created_by"]
@@ -9369,14 +9385,33 @@ export type Database = {
       shop_brand_profiles: {
         Row: {
           accent_color: string | null
+          button_primary_bg: string | null
+          button_primary_text: string | null
+          button_secondary_bg: string | null
+          button_secondary_text: string | null
+          card_background: string | null
+          card_border_color: string | null
           created_at: string
           icon_asset_id: string | null
+          input_background: string | null
+          input_border: string | null
+          input_text: string | null
           logo_asset_id: string | null
           metadata: Json
+          page_background: string | null
           primary_color: string | null
+          radius_scale: string | null
           secondary_color: string | null
+          shadow_style: string | null
           shop_id: string
+          sidebar_color: string | null
           style_preset: string | null
+          surface_color: string | null
+          surface_color_2: string | null
+          text_primary: string | null
+          text_secondary: string | null
+          theme_mode: string | null
+          topbar_color: string | null
           updated_at: string
           updated_by: string | null
           watermark_asset_id: string | null
@@ -9384,14 +9419,33 @@ export type Database = {
         }
         Insert: {
           accent_color?: string | null
+          button_primary_bg?: string | null
+          button_primary_text?: string | null
+          button_secondary_bg?: string | null
+          button_secondary_text?: string | null
+          card_background?: string | null
+          card_border_color?: string | null
           created_at?: string
           icon_asset_id?: string | null
+          input_background?: string | null
+          input_border?: string | null
+          input_text?: string | null
           logo_asset_id?: string | null
           metadata?: Json
+          page_background?: string | null
           primary_color?: string | null
+          radius_scale?: string | null
           secondary_color?: string | null
+          shadow_style?: string | null
           shop_id: string
+          sidebar_color?: string | null
           style_preset?: string | null
+          surface_color?: string | null
+          surface_color_2?: string | null
+          text_primary?: string | null
+          text_secondary?: string | null
+          theme_mode?: string | null
+          topbar_color?: string | null
           updated_at?: string
           updated_by?: string | null
           watermark_asset_id?: string | null
@@ -9399,14 +9453,33 @@ export type Database = {
         }
         Update: {
           accent_color?: string | null
+          button_primary_bg?: string | null
+          button_primary_text?: string | null
+          button_secondary_bg?: string | null
+          button_secondary_text?: string | null
+          card_background?: string | null
+          card_border_color?: string | null
           created_at?: string
           icon_asset_id?: string | null
+          input_background?: string | null
+          input_border?: string | null
+          input_text?: string | null
           logo_asset_id?: string | null
           metadata?: Json
+          page_background?: string | null
           primary_color?: string | null
+          radius_scale?: string | null
           secondary_color?: string | null
+          shadow_style?: string | null
           shop_id?: string
+          sidebar_color?: string | null
           style_preset?: string | null
+          surface_color?: string | null
+          surface_color_2?: string | null
+          text_primary?: string | null
+          text_secondary?: string | null
+          theme_mode?: string | null
+          topbar_color?: string | null
           updated_at?: string
           updated_by?: string | null
           watermark_asset_id?: string | null

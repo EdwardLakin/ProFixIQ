@@ -19,8 +19,38 @@ type ProfilePayload = {
   iconAssetId?: string | null;
   wordmarkAssetId?: string | null;
   watermarkAssetId?: string | null;
+
+  surfaceColor?: string | null;
+  surfaceColor2?: string | null;
+  sidebarColor?: string | null;
+  topbarColor?: string | null;
+  pageBackground?: string | null;
+  cardBackground?: string | null;
+  cardBorderColor?: string | null;
+  textPrimary?: string | null;
+  textSecondary?: string | null;
+  buttonPrimaryBg?: string | null;
+  buttonPrimaryText?: string | null;
+  buttonSecondaryBg?: string | null;
+  buttonSecondaryText?: string | null;
+  inputBackground?: string | null;
+  inputBorder?: string | null;
+  inputText?: string | null;
+  radiusScale?: string | null;
+  shadowStyle?: string | null;
+  themeMode?: string | null;
+
   metadata?: Json;
 };
+
+function normalizeEnum(
+  value: unknown,
+  allowed: readonly string[],
+): string | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  return allowed.includes(raw) ? raw : null;
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -62,7 +92,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, auth.shopId);
+  const pinCheck = await requireOwnerPinVerified(
+    req,
+    auth.supabase as never,
+    auth.shopId,
+  );
   if (!pinCheck.ok) {
     return pinCheck.response;
   }
@@ -77,6 +111,27 @@ export async function POST(req: Request) {
     icon_asset_id: body.iconAssetId?.trim() || null,
     wordmark_asset_id: body.wordmarkAssetId?.trim() || null,
     watermark_asset_id: body.watermarkAssetId?.trim() || null,
+
+    surface_color: normalizeHexColor(body.surfaceColor),
+    surface_color_2: normalizeHexColor(body.surfaceColor2),
+    sidebar_color: normalizeHexColor(body.sidebarColor),
+    topbar_color: normalizeHexColor(body.topbarColor),
+    page_background: normalizeHexColor(body.pageBackground),
+    card_background: normalizeHexColor(body.cardBackground),
+    card_border_color: normalizeHexColor(body.cardBorderColor),
+    text_primary: normalizeHexColor(body.textPrimary),
+    text_secondary: normalizeHexColor(body.textSecondary),
+    button_primary_bg: normalizeHexColor(body.buttonPrimaryBg),
+    button_primary_text: normalizeHexColor(body.buttonPrimaryText),
+    button_secondary_bg: normalizeHexColor(body.buttonSecondaryBg),
+    button_secondary_text: normalizeHexColor(body.buttonSecondaryText),
+    input_background: normalizeHexColor(body.inputBackground),
+    input_border: normalizeHexColor(body.inputBorder),
+    input_text: normalizeHexColor(body.inputText),
+    radius_scale: normalizeEnum(body.radiusScale, ["none", "sm", "md", "lg", "xl"]),
+    shadow_style: normalizeEnum(body.shadowStyle, ["none", "soft", "medium", "strong"]),
+    theme_mode: normalizeEnum(body.themeMode, ["dark", "light", "custom"]),
+
     updated_by: auth.userId,
     metadata: body.metadata ?? {},
   };
