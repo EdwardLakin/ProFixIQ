@@ -3,42 +3,146 @@
 import { useEffect } from "react";
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 
-function setThemeModeVars(root: HTMLElement, mode: string | null | undefined) {
-  const value = String(mode ?? "").trim().toLowerCase();
+type ThemeProfile = {
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  accent_color?: string | null;
+  style_preset?: string | null;
+  app_background?: string | null;
+  app_background_secondary?: string | null;
+  sidebar_background?: string | null;
+  sidebar_text?: string | null;
+  sidebar_active_background?: string | null;
+  sidebar_active_text?: string | null;
+  header_background?: string | null;
+  header_text?: string | null;
+  card_background?: string | null;
+  card_border?: string | null;
+  surface_2_background?: string | null;
+  text_primary?: string | null;
+  text_secondary?: string | null;
+  text_muted?: string | null;
+  button_primary_bg?: string | null;
+  button_primary_text?: string | null;
+  button_secondary_bg?: string | null;
+  button_secondary_text?: string | null;
+  input_background?: string | null;
+  input_border?: string | null;
+  input_text?: string | null;
+  radius_scale?: string | null;
+  shadow_style?: string | null;
+  theme_mode?: string | null;
+};
 
-  if (value === "light") {
-    root.style.setProperty("--theme-base-bg", "#F8FAFC");
-    root.style.setProperty("--theme-base-text", "#0F172A");
-    return;
+type UserThemePreferences = {
+  theme_mode?: string | null;
+  radius_scale?: string | null;
+  shadow_style?: string | null;
+};
+
+function setVar(
+  root: HTMLElement,
+  name: string,
+  value: string | null | undefined,
+  fallback?: string,
+) {
+  const finalValue = String(value ?? "").trim() || fallback;
+  if (finalValue) {
+    root.style.setProperty(name, finalValue);
   }
-
-  root.style.setProperty("--theme-base-bg", "#020617");
-  root.style.setProperty("--theme-base-text", "#FFFFFF");
 }
 
-function setRadiusVars(root: HTMLElement, radiusScale: string | null | undefined) {
-  const value = String(radiusScale ?? "").trim().toLowerCase();
+function setRadiusVars(root: HTMLElement, scale: string | null | undefined) {
+  const value = String(scale ?? "").trim().toLowerCase();
 
-  let radius = "0.75rem";
-  if (value === "none") radius = "0";
-  if (value === "sm") radius = "0.375rem";
-  if (value === "md") radius = "0.75rem";
-  if (value === "lg") radius = "1rem";
-  if (value === "xl") radius = "1.25rem";
-
-  root.style.setProperty("--theme-radius", radius);
+  switch (value) {
+    case "none":
+      root.style.setProperty("--theme-radius-sm", "0px");
+      root.style.setProperty("--theme-radius-md", "0px");
+      root.style.setProperty("--theme-radius-lg", "0px");
+      root.style.setProperty("--theme-radius-xl", "0px");
+      break;
+    case "sm":
+      root.style.setProperty("--theme-radius-sm", "0.25rem");
+      root.style.setProperty("--theme-radius-md", "0.375rem");
+      root.style.setProperty("--theme-radius-lg", "0.5rem");
+      root.style.setProperty("--theme-radius-xl", "0.75rem");
+      break;
+    case "lg":
+      root.style.setProperty("--theme-radius-sm", "0.625rem");
+      root.style.setProperty("--theme-radius-md", "0.875rem");
+      root.style.setProperty("--theme-radius-lg", "1rem");
+      root.style.setProperty("--theme-radius-xl", "1.25rem");
+      break;
+    case "xl":
+      root.style.setProperty("--theme-radius-sm", "0.875rem");
+      root.style.setProperty("--theme-radius-md", "1rem");
+      root.style.setProperty("--theme-radius-lg", "1.25rem");
+      root.style.setProperty("--theme-radius-xl", "1.5rem");
+      break;
+    case "md":
+    default:
+      root.style.setProperty("--theme-radius-sm", "0.375rem");
+      root.style.setProperty("--theme-radius-md", "0.5rem");
+      root.style.setProperty("--theme-radius-lg", "0.75rem");
+      root.style.setProperty("--theme-radius-xl", "1rem");
+      break;
+  }
 }
 
-function setShadowVars(root: HTMLElement, shadowStyle: string | null | undefined) {
-  const value = String(shadowStyle ?? "").trim().toLowerCase();
+function setShadowVars(root: HTMLElement, style: string | null | undefined) {
+  const value = String(style ?? "").trim().toLowerCase();
 
-  let shadow = "0 18px 45px rgba(0,0,0,0.35)";
-  if (value === "none") shadow = "none";
-  if (value === "soft") shadow = "0 12px 30px rgba(0,0,0,0.22)";
-  if (value === "medium") shadow = "0 18px 45px rgba(0,0,0,0.35)";
-  if (value === "strong") shadow = "0 24px 70px rgba(0,0,0,0.50)";
-
-  root.style.setProperty("--theme-shadow", shadow);
+  switch (value) {
+    case "none":
+      root.style.setProperty("--theme-shadow-soft", "none");
+      root.style.setProperty("--theme-shadow-medium", "none");
+      root.style.setProperty("--theme-shadow-strong", "none");
+      break;
+    case "soft":
+      root.style.setProperty(
+        "--theme-shadow-soft",
+        "0 8px 20px rgba(0,0,0,0.20)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-medium",
+        "0 12px 28px rgba(0,0,0,0.24)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-strong",
+        "0 18px 40px rgba(0,0,0,0.28)",
+      );
+      break;
+    case "strong":
+      root.style.setProperty(
+        "--theme-shadow-soft",
+        "0 14px 30px rgba(0,0,0,0.35)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-medium",
+        "0 22px 50px rgba(0,0,0,0.42)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-strong",
+        "0 30px 80px rgba(0,0,0,0.52)",
+      );
+      break;
+    case "medium":
+    default:
+      root.style.setProperty(
+        "--theme-shadow-soft",
+        "0 14px 30px rgba(0,0,0,0.35)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-medium",
+        "0 18px 45px rgba(0,0,0,0.45)",
+      );
+      root.style.setProperty(
+        "--theme-shadow-strong",
+        "0 24px 70px rgba(0,0,0,0.50)",
+      );
+      break;
+  }
 }
 
 function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
@@ -53,6 +157,7 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
 
   switch (value) {
     case "clean-oem":
+      glassBg = "rgba(255, 255, 255, 0.04)";
       glassBg = "rgba(255, 255, 255, 0.04)";
       glassBgSoft = "rgba(255, 255, 255, 0.03)";
       metalBorderSoft = "rgba(203, 213, 225, 0.20)";
@@ -84,6 +189,7 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
       appGlow =
         "radial-gradient(circle at top, rgba(167,139,250,0.14), transparent 48%), radial-gradient(circle at top right, rgba(56,189,248,0.10), transparent 42%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%)";
       break;
+    case "industrial-dark":
     default:
       break;
   }
@@ -101,11 +207,13 @@ export default function BrandThemeBoot() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const profile = data?.profile;
+    const profile: ThemeProfile = data?.profile ?? {};
+    const userPrefs: UserThemePreferences = data?.userPreferences ?? {};
 
-    const primary = profile?.primary_color || "#C1663B";
-    const secondary = profile?.secondary_color || "#050910";
-    const accent = profile?.accent_color || "#E39A6E";
+    const primary = profile.primary_color || "#C1663B";
+    const secondary = profile.secondary_color || "#050910";
+    const accent = profile.accent_color || "#E39A6E";
+    const preset = profile.style_preset || "industrial-dark";
 
     root.style.setProperty("--brand-primary", primary);
     root.style.setProperty("--brand-secondary", secondary);
@@ -117,22 +225,85 @@ export default function BrandThemeBoot() {
     root.style.setProperty("--metal-bg", secondary);
     root.style.setProperty("--metal-panel", secondary);
 
-    root.style.setProperty("--theme-surface", profile?.surface_color || secondary);
-    root.style.setProperty("--theme-surface-2", profile?.surface_color_2 || "#0B1220");
-    root.style.setProperty("--theme-sidebar", profile?.sidebar_color || secondary);
-    root.style.setProperty("--theme-topbar", profile?.topbar_color || secondary);
-    root.style.setProperty("--theme-page-background", profile?.page_background || secondary);
-    root.style.setProperty("--theme-card-background", profile?.card_background || "#111827");
-    root.style.setProperty("--theme-card-border", profile?.card_border_color || primary);
-    root.style.setProperty("--theme-text-primary", profile?.text_primary || "#FFFFFF");
-    root.style.setProperty("--theme-text-secondary", profile?.text_secondary || "#CBD5E1");
-    root.style.setProperty("--theme-button-primary-bg", profile?.button_primary_bg || primary);
-    root.style.setProperty("--theme-button-primary-text", profile?.button_primary_text || "#000000");
-    root.style.setProperty("--theme-button-secondary-bg", profile?.button_secondary_bg || "#111827");
-    root.style.setProperty("--theme-button-secondary-text", profile?.button_secondary_text || "#FFFFFF");
-    root.style.setProperty("--theme-input-background", profile?.input_background || "#0B1220");
-    root.style.setProperty("--theme-input-border", profile?.input_border || "#334155");
-    root.style.setProperty("--theme-input-text", profile?.input_text || "#FFFFFF");
+    setVar(root, "--theme-app-bg", profile.app_background, secondary);
+    setVar(
+      root,
+      "--theme-app-bg-secondary",
+      profile.app_background_secondary,
+      "#020617",
+    );
+    setVar(root, "--theme-sidebar-bg", profile.sidebar_background, "#020617");
+    setVar(root, "--theme-sidebar-text", profile.sidebar_text, "#D4D4D8");
+    setVar(
+      root,
+      "--theme-sidebar-active-bg",
+      profile.sidebar_active_background,
+      primary,
+    );
+    setVar(
+      root,
+      "--theme-sidebar-active-text",
+      profile.sidebar_active_text,
+      "#000000",
+    );
+
+    setVar(root, "--theme-header-bg", profile.header_background, "#020617");
+    setVar(root, "--theme-header-text", profile.header_text, "#FFFFFF");
+
+    setVar(root, "--theme-card-bg", profile.card_background, "#111827");
+    setVar(
+      root,
+      "--theme-card-border",
+      profile.card_border,
+      "rgba(148,163,184,0.30)",
+    );
+
+    setVar(
+      root,
+      "--theme-surface-2",
+      profile.surface_2_background,
+      "#0B1220",
+    );
+
+    setVar(root, "--theme-text-primary", profile.text_primary, "#FFFFFF");
+    setVar(root, "--theme-text-secondary", profile.text_secondary, "#94A3B8");
+    setVar(root, "--theme-text-muted", profile.text_muted, "#64748B");
+
+    setVar(
+      root,
+      "--theme-button-primary-bg",
+      profile.button_primary_bg,
+      primary,
+    );
+    setVar(
+      root,
+      "--theme-button-primary-text",
+      profile.button_primary_text,
+      "#000000",
+    );
+    setVar(
+      root,
+      "--theme-button-secondary-bg",
+      profile.button_secondary_bg,
+      "#1E293B",
+    );
+    setVar(
+      root,
+      "--theme-button-secondary-text",
+      profile.button_secondary_text,
+      "#FFFFFF",
+    );
+
+    setVar(root, "--theme-input-bg", profile.input_background, "#0B1220");
+    setVar(
+      root,
+      "--theme-input-border",
+      profile.input_border,
+      "rgba(148,163,184,0.30)",
+    );
+    setVar(root, "--theme-input-text", profile.input_text, "#FFFFFF");
+
+    setPresetVars(root, preset);
 
     if (data?.logoUrl) {
       root.style.setProperty("--brand-logo-url", `url(${data.logoUrl})`);
@@ -140,10 +311,19 @@ export default function BrandThemeBoot() {
       root.style.removeProperty("--brand-logo-url");
     }
 
-    setPresetVars(root, profile?.style_preset);
-    setThemeModeVars(root, profile?.theme_mode);
-    setRadiusVars(root, profile?.radius_scale);
-    setShadowVars(root, profile?.shadow_style);
+    setRadiusVars(
+      root,
+      userPrefs.radius_scale || profile.radius_scale || "md",
+    );
+    setShadowVars(
+      root,
+      userPrefs.shadow_style || profile.shadow_style || "medium",
+    );
+
+    const themeMode = String(
+      userPrefs.theme_mode || profile.theme_mode || "dark",
+    ).toLowerCase();
+    root.setAttribute("data-theme-mode", themeMode);
   }, [data]);
 
   return null;

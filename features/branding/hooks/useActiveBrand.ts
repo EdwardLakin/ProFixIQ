@@ -10,16 +10,20 @@ export type ActiveBrandPayload = {
     secondary_color?: string | null;
     accent_color?: string | null;
     style_preset?: string | null;
-
-    surface_color?: string | null;
-    surface_color_2?: string | null;
-    sidebar_color?: string | null;
-    topbar_color?: string | null;
-    page_background?: string | null;
+    app_background?: string | null;
+    app_background_secondary?: string | null;
+    sidebar_background?: string | null;
+    sidebar_text?: string | null;
+    sidebar_active_background?: string | null;
+    sidebar_active_text?: string | null;
+    header_background?: string | null;
+    header_text?: string | null;
     card_background?: string | null;
-    card_border_color?: string | null;
+    card_border?: string | null;
+    surface_2_background?: string | null;
     text_primary?: string | null;
     text_secondary?: string | null;
+    text_muted?: string | null;
     button_primary_bg?: string | null;
     button_primary_text?: string | null;
     button_secondary_bg?: string | null;
@@ -30,6 +34,11 @@ export type ActiveBrandPayload = {
     radius_scale?: string | null;
     shadow_style?: string | null;
     theme_mode?: string | null;
+  } | null;
+  userPreferences?: {
+    theme_mode?: string | null;
+    radius_scale?: string | null;
+    shadow_style?: string | null;
   } | null;
 };
 

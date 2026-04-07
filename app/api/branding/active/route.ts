@@ -10,24 +10,38 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const { data: profile, error: profileErr } = await auth.supabase
-    .from("shop_brand_profiles")
-    .select("*")
-    .eq("shop_id", auth.shopId)
-    .maybeSingle();
+  const [
+    { data: profile, error: profileErr },
+    { data: assets, error: assetsErr },
+    { data: userPreferences, error: prefErr },
+  ] = await Promise.all([
+    auth.supabase
+      .from("shop_brand_profiles")
+      .select("*")
+      .eq("shop_id", auth.shopId)
+      .maybeSingle(),
+    auth.supabase
+      .from("shop_brand_assets")
+      .select("*")
+      .eq("shop_id", auth.shopId)
+      .eq("is_active", true),
+    auth.supabase
+      .from("user_theme_preferences")
+      .select("*")
+      .eq("user_id", auth.userId)
+      .maybeSingle(),
+  ]);
 
   if (profileErr) {
     return NextResponse.json({ error: profileErr.message }, { status: 500 });
   }
 
-  const { data: assets, error: assetsErr } = await auth.supabase
-    .from("shop_brand_assets")
-    .select("*")
-    .eq("shop_id", auth.shopId)
-    .eq("is_active", true);
-
   if (assetsErr) {
     return NextResponse.json({ error: assetsErr.message }, { status: 500 });
+  }
+
+  if (prefErr) {
+    return NextResponse.json({ error: prefErr.message }, { status: 500 });
   }
 
   const logo = (assets ?? []).find((asset) => asset.kind === "logo") ?? null;
@@ -38,5 +52,6 @@ export async function GET(req: Request) {
     profile: profile ?? null,
     assets: assets ?? [],
     logoUrl: logo?.file_url ?? null,
+    userPreferences: userPreferences ?? null,
   });
 }
