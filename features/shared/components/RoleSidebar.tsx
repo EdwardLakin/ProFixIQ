@@ -17,28 +17,19 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 function normalizeRole(raw: string | null | undefined): Role | null {
   const r = String(raw ?? "").toLowerCase().trim();
   if (!r) return null;
-
-  // Map common synonyms into your canonical Role union.
   if (r === "tech" || r === "technician") return "mechanic";
   if (r === "fleet pm" || r === "fleet_pm") return "fleet_manager";
-
-  // Trust if it already matches a known role string.
   return r as Role;
 }
 
 export default function RoleSidebar() {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
-
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const pathname = usePathname();
 
   const [role, setRole] = useState<Role | null>(null);
   const [scopeFilter] = useState<Scope | "all">("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  // load role
   useEffect(() => {
     (async () => {
       const {
@@ -57,7 +48,6 @@ export default function RoleSidebar() {
     })();
   }, [supabase]);
 
-  // tiles for this role
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
 
@@ -66,11 +56,6 @@ export default function RoleSidebar() {
     );
   }, [role, scopeFilter]);
 
-  /**
-   * Grouping:
-   * - Prefer explicit `tile.section`
-   * - Fallback to first URL segment
-   */
   const groups = useMemo(() => {
     return tiles.reduce<Record<string, Tile[]>>((acc, tile) => {
       const key =
@@ -82,7 +67,6 @@ export default function RoleSidebar() {
     }, {});
   }, [tiles]);
 
-  // desired display order (sections)
   const order = [
     "Tech",
     "Operations",
@@ -105,7 +89,6 @@ export default function RoleSidebar() {
     [groups],
   );
 
-  // open the section that contains the current page
   useEffect(() => {
     if (!sortedGroups.length) return;
 
@@ -125,9 +108,7 @@ export default function RoleSidebar() {
   }, [pathname, sortedGroups]);
 
   if (!role) {
-    return (
-      <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>
-    );
+    return <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>;
   }
 
   const toggleSection = (key: string) => {
@@ -136,11 +117,11 @@ export default function RoleSidebar() {
 
   return (
     <nav
-      className="
-        flex-1 overflow-y-auto py-4 space-y-3
-        bg-gradient-to-b from-black/70 via-slate-950/90 to-black/90
-        metal-scroll
-      "
+      className="metal-scroll flex-1 space-y-3 overflow-y-auto py-4"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.75))",
+      }}
     >
       {sortedGroups.map(([group, groupTiles]) => {
         const open = !!openSections[group];
@@ -150,24 +131,37 @@ export default function RoleSidebar() {
 
         return (
           <div key={group} className="px-3">
-            {/* section header */}
             <button
               type="button"
               onClick={() => toggleSection(group)}
               className={cn(
                 "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
                 "text-[0.65rem] uppercase tracking-[0.16em]",
-                "border border-[var(--metal-border-soft)] bg-black/40",
-                "hover:border-[var(--brand-accent,#E39A6E)] hover:bg-white/5",
-                "text-neutral-400 hover:text-white transition-colors",
-                hasActive &&
-                  "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]",
+                "border text-neutral-300 transition-colors",
               )}
+              style={{
+                borderColor: hasActive
+                  ? "color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)"
+                  : "var(--metal-border-soft, rgba(148,163,184,0.3))",
+                background: hasActive
+                  ? "linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent), rgba(0,0,0,0.38))"
+                  : "rgba(0,0,0,0.28)",
+                boxShadow: hasActive
+                  ? "0 0 20px color-mix(in srgb, var(--brand-primary, #C1663B) 24%, transparent)"
+                  : "none",
+              }}
             >
               <span className="flex items-center gap-2">
-                {hasActive && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-primary,#C1663B)] shadow-[0_0_14px_color-mix(in_srgb,var(--brand-primary,#C1663B)_70%,transparent)]" />
-                )}
+                {hasActive ? (
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-full"
+                    style={{
+                      background: "var(--brand-primary, #C1663B)",
+                      boxShadow:
+                        "0 0 14px color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)",
+                    }}
+                  />
+                ) : null}
                 <span>{group}</span>
               </span>
               {open ? (
@@ -177,7 +171,6 @@ export default function RoleSidebar() {
               )}
             </button>
 
-            {/* section body */}
             {open ? (
               <div className="mt-1 space-y-1">
                 {groupTiles.map((t) => {
@@ -190,11 +183,20 @@ export default function RoleSidebar() {
                       href={t.href}
                       className={cn(
                         "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
-                        "border bg-gradient-to-r from-slate-950/70 via-black/70 to-slate-950/70",
-                        active
-                          ? "border-[var(--brand-primary,#C1663B)]/70 text-white shadow-[0_0_25px_color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)]"
-                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[var(--brand-accent,#E39A6E)] hover:bg-black/80",
+                        "border",
                       )}
+                      style={{
+                        borderColor: active
+                          ? "color-mix(in srgb, var(--brand-primary, #C1663B) 70%, transparent)"
+                          : "rgba(255,255,255,0.05)",
+                        background: active
+                          ? "linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent), rgba(0,0,0,0.38))"
+                          : "linear-gradient(135deg, rgba(0,0,0,0.24), color-mix(in srgb, var(--brand-secondary, #0F172A) 34%, black))",
+                        color: active ? "#ffffff" : "#a3a3a3",
+                        boxShadow: active
+                          ? "0 0 25px color-mix(in srgb, var(--brand-primary, #C1663B) 24%, transparent)"
+                          : "none",
+                      }}
                     >
                       <span className="truncate">{t.title}</span>
                       {t.cta ? (

@@ -1,9 +1,6 @@
-/// AppShell: wraps all "app" routes (dashboard, portal) with shared UI like sidebar, header, modals, and message subscription.
-//features/shared/components/AppShell.tsx
 "use client";
 
 import Image from "next/image";
-
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -31,11 +28,10 @@ const NON_APP_ROUTES = [
   "/auth/reset",
   "/auth/set-password",
   "/mobile",
-  // ✅ Demo funnel is marketing/public, not wrapped in dashboard
   "/demo",
 ];
 
-const HEADER_OFFSET_DESKTOP = "pt-14"; // keeps sidebar content below fixed desktop header
+const HEADER_OFFSET_DESKTOP = "pt-14";
 
 const ActionButton = ({
   onClick,
@@ -50,7 +46,13 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--brand-primary,#C1663B)] hover:text-white hover:bg-black/80"
+    className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-md transition"
+    style={{
+      borderColor: "rgba(255,255,255,0.10)",
+      background:
+        "linear-gradient(135deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 42%, black))",
+      color: "#f5f5f5",
+    }}
   >
     {children}
   </button>
@@ -83,8 +85,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
-
-  // Billing/trial badge state
   const [, setShopId] = useState<string | null>(null);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
@@ -102,29 +102,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const punchRef = useRef<HTMLDivElement | null>(null);
 
   const isPortalRoute = pathname === "/portal" || pathname.startsWith("/portal/");
-
   const isAppRoute =
     !isPortalRoute &&
     !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
-  // ✅ Only hide Planner / AI Planner for tech role (everyone else keeps them)
   const isTech = (userRole ?? "").toLowerCase() === "tech";
 
   const canSeeAgentConsole =
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
-  // show badge when trialing OR when billing is in a bad state
   const showBillingBadge =
     (subStatus ?? "") === "trialing" ||
     (subStatus ?? "") === "past_due" ||
     (subStatus ?? "") === "incomplete" ||
     (subStatus ?? "") === "unpaid";
 
-  // click target for badge -> owner settings billing section
   const billingHref = "/dashboard/owner/settings#billing";
 
-  // load session user once, load role, billing & subscribe to messages (main app only)
   useEffect(() => {
     if (!isAppRoute) return;
 
@@ -140,7 +135,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       if (!uid) return;
 
-      // load user role + must_change_password + shop_id
       try {
         const { data: profile } = await supabase
           .from("profiles")
@@ -154,7 +148,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         const sid = (profile?.shop_id as string | null) ?? null;
         setShopId(sid);
 
-        // load billing badge info from shop
         if (sid) {
           const { data: shop } = await supabase
             .from("shops")
@@ -164,13 +157,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             .eq("id", sid)
             .maybeSingle<ShopBillingScope>();
 
-          setSubStatus(
-            (shop?.stripe_subscription_status as string | null) ?? null,
-          );
+          setSubStatus((shop?.stripe_subscription_status as string | null) ?? null);
           setTrialEndIso((shop?.stripe_trial_end as string | null) ?? null);
-          setPeriodEndIso(
-            (shop?.stripe_current_period_end as string | null) ?? null,
-          );
+          setPeriodEndIso((shop?.stripe_current_period_end as string | null) ?? null);
         } else {
           setSubStatus(null);
           setTrialEndIso(null);
@@ -180,7 +169,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         console.error("Failed to load profile/shop for AppShell", err);
       }
 
-      // realtime for incoming messages
       const channel = supabase
         .channel("app-shell-messages")
         .on(
@@ -196,15 +184,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               recipients?: string[] | null;
             };
 
-            // ignore messages I sent
             if (msg.sender_id === uid) return;
+            if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid)) return;
 
-            // if a recipients array exists, make sure i'm in it
-            if (Array.isArray(msg.recipients)) {
-              if (!msg.recipients.includes(uid)) return;
-            }
-
-            // ok, this is for me – open modal on top
             setIncomingConvoId(msg.conversation_id);
             setChatOpen(true);
           },
@@ -219,7 +201,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => cleanup?.();
   }, [supabase, isAppRoute]);
 
-  // click-away for shift tracker
   useEffect(() => {
     if (!punchOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -240,17 +221,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         className={cn(
           "flex-1 py-2 text-center text-xs font-medium transition-colors",
           active
-            ? "text-[color:var(--accent-copper,#f97316)] font-semibold"
+            ? "font-semibold text-white"
             : "text-neutral-500 hover:text-neutral-100",
         )}
+        style={active ? { color: "var(--brand-accent, #E39A6E)" } : undefined}
       >
         {label}
       </Link>
     );
   };
 
-  // ✅ PUBLIC / NON-APP ROUTES:
-  // Landing, demo funnel, portal, etc. — no dashboard shell, no TabsBridge.
   if (!isAppRoute) {
     return (
       <div className="min-h-screen bg-neutral-950 text-foreground">
@@ -260,7 +240,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Badge UI (desktop)
   const BillingBadge = () => {
     if (!showBillingBadge) return null;
 
@@ -281,12 +260,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={goToBilling}
           title="Open billing details"
-          className="mr-2 hidden lg:flex items-center"
+          className="mr-2 hidden items-center lg:flex"
         >
-          <div className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-semibold text-neutral-200 shadow-sm backdrop-blur transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/70">
-            <span className="text-[color:var(--accent-copper-light)]">
-              Trial
-            </span>
+          <div
+            className="rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm backdrop-blur transition"
+            style={{
+              borderColor: "rgba(255,255,255,0.10)",
+              background:
+                "linear-gradient(135deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 48%, black))",
+              color: "#e5e7eb",
+            }}
+          >
+            <span style={{ color: "var(--brand-accent, #E39A6E)" }}>Trial</span>
             <span className="ml-2 text-neutral-300">{label}</span>
           </div>
         </button>
@@ -306,37 +291,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         type="button"
         onClick={goToBilling}
         title="Open billing details"
-        className="mr-2 hidden lg:flex items-center"
+        className="mr-2 hidden items-center lg:flex"
       >
         <div className="rounded-full border border-red-500/30 bg-red-950/30 px-3 py-1 text-[11px] font-semibold text-red-100 shadow-sm backdrop-blur transition hover:border-red-400/40">
-          Billing issue:{" "}
-          <span className="ml-1 uppercase tracking-[0.12em]">
-            {statusLabel}
-          </span>
-          {dueLabel ? (
-            <span className="ml-2 text-red-200/80">{dueLabel}</span>
-          ) : null}
+          Billing issue:
+          <span className="ml-1 uppercase tracking-[0.12em]">{statusLabel}</span>
+          {dueLabel ? <span className="ml-2 text-red-200/80">{dueLabel}</span> : null}
         </div>
       </button>
     );
   };
 
-  // ✅ MAIN APP SHELL (dashboard + tabs)
   return (
     <>
-      {/* Root: prevent horizontal growth; main fix is min-w-0 + sidebar shrink-0 */}
-      <div className="flex min-h-screen bg-neutral-950 text-foreground overflow-x-hidden">
-        {/* Sidebar (CRITICAL: shrink-0 so it never collapses when tabs grow) */}
+      <div className="flex min-h-screen overflow-x-hidden text-foreground">
         <aside
           className={cn(
-            "hidden shrink-0 overflow-hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            "hidden shrink-0 overflow-hidden border-r backdrop-blur-xl transition-all duration-300 md:flex md:flex-col",
             HEADER_OFFSET_DESKTOP,
             sidebarOpen
-              ? "md:w-64 translate-x-0"
-              : "md:w-0 -translate-x-full pointer-events-none",
+              ? "translate-x-0 border-r md:w-64"
+              : "pointer-events-none -translate-x-full md:w-0",
           )}
+          style={{
+            borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0.96), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.96))",
+          }}
         >
-          {/* Sidebar contents */}
           <div
             className={cn(
               "flex h-full flex-col transition-opacity duration-200",
@@ -346,11 +328,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
               <Link
                 href="/dashboard"
-                className="text-lg font-semibold tracking-tight transition-colors hover:opacity-95"
-                style={{
-                  fontFamily: "Black Ops One, var(--font-blackops), system-ui",
-                  color: "#c1663b",
-                }}
+                className="flex min-w-0 items-center gap-3 transition-colors hover:opacity-95"
               >
                 {activeBrand?.logoUrl ? (
                   <div className="flex h-9 max-w-[148px] items-center">
@@ -364,7 +342,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     />
                   </div>
                 ) : (
-                  "ProFixIQ"
+                  <span
+                    className="truncate text-lg font-semibold tracking-tight"
+                    style={{
+                      fontFamily: "Black Ops One, var(--font-blackops), system-ui",
+                      color: "var(--brand-primary, #C1663B)",
+                    }}
+                  >
+                    ProFixIQ
+                  </span>
                 )}
               </Link>
             </div>
@@ -375,23 +361,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        {/* Main column (CRITICAL: min-w-0 so content can shrink + not push sidebar off) */}
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          {/* Top bar */}
           <header
             className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b px-4 backdrop-blur-xl md:flex"
             style={{
-              borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
-              background: "linear-gradient(to right, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.95))",
-              boxShadow: "0 18px 40px rgba(0,0,0,0.95), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)"
+              borderColor:
+                "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
+              background:
+                "linear-gradient(to right, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.95))",
+              boxShadow:
+                "0 18px 40px rgba(0,0,0,0.95), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)",
             }}
           >
             <div className="flex items-center gap-3">
-              {/* Sidebar toggle */}
               <button
                 type="button"
                 onClick={() => setSidebarOpen((v) => !v)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/60 text-neutral-300 shadow-sm transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/60 text-neutral-300 shadow-sm transition hover:text-white"
               >
                 <span className="sr-only">Toggle navigation</span>
                 <div className="space-y-0.5">
@@ -425,35 +411,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 💬 <span className="hidden lg:inline">Messages</span>
               </ActionButton>
 
-              {userId && (
+              {userId ? (
                 <ActionButton
                   onClick={() => setAgentDialogOpen(true)}
                   title="Submit a request to ProFixIQ Agent"
                 >
                   🤖 <span className="hidden lg:inline">Agent Request</span>
                 </ActionButton>
-              )}
+              ) : null}
 
-              {/* ✅ Hide Planner + AI Planner ONLY for tech */}
-                            {!isTech && (
+              {!isTech ? (
                 <ActionButton
                   onClick={() => router.push("/agent/planner")}
                   title="AI Planner"
                 >
                   ⚡ <span className="hidden lg:inline">AI Planner</span>
                 </ActionButton>
-              )}
+              ) : null}
 
               <AskAssistantEntry placement="header" />
 
-              {userId && canSeeAgentConsole && (
+              {userId && canSeeAgentConsole ? (
                 <ActionButton
                   onClick={() => router.push("/agent")}
                   title="ProFixIQ Agent Console"
                 >
                   🧠 <span className="hidden lg:inline">Agent</span>
                 </ActionButton>
-              )}
+              ) : null}
 
               <ActionButton
                 onClick={async () => {
@@ -467,28 +452,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          {/* floating shift panel */}
           {punchOpen && userId ? (
             <div
               ref={punchRef}
-              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
+              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border p-3 backdrop-blur-xl md:block"
+              style={{
+                borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
+                background:
+                  "linear-gradient(135deg, rgba(0,0,0,0.92), color-mix(in srgb, var(--brand-secondary, #0F172A) 74%, black))",
+                boxShadow: "0 18px 40px rgba(0,0,0,0.95)",
+              }}
             >
-              <h2 className="mb-2 text-sm font-medium text-neutral-100">
-                Shift Tracker
-              </h2>
+              <h2 className="mb-2 text-sm font-medium text-neutral-100">Shift Tracker</h2>
               <ShiftTracker userId={userId} />
             </div>
           ) : null}
 
-          {/* content (CRITICAL: min-w-0 + overflow-x-hidden prevents tab row from widening layout) */}
-          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
+          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
             <TabsBridge>
               <div className="relative z-0 min-w-0">{children}</div>
             </TabsBridge>
           </main>
 
-          {/* mobile nav */}
-          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--metal-border-soft,#1f2937)] bg-black/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+          <nav
+            className="fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+            style={{
+              borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 78%, black))",
+            }}
+          >
             <div className="flex px-1">
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
@@ -531,17 +524,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         activeConversationId={incomingConvoId}
       />
 
-      {userId && (
+      {userId ? (
         <AgentRequestModal
           open={agentDialogOpen}
           onOpenChange={setAgentDialogOpen}
         />
-      )}
+      ) : null}
 
       <Toaster closeButton richColors position="top-right" theme="dark" />
       <div className="md:hidden">
         <AskAssistantEntry mobile />
       </div>
-</>
+    </>
   );
 }

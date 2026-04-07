@@ -64,22 +64,32 @@ export default function SuggestedActionsPanel({
   const visibleItems =
     collapsible && !expanded ? items.slice(0, effectiveMax) : items;
 
-  const hasHiddenItems =
-    collapsible && items.length > visibleItems.length;
+  const hasHiddenItems = collapsible && items.length > visibleItems.length;
 
   const sectionClass = compact
-    ? "rounded-2xl border border-white/10 bg-black/35 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.35)]"
-    : "rounded-2xl border border-white/10 bg-black/40 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.45)]";
+    ? "rounded-2xl border p-3 shadow-[0_14px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+    : "rounded-2xl border p-5 shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
 
   const itemClass = compact
-    ? "rounded-xl border border-white/10 bg-black/25 px-3 py-2.5"
-    : "rounded-2xl border border-white/10 bg-black/35 p-4";
+    ? "rounded-xl border px-3 py-2.5"
+    : "rounded-2xl border p-4";
 
   return (
-    <section className={sectionClass}>
+    <section
+      className={sectionClass}
+      style={{
+        borderColor:
+          "color-mix(in srgb, var(--brand-primary, #C1663B) 22%, rgba(255,255,255,0.10))",
+        background:
+          "linear-gradient(135deg, rgba(0,0,0,0.40), color-mix(in srgb, var(--brand-secondary, #0F172A) 68%, black))",
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <div
+            className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+            style={{ color: "var(--brand-accent, #E39A6E)" }}
+          >
             {title}
           </div>
 
@@ -95,7 +105,12 @@ export default function SuggestedActionsPanel({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] text-neutral-300 hover:bg-black/60"
+              className="rounded-full border px-3 py-1 text-[11px] text-neutral-200 transition hover:text-white"
+              style={{
+                borderColor: "rgba(255,255,255,0.10)",
+                background:
+                  "color-mix(in srgb, var(--brand-secondary, #0F172A) 45%, rgba(0,0,0,0.45))",
+              }}
             >
               {expanded ? "Show less" : `Show all (${items.length})`}
             </button>
@@ -104,7 +119,12 @@ export default function SuggestedActionsPanel({
           <button
             type="button"
             onClick={() => void reload()}
-            className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] text-neutral-300 hover:bg-black/60"
+            className="rounded-full border px-3 py-1 text-[11px] text-neutral-200 transition hover:text-white"
+            style={{
+              borderColor: "rgba(255,255,255,0.10)",
+              background:
+                "color-mix(in srgb, var(--brand-secondary, #0F172A) 45%, rgba(0,0,0,0.45))",
+            }}
           >
             Refresh
           </button>
@@ -126,13 +146,19 @@ export default function SuggestedActionsPanel({
       ) : (
         <div className={compact ? "mt-3 space-y-2" : "mt-4 space-y-3"}>
           {visibleItems.map((item) => (
-            <div key={item.id} className={itemClass}>
+            <div
+              key={item.id}
+              className={itemClass}
+              style={{
+                borderColor: "rgba(255,255,255,0.10)",
+                background:
+                  "linear-gradient(135deg, rgba(0,0,0,0.22), color-mix(in srgb, var(--brand-secondary, #0F172A) 56%, black))",
+              }}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className={compact ? "text-sm font-semibold text-white" : "text-sm font-semibold text-white"}>
-                      {item.title}
-                    </div>
+                    <div className="text-sm font-semibold text-white">{item.title}</div>
 
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${levelClasses(item.level)}`}
@@ -152,9 +178,14 @@ export default function SuggestedActionsPanel({
                   href={item.href}
                   className={
                     compact
-                      ? "rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-black/60"
-                      : "rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-200 hover:bg-black/60"
+                      ? "rounded-full border px-2.5 py-1 text-[11px] text-neutral-100 transition hover:text-white"
+                      : "rounded-full border px-3 py-1 text-xs text-neutral-100 transition hover:text-white"
                   }
+                  style={{
+                    borderColor: "rgba(255,255,255,0.10)",
+                    background:
+                      "color-mix(in srgb, var(--brand-secondary, #0F172A) 42%, rgba(0,0,0,0.45))",
+                  }}
                 >
                   Open
                 </Link>
@@ -164,9 +195,16 @@ export default function SuggestedActionsPanel({
                     href={withAutorun(item.plannerHref)}
                     className={
                       compact
-                        ? "rounded-full border border-orange-400/40 bg-orange-500/10 px-2.5 py-1 text-[11px] text-orange-300 hover:bg-orange-500/15"
-                        : "rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 hover:bg-orange-500/15"
+                        ? "rounded-full border px-2.5 py-1 text-[11px] transition"
+                        : "rounded-full border px-3 py-1 text-xs transition"
                     }
+                    style={{
+                      borderColor:
+                        "color-mix(in srgb, var(--brand-primary, #C1663B) 45%, transparent)",
+                      background:
+                        "color-mix(in srgb, var(--brand-primary, #C1663B) 12%, transparent)",
+                      color: "var(--brand-accent, #E39A6E)",
+                    }}
                   >
                     Fix Now
                   </Link>
