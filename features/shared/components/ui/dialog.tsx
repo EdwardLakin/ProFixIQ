@@ -1,5 +1,3 @@
-// features/shared/components/ui/dialog.tsx
-
 "use client";
 
 import * as React from "react";
@@ -24,7 +22,7 @@ export const DialogOverlay = React.forwardRef<
     ref={ref}
     className={cn(
       "fixed inset-0 z-40 bg-black/75 backdrop-blur-sm transition-opacity data-[state=open]:opacity-100 data-[state=closed]:opacity-0",
-      className
+      className,
     )}
     {...props}
   />
@@ -40,13 +38,19 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10",
-        "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.05),rgba(0,0,0,0.88))] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.85)] backdrop-blur-xl",
+        "fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 border p-6 backdrop-blur-xl",
+        "rounded-[var(--theme-radius-xl)] border-[var(--theme-border-soft)]",
+        "text-[var(--theme-text-primary)]",
+        "shadow-[0_24px_70px_rgba(0,0,0,0.85),0_0_26px_var(--theme-glow)]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
         "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
-        className
+        className,
       )}
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at top, var(--theme-panel-bg-start), var(--theme-dialog-bg))",
+      }}
       {...props}
     >
       {children}
@@ -60,10 +64,7 @@ export const DialogHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn(
-      "flex flex-col gap-1 border-b border-white/10 pb-3",
-      className
-    )}
+    className={cn("flex flex-col gap-1 border-b border-[var(--theme-border-soft)] pb-3", className)}
     {...props}
   />
 );
@@ -75,8 +76,8 @@ export const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold uppercase tracking-[0.16em] text-neutral-100",
-      className
+      "text-lg font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-primary)]",
+      className,
     )}
     {...props}
   />
@@ -89,7 +90,7 @@ export const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-neutral-400", className)}
+    className={cn("text-sm text-[var(--theme-text-muted)]", className)}
     {...props}
   />
 ));
@@ -101,8 +102,8 @@ export const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "mt-4 flex w-full items-center justify-end gap-2 border-t border-white/10 pt-3",
-      className
+      "mt-4 flex w-full items-center justify-end gap-2 border-t border-[var(--theme-border-soft)] pt-3",
+      className,
     )}
     {...props}
   />

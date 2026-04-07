@@ -1,4 +1,3 @@
-// shared/components/Card.tsx
 "use client";
 
 import { cn } from "@shared/lib/utils";
@@ -14,11 +13,14 @@ export default function Card({ children, onClick, className }: CardProps) {
     <div
       onClick={onClick}
       className={cn(
-        "rounded-2xl border border-white/10 bg-black/40",
-        "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.05),rgba(0,0,0,0.82))]",
-        "backdrop-blur-md px-6 py-5 shadow-card transition duration-200",
+        "border px-6 py-5 backdrop-blur-md transition duration-200",
+        "rounded-[var(--theme-radius-xl)]",
+        "border-[var(--theme-border-soft)]",
+        "bg-[var(--panel-bg)]",
+        "text-[var(--theme-text-primary)]",
+        "shadow-[0_18px_45px_rgba(0,0,0,0.45),0_0_20px_var(--theme-glow)]",
         onClick
-          ? "cursor-pointer hover:-translate-y-[1px] hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:shadow-[0_0_20px_rgba(192,132,70,0.42)]"
+          ? "cursor-pointer hover:-translate-y-[1px] hover:border-[var(--brand-accent)] hover:shadow-[0_18px_45px_rgba(0,0,0,0.45),0_0_24px_var(--theme-glow)]"
           : "",
         className,
       )}

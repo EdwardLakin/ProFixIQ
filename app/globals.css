@@ -2,28 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-/* -------------------------------------------------------------------------- */
-/* 🎨 Theme Tokens – Copper + Dark Metal                                      */
-/* -------------------------------------------------------------------------- */
 :root {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --accent-copper: #C1663B;
-  --accent-copper-soft: #7E4023;
-  --accent-copper-light: #E39A6E;
+  --brand-primary: #C1663B;
+  --brand-secondary: #050910;
+  --brand-accent: #E39A6E;
 
-  --metal-bg: #050910;
-  --metal-panel: #050b12;
-  --metal-border-soft: rgba(148, 163, 184, 0.3);
-  --metal-border-strong: rgba(148, 163, 184, 0.6);
+  --theme-surface-base: #050910;
+  --theme-app-bg-start: rgba(249, 115, 22, 0.18);
+  --theme-app-bg-end: #020617;
 
-  --glass-bg: rgba(0, 0, 0, 0.3);
-  --glass-bg-soft: rgba(0, 0, 0, 0.22);
+  --theme-sidebar-bg-start: rgba(0, 0, 0, 0.96);
+  --theme-sidebar-bg-end: rgba(2, 6, 23, 0.96);
+
+  --theme-topbar-bg-start: rgba(0, 0, 0, 0.95);
+  --theme-topbar-bg-end: rgba(2, 6, 23, 0.95);
+
+  --theme-panel-bg-start: rgba(255, 255, 255, 0.05);
+  --theme-panel-bg-end: rgba(0, 0, 0, 0.82);
+
+  --theme-input-bg: rgba(0, 0, 0, 0.30);
+  --theme-dialog-bg: rgba(0, 0, 0, 0.88);
+
+  --theme-text-primary: #FFFFFF;
+  --theme-text-secondary: #E5E7EB;
+  --theme-text-muted: #A3A3A3;
+
+  --theme-border-soft: rgba(148, 163, 184, 0.30);
+  --theme-border-strong: rgba(148, 163, 184, 0.60);
+  --theme-ring: rgba(193, 102, 59, 0.45);
+  --theme-glow: rgba(193, 102, 59, 0.24);
+
+  --theme-radius-sm: 0.5rem;
+  --theme-radius-md: 0.75rem;
+  --theme-radius-lg: 1rem;
+  --theme-radius-xl: 1.5rem;
+
+  --app-shell-bg:
+    radial-gradient(circle at top, var(--theme-app-bg-start), transparent 55%),
+    radial-gradient(circle at bottom, color-mix(in srgb, var(--brand-secondary) 85%, #0f172a), var(--theme-app-bg-end) 70%);
+
+  --accent-copper: var(--brand-primary);
+  --accent-copper-soft: var(--brand-accent);
+  --accent-copper-light: var(--brand-accent);
+
+  --metal-bg: var(--theme-surface-base);
+  --metal-panel: color-mix(in srgb, var(--brand-secondary) 88%, black);
+  --metal-border-soft: var(--theme-border-soft);
+  --metal-border-strong: var(--theme-border-strong);
+
+  --glass-bg: var(--theme-input-bg);
+  --glass-bg-soft: color-mix(in srgb, var(--theme-input-bg) 82%, transparent);
+
+  --panel-bg:
+    radial-gradient(circle at top, var(--theme-panel-bg-start), var(--theme-panel-bg-end));
 }
 
-/* -------------------------------------------------------------------------- */
-/* 🧭 Global Base Look */
-/* -------------------------------------------------------------------------- */
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
@@ -31,8 +66,13 @@ html {
 }
 
 body {
-  @apply bg-neutral-950 text-white antialiased;
+  min-height: 100vh;
+  color: var(--theme-text-primary);
+  background-color: var(--theme-surface-base);
+  background-image: var(--app-shell-bg);
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-blackops,
@@ -40,13 +80,12 @@ body {
   font-family: var(--font-blackops), var(--font-inter), system-ui, sans-serif;
 }
 
-/* -------------------------------------------------------------------------- */
-/* 🧾 Inputs / Forms */
-/* -------------------------------------------------------------------------- */
 .input {
-  @apply w-full rounded-md border px-3 py-2 text-white placeholder:text-neutral-400;
-  background-color: var(--glass-bg);
-  border-color: rgba(255, 255, 255, 0.1);
+  @apply w-full border px-3 py-2 placeholder:text-neutral-400;
+  color: var(--theme-text-primary);
+  border-radius: var(--theme-radius-md);
+  background-color: var(--theme-input-bg);
+  border-color: var(--theme-border-soft);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
@@ -56,27 +95,24 @@ body {
 input,
 textarea,
 select {
-  color: white;
+  color: var(--theme-text-primary);
 }
 
 ::placeholder {
-  color: rgb(163 163 163);
+  color: var(--theme-text-muted);
 }
 
 :focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 1px var(--accent-copper-soft),
-    0 0 0 3px rgba(193, 102, 59, 0.4);
+    0 0 0 1px var(--brand-primary),
+    0 0 0 3px var(--theme-ring);
 }
 
 .input:focus-visible {
-  border-color: var(--accent-copper);
+  border-color: var(--brand-primary);
 }
 
-/* -------------------------------------------------------------------------- */
-/* ✨ Animations */
-/* -------------------------------------------------------------------------- */
 @keyframes fade-in {
   0% {
     opacity: 0;
@@ -92,9 +128,6 @@ select {
   animation: fade-in 0.6s ease-out forwards;
 }
 
-/* -------------------------------------------------------------------------- */
-/* 🧱 Legacy Utility Layer – keep for compatibility                           */
-/* -------------------------------------------------------------------------- */
 .btn {
   @apply inline-flex items-center justify-center rounded px-4 py-2 font-medium transition-colors;
 }
@@ -110,7 +143,7 @@ select {
 }
 
 .btn-orange:hover {
-  background-color: var(--accent-copper-soft);
+  filter: brightness(1.08);
 }
 
 .btn-orange:active {
@@ -119,98 +152,70 @@ select {
 }
 
 .btn-outline {
-  @apply border border-white text-white hover:bg-white hover:text-black;
+  @apply border hover:bg-white hover:text-black;
+  color: var(--theme-text-primary);
+  border-color: var(--theme-border-soft);
 }
 
 .card {
-  @apply rounded-xl p-6;
-  background-color: var(--metal-panel);
-  border: 1px solid var(--metal-border-soft);
+  @apply p-6;
+  border-radius: var(--theme-radius-xl);
+  background-image: var(--panel-bg);
+  border: 1px solid var(--theme-border-soft);
   box-shadow:
     0 18px 45px rgba(0, 0, 0, 0.85),
-    inset 0 0 0 1px rgba(15, 23, 42, 0.5);
-  background-image:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.06),
-      rgba(0, 0, 0, 0.4)
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.04) 0px,
-      rgba(255, 255, 255, 0) 1px,
-      rgba(0, 0, 0, 0.2) 2px
-    );
+    0 0 24px var(--theme-glow),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.35);
 }
 
 .metal-bar {
-  background-color: var(--metal-bg);
-  background-image:
+  background:
     linear-gradient(
       120deg,
       rgba(255, 255, 255, 0.06),
       rgba(255, 255, 255, 0) 40%
     ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.04),
-      rgba(0, 0, 0, 0.1) 1px,
-      rgba(0, 0, 0, 0.2) 3px,
-      rgba(255, 255, 255, 0.02) 4px
+    linear-gradient(
+      180deg,
+      var(--theme-topbar-bg-start),
+      var(--theme-topbar-bg-end)
     );
-  border-bottom: 1px solid var(--metal-border-soft);
+  border-bottom: 1px solid var(--theme-border-soft);
 }
 
 .metal-card {
-  background-color: var(--metal-panel);
-  background-image:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.06),
-      rgba(0, 0, 0, 0.4)
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.04) 0px,
-      rgba(255, 255, 255, 0) 1px,
-      rgba(0, 0, 0, 0.2) 2px
-    );
-  border: 1px solid var(--metal-border-soft);
+  background-image: var(--panel-bg);
+  border: 1px solid var(--theme-border-soft);
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.85),
-    inset 0 0 0 1px rgba(15, 23, 42, 0.55);
+    0 0 20px var(--theme-glow),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.32);
 }
 
 .accent-chip {
   border-radius: 9999px;
-  border: 1px solid var(--accent-copper-light);
-  background-color: rgba(193, 102, 59, 0.18);
-  color: var(--accent-copper-light);
+  border: 1px solid color-mix(in srgb, var(--brand-accent) 70%, transparent);
+  background-color: color-mix(in srgb, var(--brand-accent) 18%, transparent);
+  color: var(--brand-accent);
 }
 
-/* -------------------------------------------------------------------------- */
-/* 🧭 Scrollbars */
-/* -------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
   width: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--accent-copper-soft);
+  background: color-mix(in srgb, var(--brand-primary) 60%, #111827);
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-copper);
+  background: var(--brand-primary);
 }
 
 ::-webkit-scrollbar-track {
-  background: #050810;
+  background: color-mix(in srgb, var(--theme-surface-base) 90%, black);
 }
 
-/* -------------------------------------------------------------------------- */
-/* 📱 Mobile touch improvements */
-/* -------------------------------------------------------------------------- */
 @media (max-width: 767px) {
   input,
   textarea,
@@ -219,9 +224,6 @@ select {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* 🎬 Work Order modal animations */
-/* -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   dialog.wo-modal {
     opacity: 0;

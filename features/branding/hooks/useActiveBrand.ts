@@ -2,6 +2,31 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+export type BrandThemeOverrides = {
+  appBgStart?: string | null;
+  appBgEnd?: string | null;
+  sidebarBgStart?: string | null;
+  sidebarBgEnd?: string | null;
+  topbarBgStart?: string | null;
+  topbarBgEnd?: string | null;
+  panelBgStart?: string | null;
+  panelBgEnd?: string | null;
+  inputBg?: string | null;
+  dialogBg?: string | null;
+  textPrimary?: string | null;
+  textSecondary?: string | null;
+  textMuted?: string | null;
+  borderSoft?: string | null;
+  borderStrong?: string | null;
+  ringColor?: string | null;
+  glowColor?: string | null;
+  surfaceBase?: string | null;
+  radiusSm?: string | null;
+  radiusMd?: string | null;
+  radiusLg?: string | null;
+  radiusXl?: string | null;
+};
+
 export type ActiveBrandPayload = {
   ok?: boolean;
   logoUrl?: string | null;
@@ -10,6 +35,10 @@ export type ActiveBrandPayload = {
     secondary_color?: string | null;
     accent_color?: string | null;
     style_preset?: string | null;
+    metadata?: {
+      theme?: BrandThemeOverrides | null;
+      [key: string]: unknown;
+    } | null;
   } | null;
 };
 
@@ -43,11 +72,17 @@ export function useActiveBrand() {
     };
 
     window.addEventListener("focus", onRefresh);
-    window.addEventListener("profixiq:brand-refresh", onRefresh as EventListener);
+    window.addEventListener(
+      "profixiq:brand-refresh",
+      onRefresh as EventListener,
+    );
 
     return () => {
       window.removeEventListener("focus", onRefresh);
-      window.removeEventListener("profixiq:brand-refresh", onRefresh as EventListener);
+      window.removeEventListener(
+        "profixiq:brand-refresh",
+        onRefresh as EventListener,
+      );
     };
   }, [load]);
 

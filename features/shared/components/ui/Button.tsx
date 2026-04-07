@@ -24,21 +24,21 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 ease-in-out " +
+  "inline-flex items-center justify-center font-semibold transition duration-150 ease-in-out " +
   "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-  "focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-black";
+  "focus:ring-offset-black";
 
 const variantClasses: Record<Exclude<Variant, "copper">, string> = {
   default: clsx(
-    "text-white",
-    "border border-[var(--metal-border-soft)]",
-    "bg-[var(--glass-bg)]",
+    "text-[var(--theme-text-primary)]",
+    "border border-[var(--theme-border-soft)]",
+    "bg-[var(--theme-input-bg)]",
     "hover:bg-white/5",
   ),
   secondary: clsx(
-    "text-neutral-200",
-    "border border-[var(--metal-border-strong)]",
-    "bg-[var(--glass-bg-soft)]",
+    "text-[var(--theme-text-secondary)]",
+    "border border-[var(--theme-border-strong)]",
+    "bg-[color:var(--theme-panel-bg-start)]",
     "hover:bg-white/5",
   ),
   destructive: clsx(
@@ -48,14 +48,14 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "hover:bg-red-600/70",
   ),
   ghost: clsx(
-    "text-neutral-200",
-    "border border-[var(--metal-border-soft)]",
+    "text-[var(--theme-text-secondary)]",
+    "border border-[var(--theme-border-soft)]",
     "bg-transparent",
     "hover:bg-white/5",
   ),
   outline: clsx(
-    "text-white",
-    "border border-[var(--metal-border-strong)]",
+    "text-[var(--theme-text-primary)]",
+    "border border-[var(--theme-border-strong)]",
     "bg-transparent",
     "hover:bg-white/5",
   ),
@@ -63,17 +63,17 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
 
 const copperClass = clsx(
   "text-black",
-  "bg-[var(--accent-copper)]",
+  "bg-[var(--brand-primary)]",
   "hover:brightness-110",
-  "border border-[rgba(193,102,59,0.35)]",
-  "shadow-[0_0_0_1px_rgba(193,102,59,0.12),0_0_16px_rgba(193,102,59,0.18)]",
+  "border border-[color:var(--brand-primary)]/35",
+  "shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary)_12%,transparent),0_0_16px_var(--theme-glow)]",
 );
 
 const sizeClasses: Record<Size, string> = {
-  xs: "text-xs px-2 py-1",
-  sm: "text-sm px-3 py-1.5",
-  md: "text-sm px-4 py-2",
-  lg: "text-base px-5 py-3",
+  xs: "text-xs px-2 py-1 rounded-[var(--theme-radius-sm)]",
+  sm: "text-sm px-3 py-1.5 rounded-[var(--theme-radius-md)]",
+  md: "text-sm px-4 py-2 rounded-[var(--theme-radius-md)]",
+  lg: "text-base px-5 py-3 rounded-[var(--theme-radius-lg)]",
 };
 
 export function buttonClasses({
@@ -98,6 +98,7 @@ export function buttonClasses({
     base,
     applied,
     sizeClasses[size],
+    "focus:ring-[var(--theme-ring)]",
     disabled || isLoading ? "cursor-not-allowed opacity-50" : "",
     className,
   );
@@ -128,7 +129,7 @@ export const Button = ({
     >
       {isLoading && (
         <svg
-          className="mr-2 h-4 w-4 animate-spin text-white"
+          className="mr-2 h-4 w-4 animate-spin text-current"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"

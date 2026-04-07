@@ -11,6 +11,7 @@ export type ActiveBrandRender = {
     secondary: string;
     accent: string;
   };
+  theme: Record<string, unknown> | null;
 };
 
 export async function getActiveBrandForRender(
@@ -34,6 +35,10 @@ export async function getActiveBrandForRender(
     .eq("is_active", true);
 
   const logo = (assets ?? []).find((a) => a.kind === "logo") ?? null;
+  const metadata =
+    profile && typeof profile.metadata === "object" && profile.metadata
+      ? (profile.metadata as Record<string, unknown>)
+      : null;
 
   return {
     profile: profile ?? null,
@@ -43,5 +48,9 @@ export async function getActiveBrandForRender(
       secondary: profile?.secondary_color ?? "#0F172A",
       accent: profile?.accent_color ?? "#E2A164",
     },
+    theme:
+      metadata && typeof metadata.theme === "object"
+        ? (metadata.theme as Record<string, unknown>)
+        : null,
   };
 }
