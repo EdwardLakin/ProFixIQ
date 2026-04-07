@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -183,9 +184,7 @@ function notifyBrandRefresh() {
 }
 
 function isGeneratedAsset(asset: BrandAsset): boolean {
-  return (
-    Boolean(asset.metadata?.generated) || asset.generation_provider === "openai"
-  );
+  return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
 }
 
 function randomHexColor(): string {
