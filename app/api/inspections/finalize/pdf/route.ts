@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
   // 5) Generate PDF
   const pdfBytes = await generateInspectionPDF(summary, {
     logoUrl: brand.logoUrl,
-    shopName: "Inspection Report",
+    shopName: null,
     colors: brand.colors,
   });
 
