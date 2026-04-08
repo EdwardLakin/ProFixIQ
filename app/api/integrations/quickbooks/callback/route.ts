@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     .find((v) => v.startsWith(`${STATE_COOKIE}=`))
     ?.slice(`${STATE_COOKIE}=`.length);
 
-  const redirectBase = `${getAppBaseUrl()}/dashboard/owner/settings/integrations/quickbooks`;
+  const redirectBase = `${getAppBaseUrl()}/dashboard/owner/settings#quickbooks-integration`;
 
   if (error) {
     return NextResponse.redirect(
