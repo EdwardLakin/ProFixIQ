@@ -6,11 +6,13 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { decodeQuickBooksState } from "@/features/integrations/quickbooks/server/state";
 import { exchangeQuickBooksCodeForTokens } from "@/features/integrations/quickbooks/server/http";
 import {
+  getAppBaseUrl,
   getQuickBooksEnvironment,
   getQuickBooksRedirectUri,
 } from "@/features/integrations/quickbooks/server/env";
 
 const STATE_COOKIE = "pfq_qbo_oauth_state";
+const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -19,83 +21,40 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state")?.trim() ?? "";
   const error = url.searchParams.get("error")?.trim() ?? "";
 
-  const cookieState = req.headers
-    .get("cookie")
-    ?.split(";")
-    .map((v) => v.trim())
-    .find((v) => v.startsWith(`${STATE_COOKIE}=`))
-    ?.slice(`${STATE_COOKIE}=`.length);
-
-  const decoded = state ? decodeQuickBooksState(state) : null;
-
-  const debug: Record<string, unknown> = {
-    step: "start",
-    hasCode: Boolean(code),
-    hasRealmId: Boolean(realmId),
-    hasState: Boolean(state),
-    hasCookieState: Boolean(cookieState),
-    cookieMatchesState: Boolean(cookieState && state && cookieState === state),
-    decodedState: decoded,
-    callbackUrl: req.url,
-    redirectUriEnv: getQuickBooksRedirectUri(),
-    environment: getQuickBooksEnvironment(),
-    incomingError: error || null,
-  };
+  const redirectBase = `${getAppBaseUrl()}/dashboard/owner/settings`;
 
   if (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        step: "provider_error",
-        debug,
-        error,
-      },
-      { status: 400 },
+    return NextResponse.redirect(
+      `${redirectBase}?error=${encodeURIComponent(error)}#quickbooks-integration`,
     );
   }
 
-  if (!code || !realmId || !state || !cookieState || cookieState !== state) {
-    return NextResponse.json(
-      {
-        ok: false,
-        step: "state_validation_failed",
-        debug,
-        error: "Invalid QuickBooks callback state.",
-      },
-      { status: 400 },
+  if (!code || !realmId || !state) {
+    return NextResponse.redirect(
+      `${redirectBase}?error=${encodeURIComponent("Missing QuickBooks callback parameters.")}#quickbooks-integration`,
     );
   }
 
-  if (!decoded?.shopId || !decoded?.userId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        step: "decoded_state_invalid",
-        debug,
-        error: "Invalid QuickBooks OAuth state.",
-      },
-      { status: 400 },
+  const decoded = decodeQuickBooksState(state);
+  if (!decoded?.shopId || !decoded?.userId || !decoded?.issuedAt) {
+    return NextResponse.redirect(
+      `${redirectBase}?error=${encodeURIComponent("Invalid QuickBooks OAuth state.")}#quickbooks-integration`,
+    );
+  }
+
+  if (Date.now() - decoded.issuedAt > STATE_MAX_AGE_MS) {
+    return NextResponse.redirect(
+      `${redirectBase}?error=${encodeURIComponent("QuickBooks connection expired. Please try again.")}#quickbooks-integration`,
     );
   }
 
   try {
-    debug.step = "exchange_tokens";
     const tokenResponse = await exchangeQuickBooksCodeForTokens(
       code,
       getQuickBooksRedirectUri(),
     );
 
-    debug.step = "create_supabase_client";
     const supabase = createServerSupabaseRoute();
-
-    debug.step = "check_auth_user";
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    debug.authUserId = user?.id ?? null;
-    debug.authError = authError?.message ?? null;
 
     const accessTokenExpiresAt = new Date(
       Date.now() + tokenResponse.expires_in * 1000,
@@ -127,50 +86,35 @@ export async function GET(req: Request) {
       metadata: {},
     };
 
-    debug.step = "upsert_connection";
-    debug.payloadPreview = {
-      shop_id: payload.shop_id,
-      created_by: payload.created_by,
-      realm_id: payload.realm_id,
-      environment: payload.environment,
-      token_scope: payload.token_scope,
-    };
-
-    const { data, error: upsertError } = await supabase
+    const { error: upsertError } = await supabase
       .from("quickbooks_connections")
-      .upsert(payload, { onConflict: "shop_id" })
-      .select("*");
+      .upsert(payload, { onConflict: "shop_id" });
 
     if (upsertError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          step: "upsert_failed",
-          debug,
-          error: upsertError.message,
-        },
-        { status: 500 },
-      );
+      throw new Error(upsertError.message);
     }
 
-    return NextResponse.json({
-      ok: true,
-      step: "connected",
-      debug,
-      insertedRows: data ?? [],
+    const res = NextResponse.redirect(
+      `${redirectBase}?connected=1#quickbooks-integration`,
+    );
+
+    res.cookies.set(STATE_COOKIE, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
     });
+
+    return res;
   } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        step: String(debug.step ?? "unknown"),
-        debug,
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to complete QuickBooks connection.",
-      },
-      { status: 500 },
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Failed to complete QuickBooks connection.";
+
+    return NextResponse.redirect(
+      `${redirectBase}?error=${encodeURIComponent(message)}#quickbooks-integration`,
     );
   }
 }
