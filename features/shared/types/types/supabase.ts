@@ -8894,6 +8894,334 @@ export type Database = {
           },
         ]
       }
+      quickbooks_connections: {
+        Row: {
+          access_token: string
+          access_token_expires_at: string
+          connected_at: string
+          created_at: string
+          created_by: string | null
+          environment: string
+          id: string
+          is_active: boolean
+          last_error: string | null
+          last_sync_at: string | null
+          metadata: Json
+          realm_id: string
+          refresh_token: string
+          refresh_token_expires_at: string | null
+          shop_id: string
+          token_scope: string[]
+          token_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          access_token_expires_at: string
+          connected_at?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          realm_id: string
+          refresh_token: string
+          refresh_token_expires_at?: string | null
+          shop_id: string
+          token_scope?: string[]
+          token_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          access_token_expires_at?: string
+          connected_at?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          realm_id?: string
+          refresh_token?: string
+          refresh_token_expires_at?: string | null
+          shop_id?: string
+          token_scope?: string[]
+          token_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_connections_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quickbooks_customer_links: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          last_error: string | null
+          last_synced_at: string | null
+          metadata: Json
+          qb_customer_id: string
+          qb_sync_token: string | null
+          shop_id: string
+          sync_status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          metadata?: Json
+          qb_customer_id: string
+          qb_sync_token?: string | null
+          shop_id: string
+          sync_status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          metadata?: Json
+          qb_customer_id?: string
+          qb_sync_token?: string | null
+          shop_id?: string
+          sync_status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_customer_links_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_customer_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_customer_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quickbooks_invoice_links: {
+        Row: {
+          created_at: string
+          id: string
+          invoice_id: string
+          last_error: string | null
+          last_synced_at: string | null
+          metadata: Json
+          qb_doc_number: string | null
+          qb_invoice_id: string
+          qb_sync_token: string | null
+          shop_id: string
+          sync_status: string
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invoice_id: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          metadata?: Json
+          qb_doc_number?: string | null
+          qb_invoice_id: string
+          qb_sync_token?: string | null
+          shop_id: string
+          sync_status?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          last_error?: string | null
+          last_synced_at?: string | null
+          metadata?: Json
+          qb_doc_number?: string | null
+          qb_invoice_id?: string
+          qb_sync_token?: string | null
+          shop_id?: string
+          sync_status?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_invoice_links_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: true
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quickbooks_invoice_links_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quickbooks_sync_events: {
+        Row: {
+          action: string
+          connection_id: string | null
+          created_at: string
+          created_by: string | null
+          entity_id: string | null
+          entity_type: string
+          error_message: string | null
+          id: string
+          request_payload: Json | null
+          response_payload: Json | null
+          shop_id: string
+          status: string
+        }
+        Insert: {
+          action: string
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          entity_id?: string | null
+          entity_type: string
+          error_message?: string | null
+          id?: string
+          request_payload?: Json | null
+          response_payload?: Json | null
+          shop_id: string
+          status: string
+        }
+        Update: {
+          action?: string
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          error_message?: string | null
+          id?: string
+          request_payload?: Json | null
+          response_payload?: Json | null
+          shop_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_sync_events_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "quickbooks_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_sync_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_sync_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_sync_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_lines: {
         Row: {
           created_at: string | null
