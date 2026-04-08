@@ -126,11 +126,6 @@ function currencyFromShopCountry(country: unknown): "CAD" | "USD" {
   return c === "CA" ? "CAD" : "USD";
 }
 
-// Heuristic: if invoice labor_cost is tiny, it may be HOURS stored into a dollars field.
-function isProbablyHoursNotDollars(v: number): boolean {
-  return v > 0 && v < 20;
-}
-
 type PartDisplayRow = {
   name: string;
   partNumber?: string;
@@ -564,29 +559,16 @@ export async function GET(
   const derivedSubtotal = derivedLaborCost + derivedPartsCost;
 
   const derivedTaxTotal = 0;
-  const derivedGrandTotal = derivedSubtotal + derivedTaxTotal;
-
-  // Totals: prefer invoice row IF it looks like real dollars, else fallback to derived
-  const invSubtotal = safeMoney(inv?.subtotal);
-  const invLabor = safeMoney(inv?.labor_cost);
-  const invParts = safeMoney(inv?.parts_cost);
+  // Totals: ALWAYS prefer live derived values from current work order lines + parts.
+  // Keep invoice row only for metadata such as invoice number / notes / issued_at.
   const invDiscount = safeMoney(inv?.discount_total);
   const invTax = safeMoney(inv?.tax_total);
-  const invTotal = safeMoney(inv?.total);
-
-  const invoiceLooksValid =
-    Boolean(inv?.id) &&
-    (invTotal > 0 ||
-      invSubtotal > 0 ||
-      invParts > 0 ||
-      (invLabor > 0 && !isProbablyHoursNotDollars(invLabor)));
-
-  const subtotal = invoiceLooksValid ? invSubtotal : derivedSubtotal;
-  const laborCost = invoiceLooksValid ? invLabor : derivedLaborCost;
-  const partsCost = invoiceLooksValid ? invParts : derivedPartsCost;
-  const discountTotal = invoiceLooksValid ? invDiscount : 0;
-  const taxTotal = invoiceLooksValid ? invTax : derivedTaxTotal;
-  const grandTotal = invoiceLooksValid ? invTotal : derivedGrandTotal;
+  const subtotal = derivedSubtotal;
+  const laborCost = derivedLaborCost;
+  const partsCost = derivedPartsCost;
+  const discountTotal = invDiscount > 0 ? invDiscount : 0;
+  const taxTotal = invTax > 0 ? invTax : derivedTaxTotal;
+  const grandTotal = Math.max(0, subtotal - discountTotal + taxTotal);
 
   // ---------------- PDF (multi-page) ----------------
   const pdfDoc = await PDFDocument.create();

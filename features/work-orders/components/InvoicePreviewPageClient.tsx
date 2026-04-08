@@ -229,20 +229,6 @@ export default function InvoicePreviewPageClient({
   const [reviewIssues, setReviewIssues] = useState<ReviewIssue[]>([]);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
-  const [wo, setWo] = useState<
-    Pick<
-      WorkOrderRow,
-      | "id"
-      | "shop_id"
-      | "customer_id"
-      | "vehicle_id"
-      | "labor_total"
-      | "parts_total"
-      | "invoice_total"
-      | "customer_name"
-    > | null
-  >(null);
-
   const [fVehicleInfo, setFVehicleInfo] = useState<VehicleInfo | undefined>(
     undefined,
   );
@@ -280,6 +266,50 @@ export default function InvoicePreviewPageClient({
     const n = (shopInfo?.name ?? "").trim();
     return n.length ? n : undefined;
   }, [shopInfo?.name]);
+
+  const derivedLaborTotal = useMemo(() => {
+    const laborRate =
+      typeof shopInfo?.labor_rate === "number" && Number.isFinite(shopInfo.labor_rate)
+        ? shopInfo.labor_rate
+        : 0;
+
+    if (laborRate <= 0) return 0;
+
+    return (effectiveLines ?? []).reduce((sum, line) => {
+      const raw = (line as unknown as Record<string, unknown>)["labor_time"];
+      const hours =
+        typeof raw === "number"
+          ? raw
+          : typeof raw === "string"
+            ? Number(raw)
+            : 0;
+
+      return sum + (Number.isFinite(hours) ? hours : 0) * laborRate;
+    }, 0);
+  }, [effectiveLines, shopInfo?.labor_rate]);
+
+  const derivedPartsTotal = useMemo(() => {
+    return (effectiveLines ?? []).reduce((sum, line) => {
+      const parts = Array.isArray((line as { parts?: PdfLinePart[] }).parts)
+        ? ((line as { parts?: PdfLinePart[] }).parts ?? [])
+        : [];
+
+      return (
+        sum +
+        parts.reduce((partSum, part) => {
+          const total =
+            typeof part.total === "number" && Number.isFinite(part.total)
+              ? part.total
+              : 0;
+          return partSum + total;
+        }, 0)
+      );
+    }, 0);
+  }, [effectiveLines]);
+
+  const derivedInvoiceTotal = useMemo(() => {
+    return Math.max(0, derivedLaborTotal + derivedPartsTotal);
+  }, [derivedLaborTotal, derivedPartsTotal]);
 
   const refreshInspectionPdf = useCallback(async (): Promise<void> => {
     if (!workOrderId) return;
@@ -352,7 +382,6 @@ export default function InvoicePreviewPageClient({
       if (cancelled) return;
 
       if (woErr || !woRow?.shop_id) {
-        setWo(null);
         setShopId(null);
         setStripeAccountId(null);
         setCurrency("usd");
@@ -361,7 +390,6 @@ export default function InvoicePreviewPageClient({
         return;
       }
 
-      setWo(woRow);
       setShopId(woRow.shop_id);
 
       const { data: invoiceRow } = await supabase
@@ -717,10 +745,7 @@ export default function InvoicePreviewPageClient({
       return;
     }
 
-    const laborTotal = Number(wo?.labor_total ?? 0);
-    const partsTotal = Number(wo?.parts_total ?? 0);
-    const invoiceTotal =
-      Number(wo?.invoice_total ?? 0) > 0 ? Number(wo?.invoice_total ?? 0) : laborTotal + partsTotal;
+    const invoiceTotal = derivedInvoiceTotal;
 
     const payloadLines: InvoiceLinePayload[] = (effectiveLines ?? []).map((l) => {
       const lineId = getLineIdFromRepairLine(l);
@@ -782,9 +807,9 @@ export default function InvoicePreviewPageClient({
     effectiveVehicleInfo,
     effectiveLines,
     workOrderId,
-    wo?.labor_total,
-    wo?.parts_total,
-    wo?.invoice_total,
+    derivedLaborTotal,
+    derivedPartsTotal,
+    derivedInvoiceTotal,
     onSent,
     handleBack,
     signatureImage,
