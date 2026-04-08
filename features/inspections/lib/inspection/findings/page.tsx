@@ -792,7 +792,7 @@ export default function InspectionFindingsPage(): JSX.Element {
           workOrderId: resolvedWorkOrderId,
           description: desc,
           section: row.sectionTitle,
-          status: status as "fail" | "recommend",
+          status: "awaiting",
           complaint: note || null,
           suggestion: {
             ...suggestion,

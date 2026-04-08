@@ -1122,10 +1122,7 @@ type SmartMatchRow = {
           workOrderId,
           description: match.label || label || "Matched repair",
           section: safeTrimLocal(sec?.title),
-          status:
-            String(item.status ?? "").toLowerCase() === "recommend"
-              ? "recommend"
-              : "fail",
+          status: "awaiting",
           complaint: note || null,
           suggestion: {
             title: match.label,
@@ -2088,7 +2085,7 @@ type SmartMatchRow = {
             workOrderId,
             description: desc,
             section: String(session.sections[secIdx]?.title ?? ""),
-            status: status as "fail" | "recommend",
+            status: "awaiting",
             complaint,
             suggestion: {
               ...suggestion,

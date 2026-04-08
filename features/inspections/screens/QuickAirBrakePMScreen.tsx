@@ -330,7 +330,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
           workOrderId,
           description: desc,
           section: session.sections[secIdx].title,
-          status: status as "fail" | "recommend",
+          status: "awaiting",
           suggestion,
           source: "inspection",
           jobType: "inspection",

@@ -1,4 +1,4 @@
-// /features/inspections/lib/inspection/addWorkOrderLine.ts (FULL FILE REPLACEMENT)
+// /features/inspections/lib/inspection/addWorkOrderLine.ts
 
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
@@ -26,6 +26,15 @@ type JobType =
   | "repair"
   | "tech-suggested";
 
+type WorkOrderLineWorkflowStatus =
+  | "awaiting"
+  | "assigned"
+  | "in_progress"
+  | "on_hold"
+  | "completed"
+  | "ready_to_invoice"
+  | "invoiced";
+
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
 }
@@ -34,9 +43,16 @@ export async function addWorkOrderLineFromSuggestion(args: {
   workOrderId: string;
   description: string;
   section?: string;
-  status?: "recommend" | "fail";
+
+  /**
+   * Work order line workflow status.
+   * Do NOT pass inspection statuses like fail/recommend here.
+   */
+  status?: WorkOrderLineWorkflowStatus;
+
   suggestion: AISuggestion;
   source?: "inspection";
+
   /** mark AI-added items clearly for UI rules like “not punchable until approved” */
   jobType?: JobType; // default set server-side if omitted
 
@@ -47,11 +63,14 @@ export async function addWorkOrderLineFromSuggestion(args: {
   complaint?: string | null;
 }) {
   const derivedComplaint =
-    args.complaint != null ? safeTrim(args.complaint) : safeTrim(args.suggestion?.notes);
+    args.complaint != null
+      ? safeTrim(args.complaint)
+      : safeTrim(args.suggestion?.notes);
 
   const payload = {
     ...args,
-    // ✅ complaint becomes the inspection "notes" unless caller explicitly overrides it
+    status: args.status ?? "awaiting",
+    // complaint becomes the inspection "notes" unless caller explicitly overrides it
     complaint: derivedComplaint || null,
   };
 
@@ -62,7 +81,9 @@ export async function addWorkOrderLineFromSuggestion(args: {
   });
 
   if (!res.ok) {
-    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    const j = (await res.json().catch(() => null)) as
+      | { error?: string }
+      | null;
     throw new Error(j?.error || "Failed to add work order line");
   }
 
