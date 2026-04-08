@@ -217,7 +217,7 @@ export async function POST(req: Request) {
       job_type: (jobType as JobType) ?? "inspection",
 
       // workflow status must be allowed by CHECK constraint
-      status: "awaiting_approval",
+      status: "awaiting",
       approval_state: "pending",
 
       // store inspection fail/recommend meaning here
