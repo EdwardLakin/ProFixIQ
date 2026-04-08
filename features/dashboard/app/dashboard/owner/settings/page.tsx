@@ -17,6 +17,7 @@ import OwnerSettingsOperationsSection from "@/features/dashboard/components/owne
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
+import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 
 type FileInputChangeEvent = {
   target: {
@@ -1211,6 +1212,7 @@ try {
           <a href="#timeoff-settings" className={navChipClass}>Time off</a>
           <a href="#billing-stripe" className={navChipClass}>Billing</a>
           <a href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</a>
+          <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
           <a href="#email-activity" className={navChipClass}>Activity</a>
         </div>
       </div>
@@ -1275,6 +1277,10 @@ try {
             onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
           />
           <BrandStudioSummaryCard />
+
+          <section id="quickbooks-integration" className={sectionClass}>
+            <QuickBooksConnectCard />
+          </section>
 
           <section id="communication-branding" className={sectionClass}>
             <h2 className="text-sm font-semibold text-neutral-50">Communication</h2>
