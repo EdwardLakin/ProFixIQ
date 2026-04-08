@@ -2,7 +2,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 import { decodeQuickBooksState } from "@/features/integrations/quickbooks/server/state";
 import { exchangeQuickBooksCodeForTokens } from "@/features/integrations/quickbooks/server/http";
 import {
@@ -13,6 +14,22 @@ import {
 
 const STATE_COOKIE = "pfq_qbo_oauth_state";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function getAdminSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!url || !serviceRoleKey) {
+    throw new Error("Missing Supabase admin environment variables.");
+  }
+
+  return createClient<Database>(url, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -54,7 +71,7 @@ export async function GET(req: Request) {
       getQuickBooksRedirectUri(),
     );
 
-    const supabase = createServerSupabaseRoute();
+    const supabase = getAdminSupabase();
 
     const accessTokenExpiresAt = new Date(
       Date.now() + tokenResponse.expires_in * 1000,
@@ -67,24 +84,25 @@ export async function GET(req: Request) {
           ).toISOString()
         : null;
 
-    const payload = {
-      shop_id: decoded.shopId,
-      created_by: decoded.userId,
-      realm_id: realmId,
-      environment: getQuickBooksEnvironment(),
-      access_token: tokenResponse.access_token,
-      refresh_token: tokenResponse.refresh_token,
-      access_token_expires_at: accessTokenExpiresAt,
-      refresh_token_expires_at: refreshTokenExpiresAt,
-      token_scope: tokenResponse.scope
-        ? tokenResponse.scope.split(" ").map((item) => item.trim()).filter(Boolean)
-        : [],
-      token_type: tokenResponse.token_type ?? null,
-      connected_at: new Date().toISOString(),
-      is_active: true,
-      last_error: null,
-      metadata: {},
-    };
+    const payload: Database["public"]["Tables"]["quickbooks_connections"]["Insert"] =
+      {
+        shop_id: decoded.shopId,
+        created_by: decoded.userId,
+        realm_id: realmId,
+        environment: getQuickBooksEnvironment(),
+        access_token: tokenResponse.access_token,
+        refresh_token: tokenResponse.refresh_token,
+        access_token_expires_at: accessTokenExpiresAt,
+        refresh_token_expires_at: refreshTokenExpiresAt,
+        token_scope: tokenResponse.scope
+          ? tokenResponse.scope.split(" ").map((item) => item.trim()).filter(Boolean)
+          : [],
+        token_type: tokenResponse.token_type ?? null,
+        connected_at: new Date().toISOString(),
+        is_active: true,
+        last_error: null,
+        metadata: {},
+      };
 
     const { error: upsertError } = await supabase
       .from("quickbooks_connections")
