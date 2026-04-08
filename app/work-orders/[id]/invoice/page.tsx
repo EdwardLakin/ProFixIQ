@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default async function LegacyWorkOrderInvoicePage({
+export default async function WorkOrderInvoiceAliasPage({
   params,
 }: {
   params: Promise<{ id: string }>;

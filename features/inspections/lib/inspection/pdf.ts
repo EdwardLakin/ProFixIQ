@@ -91,9 +91,7 @@ function normalizeOptionalText(value: unknown): string | undefined {
 
 function normalizeRecommend(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((v) => safeStr(v).trim())
-    .filter((v) => v.length > 0);
+  return value.map((v) => safeStr(v).trim()).filter((v) => v.length > 0);
 }
 
 function normalizePhotoUrls(value: unknown): string[] {
@@ -203,6 +201,7 @@ export async function generateInspectionPDF(
   const MARGIN_X = 42;
   const TOP = PAGE_H - 42;
   const BOTTOM = 42;
+  const CONTENT_W = PAGE_W - MARGIN_X * 2;
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -254,34 +253,15 @@ export async function generateInspectionPDF(
     });
   };
 
-  const drawWrappedText = (
-    label: string,
-    value: string | undefined,
-    opts?: {
-      x?: number;
-      widthChars?: number;
-      size?: number;
-      color?: PdfRgb;
-      labelBold?: boolean;
-      lineGap?: number;
-    },
-  ) => {
-    const x = opts?.x ?? MARGIN_X;
-    const lines = wrapText(value?.trim() || "—", opts?.widthChars ?? 78);
-    drawText(`${label}${lines[0]}`, x, y, {
-      size: opts?.size ?? 10,
-      bold: opts?.labelBold ?? false,
-      color: opts?.color ?? COLOR_MUTED,
+  const drawRule = () => {
+    ensureSpace(12);
+    page.drawLine({
+      start: { x: MARGIN_X, y },
+      end: { x: PAGE_W - MARGIN_X, y },
+      thickness: 1,
+      color: COLOR_RULE,
     });
-    y -= opts?.lineGap ?? 15;
-
-    for (const extra of lines.slice(1)) {
-      drawText(extra, x + 10, y, {
-        size: opts?.size ?? 10,
-        color: opts?.color ?? COLOR_MUTED,
-      });
-      y -= opts?.lineGap ?? 15;
-    }
+    y -= 12;
   };
 
   const drawSectionHeader = (title: string) => {
@@ -289,7 +269,7 @@ export async function generateInspectionPDF(
     page.drawRectangle({
       x: MARGIN_X,
       y: y - 18,
-      width: PAGE_W - MARGIN_X * 2,
+      width: CONTENT_W,
       height: 20,
       color: COLOR_PANEL_ALT,
     });
@@ -301,17 +281,6 @@ export async function generateInspectionPDF(
     y -= 30;
   };
 
-  const drawRule = () => {
-    ensureSpace(12);
-    page.drawLine({
-      start: { x: MARGIN_X, y: y },
-      end: { x: PAGE_W - MARGIN_X, y: y },
-      thickness: 1,
-      color: COLOR_RULE,
-    });
-    y -= 12;
-  };
-
   const drawMetaRow = (label: string, value: string | undefined) => {
     ensureSpace(15);
     drawText(`${label}: ${value?.trim() || "—"}`, MARGIN_X, y, {
@@ -319,6 +288,30 @@ export async function generateInspectionPDF(
       color: COLOR_MUTED,
     });
     y -= 15;
+  };
+
+  const drawWrappedParagraph = (
+    value: string,
+    opts?: {
+      x?: number;
+      widthChars?: number;
+      size?: number;
+      color?: PdfRgb;
+      lineGap?: number;
+    },
+  ) => {
+    const lines = wrapText(value, opts?.widthChars ?? 82);
+    const x = opts?.x ?? MARGIN_X;
+    const gap = opts?.lineGap ?? 14;
+
+    for (const line of lines) {
+      ensureSpace(gap);
+      drawText(line, x, y, {
+        size: opts?.size ?? 10,
+        color: opts?.color ?? COLOR_MUTED,
+      });
+      y -= gap;
+    }
   };
 
   const drawSummaryTile = (
@@ -348,26 +341,81 @@ export async function generateInspectionPDF(
     });
   };
 
+  const drawPhotoGrid = async (photoUrls: string[]) => {
+    const usable = photoUrls.slice(0, 4);
+    if (usable.length === 0) return;
+
+    const gap = 8;
+    const cellWidth = (CONTENT_W - 32 - gap) / 2;
+    const maxCellHeight = 96;
+
+    for (let i = 0; i < usable.length; i += 2) {
+      ensureSpace(110);
+
+      let rowBottom = y;
+
+      for (let j = 0; j < 2; j += 1) {
+        const idx = i + j;
+        if (idx >= usable.length) continue;
+
+        const photoUrl = usable[idx];
+        const x = MARGIN_X + 16 + j * (cellWidth + gap);
+
+        try {
+          const img = await tryEmbedImage(pdfDoc, photoUrl);
+          const scale = Math.min(cellWidth / img.width, maxCellHeight / img.height, 1);
+          const width = img.width * scale;
+          const height = img.height * scale;
+
+          page.drawImage(img, {
+            x,
+            y: y - height,
+            width,
+            height,
+          });
+
+          rowBottom = Math.min(rowBottom, y - height);
+        } catch {
+          page.drawRectangle({
+            x,
+            y: y - 48,
+            width: cellWidth,
+            height: 42,
+            color: COLOR_PANEL_ALT,
+          });
+          drawText("Photo unavailable", x + 10, y - 24, {
+            size: 9,
+            color: COLOR_MUTED,
+          });
+          rowBottom = Math.min(rowBottom, y - 48);
+        }
+      }
+
+      y = rowBottom - 10;
+    }
+  };
+
   const drawFindingCard = async (row: FindingRow) => {
     const recommendText =
       row.recommend && row.recommend.length > 0 ? row.recommend.join(", ") : undefined;
     const noteLines = row.notes ? wrapText(row.notes, 78) : [];
     const recommendLines = recommendText ? wrapText(recommendText, 78) : [];
     const hasValueLine = Boolean(row.value || row.unit);
-    const photosToRender = row.photoUrls.slice(0, 2);
+    const photoCount = Math.min(row.photoUrls.length, 4);
+    const photoRowCount = Math.ceil(photoCount / 2);
 
     let estimatedHeight = 72;
     estimatedHeight += noteLines.length * 14;
     estimatedHeight += recommendLines.length * 14;
     if (hasValueLine) estimatedHeight += 14;
-    if (photosToRender.length > 0) estimatedHeight += 120 * photosToRender.length;
+    if (photoCount > 0) estimatedHeight += photoRowCount * 110;
 
     ensureSpace(estimatedHeight);
 
     page.drawRectangle({
       x: MARGIN_X,
       y: y - estimatedHeight + 10,
-      width: PAGE_W - MARGIN_X * 2,
+      width: CONTENT_W,
       height: estimatedHeight - 6,
       color: COLOR_PANEL,
     });
@@ -451,33 +499,10 @@ export async function generateInspectionPDF(
       }
     }
 
-    for (const photoUrl of photosToRender) {
-      try {
-        const img = await tryEmbedImage(pdfDoc, photoUrl);
-        const maxW = PAGE_W - MARGIN_X * 2 - 32;
-        const maxH = 108;
-        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-        const width = img.width * scale;
-        const height = img.height * scale;
+    y = cardY;
+    await drawPhotoGrid(row.photoUrls);
 
-        page.drawImage(img, {
-          x: MARGIN_X + 16,
-          y: cardY - height,
-          width,
-          height,
-        });
-
-        cardY -= height + 10;
-      } catch {
-        drawText("Photo unavailable", MARGIN_X + 16, cardY, {
-          size: 10,
-          color: COLOR_MUTED,
-        });
-        cardY -= 14;
-      }
-    }
-
-    y -= estimatedHeight;
+    y -= 8;
   };
 
   const sections: InspectionSection[] = Array.isArray(session.sections)
@@ -506,10 +531,7 @@ export async function generateInspectionPDF(
     safeStr(session.customer?.name).trim() ||
     "—";
 
-  const customerPhone =
-    safeStr(session.customer?.phone).trim() ||
-    "—";
-
+  const customerPhone = safeStr(session.customer?.phone).trim() || "—";
   const customerEmail = safeStr(session.customer?.email).trim() || "—";
   const customerBusiness = safeStr(session.customer?.business_name).trim() || "—";
 
@@ -588,7 +610,7 @@ export async function generateInspectionPDF(
   drawSectionHeader("Overview");
 
   const tileGap = 10;
-  const tileWidth = (PAGE_W - MARGIN_X * 2 - tileGap * 3) / 4;
+  const tileWidth = (CONTENT_W - tileGap * 3) / 4;
 
   drawSummaryTile(MARGIN_X, tileWidth, "FAIL", String(failCount), rgb(0.78, 0.18, 0.18));
   drawSummaryTile(
@@ -642,7 +664,7 @@ export async function generateInspectionPDF(
   if (transcript.length > 0) {
     drawRule();
     drawSectionHeader("Technician Summary");
-    drawWrappedText("", transcript, {
+    drawWrappedParagraph(transcript, {
       widthChars: 82,
       size: 10,
       color: COLOR_MUTED,
@@ -657,8 +679,7 @@ export async function generateInspectionPDF(
   drawSectionHeader("Actionable Findings");
 
   if (!hasActionable) {
-    drawWrappedText(
-      "",
+    drawWrappedParagraph(
       "No failures or recommended items were captured in this inspection.",
       {
         widthChars: 82,
@@ -683,15 +704,19 @@ export async function generateInspectionPDF(
 
   drawRule();
   drawSectionHeader("Appendix");
-
   drawMetaRow("Sections", String(sections.length));
   drawMetaRow("Fail Items", String(failCount));
   drawMetaRow("Recommended Items", String(recommendCount));
   drawMetaRow("OK Items", String(okCount));
   drawMetaRow("N/A Items", String(naCount));
-  drawMetaRow(
-    "Rendering Mode",
-    "Actionable findings only. OK and N/A checklist items are summarized, not fully listed.",
+  drawWrappedParagraph(
+    "Rendering Mode: Actionable findings only. OK and N/A checklist items are summarized, not fully listed.",
+    {
+      widthChars: 82,
+      size: 10,
+      color: COLOR_MUTED,
+      lineGap: 14,
+    },
   );
 
   return pdfDoc.save();
