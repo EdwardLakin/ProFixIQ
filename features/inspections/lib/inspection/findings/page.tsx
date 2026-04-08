@@ -1,4 +1,4 @@
-//features/inspections/lib/inspection/findings/page.tsx
+// features/inspections/lib/inspection/findings/page.tsx
 
 "use client";
 
@@ -220,7 +220,6 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-
   const resolvedInspectionId =
     inspectionId ||
     (typeof session?.id === "string" ? session.id : "") ||
@@ -353,8 +352,12 @@ export default function InspectionFindingsPage(): JSX.Element {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handleFocus = () => { void syncFromDraft(); };
-    const handlePageShow = () => { void syncFromDraft(); };
+    const handleFocus = () => {
+      void syncFromDraft();
+    };
+    const handlePageShow = () => {
+      void syncFromDraft();
+    };
 
     const handleStorage = (e: StorageEvent) => {
       if (e.key === draftKey) void syncFromDraft();
@@ -883,6 +886,35 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       if (!finishRes.ok) {
         throw new Error(finishJson?.error || "Failed to finish inspection");
+      }
+
+      const invoiceRefreshRes = await fetch(
+        `/api/work-orders/${resolvedWorkOrderId}/invoice`,
+        {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+
+      const invoiceRefreshJson = (await invoiceRefreshRes
+        .json()
+        .catch(() => null)) as
+        | {
+            ok?: boolean;
+            issues?: Array<{ kind?: string; message?: string }>;
+          }
+        | null;
+
+      if (!invoiceRefreshRes.ok || invoiceRefreshJson?.ok === false) {
+        console.error(
+          "[inspection-findings] invoice refresh failed",
+          invoiceRefreshJson,
+        );
+        toast.error(
+          invoiceRefreshJson?.issues?.[0]?.message ||
+            "Inspection finished, but invoice refresh failed.",
+        );
       }
 
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
