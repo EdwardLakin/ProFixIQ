@@ -19,6 +19,7 @@ export async function GET(req: Request) {
   const realmId = url.searchParams.get("realmId")?.trim() ?? "";
   const state = url.searchParams.get("state")?.trim() ?? "";
   const error = url.searchParams.get("error")?.trim() ?? "";
+
   const cookieState = req.headers
     .get("cookie")
     ?.split(";")
@@ -26,24 +27,24 @@ export async function GET(req: Request) {
     .find((v) => v.startsWith(`${STATE_COOKIE}=`))
     ?.slice(`${STATE_COOKIE}=`.length);
 
-  const redirectBase = `${getAppBaseUrl()}/dashboard/owner/settings#quickbooks-integration`;
+  const redirectBase = `${getAppBaseUrl()}/dashboard/owner/settings`;
 
   if (error) {
     return NextResponse.redirect(
-      `${redirectBase}?error=${encodeURIComponent(error)}`,
+      `${redirectBase}?error=${encodeURIComponent(error)}#quickbooks-integration`,
     );
   }
 
   if (!code || !realmId || !state || !cookieState || cookieState !== state) {
     return NextResponse.redirect(
-      `${redirectBase}?error=${encodeURIComponent("Invalid QuickBooks callback state.")}`,
+      `${redirectBase}?error=${encodeURIComponent("Invalid QuickBooks callback state.")}#quickbooks-integration`,
     );
   }
 
   const decoded = decodeQuickBooksState(state);
   if (!decoded?.shopId || !decoded?.userId) {
     return NextResponse.redirect(
-      `${redirectBase}?error=${encodeURIComponent("Invalid QuickBooks OAuth state.")}`,
+      `${redirectBase}?error=${encodeURIComponent("Invalid QuickBooks OAuth state.")}#quickbooks-integration`,
     );
   }
 
@@ -93,7 +94,10 @@ export async function GET(req: Request) {
       throw new Error(upsertError.message);
     }
 
-    const res = NextResponse.redirect(`${redirectBase}?connected=1`);
+    const res = NextResponse.redirect(
+      `${redirectBase}?connected=1#quickbooks-integration`,
+    );
+
     res.cookies.set(STATE_COOKIE, "", {
       httpOnly: true,
       sameSite: "lax",
@@ -105,10 +109,12 @@ export async function GET(req: Request) {
     return res;
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Failed to complete QuickBooks connection.";
+      err instanceof Error
+        ? err.message
+        : "Failed to complete QuickBooks connection.";
 
     return NextResponse.redirect(
-      `${redirectBase}?error=${encodeURIComponent(message)}`,
+      `${redirectBase}?error=${encodeURIComponent(message)}#quickbooks-integration`,
     );
   }
 }
