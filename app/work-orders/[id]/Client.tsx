@@ -13,8 +13,6 @@ import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/clie
 import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
-import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
-import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
@@ -22,7 +20,6 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
-import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
@@ -1695,32 +1692,12 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
-              <WorkOrderSuggestionsPanel
-                workOrderId={wo.id}
-                vehicleId={vehicle?.id ?? null}
-                odometerKm={wo.odometer_km ?? null}
-                onAdded={fetchAll}
-              />
-            </div>
-
-            <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
               <p>
                 Select a job card above to open the focused job panel with full editing, punch and
                 inspection controls.
               </p>
             </div>
 
-            {/* Vehicle photos */}
-            {vehicle?.id && (
-              <div className="mt-8 space-y-4">
-                <h2 className="text-lg font-semibold text-foreground sm:text-xl">Vehicle photos</h2>
-                <VehiclePhotoUploader vehicleId={vehicle.id} />
-                <VehiclePhotoGallery
-                  vehicleId={vehicle.id}
-                  currentUserId={currentUserId || "anon"}
-                />
-              </div>
-            )}
           </div>
 
           {/* ---------------- RIGHT COLUMN (PANEL) ---------------- */}
