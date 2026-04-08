@@ -1,3 +1,5 @@
+//features/work-orders/components/InvoicePreviewPageClient.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,6 +11,7 @@ import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
+import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
 
 type DB = Database;
 
@@ -219,6 +222,7 @@ export default function InvoicePreviewPageClient({
   const [currency, setCurrency] = useState<"usd" | "cad">("usd");
 
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
 
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewOk, setReviewOk] = useState<boolean>(false);
@@ -359,6 +363,17 @@ export default function InvoicePreviewPageClient({
 
       setWo(woRow);
       setShopId(woRow.shop_id);
+
+      const { data: invoiceRow } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("work_order_id", workOrderId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+
+      if (cancelled) return;
+      setInvoiceId(invoiceRow?.id ?? null);
 
       // ✅ include labor_rate
       const { data: shop, error: sErr } = await supabase
@@ -835,6 +850,14 @@ export default function InvoicePreviewPageClient({
             >
               {sending ? "Sending…" : "Send invoice"}
             </button>
+
+            {invoiceId ? (
+              <SyncInvoiceToQuickBooksButton
+                invoiceId={invoiceId}
+                disabled={!reviewOk || reviewLoading}
+                className={!reviewOk || reviewLoading ? "opacity-60" : ""}
+              />
+            ) : null}
 
             {canTakePayment ? (
               <div className={canProceed ? "" : "opacity-50 pointer-events-none"}>
