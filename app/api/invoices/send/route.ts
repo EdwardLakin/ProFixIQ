@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendInvoiceReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -262,17 +263,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
     }
 
-    const laborTotal = Number(wo.labor_total ?? 0);
-    const partsTotal = Number(wo.parts_total ?? 0);
+    const snapshot = await getInvoiceSnapshotForWorkOrder({
+      supabase: supabaseAdmin,
+      workOrderId,
+    });
 
     const computedInvoiceTotal =
       typeof invoiceTotal === "number" &&
       Number.isFinite(invoiceTotal) &&
       invoiceTotal > 0
         ? invoiceTotal
-        : Number(wo.invoice_total ?? 0) > 0
-          ? Number(wo.invoice_total ?? 0)
-          : laborTotal + partsTotal;
+        : snapshot.total != null && Number.isFinite(snapshot.total) && snapshot.total > 0
+          ? snapshot.total
+          : Number(wo.invoice_total ?? 0) > 0
+            ? Number(wo.invoice_total ?? 0)
+            : 0;
+
+    const laborTotal =
+      snapshot.laborCost != null && Number.isFinite(snapshot.laborCost)
+        ? snapshot.laborCost
+        : Number(wo.labor_total ?? 0);
+
+    const partsTotal =
+      snapshot.partsCost != null && Number.isFinite(snapshot.partsCost)
+        ? snapshot.partsCost
+        : Number(wo.parts_total ?? 0);
 
     const { data: shop, error: shopErr } = await supabaseAdmin
       .from("shops")

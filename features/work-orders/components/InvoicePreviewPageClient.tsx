@@ -74,7 +74,7 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
-type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
@@ -189,9 +189,9 @@ type PdfLinePart = {
 // ✅ Your DB types for work_order_parts do NOT have qty/line_total/description.
 // Use quantity/total_price and pull names from parts table.
 // work_order_line_id is treated as optional (in case your DB has it but types are stale).
-type WorkOrderPartWithLine = Pick<
-  WorkOrderPartRow,
-  "id" | "part_id" | "quantity" | "unit_price" | "total_price"
+type AllocationWithLine = Pick<
+  AllocationRow,
+  "id" | "part_id" | "qty" | "unit_cost"
 > & {
   work_order_line_id?: string | null;
 };
@@ -520,13 +520,13 @@ export default function InvoicePreviewPageClient({
         if (wolErr || !Array.isArray(wol) || wol.length === 0) {
           setFLines([]);
         } else {
-          // 2) load parts for this work order
-          const { data: wopRaw } = await supabase
-            .from("work_order_parts")
-            .select("id, work_order_line_id, part_id, quantity, unit_price, total_price")
+          // 2) load allocated parts for this work order
+          const { data: allocRaw } = await supabase
+            .from("work_order_part_allocations")
+            .select("id, work_order_line_id, part_id, qty, unit_cost")
             .eq("work_order_id", workOrderId);
 
-          const wop = (Array.isArray(wopRaw) ? wopRaw : []) as WorkOrderPartWithLine[];
+          const wop = (Array.isArray(allocRaw) ? allocRaw : []) as AllocationWithLine[];
 
           // 3) join to parts table for names + part_number
           const partIds = Array.from(
@@ -568,11 +568,9 @@ export default function InvoicePreviewPageClient({
             const lid = typeof lidRaw === "string" && lidRaw.trim().length > 0 ? lidRaw.trim() : "";
             if (!lid) continue;
 
-            const qty = Number(p.quantity ?? 1);
-            const unit = safeMoney(p.unit_price);
-            const totalFromRow = safeMoney(p.total_price);
-            const total =
-              totalFromRow > 0 ? totalFromRow : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
+            const qty = Number(p.qty ?? 1);
+            const unit = safeMoney(p.unit_cost);
+            const total = Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
 
             const partMeta = typeof p.part_id === "string" ? partsById.get(p.part_id) : undefined;
 

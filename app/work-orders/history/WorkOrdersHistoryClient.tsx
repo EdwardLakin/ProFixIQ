@@ -209,7 +209,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       const customer = fmtCustomerName(r.customers);
       const vehicle = fmtVehicle(r.vehicles);
       const updated = r.updated_at ? format(new Date(r.updated_at), "yyyy-MM-dd HH:mm") : "";
-      const appInvoice = `/work-orders/${r.id}/invoice`;
+      const appInvoice = `/work-orders/invoice/${r.id}`;
 
       return [
         r.id,
