@@ -247,12 +247,28 @@ export default function BillingPage(): JSX.Element {
   );
 
   const handleInvoice = useCallback(
-    async (id: string) => {
+    async (row: Row) => {
       if (!confirm("Create and email a Stripe invoice to the customer?")) return;
 
       try {
-        const res = await fetch(`/api/work-orders/${id}/invoice`, {
+        const customerEmail = row.customers?.email?.trim() ?? "";
+        if (!customerEmail) {
+          toast.error("Customer email is required before sending an invoice.");
+          return;
+        }
+
+        const customerName = [row.customers?.first_name ?? "", row.customers?.last_name ?? ""]
+          .join(" ")
+          .trim();
+
+        const res = await fetch("/api/invoices/send", {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: row.id,
+            customerEmail,
+            customerName: customerName.length ? customerName : undefined,
+          }),
         });
 
         const j = (await res.json().catch(() => null)) as
@@ -574,7 +590,7 @@ export default function BillingPage(): JSX.Element {
 
                     <button
                       type="button"
-                      onClick={() => void handleInvoice(r.id)}
+                      onClick={() => void handleInvoice(r)}
                       disabled={r.status === "invoiced"}
                       className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Create and email Stripe invoice"

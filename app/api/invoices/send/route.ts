@@ -4,6 +4,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { sendInvoiceReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -51,7 +52,7 @@ type InvoiceLinePayload = {
 
 type RequestBody = {
   workOrderId: string;
-  customerEmail: string;
+  customerEmail?: string;
   invoiceTotal?: number;
   customerName?: string;
   shopName?: string;
@@ -162,10 +163,10 @@ function parseRequestBody(raw: unknown): ParsedBody {
   }
 
   const workOrderId = asString(raw.workOrderId)?.trim() ?? "";
-  const customerEmail = asString(raw.customerEmail)?.trim() ?? "";
+  const customerEmail = asString(raw.customerEmail)?.trim();
 
-  if (!workOrderId || !customerEmail) {
-    return { ok: false, error: "Missing email or work order ID", status: 400 };
+  if (!workOrderId) {
+    return { ok: false, error: "Missing work order ID", status: 400 };
   }
 
   const invoiceTotal = asNumber(raw.invoiceTotal);
@@ -242,7 +243,7 @@ export async function POST(req: Request) {
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
       .select(
-        "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
+        "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name, status",
       )
       .eq("id", workOrderId)
       .maybeSingle<
@@ -256,11 +257,36 @@ export async function POST(req: Request) {
           | "parts_total"
           | "invoice_total"
           | "customer_name"
+          | "status"
         >
       >();
 
     if (woErr || !wo) {
       return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
+    }
+
+    const status = String(wo.status ?? "").toLowerCase().replaceAll(" ", "_");
+    if (!["completed", "ready_to_invoice", "invoiced"].includes(status)) {
+      return NextResponse.json(
+        { error: `Work order status ${wo.status ?? "unknown"} is not ready for invoicing` },
+        { status: 409 },
+      );
+    }
+
+    const review = await reviewWorkOrder({
+      supabase: supabaseAdmin,
+      workOrderId,
+      kind: "invoice_review",
+    });
+
+    if (!review.ok) {
+      return NextResponse.json(
+        {
+          error: "Invoice review failed. Resolve blocking issues before sending.",
+          issues: review.issues,
+        },
+        { status: 400 },
+      );
     }
 
     const snapshot = await getInvoiceSnapshotForWorkOrder({
@@ -288,6 +314,13 @@ export async function POST(req: Request) {
       snapshot.partsCost != null && Number.isFinite(snapshot.partsCost)
         ? snapshot.partsCost
         : Number(wo.parts_total ?? 0);
+
+    if (!(computedInvoiceTotal > 0)) {
+      return NextResponse.json(
+        { error: "Cannot send invoice with a zero total. Add labor/parts before invoicing." },
+        { status: 400 },
+      );
+    }
 
     const { data: shop, error: shopErr } = await supabaseAdmin
       .from("shops")
@@ -326,6 +359,8 @@ export async function POST(req: Request) {
     let portalCustomerId: string | null = null;
 
     let resolvedCustomerInfo: CustomerInfo | undefined = undefined;
+    const payloadCustomerEmail = (customerEmail ?? "").trim().toLowerCase();
+    let resolvedCustomerEmail = payloadCustomerEmail.length ? payloadCustomerEmail : "";
 
     if (wo.customer_id) {
       const { data: customer, error: customerErr } = await supabaseAdmin
@@ -374,7 +409,18 @@ export async function POST(req: Request) {
           province: (customer.province ?? "").trim() || undefined,
           postal_code: (customer.postal_code ?? "").trim() || undefined,
         };
+
+        if (!resolvedCustomerEmail) {
+          resolvedCustomerEmail = (customer.email ?? "").trim().toLowerCase();
+        }
       }
+    }
+
+    if (!resolvedCustomerEmail) {
+      return NextResponse.json(
+        { error: "Missing customer email. Add an email to the customer before invoicing." },
+        { status: 400 },
+      );
     }
 
     let resolvedVehicleInfo: VehicleInfo | undefined = vehicleInfo;
@@ -421,10 +467,11 @@ export async function POST(req: Request) {
 
     const base = SITE_URL.trim().replace(/\/+$/, "");
     const portalInvoiceUrl = `${base}/portal/invoices/${workOrderId}`;
+    const invoicePdfUrl = `${base}/api/work-orders/${workOrderId}/invoice-pdf?download=1`;
 
     await sendInvoiceReadyEmail({
       shopId: wo.shop_id ?? "",
-      to: customerEmail,
+      to: resolvedCustomerEmail,
       portalUrl: portalInvoiceUrl,
       workOrderId,
       invoiceTotal: computedInvoiceTotal,
@@ -443,9 +490,10 @@ export async function POST(req: Request) {
       .update({
         status: "invoiced",
         invoice_sent_at: new Date().toISOString(),
-        invoice_last_sent_to: customerEmail,
+        invoice_last_sent_to: resolvedCustomerEmail,
         invoice_total: computedInvoiceTotal,
         invoice_url: portalInvoiceUrl,
+        invoice_pdf_url: invoicePdfUrl,
       } as DB["public"]["Tables"]["work_orders"]["Update"])
       .eq("id", workOrderId);
 
