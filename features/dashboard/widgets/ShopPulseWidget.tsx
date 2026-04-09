@@ -142,7 +142,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
           {error}
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[0.85fr_1.15fr]">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
             <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
               Live totals
@@ -155,7 +155,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+          <div className="min-h-0 rounded-2xl border border-white/10 bg-black/25 p-4">
             <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
               AI summary
             </div>
@@ -165,7 +165,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
                 Nothing major is flagged right now. The shop flow looks stable.
               </div>
             ) : (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex max-h-32 flex-wrap gap-2 overflow-y-auto pr-1">
                 {pulse.messages.map((msg, index) => (
                   <StatusBadge
                     key={`${msg}-${index}`}

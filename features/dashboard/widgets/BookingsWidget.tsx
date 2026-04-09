@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 
 type DB = Database;
 
@@ -91,58 +92,67 @@ export default function BookingsWidget() {
   }, [rows]);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-neutral-50">Bookings</h3>
-          <p className="text-xs text-neutral-400">
-            Today’s appointment snapshot
-          </p>
-        </div>
+    <DashboardWidgetShell
+      eyebrow="AI · Bookings"
+      title="Upcoming appointments"
+      subtitle="Today’s appointment snapshot and upcoming slot."
+      rightSlot={
         <Link
           href="/dashboard/bookings"
-          className="text-xs font-medium text-[color:var(--brand-accent)] transition hover:text-[color:var(--theme-text-primary)]"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
         >
-          Open bookings
+          Open bookings →
         </Link>
-      </div>
+      }
+      compact
+    >
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="grid grid-cols-3 gap-2">
+          <Metric label="Today" value={loading ? "…" : String(today)} tone="neutral" />
+          <Metric label="Pending" value={loading ? "…" : String(pending)} tone="accent" />
+          <Metric label="Confirmed" value={loading ? "…" : String(confirmed)} tone="primary" />
+        </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <div className="text-[11px] text-neutral-400">Today</div>
-          <div className="mt-1 text-lg font-semibold text-neutral-100">
-            {loading ? "…" : today}
-          </div>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <div className="text-[11px] text-neutral-400">Pending</div>
-          <div className="mt-1 text-lg font-semibold text-[color:var(--brand-accent)]">
-            {loading ? "…" : pending}
-          </div>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <div className="text-[11px] text-neutral-400">Confirmed</div>
-          <div className="mt-1 text-lg font-semibold text-[color:var(--brand-primary)]">
-            {loading ? "…" : confirmed}
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+          <div className="text-[11px] text-neutral-400">Next up</div>
+          <div className="mt-1 text-sm text-neutral-100">
+            {loading
+              ? "Loading…"
+              : nextUp
+                ? new Date(nextUp.starts_at).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : "No upcoming bookings"}
           </div>
         </div>
       </div>
+    </DashboardWidgetShell>
+  );
+}
 
-      <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">
-        <div className="text-[11px] text-neutral-400">Next up</div>
-        <div className="mt-1 text-sm text-neutral-100">
-          {loading
-            ? "Loading…"
-            : nextUp
-              ? new Date(nextUp.starts_at).toLocaleString([], {
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })
-              : "No upcoming bookings"}
-        </div>
-      </div>
-    </section>
+function Metric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "neutral" | "primary" | "accent";
+}) {
+  const toneClass =
+    tone === "accent"
+      ? "text-[color:var(--brand-accent)]"
+      : tone === "primary"
+        ? "text-[color:var(--brand-primary)]"
+        : "text-neutral-100";
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+      <div className="text-[11px] text-neutral-400">{label}</div>
+      <div className={["mt-1 text-lg font-semibold", toneClass].join(" ")}>{value}</div>
+    </div>
   );
 }

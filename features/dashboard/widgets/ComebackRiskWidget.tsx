@@ -97,7 +97,7 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
           {error}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
             <div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">

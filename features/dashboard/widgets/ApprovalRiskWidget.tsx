@@ -83,7 +83,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
           No work orders are currently waiting on approval.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricChip label="Waiting" value={String(rows.length)} />
             <MetricChip label="24h+" value={String(aged.length)} tone="accent" />
@@ -93,7 +93,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {rows.slice(0, 4).map((row) => (
               <Link
                 key={row.work_order_id}
