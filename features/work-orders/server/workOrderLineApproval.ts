@@ -14,7 +14,7 @@ export function getCanonicalWorkOrderLineApprovalTuple(
   if (decision === "approve") {
     return {
       approval_state: "approved",
-      status: "active",
+      status: "in_progress",
       punchable: true,
       hold_reason: null,
     };
