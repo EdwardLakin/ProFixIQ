@@ -15,6 +15,11 @@ function durationLabel(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
+function signedDurationLabel(seconds: number): string {
+  if (seconds === 0) return "On target";
+  return `${seconds > 0 ? "+" : "-"}${durationLabel(Math.abs(seconds))}`;
+}
+
 export default function TechnicianPerformanceWidget({ shopId }: { shopId: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +62,11 @@ export default function TechnicianPerformanceWidget({ shopId }: { shopId: string
           rows.reduce((sum, row) => sum + row.avgJobDurationSeconds, 0) / Math.max(1, rows.length),
         )
       : 0;
+  const defensibleRows = rows.filter((row) => row.expectedActualSummary.efficiencySignalDefensible);
+  const pairedJobsTotal = rows.reduce(
+    (sum, row) => sum + row.expectedActualSummary.pairedJobs,
+    0,
+  );
 
   return (
     <DashboardWidgetShell
@@ -81,8 +91,8 @@ export default function TechnicianPerformanceWidget({ shopId }: { shopId: string
             <Metric label="Completed jobs" value={String(completedTotal)} />
             <Metric label="Team avg duration" value={durationLabel(avgDurationAcrossTeam)} tone="accent" />
             <Metric
-              label="Techs with active work"
-              value={String(rows.filter((row) => row.currentActiveJobs > 0).length)}
+              label="Expected vs active jobs"
+              value={String(pairedJobsTotal)}
               tone="secondary"
             />
           </div>
@@ -96,15 +106,38 @@ export default function TechnicianPerformanceWidget({ shopId }: { shopId: string
                     <div className="mt-1 text-xs text-neutral-400">
                       {row.completedJobsToday} completed · Avg {durationLabel(row.avgJobDurationSeconds)}
                     </div>
+                    {row.expectedActualSummary.pairedJobs > 0 ? (
+                      <div className="mt-1 text-xs text-neutral-400">
+                        Expected {durationLabel(row.expectedActualSummary.expectedSecondsTotal)} · Active{" "}
+                        {durationLabel(row.expectedActualSummary.actualActiveSecondsTotal)} (
+                        {signedDurationLabel(row.expectedActualSummary.varianceSecondsTotal)})
+                      </div>
+                    ) : null}
                   </div>
 
                   <span className="rounded-full border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--brand-accent)]">
                     {row.utilizationPct}% active
                   </span>
                 </div>
+                {row.expectedActualSummary.efficiencySignalDefensible &&
+                row.expectedActualSummary.efficiencySignalPct !== null ? (
+                  <div className="mt-2 text-[11px] text-neutral-300">
+                    Efficiency signal: {row.expectedActualSummary.efficiencySignalPct.toFixed(1)}% based
+                    on {row.expectedActualSummary.pairedJobs} paired jobs.
+                  </div>
+                ) : row.expectedActualSummary.pairedJobs > 0 ? (
+                  <div className="mt-2 text-[11px] text-neutral-500">
+                    Efficiency signal withheld until expected-vs-active coverage is stronger.
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
+          {defensibleRows.length === 0 ? (
+            <div className="text-[11px] text-neutral-500">
+              Expected-vs-actual efficiency is only shown when enough paired completed jobs are available.
+            </div>
+          ) : null}
         </div>
       )}
     </DashboardWidgetShell>
