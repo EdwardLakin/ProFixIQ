@@ -75,30 +75,41 @@ export default function LiveShopLoadWidget({ shopId }: { shopId: string | null }
           No live load data available right now.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat label="Active jobs now" value={String(summary.totalActiveJobs)} />
-            <Stat label="Active techs / Capacity" value={`${summary.activeTechnicians}/${summary.totalTechnicians}`} tone="accent" />
+            <Stat
+              label="Active techs / Capacity"
+              value={`${summary.activeTechnicians}/${summary.totalTechnicians}`}
+              tone="accent"
+            />
             <Stat label="Shop utilization" value={`${summary.shopUtilizationPct}%`} tone="secondary" />
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Load bar</div>
-              <div className="text-xs font-semibold text-white">{stateLabel}</div>
+          <div className="rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,black_72%,transparent)] px-4 py-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Live utilization signal</div>
+                <div className="mt-1 text-xs font-medium text-neutral-300">{stateLabel}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-semibold leading-none text-white">{utilization}%</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                  {metrics?.timezone ?? "UTC"}
+                </div>
+              </div>
             </div>
 
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/10">
-              <div className={[
-                "h-full rounded-full transition-all",
-                barClass,
-              ].join(" ")} style={{ width }} />
+            <div className="mt-4 h-4 overflow-hidden rounded-full border border-white/10 bg-black/45 p-[2px]">
+              <div className="h-full rounded-full bg-white/5">
+                <div className={["h-full rounded-full shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary)_30%,transparent)] transition-all", barClass].join(" ")} style={{ width }} />
+              </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-500">
+            <div className="mt-3 grid grid-cols-3 text-[10px] text-neutral-500">
               <span>0%</span>
-              <span>{utilization}% utilization · {metrics?.timezone ?? "UTC"}</span>
-              <span>100%</span>
+              <span className="text-center">Target 55–85%</span>
+              <span className="text-right">100%</span>
             </div>
           </div>
         </div>
@@ -124,9 +135,9 @@ function Stat({
         : "text-neutral-100";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+    <div className="flex min-h-[74px] flex-col justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-3">
       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
-      <div className={["mt-1 text-lg font-semibold", toneClass].join(" ")}>{value}</div>
+      <div className={["mt-1 text-xl font-semibold leading-tight", toneClass].join(" ")}>{value}</div>
     </div>
   );
 }

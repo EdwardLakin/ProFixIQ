@@ -117,45 +117,62 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
             <Metric label="High utilization (85%+)" value={String(overloaded)} tone="secondary" />
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-            <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.15em] text-neutral-500">
-              <span>Team utilization</span>
-              <span>{summary.pct}%</span>
+          <div className="rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,black_72%,transparent)] px-4 py-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Team utilization</div>
+                <div className="mt-1 text-xs font-medium text-neutral-300">Active line punches vs total shift time</div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-semibold leading-none text-white">{summary.pct}%</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-neutral-500">{timezone}</div>
+              </div>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-4 h-4 overflow-hidden rounded-full border border-white/10 bg-black/45 p-[2px]">
               <div
-                className="h-full rounded-full bg-[color:var(--brand-primary)] transition-all"
+                className="h-full rounded-full bg-[color:var(--brand-primary)] shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary)_35%,transparent)] transition-all"
                 style={{ width: summary.railWidth }}
               />
             </div>
-            <div className="mt-2 text-[10px] text-neutral-500">Based on active line punches / net shift time · {timezone}</div>
+            <div className="mt-3 grid grid-cols-3 text-[10px] text-neutral-500">
+              <span>0%</span>
+              <span className="text-center">Target 55–85%</span>
+              <span className="text-right">100%</span>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {rows.slice(0, 6).map((row) => {
+            {rows.slice(0, 6).map((row, index) => {
               const tone = utilizationTone(row.utilizationPct);
               const colors = toneClasses(tone);
 
               return (
                 <div key={row.techId} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white">{row.name}</div>
-                      <div className="mt-1 text-xs text-neutral-400">
-                        Active {toHoursLabel(row.activeSecondsToday)} · Idle {toHoursLabel(row.idleBreakdown.availableIdleSeconds)}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[10px] font-semibold text-neutral-300">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-white">{row.name}</div>
+                        <div className="mt-1 text-xs text-neutral-400">
+                          {row.currentActiveJobs} active job{row.currentActiveJobs === 1 ? "" : "s"} ·
+                          {" "}
+                          Active {toHoursLabel(row.activeSecondsToday)}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", colors.pill)}>
-                        {row.utilizationPct}% utilized
+                      <div className={cn("inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold", colors.pill)}>
+                        {row.utilizationPct}%
                       </div>
                       <div className="mt-1 text-[10px] text-neutral-500">
-                        {row.currentActiveJobs} active job{row.currentActiveJobs === 1 ? "" : "s"}
+                        Active {toHoursLabel(row.activeSecondsToday)} · Idle {toHoursLabel(row.idleBreakdown.availableIdleSeconds)}
                       </div>
                     </div>
                   </div>
 
-                  <div className={cn("mt-2 h-1.5 overflow-hidden rounded-full", colors.rail)}>
+                  <div className={cn("mt-2.5 h-2 overflow-hidden rounded-full", colors.rail)}>
                     <div
                       className={cn("h-full rounded-full transition-all", colors.bar)}
                       style={{ width: `${Math.max(0, Math.min(100, row.utilizationPct))}%` }}
@@ -188,9 +205,9 @@ function Metric({
         : "text-[color:var(--brand-primary)]";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+    <div className="flex min-h-[74px] flex-col justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-3">
       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
-      <div className={["mt-1 text-lg font-semibold", toneClass].join(" ")}>{value}</div>
+      <div className={["mt-1 text-xl font-semibold leading-tight", toneClass].join(" ")}>{value}</div>
     </div>
   );
 }
