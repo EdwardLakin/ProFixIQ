@@ -51,7 +51,7 @@ export async function POST(
 
   const { error: updErr } = await supabase
     .from("work_order_lines")
-    .update({ approval_state: "declined", status: "on_hold" })
+    .update({ approval_state: "declined", status: "on_hold", punchable: false })
     .eq("id", lineId);
 
   if (updErr) {

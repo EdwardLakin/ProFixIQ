@@ -83,10 +83,19 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const patch =
     decision === "approve"
-      ? { approval_state: "approved" as const, status: "active" as const }
+      ? {
+          approval_state: "approved" as const,
+          status: "active" as const,
+          punchable: true,
+          hold_reason: null,
+        }
       : decision === "decline"
-        ? { approval_state: "declined" as const, status: "on_hold" as const }
-        : { approval_state: "pending" as const, status: "awaiting_approval" as const };
+        ? { approval_state: "declined" as const, status: "on_hold" as const, punchable: false }
+        : {
+            approval_state: "pending" as const,
+            status: "awaiting_approval" as const,
+            punchable: false,
+          };
 
   const beforeLine = {
     id: String(line.id),

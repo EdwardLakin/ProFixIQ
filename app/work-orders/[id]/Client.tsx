@@ -952,6 +952,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         approval_state: "approved",
         status: "active",
+        punchable: true,
         hold_reason: null,
         punched_in_at: null,
         punched_out_at: null,
@@ -998,6 +999,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         .update({
           approval_state: "declined",
           status: "on_hold",
+          punchable: false,
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", lineId);
       if (error) return toast.error(error.message);
