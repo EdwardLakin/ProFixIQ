@@ -673,9 +673,9 @@ export default function QuoteReviewView(props: {
   ) {
     const patch: LineUpdate =
       decision === "approve"
-        ? { approval_state: "approved", status: "queued" }
+        ? { approval_state: "approved", status: "active" }
         : decision === "decline"
-          ? { approval_state: "declined", status: "declined" }
+          ? { approval_state: "declined", status: "on_hold" }
           : { approval_state: null, status: "awaiting_approval" };
 
     const { error } = await supabase

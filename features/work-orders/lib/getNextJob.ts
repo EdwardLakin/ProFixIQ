@@ -8,12 +8,9 @@ type NextLine = {
   status:
     | "ready"
     | "active"
-    | "paused"
     | "on_hold"
     | "completed"
-    | "queued"
-    | "awaiting"
-    | "in_progress";
+    | "awaiting";
   priority?: number | null;
 };
 
@@ -41,7 +38,7 @@ export async function getNextAvailableLine(
       .from("work_order_lines")
       .select("id, work_order_id, created_at, status, priority")
       .eq("assigned_tech_id", technicianId)
-      .in("status", ["in_progress", "paused", "awaiting"])
+      .in("status", ["active", "on_hold", "awaiting"])
       .order("priority", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(1);
@@ -51,8 +48,8 @@ export async function getNextAvailableLine(
     }
   }
 
-  // helper that tries to find one queued+unassigned line
-  async function tryFindQueued(
+  // helper that tries to find one active+unassigned line
+  async function tryFindActive(
     allowNullShop: boolean
   ): Promise<
     | {
@@ -76,7 +73,7 @@ export async function getNextAvailableLine(
         work_orders!inner ( id, shop_id )
       `
       )
-      .eq("status", "queued")
+      .eq("status", "active")
       .is("assigned_tech_id", null)
       .order("priority", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
@@ -86,24 +83,24 @@ export async function getNextAvailableLine(
     if (!allowNullShop) {
       query = query.eq("work_orders.shop_id", shopId);
     } else {
-      // fallback: pick queued/unassigned where the WO has no shop yet
+      // fallback: pick active/unassigned where the WO has no shop yet
       query = query.is("work_orders.shop_id", null);
     }
 
     const { data, error } = await query;
     if (error) {
-      console.warn("getNextAvailableLine: queued lookup failed:", error.message);
+      console.warn("getNextAvailableLine: active lookup failed:", error.message);
       return null;
     }
     return (data && data[0]) || null;
   }
 
-  // 2) preferred: queued, unassigned, same shop
-  let candidate = await tryFindQueued(false);
+  // 2) preferred: active, unassigned, same shop
+  let candidate = await tryFindActive(false);
 
-  // 3) fallback: queued, unassigned, WO has no shop_id yet
+  // 3) fallback: active, unassigned, WO has no shop_id yet
   if (!candidate) {
-    candidate = await tryFindQueued(true);
+    candidate = await tryFindActive(true);
   }
 
   if (!candidate) {

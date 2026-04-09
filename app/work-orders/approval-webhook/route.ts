@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     if (approvedLineIds.length > 0) {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ approval_state: "approved" })
+        .update({ approval_state: "approved", status: "active" })
         .in("id", approvedLineIds)
         .eq("work_order_id", workOrderId);
       if (error) throw new Error(error.message);
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     if (declineUnchecked && declinedLineIds.length > 0) {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ approval_state: "declined" })
+        .update({ approval_state: "declined", status: "on_hold" })
         .in("id", declinedLineIds)
         .eq("work_order_id", workOrderId);
       if (error) throw new Error(error.message);

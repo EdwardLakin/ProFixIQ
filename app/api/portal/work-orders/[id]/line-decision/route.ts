@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 
 type DB = Database;
 type Decision = "approve" | "decline" | "defer";
@@ -82,9 +83,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const patch =
     decision === "approve"
-      ? { approval_state: "approved" as const, status: "queued" as const }
+      ? { approval_state: "approved" as const, status: "active" as const }
       : decision === "decline"
-        ? { approval_state: "declined" as const, status: "declined" as const }
+        ? { approval_state: "declined" as const, status: "on_hold" as const }
         : { approval_state: "pending" as const, status: "awaiting_approval" as const };
 
   const beforeLine = {
@@ -97,10 +98,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       typeof (line as { labor_time?: unknown }).labor_time === "number"
         ? (line as { labor_time: number }).labor_time
         : null,
-    status:
-      typeof (line as { status?: unknown }).status === "string"
-        ? (line as { status: string }).status
-        : null,
+    status: normalizeWorkOrderLineStatus((line as { status?: unknown }).status),
     approval_state:
       typeof (line as { approval_state?: unknown }).approval_state === "string"
         ? (line as { approval_state: string }).approval_state
@@ -133,10 +131,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             typeof (afterLine as { labor_time?: unknown }).labor_time === "number"
               ? (afterLine as { labor_time: number }).labor_time
               : null,
-          status:
-            typeof (afterLine as { status?: unknown }).status === "string"
-              ? (afterLine as { status: string }).status
-              : null,
+          status: normalizeWorkOrderLineStatus((afterLine as { status?: unknown }).status),
           approval_state:
             typeof (afterLine as { approval_state?: unknown }).approval_state === "string"
               ? (afterLine as { approval_state: string }).approval_state

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 
 function getId(req: NextRequest) {
   const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/resume$/);
@@ -28,11 +29,11 @@ export async function POST(req: NextRequest) {
   if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 400 });
   if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 });
 
-  const status = String(line.status ?? "").toLowerCase();
+  const status = normalizeWorkOrderLineStatus(line.status);
   const approvalState = String(line.approval_state ?? "").toLowerCase();
   const punchable = Boolean(line.punchable);
 
-  if (status === "completed" || status === "invoiced" || status === "void") {
+  if (status === "completed" || status === "invoiced") {
     return NextResponse.json(
       { error: "Cannot resume a closed line." },
       { status: 409 },
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase
     .from("work_order_lines")
     .update({
-      status: "in_progress",
+      status: "active",
       hold_reason: null,
       // punched_out_at stays null until finish
     } as Database["public"]["Tables"]["work_order_lines"]["Update"])
