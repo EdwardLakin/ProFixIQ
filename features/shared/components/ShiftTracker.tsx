@@ -76,6 +76,23 @@ export default function ShiftTracker({
     [supabase, userId],
   );
 
+  const punchOutActiveJobsForShiftEnd = useCallback(async () => {
+    if (!userId) return;
+
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ punched_out_at: nowIso })
+      .eq("assigned_tech_id", userId)
+      .not("punched_in_at", "is", null)
+      .is("punched_out_at", null)
+      .neq("status", "completed");
+
+    if (error) {
+      console.warn("[ShiftTracker] failed to close active job punches on shift end:", error);
+    }
+  }, [supabase, userId]);
+
   const loadOpenShift = useCallback(async () => {
     if (!userId) return;
     setErr(null);
@@ -218,6 +235,8 @@ export default function ShiftTracker({
     try {
       const now = new Date().toISOString();
 
+      await punchOutActiveJobsForShiftEnd();
+
       const { error } = await supabase
         .from("tech_shifts")
         .update({ end_time: now, status: "closed", type: "shift" })
@@ -226,6 +245,7 @@ export default function ShiftTracker({
       if (error) throw error;
 
       await insertPunch(shiftId, "end_shift");
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
 
       setShiftId(null);
       setStartTime(null);
@@ -235,7 +255,7 @@ export default function ShiftTracker({
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, insertPunch]);
+  }, [busy, supabase, shiftId, insertPunch, punchOutActiveJobsForShiftEnd]);
 
   const toggleBreak = useCallback(async () => {
     if (busy || !shiftId) return;

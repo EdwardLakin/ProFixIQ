@@ -44,9 +44,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!canTransitionWorkOrderLineStatus(status, "active")) {
+  if (!canTransitionWorkOrderLineStatus(status, "in_progress")) {
     return NextResponse.json(
-      { error: getWorkOrderLineTransitionError(status, "active") },
+      { error: getWorkOrderLineTransitionError(status, "in_progress") },
       { status: 409 },
     );
   }
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase
     .from("work_order_lines")
     .update({
-      status: "active",
+      status: "in_progress",
       hold_reason: null,
       punched_in_at: now,
       punched_out_at: null,
