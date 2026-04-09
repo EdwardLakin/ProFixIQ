@@ -268,3 +268,52 @@ select {
     background: rgba(0, 0, 0, 0.6);
   }
 }
+
+/* -------------------------------------------------------
+   Dashboard widget grid
+------------------------------------------------------- */
+.pfq-rgl-layout {
+  position: relative;
+}
+
+.pfq-rgl-item {
+  transition: all 180ms ease;
+}
+
+.react-grid-item.react-grid-placeholder {
+  border-radius: var(--theme-radius-xl, 1rem);
+  background: color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--brand-primary, #C1663B) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-primary, #C1663B) 22%, transparent);
+}
+
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  right: 8px;
+  bottom: 8px;
+  opacity: 0.95;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--brand-accent, #E39A6E);
+  border-bottom: 2px solid var(--brand-accent, #E39A6E);
+  opacity: 0.9;
+}
+
+.pfq-widget-shell::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.pfq-widget-shell::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--brand-primary, #C1663B) 28%, transparent);
+  border-radius: 999px;
+}

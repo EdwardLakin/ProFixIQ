@@ -5,28 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import DailySummaryCard from "@/features/shared/components/DailySummaryCard";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
-import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
-import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
-import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-import BookingsWidget from "@/features/dashboard/widgets/BookingsWidget";
-import {
-  ShopPulseWidget,
-  ApprovalRiskWidget,
-  WaitingPartsWidget,
-  RevenueWatchWidget,
-  TechLoadWidget,
-  ComebackRiskWidget,
-} from "@/features/dashboard/widgets";
+import DashboardWidgetBoard from "@/features/dashboard/components/DashboardWidgetBoard";
+import type { DashboardCountState } from "@/features/dashboard/types/layout";
 
 type DB = Database;
-
-type CountState = {
-  appointments: number;
-  workOrders: number;
-  partsRequests: number;
-};
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
@@ -40,39 +22,6 @@ function isTechRole(role: string | null): boolean {
   return r === "tech" || r === "mechanic" || r === "technician";
 }
 
-function canViewOwnerDashboard(role: string | null): boolean {
-  const r = (role ?? "").toLowerCase();
-  return r === "owner" || r === "admin" || r === "manager";
-}
-
-function metricTone(kind: "appointments" | "workOrders" | "partsRequests"): string {
-  if (kind === "appointments") return "text-sky-300";
-  if (kind === "partsRequests") return "text-amber-300";
-  return "text-emerald-300";
-}
-
-function MetricCard({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  tone: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 backdrop-blur-xl xl:px-5">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
-        {label}
-      </div>
-      <div className={`mt-2 text-2xl font-semibold ${tone}`}>{value}</div>
-      <div className="mt-1 text-xs text-neutral-400">{hint}</div>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -80,7 +29,7 @@ export default function DashboardPage() {
   const [role, setRole] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [counts, setCounts] = useState<CountState>({
+  const [counts, setCounts] = useState<DashboardCountState>({
     appointments: 0,
     workOrders: 0,
     partsRequests: 0,
@@ -118,9 +67,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const tech = isTechRole(nextRole);
-
-      if (tech) {
+      if (isTechRole(nextRole)) {
         const [myJobs, myParts] = await Promise.all([
           supabase
             .from("work_order_lines")
@@ -170,8 +117,6 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
-  const tech = isTechRole(role);
-  const ownerLike = canViewOwnerDashboard(role);
   const displayName = name?.trim() || "there";
 
   return (
@@ -186,7 +131,7 @@ export default function DashboardPage() {
               Welcome back, {displayName} 👋
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
-              Desktop command view for today’s shop activity.
+              Brand-aware widget dashboard with drag, resize, hide, reset, and saved desktop layouts.
             </p>
           </div>
 
@@ -207,99 +152,27 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-        <MetricCard
-          label="Appointments"
-          value={counts.appointments}
-          hint={tech ? "Not used for tech view" : "Open bookings in your shop"}
-          tone={metricTone("appointments")}
+      {loading ? (
+        <div
+          className="rounded-3xl border p-6"
+          style={{
+            borderColor: "var(--theme-card-border,#334155)",
+            background: "var(--theme-card-bg,#111827)",
+            color: "var(--theme-text-secondary,#94A3B8)",
+          }}
+        >
+          Loading dashboard…
+        </div>
+      ) : (
+        <DashboardWidgetBoard
+          role={role}
+          context={{
+            role,
+            shopId,
+            counts,
+          }}
         />
-        <MetricCard
-          label={tech ? "My active jobs" : "Work orders"}
-          value={counts.workOrders}
-          hint={tech ? "Assigned lines still in progress" : "Open work orders in your shop"}
-          tone={metricTone("workOrders")}
-        />
-        <MetricCard
-          label={tech ? "My parts requests" : "Parts requests"}
-          value={counts.partsRequests}
-          hint={tech ? "Requests tied to you" : "Open parts activity"}
-          tone={metricTone("partsRequests")}
-        />
-        <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 backdrop-blur-xl xl:px-5">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
-            Role
-          </div>
-          <div className="mt-2 text-2xl font-semibold text-white">
-            {role ?? "—"}
-          </div>
-          <div className="mt-1 text-xs text-neutral-400">
-            {loading ? "Loading dashboard context…" : "Desktop dashboard active"}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-12">
-        <div className="md:col-span-2 xl:col-span-2 2xl:col-span-7">
-          <DailySummaryCard />
-        </div>
-
-        <div className="xl:col-span-1 2xl:col-span-5">
-          <SuggestedActionsPanel
-            context={{
-              pageType: "dashboard",
-              pageTitle: "Dashboard",
-            }}
-            title="Suggested Actions"
-            description="Recommended next actions based on today’s shop state"
-            compact
-            maxItems={6}
-          />
-        </div>
-
-        {ownerLike ? (
-          <div className="md:col-span-2 xl:col-span-2 2xl:col-span-8">
-            <ReportsPerformanceWidget />
-          </div>
-        ) : null}
-
-        {ownerLike ? (
-          <div className="xl:col-span-1 2xl:col-span-4">
-            <ShopPulseWidget shopId={shopId} />
-          </div>
-        ) : null}
-
-        {ownerLike ? (
-          <div className="xl:col-span-1 2xl:col-span-4">
-            <RevenueWatchWidget shopId={shopId} />
-          </div>
-        ) : null}
-
-        <div className="xl:col-span-1 2xl:col-span-4">
-          <TechLoadWidget shopId={shopId} />
-        </div>
-
-        <div className="xl:col-span-1 2xl:col-span-4">
-          <ApprovalRiskWidget shopId={shopId} />
-        </div>
-
-        <div className="xl:col-span-1 2xl:col-span-4">
-          <WaitingPartsWidget shopId={shopId} />
-        </div>
-
-        <div className="xl:col-span-1 2xl:col-span-4">
-          <ComebackRiskWidget shopId={shopId} />
-        </div>
-
-        <div className="md:col-span-2 xl:col-span-2 2xl:col-span-8">
-          <WorkOrderBoardWidget />
-        </div>
-
-        <div className="space-y-4 md:col-span-2 xl:col-span-1 2xl:col-span-4">
-          {!tech ? <BookingsWidget /> : null}
-          {!tech ? <AdvisorQueueWidget /> : null}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { EyeOff, GripVertical } from "lucide-react";
 import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
 
@@ -8,26 +9,36 @@ type DashboardWidgetShellProps = {
   eyebrow?: string;
   title: string;
   subtitle?: string;
+  description?: string;
   rightSlot?: ReactNode;
   children: ReactNode;
   compact?: boolean;
   className?: string;
   contentClassName?: string;
+
+  editing?: boolean;
+  onHide?: () => void;
 };
 
 export default function DashboardWidgetShell({
   eyebrow,
   title,
   subtitle,
+  description,
   rightSlot,
   children,
   compact = false,
   className,
   contentClassName,
+  editing = false,
+  onHide,
 }: DashboardWidgetShellProps) {
+  const bodyText = subtitle ?? description;
+
   return (
     <Card
       className={cn(
+        "h-full",
         compact ? "px-4 py-4" : "px-5 py-5",
         className,
       )}
@@ -44,17 +55,41 @@ export default function DashboardWidgetShell({
             {title}
           </h2>
 
-          {subtitle ? (
+          {bodyText ? (
             <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
-              {subtitle}
+              {bodyText}
             </p>
           ) : null}
         </div>
 
-        {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
+
+          {editing ? (
+            <div
+              className="pfq-widget-drag-handle inline-flex h-8 w-8 cursor-move items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300"
+              title="Drag widget"
+            >
+              <GripVertical className="h-4 w-4" />
+            </div>
+          ) : null}
+
+          {editing && onHide ? (
+            <button
+              type="button"
+              onClick={onHide}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300 transition hover:text-white"
+              title="Hide widget"
+            >
+              <EyeOff className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div className={cn("mt-4", contentClassName)}>{children}</div>
+      <div className={cn("mt-4 h-[calc(100%-72px)] overflow-auto", contentClassName)}>
+        {children}
+      </div>
     </Card>
   );
 }
