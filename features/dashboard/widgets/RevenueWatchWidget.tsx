@@ -75,7 +75,7 @@ export default function RevenueWatchWidget({
           {error}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Revenue" value={money(revenue)} tone="primary" />
             <Metric label="Profit" value={money(profit)} tone="accent" />

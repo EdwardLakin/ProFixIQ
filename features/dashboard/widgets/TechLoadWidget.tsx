@@ -64,14 +64,14 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
           No technician activity found for this period.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Tracked techs" value={String(rows.length)} />
             <Metric label="Overloaded" value={String(overloaded.length)} tone="accent" />
             <Metric label="Idle / low load" value={String(underutilized.length)} tone="secondary" />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {rows.slice(0, 4).map((row) => (
               <div
                 key={row.techId}

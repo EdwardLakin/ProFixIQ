@@ -81,7 +81,7 @@ export default function WaitingPartsWidget({ shopId }: { shopId: string | null }
           No jobs are currently flagged as waiting on parts.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricChip label="Blocked jobs" value={String(rows.length)} />
             <MetricChip label="48h+" value={String(longWait.length)} tone="accent" />
@@ -91,7 +91,7 @@ export default function WaitingPartsWidget({ shopId }: { shopId: string | null }
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {rows.slice(0, 4).map((row) => (
               <Link
                 key={row.work_order_id}
