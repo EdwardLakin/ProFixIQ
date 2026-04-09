@@ -41,6 +41,28 @@ const LEGACY_TO_CANONICAL: Record<string, WorkOrderLineStatus> = {
   quoted: "awaiting_approval",
 };
 
+const CANONICAL_TO_DB_ALIASES: Record<WorkOrderLineStatus, readonly string[]> = {
+  awaiting: ["awaiting", "unassigned"],
+  awaiting_approval: ["awaiting_approval", "quoted"],
+  in_progress: ["in_progress", "active", "queued", "assigned"],
+  on_hold: ["on_hold", "paused", "declined"],
+  completed: ["completed"],
+  ready_to_invoice: ["ready_to_invoice"],
+  invoiced: ["invoiced"],
+} as const;
+
+export function getWorkOrderLineStatusDbFilter(statuses: readonly WorkOrderLineStatus[]): string[] {
+  const out = new Set<string>();
+
+  for (const status of statuses) {
+    for (const alias of CANONICAL_TO_DB_ALIASES[status] ?? [status]) {
+      out.add(alias);
+    }
+  }
+
+  return [...out];
+}
+
 export function normalizeWorkOrderLineStatus(value: unknown): WorkOrderLineStatus {
   const key = String(value ?? "")
     .trim()

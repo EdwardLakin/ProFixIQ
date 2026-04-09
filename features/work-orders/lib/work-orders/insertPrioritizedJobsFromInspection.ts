@@ -129,7 +129,7 @@ export async function insertPrioritizedJobsFromInspection(
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: complaintParts.join(" "),
-        status: "active",
+        status: "in_progress",
         job_type: jobType,
         punched_in_at: null,
         punched_out_at: null,

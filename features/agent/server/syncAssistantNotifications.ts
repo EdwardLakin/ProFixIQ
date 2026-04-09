@@ -26,6 +26,27 @@ export type PersistedAssistantNotification = {
   updated_at: string;
 };
 
+type AssistantNotificationStatus =
+  PersistedAssistantNotification["status"];
+
+const LEGACY_NOTIFICATION_STATUS_ALIASES: Record<string, AssistantNotificationStatus> = {
+  active: "active",
+  open: "active",
+  acknowledged: "acknowledged",
+  resolved: "resolved",
+};
+
+function normalizeAssistantNotificationStatus(
+  value: unknown,
+): AssistantNotificationStatus {
+  const key = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
+
+  return LEGACY_NOTIFICATION_STATUS_ALIASES[key] ?? "active";
+}
+
 function buildFingerprint(item: {
   code: string;
   entityType?: string;
@@ -75,14 +96,14 @@ export async function syncAssistantNotifications(params: {
 
   const existingByFingerprint = new Map<
     string,
-    { id: string; first_seen_at: string; status: string }
+    { id: string; first_seen_at: string; status: AssistantNotificationStatus }
   >();
 
   for (const row of existingRows ?? []) {
     existingByFingerprint.set(row.fingerprint, {
       id: row.id,
       first_seen_at: row.first_seen_at,
-      status: row.status,
+      status: normalizeAssistantNotificationStatus(row.status),
     });
   }
 
@@ -113,7 +134,7 @@ export async function syncAssistantNotifications(params: {
       status:
         existing?.status === "acknowledged"
           ? "acknowledged"
-          : "open",
+          : "active",
       metadata: {},
       first_seen_at: existing?.first_seen_at ?? now,
       last_seen_at: now,
@@ -161,12 +182,17 @@ export async function syncAssistantNotifications(params: {
     .select("*")
     .eq("shop_id", shopId)
     .eq("source", "ops")
-    .in("status", ["open", "acknowledged"])
+    .in("status", ["active", "acknowledged", "open"])
     .order("last_seen_at", { ascending: false });
 
   if (finalError) {
     throw new Error(finalError.message);
   }
 
-  return (finalRows ?? []) as PersistedAssistantNotification[];
+  return (finalRows ?? []).map((row) => ({
+    ...(row as PersistedAssistantNotification),
+    status: normalizeAssistantNotificationStatus(
+      (row as { status?: unknown }).status,
+    ),
+  }));
 }
