@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
+import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ ok: false, error: "Missing lineId or decision" }, { status: 400 });
   }
 
-  const { data: row, error } = await applyWorkOrderLineApprovalDecision({
+  const { error } = await applyAndPropagateWorkOrderLineApprovalDecision({
     supabase,
     decision,
     lineIds: [lineId],
@@ -56,12 +56,20 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
           punched_out_at: null,
         }
       : undefined,
-  })
-    .select("id, work_order_id")
-    .maybeSingle();
+  });
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  }
+
+  const { data: row, error: rowErr } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id")
+    .eq("id", lineId)
+    .maybeSingle();
+
+  if (rowErr) {
+    return NextResponse.json({ ok: false, error: rowErr.message }, { status: 400 });
   }
 
   if (!row?.id) {

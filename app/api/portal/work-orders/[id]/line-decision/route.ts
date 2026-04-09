@@ -4,7 +4,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
-import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
+import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 type Decision = "approve" | "decline" | "defer";
@@ -99,17 +99,26 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         : null,
   };
 
-  const { data: afterLine, error: updErr } = await applyWorkOrderLineApprovalDecision({
+  const { error: updErr } = await applyAndPropagateWorkOrderLineApprovalDecision({
     supabase,
     decision,
     lineIds: [lineId],
     workOrderId,
-  })
-    .select("id, price_estimate, labor_time, status, approval_state")
-    .maybeSingle();
+  });
 
   if (updErr) {
     return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
+  }
+
+  const { data: afterLine, error: afterLineErr } = await supabase
+    .from("work_order_lines")
+    .select("id, price_estimate, labor_time, status, approval_state")
+    .eq("id", lineId)
+    .eq("work_order_id", workOrderId)
+    .maybeSingle();
+
+  if (afterLineErr) {
+    return NextResponse.json({ ok: false, error: afterLineErr.message }, { status: 500 });
   }
 
   await maybeRefreshPricingSnapshotForLine({
