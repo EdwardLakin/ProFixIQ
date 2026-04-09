@@ -14,13 +14,13 @@ function isAssetPath(p: string) {
 }
 
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
-  const setCookie = from.headers.get("set-cookie");
-  if (setCookie) to.headers.set("set-cookie", setCookie);
+  for (const cookie of from.cookies.getAll()) {
+    to.cookies.set(cookie);
+  }
   return to;
 }
 
 function safeRedirectPath(v: string | null): string | null {
-  // only allow internal redirects
   if (!v) return null;
   if (!v.startsWith("/")) return null;
   if (v.startsWith("//")) return null;
@@ -33,7 +33,6 @@ async function resolvePortalModeServer(
   supabase: ReturnType<typeof createMiddlewareClient<Database>>,
   userId: string,
 ): Promise<PortalMode> {
-  // ✅ Customer portal users have a customers row keyed by user_id
   try {
     const { data: cust } = await supabase
       .from("customers")
@@ -44,10 +43,9 @@ async function resolvePortalModeServer(
 
     if (cust?.id) return "customer";
   } catch {
-    // ignore and keep checking
+    // ignore
   }
 
-  // ✅ Fleet users are profiles (drivers / dispatchers / fleet managers)
   try {
     const { data: profile } = await supabase
       .from("profiles")
@@ -65,22 +63,19 @@ async function resolvePortalModeServer(
     // ignore
   }
 
-  // Default: treat as customer portal (safe + least restrictive)
   return "customer";
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // Skip static assets + API routes
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return NextResponse.next();
   }
 
-  // ✅ Quote review must bypass onboarding + redirects
-if (pathname.startsWith("/work-orders/quote-review")) {
-  return NextResponse.next();
-}
+  if (pathname.startsWith("/work-orders/quote-review")) {
+    return NextResponse.next();
+  }
 
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
@@ -90,11 +85,7 @@ if (pathname.startsWith("/work-orders/quote-review")) {
   } = await supabase.auth.getSession();
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
-
-  // ✅ Portal auth pages (sign-in, confirm, etc)
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
-
-  // ✅ Legacy confirm paths still allowed
   const isLegacyPortalConfirm =
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
@@ -108,18 +99,13 @@ if (pathname.startsWith("/work-orders/quote-review")) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
-    // ✅ Password reset flow (public)
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
-    // ✅ Demo funnel: no login, one free run per email handled in API
     pathname.startsWith("/demo") ||
     isPortalAuthPage ||
     isLegacyPortalConfirm;
 
-  // ---------------------------------------------------------------------------
-  // App onboarding state (ONLY for main app users, not portal customers)
-  // ---------------------------------------------------------------------------
   let completed = false;
   if (session?.user && !isPortal) {
     try {
@@ -136,23 +122,16 @@ if (pathname.startsWith("/work-orders/quote-review")) {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Landing page → redirect into app/onboarding when already signed in (main app only)
-  // ---------------------------------------------------------------------------
   if (pathname === "/" && session?.user) {
     const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
     return withSupabaseCookies(res, NextResponse.redirect(target));
   }
 
-  // ---------------------------------------------------------------------------
-  // PUBLIC ROUTES
-  // ---------------------------------------------------------------------------
   if (isPublic) {
     const redirectParam = safeRedirectPath(
       req.nextUrl.searchParams.get("redirect"),
     );
 
-    // Main sign-in routes: signed in → bounce into app
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
@@ -172,7 +151,6 @@ if (pathname.startsWith("/work-orders/quote-review")) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // ✅ Portal auth pages: signed in → bounce to redirect OR correct portal home (mode-aware)
     if (
       isPortal &&
       session?.user &&
@@ -180,8 +158,6 @@ if (pathname.startsWith("/work-orders/quote-review")) {
     ) {
       const mode = await resolvePortalModeServer(supabase, session.user.id);
 
-      // If redirect is explicitly provided, still respect it (internal-only),
-      // but if it's sending the user to the wrong portal surface, override.
       let to = redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
 
       if (
@@ -202,10 +178,6 @@ if (pathname.startsWith("/work-orders/quote-review")) {
     return res;
   }
 
-  // ---------------------------------------------------------------------------
-  // PROTECTED ROUTES
-  // ---------------------------------------------------------------------------
-
   if (!session?.user) {
     if (isPortal) {
       const login = new URL("/portal/auth/sign-in", req.url);
@@ -221,27 +193,23 @@ if (pathname.startsWith("/work-orders/quote-review")) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // ✅ PORTAL MODE GATING (fleet vs customer)
   if (isPortal) {
     const mode = await resolvePortalModeServer(supabase, session.user.id);
 
     const isFleetPortalPath =
       pathname === "/portal/fleet" || pathname.startsWith("/portal/fleet/");
 
-    // Fleet users should live under /portal/fleet/*
     if (mode === "fleet" && !isFleetPortalPath) {
       const target = new URL("/portal/fleet", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Customer users should NOT access /portal/fleet/*
     if (mode === "customer" && isFleetPortalPath) {
       const target = new URL("/portal", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
   }
 
-  // Main-app users: signed in but NOT completed onboarding → force onboarding
   if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
     const target = new URL("/onboarding", req.url);
     return withSupabaseCookies(res, NextResponse.redirect(target));
@@ -258,10 +226,10 @@ export const config = {
     "/confirm",
     "/signup",
     "/sign-in",
-    "/forgot-password", // ✅ password reset start
-    "/auth/reset", // ✅ password reset callback landing
-    "/auth/set-password", // ✅ set new password page
-    "/demo/:path*", // ✅ add demo funnel to middleware
+    "/forgot-password",
+    "/auth/reset",
+    "/auth/set-password",
+    "/demo/:path*",
     "/portal/:path*",
     "/mobile/sign-in",
     "/onboarding/:path*",
