@@ -56,7 +56,7 @@ export default function ReviewsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="w-full space-y-6">
       <div className="rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl">
         <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
           Reviews

@@ -1,17 +1,12 @@
-// app/dashboard/page.tsx
-
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import type React from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-
 import DailySummaryCard from "@/features/shared/components/DailySummaryCard";
 import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
-
 import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
@@ -25,22 +20,12 @@ import {
   ComebackRiskWidget,
 } from "@/features/dashboard/widgets";
 
-// ✅ Pull tech performance using your existing stats helper
-import type { TimeRange } from "@shared/lib/stats/getShopStats";
-import {
-  getTechLeaderboard,
-  type TechLeaderboardRow,
-} from "@shared/lib/stats/getTechLeaderboard";
-
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type CountState = {
-  appointments: number | null;
-  workOrders: number | null;
-  partsRequests: number | null;
+  appointments: number;
+  workOrders: number;
+  partsRequests: number;
 };
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
@@ -60,52 +45,60 @@ function canViewOwnerDashboard(role: string | null): boolean {
   return r === "owner" || r === "admin" || r === "manager";
 }
 
-function fmtHours(n: number): string {
-  if (!Number.isFinite(n)) return "0.0h";
-  return `${n.toFixed(1)}h`;
+function metricTone(kind: "appointments" | "workOrders" | "partsRequests"): string {
+  if (kind === "appointments") return "text-sky-300";
+  if (kind === "partsRequests") return "text-amber-300";
+  return "text-emerald-300";
 }
 
-function fmtPct(n: number): string {
-  if (!Number.isFinite(n)) return "0%";
-  return `${n.toFixed(0)}%`;
+function MetricCard({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  tone: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 backdrop-blur-xl xl:px-5">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+        {label}
+      </div>
+      <div className={`mt-2 text-2xl font-semibold ${tone}`}>{value}</div>
+      <div className="mt-1 text-xs text-neutral-400">{hint}</div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
-
+  const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<CountState>({
-    appointments: null,
-    workOrders: null,
-    partsRequests: null,
+    appointments: 0,
+    workOrders: 0,
+    partsRequests: 0,
   });
 
-  const [perfRange] = useState<TimeRange>("weekly");
-  const [perfLoading, setPerfLoading] = useState(false);
-  const [perfRow, setPerfRow] = useState<TechLeaderboardRow | null>(null);
-
-  const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
-  const [currentJobWorkOrder, setCurrentJobWorkOrder] =
-    useState<WorkOrder | null>(null);
-  const [currentJobVehicle, setCurrentJobVehicle] = useState<Vehicle | null>(
-    null,
-  );
-  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
-
   useEffect(() => {
-    (async () => {
+    void (async () => {
+      setLoading(true);
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       const uid = session?.user?.id ?? null;
-      setUserId(uid);
-
-      if (!uid) return;
+      if (!uid) {
+        setLoading(false);
+        return;
+      }
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -113,38 +106,34 @@ export default function DashboardPage() {
         .eq("id", uid)
         .maybeSingle();
 
+      const nextRole = profile?.role ?? null;
+      const nextShopId = profile?.shop_id ?? null;
+
       setName(profile?.full_name ?? null);
-      setRole(profile?.role ?? null);
-      setShopId(profile?.shop_id ?? null);
-    })();
-  }, [supabase]);
+      setRole(nextRole);
+      setShopId(nextShopId);
 
-  useEffect(() => {
-    if (!userId) return;
-    if (!shopId) return;
+      if (!nextShopId) {
+        setLoading(false);
+        return;
+      }
 
-    (async () => {
-      const tech = isTechRole(role);
-
-      setCounts({
-        appointments: null,
-        workOrders: null,
-        partsRequests: null,
-      });
+      const tech = isTechRole(nextRole);
 
       if (tech) {
         const [myJobs, myParts] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("id", { count: "exact", head: true })
-            .eq("assigned_tech_id", userId)
+            .eq("shop_id", nextShopId)
+            .eq("assigned_tech_id", uid)
             .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
           supabase
             .from("part_requests")
             .select("id", { count: "exact", head: true })
-            .eq("shop_id", shopId)
+            .eq("shop_id", nextShopId)
             .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
-            .or(`requested_by.eq.${userId},assigned_tech_id.eq.${userId}`),
+            .or(`requested_by.eq.${uid},assigned_tech_id.eq.${uid}`),
         ]);
 
         setCounts({
@@ -152,7 +141,7 @@ export default function DashboardPage() {
           workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
           partsRequests: myParts.error ? 0 : myParts.count ?? 0,
         });
-
+        setLoading(false);
         return;
       }
 
@@ -160,15 +149,15 @@ export default function DashboardPage() {
         supabase
           .from("bookings")
           .select("id", { count: "exact", head: true })
-          .eq("shop_id", shopId),
+          .eq("shop_id", nextShopId),
         supabase
           .from("work_orders")
           .select("id", { count: "exact", head: true })
-          .eq("shop_id", shopId),
+          .eq("shop_id", nextShopId),
         supabase
           .from("part_requests")
           .select("id", { count: "exact", head: true })
-          .eq("shop_id", shopId)
+          .eq("shop_id", nextShopId)
           .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES)),
       ]);
 
@@ -177,462 +166,127 @@ export default function DashboardPage() {
         workOrders: wo.error ? 0 : wo.count ?? 0,
         partsRequests: parts.error ? 0 : parts.count ?? 0,
       });
+      setLoading(false);
     })();
-  }, [supabase, userId, shopId, role]);
-
-  useEffect(() => {
-    if (!userId) return;
-    if (!shopId) return;
-    if (!isTechRole(role)) {
-      setPerfRow(null);
-      return;
-    }
-
-    (async () => {
-      setPerfLoading(true);
-      try {
-        const result = await getTechLeaderboard(shopId, perfRange);
-        const rows = result.rows ?? [];
-        const my = rows.find((r) => r.techId === userId) ?? null;
-
-        setPerfRow(
-          my ?? {
-            techId: userId,
-            name: name ?? "Tech",
-            role: role ?? null,
-            jobs: 0,
-            revenue: 0,
-            laborCost: 0,
-            profit: 0,
-            billedHours: 0,
-            clockedHours: 0,
-            revenuePerHour: 0,
-            efficiencyPct: 0,
-          },
-        );
-      } catch (e) {
-        console.error("[Dashboard] performance snapshot load failed", e);
-        setPerfRow(null);
-      } finally {
-        setPerfLoading(false);
-      }
-    })();
-  }, [userId, shopId, role, perfRange, name]);
-
-  const loadCurrentJob = useCallback(
-    async (uid: string | null) => {
-      if (!uid) {
-        setCurrentJob(null);
-        setCurrentJobWorkOrder(null);
-        setCurrentJobVehicle(null);
-        return;
-      }
-
-      setLoadingCurrentJob(true);
-      try {
-        const { data, error } = await supabase
-          .from("work_order_lines")
-          .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id, status",
-          )
-          .eq("assigned_tech_id", uid)
-          .not("punched_in_at", "is", null)
-          .is("punched_out_at", null)
-          .order("punched_in_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) {
-          console.error("[Dashboard] current job load error:", error);
-          setCurrentJob(null);
-          setCurrentJobWorkOrder(null);
-          setCurrentJobVehicle(null);
-          return;
-        }
-
-        const line = (data as WorkOrderLine | null) ?? null;
-        setCurrentJob(line);
-
-        if (!line?.work_order_id) {
-          setCurrentJobWorkOrder(null);
-          setCurrentJobVehicle(null);
-          return;
-        }
-
-        const { data: wo, error: woErr } = await supabase
-          .from("work_orders")
-          .select("id, custom_id, vehicle_id")
-          .eq("id", line.work_order_id)
-          .maybeSingle<WorkOrder>();
-
-        if (woErr) {
-          console.error("[Dashboard] current job WO load error:", woErr);
-          setCurrentJobWorkOrder(null);
-          setCurrentJobVehicle(null);
-          return;
-        }
-
-        const workOrder = wo ?? null;
-        setCurrentJobWorkOrder(workOrder);
-
-        if (workOrder?.vehicle_id) {
-          const { data: veh, error: vehErr } = await supabase
-            .from("vehicles")
-            .select("id, year, make, model, license_plate")
-            .eq("id", workOrder.vehicle_id)
-            .maybeSingle<Vehicle>();
-
-          if (vehErr) {
-            console.error("[Dashboard] current job vehicle load error:", vehErr);
-            setCurrentJobVehicle(null);
-          } else {
-            setCurrentJobVehicle(veh ?? null);
-          }
-        } else {
-          setCurrentJobVehicle(null);
-        }
-      } finally {
-        setLoadingCurrentJob(false);
-      }
-    },
-    [supabase],
-  );
-
-  useEffect(() => {
-    void loadCurrentJob(userId);
-  }, [userId, loadCurrentJob]);
-
-  const firstName = name ? name.split(" ")[0] : null;
+  }, [supabase]);
 
   const tech = isTechRole(role);
-  const showOwnerDashboard = canViewOwnerDashboard(role);
-
-  const workedText =
-    perfLoading || !perfRow ? "…" : fmtHours(perfRow.clockedHours);
-  const billedText =
-    perfLoading || !perfRow ? "…" : fmtHours(perfRow.billedHours);
-  const effText =
-    perfLoading || !perfRow ? "…" : fmtPct(perfRow.efficiencyPct);
+  const ownerLike = canViewOwnerDashboard(role);
+  const displayName = name?.trim() || "there";
 
   return (
-    <>
-      <section className="flex items-center justify-between gap-4 rounded-2xl border px-5 py-4 backdrop-blur-xl"
-        style={{
-          borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 45%, rgba(148,163,184,0.30))",
-          background: "linear-gradient(to right, rgba(0,0,0,0.82), color-mix(in srgb, var(--brand-secondary, #0F172A) 88%, black), rgba(0,0,0,0.82))",
-          boxShadow: "0 22px 45px rgba(0,0,0,0.9), 0 0 32px color-mix(in srgb, var(--brand-primary, #C1663B) 22%, transparent)"
-        }}>
-        <div>
-          <h1 className="text-2xl font-semibold text-white">
-            {firstName ? `Welcome back, ${firstName} 👋` : "Welcome 👋"}
-          </h1>
-          <p className="mt-1 text-sm text-neutral-300" style={{ color: "color-mix(in srgb, var(--brand-primary, #C1663B) 35%, #d4d4d8)" }}>
-            Here’s a quick view of what matters today.
-          </p>
+    <div className="w-full space-y-5 xl:space-y-6">
+      <section className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.10),rgba(2,6,23,0.88))] px-5 py-5 backdrop-blur-xl xl:px-7 xl:py-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
+              Dashboard
+            </div>
+            <h1 className="mt-2 text-3xl font-semibold text-white xl:text-4xl">
+              Welcome back, {displayName} 👋
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
+              Desktop command view for today’s shop activity. This layout is tuned to use wide screens instead of stacking like tablet.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/work-orders/create"
+              className="rounded-full border border-orange-500/60 bg-orange-500/15 px-4 py-2 text-sm font-medium text-orange-100 transition hover:bg-orange-500 hover:text-black"
+            >
+              Create work order
+            </Link>
+            <Link
+              href="/dashboard/owner/reports"
+              className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm font-medium text-neutral-200 transition hover:bg-black/40"
+            >
+              Full reports
+            </Link>
+          </div>
         </div>
       </section>
 
-      <div className="mb-6">
+      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <MetricCard
+          label="Appointments"
+          value={counts.appointments}
+          hint={tech ? "Not used for tech view" : "Open bookings in your shop"}
+          tone={metricTone("appointments")}
+        />
+        <MetricCard
+          label={tech ? "My active jobs" : "Work orders"}
+          value={counts.workOrders}
+          hint={tech ? "Assigned lines still in progress" : "Open work orders in your shop"}
+          tone={metricTone("workOrders")}
+        />
+        <MetricCard
+          label={tech ? "My parts requests" : "Parts requests"}
+          value={counts.partsRequests}
+          hint={tech ? "Requests tied to you" : "Open parts activity"}
+          tone={metricTone("partsRequests")}
+        />
+        <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 backdrop-blur-xl xl:px-5">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+            Role
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-white">
+            {role ?? "—"}
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            {loading ? "Loading dashboard context…" : "Responsive desktop layout active"}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
         <DailySummaryCard />
-      </div>
-
-      <div className="mb-4">
         <SuggestedActionsPanel
-          compact
-          collapsible
-          maxItems={4}
-          hideDescription
+          context={{
+            pageType: "dashboard",
+            pageTitle: "Dashboard",
+          }}
           title="Suggested Actions"
+          description="Recommended next actions based on today’s shop state"
+          compact
+          maxItems={6}
         />
       </div>
 
-      {!tech && (
-        <div className="mb-4">
-          <BookingsWidget />
-        </div>
-      )}
-
-      <div className="relative space-y-8 fade-in">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10"
-          style={{ backgroundImage: "var(--app-shell-bg)" }}
-        />
-
-        {!tech && showOwnerDashboard && shopId && (
-          <>
-            <section>
-              <ReportsPerformanceWidget />
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-2">
-              <ShopPulseWidget shopId={shopId} />
-              <RevenueWatchWidget shopId={shopId} />
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-3">
-              <ApprovalRiskWidget shopId={shopId} />
-              <WaitingPartsWidget shopId={shopId} />
-              <TechLoadWidget shopId={shopId} />
-            </section>
-
-            <section>
-              <ComebackRiskWidget shopId={shopId} />
-            </section>
-          </>
-        )}
-
-        {tech && (
-          <section>
-            <ActiveJobCard
-              loading={loadingCurrentJob}
-              job={currentJob}
-              workOrder={currentJobWorkOrder}
-              vehicle={currentJobVehicle}
-            />
-          </section>
-        )}
-
-        <section className="grid gap-4 md:grid-cols-4">
-          {tech ? (
-            <>
-              <OverviewCard
-                title="My assigned jobs"
-                value={counts.workOrders === null ? "…" : String(counts.workOrders)}
-                href="/tech/queue"
-              />
-
-              <OverviewCard
-                title="Hours worked"
-                value={workedText}
-                href="/tech/performance"
-              />
-              <OverviewCard
-                title="Billed hours"
-                value={billedText}
-                href="/tech/performance"
-              />
-              <OverviewCard
-                title="Efficiency"
-                value={effText}
-                href="/tech/performance"
-              />
-            </>
-          ) : (
-            <>
-              <OverviewCard
-                title="Today’s appointments"
-                value={
-                  counts.appointments === null ? "…" : String(counts.appointments)
-                }
-                href="/dashboard/appointments"
-              />
-              <OverviewCard
-                title="Open work orders"
-                value={counts.workOrders === null ? "…" : String(counts.workOrders)}
-                href="/work-orders/view"
-              />
-              <OverviewCard
-                title="Parts requests"
-                value={
-                  counts.partsRequests === null ? "…" : String(counts.partsRequests)
-                }
-                href="/parts/requests"
-              />
-              <OverviewCard title="Team chat" value="Open" href="/chat" />
-            </>
-          )}
-        </section>
-
-        {!tech && (
-          <section className="metal-card rounded-3xl p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                  Work board
-                </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  Live shop status
-                </div>
-              </div>
-
-              <Link
-                href="/work-orders/board"
-                className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
-              >
-                Open full board →
-              </Link>
-            </div>
-
-            <WorkOrderBoardWidget variant="shop" href="/work-orders/board" />
-          </section>
-        )}
-
-        {!tech && (
-          <section>
-            <AdvisorQueueWidget />
-          </section>
-        )}
-
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
-          <div className="flex flex-wrap gap-3">
-            {tech ? (
-              <>
-                <QuickButton href="/tech/queue">My job queue</QuickButton>
-                <QuickButton href="/parts/requests?mine=1">
-                  My parts requests
-                </QuickButton>
-                <QuickButton href="/ai/assistant">AI assistant</QuickButton>
-              </>
-            ) : (
-              <>
-                <QuickButton href="/work-orders/create?autostart=1">
-                  New work order
-                </QuickButton>
-                <QuickButton href="/dashboard/appointments">Appointments</QuickButton>
-                <QuickButton href="/ai/assistant">AI assistant</QuickButton>
-                {role === "owner" || role === "admin" ? (
-                  <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
-                ) : null}
-              </>
-            )}
+      {ownerLike ? (
+        <div className="grid gap-4 2xl:grid-cols-12">
+          <div className="2xl:col-span-7">
+            <ReportsPerformanceWidget />
           </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-function ActiveJobCard({
-  loading,
-  job,
-  workOrder,
-  vehicle,
-}: {
-  loading: boolean;
-  job: WorkOrderLine | null;
-  workOrder: WorkOrder | null;
-  vehicle: Vehicle | null;
-}) {
-  if (loading) {
-    return (
-      <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.95)]">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-              Active job
-            </p>
-            <p className="mt-1 text-sm text-neutral-300">Checking…</p>
+          <div className="grid gap-4 md:grid-cols-2 2xl:col-span-5 2xl:grid-cols-1">
+            <ShopPulseWidget shopId={shopId} />
+            <RevenueWatchWidget shopId={shopId} />
           </div>
         </div>
-      </div>
-    );
-  }
+      ) : null}
 
-  if (!job || !workOrder) {
-    return (
-      <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.95)]">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-              Active job
-            </p>
-            <p className="mt-1 text-sm text-neutral-400">No active job punch.</p>
-          </div>
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-12">
+        <div className="2xl:col-span-4">
+          <ApprovalRiskWidget shopId={shopId} />
+        </div>
+        <div className="2xl:col-span-4">
+          <WaitingPartsWidget shopId={shopId} />
+        </div>
+        <div className="2xl:col-span-4">
+          <TechLoadWidget shopId={shopId} />
         </div>
       </div>
-    );
-  }
 
-  const jobLabel =
-    job.description || job.complaint || String(job.job_type ?? "Job in progress");
-
-  const vehicleLabel = vehicle
-    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-        .trim()
-        .replace(/\s+/g, " ")
-    : null;
-
-  const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
-
-  const href = `/work-orders/${workOrder.id}?focus=${job.id}&mode=tech`;
-
-  return (
-    <Link
-      href={href}
-      className="group relative block overflow-hidden rounded-2xl border bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3"
-      style={{
-        borderColor: "color-mix(in srgb, var(--brand-primary, #C1663B) 75%, transparent)",
-        boxShadow: "0 24px 45px rgba(0,0,0,0.95), 0 0 35px color-mix(in srgb, var(--brand-primary, #C1663B) 45%, transparent)"
-      }}
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
-      <div className="relative flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--brand-primary,#C1663B)]">
-            Active job
-          </p>
-          <p className="mt-1 line-clamp-1 text-sm font-semibold text-white">
-            {jobLabel}
-          </p>
-          <p className="mt-1 text-xs text-neutral-300">
-            WO {woLabel}
-            {vehicleLabel ? ` • ${vehicleLabel}` : ""}
-          </p>
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-12">
+        <div className="2xl:col-span-7">
+          <WorkOrderBoardWidget />
         </div>
-        <span className="text-xs text-[color:var(--brand-primary,#C1663B)]">
-          Open →
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-function OverviewCard({
-  title,
-  value,
-  href,
-}: {
-  title: string;
-  value: string;
-  href?: string;
-}) {
-  const content = (
-    <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85 px-4 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl transition hover:border-[color:var(--brand-primary,#C1663B)]/80 hover:shadow-[0_0_35px_color-mix(in_srgb,var(--brand-primary,#C1663B)_45%,transparent)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
-      <div className="relative">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-          {title}
-        </p>
-        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+        <div className="space-y-4 2xl:col-span-5">
+          {!tech ? <BookingsWidget /> : null}
+          {!tech ? <AdvisorQueueWidget /> : null}
+          <ComebackRiskWidget shopId={shopId} />
+        </div>
       </div>
     </div>
-  );
-
-  if (href) {
-    return (
-      <Link href={href} className="block">
-        {content}
-      </Link>
-    );
-  }
-  return content;
-}
-
-function QuickButton({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--brand-primary,#C1663B)]/70 bg-gradient-to-r from-black/70 via-slate-950/90 to-black/80 px-4 py-2 text-sm text-white shadow-[0_12px_28px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-[color:var(--brand-primary,#C1663B)]/15 hover:border-[color:var(--brand-accent,#E39A6E)]"
-    >
-      {children}
-    </Link>
   );
 }

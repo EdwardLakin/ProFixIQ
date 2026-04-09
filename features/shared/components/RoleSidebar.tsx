@@ -130,7 +130,7 @@ export default function RoleSidebar() {
 
   return (
     <nav
-      className="flex-1 overflow-y-auto space-y-4 py-4"
+      className="flex-1 overflow-y-auto space-y-3 py-3"
       style={{
         background:
           "linear-gradient(to bottom, color-mix(in srgb, var(--theme-sidebar-bg,#020617) 92%, black), var(--theme-sidebar-bg,#020617), color-mix(in srgb, var(--theme-sidebar-bg,#020617) 80%, black))",
@@ -143,12 +143,12 @@ export default function RoleSidebar() {
         );
 
         return (
-          <div key={group} className="px-3">
+          <div key={group} className="px-2.5">
             <button
               type="button"
               onClick={() => toggleSection(group)}
               className={cn(
-                "flex w-full items-center justify-between px-3 py-2 text-left transition-all",
+                "flex w-full items-center justify-between px-2.5 py-2 text-left transition-all",
                 "border",
               )}
               style={{
@@ -185,7 +185,7 @@ export default function RoleSidebar() {
                 )}
 
                 <span
-                  className="text-[0.68rem] font-semibold uppercase tracking-[0.22em]"
+                  className="text-[0.64rem] font-semibold uppercase tracking-[0.2em]"
                   style={{
                     color: hasActive
                       ? "var(--theme-text-primary,#FFFFFF)"
@@ -218,7 +218,7 @@ export default function RoleSidebar() {
             </button>
 
             {open ? (
-              <div className="mt-2 space-y-2 pl-3">
+              <div className="mt-2 space-y-1.5 pl-2.5">
                 {groupTiles.map((t) => {
                   const active =
                     pathname === t.href || pathname.startsWith(t.href + "/");
@@ -227,7 +227,7 @@ export default function RoleSidebar() {
                     <Link
                       key={t.href}
                       href={t.href}
-                      className="group flex items-center justify-between gap-2 border px-3 py-2.5 transition-all"
+                      className="group flex items-center justify-between gap-2 border px-2.5 py-2 transition-all"
                       style={{
                         borderRadius: "var(--theme-radius-md,0.5rem)",
                         borderColor: active
@@ -245,7 +245,7 @@ export default function RoleSidebar() {
                       }}
                     >
                       <span
-                        className="truncate text-[0.84rem] font-medium"
+                        className="truncate text-[0.8rem] font-medium"
                         style={{
                           color: active
                             ? "var(--theme-sidebar-active-text,#000000)"

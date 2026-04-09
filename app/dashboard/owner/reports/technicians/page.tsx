@@ -131,7 +131,7 @@ export default function TechLeaderboardPage() {
       title="Tech Leaderboard"
       description="Per-technician revenue, jobs, hours and efficiency for your chosen time range."
     >
-      <div className="mx-auto max-w-6xl space-y-6 text-foreground">
+      <div className="w-full space-y-6 text-foreground">
         {/* Controls -------------------------------------------------------- */}
         <section
           className={[
