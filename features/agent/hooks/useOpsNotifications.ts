@@ -10,6 +10,8 @@ export type OpsNotification = {
     | "approval_waiting"
     | "work_order_on_hold_too_long"
     | "work_order_waiting_too_long"
+    | "parts_waiting_too_long"
+    | "invoice_unsent_too_long"
     | "tech_overloaded";
   title: string;
   message: string;

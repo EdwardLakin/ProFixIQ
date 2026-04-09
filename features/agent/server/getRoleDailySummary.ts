@@ -175,6 +175,12 @@ function buildOwnerSummary(params: {
   if ((counts.work_order_waiting_too_long ?? 0) > 0) {
     breakdown.push(`${counts.work_order_waiting_too_long} queued too long`);
   }
+  if ((counts.parts_waiting_too_long ?? 0) > 0) {
+    breakdown.push(`${counts.parts_waiting_too_long} waiting on parts too long`);
+  }
+  if ((counts.invoice_unsent_too_long ?? 0) > 0) {
+    breakdown.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
+  }
   if ((counts.tech_overloaded ?? 0) > 0) {
     breakdown.push(`${counts.tech_overloaded} technician overloaded`);
   }
@@ -215,6 +221,12 @@ function buildAdvisorSummary(params: {
   if ((counts.work_order_waiting_too_long ?? 0) > 0) {
     parts.push(`${counts.work_order_waiting_too_long} queued too long`);
   }
+  if ((counts.parts_waiting_too_long ?? 0) > 0) {
+    parts.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+  }
+  if ((counts.invoice_unsent_too_long ?? 0) > 0) {
+    parts.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
+  }
 
   const lines: string[] = [];
   lines.push("Advisor snapshot for today.");
@@ -253,6 +265,12 @@ function buildManagerSummary(params: {
   if ((counts.work_order_waiting_too_long ?? 0) > 0) {
     items.push(`${counts.work_order_waiting_too_long} queued too long`);
   }
+  if ((counts.parts_waiting_too_long ?? 0) > 0) {
+    items.push(`${counts.parts_waiting_too_long} waiting on parts too long`);
+  }
+  if ((counts.invoice_unsent_too_long ?? 0) > 0) {
+    items.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
+  }
   if ((counts.tech_overloaded ?? 0) > 0) {
     items.push(`${counts.tech_overloaded} technician overloaded`);
   }
@@ -286,6 +304,9 @@ function buildTechSummary(params: {
   if ((counts.approval_waiting ?? 0) > 0) {
     items.push(`${counts.approval_waiting} approvals waiting`);
   }
+  if ((counts.parts_waiting_too_long ?? 0) > 0) {
+    items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+  }
 
   if (items.length > 0) {
     lines.push("");
@@ -314,6 +335,9 @@ function buildFleetSummary(params: {
   }
   if ((counts.approval_waiting ?? 0) > 0) {
     items.push(`${counts.approval_waiting} approvals waiting`);
+  }
+  if ((counts.parts_waiting_too_long ?? 0) > 0) {
+    items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
   }
 
   if (items.length > 0) {
