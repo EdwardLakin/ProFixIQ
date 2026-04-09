@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendQuoteReadyEmail } from "@/features/email/server";
+import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -89,6 +90,10 @@ export async function sendQuoteEmail(
     );
   }
 
+  if (!wo.shop_id) {
+    throw new Error("[sendQuoteEmail] Work order is missing shop_id");
+  }
+
   let resolvedShopName = shopName ?? "";
   if (wo.shop_id && !resolvedShopName) {
     const { data: shop } = await supabase
@@ -129,6 +134,8 @@ export async function sendQuoteEmail(
     }
   }
 
+  const brand = await getActiveBrandForRender(wo.shop_id);
+
   let resolvedVehicleInfo = vehicleInfo ?? null;
   if (!resolvedVehicleInfo && wo.vehicle_id) {
     const { data: vehicle } = await supabase
@@ -156,12 +163,15 @@ export async function sendQuoteEmail(
   const quoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "";
 
   await sendQuoteReadyEmail({
-    shopId: wo.shop_id ?? "",
+    shopId: wo.shop_id,
     to,
     quoteUrl,
     quoteTotal: quoteTotal ?? null,
     vehicleLabel: buildVehicleLabel(resolvedVehicleInfo),
     shopName: resolvedShopName || undefined,
+    brandLogoUrl: brand?.logoUrl ?? null,
+    brandPrimaryColor: brand?.colors.primary ?? null,
+    brandSecondaryColor: brand?.colors.secondary ?? null,
   });
 
   if (quoteUrl && quoteUrl !== wo.quote_url) {

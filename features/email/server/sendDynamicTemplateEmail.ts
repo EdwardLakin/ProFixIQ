@@ -93,7 +93,15 @@ export async function sendDynamicTemplateEmail(
       .eq("id", logRow.id);
 
     if (updateError) {
-      throw new Error(updateError.message);
+      console.error(
+        "[email/sendDynamicTemplateEmail] failed to mark email log as sent",
+        {
+          emailLogId: logRow.id,
+          templateKey: input.templateKey,
+          to: input.to,
+          error: updateError.message,
+        },
+      );
     }
   } catch (error) {
     const message =
