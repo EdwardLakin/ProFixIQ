@@ -6,6 +6,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  canTransitionWorkOrderLineStatus,
+  getWorkOrderLineTransitionError,
+  normalizeWorkOrderLineStatus,
+} from "@/features/work-orders/lib/line-status";
 
 type DB = Database;
 
@@ -78,6 +83,14 @@ export async function POST(req: NextRequest) {
 
   if (!existingLine) {
     return NextResponse.json({ error: "Line not found" }, { status: 404 });
+  }
+
+  const currentStatus = normalizeWorkOrderLineStatus(existingLine.status);
+  if (!canTransitionWorkOrderLineStatus(currentStatus, "completed")) {
+    return NextResponse.json(
+      { error: getWorkOrderLineTransitionError(currentStatus, "completed") },
+      { status: 409 },
+    );
   }
 
   const finalCause = incomingCause ?? cleanString(existingLine.cause);

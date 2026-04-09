@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import {
+  canTransitionWorkOrderLineStatus,
+  getWorkOrderLineTransitionError,
+  normalizeWorkOrderLineStatus,
+} from "@/features/work-orders/lib/line-status";
 
 function getId(req: NextRequest) {
   const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/start$/);
@@ -36,6 +40,13 @@ export async function POST(req: NextRequest) {
   if (status === "completed" || status === "invoiced") {
     return NextResponse.json(
       { error: "Cannot start a closed line." },
+      { status: 409 },
+    );
+  }
+
+  if (!canTransitionWorkOrderLineStatus(status, "active")) {
+    return NextResponse.json(
+      { error: getWorkOrderLineTransitionError(status, "active") },
       { status: 409 },
     );
   }
