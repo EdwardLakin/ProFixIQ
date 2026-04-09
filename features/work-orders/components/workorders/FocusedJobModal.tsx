@@ -544,14 +544,15 @@ export default function FocusedJobModal(props: {
     line?.status === "awaiting_approval" ||
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
+  const isPanelVariant = variant === "panel";
 
   if (!isOpen) return null;
 
   const Body = (
     <div
       className={`relative overflow-hidden rounded-[26px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),rgba(10,10,10,0.97)_36%,rgba(5,5,5,0.99)_100%)] text-foreground shadow-[0_28px_90px_rgba(0,0,0,0.96)] ${
-        variant === "panel"
-          ? "h-[calc(100vh-7.5rem)]"
+        isPanelVariant
+          ? ""
           : openAi
             ? ""
             : "max-h-[82vh]"
@@ -561,7 +562,9 @@ export default function FocusedJobModal(props: {
       <div className="pointer-events-none absolute inset-x-12 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.18),transparent_72%)]" />
 
       <div className="flex h-full min-h-0 flex-col">
-        <div className="sticky top-0 z-20 border-b border-white/10 bg-[rgba(5,5,5,0.82)] px-4 py-3 backdrop-blur-xl sm:px-5">
+        <div
+          className={`${isPanelVariant ? "" : "sticky top-0 z-20"} border-b border-white/10 bg-[rgba(5,5,5,0.82)] px-4 py-3 backdrop-blur-xl sm:px-5`}
+        >
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-lg font-semibold tracking-tight text-white">
@@ -628,7 +631,7 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+        <div className={`${isPanelVariant ? "" : "min-h-0 flex-1 overflow-y-auto"} px-4 py-4 sm:px-5`}>
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
@@ -659,41 +662,43 @@ export default function FocusedJobModal(props: {
                 </div>
               </SectionCard>
 
-              <SectionCard title="Vehicle & customer">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Vehicle
+              {!isPanelVariant ? (
+                <SectionCard title="Vehicle & customer">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        Vehicle
+                      </div>
+                      <div className="mt-1 text-sm text-neutral-100">
+                        {vehicle
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                              .trim()
+                              .replace(/\s+/g, " ") || "—"
+                          : "—"}
+                      </div>
+                      <div className="mt-1 text-[11px] text-neutral-400">
+                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {vehicle
-                        ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-                            .trim()
-                            .replace(/\s+/g, " ") || "—"
-                        : "—"}
-                    </div>
-                    <div className="mt-1 text-[11px] text-neutral-400">
-                      VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
-                    </div>
-                  </div>
 
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Customer
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {customer
-                        ? [customer.first_name ?? "", customer.last_name ?? ""]
-                            .filter(Boolean)
-                            .join(" ") || "—"
-                        : "—"}
-                    </div>
-                    <div className="mt-1 text-[11px] text-neutral-400">
-                      {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        Customer
+                      </div>
+                      <div className="mt-1 text-sm text-neutral-100">
+                        {customer
+                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                              .filter(Boolean)
+                              .join(" ") || "—"
+                          : "—"}
+                      </div>
+                      <div className="mt-1 text-[11px] text-neutral-400">
+                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </SectionCard>
+                </SectionCard>
+              ) : null}
 
               {mode === "tech" && line.status !== "completed" ? (
                 <SectionCard title="Punch controls">
