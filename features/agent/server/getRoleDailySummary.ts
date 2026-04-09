@@ -184,6 +184,20 @@ function buildOwnerSummary(params: {
   if ((counts.tech_overloaded ?? 0) > 0) {
     breakdown.push(`${counts.tech_overloaded} technician overloaded`);
   }
+  if ((counts.shop_overloaded ?? 0) > 0) {
+    breakdown.push(`${counts.shop_overloaded} shop overloaded`);
+  }
+  if ((counts.tech_underutilized_capacity ?? 0) > 0) {
+    breakdown.push(
+      `${counts.tech_underutilized_capacity} underutilized capacity alerts`,
+    );
+  }
+  if ((counts.active_job_running_too_long ?? 0) > 0) {
+    breakdown.push(`${counts.active_job_running_too_long} active jobs running too long`);
+  }
+  if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
+    breakdown.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
+  }
 
   if (breakdown.length > 0) {
     lines.push("");
@@ -226,6 +240,15 @@ function buildAdvisorSummary(params: {
   }
   if ((counts.invoice_unsent_too_long ?? 0) > 0) {
     parts.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
+  }
+  if ((counts.active_job_running_too_long ?? 0) > 0) {
+    parts.push(`${counts.active_job_running_too_long} active jobs running too long`);
+  }
+  if ((counts.shop_overloaded ?? 0) > 0) {
+    parts.push(`${counts.shop_overloaded} shop overload alerts`);
+  }
+  if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
+    parts.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
   }
 
   const lines: string[] = [];
@@ -273,6 +296,18 @@ function buildManagerSummary(params: {
   }
   if ((counts.tech_overloaded ?? 0) > 0) {
     items.push(`${counts.tech_overloaded} technician overloaded`);
+  }
+  if ((counts.shop_overloaded ?? 0) > 0) {
+    items.push(`${counts.shop_overloaded} shop overloaded`);
+  }
+  if ((counts.tech_underutilized_capacity ?? 0) > 0) {
+    items.push(`${counts.tech_underutilized_capacity} underutilized capacity alerts`);
+  }
+  if ((counts.active_job_running_too_long ?? 0) > 0) {
+    items.push(`${counts.active_job_running_too_long} active jobs running too long`);
+  }
+  if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
+    items.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
   }
 
   if (items.length > 0) {

@@ -12,7 +12,11 @@ export type OpsNotification = {
     | "work_order_waiting_too_long"
     | "parts_waiting_too_long"
     | "invoice_unsent_too_long"
-    | "tech_overloaded";
+    | "tech_overloaded"
+    | "shop_overloaded"
+    | "tech_underutilized_capacity"
+    | "active_job_running_too_long"
+    | "shop_throughput_below_capacity";
   title: string;
   message: string;
   href?: string;

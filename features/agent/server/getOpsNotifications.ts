@@ -1,4 +1,6 @@
 import { getServerSupabase } from "./supabase";
+import { FLOW_HEALTH_THRESHOLDS, ageHours } from "./flowHealth";
+import { getTechnicianLoadMetricsWithClient } from "@shared/lib/stats/getTechnicianLoadMetricsCore";
 
 export type OpsNotificationLevel = "info" | "warning" | "urgent";
 
@@ -9,7 +11,11 @@ export type OpsNotificationCode =
   | "work_order_waiting_too_long"
   | "parts_waiting_too_long"
   | "invoice_unsent_too_long"
-  | "tech_overloaded";
+  | "tech_overloaded"
+  | "shop_overloaded"
+  | "tech_underutilized_capacity"
+  | "active_job_running_too_long"
+  | "shop_throughput_below_capacity";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
@@ -57,18 +63,13 @@ type PortalInvoiceRow = {
   updated_at: string | null;
 };
 
-const APPROVAL_WAITING_HOURS = 12;
-const QUEUED_WAITING_HOURS = 24;
-const ON_HOLD_LINE_HOURS = 24;
-const PARTS_WAITING_HOURS = 48;
-const UNSENT_INVOICE_HOURS = 48;
-
-function ageHours(ts: string | null | undefined): number | null {
-  if (!ts) return null;
-  const t = new Date(ts).getTime();
-  if (!Number.isFinite(t)) return null;
-  return (Date.now() - t) / (1000 * 60 * 60);
-}
+const SHOP_OVERLOAD_UTILIZATION_PCT = 90;
+const SHOP_UNDERUTILIZATION_PCT = 40;
+const TECH_OVERLOAD_UTILIZATION_PCT = 95;
+const TECH_OVERLOAD_ACTIVE_JOBS = 3;
+const LOW_THROUGHPUT_MIN_ELAPSED_HOURS = 6;
+const LOW_THROUGHPUT_MIN_SHIFTED_TECHS = 2;
+const LOW_THROUGHPUT_MAX_COMPLETIONS_PER_TECH = 0.5;
 
 function secondsToHours(seconds: number | null | undefined): number {
   const parsed = Number(seconds ?? 0);
@@ -172,7 +173,10 @@ export async function getOpsNotifications(
     const stage = String(row.overall_stage ?? "").toLowerCase();
     const hours = secondsToHours(row.time_in_stage_seconds);
 
-    if (stage === "awaiting_approval" && hours >= APPROVAL_WAITING_HOURS) {
+    if (
+      stage === "awaiting_approval" &&
+      hours >= FLOW_HEALTH_THRESHOLDS.approvalWaitHours
+    ) {
       seenApprovalFromBoard.add(row.work_order_id);
       notifications.push({
         level: "warning",
@@ -186,7 +190,7 @@ export async function getOpsNotifications(
       continue;
     }
 
-    if (stage === "waiting_parts" && hours >= PARTS_WAITING_HOURS) {
+    if (stage === "waiting_parts" && hours >= FLOW_HEALTH_THRESHOLDS.partsWaitHours) {
       notifications.push({
         level: "warning",
         code: "parts_waiting_too_long",
@@ -205,7 +209,7 @@ export async function getOpsNotifications(
 
     if (
       row.status === "awaiting_approval" &&
-      hours >= APPROVAL_WAITING_HOURS &&
+      hours >= FLOW_HEALTH_THRESHOLDS.approvalWaitHours &&
       !seenApprovalFromBoard.has(row.id)
     ) {
       notifications.push({
@@ -221,7 +225,7 @@ export async function getOpsNotifications(
       continue;
     }
 
-    if (row.status === "queued" && hours >= QUEUED_WAITING_HOURS) {
+    if (row.status === "queued" && hours >= FLOW_HEALTH_THRESHOLDS.queuedWaitHours) {
       notifications.push({
         level: "warning",
         code: "work_order_waiting_too_long",
@@ -235,7 +239,7 @@ export async function getOpsNotifications(
       continue;
     }
 
-    if (row.status === "on_hold" && hours >= ON_HOLD_LINE_HOURS) {
+    if (row.status === "on_hold" && hours >= FLOW_HEALTH_THRESHOLDS.onHoldWaitHours) {
       notifications.push({
         level: "urgent",
         code: "work_order_on_hold_too_long",
@@ -247,12 +251,27 @@ export async function getOpsNotifications(
         createdAt: row.updated_at ?? undefined,
       });
     }
+    if (
+      row.status === "in_progress" &&
+      hours >= FLOW_HEALTH_THRESHOLDS.unusuallyLongActiveJobHours
+    ) {
+      notifications.push({
+        level: hours >= FLOW_HEALTH_THRESHOLDS.unusuallyLongActiveJobHours + 2 ? "urgent" : "warning",
+        code: "active_job_running_too_long",
+        title: "Unusually long active job",
+        message: `${woLabel(row.custom_id, row.id)} has remained active for ${hours.toFixed(1)} hours without an update.`,
+        href: `/work-orders/${row.id}`,
+        entityType: "work_order",
+        entityId: row.id,
+        createdAt: row.updated_at ?? undefined,
+      });
+    }
   }
 
   for (const line of lineRows) {
     const since = line.on_hold_since ?? line.updated_at;
     const hours = ageHours(since);
-    if (hours == null || hours < ON_HOLD_LINE_HOURS) continue;
+    if (hours == null || hours < FLOW_HEALTH_THRESHOLDS.onHoldWaitHours) continue;
 
     const workOrder = line.work_order_id
       ? workOrderById.get(line.work_order_id)
@@ -281,7 +300,7 @@ export async function getOpsNotifications(
 
     const since = invoice.updated_at ?? invoice.created_at;
     const hours = ageHours(since);
-    if (hours == null || hours < UNSENT_INVOICE_HOURS) continue;
+    if (hours == null || hours < FLOW_HEALTH_THRESHOLDS.unsentInvoiceHours) continue;
 
     notifications.push({
       level: "warning",
@@ -294,6 +313,84 @@ export async function getOpsNotifications(
       entityType: "invoice",
       entityId: invoice.work_order_id ?? undefined,
       createdAt: since ?? undefined,
+    });
+  }
+
+  const loadMetrics = await getTechnicianLoadMetricsWithClient(supabase, shopId);
+  const shiftedTechs = loadMetrics.rows.filter((row) => row.shiftSecondsToday > 0);
+  const overloadedTechs = shiftedTechs.filter(
+    (row) =>
+      row.utilizationPct >= TECH_OVERLOAD_UTILIZATION_PCT ||
+      row.currentActiveJobs >= TECH_OVERLOAD_ACTIVE_JOBS,
+  );
+
+  for (const row of overloadedTechs) {
+    notifications.push({
+      level: "warning",
+      code: "tech_overloaded",
+      title: "Technician overloaded",
+      message: `${row.name} is at ${row.utilizationPct}% utilization with ${row.currentActiveJobs} active job(s). Rebalance upcoming work.`,
+      href: "/dashboard",
+      entityType: "profile",
+      entityId: row.techId,
+    });
+  }
+
+  if (
+    loadMetrics.summary.shopUtilizationPct >= SHOP_OVERLOAD_UTILIZATION_PCT &&
+    loadMetrics.summary.totalActiveJobs >= Math.max(2, loadMetrics.summary.totalTechnicians)
+  ) {
+    notifications.push({
+      level: "urgent",
+      code: "shop_overloaded",
+      title: "Shop overloaded",
+      message: `Shop load is ${loadMetrics.summary.shopUtilizationPct}% with ${loadMetrics.summary.totalActiveJobs} active jobs across ${loadMetrics.summary.totalTechnicians} technicians.`,
+      href: "/dashboard",
+      entityType: "shop",
+      entityId: shopId,
+    });
+  }
+
+  const underutilizedTechs = shiftedTechs.filter(
+    (row) => row.currentActiveJobs === 0 && row.utilizationPct <= SHOP_UNDERUTILIZATION_PCT,
+  );
+  if (
+    loadMetrics.summary.shopUtilizationPct <= SHOP_UNDERUTILIZATION_PCT &&
+    underutilizedTechs.length > 0
+  ) {
+    notifications.push({
+      level: "info",
+      code: "tech_underutilized_capacity",
+      title: "Underutilized technician capacity",
+      message: `${underutilizedTechs.length} technician(s) have shift time available but no active jobs. Pull queued work forward.`,
+      href: "/dashboard",
+      entityType: "shop",
+      entityId: shopId,
+    });
+  }
+
+  const completedJobs = shiftedTechs.reduce((sum, row) => sum + row.completedJobsToday, 0);
+  const elapsedHours = Math.max(
+    0,
+    (Date.now() - new Date(loadMetrics.dayStartIso).getTime()) / (1000 * 60 * 60),
+  );
+  const completedPerShiftedTech =
+    shiftedTechs.length > 0 ? completedJobs / shiftedTechs.length : 0;
+
+  if (
+    elapsedHours >= LOW_THROUGHPUT_MIN_ELAPSED_HOURS &&
+    shiftedTechs.length >= LOW_THROUGHPUT_MIN_SHIFTED_TECHS &&
+    loadMetrics.summary.shopUtilizationPct >= 55 &&
+    completedPerShiftedTech < LOW_THROUGHPUT_MAX_COMPLETIONS_PER_TECH
+  ) {
+    notifications.push({
+      level: "warning",
+      code: "shop_throughput_below_capacity",
+      title: "Low throughput vs current shift capacity",
+      message: `${shiftedTechs.length} shifted tech(s) have completed ${completedJobs} jobs so far (${completedPerShiftedTech.toFixed(1)} each) while utilization is ${loadMetrics.summary.shopUtilizationPct}%. Check blockers and handoffs.`,
+      href: "/dashboard",
+      entityType: "shop",
+      entityId: shopId,
     });
   }
 
