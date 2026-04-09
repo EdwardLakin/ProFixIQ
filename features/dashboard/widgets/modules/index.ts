@@ -11,3 +11,5 @@ export { comebackRiskWidgetModule } from "./ComebackRiskWidgetModule";
 export { workOrderBoardWidgetModule } from "./WorkOrderBoardWidgetModule";
 export { bookingsWidgetModule } from "./BookingsWidgetModule";
 export { advisorQueueWidgetModule } from "./AdvisorQueueWidgetModule";
+
+export { technicianPerformanceWidgetModule } from "./TechnicianPerformanceWidgetModule";

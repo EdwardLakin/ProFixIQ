@@ -7,11 +7,15 @@ import {
   type TechnicianLoadMetricRow,
 } from "@shared/lib/stats/getTechnicianLoadMetrics";
 
-function toHoursLabel(seconds: number): string {
-  return `${(seconds / 3600).toFixed(1)}h`;
+function durationLabel(seconds: number): string {
+  const mins = Math.round(seconds / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h <= 0) return `${m}m`;
+  return `${h}h ${m}m`;
 }
 
-export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
+export default function TechnicianPerformanceWidget({ shopId }: { shopId: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TechnicianLoadMetricRow[]>([]);
@@ -25,10 +29,15 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
       setError(null);
       try {
         const result = await getTechnicianLoadMetrics(shopId);
-        if (!cancelled) setRows(result.rows ?? []);
+        if (!cancelled) {
+          const sorted = [...(result.rows ?? [])].sort(
+            (a, b) => b.completedJobsToday - a.completedJobsToday,
+          );
+          setRows(sorted);
+        }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load technician load.");
+          setError(e instanceof Error ? e.message : "Failed to load technician performance.");
           setRows([]);
         }
       } finally {
@@ -41,32 +50,41 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
     };
   }, [shopId]);
 
-  const currentlyBusy = rows.filter((row) => row.currentActiveJobs > 0).length;
-  const overloaded = rows.filter((row) => row.currentActiveJobs >= 3).length;
+  const completedTotal = rows.reduce((sum, row) => sum + row.completedJobsToday, 0);
+  const avgDurationAcrossTeam =
+    rows.length > 0
+      ? Math.round(
+          rows.reduce((sum, row) => sum + row.avgJobDurationSeconds, 0) / Math.max(1, rows.length),
+        )
+      : 0;
 
   return (
     <DashboardWidgetShell
-      eyebrow="AI · Technician Load"
-      title="Technician Load"
-      subtitle="Current active jobs and today’s active/idle balance."
+      eyebrow="AI · Technician Performance"
+      title="Technician Performance"
+      subtitle="Jobs completed and average punch duration today."
       compact
     >
       {loading ? (
-        <div className="text-sm text-neutral-300">Loading technician load…</div>
+        <div className="text-sm text-neutral-300">Loading technician performance…</div>
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-400">
-          No technician load data found for today.
+          No technician performance data found for today.
         </div>
       ) : (
         <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Techs tracked" value={String(rows.length)} />
-            <Metric label="Currently busy" value={String(currentlyBusy)} tone="accent" />
-            <Metric label="High load (3+)" value={String(overloaded)} tone="secondary" />
+            <Metric label="Completed jobs" value={String(completedTotal)} />
+            <Metric label="Team avg duration" value={durationLabel(avgDurationAcrossTeam)} tone="accent" />
+            <Metric
+              label="Techs with active work"
+              value={String(rows.filter((row) => row.currentActiveJobs > 0).length)}
+              tone="secondary"
+            />
           </div>
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -76,15 +94,13 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white">{row.name}</div>
                     <div className="mt-1 text-xs text-neutral-400">
-                      Active {toHoursLabel(row.activeSecondsToday)} · Idle {toHoursLabel(row.idleSecondsToday)}
+                      {row.completedJobsToday} completed · Avg {durationLabel(row.avgJobDurationSeconds)}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="rounded-full border border-[color:color-mix(in_srgb,var(--brand-primary)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_14%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--brand-primary)]">
-                      {row.currentActiveJobs} active job{row.currentActiveJobs === 1 ? "" : "s"}
-                    </div>
-                    <div className="mt-1 text-[10px] text-neutral-500">{row.utilizationPct}% utilized</div>
-                  </div>
+
+                  <span className="rounded-full border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--brand-accent)]">
+                    {row.utilizationPct}% active
+                  </span>
                 </div>
               </div>
             ))}
