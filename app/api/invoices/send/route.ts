@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { sendInvoiceReadyEmail } from "@/features/email/server";
+import {
+  runPostSendPersistence,
+  sendInvoiceReadyEmail,
+} from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
@@ -62,7 +65,12 @@ type RequestBody = {
   signatureImage?: string;
 };
 
-type SendInvoiceResponse = { ok?: boolean; error?: string };
+type SendInvoiceResponse = {
+  ok?: boolean;
+  error?: string;
+  sentWithWarnings?: boolean;
+  warnings?: Array<{ step: string; message: string }>;
+};
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -490,40 +498,69 @@ export async function POST(req: Request) {
       brandSecondaryColor: brand?.colors.secondary ?? null,
     });
 
-    await supabaseAdmin
-      .from("work_orders")
-      .update({
-        status: "invoiced",
-        invoice_sent_at: new Date().toISOString(),
-        invoice_last_sent_to: resolvedCustomerEmail,
-        invoice_total: computedInvoiceTotal,
-        invoice_url: portalInvoiceUrl,
-        invoice_pdf_url: invoicePdfUrl,
-      } as DB["public"]["Tables"]["work_orders"]["Update"])
-      .eq("id", workOrderId);
-
-    await logOperationalEvent({
-      supabase: supabaseAdmin,
-      event: "invoice_sent",
-      entityType: "work_order",
-      entityId: workOrderId,
-      details: {
-        invoice_total: computedInvoiceTotal,
-        labor_total: laborTotal,
-        parts_total: partsTotal,
-        recipient: resolvedCustomerEmail,
+    const postSendWarnings = await runPostSendPersistence([
+      {
+        step: "work_order_invoice_state_update",
+        run: async () => {
+          const { error } = await supabaseAdmin
+            .from("work_orders")
+            .update({
+              status: "invoiced",
+              invoice_sent_at: new Date().toISOString(),
+              invoice_last_sent_to: resolvedCustomerEmail,
+              invoice_total: computedInvoiceTotal,
+              invoice_url: portalInvoiceUrl,
+              invoice_pdf_url: invoicePdfUrl,
+            } as DB["public"]["Tables"]["work_orders"]["Update"])
+            .eq("id", workOrderId);
+          if (error) throw new Error(error.message);
+        },
       },
-    });
+      {
+        step: "invoice_sent_audit_log",
+        run: async () => {
+          await logOperationalEvent({
+            supabase: supabaseAdmin,
+            event: "invoice_sent",
+            entityType: "work_order",
+            entityId: workOrderId,
+            details: {
+              invoice_total: computedInvoiceTotal,
+              labor_total: laborTotal,
+              parts_total: partsTotal,
+              recipient: resolvedCustomerEmail,
+            },
+          });
+        },
+      },
+      ...(portalUserId
+        ? [
+            {
+              step: "portal_invoice_notification_insert",
+              run: async () => {
+                const { error } = await supabaseAdmin
+                  .from("portal_notifications")
+                  .insert({
+                    user_id: portalUserId,
+                    customer_id: portalCustomerId,
+                    work_order_id: workOrderId,
+                    kind: "invoice_ready",
+                    title: "Invoice ready",
+                    body: `Your invoice for Work Order ${workOrderId} at ${resolvedShopName} is ready to view in your portal.`,
+                  });
+                if (error) throw new Error(error.message);
+              },
+            },
+          ]
+        : []),
+    ]);
 
-    if (portalUserId) {
-      await supabaseAdmin.from("portal_notifications").insert({
-        user_id: portalUserId,
-        customer_id: portalCustomerId,
-        work_order_id: workOrderId,
-        kind: "invoice_ready",
-        title: "Invoice ready",
-        body: `Your invoice for Work Order ${workOrderId} at ${resolvedShopName} is ready to view in your portal.`,
-      });
+    if (postSendWarnings.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        sentWithWarnings: true,
+        warnings: postSendWarnings,
+      } satisfies SendInvoiceResponse);
     }
 
     void lines;

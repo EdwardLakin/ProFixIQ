@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { sendQuoteReadyEmail } from "@/features/email/server";
+import { runPostSendPersistence, sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
 type DB = Database;
@@ -349,50 +349,52 @@ export async function POST(req: Request) {
 
     const newQuoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? null;
 
-    if (newQuoteUrl !== wo.quote_url) {
-      const { error: updErr } = await supabaseAdmin
-        .from("work_orders")
-        .update({ quote_url: newQuoteUrl })
-        .eq("id", workOrderId);
+    const postSendWarnings = await runPostSendPersistence([
+      ...(newQuoteUrl !== wo.quote_url
+        ? [
+            {
+              step: "work_order_quote_url_update",
+              run: async () => {
+                const { error } = await supabaseAdmin
+                  .from("work_orders")
+                  .update({ quote_url: newQuoteUrl })
+                  .eq("id", workOrderId);
+                if (error) throw new Error(error.message);
+              },
+            },
+          ]
+        : []),
+      ...(portalUserId
+        ? [
+            {
+              step: "portal_quote_notification_insert",
+              run: async () => {
+                const { error } = await supabaseAdmin
+                  .from("portal_notifications")
+                  .insert({
+                    user_id: portalUserId,
+                    customer_id: portalCustomerId,
+                    work_order_id: workOrderId,
+                    kind: "quote_ready",
+                    title: "Quote ready",
+                    body: `Your quote for Work Order ${workOrderId} at ${
+                      shopName || "the shop"
+                    } is ready to review in your portal.`,
+                  });
+                if (error) throw new Error(error.message);
+              },
+            },
+          ]
+        : []),
+    ]);
 
-      if (updErr) {
-        return NextResponse.json(
-          {
-            ok: true,
-            trace,
-            warning: "Quote email sent, but failed to update work order quote_url",
-            detail: updErr.message,
-          },
-          { status: 200 },
-        );
-      }
-    }
-
-    if (portalUserId) {
-      const { error: notifErr } = await supabaseAdmin
-        .from("portal_notifications")
-        .insert({
-          user_id: portalUserId,
-          customer_id: portalCustomerId,
-          work_order_id: workOrderId,
-          kind: "quote_ready",
-          title: "Quote ready",
-          body: `Your quote for Work Order ${workOrderId} at ${
-            shopName || "the shop"
-          } is ready to review in your portal.`,
-        });
-
-      if (notifErr) {
-        return NextResponse.json(
-          {
-            ok: true,
-            trace,
-            warning: "Quote email sent, but failed to create portal notification",
-            detail: notifErr.message,
-          },
-          { status: 200 },
-        );
-      }
+    if (postSendWarnings.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        trace,
+        sentWithWarnings: true,
+        warnings: postSendWarnings,
+      });
     }
 
     return NextResponse.json({ ok: true, trace });
