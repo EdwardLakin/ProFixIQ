@@ -10,6 +10,18 @@ export const CANONICAL_WORK_ORDER_LINE_STATUSES = [
 export type WorkOrderLineStatus =
   (typeof CANONICAL_WORK_ORDER_LINE_STATUSES)[number];
 
+export const WORK_ORDER_LINE_ALLOWED_TRANSITIONS: Record<
+  WorkOrderLineStatus,
+  readonly WorkOrderLineStatus[]
+> = {
+  awaiting: ["awaiting_approval", "active", "on_hold", "completed"],
+  awaiting_approval: ["awaiting_approval", "active", "on_hold", "completed"],
+  active: ["active", "on_hold", "completed", "awaiting_approval"],
+  on_hold: ["on_hold", "active", "completed", "awaiting_approval"],
+  completed: ["completed", "invoiced"],
+  invoiced: ["invoiced"],
+} as const;
+
 const LEGACY_TO_CANONICAL: Record<string, WorkOrderLineStatus> = {
   awaiting: "awaiting",
   awaiting_approval: "awaiting_approval",
@@ -50,4 +62,22 @@ export function assertWorkOrderLineStatus(value: unknown): WorkOrderLineStatus {
     throw new Error(`Invalid work order line status: ${String(value ?? "")}`);
   }
   return normalized;
+}
+
+export function canTransitionWorkOrderLineStatus(
+  from: unknown,
+  to: unknown,
+): boolean {
+  const fromStatus = assertWorkOrderLineStatus(from);
+  const toStatus = assertWorkOrderLineStatus(to);
+  return WORK_ORDER_LINE_ALLOWED_TRANSITIONS[fromStatus].includes(toStatus);
+}
+
+export function getWorkOrderLineTransitionError(
+  from: unknown,
+  to: unknown,
+): string {
+  const fromStatus = assertWorkOrderLineStatus(from);
+  const toStatus = assertWorkOrderLineStatus(to);
+  return `Invalid line status transition: ${fromStatus} -> ${toStatus}`;
 }

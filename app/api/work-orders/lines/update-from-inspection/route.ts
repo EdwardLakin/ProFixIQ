@@ -8,6 +8,11 @@ import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
+import {
+  canTransitionWorkOrderLineStatus,
+  getWorkOrderLineTransitionError,
+  normalizeWorkOrderLineStatus,
+} from "@/features/work-orders/lib/line-status";
 
 type DB = Database;
 
@@ -90,6 +95,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Work order line does not belong to the given work order" },
         { status: 400 },
+      );
+    }
+
+    const currentStatus = normalizeWorkOrderLineStatus(line.status);
+    if (!canTransitionWorkOrderLineStatus(currentStatus, "awaiting_approval")) {
+      return NextResponse.json(
+        { error: getWorkOrderLineTransitionError(currentStatus, "awaiting_approval") },
+        { status: 409 },
       );
     }
 
