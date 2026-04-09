@@ -4,11 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  canTransitionWorkOrderLineStatus,
-  getWorkOrderLineTransitionError,
-  normalizeWorkOrderLineStatus,
-} from "@/features/work-orders/lib/line-status";
+import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 function getId(req: NextRequest) {
   const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/pause$/);
@@ -24,52 +20,16 @@ export async function POST(req: NextRequest) {
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: line, error: lineErr } = await supabase
-    .from("work_order_lines")
-    .select("id, status, punched_in_at, punched_out_at")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 400 });
-  if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 });
-
-  const status = normalizeWorkOrderLineStatus(line.status);
-  if (status === "completed" || status === "invoiced") {
-    return NextResponse.json(
-      { error: "Cannot pause a closed line." },
-      { status: 409 },
-    );
-  }
-
-  if (!canTransitionWorkOrderLineStatus(status, "on_hold")) {
-    return NextResponse.json(
-      { error: getWorkOrderLineTransitionError(status, "on_hold") },
-      { status: 409 },
-    );
-  }
-
-  const now = new Date().toISOString();
-  const shouldCloseActivePunch = Boolean(line.punched_in_at) && !line.punched_out_at;
-
-  const { error } = await supabase
-    .from("work_order_lines")
-    .update({
-      status: "on_hold",
-      hold_reason: "Paused by technician",
-      ...(shouldCloseActivePunch ? { punched_out_at: now } : {}),
-    } as Database["public"]["Tables"]["work_order_lines"]["Update"])
-    .eq("id", id)
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-  await supabase.from("activity_logs").insert({
-    entity_type: "work_order_line",
-    entity_id: id,
+  const result = await applyJobPunchTransition({
+    supabase,
+    lineId: id,
     action: "pause",
-    actor_id: auth.user.id,
-    created_at: now,
+    technicianId: auth.user.id,
   });
 
-  return NextResponse.json({ ok: true });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  return NextResponse.json(result.payload ?? { ok: true });
 }
