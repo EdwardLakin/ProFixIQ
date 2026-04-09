@@ -1,0 +1,13 @@
+export { statsOverviewWidgetModule } from "./StatsOverviewWidgetModule";
+export { dailySummaryWidgetModule } from "./DailySummaryWidgetModule";
+export { suggestedActionsWidgetModule } from "./SuggestedActionsWidgetModule";
+export { reportsPerformanceWidgetModule } from "./ReportsPerformanceWidgetModule";
+export { shopPulseWidgetModule } from "./ShopPulseWidgetModule";
+export { revenueWatchWidgetModule } from "./RevenueWatchWidgetModule";
+export { techLoadWidgetModule } from "./TechLoadWidgetModule";
+export { approvalRiskWidgetModule } from "./ApprovalRiskWidgetModule";
+export { waitingPartsWidgetModule } from "./WaitingPartsWidgetModule";
+export { comebackRiskWidgetModule } from "./ComebackRiskWidgetModule";
+export { workOrderBoardWidgetModule } from "./WorkOrderBoardWidgetModule";
+export { bookingsWidgetModule } from "./BookingsWidgetModule";
+export { advisorQueueWidgetModule } from "./AdvisorQueueWidgetModule";

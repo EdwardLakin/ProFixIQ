@@ -117,6 +117,7 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
+
   const displayName = name?.trim() || "there";
 
   return (
