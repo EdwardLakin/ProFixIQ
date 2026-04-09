@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import GridLayout, {
+  type Layout,
+  type LayoutItem,
+  useContainerWidth,
+} from "react-grid-layout";
 
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import {
@@ -28,6 +33,19 @@ function compareLayoutPosition(a: DashboardWidgetLayout, b: DashboardWidgetLayou
   return a.id.localeCompare(b.id);
 }
 
+function normalizeGridLayoutItem(
+  item: LayoutItem,
+  fallback: DashboardWidgetLayout,
+): DashboardWidgetLayout {
+  return {
+    id: fallback.id,
+    x: Number.isFinite(item.x) ? item.x : fallback.x,
+    y: Number.isFinite(item.y) ? item.y : fallback.y,
+    w: Number.isFinite(item.w) ? item.w : fallback.w,
+    h: Number.isFinite(item.h) ? item.h : fallback.h,
+  };
+}
+
 export default function DashboardWidgetBoard({
   role,
   context,
@@ -48,6 +66,7 @@ export default function DashboardWidgetBoard({
 
   const [layout, setLayout] = useState<DashboardWidgetLayout[]>(computedInitialLayout);
   const prevSerializedRef = useRef<string>(JSON.stringify(computedInitialLayout));
+  const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1280 });
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
@@ -96,6 +115,44 @@ export default function DashboardWidgetBoard({
     [layout, widgetById],
   );
 
+  const gridLayout = useMemo(
+    () =>
+      orderedWidgets.map(({ item, widget }) => ({
+        i: item.id,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+        minW: widget.minW,
+        minH: widget.minH,
+        maxW: widget.maxW,
+        maxH: widget.maxH,
+      } satisfies LayoutItem)),
+    [orderedWidgets],
+  );
+
+  const handleGridLayoutChange = (nextGridLayout: Layout) => {
+    const fallbackById = new Map(layout.map((item) => [item.id, item] as const));
+
+    const nextLayout = nextGridLayout
+      .map((item) => {
+        const fallback = fallbackById.get(item.i as DashboardWidgetLayout["id"]);
+        if (!fallback) return null;
+
+        return normalizeGridLayoutItem(item, fallback);
+      })
+      .filter((item): item is DashboardWidgetLayout => Boolean(item))
+      .sort(compareLayoutPosition);
+
+    if (!nextLayout.length) return;
+
+    const currentSerialized = JSON.stringify(layout);
+    const nextSerialized = JSON.stringify(nextLayout);
+    if (currentSerialized === nextSerialized) return;
+
+    setLayout(nextLayout);
+  };
+
   return (
     <div className="space-y-4">
       <div
@@ -116,39 +173,73 @@ export default function DashboardWidgetBoard({
           className="mt-1 text-sm"
           style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
         >
-          Stable default grid on desktop with automatic stacking on small screens.
+          Drag and resize widgets on desktop. Small screens keep simple stacked cards.
         </div>
       </div>
 
-      <div
-        className={isSmallScreen ? "space-y-4" : "grid gap-4"}
-        style={
-          isSmallScreen
-            ? undefined
-            : {
-                gridTemplateColumns: `repeat(${DASHBOARD_GRID_COLUMNS}, minmax(0, 1fr))`,
-                gridAutoRows: "92px",
-              }
-        }
-      >
-        {orderedWidgets.map(({ item, widget }) => (
-          <div
-            key={item.id}
-            style={
-              isSmallScreen
-                ? undefined
-                : {
-                    gridColumn: `${item.x + 1} / span ${item.w}`,
-                    gridRow: `${item.y + 1} / span ${item.h}`,
-                  }
-            }
-          >
-            <DashboardWidgetShell title={widget.title} description={widget.description}>
-              {widget.render(context, item)}
-            </DashboardWidgetShell>
-          </div>
-        ))}
-      </div>
+      {isSmallScreen ? (
+        <div className="space-y-4">
+          {orderedWidgets.map(({ item, widget }) => (
+            <div key={item.id}>
+              <DashboardWidgetShell title={widget.title} description={widget.description}>
+                {widget.render(context, item)}
+              </DashboardWidgetShell>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div ref={containerRef as RefObject<HTMLDivElement>}>
+          {mounted ? (
+            <GridLayout
+              className="dashboard-widget-grid"
+              width={Math.max(width, 320)}
+              gridConfig={{
+                cols: DASHBOARD_GRID_COLUMNS,
+                rowHeight: 92,
+                margin: [16, 16],
+                containerPadding: [0, 0],
+              }}
+              dragConfig={{
+                enabled: true,
+                handle: ".widget-drag-handle",
+              }}
+              resizeConfig={{
+                enabled: true,
+                handles: ["e", "s", "se"],
+              }}
+              layout={gridLayout}
+              onLayoutChange={handleGridLayoutChange}
+            >
+              {orderedWidgets.map(({ item, widget }) => (
+                <div key={item.id} className="h-full min-h-0">
+                  <div className="relative h-full">
+                    <button
+                      type="button"
+                      className="widget-drag-handle absolute right-2 top-2 z-10 cursor-move rounded-md border border-white/15 bg-black/35 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neutral-200"
+                      aria-label={`Drag ${widget.title}`}
+                    >
+                      Move
+                    </button>
+                    <DashboardWidgetShell title={widget.title} description={widget.description}>
+                      {widget.render(context, item)}
+                    </DashboardWidgetShell>
+                  </div>
+                </div>
+              ))}
+            </GridLayout>
+          ) : (
+            <div className="grid gap-4">
+              {orderedWidgets.map(({ item, widget }) => (
+                <div key={item.id}>
+                  <DashboardWidgetShell title={widget.title} description={widget.description}>
+                    {widget.render(context, item)}
+                  </DashboardWidgetShell>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
