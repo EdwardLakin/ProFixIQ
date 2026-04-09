@@ -75,7 +75,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
       {loading ? (
         <div className="text-sm text-neutral-300">Loading approval risk…</div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
@@ -86,7 +86,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricChip label="Waiting" value={String(rows.length)} />
-            <MetricChip label="24h+" value={String(aged.length)} tone="warn" />
+            <MetricChip label="24h+" value={String(aged.length)} tone="accent" />
             <MetricChip
               label="Longest"
               value={`${Math.max(0, ...rows.map((r) => Math.round(hoursInState(r.time_in_stage_seconds))))}h`}
@@ -111,7 +111,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
                     </div>
                   </div>
 
-                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                  <span className="rounded-full border border-[color:color-mix(in_srgb,var(--brand-accent)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_15%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--brand-accent)]">
                     {Math.round(hoursInState(row.time_in_stage_seconds))}h
                   </span>
                 </div>
@@ -131,12 +131,17 @@ function MetricChip({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "warn";
+  tone?: "default" | "accent";
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
-      <div className={["mt-1 text-lg font-semibold", tone === "warn" ? "text-amber-300" : "text-white"].join(" ")}>
+      <div
+        className={[
+          "mt-1 text-lg font-semibold",
+          tone === "accent" ? "text-[color:var(--brand-accent)]" : "text-[color:var(--brand-primary)]",
+        ].join(" ")}
+      >
         {value}
       </div>
     </div>

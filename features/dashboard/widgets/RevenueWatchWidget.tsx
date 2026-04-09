@@ -71,14 +71,14 @@ export default function RevenueWatchWidget({
       {loading ? (
         <div className="text-sm text-neutral-300">Loading revenue watch…</div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Revenue" value={money(revenue)} tone="emerald" />
-            <Metric label="Profit" value={money(profit)} tone="amber" />
+            <Metric label="Revenue" value={money(revenue)} tone="primary" />
+            <Metric label="Profit" value={money(profit)} tone="accent" />
             <Metric label="Jobs" value={String(jobs)} />
           </div>
 
@@ -89,7 +89,7 @@ export default function RevenueWatchWidget({
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,_rgba(34,197,94,0.95),_rgba(249,115,22,0.95))]"
+                className="h-full rounded-full bg-[linear-gradient(90deg,_color-mix(in_srgb,var(--brand-primary)_90%,white_10%),_color-mix(in_srgb,var(--brand-accent)_85%,white_15%))]"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -110,14 +110,14 @@ function Metric({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "emerald" | "amber";
+  tone?: "default" | "primary" | "accent";
 }) {
   const toneClass =
-    tone === "emerald"
-      ? "text-emerald-300"
-      : tone === "amber"
-        ? "text-amber-300"
-        : "text-white";
+    tone === "primary"
+      ? "text-[color:var(--brand-primary)]"
+      : tone === "accent"
+        ? "text-[color:var(--brand-accent)]"
+        : "text-[color:var(--theme-text-primary)]";
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
