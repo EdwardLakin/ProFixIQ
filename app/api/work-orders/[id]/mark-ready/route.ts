@@ -31,7 +31,12 @@ export async function POST(req: Request) {
       .eq("work_order_id", woId);
     if (lnErr) throw lnErr;
 
-    const notDone = (lines ?? []).some((l) => String(l.status ?? "awaiting") !== "completed");
+    const notDone = (lines ?? []).some((l) => {
+      const normalized = String(l.status ?? "awaiting")
+        .toLowerCase()
+        .replaceAll(" ", "_");
+      return !["completed", "ready_to_invoice", "invoiced"].includes(normalized);
+    });
     if (notDone) {
       return NextResponse.json({ ok: false, error: "All lines must be completed first." }, { status: 400 });
     }
