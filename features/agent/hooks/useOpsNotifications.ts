@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+
+import { useVisibilityPolling } from "@/features/shared/hooks/useVisibilityPolling";
 
 export type OpsNotification = {
   id: string;
@@ -107,21 +109,12 @@ export function useOpsNotifications(
     [],
   );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!enabled || pollMs <= 0) return;
-
-    const id = window.setInterval(() => {
-      void load();
-    }, pollMs);
-
-    return () => {
-      window.clearInterval(id);
-    };
-  }, [enabled, pollMs, load]);
+  useVisibilityPolling({
+    enabled,
+    intervalMs: pollMs,
+    onTick: load,
+    runOnMount: true,
+  });
 
   const counts = useMemo(() => {
     let critical = 0;

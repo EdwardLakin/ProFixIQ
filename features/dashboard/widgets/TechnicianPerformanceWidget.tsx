@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
-import {
-  getTechnicianLoadMetrics,
-  type TechnicianLoadMetricRow,
-} from "@shared/lib/stats/getTechnicianLoadMetrics";
+import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnicianLoadMetrics";
+import type { TechnicianLoadMetricRow } from "@shared/lib/stats/getTechnicianLoadMetrics";
 
 function durationLabel(seconds: number): string {
   const mins = Math.round(seconds / 60);
@@ -21,39 +18,14 @@ function signedDurationLabel(seconds: number): string {
 }
 
 export default function TechnicianPerformanceWidget({ shopId }: { shopId: string | null }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<TechnicianLoadMetricRow[]>([]);
+  const { metrics, loading, error } = useTechnicianLoadMetrics(shopId, {
+    enabled: true,
+    pollMs: 30_000,
+  });
 
-  useEffect(() => {
-    if (!shopId) return;
-
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await getTechnicianLoadMetrics(shopId);
-        if (!cancelled) {
-          const sorted = [...(result.rows ?? [])].sort(
-            (a, b) => b.completedJobsToday - a.completedJobsToday,
-          );
-          setRows(sorted);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load technician performance.");
-          setRows([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [shopId]);
+  const rows: TechnicianLoadMetricRow[] = [...(metrics?.rows ?? [])].sort(
+    (a, b) => b.completedJobsToday - a.completedJobsToday,
+  );
 
   const completedTotal = rows.reduce((sum, row) => sum + row.completedJobsToday, 0);
   const avgDurationAcrossTeam =

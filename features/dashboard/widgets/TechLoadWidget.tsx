@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
-import {
-  getTechnicianLoadMetrics,
-  type TechnicianLoadMetricRow,
-} from "@shared/lib/stats/getTechnicianLoadMetrics";
+import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnicianLoadMetrics";
+import type { TechnicianLoadMetricRow } from "@shared/lib/stats/getTechnicianLoadMetrics";
 import { cn } from "@shared/lib/utils";
 
 function toHoursLabel(seconds: number): string {
@@ -45,38 +43,13 @@ function toneClasses(tone: "high" | "balanced" | "low"): { pill: string; bar: st
 }
 
 export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<TechnicianLoadMetricRow[]>([]);
-  const [timezone, setTimezone] = useState("UTC");
+  const { metrics, loading, error } = useTechnicianLoadMetrics(shopId, {
+    enabled: true,
+    pollMs: 30_000,
+  });
 
-  useEffect(() => {
-    if (!shopId) return;
-
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await getTechnicianLoadMetrics(shopId);
-        if (!cancelled) {
-          setRows(result.rows ?? []);
-          setTimezone(result.timezone);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load technician load.");
-          setRows([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [shopId]);
+  const rows: TechnicianLoadMetricRow[] = metrics?.rows ?? [];
+  const timezone = metrics?.timezone ?? "UTC";
 
   const currentlyBusy = rows.filter((row) => row.currentActiveJobs > 0).length;
   const overloaded = rows.filter((row) => row.utilizationPct >= 85).length;
