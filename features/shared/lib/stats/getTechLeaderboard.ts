@@ -81,7 +81,7 @@ function toIso(d: Date): string {
 /**
  * Normalize role strings so "Technician", "tech", "Lead Tech", etc all match.
  */
-function isTechRole(role: string | null): boolean {
+export function isTechRole(role: string | null): boolean {
   const r = (role ?? "").trim().toLowerCase();
   if (!r) return false;
 

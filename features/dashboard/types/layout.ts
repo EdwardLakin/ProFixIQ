@@ -6,6 +6,7 @@ export type DashboardWidgetId =
   | "shop_pulse"
   | "revenue_watch"
   | "tech_load"
+  | "tech_performance"
   | "approval_risk"
   | "waiting_parts"
   | "comeback_risk"

@@ -12,6 +12,7 @@ import {
   statsOverviewWidgetModule,
   suggestedActionsWidgetModule,
   techLoadWidgetModule,
+  technicianPerformanceWidgetModule,
   waitingPartsWidgetModule,
   workOrderBoardWidgetModule,
 } from "@/features/dashboard/widgets/modules";
@@ -26,6 +27,7 @@ export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   shopPulseWidgetModule,
   revenueWatchWidgetModule,
   techLoadWidgetModule,
+  technicianPerformanceWidgetModule,
   approvalRiskWidgetModule,
   waitingPartsWidgetModule,
   comebackRiskWidgetModule,

@@ -3,8 +3,8 @@ import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const techLoadWidgetModule: DashboardWidgetModule = {
   id: "tech_load",
-  title: "Tech Load",
-  description: "Current technician balance",
+  title: "Technician Load",
+  description: "Current active jobs and load balance",
   roles: ["owner", "admin", "manager", "advisor", "parts"],
   defaultW: 3,
   defaultH: 4,
