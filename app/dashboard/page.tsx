@@ -132,7 +132,7 @@ export default function DashboardPage() {
               Welcome back, {displayName} 👋
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
-              Brand-aware widget dashboard with drag, resize, hide, reset, and saved desktop layouts.
+              Brand-aware widget dashboard with a stable default grid and responsive stacking.
             </p>
           </div>
 
