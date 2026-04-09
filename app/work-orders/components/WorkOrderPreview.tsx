@@ -106,7 +106,13 @@ export function WorkOrderPreview({ woId }: Props) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border bg-neutral-950 p-5 text-neutral-300" style={{ borderColor: "#f97316" }}>
+      <div
+        className="rounded-lg border p-5 text-neutral-300"
+        style={{
+          borderColor: "var(--accent-copper, #f97316)",
+          backgroundColor: "var(--theme-card-bg, #0a0a0a)",
+        }}
+      >
         Loading work order…
       </div>
     );
@@ -128,9 +134,18 @@ export function WorkOrderPreview({ woId }: Props) {
   const plateOrVin = vehicle?.license_plate ?? vehicle?.vin ?? "—";
 
   return (
-    <div className="rounded-lg border bg-neutral-950 p-5 shadow-xl" style={{ borderColor: "#f97316" }}>
+    <div
+      className="rounded-lg border p-5 shadow-xl"
+      style={{
+        borderColor: "var(--accent-copper, #f97316)",
+        backgroundColor: "var(--theme-card-bg, #0a0a0a)",
+      }}
+    >
       <div className="flex items-start justify-between gap-4">
-        <h3 className="text-xl text-orange-400" style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}>
+        <h3
+          className="text-xl text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}
+        >
           Work Order #{String(wo.id).slice(0, 8)}
         </h3>
         <span className="text-[11px] px-2 py-1 rounded bg-neutral-900 text-neutral-300 border border-neutral-800">
@@ -216,12 +231,22 @@ export function WorkOrderPreview({ woId }: Props) {
       {(wo.quote_url || wo.invoice_url) && (
         <div className="mt-4 flex gap-2">
           {wo.quote_url && (
-            <a href={wo.quote_url} target="_blank" rel="noreferrer" className="text-xs underline text-orange-400 hover:text-orange-300">
+            <a
+              href={wo.quote_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)]"
+            >
               Open Quote
             </a>
           )}
           {wo.invoice_url && (
-            <a href={wo.invoice_url} target="_blank" rel="noreferrer" className="text-xs underline text-orange-400 hover:text-orange-300">
+            <a
+              href={wo.invoice_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)]"
+            >
               Open Invoice
             </a>
           )}

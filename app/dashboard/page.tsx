@@ -198,7 +198,7 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/work-orders/create"
-              className="rounded-full border border-orange-500/60 bg-orange-500/15 px-4 py-2 text-sm font-medium text-orange-100 transition hover:bg-orange-500 hover:text-black"
+              className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-[var(--accent-copper)]/15 px-4 py-2 text-sm font-medium text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)] hover:text-black"
             >
               Create work order
             </Link>

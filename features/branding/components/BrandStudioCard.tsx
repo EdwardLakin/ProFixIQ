@@ -1399,7 +1399,7 @@ export default function BrandStudioCard() {
                           AI Generated
                         </span>
                       ) : (
-                        <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-300">
+                        <span className="rounded-full border border-[var(--accent-copper-soft)]/45 bg-[var(--accent-copper)]/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--accent-copper-light)]">
                           Uploaded
                         </span>
                       )}

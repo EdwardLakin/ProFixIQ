@@ -113,9 +113,10 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
       {/* Side drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[12px_0_35px_rgba(0,0,0,0.9)] transition-transform duration-200 bg-[#050910] border-r border-[var(--metal-border-soft)] ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[12px_0_35px_rgba(0,0,0,0.9)] transition-transform duration-200 border-r border-[var(--metal-border-soft)] ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
+        style={{ background: "var(--theme-app-bg, #050910)" }}
       >
         {/* Header */}
         <div className="metal-bar flex items-center justify-between px-4 py-3 border-b border-[var(--metal-border-soft)]">

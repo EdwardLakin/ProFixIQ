@@ -79,15 +79,15 @@ export default function BrandStudioSummaryCard() {
             <div className="grid gap-3 md:grid-cols-3">
               <Swatch
                 label="Primary"
-                value={profile?.primary_color ?? "#C57A4A"}
+                value={profile?.primary_color ?? "#C1663B"}
               />
               <Swatch
                 label="Secondary"
-                value={profile?.secondary_color ?? "#0F172A"}
+                value={profile?.secondary_color ?? "#050910"}
               />
               <Swatch
                 label="Accent"
-                value={profile?.accent_color ?? "#7656ff"}
+                value={profile?.accent_color ?? "#E39A6E"}
               />
             </div>
           </div>
