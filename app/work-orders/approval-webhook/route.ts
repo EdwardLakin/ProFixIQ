@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
+import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 type Json = Record<string, unknown>;
@@ -50,26 +51,23 @@ export async function POST(req: NextRequest) {
   try {
     // 1) Mark approved items
     if (approvedLineIds.length > 0) {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: "approved",
-          status: "active",
-          punchable: true,
-          hold_reason: null,
-        })
-        .in("id", approvedLineIds)
-        .eq("work_order_id", workOrderId);
+      const { error } = await applyWorkOrderLineApprovalDecision({
+        supabase,
+        decision: "approve",
+        lineIds: approvedLineIds,
+        workOrderId,
+      });
       if (error) throw new Error(error.message);
     }
 
     // 2) Mark declined items (only if asked to decline unchecked)
     if (declineUnchecked && declinedLineIds.length > 0) {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ approval_state: "declined", status: "on_hold", punchable: false })
-        .in("id", declinedLineIds)
-        .eq("work_order_id", workOrderId);
+      const { error } = await applyWorkOrderLineApprovalDecision({
+        supabase,
+        decision: "decline",
+        lineIds: declinedLineIds,
+        workOrderId,
+      });
       if (error) throw new Error(error.message);
     }
 

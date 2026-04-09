@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 
@@ -49,10 +50,11 @@ export async function POST(
     return NextResponse.json({ error: "Line item not found" }, { status: 404 });
   }
 
-  const { error: updErr } = await supabase
-    .from("work_order_lines")
-    .update({ approval_state: "declined", status: "on_hold", punchable: false })
-    .eq("id", lineId);
+  const { error: updErr } = await applyWorkOrderLineApprovalDecision({
+    supabase,
+    decision: "decline",
+    lineIds: [lineId],
+  });
 
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
