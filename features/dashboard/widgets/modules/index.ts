@@ -13,3 +13,5 @@ export { bookingsWidgetModule } from "./BookingsWidgetModule";
 export { advisorQueueWidgetModule } from "./AdvisorQueueWidgetModule";
 
 export { technicianPerformanceWidgetModule } from "./TechnicianPerformanceWidgetModule";
+
+export { liveShopLoadWidgetModule } from "./LiveShopLoadWidgetModule";

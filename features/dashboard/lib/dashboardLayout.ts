@@ -5,6 +5,7 @@ export type DashboardWidgetKey =
   | "reports_performance"
   | "shop_pulse"
   | "revenue_watch"
+  | "live_shop_load"
   | "approval_risk"
   | "waiting_parts"
   | "tech_load"
@@ -29,7 +30,7 @@ export function getDashboardLayout(role: DashboardRole): DashboardLayout {
 
   if (canViewOwnerWidgets(role)) {
     return {
-      top: ["reports_performance", "shop_pulse"],
+      top: ["live_shop_load", "reports_performance", "shop_pulse"],
       middle: ["approval_risk", "waiting_parts", "tech_load"],
       lower: ["work_board", "advisor_queue", "revenue_watch", "comeback_risk"],
     };

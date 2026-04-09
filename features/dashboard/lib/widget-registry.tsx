@@ -6,6 +6,7 @@ import {
   bookingsWidgetModule,
   comebackRiskWidgetModule,
   dailySummaryWidgetModule,
+  liveShopLoadWidgetModule,
   reportsPerformanceWidgetModule,
   revenueWatchWidgetModule,
   shopPulseWidgetModule,
@@ -22,6 +23,7 @@ import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   statsOverviewWidgetModule,
   dailySummaryWidgetModule,
+  liveShopLoadWidgetModule,
   suggestedActionsWidgetModule,
   reportsPerformanceWidgetModule,
   shopPulseWidgetModule,

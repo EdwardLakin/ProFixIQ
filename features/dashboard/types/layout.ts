@@ -1,6 +1,7 @@
 export type DashboardWidgetId =
   | "stats_overview"
   | "daily_summary"
+  | "live_shop_load"
   | "suggested_actions"
   | "reports_performance"
   | "shop_pulse"
