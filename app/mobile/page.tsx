@@ -200,11 +200,8 @@ export default function MobileHome() {
             )
             .in("status", [
               "awaiting",
-              "queued",
-              "in_progress",
+              "active",
               "on_hold",
-              "paused",
-              "assigned",
             ]),
 
           // today's jobs list for the card (simple label)

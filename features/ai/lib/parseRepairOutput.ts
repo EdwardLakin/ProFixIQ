@@ -7,7 +7,7 @@ export type RepairLine = {
   correction?: string;
   tools?: string; // must be a single string for DB
   labor_time?: number; // parsed as number
-  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed";
+  status?: "awaiting" | "active" | "on_hold" | "completed";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
 };
 
@@ -40,7 +40,7 @@ export function parseRepairOutput(raw: string): RepairLine[] {
         correction,
         tools,
         labor_time,
-        status: "unassigned",
+        status: "awaiting",
       });
     }
   }

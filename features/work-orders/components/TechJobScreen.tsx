@@ -30,7 +30,7 @@ export default function TechJobScreen() {
       .from("work_order_lines")
       .select("*")
       .or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
-      .in("status", ["awaiting", "in_progress", "on_hold"])
+      .in("status", ["awaiting", "active", "on_hold"])
       .order("created_at", { ascending: true });
 
     setJobs((data ?? []) as JobLine[]);
@@ -65,7 +65,7 @@ export default function TechJobScreen() {
 
     await supabase
       .from("work_order_lines")
-      .update({ status: "in_progress", assigned_tech_id: user.id })
+      .update({ status: "active", assigned_tech_id: user.id })
       .eq("id", job.id as string);
 
     void fetchJobs();

@@ -140,7 +140,7 @@ export default function JobPunchButton({
       const nowIso = new Date().toISOString();
 
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        status: "in_progress",
+        status: "active",
         punched_out_at: null,
       };
 

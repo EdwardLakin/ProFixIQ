@@ -25,7 +25,7 @@ export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> 
         )
       `
     )
-    .in("status", ["queued", "awaiting", "in_progress", "on_hold"])
+    .in("status", ["active", "awaiting", "on_hold"])
     // highest priority WOs first (1 = highest)
     .order("work_orders(priority)", { ascending: true, nullsFirst: false })
     // then oldest job within that

@@ -699,7 +699,7 @@ export default function MobileWorkOrderClient({
         .from("work_order_lines")
         .update({
           approval_state: "approved",
-          status: "queued",
+          status: "active",
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", lineId);
       if (error) return toast.error(error.message);
@@ -716,7 +716,7 @@ export default function MobileWorkOrderClient({
         .from("work_order_lines")
         .update({
           approval_state: "declined",
-          status: "awaiting",
+          status: "on_hold",
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", lineId);
       if (error) return toast.error(error.message);
