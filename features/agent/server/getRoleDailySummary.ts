@@ -155,12 +155,37 @@ function countByCode(
   }, {});
 }
 
+function buildLoadSignalActionItems(
+  notifications: DailySummaryNotification[],
+): string[] {
+  const counts = countByCode(notifications);
+  const items: string[] = [];
+
+  if ((counts.shop_overloaded ?? 0) > 0 || (counts.tech_overloaded ?? 0) > 0) {
+    items.push("Utilization is running hot — rebalance queued work to available technicians.");
+  }
+
+  if ((counts.tech_underutilized_capacity ?? 0) > 0) {
+    items.push("Idle technician capacity detected — pull ready jobs forward and reassign now.");
+  }
+
+  if (
+    (counts.active_job_running_too_long ?? 0) > 0 ||
+    (counts.shop_throughput_below_capacity ?? 0) > 0
+  ) {
+    items.push("Throughput drag detected — clear blockers on long-running jobs and tighten handoffs.");
+  }
+
+  return dedupeStrings(items, 2);
+}
+
 function buildOwnerSummary(params: {
   notifications: DailySummaryNotification[];
 }): string {
   const counts = countByCode(params.notifications);
   const total = params.notifications.length;
   const top = topUrgentAlerts(params.notifications, 3);
+  const loadSignals = buildLoadSignalActionItems(params.notifications);
 
   const lines: string[] = [];
   lines.push(`${total} alerts need attention today.`);
@@ -216,6 +241,14 @@ function buildOwnerSummary(params: {
     }
   }
 
+  if (loadSignals.length > 0) {
+    lines.push("");
+    lines.push("Load signals:");
+    for (const item of loadSignals) {
+      lines.push(`• ${item}`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -224,6 +257,7 @@ function buildAdvisorSummary(params: {
   notifications: DailySummaryNotification[];
 }): string {
   const counts = countByCode(params.notifications);
+  const loadSignals = buildLoadSignalActionItems(params.notifications);
   const parts: string[] = [];
 
   if ((counts.approval_waiting ?? 0) > 0) {
@@ -264,6 +298,11 @@ function buildAdvisorSummary(params: {
     }
   }
 
+  if (loadSignals.length > 0) {
+    lines.push("");
+    lines.push(`• ${loadSignals[0]}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -272,6 +311,7 @@ function buildManagerSummary(params: {
   notifications: DailySummaryNotification[];
 }): string {
   const counts = countByCode(params.notifications);
+  const loadSignals = buildLoadSignalActionItems(params.notifications);
   const lines: string[] = [];
 
   lines.push("Manager snapshot for today.");
@@ -313,6 +353,13 @@ function buildManagerSummary(params: {
   if (items.length > 0) {
     lines.push("");
     for (const item of items.slice(0, 4)) {
+      lines.push(`• ${item}`);
+    }
+  }
+
+  if (loadSignals.length > 0) {
+    lines.push("");
+    for (const item of loadSignals) {
       lines.push(`• ${item}`);
     }
   }
@@ -472,6 +519,8 @@ export async function getRoleDailySummary(params: {
     summaryText = buildOwnerSummary({ notifications });
   }
 
+  const notificationCounts = countByCode(notifications);
+
   return {
     role,
     summaryText,
@@ -480,6 +529,12 @@ export async function getRoleDailySummary(params: {
     notifications: notifications.slice(0, 4),
     sourceSnapshot: {
       notificationsCount: notifications.length,
+      loadSignals: {
+        shopOverloaded: notificationCounts.shop_overloaded ?? 0,
+        techOverloaded: notificationCounts.tech_overloaded ?? 0,
+        idleCapacity: notificationCounts.tech_underutilized_capacity ?? 0,
+        throughputIssues: notificationCounts.shop_throughput_below_capacity ?? 0,
+      },
       bookingsSummary: bookings.summary,
       stalledSummary: stalled.summary,
       shopStatusSummary: shopStatus.summary,
