@@ -26,6 +26,7 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/mobile/MobileJobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
+import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -736,32 +737,29 @@ export default function MobileWorkOrderClient({
 
   const sendToParts = useCallback(async (lineId: string) => {
     if (!lineId) return;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        status: "on_hold",
-        hold_reason: "Awaiting parts quote",
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", lineId);
-    if (error) return toast.error(error.message);
-    toast.success("Sent to parts for quoting");
+    try {
+      await runJobPunchTransition(lineId, "pause", {
+        holdReason: "Awaiting parts quote",
+      });
+      toast.success("Sent to parts for quoting");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send line to parts");
+    }
   }, []);
 
   const sendAllPendingToParts = useCallback(async () => {
     if (!approvalPending.length) return;
-    const ids = approvalPending.map((l) => l.id);
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        status: "on_hold",
-        hold_reason: "Awaiting parts quote",
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .in("id", ids);
-    if (error) {
-      toast.error(error.message);
-      return;
+    const ids = approvalPending.map((l) => l.id).filter(Boolean) as string[];
+    try {
+      for (const lineId of ids) {
+        await runJobPunchTransition(lineId, "pause", {
+          holdReason: "Awaiting parts quote",
+        });
+      }
+      toast.success("Queued all pending lines for parts quoting");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to queue pending lines for parts");
     }
-    toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending]);
 
   const authorizeQuote = useCallback(

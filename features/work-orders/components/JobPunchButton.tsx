@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
+import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
 type Props = {
   lineId: string;
@@ -14,16 +13,6 @@ type Props = {
   onUpdated?: () => void | Promise<void>;
   onFinishRequested?: () => void;
   disabled?: boolean;
-};
-
-type DB = Database;
-
-type RpcErrorLike = { message?: string | null; code?: string | null };
-
-// Minimal “rpc-like” typing without using `Function` or `any`
-type RpcResponseLike = { error?: RpcErrorLike | null };
-type RpcCaller = {
-  rpc: (fn: string, args: Record<string, unknown>) => Promise<RpcResponseLike>;
 };
 
 function safeErrMsg(e: unknown, fallback: string): string {
@@ -41,7 +30,6 @@ export default function JobPunchButton({
   onFinishRequested,
   disabled = false,
 }: Props): JSX.Element {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<"started" | "finished" | null>(null);
 
@@ -56,68 +44,31 @@ export default function JobPunchButton({
     window.setTimeout(() => setFlash(null), 1200);
   };
 
-  const showUserFriendlyRpcError = (err: RpcErrorLike): boolean => {
-    const msg = String(err.message ?? "");
-    const msgLc = msg.toLowerCase();
+  const showTransitionError = (message: string): boolean => {
+    const msgLc = message.toLowerCase();
 
     if (msgLc.includes("schema cache") || msgLc.includes("could not find the function")) {
       toast.error("System updated. Refresh the page and try again.");
       return true;
     }
 
-    if (err.code === "28000" || msgLc.includes("not assigned")) {
+    if (msgLc.includes("not assigned")) {
       toast.error("This job is assigned to another tech. Ask a manager to reassign it.");
       return true;
     }
+
     if (msgLc.includes("forbidden") || msgLc.includes("not allowed")) {
       toast.error("You don’t have permission to start this job.");
       return true;
     }
 
-    if (err.code === "23505" || msgLc.includes("another active job") || msgLc.includes("active job")) {
+    if (msgLc.includes("active job") || msgLc.includes("already has an active")) {
       toast.error("You already have another active job. Finish it first.");
       return true;
     }
 
     return false;
   };
-
-  async function rpcAnyArgs(fn: string, args: Record<string, unknown>): Promise<RpcResponseLike> {
-    // We intentionally keep this loose because you’re handling schema drift
-    const rpcClient = supabase as unknown as RpcCaller;
-    const res = await rpcClient.rpc(fn, args);
-    return res ?? { error: { message: "RPC call failed" } };
-  }
-
-  async function punchInRpc(): Promise<{ ok: true } | { ok: false; error: RpcErrorLike }> {
-    const tries: Record<string, unknown>[] = [
-      { p_line_id: lineId },
-      { line_id: lineId },
-      { p_job_id: lineId },
-      { job_id: lineId },
-    ];
-
-    let lastErr: RpcErrorLike = { message: "Start failed" };
-
-    for (const args of tries) {
-      const res = await rpcAnyArgs("punch_in", args);
-
-      if (!res.error) return { ok: true };
-
-      lastErr = res.error ?? lastErr;
-
-      const msgLc = String(lastErr.message ?? "").toLowerCase();
-      const hard =
-        msgLc.includes("not allowed") ||
-        msgLc.includes("forbidden") ||
-        msgLc.includes("not assigned") ||
-        msgLc.includes("permission") ||
-        msgLc.includes("rls");
-      if (hard) break;
-    }
-
-    return { ok: false, error: lastErr };
-  }
 
   const start = async (): Promise<void> => {
     if (busy || effectiveDisabled) return;
@@ -128,42 +79,17 @@ export default function JobPunchButton({
 
     setBusy(true);
     try {
-      const rpc = await punchInRpc();
-
-      if (!rpc.ok) {
-        if (!showUserFriendlyRpcError(rpc.error)) {
-          toast.error(rpc.error.message ?? "Start failed");
-        }
-        return;
-      }
-
-      const nowIso = new Date().toISOString();
-
-      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        status: "in_progress",
-        hold_reason: null,
-        punched_out_at: null,
-      };
-
-      if (!punchedInAt) update.punched_in_at = nowIso;
-
-      const { error: lineErr } = await supabase
-        .from("work_order_lines")
-        .update(update)
-        .eq("id", lineId);
-
-      if (lineErr) {
-        toast.error(lineErr.message ?? "Failed to update job status");
-        return;
-      }
+      await runJobPunchTransition(lineId, "start");
 
       toast.success("Started job");
       showFlash("started");
-
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: unknown) {
-      toast.error(safeErrMsg(e, "Start failed"));
+      const message = safeErrMsg(e, "Start failed");
+      if (!showTransitionError(message)) {
+        toast.error(message);
+      }
     } finally {
       setBusy(false);
     }

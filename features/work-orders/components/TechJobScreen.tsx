@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import JobQueueCard from "@shared/components/JobQueueCard";
+import { toast } from "sonner";
+import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
@@ -30,7 +32,7 @@ export default function TechJobScreen() {
       .from("work_order_lines")
       .select("*")
       .or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
-      .in("status", ["awaiting", "active", "on_hold"])
+      .in("status", ["awaiting", "in_progress", "on_hold"])
       .order("created_at", { ascending: true });
 
     setJobs((data ?? []) as JobLine[]);
@@ -55,31 +57,25 @@ export default function TechJobScreen() {
   }, [fetchJobs, supabase]);
 
   const handlePunchIn = async (job: JobLine) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    setActiveJobId(job.id ?? null);
-
-    await supabase
-      .from("work_order_lines")
-      .update({ status: "active", assigned_tech_id: user.id })
-      .eq("id", job.id as string);
-
-    void fetchJobs();
+    if (!job.id) return;
+    try {
+      setActiveJobId(job.id);
+      await runJobPunchTransition(job.id, "start");
+      void fetchJobs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start job");
+    }
   };
 
   const handlePunchOut = async (job: JobLine) => {
+    if (!job.id) return;
     setActiveJobId(null);
-
-    await supabase
-      .from("work_order_lines")
-      .update({ status: "awaiting" })
-      .eq("id", job.id as string);
-
-    void fetchJobs();
+    try {
+      await runJobPunchTransition(job.id, "pause");
+      void fetchJobs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to pause job");
+    }
   };
 
   const renderJobCard = (job: JobLine) => (

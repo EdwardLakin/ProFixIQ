@@ -16,6 +16,7 @@ import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModa
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
+import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
@@ -431,22 +432,10 @@ export default function FocusedJobModal(props: {
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
-      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        hold_reason: reason || "On hold",
-        status: "on_hold",
+      await runJobPunchTransition(workOrderLineId, "pause", {
+        holdReason: reason || "On hold",
         notes: notes ?? line.notes ?? null,
-      };
-
-      if (line.punched_in_at && !line.punched_out_at) {
-        update.punched_out_at = new Date().toISOString();
-      }
-
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update(update)
-        .eq("id", workOrderLineId);
-
-      if (error) throw error;
+      });
 
       toast.success("Hold applied");
       await refresh();
@@ -463,15 +452,9 @@ export default function FocusedJobModal(props: {
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          hold_reason: null,
-          status: "awaiting",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId);
-
-      if (error) throw error;
+      await runJobPunchTransition(workOrderLineId, "resume", {
+        toAwaiting: true,
+      });
 
       toast.success("Hold removed");
       await refresh();
@@ -1003,24 +986,13 @@ export default function FocusedJobModal(props: {
           onSubmit={async (cause: string, correction: string) => {
             await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
-            const nowIso = new Date().toISOString();
-
-            const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-              cause,
-              correction,
-              punched_out_at: nowIso,
-              status: "completed",
-            };
-
-            if (!line.punched_in_at) update.punched_in_at = nowIso;
-
-            const { error } = await supabase
-              .from("work_order_lines")
-              .update(update)
-              .eq("id", line.id);
-
-            if (error) {
-              showErr("Complete job failed", error);
+            try {
+              await runJobPunchTransition(line.id, "finish", {
+                cause,
+                correction,
+              });
+            } catch (error) {
+              showErr("Complete job failed", error as { message?: string });
               throw error;
             }
 
