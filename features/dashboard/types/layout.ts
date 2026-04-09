@@ -19,12 +19,19 @@ export type DashboardCountState = {
   partsRequests: number;
 };
 
-export type DashboardLayoutItem = {
-  i: DashboardWidgetId;
+export type DashboardWidgetLayout = {
+  id: DashboardWidgetId;
   x: number;
   y: number;
   w: number;
   h: number;
+};
+
+
+
+// Legacy persisted layout shape kept for API compatibility.
+export type DashboardLayoutItem = DashboardWidgetLayout & {
+  i?: DashboardWidgetId;
   minW?: number;
   minH?: number;
   maxW?: number;

@@ -1,12 +1,15 @@
 import type {
-  DashboardLayoutItem,
   DashboardWidgetDefinition,
+  DashboardWidgetId,
+  DashboardWidgetLayout,
 } from "@/features/dashboard/types/layout";
+
+export const DASHBOARD_GRID_COLUMNS = 12;
 
 export function buildDefaultDashboardLayout(
   widgets: DashboardWidgetDefinition[],
-  cols = 12,
-): DashboardLayoutItem[] {
+  cols = DASHBOARD_GRID_COLUMNS,
+): DashboardWidgetLayout[] {
   let x = 0;
   let y = 0;
   let rowHeight = 0;
@@ -18,17 +21,12 @@ export function buildDefaultDashboardLayout(
       rowHeight = 0;
     }
 
-    const item: DashboardLayoutItem = {
-      i: widget.id,
+    const item: DashboardWidgetLayout = {
+      id: widget.id,
       x,
       y,
       w: widget.defaultW,
       h: widget.defaultH,
-      minW: widget.minW,
-      minH: widget.minH,
-      maxW: widget.maxW,
-      maxH: widget.maxH,
-      hidden: false,
     };
 
     x += widget.defaultW;
@@ -38,21 +36,10 @@ export function buildDefaultDashboardLayout(
   });
 }
 
-export function mergeStoredLayoutWithRegistry(
-  defaults: DashboardLayoutItem[],
-  stored: DashboardLayoutItem[] | null | undefined,
-): DashboardLayoutItem[] {
-  if (!stored?.length) return defaults;
-
-  const byId = new Map(stored.map((item) => [item.i, item]));
-  return defaults.map((fallback) => {
-    const existing = byId.get(fallback.i);
-    if (!existing) return fallback;
-
-    return {
-      ...fallback,
-      ...existing,
-      i: fallback.i,
-    };
-  });
+export function getDashboardDefaultLayoutMap(
+  widgets: DashboardWidgetDefinition[],
+): Map<DashboardWidgetId, DashboardWidgetLayout> {
+  return new Map(
+    buildDefaultDashboardLayout(widgets).map((item) => [item.id, item]),
+  );
 }
