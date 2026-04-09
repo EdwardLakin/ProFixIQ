@@ -491,6 +491,41 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     );
   }
 
+  async function syncRequestQuotedState(
+    reqId: string,
+    nextItems: UiItem[],
+    currentStatus: Status,
+  ): Promise<void> {
+    const normalized = String(currentStatus ?? "").toLowerCase();
+    if (normalized !== "requested" && normalized !== "quoted") return;
+
+    const allQuoted = nextItems.length > 0 && nextItems.every((it) => isRowComplete(it));
+    const desired: Status = allQuoted ? "quoted" : "requested";
+
+    if (desired === currentStatus) return;
+
+    const { error } = await supabase.rpc("set_part_request_status", {
+      p_request: reqId,
+      p_status: desired,
+    });
+
+    if (error) {
+      toast.warning(error.message);
+      return;
+    }
+
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.req.id === reqId
+          ? {
+              ...r,
+              req: { ...r.req, status: desired },
+            }
+          : r,
+      ),
+    );
+  }
+
   async function addRow(reqId: string): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
     if (!target) return;
@@ -553,6 +588,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r,
         ),
       );
+
+      await syncRequestQuotedState(
+        reqId,
+        [...target.items, ui],
+        target.req.status,
+      );
     } finally {
       setSavingReqId(null);
     }
@@ -561,6 +602,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   async function deleteLine(reqId: string, itemId: string): Promise<void> {
     const ok = window.confirm("Remove this item from the request?");
     if (!ok) return;
+
+    const target = requests.find((r) => r.req.id === reqId);
+    if (!target) return;
 
     const { data: deleted, error } = await supabase
       .from("part_request_items")
@@ -578,13 +622,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
+    const nextItems = target.items.filter((x) => x.id !== itemId);
+
     setRequests((prev) =>
       prev.map((r) =>
         r.req.id === reqId
-          ? { ...r, items: r.items.filter((x) => x.id !== itemId) }
+          ? { ...r, items: nextItems }
           : r,
       ),
     );
+
+    await syncRequestQuotedState(reqId, nextItems, target.req.status);
     toast.success("Item removed.");
   }
 
