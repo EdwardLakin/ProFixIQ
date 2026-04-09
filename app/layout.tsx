@@ -64,9 +64,9 @@ export default async function RootLayout({
             toastOptions={{
               style: {
                 background:
-                  "radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%)",
-                border: "1px solid rgba(148, 163, 184, 0.5)",
-                color: "#e5e7eb",
+                  "var(--theme-header-bg, radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%))",
+                border: "1px solid var(--theme-card-border, rgba(148, 163, 184, 0.5))",
+                color: "var(--theme-text-primary, #e5e7eb)",
               },
             }}
           />

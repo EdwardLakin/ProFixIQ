@@ -8,7 +8,11 @@ export default function FleetFormImportPage() {
       {/* metallic / copper wash */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          background:
+            "var(--app-shell-bg, radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 78%))",
+        }}
       />
 
       <div className="mb-4">

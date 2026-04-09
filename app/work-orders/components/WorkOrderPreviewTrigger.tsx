@@ -38,15 +38,18 @@ export function WorkOrderPreviewTrigger({ open, onOpenChange, children }: Props)
       onClose={() => onOpenChange?.(false)}
       className="backdrop:bg-black/60 rounded-lg border shadow-xl"
       style={{
-        borderColor: "#f97316",        // orange border
-        backgroundColor: "#0a0a0a",    // neutral-950
+        borderColor: "var(--accent-copper, #f97316)",
+        backgroundColor: "var(--theme-card-bg, #0a0a0a)",
         maxWidth: "48rem",
         width: "calc(100% - 2rem)",
         margin: "auto",
       }}
     >
-      <div className="p-5 border-b" style={{ borderColor: "rgb(38 38 38)" }}>
-        <h2 className="text-2xl text-orange-400" style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}>
+      <div className="p-5 border-b border-[var(--theme-card-border)]">
+        <h2
+          className="text-2xl text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}
+        >
           Work Order Preview
         </h2>
       </div>
@@ -55,14 +58,14 @@ export function WorkOrderPreviewTrigger({ open, onOpenChange, children }: Props)
         {children}
       </div>
 
-      <div className="p-4 border-t flex justify-end" style={{ borderColor: "rgb(38 38 38)" }}>
+      <div className="p-4 border-t border-[var(--theme-card-border)] flex justify-end">
         <button
           onClick={() => onOpenChange?.(false)}
           className="px-3 py-2 text-sm font-semibold rounded border"
           style={{
-            borderColor: "#f97316",
-            backgroundColor: "#ea580c",
-            color: "white",
+            borderColor: "var(--accent-copper, #f97316)",
+            backgroundColor: "var(--accent-copper, #f97316)",
+            color: "var(--theme-button-primary-text, #000)",
             fontFamily: "'Black Ops One', system-ui, sans-serif",
           }}
         >
