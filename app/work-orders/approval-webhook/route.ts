@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
-import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
+import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 type Json = Record<string, unknown>;
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   try {
     // 1) Mark approved items
     if (approvedLineIds.length > 0) {
-      const { error } = await applyWorkOrderLineApprovalDecision({
+      const { error } = await applyAndPropagateWorkOrderLineApprovalDecision({
         supabase,
         decision: "approve",
         lineIds: approvedLineIds,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Mark declined items (only if asked to decline unchecked)
     if (declineUnchecked && declinedLineIds.length > 0) {
-      const { error } = await applyWorkOrderLineApprovalDecision({
+      const { error } = await applyAndPropagateWorkOrderLineApprovalDecision({
         supabase,
         decision: "decline",
         lineIds: declinedLineIds,
