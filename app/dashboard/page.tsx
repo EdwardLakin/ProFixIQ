@@ -179,8 +179,7 @@ export default function DashboardPage() {
         className="rounded-3xl border px-5 py-5 backdrop-blur-xl xl:px-7 xl:py-6"
         style={{
           borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
-          background:
-            "radial-gradient(circle at top, color-mix(in srgb, var(--dashboard-ambient-tint,#F97316) 10%, transparent), color-mix(in srgb, var(--theme-app-bg,#050910) 78%, black))",
+          background: "var(--dashboard-hero-bg, var(--dashboard-shell-bg))",
         }}
       >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">

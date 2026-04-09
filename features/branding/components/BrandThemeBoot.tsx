@@ -214,11 +214,11 @@ type DashboardBackgroundSettings = {
 
 const DEFAULT_DASHBOARD_BACKGROUND: DashboardBackgroundSettings = {
   mode: "solid",
-  base: "#020617",
-  ambientTint: "#F97316",
-  gradientStart: "#C56A2F",
+  base: "#050910",
+  ambientTint: "#C97A3D",
+  gradientStart: "#334155",
   gradientEnd: "#020617",
-  gradientAccent: "#7F1D1D",
+  gradientAccent: "#1E293B",
 };
 
 function readDashboardBackgroundSettings(
@@ -264,10 +264,16 @@ function setDashboardBackgroundVars(
 
   const backgroundValue =
     settings.mode === "gradient"
-      ? `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.gradientStart} 18%, transparent), transparent 58%), radial-gradient(980px 540px at 86% 16%, color-mix(in srgb, ${settings.gradientAccent} 18%, transparent), transparent 56%), linear-gradient(180deg, ${settings.gradientEnd} 0%, ${settings.base} 100%)`
-      : `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.ambientTint} 14%, transparent), transparent 58%), radial-gradient(1100px 700px at 100% 100%, rgba(2,6,23,0.45), transparent 62%), linear-gradient(180deg, ${settings.base} 0%, ${settings.base} 100%)`;
+      ? `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.gradientStart} 12%, transparent), transparent 60%), radial-gradient(980px 540px at 86% 16%, color-mix(in srgb, ${settings.gradientAccent} 10%, transparent), transparent 58%), linear-gradient(180deg, ${settings.gradientEnd} 0%, ${settings.base} 100%)`
+      : `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.ambientTint} 9%, transparent), transparent 62%), radial-gradient(1100px 700px at 100% 100%, color-mix(in srgb, ${settings.base} 72%, black), transparent 64%), linear-gradient(180deg, ${settings.base} 0%, ${settings.base} 100%)`;
+
+  const heroBackgroundValue =
+    settings.mode === "gradient"
+      ? `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.gradientStart} 16%, transparent), transparent 62%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 86%, black), color-mix(in srgb, ${settings.gradientEnd} 76%, black))`
+      : `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.ambientTint} 11%, transparent), transparent 64%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 90%, black), color-mix(in srgb, ${settings.base} 78%, black))`;
 
   root.style.setProperty("--dashboard-shell-bg", backgroundValue);
+  root.style.setProperty("--dashboard-hero-bg", heroBackgroundValue);
 }
 
 export default function BrandThemeBoot() {
