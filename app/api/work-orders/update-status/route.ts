@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 export const runtime = "nodejs";
 
@@ -44,6 +45,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: existingWorkOrder, error: existingErr } = await supabase
+      .from("work_orders")
+      .select("id, status")
+      .eq("id", workOrderId)
+      .maybeSingle();
+
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 400 });
+    }
+    if (!existingWorkOrder?.id) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+
     let updateFields: WorkOrderUpdate = {};
 
     if (command === "punch-in") {
@@ -82,6 +96,18 @@ export async function POST(req: NextRequest) {
     if (error) {
       throw error;
     }
+
+    await logOperationalEvent({
+      supabase,
+      event: "work_order_status_changed",
+      entityType: "work_order",
+      entityId: workOrderId,
+      details: {
+        command,
+        from_status: existingWorkOrder.status,
+        to_status: updateFields.status ?? null,
+      },
+    });
 
     return NextResponse.json({ success: true, updated: updateFields });
   } catch (err) {

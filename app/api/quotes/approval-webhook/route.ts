@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
@@ -41,5 +42,20 @@ export async function POST(req: Request) {
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  await logOperationalEvent({
+    supabase,
+    event: "work_order_approval_decision_recorded",
+    actorId: approverId,
+    entityType: "work_order",
+    entityId: workOrderId,
+    details: {
+      approved_line_ids: approvedLineIds,
+      declined_line_ids: declinedLineIds ?? [],
+      decline_unchecked: declineUnchecked,
+      signature_saved: Boolean(signatureUrl),
+    },
+  });
+
   return NextResponse.json({ ok: true });
 }
