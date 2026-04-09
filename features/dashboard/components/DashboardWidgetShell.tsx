@@ -38,57 +38,61 @@ export default function DashboardWidgetShell({
   return (
     <Card
       className={cn(
-        "h-full",
+        "h-full overflow-hidden",
         compact ? "px-4 py-4" : "px-5 py-5",
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          {eyebrow ? (
-            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
-              {eyebrow}
-            </div>
-          ) : null}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            {eyebrow ? (
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+                {eyebrow}
+              </div>
+            ) : null}
 
-          <h2 className="mt-1 text-base font-semibold text-white sm:text-lg">
-            {title}
-          </h2>
+            <h2 className="mt-1 text-base font-semibold text-white sm:text-lg">
+              {title}
+            </h2>
 
-          {bodyText ? (
-            <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
-              {bodyText}
-            </p>
-          ) : null}
+            {bodyText ? (
+              <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
+                {bodyText}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
+
+            {editing ? (
+              <div
+                className="pfq-widget-drag-handle inline-flex h-8 w-8 cursor-move items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300"
+                title="Drag widget"
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+            ) : null}
+
+            {editing && onHide ? (
+              <button
+                type="button"
+                onClick={onHide}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300 transition hover:text-white"
+                title="Hide widget"
+              >
+                <EyeOff className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
-
-          {editing ? (
-            <div
-              className="pfq-widget-drag-handle inline-flex h-8 w-8 cursor-move items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300"
-              title="Drag widget"
-            >
-              <GripVertical className="h-4 w-4" />
-            </div>
-          ) : null}
-
-          {editing && onHide ? (
-            <button
-              type="button"
-              onClick={onHide}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300 transition hover:text-white"
-              title="Hide widget"
-            >
-              <EyeOff className="h-4 w-4" />
-            </button>
-          ) : null}
+        <div className={cn("mt-4 min-h-0 flex-1 overflow-hidden", contentClassName)}>
+          <div className="pfq-widget-shell h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            {children}
+          </div>
         </div>
-      </div>
-
-      <div className={cn("mt-4 h-[calc(100%-72px)] overflow-auto", contentClassName)}>
-        {children}
       </div>
     </Card>
   );

@@ -57,6 +57,7 @@ type BrandProfileResponse = {
     input_background?: string | null;
     input_border?: string | null;
     input_text?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
 };
 
@@ -177,7 +178,53 @@ const DEFAULT_THEME = {
   themeMode: "dark" as ThemeMode,
   radiusScale: "md" as RadiusScale,
   shadowStyle: "medium" as ShadowStyle,
+
+  dashboardBackgroundMode: "solid" as "solid" | "gradient",
+  dashboardBackgroundBase: "#020617",
+  dashboardAmbientTint: "#F97316",
+  dashboardGradientStart: "#C56A2F",
+  dashboardGradientEnd: "#020617",
+  dashboardGradientAccent: "#7F1D1D",
 };
+
+function pickDashboardBackgroundMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): {
+  mode: "solid" | "gradient";
+  base: string;
+  ambientTint: string;
+  gradientStart: string;
+  gradientEnd: string;
+  gradientAccent: string;
+} {
+  const raw = metadata?.dashboard_background;
+  if (!raw || typeof raw !== "object") {
+    return {
+      mode: DEFAULT_THEME.dashboardBackgroundMode,
+      base: DEFAULT_THEME.dashboardBackgroundBase,
+      ambientTint: DEFAULT_THEME.dashboardAmbientTint,
+      gradientStart: DEFAULT_THEME.dashboardGradientStart,
+      gradientEnd: DEFAULT_THEME.dashboardGradientEnd,
+      gradientAccent: DEFAULT_THEME.dashboardGradientAccent,
+    };
+  }
+
+  const value = raw as Record<string, unknown>;
+  const mode = String(value.mode ?? "").trim().toLowerCase();
+
+  return {
+    mode: mode === "gradient" ? "gradient" : "solid",
+    base: String(value.base ?? "").trim() || DEFAULT_THEME.dashboardBackgroundBase,
+    ambientTint:
+      String(value.ambientTint ?? "").trim() || DEFAULT_THEME.dashboardAmbientTint,
+    gradientStart:
+      String(value.gradientStart ?? "").trim() || DEFAULT_THEME.dashboardGradientStart,
+    gradientEnd:
+      String(value.gradientEnd ?? "").trim() || DEFAULT_THEME.dashboardGradientEnd,
+    gradientAccent:
+      String(value.gradientAccent ?? "").trim() || DEFAULT_THEME.dashboardGradientAccent,
+  };
+}
 
 function notifyBrandRefresh() {
   window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
@@ -279,6 +326,25 @@ export default function BrandStudioCard() {
   );
   const [inputBorder, setInputBorder] = useState<string>(DEFAULT_THEME.inputBorder);
   const [inputText, setInputText] = useState<string>(DEFAULT_THEME.inputText);
+  const [dashboardBackgroundMode, setDashboardBackgroundMode] = useState<"solid" | "gradient">(
+    DEFAULT_THEME.dashboardBackgroundMode,
+  );
+  const [dashboardBackgroundBase, setDashboardBackgroundBase] = useState<string>(
+    DEFAULT_THEME.dashboardBackgroundBase,
+  );
+  const [dashboardAmbientTint, setDashboardAmbientTint] = useState<string>(
+    DEFAULT_THEME.dashboardAmbientTint,
+  );
+  const [dashboardGradientStart, setDashboardGradientStart] = useState<string>(
+    DEFAULT_THEME.dashboardGradientStart,
+  );
+  const [dashboardGradientEnd, setDashboardGradientEnd] = useState<string>(
+    DEFAULT_THEME.dashboardGradientEnd,
+  );
+  const [dashboardGradientAccent, setDashboardGradientAccent] = useState<string>(
+    DEFAULT_THEME.dashboardGradientAccent,
+  );
+  const [profileMetadata, setProfileMetadata] = useState<Record<string, unknown>>({});
 
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME.themeMode);
   const [radiusScale, setRadiusScale] = useState<RadiusScale>(DEFAULT_THEME.radiusScale);
@@ -339,6 +405,13 @@ export default function BrandStudioCard() {
     setInputBackground(DEFAULT_THEME.inputBackground);
     setInputBorder(DEFAULT_THEME.inputBorder);
     setInputText(DEFAULT_THEME.inputText);
+    setDashboardBackgroundMode(DEFAULT_THEME.dashboardBackgroundMode);
+    setDashboardBackgroundBase(DEFAULT_THEME.dashboardBackgroundBase);
+    setDashboardAmbientTint(DEFAULT_THEME.dashboardAmbientTint);
+    setDashboardGradientStart(DEFAULT_THEME.dashboardGradientStart);
+    setDashboardGradientEnd(DEFAULT_THEME.dashboardGradientEnd);
+    setDashboardGradientAccent(DEFAULT_THEME.dashboardGradientAccent);
+    setProfileMetadata({});
 
     setThemeMode(DEFAULT_THEME.themeMode);
     setRadiusScale(DEFAULT_THEME.radiusScale);
@@ -388,6 +461,12 @@ export default function BrandStudioCard() {
     setInputBackground(nextInputBg);
     setInputBorder(nextBorder);
     setInputText(nextTextPrimary);
+    setDashboardBackgroundMode(Math.random() > 0.5 ? "gradient" : "solid");
+    setDashboardBackgroundBase(nextAppBgSecondary);
+    setDashboardAmbientTint(nextAccent);
+    setDashboardGradientStart(nextPrimary);
+    setDashboardGradientEnd(nextSecondary);
+    setDashboardGradientAccent(nextAccent);
 
     setThemeMode(randomFromList(THEME_MODES).value);
     setRadiusScale(randomFromList(RADIUS_SCALES).value);
@@ -459,6 +538,14 @@ export default function BrandStudioCard() {
         );
         setInputBorder(p.input_border || DEFAULT_THEME.inputBorder);
         setInputText(p.input_text || DEFAULT_THEME.inputText);
+        const dashboardBg = pickDashboardBackgroundMetadata(p.metadata);
+        setDashboardBackgroundMode(dashboardBg.mode);
+        setDashboardBackgroundBase(dashboardBg.base);
+        setDashboardAmbientTint(dashboardBg.ambientTint);
+        setDashboardGradientStart(dashboardBg.gradientStart);
+        setDashboardGradientEnd(dashboardBg.gradientEnd);
+        setDashboardGradientAccent(dashboardBg.gradientAccent);
+        setProfileMetadata((p.metadata as Record<string, unknown> | null) ?? {});
       }
 
       if (prefJson?.ok && prefJson.preferences) {
@@ -519,7 +606,17 @@ export default function BrandStudioCard() {
           input_background: inputBackground,
           input_border: inputBorder,
           input_text: inputText,
-          metadata: {},
+          metadata: {
+            ...(profileMetadata ?? {}),
+            dashboard_background: {
+              mode: dashboardBackgroundMode,
+              base: dashboardBackgroundBase,
+              ambientTint: dashboardAmbientTint,
+              gradientStart: dashboardGradientStart,
+              gradientEnd: dashboardGradientEnd,
+              gradientAccent: dashboardGradientAccent,
+            },
+          },
         }),
       });
 
@@ -1145,6 +1242,61 @@ export default function BrandStudioCard() {
               onChange={setSurface2Background}
             />
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="mb-4 text-sm font-medium text-white">
+            Dashboard ambient background
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Dashboard background mode
+              </label>
+              <select
+                value={dashboardBackgroundMode}
+                onChange={(e) =>
+                  setDashboardBackgroundMode(e.target.value === "gradient" ? "gradient" : "solid")
+                }
+                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+              >
+                <option value="solid">Solid ambient</option>
+                <option value="gradient">Gradient ambient</option>
+              </select>
+            </div>
+            <ColorField
+              label="Dashboard base color"
+              value={dashboardBackgroundBase}
+              onChange={setDashboardBackgroundBase}
+            />
+            <ColorField
+              label="Ambient tint color"
+              value={dashboardAmbientTint}
+              onChange={setDashboardAmbientTint}
+            />
+            {dashboardBackgroundMode === "gradient" ? (
+              <>
+                <ColorField
+                  label="Gradient start"
+                  value={dashboardGradientStart}
+                  onChange={setDashboardGradientStart}
+                />
+                <ColorField
+                  label="Gradient end"
+                  value={dashboardGradientEnd}
+                  onChange={setDashboardGradientEnd}
+                />
+                <ColorField
+                  label="Gradient accent"
+                  value={dashboardGradientAccent}
+                  onChange={setDashboardGradientAccent}
+                />
+              </>
+            ) : null}
+          </div>
+          <p className="mt-3 text-xs text-neutral-400">
+            Controls the ambient background layer used on the main dashboard page.
+          </p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">

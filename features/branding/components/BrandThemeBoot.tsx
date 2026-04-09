@@ -32,6 +32,7 @@ type ThemeProfile = {
   radius_scale?: string | null;
   shadow_style?: string | null;
   theme_mode?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type UserThemePreferences = {
@@ -202,6 +203,73 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
   root.setAttribute("data-brand-preset", value || "industrial-dark");
 }
 
+type DashboardBackgroundSettings = {
+  mode: "solid" | "gradient";
+  base: string;
+  ambientTint: string;
+  gradientStart: string;
+  gradientEnd: string;
+  gradientAccent: string;
+};
+
+const DEFAULT_DASHBOARD_BACKGROUND: DashboardBackgroundSettings = {
+  mode: "solid",
+  base: "#020617",
+  ambientTint: "#F97316",
+  gradientStart: "#C56A2F",
+  gradientEnd: "#020617",
+  gradientAccent: "#7F1D1D",
+};
+
+function readDashboardBackgroundSettings(
+  metadata: Record<string, unknown> | null | undefined,
+): DashboardBackgroundSettings {
+  const raw = metadata?.dashboard_background;
+  if (!raw || typeof raw !== "object") return DEFAULT_DASHBOARD_BACKGROUND;
+  const value = raw as Record<string, unknown>;
+
+  const mode = String(value.mode ?? "").trim().toLowerCase();
+  const finalMode = mode === "gradient" ? "gradient" : "solid";
+
+  const base = String(value.base ?? "").trim() || DEFAULT_DASHBOARD_BACKGROUND.base;
+  const ambientTint =
+    String(value.ambientTint ?? "").trim() || DEFAULT_DASHBOARD_BACKGROUND.ambientTint;
+  const gradientStart =
+    String(value.gradientStart ?? "").trim() || DEFAULT_DASHBOARD_BACKGROUND.gradientStart;
+  const gradientEnd =
+    String(value.gradientEnd ?? "").trim() || DEFAULT_DASHBOARD_BACKGROUND.gradientEnd;
+  const gradientAccent =
+    String(value.gradientAccent ?? "").trim() || DEFAULT_DASHBOARD_BACKGROUND.gradientAccent;
+
+  return {
+    mode: finalMode,
+    base,
+    ambientTint,
+    gradientStart,
+    gradientEnd,
+    gradientAccent,
+  };
+}
+
+function setDashboardBackgroundVars(
+  root: HTMLElement,
+  settings: DashboardBackgroundSettings,
+) {
+  root.style.setProperty("--dashboard-bg-base", settings.base);
+  root.style.setProperty("--dashboard-ambient-tint", settings.ambientTint);
+  root.style.setProperty("--dashboard-gradient-start", settings.gradientStart);
+  root.style.setProperty("--dashboard-gradient-end", settings.gradientEnd);
+  root.style.setProperty("--dashboard-gradient-accent", settings.gradientAccent);
+  root.style.setProperty("--dashboard-bg-mode", settings.mode);
+
+  const backgroundValue =
+    settings.mode === "gradient"
+      ? `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.gradientStart} 18%, transparent), transparent 58%), radial-gradient(980px 540px at 86% 16%, color-mix(in srgb, ${settings.gradientAccent} 18%, transparent), transparent 56%), linear-gradient(180deg, ${settings.gradientEnd} 0%, ${settings.base} 100%)`
+      : `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.ambientTint} 14%, transparent), transparent 58%), radial-gradient(1100px 700px at 100% 100%, rgba(2,6,23,0.45), transparent 62%), linear-gradient(180deg, ${settings.base} 0%, ${settings.base} 100%)`;
+
+  root.style.setProperty("--dashboard-shell-bg", backgroundValue);
+}
+
 export default function BrandThemeBoot() {
   const { data } = useActiveBrand();
 
@@ -304,6 +372,10 @@ export default function BrandThemeBoot() {
     setVar(root, "--theme-input-text", profile.input_text, "#FFFFFF");
 
     setPresetVars(root, preset);
+    setDashboardBackgroundVars(
+      root,
+      readDashboardBackgroundSettings(profile.metadata),
+    );
 
     if (data?.logoUrl) {
       root.style.setProperty("--brand-logo-url", `url(${data.logoUrl})`);

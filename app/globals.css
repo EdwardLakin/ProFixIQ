@@ -280,6 +280,16 @@ select {
   transition: all 180ms ease;
 }
 
+.dashboard-widget-grid > .react-grid-item {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-widget-grid > .react-grid-item > div {
+  height: 100%;
+  min-height: 0;
+}
+
 .react-grid-item.react-grid-placeholder {
   border-radius: var(--theme-radius-xl, 1rem);
   background: color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent);

@@ -34,6 +34,7 @@ export type ActiveBrandPayload = {
     radius_scale?: string | null;
     shadow_style?: string | null;
     theme_mode?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
   userPreferences?: {
     theme_mode?: string | null;
