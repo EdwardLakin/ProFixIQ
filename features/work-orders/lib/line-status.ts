@@ -1,9 +1,10 @@
 export const CANONICAL_WORK_ORDER_LINE_STATUSES = [
   "awaiting",
   "awaiting_approval",
-  "active",
+  "in_progress",
   "on_hold",
   "completed",
+  "ready_to_invoice",
   "invoiced",
 ] as const;
 
@@ -14,28 +15,29 @@ export const WORK_ORDER_LINE_ALLOWED_TRANSITIONS: Record<
   WorkOrderLineStatus,
   readonly WorkOrderLineStatus[]
 > = {
-  awaiting: ["awaiting_approval", "active", "on_hold", "completed"],
-  awaiting_approval: ["awaiting_approval", "active", "on_hold", "completed"],
-  active: ["active", "on_hold", "completed", "awaiting_approval"],
-  on_hold: ["on_hold", "active", "completed", "awaiting_approval"],
-  completed: ["completed", "invoiced"],
+  awaiting: ["awaiting_approval", "in_progress", "on_hold", "completed"],
+  awaiting_approval: ["awaiting_approval", "in_progress", "on_hold", "completed"],
+  in_progress: ["in_progress", "on_hold", "completed", "awaiting_approval"],
+  on_hold: ["on_hold", "in_progress", "completed", "awaiting_approval"],
+  completed: ["completed", "ready_to_invoice", "invoiced"],
+  ready_to_invoice: ["ready_to_invoice", "invoiced"],
   invoiced: ["invoiced"],
 } as const;
 
 const LEGACY_TO_CANONICAL: Record<string, WorkOrderLineStatus> = {
   awaiting: "awaiting",
   awaiting_approval: "awaiting_approval",
-  active: "active",
+  active: "in_progress",
+  in_progress: "in_progress",
   on_hold: "on_hold",
   completed: "completed",
+  ready_to_invoice: "ready_to_invoice",
   invoiced: "invoiced",
-  queued: "active",
-  in_progress: "active",
+  queued: "in_progress",
   paused: "on_hold",
   declined: "on_hold",
-  assigned: "active",
+  assigned: "in_progress",
   unassigned: "awaiting",
-  ready_to_invoice: "completed",
   quoted: "awaiting_approval",
 };
 
