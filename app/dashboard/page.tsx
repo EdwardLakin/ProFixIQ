@@ -175,7 +175,14 @@ export default function DashboardPage() {
 
   return (
     <div className="w-full space-y-5 xl:space-y-6">
-      <section className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.10),rgba(2,6,23,0.88))] px-5 py-5 backdrop-blur-xl xl:px-7 xl:py-6">
+      <section
+        className="rounded-3xl border px-5 py-5 backdrop-blur-xl xl:px-7 xl:py-6"
+        style={{
+          borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
+          background:
+            "radial-gradient(circle at top, color-mix(in srgb, var(--dashboard-ambient-tint,#F97316) 10%, transparent), color-mix(in srgb, var(--theme-app-bg,#050910) 78%, black))",
+        }}
+      >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">

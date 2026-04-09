@@ -256,8 +256,8 @@ export default function DashboardWidgetBoard({
               onLayoutChange={handleGridLayoutChange}
             >
               {visibleWidgets.map(({ item, widget }) => (
-                <div key={item.id} className="h-full min-h-0">
-                  <div className="relative h-full">
+                <div key={item.id} className="h-full min-h-0 overflow-hidden">
+                  <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
                     <button
                       type="button"
                       className="widget-drag-handle absolute right-2 top-2 z-10 cursor-move rounded-md border border-white/15 bg-black/35 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neutral-200"
@@ -265,7 +265,11 @@ export default function DashboardWidgetBoard({
                     >
                       Move
                     </button>
-                    <DashboardWidgetShell title={widget.title} description={widget.description}>
+                    <DashboardWidgetShell
+                      title={widget.title}
+                      description={widget.description}
+                      className="min-h-0"
+                    >
                       {widget.render(context, item)}
                     </DashboardWidgetShell>
                   </div>
