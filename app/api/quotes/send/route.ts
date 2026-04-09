@@ -133,6 +133,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!wo.shop_id) {
+      return NextResponse.json(
+        { ok: false, trace, error: "Work order is missing shop_id" },
+        { status: 400 },
+      );
+    }
+
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
     let customerEmail = safeStr(body?.customerEmail).trim() || "";
@@ -329,7 +336,7 @@ export async function POST(req: Request) {
       : null;
 
     await sendQuoteReadyEmail({
-      shopId: wo.shop_id ?? "",
+      shopId: wo.shop_id,
       to: customerEmail,
       quoteUrl: portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "",
       quoteTotal: quoteTotal ?? null,

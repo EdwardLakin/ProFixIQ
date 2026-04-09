@@ -265,6 +265,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
     }
 
+    if (!wo.shop_id) {
+      return NextResponse.json({ error: "Work order is missing shop_id" }, { status: 400 });
+    }
+
     const status = String(wo.status ?? "").toLowerCase().replaceAll(" ", "_");
     if (!["completed", "ready_to_invoice", "invoiced"].includes(status)) {
       return NextResponse.json(
@@ -470,7 +474,7 @@ export async function POST(req: Request) {
     const invoicePdfUrl = `${base}/api/work-orders/${workOrderId}/invoice-pdf?download=1`;
 
     await sendInvoiceReadyEmail({
-      shopId: wo.shop_id ?? "",
+      shopId: wo.shop_id,
       to: resolvedCustomerEmail,
       portalUrl: portalInvoiceUrl,
       workOrderId,
