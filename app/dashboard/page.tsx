@@ -186,7 +186,7 @@ export default function DashboardPage() {
               Welcome back, {displayName} 👋
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
-              Desktop command view for today’s shop activity. This layout is tuned to use wide screens instead of stacking like tablet.
+              Desktop command view for today’s shop activity.
             </p>
           </div>
 
@@ -234,57 +234,70 @@ export default function DashboardPage() {
             {role ?? "—"}
           </div>
           <div className="mt-1 text-xs text-neutral-400">
-            {loading ? "Loading dashboard context…" : "Responsive desktop layout active"}
+            {loading ? "Loading dashboard context…" : "Desktop dashboard active"}
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-        <DailySummaryCard />
-        <SuggestedActionsPanel
-          context={{
-            pageType: "dashboard",
-            pageTitle: "Dashboard",
-          }}
-          title="Suggested Actions"
-          description="Recommended next actions based on today’s shop state"
-          compact
-          maxItems={6}
-        />
-      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-12">
+        <div className="md:col-span-2 xl:col-span-2 2xl:col-span-7">
+          <DailySummaryCard />
+        </div>
 
-      {ownerLike ? (
-        <div className="grid gap-4 2xl:grid-cols-12">
-          <div className="2xl:col-span-7">
+        <div className="xl:col-span-1 2xl:col-span-5">
+          <SuggestedActionsPanel
+            context={{
+              pageType: "dashboard",
+              pageTitle: "Dashboard",
+            }}
+            title="Suggested Actions"
+            description="Recommended next actions based on today’s shop state"
+            compact
+            maxItems={6}
+          />
+        </div>
+
+        {ownerLike ? (
+          <div className="md:col-span-2 xl:col-span-2 2xl:col-span-8">
             <ReportsPerformanceWidget />
           </div>
-          <div className="grid gap-4 md:grid-cols-2 2xl:col-span-5 2xl:grid-cols-1">
+        ) : null}
+
+        {ownerLike ? (
+          <div className="xl:col-span-1 2xl:col-span-4">
             <ShopPulseWidget shopId={shopId} />
+          </div>
+        ) : null}
+
+        {ownerLike ? (
+          <div className="xl:col-span-1 2xl:col-span-4">
             <RevenueWatchWidget shopId={shopId} />
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-12">
-        <div className="2xl:col-span-4">
-          <ApprovalRiskWidget shopId={shopId} />
-        </div>
-        <div className="2xl:col-span-4">
-          <WaitingPartsWidget shopId={shopId} />
-        </div>
-        <div className="2xl:col-span-4">
+        <div className="xl:col-span-1 2xl:col-span-4">
           <TechLoadWidget shopId={shopId} />
         </div>
-      </div>
 
-      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-12">
-        <div className="2xl:col-span-7">
+        <div className="xl:col-span-1 2xl:col-span-4">
+          <ApprovalRiskWidget shopId={shopId} />
+        </div>
+
+        <div className="xl:col-span-1 2xl:col-span-4">
+          <WaitingPartsWidget shopId={shopId} />
+        </div>
+
+        <div className="xl:col-span-1 2xl:col-span-4">
+          <ComebackRiskWidget shopId={shopId} />
+        </div>
+
+        <div className="md:col-span-2 xl:col-span-2 2xl:col-span-8">
           <WorkOrderBoardWidget />
         </div>
-        <div className="space-y-4 2xl:col-span-5">
+
+        <div className="space-y-4 md:col-span-2 xl:col-span-1 2xl:col-span-4">
           {!tech ? <BookingsWidget /> : null}
           {!tech ? <AdvisorQueueWidget /> : null}
-          <ComebackRiskWidget shopId={shopId} />
         </div>
       </div>
     </div>
