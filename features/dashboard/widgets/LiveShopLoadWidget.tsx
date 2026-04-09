@@ -1,11 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
-import {
-  getTechnicianLoadMetrics,
-  type TechnicianLoadMetricResult,
-} from "@shared/lib/stats/getTechnicianLoadMetrics";
+import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnicianLoadMetrics";
 
 function utilizationBand(pct: number): "high" | "balanced" | "low" {
   if (pct >= 85) return "high";
@@ -14,34 +10,10 @@ function utilizationBand(pct: number): "high" | "balanced" | "low" {
 }
 
 export default function LiveShopLoadWidget({ shopId }: { shopId: string | null }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<TechnicianLoadMetricResult | null>(null);
-
-  useEffect(() => {
-    if (!shopId) return;
-
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await getTechnicianLoadMetrics(shopId);
-        if (!cancelled) setMetrics(result);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load live shop load.");
-          setMetrics(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [shopId]);
+  const { metrics, loading, error } = useTechnicianLoadMetrics(shopId, {
+    enabled: true,
+    pollMs: 30_000,
+  });
 
   const summary = metrics?.summary;
   const utilization = summary?.shopUtilizationPct ?? 0;
