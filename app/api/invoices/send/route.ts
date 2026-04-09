@@ -5,6 +5,7 @@ import { sendInvoiceReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -500,6 +501,19 @@ export async function POST(req: Request) {
         invoice_pdf_url: invoicePdfUrl,
       } as DB["public"]["Tables"]["work_orders"]["Update"])
       .eq("id", workOrderId);
+
+    await logOperationalEvent({
+      supabase: supabaseAdmin,
+      event: "invoice_sent",
+      entityType: "work_order",
+      entityId: workOrderId,
+      details: {
+        invoice_total: computedInvoiceTotal,
+        labor_total: laborTotal,
+        parts_total: partsTotal,
+        recipient: resolvedCustomerEmail,
+      },
+    });
 
     if (portalUserId) {
       await supabaseAdmin.from("portal_notifications").insert({

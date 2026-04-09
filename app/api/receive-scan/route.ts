@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 type DB = Database;
 
@@ -62,6 +63,20 @@ export async function POST(req: Request) {
 
       if (error) throw error;
 
+      await logOperationalEvent({
+        supabase,
+        event: "parts_received",
+        actorId: user.id,
+        entityType: "part",
+        entityId: partId,
+        details: {
+          mode: "po",
+          po_id: poId,
+          location_id: locationId,
+          qty,
+        },
+      });
+
       return NextResponse.json({ ok: true, mode: "po", result: data });
     }
 
@@ -98,6 +113,19 @@ export async function POST(req: Request) {
         relErr.message,
       );
     }
+
+    await logOperationalEvent({
+      supabase,
+      event: "parts_received",
+      actorId: user.id,
+      entityType: "part",
+      entityId: partId,
+      details: {
+        mode: "manual",
+        location_id: locationId,
+        qty,
+      },
+    });
 
     return NextResponse.json({ ok: true, mode: "manual" });
   } catch (e: unknown) {

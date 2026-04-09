@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -26,6 +27,9 @@ function toStringArray(x: unknown): string[] | null {
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   let workOrderId: string | null = null;
   let lineIds: string[] | null = null;
@@ -91,6 +95,18 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+
+  await logOperationalEvent({
+    supabase,
+    event: "work_order_sent_for_approval",
+    actorId: user?.id ?? null,
+    entityType: "work_order",
+    entityId: workOrderId,
+    details: {
+      line_ids: lineIds,
+      line_count: lineIds.length,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

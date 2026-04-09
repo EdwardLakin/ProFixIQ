@@ -6,6 +6,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { recordQuoteTraining } from "@/features/integrations/ai";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 type DB = Database;
 
@@ -271,6 +272,19 @@ export async function POST(req: Request) {
         : null,
       quoteSource: "quote_apply_ai",
       quoteReference: workOrderLineId,
+    });
+
+    await logOperationalEvent({
+      supabase: sb,
+      event: "work_order_parts_allocated_from_quote_ai",
+      actorId: "system_apply_ai",
+      entityType: "work_order_line",
+      entityId: workOrderLineId,
+      details: {
+        shop_id: shopId,
+        suggested_parts_count: partsList.length,
+        unmatched_parts_count: unmatched.length,
+      },
     });
 
     return NextResponse.json({ ok: true, unmatched });
