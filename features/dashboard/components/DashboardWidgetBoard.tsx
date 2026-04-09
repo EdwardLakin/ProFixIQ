@@ -7,7 +7,6 @@ import { LayoutGrid, RotateCcw, Save } from "lucide-react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import {
   getDashboardWidgetRegistry,
-  type DashboardWidgetRegistration,
 } from "@/features/dashboard/lib/widget-registry";
 import {
   buildDefaultDashboardLayout,
@@ -18,6 +17,7 @@ import type {
   DashboardRenderContext,
   DashboardWidgetId,
 } from "@/features/dashboard/types/layout";
+import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 type Props = {
   role: string | null;
@@ -361,7 +361,7 @@ export default function DashboardWidgetBoard({ role, context }: Props) {
         {visibleItems.map((item) => {
           const widget = registry.find(
             (entry) => entry.id === item.i,
-          ) as DashboardWidgetRegistration | undefined;
+          ) as DashboardWidgetModule | undefined;
 
           if (!widget) return null;
 
