@@ -25,6 +25,7 @@ export type DashboardWidgetLayout = {
   y: number;
   w: number;
   h: number;
+  hidden?: boolean;
 };
 
 
@@ -36,7 +37,6 @@ export type DashboardLayoutItem = DashboardWidgetLayout & {
   minH?: number;
   maxW?: number;
   maxH?: number;
-  hidden?: boolean;
 };
 
 export type DashboardRenderContext = {

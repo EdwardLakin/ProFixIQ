@@ -43,6 +43,7 @@ function normalizeGridLayoutItem(
     y: Number.isFinite(item.y) ? item.y : fallback.y,
     w: Number.isFinite(item.w) ? item.w : fallback.w,
     h: Number.isFinite(item.h) ? item.h : fallback.h,
+    hidden: fallback.hidden === true,
   };
 }
 
@@ -114,10 +115,14 @@ export default function DashboardWidgetBoard({
         .sort((a, b) => compareLayoutPosition(a.item, b.item)),
     [layout, widgetById],
   );
+  const visibleWidgets = useMemo(
+    () => orderedWidgets.filter(({ item }) => item.hidden !== true),
+    [orderedWidgets],
+  );
 
   const gridLayout = useMemo(
     () =>
-      orderedWidgets.map(({ item, widget }) => ({
+      visibleWidgets.map(({ item, widget }) => ({
         i: item.id,
         x: item.x,
         y: item.y,
@@ -128,20 +133,25 @@ export default function DashboardWidgetBoard({
         maxW: widget.maxW,
         maxH: widget.maxH,
       } satisfies LayoutItem)),
-    [orderedWidgets],
+    [visibleWidgets],
   );
 
   const handleGridLayoutChange = (nextGridLayout: Layout) => {
     const fallbackById = new Map(layout.map((item) => [item.id, item] as const));
+    const visibleById = new Map(
+      nextGridLayout.map((item) => [item.i as DashboardWidgetLayout["id"], item] as const),
+    );
 
-    const nextLayout = nextGridLayout
-      .map((item) => {
-        const fallback = fallbackById.get(item.i as DashboardWidgetLayout["id"]);
-        if (!fallback) return null;
+    const nextLayout = layout
+      .map((current) => {
+        const fallback = fallbackById.get(current.id);
+        if (!fallback) return current;
 
-        return normalizeGridLayoutItem(item, fallback);
+        const visibleItem = visibleById.get(current.id);
+        if (!visibleItem) return fallback;
+
+        return normalizeGridLayoutItem(visibleItem, fallback);
       })
-      .filter((item): item is DashboardWidgetLayout => Boolean(item))
       .sort(compareLayoutPosition);
 
     if (!nextLayout.length) return;
@@ -151,6 +161,14 @@ export default function DashboardWidgetBoard({
     if (currentSerialized === nextSerialized) return;
 
     setLayout(nextLayout);
+  };
+
+  const handleWidgetVisibilityToggle = (widgetId: DashboardWidgetLayout["id"]) => {
+    setLayout((currentLayout) =>
+      currentLayout.map((item) =>
+        item.id === widgetId ? { ...item, hidden: item.hidden !== true } : item,
+      ),
+    );
   };
 
   return (
@@ -175,11 +193,38 @@ export default function DashboardWidgetBoard({
         >
           Drag and resize widgets on desktop. Small screens keep simple stacked cards.
         </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {orderedWidgets.map(({ item, widget }) => {
+            const enabled = item.hidden !== true;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleWidgetVisibilityToggle(item.id)}
+                className="rounded-full border px-3 py-1.5 text-xs transition"
+                style={{
+                  borderColor: enabled
+                    ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
+                    : "var(--theme-card-border,#334155)",
+                  background: enabled
+                    ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 22%, transparent)"
+                    : "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
+                  color: enabled ? "var(--theme-text-primary,#F8FAFC)" : "var(--theme-text-secondary,#94A3B8)",
+                }}
+                aria-pressed={enabled}
+                aria-label={`${enabled ? "Hide" : "Show"} ${widget.title} widget`}
+              >
+                {enabled ? "On" : "Off"} · {widget.title}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {isSmallScreen ? (
         <div className="space-y-4">
-          {orderedWidgets.map(({ item, widget }) => (
+          {visibleWidgets.map(({ item, widget }) => (
             <div key={item.id}>
               <DashboardWidgetShell title={widget.title} description={widget.description}>
                 {widget.render(context, item)}
@@ -210,7 +255,7 @@ export default function DashboardWidgetBoard({
               layout={gridLayout}
               onLayoutChange={handleGridLayoutChange}
             >
-              {orderedWidgets.map(({ item, widget }) => (
+              {visibleWidgets.map(({ item, widget }) => (
                 <div key={item.id} className="h-full min-h-0">
                   <div className="relative h-full">
                     <button
@@ -229,7 +274,7 @@ export default function DashboardWidgetBoard({
             </GridLayout>
           ) : (
             <div className="grid gap-4">
-              {orderedWidgets.map(({ item, widget }) => (
+              {visibleWidgets.map(({ item, widget }) => (
                 <div key={item.id}>
                   <DashboardWidgetShell title={widget.title} description={widget.description}>
                     {widget.render(context, item)}

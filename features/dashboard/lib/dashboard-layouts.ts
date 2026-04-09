@@ -38,7 +38,8 @@ function isDashboardWidgetLayout(value: unknown): value is DashboardWidgetLayout
     typeof candidate.x === "number" &&
     typeof candidate.y === "number" &&
     typeof candidate.w === "number" &&
-    typeof candidate.h === "number"
+    typeof candidate.h === "number" &&
+    (typeof candidate.hidden === "undefined" || typeof candidate.hidden === "boolean")
   );
 }
 
@@ -59,13 +60,18 @@ export function normalizeDashboardLayout(
       const fallback = defaults.get(item.id);
       if (!fallback) return null;
 
-      return {
+      const normalized: DashboardWidgetLayout = {
         id: item.id,
         x: Number.isFinite(item.x) ? item.x : fallback.x,
         y: Number.isFinite(item.y) ? item.y : fallback.y,
         w: Number.isFinite(item.w) ? item.w : fallback.w,
         h: Number.isFinite(item.h) ? item.h : fallback.h,
-      } satisfies DashboardWidgetLayout;
+      };
+      if (item.hidden === true) {
+        normalized.hidden = true;
+      }
+
+      return normalized;
     })
     .filter((item): item is DashboardWidgetLayout => Boolean(item));
 
