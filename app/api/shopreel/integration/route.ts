@@ -75,6 +75,7 @@ export async function GET() {
         "workorder.approved",
         "workorder.completed",
         "media.before_after.added",
+        "operations.signal",
       ],
       lastTestedAt: data?.last_tested_at ?? null,
       lastSuccessAt: data?.last_success_at ?? null,
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
         "workorder.approved",
         "workorder.completed",
         "media.before_after.added",
+        "operations.signal",
       ];
 
   const { data, error } = await supabase

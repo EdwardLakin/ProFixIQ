@@ -4,7 +4,8 @@ export type ProFixIQStoryEventType =
   | "inspection.media.captured"
   | "workorder.approved"
   | "workorder.completed"
-  | "media.before_after.added";
+  | "media.before_after.added"
+  | "operations.signal";
 
 export type ProFixIQStoryFinding = {
   label: string;

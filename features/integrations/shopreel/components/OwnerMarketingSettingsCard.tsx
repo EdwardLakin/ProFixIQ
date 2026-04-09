@@ -22,6 +22,7 @@ const DEFAULT_EVENT_TYPES = [
   "workorder.approved",
   "workorder.completed",
   "media.before_after.added",
+  "operations.signal",
 ];
 
 export default function OwnerMarketingSettingsCard({

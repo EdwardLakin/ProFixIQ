@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
+import DashboardAlertStrip from "@/features/dashboard/components/DashboardAlertStrip";
 import DashboardWidgetBoard from "@/features/dashboard/components/DashboardWidgetBoard";
 import {
   loadDashboardLayout,
@@ -211,6 +212,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      <DashboardAlertStrip />
 
       {loading ? (
         <div
