@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetBoard from "@/features/dashboard/components/DashboardWidgetBoard";
-import type { DashboardCountState } from "@/features/dashboard/types/layout";
+import {
+  loadDashboardLayout,
+  saveDashboardLayout,
+} from "@/features/dashboard/lib/dashboard-layouts";
+import { getDashboardWidgetRegistry } from "@/features/dashboard/lib/widget-registry";
+import type {
+  DashboardCountState,
+  DashboardWidgetLayout,
+} from "@/features/dashboard/types/layout";
 
 type DB = Database;
 
@@ -24,16 +32,49 @@ function isTechRole(role: string | null): boolean {
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<DashboardWidgetLayout[] | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<DashboardCountState>({
     appointments: 0,
     workOrders: 0,
     partsRequests: 0,
   });
+
+  const handleLayoutChange = useCallback(
+    (nextLayout: DashboardWidgetLayout[]) => {
+      if (!shopId) return;
+
+      setLayout(nextLayout);
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      saveTimeoutRef.current = setTimeout(() => {
+        void saveDashboardLayout({
+          supabase,
+          shopId,
+          userId,
+          layout: nextLayout,
+        });
+      }, 350);
+    },
+    [shopId, supabase, userId],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -44,6 +85,8 @@ export default function DashboardPage() {
       } = await supabase.auth.getSession();
 
       const uid = session?.user?.id ?? null;
+      setUserId(uid);
+
       if (!uid) {
         setLoading(false);
         return;
@@ -67,8 +110,15 @@ export default function DashboardPage() {
         return;
       }
 
+      const layoutPromise = loadDashboardLayout({
+        supabase,
+        shopId: nextShopId,
+        userId: uid,
+        widgets: getDashboardWidgetRegistry(nextRole),
+      });
+
       if (isTechRole(nextRole)) {
-        const [myJobs, myParts] = await Promise.all([
+        const [myJobs, myParts, loadedLayout] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("id", { count: "exact", head: true })
@@ -81,8 +131,10 @@ export default function DashboardPage() {
             .eq("shop_id", nextShopId)
             .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
             .or(`requested_by.eq.${uid},assigned_tech_id.eq.${uid}`),
+          layoutPromise,
         ]);
 
+        setLayout(loadedLayout);
         setCounts({
           appointments: 0,
           workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
@@ -92,7 +144,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const [appt, wo, parts] = await Promise.all([
+      const [appt, wo, parts, loadedLayout] = await Promise.all([
         supabase
           .from("bookings")
           .select("id", { count: "exact", head: true })
@@ -106,8 +158,10 @@ export default function DashboardPage() {
           .select("id", { count: "exact", head: true })
           .eq("shop_id", nextShopId)
           .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES)),
+        layoutPromise,
       ]);
 
+      setLayout(loadedLayout);
       setCounts({
         appointments: appt.error ? 0 : appt.count ?? 0,
         workOrders: wo.error ? 0 : wo.count ?? 0,
@@ -116,7 +170,6 @@ export default function DashboardPage() {
       setLoading(false);
     })();
   }, [supabase]);
-
 
   const displayName = name?.trim() || "there";
 
@@ -167,6 +220,8 @@ export default function DashboardPage() {
       ) : (
         <DashboardWidgetBoard
           role={role}
+          initialLayout={layout}
+          onLayoutChange={handleLayoutChange}
           context={{
             role,
             shopId,

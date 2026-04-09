@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import {
   DASHBOARD_GRID_COLUMNS,
   buildDefaultDashboardLayout,
 } from "@/features/dashboard/lib/defaultLayout";
+import { normalizeDashboardLayout } from "@/features/dashboard/lib/dashboard-layouts";
 import { getDashboardWidgetRegistry } from "@/features/dashboard/lib/widget-registry";
 import type {
   DashboardRenderContext,
@@ -17,6 +18,8 @@ import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 type Props = {
   role: string | null;
   context: DashboardRenderContext;
+  initialLayout?: DashboardWidgetLayout[];
+  onLayoutChange?: (nextLayout: DashboardWidgetLayout[]) => void;
 };
 
 function compareLayoutPosition(a: DashboardWidgetLayout, b: DashboardWidgetLayout): number {
@@ -25,9 +28,26 @@ function compareLayoutPosition(a: DashboardWidgetLayout, b: DashboardWidgetLayou
   return a.id.localeCompare(b.id);
 }
 
-export default function DashboardWidgetBoard({ role, context }: Props) {
+export default function DashboardWidgetBoard({
+  role,
+  context,
+  initialLayout,
+  onLayoutChange,
+}: Props) {
   const registry = useMemo(() => getDashboardWidgetRegistry(role), [role]);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+
+  const computedInitialLayout = useMemo(
+    () =>
+      normalizeDashboardLayout(
+        initialLayout ?? buildDefaultDashboardLayout(registry),
+        registry,
+      ),
+    [initialLayout, registry],
+  );
+
+  const [layout, setLayout] = useState<DashboardWidgetLayout[]>(computedInitialLayout);
+  const prevSerializedRef = useRef<string>(JSON.stringify(computedInitialLayout));
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 767px)");
@@ -39,13 +59,26 @@ export default function DashboardWidgetBoard({ role, context }: Props) {
     return () => query.removeEventListener("change", update);
   }, []);
 
+  useEffect(() => {
+    const serialized = JSON.stringify(computedInitialLayout);
+    if (serialized !== prevSerializedRef.current) {
+      prevSerializedRef.current = serialized;
+      setLayout(computedInitialLayout);
+    }
+  }, [computedInitialLayout]);
+
+  useEffect(() => {
+    if (!onLayoutChange) return;
+
+    const serialized = JSON.stringify(layout);
+    if (serialized === prevSerializedRef.current) return;
+
+    prevSerializedRef.current = serialized;
+    onLayoutChange(layout);
+  }, [layout, onLayoutChange]);
+
   const widgetById = useMemo(
     () => new Map(registry.map((widget) => [widget.id, widget] as const)),
-    [registry],
-  );
-
-  const layout = useMemo(
-    () => buildDefaultDashboardLayout(registry).sort(compareLayoutPosition),
     [registry],
   );
 
@@ -58,7 +91,8 @@ export default function DashboardWidgetBoard({ role, context }: Props) {
             entry,
           ): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } =>
             Boolean(entry.widget),
-        ),
+        )
+        .sort((a, b) => compareLayoutPosition(a.item, b.item)),
     [layout, widgetById],
   );
 
