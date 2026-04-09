@@ -126,6 +126,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (body.event_type === "end_shift" && shift.user_id) {
+    const { data: activeJobPunches, error: activeJobsErr } = await admin
+      .from("work_order_lines")
+      .select("id")
+      .eq("shop_id", a.me.shop_id)
+      .eq("assigned_tech_id", shift.user_id)
+      .not("punched_in_at", "is", null)
+      .is("punched_out_at", null);
+
+    if (activeJobsErr) {
+      return NextResponse.json({ error: activeJobsErr.message }, { status: 500 });
+    }
+
+    if ((activeJobPunches?.length ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Cannot clock out while a job is still active. Pause or finish active jobs first.",
+          activeJobCount: activeJobPunches?.length ?? 0,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const note =
     typeof body.note === "string" && body.note.trim().length > 0
       ? body.note.trim()

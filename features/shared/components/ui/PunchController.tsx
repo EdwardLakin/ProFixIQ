@@ -13,7 +13,6 @@ type TechShiftInsert = DB["public"]["Tables"]["tech_shifts"]["Insert"];
 type TechShiftUpdate = DB["public"]["Tables"]["tech_shifts"]["Update"];
 
 type PunchEventInsert = DB["public"]["Tables"]["punch_events"]["Insert"];
-type WorkOrderLineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
 // Your DB uses a CHECK constraint on punch_events.event_type (text), not a postgres enum.
 type PunchEventType =
@@ -128,10 +127,7 @@ export default function PunchController(): JSX.Element {
     setActiveShift(fallback ?? null);
   }
 
-  async function punchOutOfActiveJobsForTech(uid: string): Promise<void> {
-    const nowIso = new Date().toISOString();
-
-    // Find active jobs first so we can log the count (and diagnose RLS)
+  async function countActiveJobsForTech(uid: string): Promise<number> {
     const { data: activeLines, error: listErr } = await supabase
       .from("work_order_lines")
       .select("id")
@@ -140,28 +136,10 @@ export default function PunchController(): JSX.Element {
       .is("punched_out_at", null);
 
     if (listErr) {
-      console.error("[PunchController] failed to list active jobs:", listErr);
-      return;
+      throw new Error(listErr.message);
     }
 
-    const ids = (activeLines ?? []).map((r) => String((r as { id: unknown }).id)).filter(Boolean);
-    if (ids.length === 0) return;
-
-    const update: WorkOrderLineUpdate = {
-      punched_out_at: nowIso,
-    };
-
-    const { error: updErr } = await supabase
-      .from("work_order_lines")
-      .update(update)
-      .in("id", ids);
-
-    if (updErr) {
-      console.error("[PunchController] failed to punch out active jobs:", updErr);
-      return;
-    }
-
-    console.info(`[PunchController] punched out of ${ids.length} active job(s).`);
+    return activeLines?.length ?? 0;
   }
 
   async function insertPunch(
@@ -258,8 +236,12 @@ export default function PunchController(): JSX.Element {
 
       await ensureShopScope(shopId);
 
-      // ✅ punch out of ALL active jobs first
-      await punchOutOfActiveJobsForTech(userId);
+      const activeJobCount = await countActiveJobsForTech(userId);
+      if (activeJobCount > 0) {
+        throw new Error(
+          `Cannot punch out while ${activeJobCount} job punch(es) are still active. Pause or finish active jobs first.`,
+        );
+      }
 
       // ✅ then close the shift
       const update: TechShiftUpdate = {

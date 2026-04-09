@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   const { data: line, error: lineErr } = await supabase
     .from("work_order_lines")
-    .select("id, status")
+    .select("id, status, punched_in_at, punched_out_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -49,13 +49,14 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  const shouldCloseActivePunch = Boolean(line.punched_in_at) && !line.punched_out_at;
 
   const { error } = await supabase
     .from("work_order_lines")
     .update({
       status: "on_hold",
       hold_reason: "Paused by technician",
-      // keep punched_in_at as-is; do NOT set punched_out_at on hold
+      ...(shouldCloseActivePunch ? { punched_out_at: now } : {}),
     } as Database["public"]["Tables"]["work_order_lines"]["Update"])
     .eq("id", id)
     .single();
