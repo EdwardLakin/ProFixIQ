@@ -1,4 +1,5 @@
 import { getServerSupabase } from "../server/supabase";
+import { ageHours, isWorkOrderFlowStalled } from "../server/flowHealth";
 import type { ToolContext } from "../lib/toolTypes";
 
 export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
@@ -22,14 +23,10 @@ export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
     updated_at: string | null;
   }>;
 
-  const now = Date.now();
   const stale = rows.filter((row) => {
-    const t = row.updated_at ? new Date(row.updated_at).getTime() : 0;
-    if (!t) return false;
-    const hours = (now - t) / (1000 * 60 * 60);
-    if (row.status === "on_hold") return hours >= 24;
-    if (row.status === "awaiting_approval") return hours >= 12;
-    return hours >= 24;
+    const hours = ageHours(row.updated_at);
+    if (hours == null) return false;
+    return isWorkOrderFlowStalled(row.status, hours);
   });
 
   if (stale.length === 0) {
