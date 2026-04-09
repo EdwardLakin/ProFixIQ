@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { applyWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
 type DB = Database;
 type Decision = "approve" | "decline" | "defer";
@@ -81,22 +82,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ ok: false, error: "Line item not found" }, { status: 404 });
   }
 
-  const patch =
-    decision === "approve"
-      ? {
-          approval_state: "approved" as const,
-          status: "active" as const,
-          punchable: true,
-          hold_reason: null,
-        }
-      : decision === "decline"
-        ? { approval_state: "declined" as const, status: "on_hold" as const, punchable: false }
-        : {
-            approval_state: "pending" as const,
-            status: "awaiting_approval" as const,
-            punchable: false,
-          };
-
   const beforeLine = {
     id: String(line.id),
     price_estimate:
@@ -114,10 +99,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         : null,
   };
 
-  const { data: afterLine, error: updErr } = await supabase
-    .from("work_order_lines")
-    .update(patch)
-    .eq("id", lineId)
+  const { data: afterLine, error: updErr } = await applyWorkOrderLineApprovalDecision({
+    supabase,
+    decision,
+    lineIds: [lineId],
+    workOrderId,
+  })
     .select("id, price_estimate, labor_time, status, approval_state")
     .maybeSingle();
 

@@ -949,29 +949,29 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (lineId: string) => {
       if (!lineId) return;
 
-      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        approval_state: "approved",
-        status: "active",
-        punchable: true,
-        hold_reason: null,
-        punched_in_at: null,
-        punched_out_at: null,
-      };
+      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "approve",
+          workOrderId: wo?.id ?? null,
+          resetPunchClock: true,
+        }),
+      });
 
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .update(update)
-        .eq("id", lineId)
-        .select("work_order_id")
-        .maybeSingle();
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; workOrderId?: string | null }
+        | null;
 
-      if (error) {
-        toast.error(error.message);
+      if (!res.ok || !json?.ok) {
+        toast.error(json?.error ?? "Failed to approve line");
         return;
       }
 
       const workOrderId =
-        (data as Pick<WorkOrderLine, "work_order_id"> | null)?.work_order_id ?? wo?.id ?? null;
+        (typeof json.workOrderId === "string" && json.workOrderId.trim().length > 0
+          ? json.workOrderId
+          : null) ?? wo?.id ?? null;
 
       if (workOrderId) {
         const { error: woErr } = await supabase
@@ -994,19 +994,22 @@ export default function WorkOrderIdClient(): JSX.Element {
   const declineLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: "declined",
-          status: "on_hold",
-          punchable: false,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-      if (error) return toast.error(error.message);
+      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "decline",
+          workOrderId: wo?.id ?? null,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
       toast.success("Line declined");
       void fetchAll();
     },
-    [fetchAll],
+    [fetchAll, wo?.id],
   );
 
   const approveQuoteLine = useCallback(

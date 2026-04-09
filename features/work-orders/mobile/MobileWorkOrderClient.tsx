@@ -695,38 +695,43 @@ export default function MobileWorkOrderClient({
   const approveLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: "approved",
-          status: "active",
-          punchable: true,
-          hold_reason: null,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-      if (error) return toast.error(error.message);
+      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "approve",
+          workOrderId: wo?.id ?? null,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to approve line");
       toast.success("Line approved");
       void fetchAll();
     },
-    [fetchAll],
+    [fetchAll, wo?.id],
   );
 
   const declineLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: "declined",
-          status: "on_hold",
-          punchable: false,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-      if (error) return toast.error(error.message);
+      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "decline",
+          workOrderId: wo?.id ?? null,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
       toast.success("Line declined");
       void fetchAll();
     },
-    [fetchAll],
+    [fetchAll, wo?.id],
   );
 
   const sendToParts = useCallback(async (lineId: string) => {

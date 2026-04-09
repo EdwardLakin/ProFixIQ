@@ -671,20 +671,21 @@ export default function QuoteReviewView(props: {
     lineId: string,
     decision: "approve" | "decline" | "defer",
   ) {
-    const patch: LineUpdate =
-      decision === "approve"
-        ? { approval_state: "approved", status: "active", punchable: true, hold_reason: null }
-        : decision === "decline"
-          ? { approval_state: "declined", status: "on_hold", punchable: false }
-          : { approval_state: "pending", status: "awaiting_approval", punchable: false };
+    const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision,
+        workOrderId: woId,
+      }),
+    });
 
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update(patch)
-      .eq("id", lineId);
+    const json = (await res.json().catch(() => null)) as
+      | { ok?: boolean; error?: string }
+      | null;
 
-    if (error) {
-      toast.error(error.message);
+    if (!res.ok || !json?.ok) {
+      toast.error(json?.error ?? "Failed to update line decision");
       return;
     }
 
