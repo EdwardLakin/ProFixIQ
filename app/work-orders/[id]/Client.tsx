@@ -1242,11 +1242,9 @@ export default function WorkOrderIdClient(): JSX.Element {
       ) : !wo ? (
         <div className="mt-6 text-sm text-red-400">Work order not found.</div>
       ) : (
-        <div className={showPanel ? "grid gap-6 lg:grid-cols-[1fr_460px]" : "space-y-6"}>
-          {/* ---------------- LEFT COLUMN ---------------- */}
-          <div className="space-y-6">
-            {/* Header */}
-            <div className={`${cardBase} p-4`}>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className={`${cardBase} p-4`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
@@ -1282,118 +1280,118 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </div>
               </div>
+          </div>
+
+          <div className="mb-6">
+          </div>
+
+          {/* Vehicle & Customer */}
+          <div className={`${cardBase} p-4`}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-foreground sm:text-base">
+                Vehicle &amp; Customer
+              </h2>
+              <button
+                type="button"
+                className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-expanded={showDetails}
+              >
+                {showDetails ? "Hide details" : "Show details"}
+              </button>
             </div>
 
-            <div className="mb-6">
-            </div>
-
-            {/* Vehicle & Customer */}
-            <div className={`${cardBase} p-4`}>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                  Vehicle &amp; Customer
-                </h2>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                  onClick={() => setShowDetails((v) => !v)}
-                  aria-expanded={showDetails}
-                >
-                  {showDetails ? "Hide details" : "Show details"}
-                </button>
-              </div>
-
-              {showDetails && (
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  {/* Vehicle */}
-                  <div className={`${cardInner} p-3`}>
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Vehicle
-                    </h3>
-                    {vehicle ? (
-                      <>
-                        <p className="text-sm font-medium text-foreground">
-                          {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
-                          {vehicle.model ?? ""}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
-                          <br />
-                          Plate:{" "}
-                          {vehicle.license_plate ?? (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                          <br />
-                          Mileage:{" "}
-                          {vehicle.mileage
-                            ? vehicle.mileage
-                            : wo?.odometer_km != null
-                              ? `${wo.odometer_km} km`
-                              : "—"}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
-                    )}
-                  </div>
-
-                  {/* Customer */}
-                  <div className={`${cardInner} p-3`}>
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Customer
-                    </h3>
-                    {customer ? (
-                      <>
-                        <p className="text-sm font-medium text-foreground">
-                          {[customer.first_name ?? "", customer.last_name ?? ""]
-                            .filter(Boolean)
-                            .join(" ") || "—"}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {customer.phone ?? "—"}{" "}
-                          {customer.email ? (
-                            <>
-                              <span className="mx-1 text-muted-foreground">•</span>
-                              {customer.email}
-                            </>
-                          ) : null}
-                        </p>
-                        {customer.id && (
-                          <Link
-                            href={`/customers/${customer.id}`}
-                            className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                            title="Open customer profile"
-                          >
-                            View customer profile →
-                          </Link>
+            {showDetails && (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                {/* Vehicle */}
+                <div className={`${cardInner} p-3`}>
+                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Vehicle
+                  </h3>
+                  {vehicle ? (
+                    <>
+                      <p className="text-sm font-medium text-foreground">
+                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+                        {vehicle.model ?? ""}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
+                        <br />
+                        Plate:{" "}
+                        {vehicle.license_plate ?? (
+                          <span className="text-muted-foreground">—</span>
                         )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No customer linked yet.</p>
-                    )}
-                  </div>
+                        <br />
+                        Mileage:{" "}
+                        {vehicle.mileage
+                          ? vehicle.mileage
+                          : wo?.odometer_km != null
+                            ? `${wo.odometer_km} km`
+                            : "—"}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Awaiting Customer Approval */}
-            <div
-              className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
-              onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
-              role={hasAnyApprovalItems ? "button" : undefined}
-              tabIndex={hasAnyApprovalItems ? 0 : undefined}
-              onKeyDown={
-                hasAnyApprovalItems
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openQuoteReview();
-                      }
+                {/* Customer */}
+                <div className={`${cardInner} p-3`}>
+                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Customer
+                  </h3>
+                  {customer ? (
+                    <>
+                      <p className="text-sm font-medium text-foreground">
+                        {[customer.first_name ?? "", customer.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ") || "—"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {customer.phone ?? "—"}{" "}
+                        {customer.email ? (
+                          <>
+                            <span className="mx-1 text-muted-foreground">•</span>
+                            {customer.email}
+                          </>
+                        ) : null}
+                      </p>
+                      {customer.id && (
+                        <Link
+                          href={`/customers/${customer.id}`}
+                          className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                          title="Open customer profile"
+                        >
+                          View customer profile →
+                        </Link>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No customer linked yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Awaiting Customer Approval */}
+          <div
+            className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
+            onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+            role={hasAnyApprovalItems ? "button" : undefined}
+            tabIndex={hasAnyApprovalItems ? 0 : undefined}
+            onKeyDown={
+              hasAnyApprovalItems
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openQuoteReview();
                     }
-                  : undefined
-              }
-              aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
-            >
+                  }
+                : undefined
+            }
+            aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
+          >
               {!hasAnyApprovalItems ? (
                 <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
               ) : (
@@ -1526,7 +1524,12 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </>
               )}
-            </div>
+          </div>
+
+          {/* Workspace */}
+          <section className={showPanel ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]" : "space-y-6"}>
+            {/* Left: jobs list/cards */}
+            <div className="space-y-6">
 
             {/* Jobs list */}
             <div className={`${cardBase} p-4 sm:p-5`}>
@@ -1697,23 +1700,24 @@ export default function WorkOrderIdClient(): JSX.Element {
                 inspection controls.
               </p>
             </div>
-
-          </div>
-
-          {/* ---------------- RIGHT COLUMN (PANEL) ---------------- */}
-          {showPanel ? (
-            <div className="sticky top-24 self-start">
-              <FocusedJobModal
-                key={focusedJobId}
-                isOpen={true}
-                onClose={closeFocusedPanel}
-                workOrderLineId={focusedJobId}
-                onChanged={fetchAll}
-                mode="tech"
-                variant="panel"
-              />
             </div>
-          ) : null}
+
+            {/* Right: focused job workspace pane */}
+            {showPanel ? (
+              <div className="self-start">
+                <FocusedJobModal
+                  key={focusedJobId}
+                  isOpen={true}
+                  onClose={closeFocusedPanel}
+                  workOrderLineId={focusedJobId}
+                  onChanged={fetchAll}
+                  mode="tech"
+                  variant="panel"
+                />
+              </div>
+            ) : null}
+          </section>
+
         </div>
       )}
 
