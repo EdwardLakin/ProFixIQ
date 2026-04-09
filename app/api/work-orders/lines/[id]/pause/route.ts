@@ -19,13 +19,31 @@ export async function POST(req: NextRequest) {
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { data: line, error: lineErr } = await supabase
+    .from("work_order_lines")
+    .select("id, status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 400 });
+  if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 });
+
+  const status = String(line.status ?? "").toLowerCase();
+  if (status === "completed" || status === "invoiced" || status === "void") {
+    return NextResponse.json(
+      { error: "Cannot pause a closed line." },
+      { status: 409 },
+    );
+  }
+
   const now = new Date().toISOString();
 
   const { error } = await supabase
     .from("work_order_lines")
     .update({
-      status: "paused",
-      // keep punched_in_at as-is; do NOT set punched_out_at on pause
+      status: "on_hold",
+      hold_reason: "Paused by technician",
+      // keep punched_in_at as-is; do NOT set punched_out_at on hold
     } as Database["public"]["Tables"]["work_order_lines"]["Update"])
     .eq("id", id)
     .single();
