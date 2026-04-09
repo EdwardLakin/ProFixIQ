@@ -73,3 +73,32 @@ export type ShopReelIntegrationRow = {
   created_by: string | null;
   updated_by: string | null;
 };
+
+
+export type OperationalStoryCandidateKind =
+  | "shop_completed_jobs_today"
+  | "top_technician_today"
+  | "fastest_turnaround_today"
+  | "busiest_period_today"
+  | "high_shop_utilization_streak"
+  | "overload_recovery_throughput_improvement";
+
+export type OperationalStoryMetricBasis = Record<string, string | number | boolean | null | undefined>;
+
+export type OperationalStoryCandidate = {
+  candidateId: string;
+  candidateType: OperationalStoryCandidateKind;
+  generatedAt: string;
+  source: {
+    app: "profixiq";
+    shopId: string;
+    timezone: string;
+    windowStart: string;
+    windowEnd: string;
+  };
+  summary: string;
+  metricBasis: OperationalStoryMetricBasis;
+  confidence: number;
+  opportunityScore: number;
+  tags: string[];
+};
