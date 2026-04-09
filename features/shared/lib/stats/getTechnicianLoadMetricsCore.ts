@@ -23,7 +23,13 @@ type PunchLite = Pick<
 
 type LineLite = Pick<
   DB["public"]["Tables"]["work_order_lines"]["Row"],
-  "id" | "shop_id" | "assigned_tech_id" | "punched_in_at" | "punched_out_at"
+  | "id"
+  | "shop_id"
+  | "work_order_id"
+  | "assigned_tech_id"
+  | "punched_in_at"
+  | "punched_out_at"
+  | "labor_time"
 >;
 
 type ShopTimezoneLite = Pick<DB["public"]["Tables"]["shops"]["Row"], "timezone">;
@@ -31,6 +37,28 @@ type ShopTimezoneLite = Pick<DB["public"]["Tables"]["shops"]["Row"], "timezone">
 export type TechnicianIdleBreakdown = {
   availableIdleSeconds: number;
   untrackedSeconds: number;
+};
+
+export type TechnicianCompletedJobVariance = {
+  lineId: string;
+  workOrderId: string | null;
+  completedAtIso: string;
+  expectedSeconds: number;
+  actualActiveSeconds: number;
+  varianceSeconds: number;
+  efficiencyPct: number;
+};
+
+export type TechnicianExpectedActualSummary = {
+  expectedDataAvailable: boolean;
+  eligibleCompletedJobs: number;
+  pairedJobs: number;
+  pairingCoveragePct: number;
+  expectedSecondsTotal: number;
+  actualActiveSecondsTotal: number;
+  varianceSecondsTotal: number;
+  efficiencySignalPct: number | null;
+  efficiencySignalDefensible: boolean;
 };
 
 export type TechnicianLoadMetricRow = {
@@ -44,6 +72,8 @@ export type TechnicianLoadMetricRow = {
   idleBreakdown: TechnicianIdleBreakdown;
   completedJobsToday: number;
   avgJobDurationSeconds: number;
+  completedJobVariance: TechnicianCompletedJobVariance[];
+  expectedActualSummary: TechnicianExpectedActualSummary;
   currentActiveJobs: number;
   utilizationPct: number;
 };
@@ -143,6 +173,11 @@ function computeBreakSecondsForShift(
   return total;
 }
 
+function toPercent(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+
 export async function getTechnicianLoadMetricsWithClient(
   supabase: SupabaseClient<DB>,
   shopId: string,
@@ -197,7 +232,7 @@ export async function getTechnicianLoadMetricsWithClient(
   const [linesRes, shiftsRes] = await Promise.all([
     supabase
       .from("work_order_lines")
-      .select("id, shop_id, assigned_tech_id, punched_in_at, punched_out_at")
+      .select("id, shop_id, work_order_id, assigned_tech_id, punched_in_at, punched_out_at, labor_time")
       .eq("shop_id", shopId)
       .in("assigned_tech_id", techIds)
       .lt("punched_in_at", dayEndIso)
@@ -214,6 +249,7 @@ export async function getTechnicianLoadMetricsWithClient(
   if (linesRes.error) throw linesRes.error;
   if (shiftsRes.error) throw shiftsRes.error;
 
+  const lines = (linesRes.data as LineLite[] | null) ?? [];
   const shifts = (shiftsRes.data as ShiftLite[] | null) ?? [];
   const shiftIds = shifts.map((s) => s.id).filter(Boolean);
 
@@ -245,6 +281,18 @@ export async function getTechnicianLoadMetricsWithClient(
         },
         completedJobsToday: 0,
         avgJobDurationSeconds: 0,
+        completedJobVariance: [],
+        expectedActualSummary: {
+          expectedDataAvailable: false,
+          eligibleCompletedJobs: 0,
+          pairedJobs: 0,
+          pairingCoveragePct: 0,
+          expectedSecondsTotal: 0,
+          actualActiveSecondsTotal: 0,
+          varianceSecondsTotal: 0,
+          efficiencySignalPct: null,
+          efficiencySignalDefensible: false,
+        },
         currentActiveJobs: 0,
         utilizationPct: 0,
       },
@@ -253,7 +301,7 @@ export async function getTechnicianLoadMetricsWithClient(
 
   const durationTotals = new Map<string, { totalSeconds: number; count: number }>();
 
-  for (const line of (linesRes.data as LineLite[] | null) ?? []) {
+  for (const line of lines) {
     const techId = line.assigned_tech_id;
     if (!techId) continue;
     const row = rowsByTech.get(techId);
@@ -334,6 +382,51 @@ export async function getTechnicianLoadMetricsWithClient(
     row.workedSecondsToday = row.shiftSecondsToday;
   }
 
+  for (const line of lines) {
+    const techId = line.assigned_tech_id;
+    if (!techId) continue;
+    const row = rowsByTech.get(techId);
+    if (!row) continue;
+    if (!line.punched_in_at || !line.punched_out_at) continue;
+
+    const outMs = new Date(line.punched_out_at).getTime();
+    const inMs = new Date(line.punched_in_at).getTime();
+    if (!Number.isFinite(inMs) || !Number.isFinite(outMs) || outMs <= inMs) continue;
+    if (outMs < dayStartMs || outMs >= dayEndMs) continue;
+
+    row.expectedActualSummary.eligibleCompletedJobs += 1;
+
+    const expectedSecondsRaw =
+      typeof line.labor_time === "number" && line.labor_time > 0
+        ? Math.round(line.labor_time * 3600)
+        : 0;
+    if (expectedSecondsRaw <= 0) continue;
+
+    row.expectedActualSummary.expectedDataAvailable = true;
+    const actualSeconds = clampOverlapSeconds(
+      line.punched_in_at,
+      line.punched_out_at,
+      dayStartMs,
+      dayEndMs,
+      nowMs,
+    );
+
+    if (actualSeconds <= 0) continue;
+
+    const varianceSeconds = actualSeconds - expectedSecondsRaw;
+    const efficiencyPct = toPercent(expectedSecondsRaw, actualSeconds);
+
+    row.completedJobVariance.push({
+      lineId: line.id,
+      workOrderId: line.work_order_id ?? null,
+      completedAtIso: line.punched_out_at,
+      expectedSeconds: expectedSecondsRaw,
+      actualActiveSeconds: actualSeconds,
+      varianceSeconds,
+      efficiencyPct,
+    });
+  }
+
   for (const row of rowsByTech.values()) {
     const totals = durationTotals.get(row.techId);
     row.avgJobDurationSeconds =
@@ -351,6 +444,30 @@ export async function getTechnicianLoadMetricsWithClient(
               100,
           )
         : 0;
+
+    const pairedJobs = row.completedJobVariance.length;
+    const expectedSecondsTotal = row.completedJobVariance.reduce(
+      (sum, item) => sum + item.expectedSeconds,
+      0,
+    );
+    const actualActiveSecondsTotal = row.completedJobVariance.reduce(
+      (sum, item) => sum + item.actualActiveSeconds,
+      0,
+    );
+    const summary = row.expectedActualSummary;
+
+    summary.pairedJobs = pairedJobs;
+    summary.pairingCoveragePct = toPercent(pairedJobs, summary.eligibleCompletedJobs);
+    summary.expectedSecondsTotal = expectedSecondsTotal;
+    summary.actualActiveSecondsTotal = actualActiveSecondsTotal;
+    summary.varianceSecondsTotal = actualActiveSecondsTotal - expectedSecondsTotal;
+
+    const canComputeEfficiency = expectedSecondsTotal > 0 && actualActiveSecondsTotal > 0;
+    const defensible = canComputeEfficiency && pairedJobs >= 3 && summary.pairingCoveragePct >= 70;
+    summary.efficiencySignalDefensible = defensible;
+    summary.efficiencySignalPct = canComputeEfficiency
+      ? toPercent(expectedSecondsTotal, actualActiveSecondsTotal)
+      : null;
   }
 
   const sortedRows = Array.from(rowsByTech.values()).sort(
