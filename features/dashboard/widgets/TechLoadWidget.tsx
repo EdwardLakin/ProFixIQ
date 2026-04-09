@@ -56,7 +56,7 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
       {loading ? (
         <div className="text-sm text-neutral-300">Loading tech load…</div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
@@ -67,8 +67,8 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Tracked techs" value={String(rows.length)} />
-            <Metric label="Overloaded" value={String(overloaded.length)} tone="warn" />
-            <Metric label="Idle / low load" value={String(underutilized.length)} tone="cool" />
+            <Metric label="Overloaded" value={String(overloaded.length)} tone="accent" />
+            <Metric label="Idle / low load" value={String(underutilized.length)} tone="secondary" />
           </div>
 
           <div className="space-y-2">
@@ -89,10 +89,10 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
                     className={[
                       "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
                       row.efficiencyPct >= 140
-                        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                        ? "border-[color:color-mix(in_srgb,var(--brand-accent)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_16%,transparent)] text-[color:var(--brand-accent)]"
                         : row.clockedHours > 0 && row.efficiencyPct < 70
-                          ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
-                          : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
+                          ? "border-[color:color-mix(in_srgb,var(--brand-secondary)_65%,white_18%)] bg-[color:color-mix(in_srgb,var(--brand-secondary)_68%,black)] text-[color:var(--theme-text-secondary)]"
+                          : "border-[color:color-mix(in_srgb,var(--brand-primary)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_15%,transparent)] text-[color:var(--brand-primary)]",
                     ].join(" ")}
                   >
                     {row.efficiencyPct.toFixed(0)}%
@@ -114,10 +114,14 @@ function Metric({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "warn" | "cool";
+  tone?: "default" | "accent" | "secondary";
 }) {
   const toneClass =
-    tone === "warn" ? "text-amber-300" : tone === "cool" ? "text-sky-300" : "text-white";
+    tone === "accent"
+      ? "text-[color:var(--brand-accent)]"
+      : tone === "secondary"
+        ? "text-[color:var(--theme-text-secondary)]"
+        : "text-[color:var(--brand-primary)]";
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">

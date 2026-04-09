@@ -39,9 +39,9 @@ function MetricTile(props: {
         className={cn(
           "mt-1 text-lg font-semibold",
           tone === "danger"
-            ? "text-rose-300"
+            ? "text-[color:var(--brand-accent)]"
             : tone === "accent"
-              ? "text-[color:var(--accent-copper-light,#fdba74)]"
+              ? "text-[color:var(--brand-primary)]"
               : "text-neutral-100",
         )}
       >
@@ -127,7 +127,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
       rightSlot={
         <Link
           href="/work-orders/board"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/45"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
         >
           Open board →
         </Link>
@@ -138,7 +138,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
           Loading AI pulse…
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-4 py-4 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : (

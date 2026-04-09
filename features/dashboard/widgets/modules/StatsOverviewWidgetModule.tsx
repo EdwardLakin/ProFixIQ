@@ -44,9 +44,9 @@ function isTechRole(role: string | null): boolean {
 }
 
 function metricTone(kind: "appointments" | "workOrders" | "partsRequests"): string {
-  if (kind === "appointments") return "text-sky-300";
-  if (kind === "partsRequests") return "text-amber-300";
-  return "text-emerald-300";
+  if (kind === "appointments") return "text-[color:var(--brand-secondary)]";
+  if (kind === "partsRequests") return "text-[color:var(--brand-accent)]";
+  return "text-[color:var(--brand-primary)]";
 }
 
 function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
@@ -72,7 +72,12 @@ function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
         hint={tech ? "Requests tied to you" : "Open parts activity"}
         tone={metricTone("partsRequests")}
       />
-      <MetricCard label="Role" value={0} hint={context.role ?? "—"} tone="text-white" />
+      <MetricCard
+        label="Role"
+        value={0}
+        hint={context.role ?? "—"}
+        tone="text-[color:var(--theme-text-primary,#ffffff)]"
+      />
     </div>
   );
 }

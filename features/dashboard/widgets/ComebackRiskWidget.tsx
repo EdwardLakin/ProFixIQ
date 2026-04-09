@@ -70,10 +70,10 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
     parsed.risk === null
       ? "border-white/10 bg-white/5 text-neutral-300"
       : parsed.risk <= 20
-        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+        ? "border-[color:color-mix(in_srgb,var(--brand-primary)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_14%,transparent)] text-[color:var(--brand-primary)]"
         : parsed.risk <= 45
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-          : "border-rose-500/40 bg-rose-500/10 text-rose-200";
+          ? "border-[color:color-mix(in_srgb,var(--brand-accent)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_15%,transparent)] text-[color:var(--brand-accent)]"
+          : "border-[color:color-mix(in_srgb,var(--brand-secondary)_68%,white_18%)] bg-[color:color-mix(in_srgb,var(--brand-secondary)_76%,black)] text-[color:var(--theme-text-secondary)]";
 
   return (
     <DashboardWidgetShell
@@ -93,7 +93,7 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
       {loading ? (
         <div className="text-sm text-neutral-300">Loading comeback risk…</div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : (

@@ -101,7 +101,7 @@ export default function BookingsWidget() {
         </div>
         <Link
           href="/dashboard/bookings"
-          className="text-xs font-medium text-[var(--accent-copper-light)] transition hover:text-white"
+          className="text-xs font-medium text-[color:var(--brand-accent)] transition hover:text-[color:var(--theme-text-primary)]"
         >
           Open bookings
         </Link>
@@ -116,13 +116,13 @@ export default function BookingsWidget() {
         </div>
         <div className="rounded-lg border border-white/10 bg-black/30 p-3">
           <div className="text-[11px] text-neutral-400">Pending</div>
-          <div className="mt-1 text-lg font-semibold text-amber-300">
+          <div className="mt-1 text-lg font-semibold text-[color:var(--brand-accent)]">
             {loading ? "…" : pending}
           </div>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/30 p-3">
           <div className="text-[11px] text-neutral-400">Confirmed</div>
-          <div className="mt-1 text-lg font-semibold text-emerald-300">
+          <div className="mt-1 text-lg font-semibold text-[color:var(--brand-primary)]">
             {loading ? "…" : confirmed}
           </div>
         </div>

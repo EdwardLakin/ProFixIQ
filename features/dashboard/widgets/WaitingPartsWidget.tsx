@@ -73,7 +73,7 @@ export default function WaitingPartsWidget({ shopId }: { shopId: string | null }
       {loading ? (
         <div className="text-sm text-neutral-300">Loading parts blockers…</div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
@@ -84,7 +84,7 @@ export default function WaitingPartsWidget({ shopId }: { shopId: string | null }
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricChip label="Blocked jobs" value={String(rows.length)} />
-            <MetricChip label="48h+" value={String(longWait.length)} tone="warn" />
+            <MetricChip label="48h+" value={String(longWait.length)} tone="accent" />
             <MetricChip
               label="Part blockers"
               value={String(rows.reduce((sum, r) => sum + Number(r.parts_blocker_count ?? 0), 0))}
@@ -107,7 +107,7 @@ export default function WaitingPartsWidget({ shopId }: { shopId: string | null }
                   </div>
 
                   <div className="text-right">
-                    <div className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200">
+                    <div className="rounded-full border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--brand-accent)]">
                       {Math.round(hoursInState(row.time_in_stage_seconds))}h
                     </div>
                     <div className="mt-1 text-[10px] text-neutral-500">
@@ -131,12 +131,17 @@ function MetricChip({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "warn";
+  tone?: "default" | "accent";
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
-      <div className={["mt-1 text-lg font-semibold", tone === "warn" ? "text-rose-300" : "text-white"].join(" ")}>
+      <div
+        className={[
+          "mt-1 text-lg font-semibold",
+          tone === "accent" ? "text-[color:var(--brand-accent)]" : "text-[color:var(--brand-primary)]",
+        ].join(" ")}
+      >
         {value}
       </div>
     </div>
