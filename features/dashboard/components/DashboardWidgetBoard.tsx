@@ -240,7 +240,7 @@ export default function DashboardWidgetBoard({
               width={Math.max(width, 320)}
               gridConfig={{
                 cols: DASHBOARD_GRID_COLUMNS,
-                rowHeight: 92,
+                rowHeight: 96,
                 margin: [16, 16],
                 containerPadding: [0, 0],
               }}
@@ -256,8 +256,8 @@ export default function DashboardWidgetBoard({
               onLayoutChange={handleGridLayoutChange}
             >
               {visibleWidgets.map(({ item, widget }) => (
-                <div key={item.id} className="h-full min-h-0 overflow-hidden">
-                  <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+                <div key={item.id} className="h-full min-h-0">
+                  <div className="relative flex h-full min-h-0 flex-col">
                     <button
                       type="button"
                       className="widget-drag-handle absolute right-2 top-2 z-10 cursor-move rounded-md border border-white/15 bg-black/35 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neutral-200"
@@ -269,6 +269,7 @@ export default function DashboardWidgetBoard({
                       title={widget.title}
                       description={widget.description}
                       className="min-h-0"
+                      scrollClassName="pb-3"
                     >
                       {widget.render(context, item)}
                     </DashboardWidgetShell>

@@ -10,7 +10,7 @@ export default function DashboardLayout({
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            "var(--dashboard-shell-bg, radial-gradient(1200px_640px_at_14%_-8%, color-mix(in srgb, #F97316 14%, transparent), transparent 58%), linear-gradient(180deg, #020617 0%, #020617 100%))",
+            "var(--dashboard-shell-bg, radial-gradient(1200px_640px_at_14%_-8%, color-mix(in srgb, #C97A3D 10%, transparent), transparent 62%), radial-gradient(1100px_700px_at_100%_100%, rgba(2,6,23,0.45), transparent 64%), linear-gradient(180deg, #050910 0%, #050910 100%))",
         }}
       />
       <div className="relative z-10">{children}</div>

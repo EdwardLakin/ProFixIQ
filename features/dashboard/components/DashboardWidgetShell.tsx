@@ -15,6 +15,7 @@ type DashboardWidgetShellProps = {
   compact?: boolean;
   className?: string;
   contentClassName?: string;
+  scrollClassName?: string;
 
   editing?: boolean;
   onHide?: () => void;
@@ -30,6 +31,7 @@ export default function DashboardWidgetShell({
   compact = false,
   className,
   contentClassName,
+  scrollClassName,
   editing = false,
   onHide,
 }: DashboardWidgetShellProps) {
@@ -38,7 +40,7 @@ export default function DashboardWidgetShell({
   return (
     <Card
       className={cn(
-        "h-full overflow-hidden",
+        "h-full min-h-0 overflow-hidden",
         compact ? "px-4 py-4" : "px-5 py-5",
         className,
       )}
@@ -89,7 +91,12 @@ export default function DashboardWidgetShell({
         </div>
 
         <div className={cn("mt-4 min-h-0 flex-1 overflow-hidden", contentClassName)}>
-          <div className="pfq-widget-shell h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+          <div
+            className={cn(
+              "pfq-widget-shell h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-1",
+              scrollClassName,
+            )}
+          >
             {children}
           </div>
         </div>
