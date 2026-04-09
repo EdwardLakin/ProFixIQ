@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as
-    | { allowConcurrentJobPunches?: boolean }
+    | { allowConcurrentJobPunches?: boolean; toAwaiting?: boolean }
     | null;
 
   const result = await applyJobPunchTransition({
@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
     technicianId: auth.user.id,
     options: {
       allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
+      resume: {
+        toAwaiting: body?.toAwaiting === true,
+      },
     },
   });
 

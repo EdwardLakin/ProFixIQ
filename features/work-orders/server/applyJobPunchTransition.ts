@@ -15,8 +15,19 @@ type FinishOptions = {
   correction?: string | null;
 };
 
+type PauseOptions = {
+  holdReason?: string | null;
+  notes?: string | null;
+};
+
+type ResumeOptions = {
+  toAwaiting?: boolean;
+};
+
 type TransitionOptions = {
   allowConcurrentJobPunches?: boolean;
+  pause?: PauseOptions;
+  resume?: ResumeOptions;
   finish?: FinishOptions;
 };
 
@@ -85,6 +96,40 @@ export async function applyJobPunchTransition({
   const status = normalizeWorkOrderLineStatus(line.status);
 
   if (action === "start" || action === "resume") {
+    const resumeToAwaiting = action === "resume" && options?.resume?.toAwaiting === true;
+
+    if (resumeToAwaiting) {
+      if (status === "completed" || status === "invoiced") {
+        return err(409, "Cannot release hold on a closed line.");
+      }
+
+      if (!canTransitionWorkOrderLineStatus(status, "awaiting")) {
+        return err(409, getWorkOrderLineTransitionError(status, "awaiting"));
+      }
+
+      const now = new Date().toISOString();
+      const { error: releaseErr } = await supabase
+        .from("work_order_lines")
+        .update({
+          status: "awaiting",
+          hold_reason: null,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", lineId)
+        .single();
+
+      if (releaseErr) return err(400, releaseErr.message);
+
+      await supabase.from("activity_logs").insert({
+        entity_type: "work_order_line",
+        entity_id: lineId,
+        action: "resume",
+        actor_id: technicianId,
+        created_at: now,
+      });
+
+      return { ok: true, payload: { ok: true } };
+    }
+
     const approvalState = String(line.approval_state ?? "").toLowerCase();
     const punchable = Boolean(line.punchable);
 
@@ -218,7 +263,8 @@ export async function applyJobPunchTransition({
       .from("work_order_lines")
       .update({
         status: "on_hold",
-        hold_reason: "Paused by technician",
+        hold_reason: cleanString(options?.pause?.holdReason) ?? "Paused by technician",
+        notes: options?.pause?.notes ?? undefined,
         ...(shouldCloseActivePunch ? { punched_out_at: now } : {}),
       } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", lineId)

@@ -21,6 +21,7 @@ import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModa
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
+import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 
@@ -96,10 +97,6 @@ type WorkflowStatus =
   | "completed"
   | "assigned"
   | "unassigned";
-
-function safeISO(d: Date): string {
-  return d.toISOString();
-}
 
 function canPunch(line: WorkOrderLine | null): boolean {
   if (!line) return false;
@@ -456,27 +453,15 @@ export default function MobileFocusedJob(props: {
 
     setBusy(true);
     try {
-      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        hold_reason: reason || "On hold",
-        status: "on_hold",
-        // keep any existing notes unless overridden
+      await runJobPunchTransition(workOrderLineId, "pause", {
+        holdReason: reason || "On hold",
         notes: notes ?? line.notes ?? null,
-      };
-
-      // If job is actively running, punch off when holding (matches app behavior)
-      if (line.punched_in_at && !line.punched_out_at) {
-        update.punched_out_at = safeISO(new Date());
-      }
-
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update(update)
-        .eq("id", workOrderLineId);
-
-      if (error) return showErr("Apply hold failed", error);
+      });
 
       toast.success("Hold applied");
       await refresh();
+    } catch (error) {
+      showErr("Apply hold failed", error as { message?: string });
     } finally {
       setBusy(false);
     }
@@ -486,19 +471,14 @@ export default function MobileFocusedJob(props: {
     if (busy) return;
     setBusy(true);
     try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          hold_reason: null,
-          // app behavior: return to awaiting (unless you later add a status_before_hold column)
-          status: "awaiting",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId);
-
-      if (error) return showErr("Remove hold failed", error);
+      await runJobPunchTransition(workOrderLineId, "resume", {
+        toAwaiting: true,
+      });
 
       toast.success("Hold removed");
       await refresh();
+    } catch (error) {
+      showErr("Remove hold failed", error as { message?: string });
     } finally {
       setBusy(false);
     }
@@ -973,17 +953,14 @@ export default function MobileFocusedJob(props: {
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
           onSubmit={async (cause: string, correction: string) => {
-            const { error } = await supabase
-              .from("work_order_lines")
-              .update({
+            try {
+              await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
-                punched_out_at: safeISO(new Date()),
-                status: "completed",
-              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-              .eq("id", line.id);
-
-            if (error) return showErr("Complete job failed", error);
+              });
+            } catch (error) {
+              return showErr("Complete job failed", error as { message?: string });
+            }
 
             toast.success("Job completed");
             setOpenComplete(false);

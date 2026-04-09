@@ -20,11 +20,21 @@ export async function POST(req: NextRequest) {
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const body = (await req.json().catch(() => null)) as
+    | { holdReason?: string; notes?: string | null }
+    | null;
+
   const result = await applyJobPunchTransition({
     supabase,
     lineId: id,
     action: "pause",
     technicianId: auth.user.id,
+    options: {
+      pause: {
+        holdReason: body?.holdReason,
+        notes: body?.notes ?? null,
+      },
+    },
   });
 
   if (!result.ok) {
