@@ -8,10 +8,9 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 import { sendUserInviteEmail } from "@/features/email/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
-
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 const INVITE_STATUS = {
   pending: "pending",
@@ -75,8 +74,8 @@ export async function POST(req: NextRequest, context: unknown) {
       );
     }
 
-    const callerRole = String(me.role ?? "").toLowerCase();
-    if (!ADMIN_ROLES.has(callerRole)) {
+    const actor = getActorCapabilities({ role: me.role });
+    if (!actor.canManageUsers) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

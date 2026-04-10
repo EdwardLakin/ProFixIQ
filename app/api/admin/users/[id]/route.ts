@@ -5,10 +5,9 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
-
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 type CallerProfile = Pick<
   DB["public"]["Tables"]["profiles"]["Row"],
@@ -50,8 +49,8 @@ async function getCaller(): Promise<CallerResult> {
     };
   }
 
-  const role = String(me.role ?? "").toLowerCase();
-  if (!ADMIN_ROLES.has(role)) {
+  const actor = getActorCapabilities({ role: me.role });
+  if (!actor.canManageUsers) {
     return {
       ok: false,
       res: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

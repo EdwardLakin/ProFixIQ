@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -28,7 +29,8 @@ async function verifyOwnerPin(req: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || profile.role !== "owner") return { ok: false };
+  const actor = getActorCapabilities({ role: profile?.role });
+  if (!profile || actor.canonicalRole !== "owner") return { ok: false };
 
   if (!profile.owner_pin_hash || pin !== profile.owner_pin_hash) {
     return { ok: false };

@@ -4,7 +4,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { canSendQuotes } from "@/features/shared/lib/rbac";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -166,7 +166,8 @@ export async function POST(req: Request) {
     if (meErr || !me) {
       return NextResponse.json({ ok: false, trace, error: "Unable to load actor profile" }, { status: 403 });
     }
-    if (!canSendQuotes(me.role)) {
+    const actorCaps = getActorCapabilities({ role: me.role });
+    if (!actorCaps.isKnownRole || !actorCaps.canAuthorizeQuotes) {
       return NextResponse.json({ ok: false, trace, error: "Forbidden" }, { status: 403 });
     }
     if (!me.shop_id || me.shop_id !== wo.shop_id) {

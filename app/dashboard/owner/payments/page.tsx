@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -15,8 +16,6 @@ type ProfileScope = {
 };
 
 type PaymentRow = DB["public"]["Tables"]["payments"]["Row"];
-
-const ADMIN_ROLES = new Set(["owner", "admin", "manager"]);
 
 function fmtMoney(cents: number | null, currency: string | null): string {
   const c = typeof cents === "number" ? cents : 0;
@@ -85,10 +84,10 @@ export default function OwnerPaymentsPage() {
         return;
       }
 
-      const role = String(me?.role ?? "").toLowerCase();
       const sId = me?.shop_id ?? null;
+      const actor = getActorCapabilities({ role: me?.role });
 
-      if (!sId || !ADMIN_ROLES.has(role)) {
+      if (!sId || !actor.canManageBilling) {
         if (!cancelled) {
           setForbidden("Forbidden.");
           setLoading(false);

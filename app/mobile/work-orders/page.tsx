@@ -5,7 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -146,8 +146,8 @@ export default function MobileWorkOrdersListPage() {
       .eq("id", auth.user.id)
       .maybeSingle();
 
-    const role = canonicalizeRole(me?.role ?? null);
-    const canView = ["owner", "admin", "manager", "advisor", "service", "mechanic", "lead_hand"].includes(role);
+    const actor = getActorCapabilities({ role: me?.role ?? null });
+    const canView = actor.canManageWorkOrders;
     if (!canView) {
       setForbidden(true);
       setRows([]);

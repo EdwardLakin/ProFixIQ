@@ -6,7 +6,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
@@ -123,7 +123,8 @@ export async function POST(req: Request) {
     if (meErr || !me) {
       return NextResponse.json({ error: "Unable to load actor profile" }, { status: 403 });
     }
-    if (!canMutateWorkOrders(me.role)) {
+    const actorCaps = getActorCapabilities({ role: me.role });
+    if (!actorCaps.isKnownRole || !actorCaps.canManageWorkOrders) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     if (!me.shop_id || me.shop_id !== (line as { shop_id?: string | null }).shop_id) {

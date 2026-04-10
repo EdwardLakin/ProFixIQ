@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -23,6 +24,14 @@ export async function POST(req: NextRequest) {
     }
 
     const serviceRequestId = body.serviceRequestId;
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // Load the service request (fleet-scoped row; RLS enforces membership)
     const { data: sr, error: srError } = await supabase
@@ -47,6 +56,25 @@ export async function POST(req: NextRequest) {
         { error: "Service request not found." },
         { status: 404 },
       );
+    }
+
+    const [{ data: profile }, { data: fleetMember }] = await Promise.all([
+      supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
+      supabase
+        .from("fleet_members")
+        .select("role")
+        .eq("fleet_id", sr.fleet_id)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
+    const actorCaps = getActorCapabilities({
+      role: profile?.role,
+      fleetRole: fleetMember?.role,
+    });
+
+    if (!actorCaps.canManageFleetApprovals) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (sr.work_order_id) {

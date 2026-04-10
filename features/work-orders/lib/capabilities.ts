@@ -1,11 +1,12 @@
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+
 export function capabilities(role: string | null) {
-  const r = (role || "").toLowerCase();
-  const staff = ["owner", "admin", "manager", "advisor", "tech"];
+  const actor = getActorCapabilities({ role });
   return {
-    canView: true,
-    canEditWoMeta: ["owner", "admin", "manager", "advisor"].includes(r),
-    canTechOps: ["tech", "manager"].includes(r),
-    canAddJobs: staff.includes(r),
-    canGenerateQuote: staff.includes(r),
+    canView: actor.canManageWorkOrders || actor.canViewShopWideData,
+    canEditWoMeta: actor.canManageWorkOrders,
+    canTechOps: actor.canRunInspections,
+    canAddJobs: actor.canManageWorkOrders,
+    canGenerateQuote: actor.canAuthorizeQuotes,
   } as const;
 }

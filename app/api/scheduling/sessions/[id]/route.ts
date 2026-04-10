@@ -4,20 +4,15 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
-
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
 type Caller = {
   id: string;
   role: string | null;
   shop_id: string | null;
 };
-
-function safeRole(v: unknown): string {
-  return String(v ?? "").toLowerCase();
-}
 
 async function authz() {
   const supabase = createServerSupabaseRoute();
@@ -47,7 +42,8 @@ async function authz() {
     };
   }
 
-  const isAdmin = ADMIN_ROLES.has(safeRole(me.role));
+  const actor = getActorCapabilities({ role: me.role });
+  const isAdmin = actor.isKnownRole && actor.canManageScheduling;
   return { ok: true as const, me, isAdmin };
 }
 

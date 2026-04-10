@@ -3,10 +3,9 @@ import { NextResponse } from "next/server";
 import { cookies as nextCookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 const COOKIE_NAME = "pfq_owner_pin_shop";
-
-const ADMIN_ROLES = new Set(["owner", "admin", "manager"]);
 
 // Whitelist fields that can be updated from Settings
 const ALLOWED_FIELDS = new Set([
@@ -97,8 +96,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const role = String(profile.role ?? "").toLowerCase();
-    if (!ADMIN_ROLES.has(role)) {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || !actor.canManageBranding) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
