@@ -2,12 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import type {
   OptimizationActionType,
   OptimizationApplyPayload,
   OptimizationOpportunity,
 } from "@/features/optimization/types";
+
+type ActionState = "applied" | "dismissed";
+type ActionsApiItem = {
+  opportunityId: string;
+  action: ActionState;
+  type: OptimizationActionType;
+  createdAt: string;
+};
+type OpportunityFilter = "active" | "all" | "applied" | "dismissed";
+
+const ACTIONS_SESSION_CACHE_KEY = "optimization-actions-cache-v1";
 
 function badgeTone(type: OptimizationOpportunity["optimizationType"]): string {
   if (type === "pricing_normalization") return "text-[color:var(--brand-primary)]";
@@ -44,6 +57,82 @@ function parseCurrentPriceFromSource(sourceBasis: string[]): number | null {
   const match = anchor.match(/\$([0-9]+(?:\.[0-9]+)?)/);
   if (!match) return null;
   return toNumber(match[1]);
+}
+
+function formatEstimatedImpact(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "Potential impact detected";
+  }
+
+  const rounded = Math.round(value);
+  return `Estimated impact: +${new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(rounded)}/month`;
+}
+
+function getWhyThisMatters(opportunity: OptimizationOpportunity): string[] {
+  const entries = [...opportunity.sourceBasis];
+  const meta = (opportunity.meta ?? {}) as Record<string, unknown>;
+  const jobsCount =
+    toNumber(meta.jobsAnalyzed) ??
+    toNumber(meta.jobs) ??
+    toNumber(meta.sourceFamilyCount) ??
+    toNumber(meta.flaggedFindings);
+
+  if (jobsCount && jobsCount > 0) {
+    entries.push(`Based on ${Math.round(jobsCount)} jobs from your shop history`);
+  }
+
+  if (opportunity.optimizationType === "pricing_normalization") {
+    entries.push("Price varies significantly across similar jobs");
+  } else if (opportunity.optimizationType === "inspection_coverage_gap") {
+    entries.push("This service is not consistently inspected");
+  } else {
+    entries.push("Common companion services are missing");
+  }
+
+  return entries;
+}
+
+function readActionsCache(shopId: string): Record<string, ActionState> | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(ACTIONS_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { shopId?: string; actions?: Record<string, ActionState> };
+    if (parsed?.shopId !== shopId || !parsed.actions || typeof parsed.actions !== "object") {
+      return null;
+    }
+
+    return parsed.actions;
+  } catch {
+    return null;
+  }
+}
+
+function writeActionsCache(shopId: string, actions: Record<string, ActionState>) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(ACTIONS_SESSION_CACHE_KEY, JSON.stringify({ shopId, actions }));
+  } catch {
+    // intentionally best-effort only
+  }
+}
+
+function toOpportunityPath(type: OptimizationActionType, entityId: string | null): string {
+  if (type === "pricing") {
+    return entityId ? `/menu/item/${entityId}` : "/menu";
+  }
+
+  if (type === "inspection") {
+    return entityId ? `/inspections/templates?templateId=${entityId}` : "/inspections/templates";
+  }
+
+  return entityId ? `/menu_item_suggestions?highlight=${entityId}` : "/menu_item_suggestions";
 }
 
 function getApplyPayload(opportunity: OptimizationOpportunity): OptimizationApplyPayload {
@@ -97,12 +186,14 @@ export default function OptimizationOpportunitiesWidget({
 }: {
   shopId: string | null;
 }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [opportunities, setOpportunities] = useState<OptimizationOpportunity[]>([]);
   const [selected, setSelected] = useState<OptimizationOpportunity | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
-  const [actionsByOpportunityId, setActionsByOpportunityId] = useState<Record<string, "applied" | "dismissed">>({});
+  const [actionsByOpportunityId, setActionsByOpportunityId] = useState<Record<string, ActionState>>({});
+  const [filter, setFilter] = useState<OpportunityFilter>("active");
 
   useEffect(() => {
     if (!shopId) return;
@@ -113,22 +204,55 @@ export default function OptimizationOpportunitiesWidget({
       setError(null);
 
       try {
-        const response = await fetch("/api/optimization/opportunities?limit=6", {
-          method: "GET",
-          cache: "no-store",
-        });
+        const cachedActions = readActionsCache(shopId);
+        if (cachedActions && !cancelled) {
+          setActionsByOpportunityId(cachedActions);
+        }
 
-        const payload = (await response.json().catch(() => null)) as {
+        const [opportunitiesResponse, actionsResponse] = await Promise.all([
+          fetch("/api/optimization/opportunities?limit=6", {
+            method: "GET",
+            cache: "no-store",
+          }),
+          fetch("/api/optimization/actions", {
+            method: "GET",
+            cache: "no-store",
+          }),
+        ]);
+
+        const opportunitiesPayload = (await opportunitiesResponse.json().catch(() => null)) as {
           opportunities?: OptimizationOpportunity[];
           error?: string;
         } | null;
 
-        if (!response.ok) {
-          throw new Error(payload?.error || "Failed to load optimization opportunities");
+        if (!opportunitiesResponse.ok) {
+          throw new Error(opportunitiesPayload?.error || "Failed to load optimization opportunities");
         }
 
+        const actionsPayload = (await actionsResponse.json().catch(() => null)) as
+          | ActionsApiItem[]
+          | { error?: string }
+          | null;
+
+        if (!actionsResponse.ok) {
+          throw new Error(
+            (actionsPayload && !Array.isArray(actionsPayload) ? actionsPayload.error : null) ||
+              "Failed to load optimization action history",
+          );
+        }
+
+        const hydratedActions = (Array.isArray(actionsPayload) ? actionsPayload : []).reduce<
+          Record<string, ActionState>
+        >((acc, action) => {
+          if (!action.opportunityId) return acc;
+          acc[action.opportunityId] = action.action;
+          return acc;
+        }, {});
+
         if (!cancelled) {
-          setOpportunities(payload?.opportunities ?? []);
+          setOpportunities(opportunitiesPayload?.opportunities ?? []);
+          setActionsByOpportunityId(hydratedActions);
+          writeActionsCache(shopId, hydratedActions);
         }
       } catch (e) {
         if (!cancelled) {
@@ -144,7 +268,30 @@ export default function OptimizationOpportunitiesWidget({
     };
   }, [shopId]);
 
-  const top = useMemo(() => opportunities.slice(0, 4), [opportunities]);
+  const visibleOpportunities = useMemo(() => {
+    const enriched = opportunities.map((opportunity) => ({
+      opportunity,
+      actionState: actionsByOpportunityId[opportunity.id],
+    }));
+
+    const filtered = enriched.filter(({ actionState }) => {
+      if (filter === "all") return true;
+      if (filter === "active") return !actionState;
+      if (filter === "applied") return actionState === "applied";
+      return actionState === "dismissed";
+    });
+
+    return filtered.slice(0, 4);
+  }, [actionsByOpportunityId, filter, opportunities]);
+
+  const hasOnlyCompleted = useMemo(() => {
+    if (opportunities.length === 0) return false;
+
+    return opportunities.every((opportunity) => {
+      const action = actionsByOpportunityId[opportunity.id];
+      return action === "applied" || action === "dismissed";
+    });
+  }, [actionsByOpportunityId, opportunities]);
 
   async function dismissOpportunity(opportunity: OptimizationOpportunity) {
     setSubmittingId(opportunity.id);
@@ -164,9 +311,15 @@ export default function OptimizationOpportunitiesWidget({
         throw new Error(payload?.error ?? "Failed to dismiss opportunity");
       }
 
-      setActionsByOpportunityId((prev) => ({ ...prev, [opportunity.id]: "dismissed" }));
+      setActionsByOpportunityId((prev) => {
+        const next = { ...prev, [opportunity.id]: "dismissed" as const };
+        if (shopId) writeActionsCache(shopId, next);
+        return next;
+      });
+      toast.success("Opportunity dismissed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to dismiss opportunity");
+      toast.error(e instanceof Error ? e.message : "Failed to dismiss opportunity");
     } finally {
       setSubmittingId(null);
     }
@@ -187,15 +340,45 @@ export default function OptimizationOpportunitiesWidget({
         }),
       });
 
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            success?: boolean;
+            type?: OptimizationActionType;
+            entityId?: string | null;
+            message?: string;
+            error?: string;
+          }
+        | null;
+      if (!response.ok || !payload?.success || !payload.type) {
         throw new Error(payload?.error ?? "Failed to apply opportunity");
       }
 
-      setActionsByOpportunityId((prev) => ({ ...prev, [opportunity.id]: "applied" }));
+      setActionsByOpportunityId((prev) => {
+        const next = { ...prev, [opportunity.id]: "applied" as const };
+        if (shopId) writeActionsCache(shopId, next);
+        return next;
+      });
       setSelected(null);
+
+      const destination = toOpportunityPath(payload.type, payload.entityId ?? null);
+      const actionLabel =
+        payload.type === "pricing"
+          ? "View menu item"
+          : payload.type === "inspection"
+            ? "View inspection template"
+            : "View suggestion";
+
+      toast.success("Change applied successfully", {
+        description: payload.message,
+        action: {
+          label: actionLabel,
+          onClick: () => router.push(destination),
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to apply opportunity");
+      const message = e instanceof Error ? e.message : "Failed to apply opportunity";
+      setError(message);
+      toast.error(message);
     } finally {
       setSubmittingId(null);
     }
@@ -224,7 +407,7 @@ export default function OptimizationOpportunitiesWidget({
           <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-4 py-4 text-sm text-[color:var(--brand-accent)]">
             {error}
           </div>
-        ) : top.length === 0 ? (
+        ) : opportunities.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
             No high-signal opportunities right now. Keep capturing clean line, labor, and inspection data.
           </div>
@@ -234,41 +417,105 @@ export default function OptimizationOpportunitiesWidget({
               Suggestions are advisory only. Confirm with your team before changing menu pricing or inspection templates.
             </div>
 
-            {top.map((opportunity) => {
-              const actionState = actionsByOpportunityId[opportunity.id];
-              const meta = (opportunity.meta ?? {}) as Record<string, unknown>;
-              const jobsAnalyzed =
-                toNumber(meta.jobsAnalyzed) ??
-                toNumber(meta.jobs) ??
-                toNumber(meta.sourceFamilyCount) ??
-                toNumber(meta.flaggedFindings);
+            <div className="flex flex-wrap items-center gap-1.5">
+              {([
+                ["active", "Active"],
+                ["all", "All"],
+                ["applied", "Applied"],
+                ["dismissed", "Dismissed"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFilter(value)}
+                  className={[
+                    "rounded-full border px-2.5 py-1 text-[11px] transition",
+                    filter === value
+                      ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_24%,transparent)] text-[color:var(--brand-primary)]"
+                      : "border-white/10 bg-black/20 text-neutral-300 hover:border-white/20",
+                  ].join(" ")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {visibleOpportunities.length === 0 && hasOnlyCompleted && filter === "active" ? (
+              <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-neutral-200">
+                <div className="font-semibold text-[color:var(--brand-primary)]">You&apos;re fully optimized (for now)</div>
+                <div className="mt-1 text-xs text-neutral-300">
+                  We&apos;ll surface new opportunities as your shop data evolves.
+                </div>
+              </div>
+            ) : visibleOpportunities.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
+                No opportunities in this filter right now.
+              </div>
+            ) : null}
+
+            {visibleOpportunities.map(({ opportunity, actionState }) => {
+              const isApplied = actionState === "applied";
+              const isDismissed = actionState === "dismissed";
+              const whyThisMatters = getWhyThisMatters(opportunity);
 
               return (
                 <div
                   key={opportunity.id}
-                  className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3"
+                  className={[
+                    "rounded-2xl px-4 py-3",
+                    isApplied
+                      ? "border border-emerald-500/35 bg-[color:color-mix(in_srgb,rgba(16,185,129,0.18)_55%,black)]"
+                      : isDismissed
+                        ? "border border-white/8 bg-black/15"
+                        : "border border-white/10 bg-black/25",
+                  ].join(" ")}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className={["text-[11px] uppercase tracking-[0.15em]", badgeTone(opportunity.optimizationType)].join(" ")}>
                       {typeLabel(opportunity.optimizationType)} · {Math.round(opportunity.confidence * 100)}% confidence
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
-                      {opportunity.impactLevel} impact
+                    <div className="flex items-center gap-2">
+                      {isApplied ? (
+                        <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                          Applied
+                        </span>
+                      ) : null}
+                      {isDismissed ? (
+                        <span className="rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                          Dismissed
+                        </span>
+                      ) : null}
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                        {opportunity.impactLevel} impact
+                      </div>
                     </div>
                   </div>
 
                   <div className="mt-1 text-sm font-semibold text-neutral-100">{opportunity.title}</div>
-                  <div className="mt-1 text-xs text-neutral-300">{opportunity.summary}</div>
-                  <div className="mt-2 text-[11px] text-neutral-400">Suggested action: {opportunity.suggestedAction}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                    <span className="rounded-full border border-white/10 px-2 py-0.5">
-                      {confidenceLabel(opportunity.confidence)}
-                    </span>
-                    {typeof opportunity.estimatedValue === "number" ? (
-                      <span>Est. value ${opportunity.estimatedValue.toFixed(2)}</span>
-                    ) : null}
-                    {jobsAnalyzed ? <span>Based on {jobsAnalyzed} jobs</span> : null}
-                  </div>
+
+                  {!isDismissed ? (
+                    <>
+                      <div className="mt-1 text-xs text-neutral-300">{opportunity.summary}</div>
+                      <div className="mt-2 text-[11px] text-neutral-400">Suggested action: {opportunity.suggestedAction}</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                        <span className="rounded-full border border-white/10 px-2 py-0.5">
+                          {confidenceLabel(opportunity.confidence)}
+                        </span>
+                        <span>{formatEstimatedImpact(opportunity.estimatedValue)}</span>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5 text-[11px] text-neutral-300">
+                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters</div>
+                        <ul className="mt-1.5 space-y-1">
+                          {whyThisMatters.slice(0, 3).map((item) => (
+                            <li key={item}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-xs text-neutral-400">Hidden from active recommendations.</div>
+                  )}
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
@@ -277,15 +524,15 @@ export default function OptimizationOpportunitiesWidget({
                       disabled={Boolean(actionState) || submittingId === opportunity.id}
                       className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {actionState === "applied" ? "Applied" : "Apply"}
+                      {isApplied ? "Applied" : "Apply"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => dismissOpportunity(opportunity)}
+                      onClick={() => void dismissOpportunity(opportunity)}
                       disabled={Boolean(actionState) || submittingId === opportunity.id}
                       className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {actionState === "dismissed" ? "Dismissed" : "Dismiss"}
+                      {isDismissed ? "Dismissed" : "Dismiss"}
                     </button>
                     <button
                       type="button"
@@ -309,9 +556,17 @@ export default function OptimizationOpportunitiesWidget({
             <h3 className="mt-1 text-lg font-semibold">{selected.title}</h3>
             <p className="mt-2 text-sm text-neutral-300">{selected.summary}</p>
             <div className="mt-3 space-y-1 text-xs text-neutral-400">
-              <div>Why: {selected.sourceBasis.join(" · ")}</div>
               <div>Confidence: {Math.round(selected.confidence * 100)}% ({confidenceLabel(selected.confidence)})</div>
-              {typeof selected.estimatedValue === "number" ? <div>Estimated value: ${selected.estimatedValue.toFixed(2)}</div> : null}
+              <div>{formatEstimatedImpact(selected.estimatedValue)}</div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
+              <div className="font-semibold uppercase tracking-[0.12em] text-neutral-100">Why this matters</div>
+              <ul className="mt-1.5 space-y-1">
+                {getWhyThisMatters(selected).map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
@@ -364,10 +619,10 @@ export default function OptimizationOpportunitiesWidget({
               <button
                 type="button"
                 onClick={() => void confirmApply(selected)}
-                disabled={submittingId === selected.id}
+                disabled={submittingId === selected.id || Boolean(actionsByOpportunityId[selected.id])}
                 className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-2 text-xs font-semibold text-black disabled:opacity-40"
               >
-                Confirm Apply
+                {actionsByOpportunityId[selected.id] === "applied" ? "Applied" : "Confirm Apply"}
               </button>
             </div>
           </div>
