@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useDailySummary } from "@/features/agent/hooks/useDailySummary";
 
 function levelClasses(level: string): string {
-  if (level === "urgent") return "border-red-500/30 bg-red-500/10 text-red-200";
+  if (level === "urgent" || level === "critical") return "border-red-500/30 bg-red-500/10 text-red-200";
   if (level === "warning") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   return "border-sky-500/30 bg-sky-500/10 text-sky-200";
 }

@@ -132,7 +132,11 @@ function topUrgentAlerts(
       hours: parseHoursFromMessage(item.message),
       workOrderLabel: extractWorkOrderLabel(item),
       levelRank:
-        item.level === "urgent" ? 3 : item.level === "warning" ? 2 : 1,
+        item.level === "urgent" || item.level === "critical"
+          ? 3
+          : item.level === "warning"
+            ? 2
+            : 1,
     }))
     .sort((a, b) => {
       if (b.levelRank !== a.levelRank) return b.levelRank - a.levelRank;
@@ -223,6 +227,18 @@ function buildOwnerSummary(params: {
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
     breakdown.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
   }
+  if ((counts.optimization_pricing_normalization ?? 0) > 0) {
+    breakdown.push(`${counts.optimization_pricing_normalization} pricing standardization opportunities`);
+  }
+  if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
+    breakdown.push(`${counts.optimization_inspection_coverage_gap} inspection coverage opportunities`);
+  }
+  if ((counts.optimization_missed_revenue ?? 0) > 0) {
+    breakdown.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
+  }
+  if ((counts.optimization_review_queued_suggestions ?? 0) > 0) {
+    breakdown.push(`${counts.optimization_review_queued_suggestions} queued ShopBoost review reminders`);
+  }
 
   if (breakdown.length > 0) {
     lines.push("");
@@ -283,6 +299,15 @@ function buildAdvisorSummary(params: {
   }
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
     parts.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
+  }
+  if ((counts.optimization_pricing_normalization ?? 0) > 0) {
+    parts.push(`${counts.optimization_pricing_normalization} pricing optimization actions`);
+  }
+  if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
+    parts.push(`${counts.optimization_inspection_coverage_gap} inspection optimization actions`);
+  }
+  if ((counts.optimization_missed_revenue ?? 0) > 0) {
+    parts.push(`${counts.optimization_missed_revenue} missed-revenue actions`);
   }
 
   const lines: string[] = [];
@@ -349,6 +374,15 @@ function buildManagerSummary(params: {
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
     items.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
   }
+  if ((counts.optimization_pricing_normalization ?? 0) > 0) {
+    items.push(`${counts.optimization_pricing_normalization} pricing optimization opportunities`);
+  }
+  if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
+    items.push(`${counts.optimization_inspection_coverage_gap} inspection optimization opportunities`);
+  }
+  if ((counts.optimization_missed_revenue ?? 0) > 0) {
+    items.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
+  }
 
   if (items.length > 0) {
     lines.push("");
@@ -389,6 +423,9 @@ function buildTechSummary(params: {
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
     items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
   }
+  if ((counts.optimization_review_queued_suggestions ?? 0) > 0) {
+    items.push(`${counts.optimization_review_queued_suggestions} queued suggestions pending advisor review`);
+  }
 
   if (items.length > 0) {
     lines.push("");
@@ -420,6 +457,9 @@ function buildFleetSummary(params: {
   }
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
     items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+  }
+  if ((counts.optimization_missed_revenue ?? 0) > 0) {
+    items.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
   }
 
   if (items.length > 0) {
@@ -534,6 +574,12 @@ export async function getRoleDailySummary(params: {
         techOverloaded: notificationCounts.tech_overloaded ?? 0,
         idleCapacity: notificationCounts.tech_underutilized_capacity ?? 0,
         throughputIssues: notificationCounts.shop_throughput_below_capacity ?? 0,
+      },
+      optimizationSignals: {
+        pricing: notificationCounts.optimization_pricing_normalization ?? 0,
+        inspectionCoverage: notificationCounts.optimization_inspection_coverage_gap ?? 0,
+        missedRevenue: notificationCounts.optimization_missed_revenue ?? 0,
+        queuedSuggestions: notificationCounts.optimization_review_queued_suggestions ?? 0,
       },
       bookingsSummary: bookings.summary,
       stalledSummary: stalled.summary,

@@ -1,6 +1,8 @@
 import { getServerSupabase } from "./supabase";
 import { FLOW_HEALTH_THRESHOLDS, ageHours } from "./flowHealth";
 import { getTechnicianLoadMetricsWithClient } from "@shared/lib/stats/getTechnicianLoadMetricsCore";
+import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
+import type { OptimizationOpportunity } from "@/features/optimization/types";
 
 export type OpsNotificationLevel = "info" | "warning" | "urgent";
 
@@ -15,7 +17,11 @@ export type OpsNotificationCode =
   | "shop_overloaded"
   | "tech_underutilized_capacity"
   | "active_job_running_too_long"
-  | "shop_throughput_below_capacity";
+  | "shop_throughput_below_capacity"
+  | "optimization_pricing_normalization"
+  | "optimization_inspection_coverage_gap"
+  | "optimization_missed_revenue"
+  | "optimization_review_queued_suggestions";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
@@ -91,6 +97,32 @@ function isInvoiceReadyToSend(status: string | null | undefined): boolean {
     normalized === "completed" ||
     normalized === "invoiced"
   );
+}
+
+function optimizationHref(opportunity: OptimizationOpportunity): string {
+  if (opportunity.type === "pricing_normalization") {
+    return opportunity.targetRefs?.menuItemId
+      ? `/menu/item/${opportunity.targetRefs.menuItemId}`
+      : "/dashboard";
+  }
+  if (opportunity.type === "inspection_coverage_gap") {
+    return opportunity.targetRefs?.inspectionTemplateId
+      ? `/inspections/templates?templateId=${encodeURIComponent(opportunity.targetRefs.inspectionTemplateId)}`
+      : "/inspection_template_suggestions";
+  }
+  return "/menu_item_suggestions";
+}
+
+function toOptimizationCode(
+  type: OptimizationOpportunity["type"],
+): OpsNotificationCode {
+  if (type === "pricing_normalization") {
+    return "optimization_pricing_normalization";
+  }
+  if (type === "inspection_coverage_gap") {
+    return "optimization_inspection_coverage_gap";
+  }
+  return "optimization_missed_revenue";
 }
 
 export async function getOpsNotifications(
@@ -389,6 +421,65 @@ export async function getOpsNotifications(
       title: "Low throughput vs current shift capacity",
       message: `${shiftedTechs.length} shifted tech(s) have completed ${completedJobs} jobs so far (${completedPerShiftedTech.toFixed(1)} each) while utilization is ${loadMetrics.summary.shopUtilizationPct}%. Check blockers and handoffs.`,
       href: "/dashboard",
+      entityType: "shop",
+      entityId: shopId,
+    });
+  }
+
+  try {
+    const optimization = await buildOptimizationOpportunities({
+      supabase,
+      shopId,
+      lookbackDays: 365,
+      limit: 8,
+    });
+    const opportunities = optimization.groups.flatMap((group) => group.opportunities ?? []);
+    const selected = opportunities
+      .filter(
+        (item) =>
+          item.priorityBand === "critical" ||
+          item.priorityBand === "high" ||
+          (item.priorityBand === "medium" && item.confidence >= 0.72),
+      )
+      .slice(0, 3);
+
+    for (const item of selected) {
+      notifications.push({
+        level: item.priorityBand === "critical" ? "urgent" : "warning",
+        code: toOptimizationCode(item.type),
+        title: item.title,
+        message: item.summary,
+        href: optimizationHref(item),
+        entityType: "optimization_opportunity",
+        entityId: item.id,
+        createdAt: optimization.generatedAt,
+      });
+    }
+  } catch (error) {
+    console.warn("[ops notifications] optimization enrichment skipped", error);
+  }
+
+  const [{ count: menuSuggestionCount }, { count: inspectionSuggestionCount }] =
+    await Promise.all([
+      supabase
+        .from("menu_item_suggestions")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId),
+      supabase
+        .from("inspection_template_suggestions")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId),
+    ]);
+
+  const totalQueuedSuggestions =
+    (menuSuggestionCount ?? 0) + (inspectionSuggestionCount ?? 0);
+  if (totalQueuedSuggestions > 0) {
+    notifications.push({
+      level: totalQueuedSuggestions >= 6 ? "warning" : "info",
+      code: "optimization_review_queued_suggestions",
+      title: "Queued ShopBoost suggestions need review",
+      message: `${menuSuggestionCount ?? 0} service suggestions and ${inspectionSuggestionCount ?? 0} inspection suggestions are waiting for approval.`,
+      href: "/menu_item_suggestions",
       entityType: "shop",
       entityId: shopId,
     });
