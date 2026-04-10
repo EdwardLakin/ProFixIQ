@@ -29,6 +29,10 @@ export type OptimizationOpportunity = {
   priorityBand: "low" | "medium" | "high" | "critical";
   reasoning: string[];
   sourceBasis: string;
+  whyNow?: string;
+  confidenceLabel?: string;
+  impactLabel?: string;
+  relatedIds?: string[];
   suggestedAction?: string;
   targetRefs?: {
     menuItemId?: string;
@@ -53,6 +57,8 @@ export type OptimizationEngineOutput = {
     criticalCount: number;
     highCount: number;
     potentialMonthlyValue: number;
+    lastAnalyzedAt: string;
+    dataFreshness: "fresh" | "stale";
   };
   groups: OptimizationGroup[];
 };

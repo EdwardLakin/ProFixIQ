@@ -22,6 +22,7 @@ type ActionsApiItem = {
 type OpportunityFilter = "active" | "all" | "applied" | "dismissed" | "critical";
 
 const ACTIONS_SESSION_CACHE_KEY = "optimization-actions-cache-v1";
+const OPPORTUNITIES_SESSION_CACHE_KEY = "optimization-opportunities-cache-v1";
 
 function badgeTone(type: OptimizationOpportunity["type"]): string {
   if (type === "pricing_normalization") return "text-[color:var(--brand-primary)]";
@@ -45,6 +46,14 @@ function confidenceLabel(confidence: number): string {
   if (confidence >= 0.85) return "High confidence";
   if (confidence >= 0.6) return "Review recommended";
   return "Low confidence";
+}
+
+function groupLabel(group: OptimizationGroup): string {
+  if (!group.groupKey) return "Service optimization";
+  return group.groupKey
+    .replaceAll("__", " + ")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function priorityBadgeTone(band: OptimizationOpportunity["priorityBand"]): string {
@@ -100,6 +109,60 @@ function readActionsCache(shopId: string): Record<string, ActionState> | null {
     return parsed.actions;
   } catch {
     return null;
+  }
+}
+
+function readOpportunitiesCache(shopId: string): {
+  groups: OptimizationGroup[];
+  summary: {
+    totalOpportunities: number;
+    criticalCount: number;
+    highCount: number;
+    potentialMonthlyValue: number;
+    lastAnalyzedAt: string;
+    dataFreshness: "fresh" | "stale";
+  } | null;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(OPPORTUNITIES_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      shopId?: string;
+      groups?: OptimizationGroup[];
+      summary?: {
+        totalOpportunities: number;
+        criticalCount: number;
+        highCount: number;
+        potentialMonthlyValue: number;
+        lastAnalyzedAt: string;
+        dataFreshness: "fresh" | "stale";
+      };
+    };
+    if (parsed.shopId !== shopId || !Array.isArray(parsed.groups)) return null;
+    return { groups: parsed.groups, summary: parsed.summary ?? null };
+  } catch {
+    return null;
+  }
+}
+
+function writeOpportunitiesCache(
+  shopId: string,
+  groups: OptimizationGroup[],
+  summary: {
+    totalOpportunities: number;
+    criticalCount: number;
+    highCount: number;
+    potentialMonthlyValue: number;
+    lastAnalyzedAt: string;
+    dataFreshness: "fresh" | "stale";
+  } | null,
+) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(OPPORTUNITIES_SESSION_CACHE_KEY, JSON.stringify({ shopId, groups, summary }));
+  } catch {
+    // best effort
   }
 }
 
@@ -183,8 +246,10 @@ export default function OptimizationOpportunitiesWidget({
     criticalCount: number;
     highCount: number;
     potentialMonthlyValue: number;
+    lastAnalyzedAt: string;
+    dataFreshness: "fresh" | "stale";
   } | null>(null);
-  const [opportunities, setOpportunities] = useState<OptimizationOpportunity[]>([]);
+  const [groups, setGroups] = useState<OptimizationGroup[]>([]);
   const [selected, setSelected] = useState<OptimizationOpportunity | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [actionsByOpportunityId, setActionsByOpportunityId] = useState<Record<string, ActionState>>({});
@@ -200,8 +265,14 @@ export default function OptimizationOpportunitiesWidget({
 
       try {
         const cachedActions = readActionsCache(shopId);
+        const cachedOpportunities = readOpportunitiesCache(shopId);
         if (cachedActions && !cancelled) {
           setActionsByOpportunityId(cachedActions);
+        }
+        if (cachedOpportunities && !cancelled) {
+          setGroups(cachedOpportunities.groups);
+          setSummary(cachedOpportunities.summary);
+          setLoading(false);
         }
 
         const [opportunitiesResponse, actionsResponse] = await Promise.all([
@@ -222,6 +293,8 @@ export default function OptimizationOpportunitiesWidget({
             criticalCount: number;
             highCount: number;
             potentialMonthlyValue: number;
+            lastAnalyzedAt: string;
+            dataFreshness: "fresh" | "stale";
           };
           error?: string;
         } | null;
@@ -252,9 +325,10 @@ export default function OptimizationOpportunitiesWidget({
 
         if (!cancelled) {
           setSummary(opportunitiesPayload?.summary ?? null);
-          setOpportunities((opportunitiesPayload?.groups ?? []).flatMap((group) => group.opportunities ?? []));
+          setGroups(opportunitiesPayload?.groups ?? []);
           setActionsByOpportunityId(hydratedActions);
           writeActionsCache(shopId, hydratedActions);
+          writeOpportunitiesCache(shopId, opportunitiesPayload?.groups ?? [], opportunitiesPayload?.summary ?? null);
         }
       } catch (e) {
         if (!cancelled) {
@@ -269,6 +343,8 @@ export default function OptimizationOpportunitiesWidget({
       cancelled = true;
     };
   }, [shopId]);
+
+  const opportunities = useMemo(() => groups.flatMap((group) => group.opportunities ?? []), [groups]);
 
   const visibleOpportunities = useMemo(() => {
     const enriched = opportunities.map((opportunity) => ({
@@ -307,6 +383,13 @@ export default function OptimizationOpportunitiesWidget({
       return action === "applied" || action === "dismissed";
     });
   }, [actionsByOpportunityId, opportunities]);
+
+  const resolvedStats = useMemo(() => {
+    const values = Object.values(actionsByOpportunityId);
+    const applied = values.filter((value) => value === "applied").length;
+    const dismissed = values.filter((value) => value === "dismissed").length;
+    return { applied, resolved: applied + dismissed };
+  }, [actionsByOpportunityId]);
 
   async function dismissOpportunity(opportunity: OptimizationOpportunity) {
     setSubmittingId(opportunity.id);
@@ -423,8 +506,11 @@ export default function OptimizationOpportunitiesWidget({
             {error}
           </div>
         ) : opportunities.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
-            No high-signal opportunities right now. Keep capturing clean line, labor, and inspection data.
+          <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-neutral-200">
+            <div className="font-semibold text-[color:var(--brand-primary)]">Your shop is optimized</div>
+            <div className="mt-1 text-xs text-neutral-300">
+              {resolvedStats.applied} optimizations applied · {resolvedStats.resolved} opportunities resolved
+            </div>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -448,6 +534,9 @@ export default function OptimizationOpportunitiesWidget({
             {summary ? (
               <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-300">
                 {summary.totalOpportunities} opportunities · {summary.criticalCount} critical · {summary.highCount} high · Potential {formatEstimatedImpact(summary.potentialMonthlyValue).replace("Estimated impact: ", "")}
+                <div className="mt-1 text-[10px] text-neutral-500">
+                  Analyzed {new Date(summary.lastAnalyzedAt).toLocaleString()} · Data {summary.dataFreshness}
+                </div>
               </div>
             ) : null}
 
@@ -540,12 +629,25 @@ export default function OptimizationOpportunitiesWidget({
                     <>
                       <div className="mt-1 text-xs text-neutral-300">{opportunity.summary}</div>
                       <div className="mt-2 text-[11px] text-neutral-400">Suggested action: {opportunity.suggestedAction}</div>
+                      {opportunity.whyNow ? (
+                        <div className="mt-1 text-[11px] text-[color:var(--brand-primary)]">Why now: {opportunity.whyNow}</div>
+                      ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
                         <span className="rounded-full border border-white/10 px-2 py-0.5">
-                          {confidenceLabel(opportunity.confidence)}
+                          {opportunity.confidenceLabel ?? confidenceLabel(opportunity.confidence)}
                         </span>
-                        <span>{formatEstimatedImpact(opportunity.estimatedValue)}</span>
+                        <span>{opportunity.impactLabel ?? formatEstimatedImpact(opportunity.estimatedValue)}</span>
                       </div>
+                      {opportunity.relatedIds?.length ? (
+                        <details className="mt-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-[11px] text-neutral-300">
+                          <summary className="cursor-pointer text-neutral-200">Related ({opportunity.relatedIds.length})</summary>
+                          <ul className="mt-1 space-y-1 text-neutral-400">
+                            {opportunity.relatedIds.slice(0, 3).map((relatedId) => (
+                              <li key={relatedId}>• {relatedId}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
 
                       <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5 text-[11px] text-neutral-300">
                         <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters:</div>
@@ -588,6 +690,21 @@ export default function OptimizationOpportunitiesWidget({
                 </div>
               );
             })}
+
+            {groups.length > 0 ? (
+              <div className="grid gap-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+                {groups.map((group) => (
+                  <div key={`${group.type}:${group.groupKey}`} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                    <div className="text-xs font-semibold text-neutral-100">{groupLabel(group)} Optimization</div>
+                    <div className="mt-1 text-[11px] text-neutral-400">
+                      {group.opportunities.length} opportunities ·
+                      {" "}~{formatEstimatedImpact(group.totalEstimatedValue).replace("Estimated impact: ", "")} ·
+                      {" "}Avg confidence {Math.round(group.avgConfidence * 100)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </DashboardWidgetShell>

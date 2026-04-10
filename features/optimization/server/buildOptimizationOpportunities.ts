@@ -20,6 +20,10 @@ type InspectionTemplateSuggestionRow =
   DB["public"]["Tables"]["inspection_template_suggestions"]["Row"];
 type InspectionResultRow = DB["public"]["Tables"]["inspection_results"]["Row"];
 type InspectionResultItemRow = DB["public"]["Tables"]["inspection_result_items"]["Row"];
+type OptimizationActionRow = Pick<
+  DB["public"]["Tables"]["optimization_actions"]["Row"],
+  "opportunity_id" | "action" | "created_at" | "payload"
+>;
 
 type EngineInput = {
   supabase: SupabaseClient<DB>;
@@ -48,6 +52,10 @@ type LineWithOrder = Pick<
 const PRICE_MIN_SAMPLES = 6;
 const LABOR_MIN_SAMPLES = 6;
 const PART_MARKUP_MIN_SAMPLES = 5;
+const DISMISS_SUPPRESSION_DAYS = 14;
+const MATERIAL_CONFIDENCE_DELTA = 0.08;
+const MATERIAL_IMPACT_DELTA = 120;
+const MATERIAL_VOLUME_DELTA_RATIO = 0.2;
 
 function toNum(value: unknown): number | null {
   const n = Number(value);
@@ -140,6 +148,31 @@ function normalizeFrequency(count: number, maxCount: number): number {
   return clamp01(count / maxCount);
 }
 
+function countRecentBaselineFromLines(
+  lines: LineWithOrder[],
+  nowMs: number,
+  recentDays: number,
+  baselineDays: number,
+): { recentCount: number; baselineCount: number; recentWindowDays: number; baselineWindowDays: number } {
+  const recentMs = recentDays * 24 * 60 * 60 * 1000;
+  const baselineMs = baselineDays * 24 * 60 * 60 * 1000;
+  let recentCount = 0;
+  let baselineCount = 0;
+
+  for (const line of lines) {
+    const createdMs = new Date(line.created_at ?? line.work_orders?.created_at ?? 0).getTime();
+    if (!Number.isFinite(createdMs) || createdMs <= 0) continue;
+    const age = nowMs - createdMs;
+    if (age >= 0 && age <= recentMs) {
+      recentCount += 1;
+    } else if (age > recentMs && age <= recentMs + baselineMs) {
+      baselineCount += 1;
+    }
+  }
+
+  return { recentCount, baselineCount, recentWindowDays: recentDays, baselineWindowDays: baselineDays };
+}
+
 function classifyPriorityBand(score: number): OptimizationOpportunity["priorityBand"] {
   if (score >= 0.85) return "critical";
   if (score >= 0.65) return "high";
@@ -171,12 +204,179 @@ function getServiceGroupKey(opportunity: OptimizationOpportunity): string {
   return opportunity.type;
 }
 
+function opportunityClusterKey(opportunity: OptimizationOpportunity): string {
+  const serviceGroup = getServiceGroupKey(opportunity);
+  return `${opportunity.type}:${serviceGroup}`;
+}
+
+function getMetaCount(opportunity: OptimizationOpportunity): number {
+  return getOpportunityJobCount(opportunity);
+}
+
+function computeConfidenceLabel(opportunity: OptimizationOpportunity): string {
+  const jobs = getMetaCount(opportunity);
+  const strength = opportunity.confidence;
+  if (jobs >= 24 && strength >= 0.78) {
+    return `High confidence (based on ${jobs} jobs)`;
+  }
+  if (jobs >= 10 && strength >= 0.55) {
+    return `Moderate confidence (based on ${jobs} jobs)`;
+  }
+  return "Low confidence (early signal)";
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
+}
+
+function computeImpactLabel(opportunity: OptimizationOpportunity): string {
+  if (typeof opportunity.estimatedValue === "number" && opportunity.estimatedValue > 0) {
+    return `+${formatCurrency(opportunity.estimatedValue)}/month potential`;
+  }
+
+  if (opportunity.type === "inspection_coverage_gap") {
+    return "Reduce missed inspections";
+  }
+
+  if (opportunity.type === "pricing_normalization") {
+    return "Improve consistency across technicians";
+  }
+
+  return "Increase captured recommended work";
+}
+
+function computeWhyNow(opportunity: OptimizationOpportunity): string | undefined {
+  const meta = opportunity.meta ?? {};
+  const recent = toNum(meta.recentCount) ?? 0;
+  const baseline = toNum(meta.baselineCount) ?? 0;
+  const recentDays = toNum(meta.recentWindowDays) ?? 0;
+  const baselineDays = toNum(meta.baselineWindowDays) ?? 0;
+  const isNewService = Boolean(meta.newServiceCluster);
+
+  if (isNewService && recent >= 6) {
+    return "Newly introduced service with inconsistent pricing";
+  }
+
+  if (recentDays > 0 && baselineDays > 0 && recent >= 5) {
+    const recentRate = recent / recentDays;
+    const baselineRate = baselineDays > 0 ? baseline / baselineDays : 0;
+    if (baselineRate > 0 && recentRate >= baselineRate * 1.6) {
+      return "Trending upward in last 30 days";
+    }
+    if (baselineRate === 0 && recent >= 6) {
+      return "Recently increased in frequency";
+    }
+  }
+
+  if (recent >= 10 && recentDays <= 10) {
+    return `Repeated ${recent} times this week`;
+  }
+
+  return undefined;
+}
+
+function parseSnapshotFromPayload(payload: unknown): {
+  confidence?: number;
+  estimatedValue?: number;
+  jobs?: number;
+} | null {
+  if (!payload || typeof payload !== "object") return null;
+  const raw = payload as { originalPayload?: unknown };
+  const source = raw.originalPayload && typeof raw.originalPayload === "object" ? (raw.originalPayload as Record<string, unknown>) : null;
+  if (!source) return null;
+  return {
+    confidence: toNum(source.confidence) ?? toNum((source.suggestionData as { confidence?: unknown } | undefined)?.confidence) ?? undefined,
+    estimatedValue:
+      toNum(source.estimatedValue) ??
+      toNum((source.suggestionData as { estimatedValue?: unknown } | undefined)?.estimatedValue) ??
+      undefined,
+    jobs: toNum(source.jobsAnalyzed) ?? undefined,
+  };
+}
+
+function filterOutStaleOpportunities(params: {
+  opportunities: OptimizationOpportunity[];
+  actions: OptimizationActionRow[];
+}): OptimizationOpportunity[] {
+  const parseOpportunityIdCluster = (id: string): string => {
+    if (id.startsWith("pricing:")) {
+      const parts = id.split(":");
+      return `pricing_normalization:${parts[parts.length - 1] ?? id}`;
+    }
+    if (id.startsWith("inspection:")) {
+      return `inspection_coverage_gap:${id.replace(/^inspection:/, "")}`;
+    }
+    if (id.startsWith("revenue:pair:")) {
+      const [, , , a = "", b = ""] = id.split(":");
+      return `missed_revenue:${[a, b].sort().join("__")}`;
+    }
+    if (id.startsWith("revenue:inspection-finding-gaps")) {
+      return "missed_revenue:inspection_findings";
+    }
+    return id;
+  };
+
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - DISMISS_SUPPRESSION_DAYS * 24 * 60 * 60 * 1000;
+  const byCluster = new Map<string, OptimizationActionRow>();
+  const byOpportunity = new Map<string, OptimizationActionRow>();
+
+  for (const action of params.actions) {
+    const cluster = parseOpportunityIdCluster(action.opportunity_id);
+    const existingCluster = byCluster.get(cluster);
+    if (!existingCluster || new Date(action.created_at).getTime() > new Date(existingCluster.created_at).getTime()) {
+      byCluster.set(cluster, action);
+    }
+    const existingId = byOpportunity.get(action.opportunity_id);
+    if (!existingId || new Date(action.created_at).getTime() > new Date(existingId.created_at).getTime()) {
+      byOpportunity.set(action.opportunity_id, action);
+    }
+  }
+
+  return params.opportunities.filter((opportunity) => {
+    const direct = byOpportunity.get(opportunity.id);
+    const clusterAction = byCluster.get(opportunityClusterKey(opportunity));
+    const latest = direct ?? clusterAction;
+    if (!latest) return true;
+
+    if (latest.action === "dismissed") {
+      return new Date(latest.created_at).getTime() < cutoffMs;
+    }
+
+    if (latest.action !== "applied") return true;
+
+    const snapshot = parseSnapshotFromPayload(latest.payload);
+    if (!snapshot) return false;
+    const currentJobs = getMetaCount(opportunity);
+    const currentImpact = opportunity.estimatedValue ?? 0;
+    const baselineJobs = snapshot.jobs ?? 0;
+    const baselineImpact = snapshot.estimatedValue ?? 0;
+    const baselineConfidence = snapshot.confidence ?? opportunity.confidence;
+
+    const confidenceDelta = opportunity.confidence - baselineConfidence;
+    const impactDelta = currentImpact - baselineImpact;
+    const volumeDeltaRatio =
+      baselineJobs > 0 ? (currentJobs - baselineJobs) / baselineJobs : currentJobs > 0 ? 1 : 0;
+
+    return (
+      confidenceDelta >= MATERIAL_CONFIDENCE_DELTA ||
+      impactDelta >= MATERIAL_IMPACT_DELTA ||
+      volumeDeltaRatio >= MATERIAL_VOLUME_DELTA_RATIO
+    );
+  });
+}
+
 function buildPriceNormalizationSignals(params: {
   lines: LineWithOrder[];
   menuById: Map<string, MenuItemSlim>;
   partsCostByLineId: Map<string, number>;
+  nowMs: number;
 }): OptimizationOpportunity[] {
-  const { lines, menuById, partsCostByLineId } = params;
+  const { lines, menuById, partsCostByLineId, nowMs } = params;
   const grouped = new Map<string, LineWithOrder[]>();
 
   for (const line of lines) {
@@ -210,6 +410,7 @@ function buildPriceNormalizationSignals(params: {
 
     const lineSeed = group[0];
     const serviceLabel = labelForGroup(lineSeed, menuById);
+    const trendCounts = countRecentBaselineFromLines(group, nowMs, 30, 30);
     const currentMenu = lineSeed.menu_item_id ? toNum(menuById.get(lineSeed.menu_item_id)?.total_price) : null;
     const confidence = clamp01(0.52 + Math.min(priceValues.length, 26) / 58 + Math.min(variationRatio, 0.5) * 0.4);
 
@@ -252,6 +453,8 @@ function buildPriceNormalizationSignals(params: {
         overpricedOutliers: over,
         currentMenuPrice: currentMenu ?? undefined,
         serviceGroupKey: key,
+        ...trendCounts,
+        newServiceCluster: trendCounts.baselineCount === 0 && trendCounts.recentCount >= 6,
       },
     });
 
@@ -353,8 +556,9 @@ function buildInspectionCoverageSignals(params: {
   menuById: Map<string, MenuItemSlim>;
   inspectionTemplates: Array<Pick<InspectionTemplateRow, "id" | "template_name" | "tags">>;
   templateSuggestions: InspectionTemplateSuggestionRow[];
+  nowMs: number;
 }): OptimizationOpportunity[] {
-  const { lines, menuById, inspectionTemplates, templateSuggestions } = params;
+  const { lines, menuById, inspectionTemplates, templateSuggestions, nowMs } = params;
 
   const familyStats = new Map<
     string,
@@ -364,6 +568,8 @@ function buildInspectionCoverageSignals(params: {
       linkedTemplateCount: number;
       menuRefs: Set<string>;
       sampleLabel: string;
+      recentCount: number;
+      baselineCount: number;
     }
   >();
 
@@ -376,6 +582,8 @@ function buildInspectionCoverageSignals(params: {
       linkedTemplateCount: 0,
       menuRefs: new Set<string>(),
       sampleLabel: sourceLabel,
+      recentCount: 0,
+      baselineCount: 0,
     };
 
     cur.jobs += 1;
@@ -389,6 +597,16 @@ function buildInspectionCoverageSignals(params: {
       cur.menuRefs.add(line.menu_item_id);
       if (menuById.get(line.menu_item_id)?.inspection_template_id) {
         cur.linkedTemplateCount += 1;
+      }
+    }
+
+    const createdMs = new Date(line.created_at ?? line.work_orders?.created_at ?? 0).getTime();
+    if (Number.isFinite(createdMs) && createdMs > 0) {
+      const ageDays = (nowMs - createdMs) / (24 * 60 * 60 * 1000);
+      if (ageDays >= 0 && ageDays <= 30) {
+        cur.recentCount += 1;
+      } else if (ageDays > 30 && ageDays <= 60) {
+        cur.baselineCount += 1;
       }
     }
 
@@ -446,6 +664,10 @@ function buildInspectionCoverageSignals(params: {
         coverageRate: Number(coverageRate.toFixed(2)),
         inspectionLinkedRate: Number(linkedRate.toFixed(2)),
         serviceGroupKey: family,
+        recentCount: stats.recentCount,
+        baselineCount: stats.baselineCount,
+        recentWindowDays: 30,
+        baselineWindowDays: 30,
       },
     });
   }
@@ -458,8 +680,9 @@ function buildMissedRevenueSignals(params: {
   menuById: Map<string, MenuItemSlim>;
   inspectionResults: InspectionResultRow[];
   inspectionResultItems: InspectionResultItemRow[];
+  nowMs: number;
 }): OptimizationOpportunity[] {
-  const { lines, menuById, inspectionResults, inspectionResultItems } = params;
+  const { lines, menuById, inspectionResults, inspectionResultItems, nowMs } = params;
   const linesByWorkOrder = new Map<string, LineWithOrder[]>();
 
   for (const line of lines) {
@@ -499,6 +722,8 @@ function buildMissedRevenueSignals(params: {
     if (missingCount < 4) continue;
 
     const confidence = clamp01(0.42 + confidenceAB * 0.5 + Math.min(missingCount, 30) / 160);
+    const aLines = lines.filter((line) => familyFromText(labelForGroup(line, menuById)) === a);
+    const trendCounts = countRecentBaselineFromLines(aLines, nowMs, 30, 30);
 
     opportunities.push({
       id: `revenue:pair:${a}:${b}`,
@@ -526,6 +751,7 @@ function buildMissedRevenueSignals(params: {
         pairCount: bothCount,
         missingCount,
         serviceGroupKey: [a, b].sort().join("__"),
+        ...trendCounts,
       },
     });
   }
@@ -599,6 +825,10 @@ function buildMissedRevenueSignals(params: {
         flaggedFindings: findingSignals,
         missingCapturedRecommendations: findingMisses,
         serviceGroupKey: "inspection_findings",
+        recentCount: Math.round(findingSignals * 0.5),
+        baselineCount: Math.round(findingSignals * 0.5),
+        recentWindowDays: 30,
+        baselineWindowDays: 30,
       },
     });
   }
@@ -610,9 +840,15 @@ export async function buildOptimizationOpportunities(
   input: EngineInput,
 ): Promise<OptimizationEngineOutput> {
   const { supabase, shopId, lookbackDays = 365, limit = 12 } = input;
+  const nowMs = Date.now();
   const startDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ data: menuItems, error: menuErr }, { data: suggestionRows, error: suggErr }, { data: templateRows, error: templateErr }] =
+  const [
+    { data: menuItems, error: menuErr },
+    { data: suggestionRows, error: suggErr },
+    { data: templateRows, error: templateErr },
+    { data: actionRows, error: actionErr },
+  ] =
     await Promise.all([
       supabase
         .from("menu_items")
@@ -627,11 +863,16 @@ export async function buildOptimizationOpportunities(
         .from("inspection_templates")
         .select("id, template_name, tags, sections, shop_id")
         .eq("shop_id", shopId),
+      supabase
+        .from("optimization_actions")
+        .select("opportunity_id, action, created_at, payload")
+        .eq("shop_id", shopId),
     ]);
 
   if (menuErr) throw menuErr;
   if (suggErr) throw suggErr;
   if (templateErr) throw templateErr;
+  if (actionErr) throw actionErr;
 
   const { data: lines, error: linesErr } = await supabase
     .from("work_order_lines")
@@ -698,6 +939,7 @@ export async function buildOptimizationOpportunities(
     lines: validLines,
     menuById,
     partsCostByLineId,
+    nowMs,
   });
 
   const coverage = buildInspectionCoverageSignals({
@@ -705,6 +947,7 @@ export async function buildOptimizationOpportunities(
     menuById,
     inspectionTemplates: ((templateRows ?? []) as InspectionTemplateRow[]).map((row) => ({ id: row.id, template_name: row.template_name, tags: row.tags })),
     templateSuggestions: (suggestionRows ?? []) as InspectionTemplateSuggestionRow[],
+    nowMs,
   });
 
   const missedRevenue = buildMissedRevenueSignals({
@@ -712,6 +955,7 @@ export async function buildOptimizationOpportunities(
     menuById,
     inspectionResults: (inspectionResults ?? []) as InspectionResultRow[],
     inspectionResultItems: (resultItems ?? []) as InspectionResultItemRow[],
+    nowMs,
   });
 
   const scoredOpportunities = [...pricing, ...coverage, ...missedRevenue];
@@ -728,6 +972,9 @@ export async function buildOptimizationOpportunities(
       priorityScore: Number(priorityScore.toFixed(4)),
       priorityBand: classifyPriorityBand(priorityScore),
       reasoning: opportunity.reasoning.slice(0, 5),
+      whyNow: computeWhyNow(opportunity),
+      confidenceLabel: computeConfidenceLabel(opportunity),
+      impactLabel: computeImpactLabel(opportunity),
     };
   });
 
@@ -753,7 +1000,12 @@ export async function buildOptimizationOpportunities(
     low: 1,
   };
 
-  const opportunities = [...dedupedByCluster.values()]
+  const staleFiltered = filterOutStaleOpportunities({
+    opportunities: [...dedupedByCluster.values()],
+    actions: (actionRows ?? []) as OptimizationActionRow[],
+  });
+
+  const opportunities = staleFiltered
     .sort((a, b) => {
       const bandDelta = bandWeight[b.priorityBand] - bandWeight[a.priorityBand];
       if (bandDelta !== 0) return bandDelta;
@@ -763,7 +1015,29 @@ export async function buildOptimizationOpportunities(
     })
     .slice(0, Math.max(1, limit));
 
-  const grouped = opportunities.reduce<Map<string, OptimizationGroup>>((acc, opportunity) => {
+  const relatedById = new Map<string, string[]>();
+  for (const source of opportunities) {
+    const sourceGroup = getServiceGroupKey(source);
+    const sourceTargets = JSON.stringify(source.targetRefs ?? {});
+    const related = opportunities
+      .filter((candidate) => {
+        if (candidate.id === source.id) return false;
+        if (getServiceGroupKey(candidate) === sourceGroup) return true;
+        return JSON.stringify(candidate.targetRefs ?? {}) === sourceTargets;
+      })
+      .map((item) => item.id)
+      .slice(0, 3);
+    if (related.length > 0) {
+      relatedById.set(source.id, related);
+    }
+  }
+
+  const opportunitiesWithRelated = opportunities.map((opportunity) => ({
+    ...opportunity,
+    relatedIds: relatedById.get(opportunity.id) ?? undefined,
+  }));
+
+  const grouped = opportunitiesWithRelated.reduce<Map<string, OptimizationGroup>>((acc, opportunity) => {
     const serviceGroup = getServiceGroupKey(opportunity);
     const key = `${opportunity.type}:${serviceGroup}`;
     const current = acc.get(key) ?? {
@@ -790,12 +1064,14 @@ export async function buildOptimizationOpportunities(
   }));
 
   const summary = {
-    totalOpportunities: opportunities.length,
-    criticalCount: opportunities.filter((item) => item.priorityBand === "critical").length,
-    highCount: opportunities.filter((item) => item.priorityBand === "high").length,
+    totalOpportunities: opportunitiesWithRelated.length,
+    criticalCount: opportunitiesWithRelated.filter((item) => item.priorityBand === "critical").length,
+    highCount: opportunitiesWithRelated.filter((item) => item.priorityBand === "high").length,
     potentialMonthlyValue: roundMoney(
-      opportunities.reduce((sum, item) => sum + (item.estimatedValue && item.estimatedValue > 0 ? item.estimatedValue : 0), 0),
+      opportunitiesWithRelated.reduce((sum, item) => sum + (item.estimatedValue && item.estimatedValue > 0 ? item.estimatedValue : 0), 0),
     ),
+    lastAnalyzedAt: new Date(nowMs).toISOString(),
+    dataFreshness: validLines.length >= 20 ? ("fresh" as const) : ("stale" as const),
   };
 
   return {
