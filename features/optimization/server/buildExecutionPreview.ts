@@ -26,7 +26,7 @@ export function buildExecutionPreview(opportunity: OptimizationOpportunity): Exe
 
     const changes: ExecutionPreview["changes"] = [
       {
-        label: "Menu item total price",
+        label: opportunity.title.replace(/^Pricing normalization:\s*/i, "").trim() || "Menu item total price",
         before: currentPrice,
         after: newPrice,
       },
@@ -59,14 +59,14 @@ export function buildExecutionPreview(opportunity: OptimizationOpportunity): Exe
       type: "inspection",
       changes: [
         {
-          label: existingTemplateId ? "Inspection template" : "New inspection template",
+          label: "Inspection template",
           before: existingTemplateId ?? null,
           after: inferredTemplateName,
         },
         {
-          label: "Menu item template linkage",
-          before: existingTemplateId ?? null,
-          after: existingTemplateId ?? "Will link newly created template",
+          label: "Sections",
+          before: [],
+          after: opportunity.reasoning.slice(0, 5),
         },
       ],
     };
@@ -76,18 +76,14 @@ export function buildExecutionPreview(opportunity: OptimizationOpportunity): Exe
     type: "revenue",
     changes: [
       {
-        label: "Suggestion record",
+        label: "Suggestion title",
         before: null,
-        after: {
-          title: opportunity.title,
-          reason: opportunity.suggestedAction ?? opportunity.summary,
-          confidence: opportunity.confidence,
-        },
+        after: opportunity.title,
       },
       {
-        label: "Menu item changes",
-        before: "No menu item mutation",
-        after: "No menu item mutation",
+        label: "Reason shown to advisor",
+        before: null,
+        after: opportunity.suggestedAction ?? opportunity.summary,
       },
     ],
     warnings: ["This creates a suggestion only. Existing menu items are not modified."],

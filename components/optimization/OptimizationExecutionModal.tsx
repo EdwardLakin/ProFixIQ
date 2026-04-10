@@ -9,8 +9,10 @@ type Props = {
   loadingPreview: boolean;
   applying: boolean;
   blockedReason?: string | null;
+  applyError?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  onRetry?: () => void;
 };
 
 function renderValue(value: unknown): string {
@@ -26,6 +28,52 @@ function renderValue(value: unknown): string {
   }
 }
 
+function formatCurrency(value: unknown): string {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return renderValue(value);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(numeric);
+}
+
+function renderInlineDiff(label: string, before: unknown, after: unknown) {
+  const beforeSections = Array.isArray(before) ? before : null;
+  const afterSections = Array.isArray(after) ? after : null;
+  const isSectionDiff = label.toLowerCase().includes("section") && Array.isArray(afterSections);
+  const isPrice = label.toLowerCase().includes("price");
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs">
+      <div className="font-semibold text-neutral-100">{label}</div>
+      {isSectionDiff ? (
+        <div className="mt-1.5 space-y-1">
+          {beforeSections && beforeSections.length > 0 ? (
+            <div className="text-neutral-500">Existing: {beforeSections.join(", ")}</div>
+          ) : null}
+          {afterSections?.map((entry) => (
+            <div key={String(entry)} className="text-emerald-300">
+              + {String(entry)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1.5 grid grid-cols-2 gap-2">
+          <div className="rounded-md border border-white/10 bg-black/30 p-2">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Before</div>
+            <div className="mt-1 text-neutral-300">{isPrice ? formatCurrency(before) : renderValue(before)}</div>
+          </div>
+          <div className="rounded-md border border-emerald-400/40 bg-emerald-500/10 p-2">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-300">After</div>
+            <div className="mt-1 text-neutral-100">{isPrice ? formatCurrency(after) : renderValue(after)}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OptimizationExecutionModal({
   open,
   opportunity,
@@ -33,8 +81,10 @@ export default function OptimizationExecutionModal({
   loadingPreview,
   applying,
   blockedReason,
+  applyError,
   onCancel,
   onConfirm,
+  onRetry,
 }: Props) {
   if (!open || !opportunity) return null;
 
@@ -67,17 +117,24 @@ export default function OptimizationExecutionModal({
               ))}
             </ul>
           </section>
+          <section className="rounded-xl border border-white/10 bg-black/30 p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">Expected impact</div>
+            <div className="mt-1 text-xs text-neutral-300">
+              Confidence: {opportunity.confidenceLabel ?? `${Math.round(opportunity.confidence * 100)}% confidence`}
+            </div>
+            <div className="text-xs text-neutral-300">
+              Estimated impact:{" "}
+              {opportunity.impactLabel ??
+                (typeof opportunity.estimatedValue === "number" ? `+$${Math.round(opportunity.estimatedValue)}/month` : "Potential impact detected")}
+            </div>
+          </section>
 
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">Preview of changes</div>
             {preview ? (
               <div className="mt-2 space-y-2">
                 {preview.changes.map((change) => (
-                  <div key={change.label} className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs">
-                    <div className="font-semibold text-neutral-100">{change.label}</div>
-                    <div className="mt-1 text-neutral-400">Before: {renderValue(change.before)}</div>
-                    <div className="text-neutral-300">After: {renderValue(change.after)}</div>
-                  </div>
+                  <div key={change.label}>{renderInlineDiff(change.label, change.before, change.after)}</div>
                 ))}
                 {preview.warnings?.length ? (
                   <ul className="space-y-1 text-xs text-amber-300">
@@ -95,6 +152,21 @@ export default function OptimizationExecutionModal({
           {blockedReason ? (
             <div className="rounded-xl border border-red-400/35 bg-red-500/10 p-3 text-xs text-red-200">{blockedReason}</div>
           ) : null}
+          {applyError ? (
+            <div className="rounded-xl border border-red-400/35 bg-red-500/10 p-3 text-xs text-red-200">
+              <div>Something went wrong.</div>
+              {onRetry ? (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  disabled={applying}
+                  className="mt-2 rounded-md border border-red-300/40 px-2 py-1 text-[11px] font-semibold text-red-100 disabled:opacity-50"
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
@@ -111,7 +183,14 @@ export default function OptimizationExecutionModal({
             disabled={loadingPreview || applying || Boolean(blockedReason)}
             className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-2 text-xs font-semibold text-black disabled:opacity-40"
           >
-            Confirm
+            {applying ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 animate-spin rounded-full border border-black/40 border-t-black" />
+                Applying…
+              </span>
+            ) : (
+              "Confirm"
+            )}
           </button>
         </div>
       </div>
