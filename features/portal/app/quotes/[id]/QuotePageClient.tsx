@@ -394,7 +394,7 @@ export default function QuotePageClient(): JSX.Element {
             </p>
           </div>
           <DecisionTimeline stages={timelineStages} className="mb-6" />
-          <DecisionEventFeed events={decisionEvents} className="mb-6" compact />
+          <DecisionEventFeed events={decisionEvents} className="mb-6" compact maxVisible={5} />
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
