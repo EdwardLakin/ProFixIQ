@@ -60,7 +60,10 @@ export default async function PartDetail({ params }: { params: { id: string } })
             </div>
           ) : (
             <div className={`rounded-xl border border-white/10 bg-black/25 p-3 text-sm ${muted}`}>
-              No stock yet
+              <div>No stock yet</div>
+              <div className="mt-1 text-xs text-neutral-500">
+                Parts imported. Stock records not initialized yet.
+              </div>
             </div>
           )}
         </div>
