@@ -24,6 +24,20 @@ type QuestionnaireState = {
 };
 
 type StepStatus = "idle" | "uploading" | "processing" | "done" | "error";
+type LinkageSummary = {
+  linked: {
+    vehiclesCustomerId: number;
+    workOrdersCustomerId: number;
+    workOrdersVehicleId: number;
+    invoicesCustomerId: number;
+  };
+  unresolved: {
+    vehiclesCustomerId: number;
+    workOrdersCustomerId: number;
+    workOrdersVehicleId: number;
+    invoicesCustomerId: number;
+  };
+};
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 
@@ -93,6 +107,7 @@ export default function ShopBoostOnboardingPage() {
 
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
+  const [linkageSummary, setLinkageSummary] = useState<LinkageSummary | null>(null);
 
   // Load profile → shop_id + shop name
   useEffect(() => {
@@ -154,6 +169,7 @@ export default function ShopBoostOnboardingPage() {
     event.preventDefault();
     setError("");
     setSnapshot(null);
+    setLinkageSummary(null);
 
     if (!shopId) {
       setError("Shop not loaded yet.");
@@ -225,6 +241,9 @@ export default function ShopBoostOnboardingPage() {
       const json = (await response.json()) as {
         ok?: boolean;
         snapshot?: ShopHealthSnapshot | null;
+        importSummary?: {
+          linkageSummary?: LinkageSummary;
+        };
         error?: string;
       };
 
@@ -235,6 +254,7 @@ export default function ShopBoostOnboardingPage() {
       }
 
       setSnapshot(json.snapshot);
+      setLinkageSummary(json.importSummary?.linkageSummary ?? null);
       setStepStatus("done");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
@@ -276,6 +296,16 @@ export default function ShopBoostOnboardingPage() {
   }
 
   const isBusy = stepStatus === "uploading" || stepStatus === "processing";
+  const linkedVehicles = linkageSummary?.linked.vehiclesCustomerId ?? 0;
+  const fullyConnectedWorkOrders = Math.min(
+    linkageSummary?.linked.workOrdersCustomerId ?? 0,
+    linkageSummary?.linked.workOrdersVehicleId ?? 0,
+  );
+  const itemsNeedingReview =
+    (linkageSummary?.unresolved.vehiclesCustomerId ?? 0) +
+    (linkageSummary?.unresolved.workOrdersCustomerId ?? 0) +
+    (linkageSummary?.unresolved.workOrdersVehicleId ?? 0) +
+    (linkageSummary?.unresolved.invoicesCustomerId ?? 0);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -481,6 +511,17 @@ export default function ShopBoostOnboardingPage() {
 
               {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
+
+            {stepStatus === "done" && linkageSummary && (
+              <section className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4 sm:p-5">
+                <h2 className="text-sm font-semibold text-neutral-100">Import linkage summary</h2>
+                <div className="mt-3 space-y-1 text-sm text-neutral-300">
+                  <p>{linkedVehicles} vehicles linked</p>
+                  <p>{fullyConnectedWorkOrders} work orders fully connected</p>
+                  <p>{itemsNeedingReview} items need review</p>
+                </div>
+              </section>
+            )}
           </form>
         </div>
 
