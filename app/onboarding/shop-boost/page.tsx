@@ -306,6 +306,8 @@ export default function ShopBoostOnboardingPage() {
     (linkageSummary?.unresolved.workOrdersCustomerId ?? 0) +
     (linkageSummary?.unresolved.workOrdersVehicleId ?? 0) +
     (linkageSummary?.unresolved.invoicesCustomerId ?? 0);
+  const unresolvedCounts = linkageSummary?.unresolved;
+  const hasUnresolvedItems = itemsNeedingReview > 0;
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -520,6 +522,64 @@ export default function ShopBoostOnboardingPage() {
                   <p>{fullyConnectedWorkOrders} work orders fully connected</p>
                   <p>{itemsNeedingReview} items need review</p>
                 </div>
+
+                {hasUnresolvedItems && unresolvedCounts && (
+                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-amber-200">
+                      Needs review
+                    </h3>
+                    <div className="mt-2 space-y-1 text-xs text-amber-100/90">
+                      {unresolvedCounts.vehiclesCustomerId > 0 && (
+                        <p>
+                          {unresolvedCounts.vehiclesCustomerId} vehicles missing customer
+                          link
+                        </p>
+                      )}
+                      {unresolvedCounts.workOrdersCustomerId > 0 && (
+                        <p>
+                          {unresolvedCounts.workOrdersCustomerId} work orders missing
+                          customer link
+                        </p>
+                      )}
+                      {unresolvedCounts.workOrdersVehicleId > 0 && (
+                        <p>
+                          {unresolvedCounts.workOrdersVehicleId} work orders missing vehicle
+                          link
+                        </p>
+                      )}
+                      {unresolvedCounts.invoicesCustomerId > 0 && (
+                        <p>
+                          {unresolvedCounts.invoicesCustomerId} invoices missing customer
+                          link
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/customers")}
+                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
+                      >
+                        Review customers
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/work-orders")}
+                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
+                      >
+                        Review work orders
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/invoices")}
+                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
+                      >
+                        Review invoices
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
           </form>
