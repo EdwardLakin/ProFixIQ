@@ -19,22 +19,42 @@ export type OptimizationTargetRef = {
 
 export type OptimizationOpportunity = {
   id: string;
-  optimizationType: OptimizationType;
+  type: OptimizationType;
   title: string;
   summary: string;
   confidence: number;
   impactLevel: OptimizationImpactLevel;
   estimatedValue?: number;
-  sourceBasis: string[];
-  suggestedAction: string;
-  targetRefs: OptimizationTargetRef[];
+  priorityScore: number;
+  priorityBand: "low" | "medium" | "high" | "critical";
+  reasoning: string[];
+  sourceBasis: string;
+  suggestedAction?: string;
+  targetRefs?: {
+    menuItemId?: string;
+    inspectionTemplateId?: string;
+  };
   meta?: Record<string, unknown>;
+};
+
+export type OptimizationGroup = {
+  groupKey: string;
+  type: OptimizationType;
+  opportunities: OptimizationOpportunity[];
+  totalEstimatedValue?: number;
+  avgConfidence: number;
 };
 
 export type OptimizationEngineOutput = {
   generatedAt: string;
   shopId: string;
-  opportunities: OptimizationOpportunity[];
+  summary: {
+    totalOpportunities: number;
+    criticalCount: number;
+    highCount: number;
+    potentialMonthlyValue: number;
+  };
+  groups: OptimizationGroup[];
 };
 
 export type OptimizationActionType = "pricing" | "inspection" | "revenue";
