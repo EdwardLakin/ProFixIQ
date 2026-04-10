@@ -61,6 +61,24 @@ type CsvRow = Record<string, string>;
 type UploadManifestRecord = Partial<
   Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
 >;
+type MenuBridgeCandidate = {
+  title: string;
+  description: string | null;
+  price: number | null;
+  laborHours: number | null;
+  confidence: number;
+  source: "service_catalog" | "history";
+  uniqueKey: string;
+};
+type InspectionBridgeCandidate = {
+  templateName: string;
+  note: string | null;
+  usageContext: string | null;
+  sections: Array<{ title: string; items: string[] }>;
+  confidence: number;
+  source: "service_catalog" | "history";
+  uniqueKey: string;
+};
 
 function norm(s: string): string {
   return (s ?? "").trim();
@@ -258,6 +276,254 @@ function parseIntSafe(v: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function slugifyServiceKey(value: string): string {
+  return normalizeText(value).replace(/\s+/g, "-").slice(0, 64);
+}
+
+function parseLaborHours(v: string | null): number | null {
+  const parsed = parseMoney(v);
+  if (parsed === null || parsed < 0 || parsed > 24) return null;
+  return parsed;
+}
+
+function extractServiceCatalogCandidates(rows: CsvRow[]): {
+  menu: MenuBridgeCandidate[];
+  inspections: InspectionBridgeCandidate[];
+} {
+  const menu: MenuBridgeCandidate[] = [];
+  const groupedTemplates = new Map<
+    string,
+    {
+      templateName: string;
+      usageContext: string | null;
+      note: string | null;
+      sections: Map<string, Set<string>>;
+    }
+  >();
+
+  for (const row of rows) {
+    const serviceName = pick(row, [/service/, /job name/, /operation/, /^name$/, /menu/]);
+    const serviceDescription = pick(row, [/description/, /details/, /op description/, /note/]);
+    const laborHours = parseLaborHours(pick(row, [/labor hours/, /hours/, /labor time/, /flat rate/]));
+    const price = parseMoney(pick(row, [/price/, /retail/, /sell/, /menu price/]));
+
+    if (serviceName) {
+      const hasStructuredPricing = price !== null || laborHours !== null;
+      const confidence = hasStructuredPricing ? 0.9 : 0.68;
+      menu.push({
+        title: serviceName,
+        description: serviceDescription,
+        price,
+        laborHours,
+        confidence,
+        source: "service_catalog",
+        uniqueKey: sha1(
+          `svc|${normalizeText(serviceName)}|${String(price ?? "")}|${String(laborHours ?? "")}`,
+        ).slice(0, 20),
+      });
+    }
+
+    const templateName =
+      pick(row, [/template/, /inspection name/, /checklist/, /form name/]) ??
+      (pick(row, [/inspection type/, /inspection category/]) || null);
+    const sectionName = pick(row, [/section/, /group/, /category/]) ?? "General";
+    const itemName = pick(row, [/item/, /checkpoint/, /check item/, /question/, /point/]) ?? null;
+    const inspectionNote = pick(row, [/inspection note/, /note/, /details/]) ?? null;
+    const usageContext = pick(row, [/usage/, /vehicle type/, /applies to/, /context/]) ?? null;
+
+    if (templateName && itemName) {
+      const groupKey = normalizeText(templateName);
+      const existing = groupedTemplates.get(groupKey) ?? {
+        templateName,
+        usageContext,
+        note: inspectionNote,
+        sections: new Map<string, Set<string>>(),
+      };
+      const normalizedSection = sectionName || "General";
+      const existingSection = existing.sections.get(normalizedSection) ?? new Set<string>();
+      existingSection.add(itemName);
+      existing.sections.set(normalizedSection, existingSection);
+      groupedTemplates.set(groupKey, existing);
+    }
+  }
+
+  const inspections: InspectionBridgeCandidate[] = [];
+  for (const group of groupedTemplates.values()) {
+    const sections = Array.from(group.sections.entries()).map(([title, items]) => ({
+      title,
+      items: Array.from(items),
+    }));
+    const totalItems = sections.reduce((sum, s) => sum + s.items.length, 0);
+    const confidence = totalItems >= 8 ? 0.9 : totalItems >= 5 ? 0.82 : 0.62;
+    inspections.push({
+      templateName: group.templateName,
+      note: group.note,
+      usageContext: group.usageContext,
+      sections,
+      confidence,
+      source: "service_catalog",
+      uniqueKey: sha1(`insp|${normalizeText(group.templateName)}|${String(totalItems)}`).slice(0, 20),
+    });
+  }
+
+  return { menu, inspections };
+}
+
+function extractHistoryMenuCandidates(rows: CsvRow[]): MenuBridgeCandidate[] {
+  const bucket = new Map<string, { label: string; count: number; avgLaborSeed: number[] }>();
+  for (const row of rows) {
+    const label =
+      pick(row, [/correction/, /work performed/, /description/, /repair/, /service/]) ??
+      pick(row, [/complaint/, /concern/]) ??
+      null;
+    if (!label) continue;
+    const normalized = normalizeText(label);
+    if (!normalized || normalized.length < 8) continue;
+
+    const laborSeed = parseLaborHours(pick(row, [/labor/, /hours/, /labor time/, /flat rate/]));
+    const existing = bucket.get(normalized) ?? { label, count: 0, avgLaborSeed: [] };
+    existing.count += 1;
+    if (laborSeed !== null) existing.avgLaborSeed.push(laborSeed);
+    bucket.set(normalized, existing);
+  }
+
+  const out: MenuBridgeCandidate[] = [];
+  for (const [normalized, entry] of bucket.entries()) {
+    if (entry.count < 3) continue;
+    const avgLabor =
+      entry.avgLaborSeed.length > 0
+        ? entry.avgLaborSeed.reduce((sum, n) => sum + n, 0) / entry.avgLaborSeed.length
+        : null;
+    const confidence = entry.count >= 6 ? 0.88 : entry.count >= 4 ? 0.83 : 0.74;
+    out.push({
+      title: entry.label.slice(0, 120),
+      description: `Inferred from ${entry.count} similar historical jobs`,
+      price: null,
+      laborHours: avgLabor,
+      confidence,
+      source: "history",
+      uniqueKey: sha1(`hist|${normalized}`).slice(0, 20),
+    });
+  }
+  return out;
+}
+
+async function bridgeOperatingLayerFromCsv(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  serviceCatalogCsv: string | null;
+  historyCsv: string | null;
+}): Promise<void> {
+  const { supabase, shopId, intakeId, serviceCatalogCsv, historyCsv } = args;
+  if (!serviceCatalogCsv && !historyCsv) return;
+
+  const menuCandidates: MenuBridgeCandidate[] = [];
+  const inspectionCandidates: InspectionBridgeCandidate[] = [];
+
+  if (serviceCatalogCsv) {
+    const { rows } = parseCsv(serviceCatalogCsv);
+    const extracted = extractServiceCatalogCandidates(rows);
+    menuCandidates.push(...extracted.menu);
+    inspectionCandidates.push(...extracted.inspections);
+  }
+  if (historyCsv) {
+    const { rows } = parseCsv(historyCsv);
+    menuCandidates.push(...extractHistoryMenuCandidates(rows));
+  }
+
+  const dedupedMenu = new Map<string, MenuBridgeCandidate>();
+  for (const candidate of menuCandidates) {
+    const key = `${candidate.source}:${candidate.uniqueKey}`;
+    const existing = dedupedMenu.get(key);
+    if (!existing || candidate.confidence > existing.confidence) dedupedMenu.set(key, candidate);
+  }
+
+  for (const candidate of dedupedMenu.values()) {
+    const serviceKey = `shop_boost:${intakeId}:${slugifyServiceKey(`${candidate.source}-${candidate.uniqueKey}`)}`;
+    if (candidate.confidence >= 0.85) {
+      const { data: existing } = await supabase
+        .from("menu_items")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("service_key", serviceKey)
+        .maybeSingle<{ id: string }>();
+      if (!existing?.id) {
+        await supabase.from("menu_items").insert({
+          shop_id: shopId,
+          name: candidate.title,
+          description: candidate.description,
+          labor_hours: candidate.laborHours,
+          total_price: candidate.price,
+          service_key: serviceKey,
+          source: "shop_boost",
+          is_active: false,
+        } as DB["public"]["Tables"]["menu_items"]["Insert"]);
+      }
+      continue;
+    }
+
+    await supabase.from("menu_item_suggestions").insert({
+      shop_id: shopId,
+      intake_id: intakeId,
+      title: candidate.title,
+      category: "shop_boost_import_candidate",
+      price_suggestion: candidate.price,
+      labor_hours_suggestion: candidate.laborHours,
+      confidence: candidate.confidence,
+      reason: `Derived from ${candidate.source} upload; review recommended.`,
+    } as DB["public"]["Tables"]["menu_item_suggestions"]["Insert"]);
+  }
+
+  for (const candidate of inspectionCandidates) {
+    const signature = candidate.sections
+      .map((section) => `${normalizeText(section.title)}:${section.items.map((i) => normalizeText(i)).join("|")}`)
+      .join("||");
+    if (candidate.confidence >= 0.85) {
+      const { data: existing } = await supabase
+        .from("inspection_templates")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("template_name", candidate.templateName)
+        .contains("sections", { generated_from_key: candidate.uniqueKey })
+        .maybeSingle<{ id: string }>();
+      if (!existing?.id) {
+        await supabase.from("inspection_templates").insert({
+          shop_id: shopId,
+          template_name: candidate.templateName,
+          description: candidate.note,
+          vehicle_type: candidate.usageContext,
+          tags: ["shop_boost", `source_intake:${intakeId}`, "confidence:high"],
+          is_public: false,
+          sections: {
+            generated_by: "shop_boost_import_bridge",
+            generated_from_key: candidate.uniqueKey,
+            source_intake_id: intakeId,
+            structured_sections: candidate.sections,
+          },
+        } as DB["public"]["Tables"]["inspection_templates"]["Insert"]);
+      }
+      continue;
+    }
+
+    await supabase.from("inspection_template_suggestions").insert({
+      shop_id: shopId,
+      intake_id: intakeId,
+      template_key: `shop_boost:${intakeId}:${candidate.uniqueKey}`,
+      name: candidate.templateName,
+      items: {
+        note: candidate.note,
+        usageContext: candidate.usageContext,
+        candidateSections: candidate.sections,
+        source: candidate.source,
+        signature,
+      },
+      applies_to: candidate.usageContext,
+      confidence: candidate.confidence,
+    } as DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"]);
+  }
+}
+
 function parseDateIso(v: string | null): string | null {
   if (!v) return null;
   const s = v.trim();
@@ -399,6 +665,14 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   ]);
 
   await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
+  const serviceCatalogCsv = await downloadCsv(uploadManifest.serviceCatalog?.path ?? null);
+  await bridgeOperatingLayerFromCsv({
+    supabase,
+    shopId,
+    intakeId,
+    serviceCatalogCsv,
+    historyCsv,
+  });
 
   // Build caches (keep light: only key columns)
   const customersByEmail = new Map<string, string>();
