@@ -25,10 +25,12 @@ export type ShopBoostRunResp =
       intakeId: string;
       snapshot: unknown;
       importSummary: ShopBoostImportSummary;
-      operatingLayerSummary: {
+      shopBuildSummary: {
         menuItemsCreated: number;
         inspectionTemplatesCreated: number;
-        itemsNeedReview: number;
+        linkedMenuToInspection: number;
+        menuSuggestions: number;
+        inspectionSuggestions: number;
       };
     }
   | { ok: false; error: string };
@@ -365,6 +367,13 @@ export async function runShopBoostIntake(
         invoicesCustomerId: 0,
       },
     },
+    shopBuildSummary: {
+      menuItemsCreated: 0,
+      inspectionTemplatesCreated: 0,
+      linkedMenuToInspection: 0,
+      menuSuggestions: 0,
+      inspectionSuggestions: 0,
+    },
   };
 
   if (mode.runImport) {
@@ -376,21 +385,12 @@ export async function runShopBoostIntake(
     });
   }
 
-  const intakeBasics = (snapshot as { meta?: { operatingLayerSummary?: unknown } })?.meta
-    ?.operatingLayerSummary as
-    | { menuItemsCreated?: number; inspectionTemplatesCreated?: number; itemsNeedReview?: number }
-    | undefined;
-
   return {
     ok: true,
     shopId,
     intakeId,
     snapshot,
     importSummary,
-    operatingLayerSummary: {
-      menuItemsCreated: intakeBasics?.menuItemsCreated ?? 0,
-      inspectionTemplatesCreated: intakeBasics?.inspectionTemplatesCreated ?? 0,
-      itemsNeedReview: intakeBasics?.itemsNeedReview ?? 0,
-    },
+    shopBuildSummary: importSummary.shopBuildSummary,
   };
 }
