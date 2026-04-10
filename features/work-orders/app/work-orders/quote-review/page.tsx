@@ -7,6 +7,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
+import { deriveEventsFromQuote } from "@/features/shared/lib/decisionEvents";
 
 type DB = Database;
 
@@ -19,7 +21,7 @@ type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type WorkOrderWithMeta = WorkOrder & {
   shops?: Pick<Shop, "name"> | null;
   work_order_lines?: Array<
-    Pick<Line, "id" | "status" | "approval_state" | "labor_time">
+    Pick<Line, "id" | "status" | "approval_state" | "labor_time" | "line_no" | "description" | "created_at" | "updated_at">
   >;
   work_order_quote_lines?: Array<Pick<QuoteLine, "id" | "stage">>;
   labor_hours?: number | null;
@@ -124,7 +126,7 @@ function ApprovalsList(): JSX.Element {
         `
         *,
         shops(name),
-        work_order_lines(id,status,approval_state,labor_time),
+        work_order_lines(id,status,approval_state,labor_time,line_no,description,created_at,updated_at),
         work_order_quote_lines(id,stage)
       `,
       )
@@ -362,6 +364,11 @@ function ApprovalsList(): JSX.Element {
           const woHref = `/work-orders/${w.id}`;
           const accent = queueAccent(Boolean(w.waiting_for_parts));
           const progressValue = w.waiting_for_parts ? 45 : 78;
+          const decisionEvents = deriveEventsFromQuote({
+            workOrder: w,
+            lines: w.work_order_lines ?? [],
+            actorLabel: "Service advisor",
+          });
 
           return (
             <div
@@ -442,6 +449,7 @@ function ApprovalsList(): JSX.Element {
                     </div>
                   </div>
                 </div>
+                <DecisionEventFeed events={decisionEvents} compact className="mt-4" />
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
