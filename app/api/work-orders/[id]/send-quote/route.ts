@@ -94,6 +94,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     headers: {
       "Content-Type": "application/json",
       "x-profix-trace": trace,
+      cookie: req.headers.get("cookie") ?? "",
     },
     body: JSON.stringify(forwardBody),
     cache: "no-store",

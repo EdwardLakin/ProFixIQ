@@ -179,7 +179,7 @@ export default function MobileReportsPage() {
   if (!hasAccess && role) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-8 pt-6">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pb-8 pt-6">
           <header className="space-y-1">
             <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
               ProFixIQ • Mobile
@@ -202,7 +202,7 @@ export default function MobileReportsPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1">
           <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">

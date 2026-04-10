@@ -76,20 +76,6 @@ export default function ShiftTracker({
     [supabase, userId],
   );
 
-  const countActiveJobsForShiftEnd = useCallback(async (): Promise<number> => {
-    if (!userId) return 0;
-    const { data: rows, error } = await supabase
-      .from("work_order_lines")
-      .select("id")
-      .eq("assigned_tech_id", userId)
-      .not("punched_in_at", "is", null)
-      .is("punched_out_at", null);
-
-    if (error) {
-      throw error;
-    }
-    return rows?.length ?? 0;
-  }, [supabase, userId]);
 
   const loadOpenShift = useCallback(async () => {
     if (!userId) return;
@@ -231,25 +217,13 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      const now = new Date().toISOString();
-
-      const activeJobCount = await countActiveJobsForShiftEnd();
-      if (activeJobCount > 0) {
-        throw new Error(
-          `Cannot end shift while ${activeJobCount} job punch(es) are still active. Pause or finish active jobs first.`,
-        );
+      const res = await fetch("/api/time/shift/end", { method: "POST" });
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Failed to end shift");
       }
 
-      const { error } = await supabase
-        .from("tech_shifts")
-        .update({ end_time: now, status: "closed", type: "shift" })
-        .eq("id", shiftId);
-
-      if (error) throw error;
-
-      await insertPunch(shiftId, "end_shift");
       window.dispatchEvent(new CustomEvent("wol:refresh"));
-
       setShiftId(null);
       setStartTime(null);
       setMode("ended");
@@ -258,7 +232,7 @@ export default function ShiftTracker({
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, insertPunch, countActiveJobsForShiftEnd]);
+  }, [busy, shiftId]);
 
   const toggleBreak = useCallback(async () => {
     if (busy || !shiftId) return;

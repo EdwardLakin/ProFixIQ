@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, useCallback, type JSX } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
+import { listPendingMutations, runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -131,6 +132,7 @@ export default function MobileFocusedJob(props: {
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
+  const [pendingWrites, setPendingWrites] = useState(0);
 
   // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
@@ -157,6 +159,13 @@ export default function MobileFocusedJob(props: {
     // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
+
+  useEffect(() => {
+    const refreshPending = () => setPendingWrites(listPendingMutations().length);
+    refreshPending();
+    window.addEventListener("online", refreshPending);
+    return () => window.removeEventListener("online", refreshPending);
+  }, []);
 
   const closeAllSubModals = () => {
     setOpenComplete(false);
@@ -487,16 +496,29 @@ export default function MobileFocusedJob(props: {
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
 
-    const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
-    const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-      contentType: file.type || "image/jpeg",
-      upsert: true,
+    const clientMutationId = uuidv4();
+    const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${clientMutationId}_${file.name}`;
+
+    const result = await runMutationWithOfflineQueue({
+      id: clientMutationId,
+      action: "upload_job_photo",
+      payload: { workOrderLineId, path, fileName: file.name },
+      runner: async () => {
+        const { error } = await supabase.storage.from("job-photos").upload(path, file, {
+          contentType: file.type || "image/jpeg",
+          upsert: true,
+        });
+        if (error) throw error;
+      },
     });
 
-    if (error) return showErr("Photo upload failed", error);
-    toast.success("Photo attached");
+    setPendingWrites(listPendingMutations().length);
+    if (result.queued) {
+      toast.warning("Photo queued. Retry when connection is restored.");
+      return;
+    }
 
-    // optional: trigger a refresh event for other listeners
+    toast.success("Photo attached");
     window.dispatchEvent(new CustomEvent("wol:refresh"));
   };
 
@@ -510,14 +532,27 @@ export default function MobileFocusedJob(props: {
 
     setSavingNotes(true);
     try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          notes: techNotes,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId);
+      const mutationId = `${workOrderLineId}:notes:${Date.now()}`;
+      const result = await runMutationWithOfflineQueue({
+        id: mutationId,
+        action: "update_work_order_line_notes",
+        payload: { workOrderLineId, notes: techNotes },
+        runner: async () => {
+          const { error } = await supabase
+            .from("work_order_lines")
+            .update({
+              notes: techNotes,
+            } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+            .eq("id", workOrderLineId);
+          if (error) throw error;
+        },
+      });
 
-      if (error) return showErr("Update notes failed", error);
+      setPendingWrites(listPendingMutations().length);
+      if (result.queued) {
+        toast.warning("Notes queued for retry when back online.");
+        return;
+      }
 
       toast.success("Notes saved");
       setNotesDirty(false);
@@ -591,6 +626,10 @@ export default function MobileFocusedJob(props: {
             <div className="w-14" />
           )}
         </header>
+
+        {pendingWrites > 0 ? (
+          <div className="px-3 pt-2 text-xs text-amber-200">Pending offline writes: {pendingWrites}</div>
+        ) : null}
 
         {/* Body */}
         <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">

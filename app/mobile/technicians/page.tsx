@@ -117,7 +117,7 @@ export default function MobileTechniciansPage() {
   if (!hasAccess && role) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-8 pt-6">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pb-8 pt-6">
           <h1 className="text-lg font-semibold">Technicians</h1>
           <p className="text-sm text-neutral-400">
             Mobile technician stats are available for owners, admins, and
@@ -130,7 +130,7 @@ export default function MobileTechniciansPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1">
           <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">

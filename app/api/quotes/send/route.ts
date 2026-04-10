@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { canSendQuotes } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -80,6 +82,20 @@ export async function POST(req: Request) {
   const trace = `quotes-send:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
   try {
+
+    const actor = createServerSupabaseRoute();
+    const {
+      data: { user },
+      error: userErr,
+    } = await actor.auth.getUser();
+
+    if (userErr) {
+      return NextResponse.json({ ok: false, trace, error: userErr.message }, { status: 500 });
+    }
+    if (!user) {
+      return NextResponse.json({ ok: false, trace, error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json().catch(() => null)) as RequestBody | null;
     const workOrderId = safeStr(body?.workOrderId).trim();
 
@@ -138,6 +154,23 @@ export async function POST(req: Request) {
         { ok: false, trace, error: "Work order is missing shop_id" },
         { status: 400 },
       );
+    }
+
+
+    const { data: me, error: meErr } = await actor
+      .from("profiles")
+      .select("id, role, shop_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (meErr || !me) {
+      return NextResponse.json({ ok: false, trace, error: "Unable to load actor profile" }, { status: 403 });
+    }
+    if (!canSendQuotes(me.role)) {
+      return NextResponse.json({ ok: false, trace, error: "Forbidden" }, { status: 403 });
+    }
+    if (!me.shop_id || me.shop_id !== wo.shop_id) {
+      return NextResponse.json({ ok: false, trace, error: "Cross-shop access denied" }, { status: 403 });
     }
 
     let portalUserId: string | null = null;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -124,10 +125,35 @@ export default function MobileWorkOrdersListPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setForbidden(false);
+
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) {
+      setErr("Unauthorized");
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data: me } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+
+    const role = canonicalizeRole(me?.role ?? null);
+    const canView = ["owner", "admin", "manager", "advisor", "service", "mechanic", "lead_hand"].includes(role);
+    if (!canView) {
+      setForbidden(true);
+      setRows([]);
+      setLoading(false);
+      return;
+    }
 
     let query = supabase
       .from("work_orders")
@@ -231,7 +257,7 @@ export default function MobileWorkOrdersListPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* HERO (MobileTechHome vibe) */}
         <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="space-y-1">
@@ -308,7 +334,7 @@ export default function MobileWorkOrdersListPage() {
               {/* If you actually have a mobile create route, change this.
                   Leaving as your original desktop-ish path would be wrong on mobile. */}
               <Link
-                href="/work-orders/create"
+                href="/mobile/work-orders/create"
                 className="inline-flex items-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.18)] px-3 py-1 text-[0.7rem] font-semibold text-[var(--accent-copper-soft)] hover:bg-[rgba(212,118,49,0.26)]"
               >
                 <span className="mr-1 text-base leading-none">＋</span>
@@ -318,7 +344,11 @@ export default function MobileWorkOrdersListPage() {
           </div>
         </section>
 
-        {err ? (
+        {forbidden ? (
+          <div className="metal-card rounded-2xl border border-yellow-500/40 bg-yellow-950/20 px-4 py-3 text-sm text-yellow-100">
+            You do not have access to mobile work orders.
+          </div>
+        ) : err ? (
           <div className="metal-card rounded-2xl border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-100">
             {err}
           </div>

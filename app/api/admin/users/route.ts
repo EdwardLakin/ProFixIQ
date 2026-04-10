@@ -6,7 +6,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 
 const MAX_ROWS = 500;
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 export async function GET(req: Request) {
   const supabaseUser = createServerSupabaseRoute();

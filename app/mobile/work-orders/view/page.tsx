@@ -283,7 +283,7 @@ export default function MobileWorkOrdersViewPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* Header */}
         <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-black via-neutral-950 to-black px-4 py-4 shadow-card">
           <h1 className="font-blackops text-lg uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">

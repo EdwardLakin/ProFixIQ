@@ -11,7 +11,7 @@ import { sendUserInviteEmail } from "@/features/email/server";
 
 type DB = Database;
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 const INVITE_STATUS = {
   pending: "pending",

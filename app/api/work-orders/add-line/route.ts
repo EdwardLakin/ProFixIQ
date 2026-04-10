@@ -2,6 +2,8 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
@@ -145,6 +147,19 @@ export async function POST(req: Request) {
 
     const supabase = createClient<DB>(supabaseUrl, serviceKey);
 
+    const actor = createServerSupabaseRoute();
+    const {
+      data: { user },
+      error: userErr,
+    } = await actor.auth.getUser();
+
+    if (userErr) {
+      return NextResponse.json({ error: userErr.message }, { status: 500 });
+    }
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     // ✅ Always derive shop_id from the work order (keeps data consistent)
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
@@ -167,6 +182,22 @@ export async function POST(req: Request) {
         { error: "Work order missing shop_id (required for inserts)" },
         { status: 400 },
       );
+    }
+
+    const { data: me, error: meErr } = await actor
+      .from("profiles")
+      .select("id, role, shop_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (meErr || !me) {
+      return NextResponse.json({ error: "Unable to load actor profile" }, { status: 403 });
+    }
+    if (!canMutateWorkOrders(me.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (me.shop_id !== wo.shop_id) {
+      return NextResponse.json({ error: "Cross-shop access denied" }, { status: 403 });
     }
 
     const complaint =
