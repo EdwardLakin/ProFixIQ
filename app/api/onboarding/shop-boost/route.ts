@@ -5,9 +5,9 @@ import { runShopBoostIntake, type ShopBoostRunResp } from "@/features/integratio
 export async function POST(req: NextRequest): Promise<NextResponse<ShopBoostRunResp>> {
   try {
     const result = await runShopBoostIntake(req, {
-      allowHistoryAndStaff: false,
-      runImport: false, // ✅ onboarding should not auto-import unless you want it
-      allowProvidedPaths: false, // ✅ keep onboarding simpler/safer
+      allowHistoryAndStaff: true,
+      runImport: true,
+      allowProvidedPaths: true,
     });
 
     const status =

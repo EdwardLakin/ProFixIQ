@@ -29,6 +29,15 @@ type RunArgs = {
   };
 };
 
+export type ShopBoostImportSummary = {
+  customersImported: number;
+  vehiclesImported: number;
+  workOrdersImported: number;
+  workOrderLinesImported: number;
+  invoicesImported: number;
+  partsImported: number;
+};
+
 type CsvRow = Record<string, string>;
 
 function norm(s: string): string {
@@ -190,7 +199,7 @@ async function downloadCsv(path: string | null): Promise<string | null> {
   return data.text();
 }
 
-export async function runShopBoostImport(args: RunArgs): Promise<void> {
+export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImportSummary> {
   const { shopId, intakeId } = args;
   const supabase = createAdminSupabase();
 
@@ -209,7 +218,14 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
 
   if (intakeErr || !intake) {
     console.warn("[runShopBoostImport] intake missing", intakeErr);
-    return;
+    return {
+      customersImported: 0,
+      vehiclesImported: 0,
+      workOrdersImported: 0,
+      workOrderLinesImported: 0,
+      invoicesImported: 0,
+      partsImported: 0,
+    };
   }
 
   const intakeRow = intake as IntakeRow;
@@ -227,6 +243,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
   const customersByPhone = new Map<string, string>();
   const vehiclesByVin = new Map<string, string>();
   const vehiclesByPlate = new Map<string, string>();
+  const partsByNumber = new Map<string, string>();
+  const partsBySku = new Map<string, string>();
+  const partsByName = new Map<string, string>();
   const staffByEmail = new Map<string, string>();
   const staffByName = new Map<string, string>();
 
@@ -284,6 +303,26 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     }
   }
 
+  // Existing parts
+  {
+    const { data } = await supabase
+      .from("parts")
+      .select("id,part_number,sku,name,shop_id")
+      .eq("shop_id", shopId)
+      .limit(5000);
+
+    for (const r of data ?? []) {
+      const rec = r as unknown as Record<string, unknown>;
+      const partNumber = lower(String(rec.part_number ?? ""));
+      const sku = lower(String(rec.sku ?? ""));
+      const name = lower(String(rec.name ?? ""));
+      const id = String(rec.id ?? "");
+      if (partNumber && id) partsByNumber.set(partNumber, id);
+      if (sku && id) partsBySku.set(sku, id);
+      if (name && id) partsByName.set(name, id);
+    }
+  }
+
   // 1) Import customers
   if (customersCsv) {
     const { rows } = parseCsv(customersCsv);
@@ -304,7 +343,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
 
       const isFleet = !!business || lower(pick(row, [/is fleet/, /fleet\?/]) ?? "") === "true";
 
-      const external_id = `import:${intakeId}:customers:${i + 1}`;
+      const external_id = `import:${intakeId}:customers:${sha1(
+        `${email}|${phone}|${name}|${business ?? ""}`,
+      ).slice(0, 16)}`;
 
       const existingId =
         (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
@@ -383,7 +424,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         (custPhone && customersByPhone.get(custPhone)) ||
         null;
 
-      const external_id = `import:${intakeId}:vehicles:${i + 1}`;
+      const external_id = `import:${intakeId}:vehicles:${sha1(
+        `${vin}|${plate}|${unit ?? ""}|${year ?? ""}`,
+      ).slice(0, 16)}`;
 
       const existingId = (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate));
 
@@ -460,23 +503,56 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       const supplier = pick(row, [/supplier/, /vendor/]);
       const category = pick(row, [/category/]);
 
-      const external_id = `import:${intakeId}:parts:${i + 1}`;
+      const intakeTag = `[shop_boost:${intakeId}]`;
+      const existingId =
+        (partNumber && partsByNumber.get(lower(partNumber))) ||
+        (sku && partsBySku.get(lower(sku))) ||
+        (name && partsByName.get(lower(name)));
 
-      await supabase.from("parts").insert({
-        shop_id: shopId,
-        name,
-        part_number: partNumber ?? null,
-        sku: sku ?? null,
-        supplier: supplier ?? null,
-        category: category ?? null,
-        cost: cost ?? null,
-        price: price ?? null,
-        default_cost: cost ?? null,
-        default_price: price ?? null,
-        source_intake_id: intakeId,
-        external_id,
-        import_confidence: 0.75,
-      } as DB["public"]["Tables"]["parts"]["Insert"]);
+      if (existingId) {
+        await supabase
+          .from("parts")
+          .update({
+            shop_id: shopId,
+            name,
+            part_number: partNumber ?? null,
+            sku: sku ?? null,
+            supplier: supplier ?? null,
+            category: category ?? null,
+            cost: cost ?? null,
+            price: price ?? null,
+            default_cost: cost ?? null,
+            default_price: price ?? null,
+            description: `${intakeTag} imported`,
+          } as DB["public"]["Tables"]["parts"]["Update"])
+          .eq("id", existingId);
+        continue;
+      }
+
+      const { data: inserted } = await supabase
+        .from("parts")
+        .insert({
+          shop_id: shopId,
+          name,
+          part_number: partNumber ?? null,
+          sku: sku ?? null,
+          supplier: supplier ?? null,
+          category: category ?? null,
+          cost: cost ?? null,
+          price: price ?? null,
+          default_cost: cost ?? null,
+          default_price: price ?? null,
+          description: `${intakeTag} imported`,
+        } as DB["public"]["Tables"]["parts"]["Insert"])
+        .select("id")
+        .limit(1);
+
+      const id = (inserted ?? [])[0]?.id as string | undefined;
+      if (id) {
+        if (partNumber) partsByNumber.set(lower(partNumber), id);
+        if (sku) partsBySku.set(lower(sku), id);
+        partsByName.set(lower(name), id);
+      }
     }
   }
 
@@ -572,29 +648,59 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       const vehicle_id =
         (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) || null;
 
-      const external_id = `import:${intakeId}:history:${i + 1}`;
+      const historyFingerprint = sha1(
+        `${ro ?? ""}|${dateIso}|${vin}|${plate}|${correction ?? complaint ?? ""}|${total ?? ""}`,
+      ).slice(0, 20);
+      const external_id = `import:${intakeId}:history:${historyFingerprint}`;
 
-      const { data: woInserted, error: woErr } = await supabase
+      const { data: woByExternal } = await supabase
         .from("work_orders")
-        .insert({
-          shop_id: shopId,
-          customer_id,
-          vehicle_id,
-          status: "completed",
-          type: "repair",
-          custom_id: ro,
-          customer_name: customerName,
-          labor_total: labor ?? null,
-          parts_total: parts ?? null,
-          invoice_total: total ?? null,
-          created_at: dateIso,
-          updated_at: dateIso,
-          source_intake_id: intakeId,
-          external_id,
-          import_confidence: 0.7,
-        } as DB["public"]["Tables"]["work_orders"]["Insert"])
         .select("id")
-        .limit(1);
+        .eq("shop_id", shopId)
+        .eq("external_id", external_id)
+        .maybeSingle<{ id: string }>();
+
+      if (!woByExternal?.id && vehicle_id && customer_id) {
+        await supabase
+          .from("vehicles")
+          .update({ customer_id } as DB["public"]["Tables"]["vehicles"]["Update"])
+          .eq("id", vehicle_id)
+          .eq("shop_id", shopId)
+          .is("customer_id", null);
+      }
+
+      const woPayload: DB["public"]["Tables"]["work_orders"]["Insert"] = {
+        shop_id: shopId,
+        customer_id,
+        vehicle_id,
+        status: "completed",
+        type: "repair",
+        custom_id: ro,
+        customer_name: customerName,
+        labor_total: labor ?? null,
+        parts_total: parts ?? null,
+        invoice_total: total ?? null,
+        created_at: dateIso,
+        updated_at: dateIso,
+        source_intake_id: intakeId,
+        external_id,
+        import_confidence: 0.7,
+      };
+
+      let woInserted: Array<{ id: string }> | null = null;
+      let woErr: { message?: string } | null = null;
+
+      if (woByExternal?.id) {
+        await supabase
+          .from("work_orders")
+          .update(woPayload as DB["public"]["Tables"]["work_orders"]["Update"])
+          .eq("id", woByExternal.id);
+        woInserted = [{ id: woByExternal.id }];
+      } else {
+        const ins = await supabase.from("work_orders").insert(woPayload).select("id").limit(1);
+        woInserted = (ins.data ?? null) as Array<{ id: string }> | null;
+        woErr = ins.error;
+      }
 
       if (woErr) {
         if (ro) {
@@ -624,6 +730,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
           await upsertInvoiceIfNeeded({
             supabase,
             shopId,
+            intakeId,
             workOrderId: existingWo.id,
             customer_id,
             total,
@@ -655,6 +762,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       await upsertInvoiceIfNeeded({
         supabase,
         shopId,
+        intakeId,
         workOrderId,
         customer_id,
         total,
@@ -669,6 +777,40 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
     : {};
 
+  const [customersCount, vehiclesCount, workOrdersCount, workOrderLinesCount, invoicesCount, partsCount] =
+    await Promise.all([
+      supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId),
+      supabase
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId),
+      supabase
+        .from("work_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId),
+      supabase
+        .from("work_order_lines")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId),
+      supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .contains("metadata", { source_intake_id: intakeId }),
+      supabase
+        .from("parts")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .ilike("description", `%[shop_boost:${intakeId}]%`),
+    ]);
+
   await supabase
     .from("shop_boost_intakes")
     .update(
@@ -677,10 +819,27 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         intake_basics: {
           ...prevBasics,
           importedAt: new Date().toISOString(),
+          importSummary: {
+            customersImported: customersCount.count ?? 0,
+            vehiclesImported: vehiclesCount.count ?? 0,
+            workOrdersImported: workOrdersCount.count ?? 0,
+            workOrderLinesImported: workOrderLinesCount.count ?? 0,
+            invoicesImported: invoicesCount.count ?? 0,
+            partsImported: partsCount.count ?? 0,
+          },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],
     )
     .eq("id", intakeId);
+
+  return {
+    customersImported: customersCount.count ?? 0,
+    vehiclesImported: vehiclesCount.count ?? 0,
+    workOrdersImported: workOrdersCount.count ?? 0,
+    workOrderLinesImported: workOrderLinesCount.count ?? 0,
+    invoicesImported: invoicesCount.count ?? 0,
+    partsImported: partsCount.count ?? 0,
+  };
 }
 
 async function upsertHistoryLine(args: {
@@ -697,9 +856,9 @@ async function upsertHistoryLine(args: {
   const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id } =
     args;
 
-  const external_id = `import:${intakeId}:wol:${rowIndex}`;
+  const external_id = `import:${intakeId}:wol:${workOrderId}:${rowIndex}`;
 
-  await supabase.from("work_order_lines").insert({
+  const payload = {
     shop_id: shopId,
     work_order_id: workOrderId,
     vehicle_id,
@@ -713,12 +872,30 @@ async function upsertHistoryLine(args: {
     source_intake_id: intakeId,
     external_id,
     import_confidence: 0.7,
-  } as DB["public"]["Tables"]["work_order_lines"]["Insert"]);
+  } as DB["public"]["Tables"]["work_order_lines"]["Insert"];
+
+  const { data: existing } = await supabase
+    .from("work_order_lines")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("external_id", external_id)
+    .maybeSingle<{ id: string }>();
+
+  if (existing?.id) {
+    await supabase
+      .from("work_order_lines")
+      .update(payload as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .eq("id", existing.id);
+    return;
+  }
+
+  await supabase.from("work_order_lines").insert(payload);
 }
 
 async function upsertInvoiceIfNeeded(args: {
   supabase: ReturnType<typeof createAdminSupabase>;
   shopId: string;
+  intakeId: string;
   workOrderId: string;
   customer_id: string | null;
   total: number | null;
@@ -726,7 +903,7 @@ async function upsertInvoiceIfNeeded(args: {
   parts: number | null;
   issuedAt: string | null;
 }): Promise<void> {
-  const { supabase, shopId, workOrderId, customer_id, total, labor, parts, issuedAt } = args;
+  const { supabase, shopId, intakeId, workOrderId, customer_id, total, labor, parts, issuedAt } = args;
 
   const hasMoney = (total ?? 0) > 0 || (labor ?? 0) > 0 || (parts ?? 0) > 0;
   if (!hasMoney) return;
@@ -751,7 +928,8 @@ async function upsertInvoiceIfNeeded(args: {
     total: total ?? Math.max(0, (labor ?? 0) + (parts ?? 0)),
     issued_at: issuedAt,
     paid_at: issuedAt,
+    invoice_number: `IMP-${workOrderId.slice(0, 8)}`,
     currency: "USD",
-    metadata: { imported: true },
+    metadata: { imported: true, source_intake_id: intakeId },
   } as DB["public"]["Tables"]["invoices"]["Insert"]);
 }
