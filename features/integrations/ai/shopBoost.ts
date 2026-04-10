@@ -26,6 +26,12 @@ type BuildShopBoostProfileOptions = {
   intakeId?: string;
 };
 
+type OperatingLayerSummary = {
+  menuItemsCreated: number;
+  inspectionTemplatesCreated: number;
+  itemsNeedReview: number;
+};
+
 export async function buildShopBoostProfile(
   opts: BuildShopBoostProfileOptions,
 ): Promise<ShopHealthSnapshot | null> {
@@ -155,6 +161,13 @@ export async function buildShopBoostProfile(
     mergedStats,
   });
 
+  const operatingLayerSummary = await materializeOperatingLayer({
+    supabase,
+    shopId,
+    intakeId: intakeRow.id,
+    aiSnapshot,
+  });
+
   // ✅ NEW: persist staff candidates from staff CSV (per-person)
   await persistStaffInviteCandidates({
     supabase,
@@ -168,6 +181,13 @@ export async function buildShopBoostProfile(
     topTechs,
     issuesDetected,
     recommendations,
+  };
+
+  const snapshotWithMeta = {
+    ...snapshot,
+    meta: {
+      operatingLayerSummary,
+    },
   };
 
   const { error: aiProfileErr } = await supabase
@@ -187,12 +207,21 @@ export async function buildShopBoostProfile(
 
   const { error: updateIntakeErr } = await supabase
     .from("shop_boost_intakes")
-    .update({ status: "completed", processed_at: new Date().toISOString() })
+    .update({
+      status: "completed",
+      processed_at: new Date().toISOString(),
+      intake_basics: {
+        ...(isRecord((intakeRow as { intake_basics?: unknown }).intake_basics)
+          ? ((intakeRow as { intake_basics?: Record<string, unknown> }).intake_basics ?? {})
+          : {}),
+        operatingLayerSummary,
+      },
+    })
     .eq("id", intakeRow.id);
 
   if (updateIntakeErr) console.error("Failed to update intake status", updateIntakeErr);
 
-  return snapshot;
+  return snapshotWithMeta as unknown as ShopHealthSnapshot;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1284,6 +1313,19 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function slugKey(v: string): string {
+  return v
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 /* -------------------------------------------------------------------------- */
 /* ✅ Persist suggestions                                                       */
 /* -------------------------------------------------------------------------- */
@@ -1335,6 +1377,104 @@ async function persistSuggestions(args: {
     const { error } = await supabase.from("inspection_template_suggestions").insert(inspInserts);
     if (error) console.error("[shopBoost] failed inserting inspection_template_suggestions", error);
   }
+}
+
+async function materializeOperatingLayer(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  aiSnapshot: ShopHealthSnapshot;
+}): Promise<OperatingLayerSummary> {
+  const { supabase, shopId, intakeId, aiSnapshot } = args;
+
+  let menuItemsCreated = 0;
+  let inspectionTemplatesCreated = 0;
+  let itemsNeedReview = 0;
+
+  for (const suggestion of aiSnapshot.menuSuggestions ?? []) {
+    const confidence = 0.75;
+    if (confidence < 0.5) {
+      itemsNeedReview += 1;
+      continue;
+    }
+
+    if (confidence < 0.8) {
+      itemsNeedReview += 1;
+    }
+
+    const key = `shop_boost:${intakeId}:${slugKey(suggestion.name ?? "menu-item")}`;
+    const { data: existing } = await supabase
+      .from("menu_items")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("service_key", key)
+      .maybeSingle<{ id: string }>();
+
+    if (existing?.id) continue;
+
+    const { error } = await supabase.from("menu_items").insert({
+      shop_id: shopId,
+      name: suggestion.name ?? "Shop Boost Service",
+      description: suggestion.description ?? null,
+      labor_hours:
+        Number.isFinite(Number(suggestion.estimatedLaborHours))
+          ? Number(suggestion.estimatedLaborHours)
+          : null,
+      total_price:
+        Number.isFinite(Number(suggestion.recommendedPrice))
+          ? Number(suggestion.recommendedPrice)
+          : null,
+      service_key: key,
+      source: "shop_boost",
+      is_active: confidence >= 0.8,
+    } as DB["public"]["Tables"]["menu_items"]["Insert"]);
+
+    if (!error) menuItemsCreated += 1;
+  }
+
+  for (const suggestion of aiSnapshot.inspectionSuggestions ?? []) {
+    const confidence = 0.8;
+    if (confidence < 0.5) {
+      itemsNeedReview += 1;
+      continue;
+    }
+    if (confidence < 0.8) {
+      itemsNeedReview += 1;
+    }
+
+    const templateName = suggestion.name ?? "Shop Boost Inspection";
+    const { data: existing } = await supabase
+      .from("inspection_templates")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("template_name", templateName)
+      .maybeSingle<{ id: string }>();
+
+    if (existing?.id) continue;
+
+    const { error } = await supabase.from("inspection_templates").insert({
+      shop_id: shopId,
+      template_name: templateName,
+      description: suggestion.note ?? null,
+      vehicle_type: suggestion.usageContext ?? null,
+      tags: [
+        "shop_boost",
+        `source_intake:${intakeId}`,
+        confidence >= 0.8 ? "confidence:high" : "confidence:medium",
+      ],
+      is_public: false,
+      sections: {
+        generated_by: "shop_boost",
+        source_intake_id: intakeId,
+        confidence,
+        note: suggestion.note ?? null,
+      },
+    } as DB["public"]["Tables"]["inspection_templates"]["Insert"]);
+
+    if (!error) inspectionTemplatesCreated += 1;
+  }
+
+  return { menuItemsCreated, inspectionTemplatesCreated, itemsNeedReview };
 }
 
 /* -------------------------------------------------------------------------- */

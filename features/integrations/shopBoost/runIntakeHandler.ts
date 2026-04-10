@@ -7,14 +7,25 @@ import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
-import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
+import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 
 type DB = Database;
 
 const BUCKET = "shop-imports";
 
 export type ShopBoostRunResp =
-  | { ok: true; shopId: string; intakeId: string; snapshot: unknown }
+  | {
+      ok: true;
+      shopId: string;
+      intakeId: string;
+      snapshot: unknown;
+      importSummary: ShopBoostImportSummary;
+      operatingLayerSummary: {
+        menuItemsCreated: number;
+        inspectionTemplatesCreated: number;
+        itemsNeedReview: number;
+      };
+    }
   | { ok: false; error: string };
 
 type RunMode = {
@@ -324,14 +335,39 @@ export async function runShopBoostIntake(
   const snapshot = await buildShopBoostProfile({ shopId, intakeId });
   if (!snapshot) return { ok: false, error: "AI analysis failed. Try different exports." };
 
+  let importSummary: ShopBoostImportSummary = {
+    customersImported: 0,
+    vehiclesImported: 0,
+    workOrdersImported: 0,
+    workOrderLinesImported: 0,
+    invoicesImported: 0,
+    partsImported: 0,
+  };
+
   if (mode.runImport) {
     // 🔒 do NOT allow staff auth creation from intake runs
-    await runShopBoostImport({
+    importSummary = await runShopBoostImport({
       shopId,
       intakeId,
       options: { createStaffUsers: false },
     });
   }
 
-  return { ok: true, shopId, intakeId, snapshot };
+  const intakeBasics = (snapshot as { meta?: { operatingLayerSummary?: unknown } })?.meta
+    ?.operatingLayerSummary as
+    | { menuItemsCreated?: number; inspectionTemplatesCreated?: number; itemsNeedReview?: number }
+    | undefined;
+
+  return {
+    ok: true,
+    shopId,
+    intakeId,
+    snapshot,
+    importSummary,
+    operatingLayerSummary: {
+      menuItemsCreated: intakeBasics?.menuItemsCreated ?? 0,
+      inspectionTemplatesCreated: intakeBasics?.inspectionTemplatesCreated ?? 0,
+      itemsNeedReview: intakeBasics?.itemsNeedReview ?? 0,
+    },
+  };
 }
