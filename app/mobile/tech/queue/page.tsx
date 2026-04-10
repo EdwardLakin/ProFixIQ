@@ -314,7 +314,7 @@ export default function MobileTechQueuePage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto max-w-md px-4 py-8 text-sm text-neutral-300">
+        <div className="mx-auto max-w-5xl px-4 py-8 text-sm text-neutral-300">
           Loading assigned jobs…
         </div>
       </main>
@@ -324,7 +324,7 @@ export default function MobileTechQueuePage() {
   if (err) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto max-w-md px-4 py-8 text-sm text-red-200">
+        <div className="mx-auto max-w-5xl px-4 py-8 text-sm text-red-200">
           {err}
         </div>
       </main>
@@ -333,7 +333,7 @@ export default function MobileTechQueuePage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* HERO (match MobileTechHome vibe) */}
         <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="space-y-1">

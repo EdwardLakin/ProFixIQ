@@ -320,7 +320,7 @@ export default function MobileHome() {
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-16 text-center">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-center px-4 py-16 text-center">
           <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
             ProFixIQ • Mobile
           </div>
@@ -338,7 +338,7 @@ export default function MobileHome() {
   if (profile && isTechRole(role)) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileTechHome
             techName={profile.full_name || "Tech"}
             role={(role ?? "mechanic") as MobileRole}
@@ -354,7 +354,7 @@ export default function MobileHome() {
   if (profile && role === "advisor") {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileAdvisorHome
             advisorName={profile.full_name || "Advisor"}
             role="advisor"
@@ -370,7 +370,7 @@ export default function MobileHome() {
   ) {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileManagerHome
             managerName={profile.full_name || "Manager"}
             role={role}
@@ -384,7 +384,7 @@ export default function MobileHome() {
   if (profile && (role as string) === "lead_hand") {
     return (
       <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileLeadHome
             leadName={profile.full_name || "Lead"}
             role={role as MobileRole}
@@ -400,7 +400,7 @@ export default function MobileHome() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1 text-center">
           <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">

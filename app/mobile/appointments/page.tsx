@@ -272,7 +272,7 @@ export default function MobileAppointmentsPage() {
     <main className="min-h-screen bg-black text-white">
       <Toaster position="top-center" />
 
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* Header */}
         <header className="space-y-1">
           <div className="text-[0.7rem] uppercase tracking-[0.24em] text-neutral-500">

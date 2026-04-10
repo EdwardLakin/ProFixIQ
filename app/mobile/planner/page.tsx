@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MobileShell } from "components/layout/MobileShell";
 
 export default function MobilePlannerPage() {
   const router = useRouter();
@@ -12,8 +11,7 @@ export default function MobilePlannerPage() {
   const src = "/agent/planner?view=mobile";
 
   return (
-    <MobileShell>
-      <div className="flex h-full flex-col bg-neutral-950 text-foreground">
+      <div className="flex h-full min-h-[100dvh] flex-col bg-neutral-950 text-foreground">
         {/* Top bar */}
         <header className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
           <button
@@ -47,6 +45,5 @@ export default function MobilePlannerPage() {
           />
         </main>
       </div>
-    </MobileShell>
   );
 }

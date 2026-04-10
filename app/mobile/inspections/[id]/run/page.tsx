@@ -62,8 +62,10 @@ function MobileInspectionRunnerFrame({
         </span>
       </div>
 
-      <div className="mt-2 h-[calc(100vh-9rem)] overflow-hidden rounded-xl border border-white/8 bg-black/90">
-        <iframe src={src} title="Mobile inspection runner" className="h-full w-full border-0" />
+      <div className="mt-2 overflow-hidden rounded-xl border border-white/8 bg-black/90">
+        <div className="h-[calc(100dvh-10.5rem)] min-h-[540px] w-full pb-[env(safe-area-inset-bottom)]">
+          <iframe src={src} title="Mobile inspection runner" className="h-full w-full border-0" />
+        </div>
       </div>
     </div>
   );

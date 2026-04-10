@@ -7,7 +7,6 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
-import { MobileShell } from "components/layout/MobileShell";
 
 type DB = Database;
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -103,11 +102,9 @@ export default function MobileCustomerProfilePage() {
 
   if (!customerId) {
     return (
-      <MobileShell>
         <div className="px-4 py-4 text-sm text-red-400">
           Missing customer id.
         </div>
-      </MobileShell>
     );
   }
 
@@ -120,8 +117,7 @@ export default function MobileCustomerProfilePage() {
     : "Customer";
 
   return (
-    <MobileShell>
-      <div className="px-4 py-4 space-y-4 text-foreground">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 space-y-4 text-foreground">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-2">
           <button
@@ -340,6 +336,5 @@ export default function MobileCustomerProfilePage() {
           </>
         )}
       </div>
-    </MobileShell>
   );
 }

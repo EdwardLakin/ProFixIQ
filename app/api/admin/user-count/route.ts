@@ -4,7 +4,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 export async function GET() {
   const supabaseUser = createServerSupabaseRoute();

@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
@@ -74,10 +76,23 @@ export async function POST(req: Request) {
 
     const supabase = createClient<DB>(supabaseUrl, serviceKey);
 
+    const actor = createServerSupabaseRoute();
+    const {
+      data: { user },
+      error: userErr,
+    } = await actor.auth.getUser();
+
+    if (userErr) {
+      return NextResponse.json({ error: userErr.message }, { status: 500 });
+    }
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     // Ensure line exists + belongs to WO (prevents cross-WO updates)
     const { data: line, error: loadErr } = await supabase
       .from("work_order_lines")
-      .select("id, work_order_id, status, approval_state, punchable, price_estimate, labor_time")
+      .select("id, work_order_id, shop_id, status, approval_state, punchable, price_estimate, labor_time")
       .eq("id", workOrderLineId)
       .maybeSingle();
 
@@ -96,6 +111,23 @@ export async function POST(req: Request) {
         { error: "Work order line does not belong to the given work order" },
         { status: 400 },
       );
+    }
+
+
+    const { data: me, error: meErr } = await actor
+      .from("profiles")
+      .select("id, role, shop_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (meErr || !me) {
+      return NextResponse.json({ error: "Unable to load actor profile" }, { status: 403 });
+    }
+    if (!canMutateWorkOrders(me.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!me.shop_id || me.shop_id !== (line as { shop_id?: string | null }).shop_id) {
+      return NextResponse.json({ error: "Cross-shop access denied" }, { status: 403 });
     }
 
     const currentStatus = normalizeWorkOrderLineStatus(line.status);
