@@ -9,7 +9,15 @@ import { useEffect, useMemo, useState, useCallback, type JSX } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import { listPendingMutations, runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
+import {
+  getOfflineSyncSummary,
+  listOfflineMutations,
+  listPendingMutations,
+  replayQueuedMutations,
+  runMutationWithOfflineQueue,
+  subscribeOfflineMutations,
+  type PendingMutation,
+} from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -99,6 +107,14 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
+type SyncSummary = ReturnType<typeof getOfflineSyncSummary>;
+type StagedPhoto = {
+  clientMutationId: string;
+  file: File;
+  previewUrl: string;
+  fileName: string;
+};
+
 function canPunch(line: WorkOrderLine | null): boolean {
   if (!line) return false;
 
@@ -133,6 +149,8 @@ export default function MobileFocusedJob(props: {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
   const [pendingWrites, setPendingWrites] = useState(0);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary>(() => getOfflineSyncSummary());
+  const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
 
   // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
@@ -160,12 +178,48 @@ export default function MobileFocusedJob(props: {
     console.error(prefix, err);
   };
 
-  useEffect(() => {
-    const refreshPending = () => setPendingWrites(listPendingMutations().length);
-    refreshPending();
-    window.addEventListener("online", refreshPending);
-    return () => window.removeEventListener("online", refreshPending);
+  const refreshSyncState = useCallback(() => {
+    const summary = getOfflineSyncSummary();
+    setSyncSummary(summary);
+    setPendingWrites(summary.queued + summary.syncing + summary.failed + summary.conflicted);
   }, []);
+
+  const getLineConflict = useCallback(
+    async (targetLineId: string, mode: "notes" | "finish" | "story"): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .select("id,status,approval_state")
+        .eq("id", targetLineId)
+        .maybeSingle<{ id: string; status: string | null; approval_state: string | null }>();
+      if (error) throw error;
+      if (!data?.id) return "Job line no longer exists.";
+
+      if (mode === "finish" && data.status === "completed") return "Job line is already completed.";
+      if (mode === "finish" && data.status === "declined") return "Job line is declined and cannot be finished.";
+      if (mode === "story" && data.status === "completed") {
+        return "Job line is already completed. Story edits require advisor review.";
+      }
+      if (mode === "notes" && data.approval_state === "approved" && data.status === "completed") {
+        return "Job line is completed and approved. Notes update blocked.";
+      }
+      return null;
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    const refreshPending = () => {
+      setPendingWrites(listPendingMutations().length);
+      refreshSyncState();
+    };
+    refreshPending();
+    const unsubscribe = subscribeOfflineMutations(refreshPending);
+    window.addEventListener("online", refreshPending);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("online", refreshPending);
+    };
+  }, [refreshSyncState]);
 
   const closeAllSubModals = () => {
     setOpenComplete(false);
@@ -287,6 +341,81 @@ export default function MobileFocusedJob(props: {
       toast.error(err?.message ?? "Failed to refresh job");
     }
   }, [workOrderLineId, loadLine, onChanged, loadAllocations]);
+
+  const replayOfflineMutations = useCallback(async () => {
+    const handlers: Record<string, (mutation: PendingMutation) => Promise<{ conflicted?: string | null } | void>> = {
+      update_work_order_line_notes: async (mutation) => {
+        const payload = mutation.payload as { workOrderLineId?: string; notes?: string };
+        const workLineId = payload.workOrderLineId;
+        if (!workLineId) return { conflicted: "Missing target line for notes sync." };
+
+        const conflict = await getLineConflict(workLineId, "notes");
+        if (conflict) return { conflicted: conflict };
+
+        const { error } = await supabase
+          .from("work_order_lines")
+          .update({
+            notes: payload.notes ?? "",
+          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+          .eq("id", workLineId);
+        if (error) throw error;
+      },
+      upload_job_photo: async (mutation) => {
+        const payload = mutation.payload as {
+          path?: string;
+          fileName?: string;
+          mimeType?: string;
+          dataUrl?: string;
+        };
+        if (!payload.path || !payload.dataUrl) {
+          return { conflicted: "Missing local photo data. Please recapture and retry." };
+        }
+
+        const response = await fetch(payload.dataUrl);
+        const blob = await response.blob();
+        const { error } = await supabase.storage.from("job-photos").upload(payload.path, blob, {
+          contentType: payload.mimeType || "image/jpeg",
+          upsert: true,
+        });
+        if (error) throw error;
+      },
+      save_story_draft: async (mutation) => {
+        const payload = mutation.payload as { lineId?: string; cause?: string; correction?: string };
+        if (!payload.lineId) return { conflicted: "Missing job line for story draft." };
+        const conflict = await getLineConflict(payload.lineId, "story");
+        if (conflict) return { conflicted: conflict };
+
+        const { error } = await supabase
+          .from("work_order_lines")
+          .update({
+            cause: payload.cause ?? "",
+            correction: payload.correction ?? "",
+          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+          .eq("id", payload.lineId);
+        if (error) throw error;
+      },
+    };
+
+    const result = await replayQueuedMutations({ handlers });
+    refreshSyncState();
+    setStagedPhotos((prev) =>
+      prev.filter((photo) => {
+        const mutation = listOfflineMutations().find((item) => item.clientMutationId === photo.clientMutationId);
+        return mutation?.status !== "synced";
+      }),
+    );
+
+    if (result.replayed > 0) {
+      toast.success(`Synced ${result.replayed} pending update${result.replayed === 1 ? "" : "s"}.`);
+      await refresh();
+    }
+    if (result.failed > 0) {
+      toast.error(`${result.failed} offline update${result.failed === 1 ? "" : "s"} failed and need retry.`);
+    }
+    if (result.conflicted > 0) {
+      toast.warning(`${result.conflicted} update${result.conflicted === 1 ? "" : "s"} need manual resolution.`);
+    }
+  }, [getLineConflict, supabase, refreshSyncState, refresh]);
 
   // initial load (page behavior)
   useEffect(() => {
@@ -417,6 +546,21 @@ export default function MobileFocusedJob(props: {
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
 
+  useEffect(() => {
+    const handleOnline = () => {
+      void replayOfflineMutations();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [replayOfflineMutations]);
+
+  useEffect(
+    () => () => {
+      stagedPhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    },
+    [stagedPhotos],
+  );
+
   // parts request events
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
@@ -498,11 +642,25 @@ export default function MobileFocusedJob(props: {
 
     const clientMutationId = uuidv4();
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${clientMutationId}_${file.name}`;
+    const previewUrl = URL.createObjectURL(file);
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Unable to stage photo for offline upload."));
+      reader.readAsDataURL(file);
+    });
 
     const result = await runMutationWithOfflineQueue({
-      id: clientMutationId,
-      action: "upload_job_photo",
-      payload: { workOrderLineId, path, fileName: file.name },
+      clientMutationId,
+      actionType: "upload_job_photo",
+      payload: {
+        workOrderLineId,
+        path,
+        fileName: file.name,
+        mimeType: file.type || "image/jpeg",
+        dataUrl,
+      },
+      orderKey: `${workOrderLineId}:photo:${clientMutationId}`,
       runner: async () => {
         const { error } = await supabase.storage.from("job-photos").upload(path, file, {
           contentType: file.type || "image/jpeg",
@@ -512,12 +670,17 @@ export default function MobileFocusedJob(props: {
       },
     });
 
-    setPendingWrites(listPendingMutations().length);
+    refreshSyncState();
     if (result.queued) {
+      setStagedPhotos((prev) => [
+        ...prev,
+        { clientMutationId, file, previewUrl, fileName: file.name },
+      ]);
       toast.warning("Photo queued. Retry when connection is restored.");
       return;
     }
 
+    URL.revokeObjectURL(previewUrl);
     toast.success("Photo attached");
     window.dispatchEvent(new CustomEvent("wol:refresh"));
   };
@@ -534,9 +697,11 @@ export default function MobileFocusedJob(props: {
     try {
       const mutationId = `${workOrderLineId}:notes:${Date.now()}`;
       const result = await runMutationWithOfflineQueue({
-        id: mutationId,
-        action: "update_work_order_line_notes",
+        clientMutationId: mutationId,
+        actionType: "update_work_order_line_notes",
         payload: { workOrderLineId, notes: techNotes },
+        orderKey: `${workOrderLineId}:001:notes`,
+        conflictCheck: () => getLineConflict(workOrderLineId, "notes"),
         runner: async () => {
           const { error } = await supabase
             .from("work_order_lines")
@@ -548,7 +713,11 @@ export default function MobileFocusedJob(props: {
         },
       });
 
-      setPendingWrites(listPendingMutations().length);
+      refreshSyncState();
+      if (result.conflicted) {
+        toast.error("Notes changed on server. Resolve conflict before retrying.");
+        return;
+      }
       if (result.queued) {
         toast.warning("Notes queued for retry when back online.");
         return;
@@ -557,6 +726,8 @@ export default function MobileFocusedJob(props: {
       toast.success("Notes saved");
       setNotesDirty(false);
       await refresh();
+    } catch (error) {
+      showErr("Save notes failed", error as { message?: string });
     } finally {
       setSavingNotes(false);
     }
@@ -584,6 +755,11 @@ export default function MobileFocusedJob(props: {
     (line?.description ?? "").trim() ||
     (line?.line_no ? `Line #${line.line_no}` : "") ||
     "Job";
+
+  const offlineMutations = useMemo(
+    () => listOfflineMutations().filter((item) => item.status !== "synced"),
+    [syncSummary],
+  );
 
   return (
     <>
@@ -627,9 +803,44 @@ export default function MobileFocusedJob(props: {
           )}
         </header>
 
-        {pendingWrites > 0 ? (
-          <div className="px-3 pt-2 text-xs text-amber-200">Pending offline writes: {pendingWrites}</div>
-        ) : null}
+        <div className="px-3 pt-2">
+          <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-neutral-200">Sync status</span>
+              <span
+                className={
+                  syncSummary.conflicted > 0 || syncSummary.failed > 0
+                    ? "text-red-200"
+                    : syncSummary.queued > 0 || syncSummary.syncing > 0
+                      ? "text-amber-200"
+                      : "text-emerald-200"
+                }
+              >
+                {syncSummary.conflicted > 0
+                  ? "Needs attention"
+                  : syncSummary.failed > 0
+                    ? "Failed"
+                    : syncSummary.syncing > 0
+                      ? "Syncing"
+                      : syncSummary.queued > 0
+                        ? "Pending"
+                        : "Synced"}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-400">
+              Pending: {pendingWrites} • Failed: {syncSummary.failed} • Conflicted: {syncSummary.conflicted}
+            </div>
+            {(pendingWrites > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
+              <button
+                type="button"
+                onClick={() => void replayOfflineMutations()}
+                className="mt-2 rounded-md border border-[var(--metal-border-soft)] bg-black/40 px-2 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+              >
+                Retry sync now
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Body */}
         <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
@@ -872,6 +1083,54 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* parts used */}
+                {(stagedPhotos.length > 0 || offlineMutations.length > 0) && (
+                  <div className={`${panel} px-4 py-4`}>
+                    <div className="mb-2 text-sm font-medium text-neutral-100">Offline sync queue</div>
+                    {stagedPhotos.map((photo) => (
+                      <div
+                        key={photo.clientMutationId}
+                        className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2"
+                      >
+                        <img src={photo.previewUrl} alt={photo.fileName} className="h-10 w-10 rounded-md object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs text-amber-100">{photo.fileName}</div>
+                          <div className="text-[11px] text-amber-200">Staged locally • waiting for upload</div>
+                        </div>
+                      </div>
+                    ))}
+                    <ul className="space-y-2 text-xs">
+                      {offlineMutations.map((mutation) => (
+                        <li
+                          key={mutation.clientMutationId}
+                          className="rounded-lg border border-[var(--metal-border-soft)] bg-black/30 px-2 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-neutral-100">{mutation.actionType.replaceAll("_", " ")}</span>
+                            <span
+                              className={
+                                mutation.status === "conflicted"
+                                  ? "text-red-200"
+                                  : mutation.status === "failed"
+                                    ? "text-amber-200"
+                                    : mutation.status === "syncing"
+                                      ? "text-sky-200"
+                                      : "text-neutral-300"
+                              }
+                            >
+                              {mutation.status}
+                            </span>
+                          </div>
+                          {mutation.lastError ? <div className="mt-1 text-[11px] text-amber-200">{mutation.lastError}</div> : null}
+                          {mutation.conflictReason ? (
+                            <div className="mt-1 text-[11px] text-red-200">{mutation.conflictReason}</div>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* parts used */}
                 <div className={`${panel} px-4 py-4`}>
                   <div className="mb-2 text-sm font-medium text-neutral-100">
                     Parts used
@@ -993,6 +1252,11 @@ export default function MobileFocusedJob(props: {
           initialCorrection={prefillCorrection}
           onSubmit={async (cause: string, correction: string) => {
             try {
+              const conflict = await getLineConflict(line.id, "finish");
+              if (conflict) {
+                toast.error(conflict);
+                return;
+              }
               await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
@@ -1013,15 +1277,35 @@ export default function MobileFocusedJob(props: {
             );
           }}
           onSaveDraft={async (cause: string, correction: string) => {
-            const { error } = await supabase
-              .from("work_order_lines")
-              .update({
-                cause,
-                correction,
-              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-              .eq("id", line.id);
+            const mutationId = `${line.id}:story:${Date.now()}`;
+            const result = await runMutationWithOfflineQueue({
+              clientMutationId: mutationId,
+              actionType: "save_story_draft",
+              payload: { lineId: line.id, cause, correction },
+              orderKey: `${line.id}:002:story`,
+              conflictCheck: () => getLineConflict(line.id, "story"),
+              runner: async () => {
+                const { error } = await supabase
+                  .from("work_order_lines")
+                  .update({
+                    cause,
+                    correction,
+                  } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+                  .eq("id", line.id);
 
-            if (error) return showErr("Save story failed", error);
+                if (error) throw error;
+              },
+            });
+
+            refreshSyncState();
+            if (result.conflicted) {
+              toast.error("Story conflict detected. Review latest line status.");
+              return;
+            }
+            if (result.queued) {
+              toast.warning("Story queued for sync when back online.");
+              return;
+            }
 
             toast.success("Story saved");
             await refresh();
