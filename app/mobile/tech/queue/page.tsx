@@ -365,7 +365,7 @@ export default function MobileTechQueuePage() {
          compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* FILTER CARDS (desktop-style vibes) */}
-        <section className="grid grid-cols-2 gap-3 text-xs">
+        <section className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
           {(
             ["awaiting", "in_progress", "on_hold", "completed"] as RollupStatus[]
           ).map((s) => {
@@ -401,7 +401,7 @@ export default function MobileTechQueuePage() {
         </section>
 
         {/* JOB LIST (WO + line# + real title + vehicle) */}
-        <section className="space-y-2">
+        <section className="grid gap-2 md:grid-cols-2">
           {filteredLines.map((line) => {
             const bucket = toBucket(line.status);
 
@@ -423,6 +423,9 @@ export default function MobileTechQueuePage() {
             );
 
             const vehicleLabel = wo?.vehicleLabel ?? null;
+            const approvalState = (line.approval_state ?? "approved").replaceAll("_", " ");
+            const isAwaitingApproval = (line.approval_state ?? "").toLowerCase() === "pending";
+            const isPunchedIn = !!line.punched_in_at && !line.punched_out_at;
 
             // ✅ always use UUID route (mobile expects UUID)
             const woId = wo?.id ?? line.work_order_id ?? "";
@@ -464,6 +467,22 @@ export default function MobileTechQueuePage() {
 
                     <div className="mt-1 truncate text-[0.75rem] text-neutral-400">
                       {vehicleLabel ? vehicleLabel : "—"}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                        Approval: {approvalState}
+                      </span>
+                      {isAwaitingApproval && (
+                        <span className="rounded-full border border-sky-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-sky-200">
+                          Waiting decision
+                        </span>
+                      )}
+                      {isPunchedIn && (
+                        <span className="rounded-full border border-emerald-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-emerald-200">
+                          Active timer
+                        </span>
+                      )}
                     </div>
                   </div>
 

@@ -74,15 +74,9 @@ const btnNeutral =
 const btnWarn =
   btnBase +
   " border-amber-400/70 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
-const btnDanger =
-  btnBase +
-  " border-red-500/70 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
   btnBase +
   " border-sky-500/70 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
-const btnAccent =
-  btnBase +
-  " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -761,6 +755,19 @@ export default function MobileFocusedJob(props: {
     [syncSummary],
   );
 
+  const isOnHold = line?.status === "on_hold";
+  const canStartOrResume = !!line && canPunch(line) && line.status !== "completed";
+  const needsApprovalGate =
+    line?.status === "awaiting_approval" ||
+    (line?.approval_state != null && line.approval_state !== "approved") ||
+    line?.status === "declined";
+
+  const primaryActionLabel = isOnHold
+    ? "Resume Job"
+    : line?.status === "in_progress"
+      ? "Complete Job"
+      : "Start Job";
+
   return (
     <>
       <div className="app-shell flex min-h-screen flex-col text-foreground">
@@ -844,7 +851,7 @@ export default function MobileFocusedJob(props: {
 
         {/* Body */}
         <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
-          <div className="mx-auto max-w-xl space-y-4">
+          <div className="mx-auto max-w-4xl space-y-4">
             {busy && !line ? (
               <div className="grid gap-3">
                 <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
@@ -856,8 +863,60 @@ export default function MobileFocusedJob(props: {
               </div>
             ) : (
               <>
+                {/* dominant next action */}
+                {mode === "tech" && line && (
+                  <div className={`${panel} px-4 py-3`}>
+                    <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Next action
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        disabled={busy || !canStartOrResume}
+                        onClick={() => {
+                          if (!line || busy) return;
+                          if (isOnHold) {
+                            void releaseHold();
+                            return;
+                          }
+                          if (line.status === "in_progress") {
+                            closeAllSubModals();
+                            setPrefillCause(line.cause ?? "");
+                            setPrefillCorrection(line.correction ?? "");
+                            setOpenComplete(true);
+                            return;
+                          }
+                        }}
+                        className={[
+                          "flex-1 rounded-xl border px-4 py-3 text-sm font-semibold transition",
+                          "border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)]",
+                          "disabled:cursor-not-allowed disabled:opacity-45",
+                        ].join(" ")}
+                      >
+                        {primaryActionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenParts(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Request Parts
+                      </button>
+                    </div>
+                    {needsApprovalGate && (
+                      <div className="mt-2 text-[11px] text-amber-300">
+                        Approval required before job punch actions.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* meta info */}
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-4">
                   <div className={`${card} p-3`}>
                     <div className={fieldLabel}>Status</div>
                     <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
@@ -885,7 +944,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* vehicle & customer */}
                 <div className={`${panel} px-4 py-4 text-sm`}>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <div className={fieldLabel}>Vehicle</div>
                       <div className="mt-1 truncate text-neutral-100">
@@ -949,35 +1008,9 @@ export default function MobileFocusedJob(props: {
                 )}
 
                 {/* controls */}
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      <button
-                        type="button"
-                        className={btnAccent}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setPrefillCause(line?.cause ?? "");
-                          setPrefillCorrection(line?.correction ?? "");
-                          setOpenComplete(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Complete (Cause / Correction)
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnDanger}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenParts(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Request Parts
-                      </button>
-
                       <button
                         type="button"
                         className={btnWarn}

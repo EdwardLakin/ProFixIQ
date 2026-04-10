@@ -17,6 +17,16 @@ type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
+type WorkOrderLineSummary = Pick<
+  DB["public"]["Tables"]["work_order_lines"]["Row"],
+  "work_order_id" | "status" | "approval_state" | "assigned_tech_id" | "hold_reason"
+>;
+type WorkOrderSignal = {
+  inProgress: number;
+  pendingApproval: number;
+  unassigned: number;
+  waitingParts: number;
+};
 
 type StatusKey =
   | "awaiting_approval"
@@ -126,6 +136,7 @@ export default function MobileWorkOrdersListPage() {
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [lineSignals, setLineSignals] = useState<Record<string, WorkOrderSignal>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,6 +194,39 @@ export default function MobileWorkOrdersListPage() {
     }
 
     const list = (data ?? []) as Row[];
+    const workOrderIds = list.map((item) => item.id);
+    if (workOrderIds.length > 0) {
+      const { data: linesData } = await supabase
+        .from("work_order_lines")
+        .select("work_order_id, status, approval_state, assigned_tech_id, hold_reason")
+        .in("work_order_id", workOrderIds);
+
+      const signals: Record<string, WorkOrderSignal> = {};
+      (linesData ?? []).forEach((line) => {
+        const ln = line as WorkOrderLineSummary;
+        const woId = ln.work_order_id;
+        if (!woId) return;
+        if (!signals[woId]) {
+          signals[woId] = {
+            inProgress: 0,
+            pendingApproval: 0,
+            unassigned: 0,
+            waitingParts: 0,
+          };
+        }
+        const target = signals[woId];
+        if ((ln.status ?? "").toLowerCase() === "in_progress") target.inProgress += 1;
+        if ((ln.approval_state ?? "").toLowerCase() === "pending") target.pendingApproval += 1;
+        if (!ln.assigned_tech_id) target.unassigned += 1;
+        const holdReason = (ln.hold_reason ?? "").toLowerCase();
+        if (((ln.status ?? "").toLowerCase() === "on_hold" && holdReason.includes("part")) || holdReason.includes("quote")) {
+          target.waitingParts += 1;
+        }
+      });
+      setLineSignals(signals);
+    } else {
+      setLineSignals({});
+    }
 
     const qlc = q.trim().toLowerCase();
     const filtered =
@@ -375,6 +419,12 @@ export default function MobileWorkOrdersListPage() {
 
               const veh = formatVehicle(wo.vehicles);
               const idLabel = wo.custom_id || `#${wo.id.slice(0, 8)}`;
+              const signal = lineSignals[wo.id] ?? {
+                inProgress: 0,
+                pendingApproval: 0,
+                unassigned: 0,
+                waitingParts: 0,
+              };
 
               return (
                 <Link
@@ -421,6 +471,28 @@ export default function MobileWorkOrdersListPage() {
                     >
                       {STATUS_LABEL[key]}
                     </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {signal.inProgress > 0 && (
+                      <span className="rounded-full border border-[var(--accent-copper-soft)]/70 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                        {signal.inProgress} active
+                      </span>
+                    )}
+                    {signal.pendingApproval > 0 && (
+                      <span className="rounded-full border border-sky-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-sky-200">
+                        {signal.pendingApproval} approval
+                      </span>
+                    )}
+                    {signal.waitingParts > 0 && (
+                      <span className="rounded-full border border-amber-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-amber-200">
+                        {signal.waitingParts} waiting parts
+                      </span>
+                    )}
+                    {signal.unassigned > 0 && (
+                      <span className="rounded-full border border-neutral-500/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                        {signal.unassigned} unassigned
+                      </span>
+                    )}
                   </div>
                 </Link>
               );
