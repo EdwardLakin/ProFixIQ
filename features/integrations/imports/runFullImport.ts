@@ -79,6 +79,18 @@ type InspectionBridgeCandidate = {
   source: "service_catalog" | "history";
   uniqueKey: string;
 };
+type InspectionTemplateBridgeRef = {
+  id: string;
+  source: InspectionBridgeCandidate["source"];
+  normalizedName: string;
+  confidence: number;
+};
+type InspectionTemplateSuggestionBridgeRef = {
+  id: string;
+  source: InspectionBridgeCandidate["source"];
+  normalizedName: string;
+  confidence: number;
+};
 
 function norm(s: string): string {
   return (s ?? "").trim();
@@ -286,6 +298,64 @@ function parseLaborHours(v: string | null): number | null {
   return parsed;
 }
 
+function tokenSet(value: string): Set<string> {
+  return new Set(
+    value
+      .split(" ")
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 3),
+  );
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
+  }
+  const union = a.size + b.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+function canHighConfidenceLink(args: {
+  menu: MenuBridgeCandidate;
+  inspection: InspectionTemplateBridgeRef;
+}): boolean {
+  if (args.menu.source !== args.inspection.source) return false;
+  if (args.menu.confidence < 0.85 || args.inspection.confidence < 0.85) return false;
+
+  const menuName = normalizeText(args.menu.title);
+  const inspectionName = args.inspection.normalizedName;
+  if (!menuName || !inspectionName) return false;
+  if (menuName === inspectionName) return true;
+
+  const menuTokens = tokenSet(menuName);
+  const inspectionTokens = tokenSet(inspectionName);
+  const overlap = jaccardSimilarity(menuTokens, inspectionTokens);
+  if (overlap >= 0.88) return true;
+
+  if (menuName.length >= 12 && inspectionName.length >= 12) {
+    return menuName.includes(inspectionName) || inspectionName.includes(menuName);
+  }
+  return false;
+}
+
+function canSuggestionLink(args: {
+  menu: MenuBridgeCandidate;
+  inspectionSuggestion: InspectionTemplateSuggestionBridgeRef;
+}): boolean {
+  if (args.menu.source !== args.inspectionSuggestion.source) return false;
+  if (args.menu.confidence >= 0.85 || args.inspectionSuggestion.confidence >= 0.85) return false;
+
+  const menuName = normalizeText(args.menu.title);
+  const inspectionName = args.inspectionSuggestion.normalizedName;
+  if (!menuName || !inspectionName) return false;
+  if (menuName === inspectionName) return true;
+
+  const overlap = jaccardSimilarity(tokenSet(menuName), tokenSet(inspectionName));
+  return overlap >= 0.92;
+}
+
 function extractServiceCatalogCandidates(rows: CsvRow[]): {
   menu: MenuBridgeCandidate[];
   inspections: InspectionBridgeCandidate[];
@@ -439,7 +509,99 @@ async function bridgeOperatingLayerFromCsv(args: {
     if (!existing || candidate.confidence > existing.confidence) dedupedMenu.set(key, candidate);
   }
 
+  const highConfidenceTemplates: InspectionTemplateBridgeRef[] = [];
+  const lowConfidenceTemplateSuggestions: InspectionTemplateSuggestionBridgeRef[] = [];
+
+  for (const candidate of inspectionCandidates) {
+    const signature = candidate.sections
+      .map((section) => `${normalizeText(section.title)}:${section.items.map((i) => normalizeText(i)).join("|")}`)
+      .join("||");
+    if (candidate.confidence >= 0.85) {
+      const { data: existing } = await supabase
+        .from("inspection_templates")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("template_name", candidate.templateName)
+        .contains("sections", { generated_from_key: candidate.uniqueKey })
+        .maybeSingle<{ id: string }>();
+
+      const templateId = existing?.id ?? null;
+      if (!templateId) {
+        const { data: created } = await supabase
+          .from("inspection_templates")
+          .insert({
+            shop_id: shopId,
+            template_name: candidate.templateName,
+            description: candidate.note,
+            vehicle_type: candidate.usageContext,
+            tags: ["shop_boost", `source_intake:${intakeId}`, "confidence:high"],
+            is_public: false,
+            sections: {
+              generated_by: "shop_boost_import_bridge",
+              generated_from_key: candidate.uniqueKey,
+              source_intake_id: intakeId,
+              structured_sections: candidate.sections,
+            },
+          } as DB["public"]["Tables"]["inspection_templates"]["Insert"])
+          .select("id")
+          .limit(1)
+          .maybeSingle<{ id: string }>();
+
+        if (created?.id) {
+          highConfidenceTemplates.push({
+            id: created.id,
+            source: candidate.source,
+            normalizedName: normalizeText(candidate.templateName),
+            confidence: candidate.confidence,
+          });
+        }
+      } else {
+        highConfidenceTemplates.push({
+          id: templateId,
+          source: candidate.source,
+          normalizedName: normalizeText(candidate.templateName),
+          confidence: candidate.confidence,
+        });
+      }
+      continue;
+    }
+
+    const suggestionInsert: DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"] = {
+      shop_id: shopId,
+      intake_id: intakeId,
+      template_key: `shop_boost:${intakeId}:${candidate.uniqueKey}`,
+      name: candidate.templateName,
+      items: {
+        note: candidate.note,
+        usageContext: candidate.usageContext,
+        candidateSections: candidate.sections,
+        source: candidate.source,
+        signature,
+      },
+      applies_to: candidate.usageContext,
+      confidence: candidate.confidence,
+    } as DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"];
+    const { data: createdSuggestion } = await supabase
+      .from("inspection_template_suggestions")
+      .insert(suggestionInsert)
+      .select("id")
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (createdSuggestion?.id) {
+      lowConfidenceTemplateSuggestions.push({
+        id: createdSuggestion.id,
+        source: candidate.source,
+        normalizedName: normalizeText(candidate.templateName),
+        confidence: candidate.confidence,
+      });
+    }
+  }
+
   for (const candidate of dedupedMenu.values()) {
+    const matchedTemplate = highConfidenceTemplates.find((inspection) =>
+      canHighConfidenceLink({ menu: candidate, inspection }),
+    );
     const serviceKey = `shop_boost:${intakeId}:${slugifyServiceKey(`${candidate.source}-${candidate.uniqueKey}`)}`;
     if (candidate.confidence >= 0.85) {
       const { data: existing } = await supabase
@@ -458,11 +620,15 @@ async function bridgeOperatingLayerFromCsv(args: {
           service_key: serviceKey,
           source: "shop_boost",
           is_active: false,
+          inspection_template_id: matchedTemplate?.id ?? null,
         } as DB["public"]["Tables"]["menu_items"]["Insert"]);
       }
       continue;
     }
 
+    const matchedTemplateSuggestion = lowConfidenceTemplateSuggestions.find((inspectionSuggestion) =>
+      canSuggestionLink({ menu: candidate, inspectionSuggestion }),
+    );
     await supabase.from("menu_item_suggestions").insert({
       shop_id: shopId,
       intake_id: intakeId,
@@ -472,55 +638,8 @@ async function bridgeOperatingLayerFromCsv(args: {
       labor_hours_suggestion: candidate.laborHours,
       confidence: candidate.confidence,
       reason: `Derived from ${candidate.source} upload; review recommended.`,
+      inspection_template_suggestion_id: matchedTemplateSuggestion?.id ?? null,
     } as DB["public"]["Tables"]["menu_item_suggestions"]["Insert"]);
-  }
-
-  for (const candidate of inspectionCandidates) {
-    const signature = candidate.sections
-      .map((section) => `${normalizeText(section.title)}:${section.items.map((i) => normalizeText(i)).join("|")}`)
-      .join("||");
-    if (candidate.confidence >= 0.85) {
-      const { data: existing } = await supabase
-        .from("inspection_templates")
-        .select("id")
-        .eq("shop_id", shopId)
-        .eq("template_name", candidate.templateName)
-        .contains("sections", { generated_from_key: candidate.uniqueKey })
-        .maybeSingle<{ id: string }>();
-      if (!existing?.id) {
-        await supabase.from("inspection_templates").insert({
-          shop_id: shopId,
-          template_name: candidate.templateName,
-          description: candidate.note,
-          vehicle_type: candidate.usageContext,
-          tags: ["shop_boost", `source_intake:${intakeId}`, "confidence:high"],
-          is_public: false,
-          sections: {
-            generated_by: "shop_boost_import_bridge",
-            generated_from_key: candidate.uniqueKey,
-            source_intake_id: intakeId,
-            structured_sections: candidate.sections,
-          },
-        } as DB["public"]["Tables"]["inspection_templates"]["Insert"]);
-      }
-      continue;
-    }
-
-    await supabase.from("inspection_template_suggestions").insert({
-      shop_id: shopId,
-      intake_id: intakeId,
-      template_key: `shop_boost:${intakeId}:${candidate.uniqueKey}`,
-      name: candidate.templateName,
-      items: {
-        note: candidate.note,
-        usageContext: candidate.usageContext,
-        candidateSections: candidate.sections,
-        source: candidate.source,
-        signature,
-      },
-      applies_to: candidate.usageContext,
-      confidence: candidate.confidence,
-    } as DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"]);
   }
 }
 
