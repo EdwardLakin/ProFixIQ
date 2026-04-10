@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Button } from "@shared/components/ui/Button";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
+import { OwnerSettingsPanel, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 
 type StripeSubStatus =
   | "incomplete"
@@ -38,53 +39,6 @@ type EmailLogRow = {
   sent_at: string | null;
   metadata?: Record<string, unknown> | null;
 };
-
-function SettingsSection({
-  id,
-  title,
-  description,
-  action,
-  children,
-}: {
-  id?: string;
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.18)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-50">{title}</h2>
-          {description ? (
-            <p className="text-[11px] text-neutral-400">{description}</p>
-          ) : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SettingsStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-      <div className="text-[11px] text-neutral-400">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
-    </div>
-  );
-}
 
 type Props = {
   shopId: string | null;
@@ -171,24 +125,25 @@ export default function OwnerSettingsSidebar({
 }: Props) {
   return (
     <div className="space-y-5 lg:sticky lg:top-20">
-      <SettingsSection
+      <OwnerSettingsPanel
         id="billing-stripe"
+        tone="secondary"
         title="Billing & Stripe"
         description="Subscription and payment setup for this location."
         action={<div className="flex items-center gap-2">{billingPill}</div>}
       >
         <div className="grid gap-2">
-          <SettingsStat label="Status" value={String(subStatus).toUpperCase()} />
-          <SettingsStat
+          <OwnerSettingsStat label="Status" value={String(subStatus).toUpperCase()} />
+          <OwnerSettingsStat
             label="Stripe Connect"
             value={stripeAccountId ? "Connected" : "Not connected"}
           />
-          <SettingsStat label="Trial ends" value={formatDate(trialEndIso)} />
-          <SettingsStat
+          <OwnerSettingsStat label="Trial ends" value={formatDate(trialEndIso)} />
+          <OwnerSettingsStat
             label="Current period ends"
             value={formatDate(periodEndIso)}
           />
-          <SettingsStat
+          <OwnerSettingsStat
             label="Connected payout account"
             value={stripeAccountId || "No Stripe Connect account linked yet"}
           />
@@ -228,27 +183,29 @@ export default function OwnerSettingsSidebar({
             </p>
           </div>
         </div>
-      </SettingsSection>
+      </OwnerSettingsPanel>
 
-      <SettingsSection
+      <OwnerSettingsPanel
+        tone="passive"
         title="Plan & seats"
         description="Plan limits and active staff seats."
       >
         <div className="grid gap-2">
-          <SettingsStat label="Plan" value={planLabel(plan)} />
-          <SettingsStat label="Seats used" value={seatsUsed} />
-          <SettingsStat
+          <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+          <OwnerSettingsStat label="Seats used" value={seatsUsed} />
+          <OwnerSettingsStat
             label="Seat limit"
             value={seatsLimit == null ? "Unlimited" : seatsLimit}
           />
-          <SettingsStat
+          <OwnerSettingsStat
             label="Remaining"
             value={seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
           />
         </div>
-      </SettingsSection>
+      </OwnerSettingsPanel>
 
-      <SettingsSection
+      <OwnerSettingsPanel
+        tone="secondary"
         title="Organization"
         description={
           orgId
@@ -327,13 +284,13 @@ export default function OwnerSettingsSidebar({
             Your current shop will be linked automatically.
           </div>
         )}
-      </SettingsSection>
+      </OwnerSettingsPanel>
 
       {shopId ? (
         <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
       ) : null}
 
-      <SettingsSection title="Invoice preview">
+      <OwnerSettingsPanel tone="passive" title="Invoice preview">
         <div className="space-y-2 rounded-xl bg-white p-3 text-xs text-black shadow">
           {logoUrl ? (
             <Image
@@ -359,10 +316,11 @@ export default function OwnerSettingsSidebar({
           <div className="font-semibold text-black">Footer</div>
           <p>{invoiceFooter || "—"}</p>
         </div>
-      </SettingsSection>
+      </OwnerSettingsPanel>
 
-      <SettingsSection
+      <OwnerSettingsPanel
         id="email-activity"
+        tone="passive"
         title="Email activity"
         description="Recent transactional emails."
         action={
@@ -403,7 +361,7 @@ export default function OwnerSettingsSidebar({
             ))}
           </div>
         )}
-      </SettingsSection>
+      </OwnerSettingsPanel>
     </div>
   );
 }

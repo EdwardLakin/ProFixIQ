@@ -2,6 +2,7 @@
 
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
+import { OwnerSettingsPanel } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 
 type Props = {
   isUnlocked: boolean;
@@ -35,33 +36,6 @@ type Props = {
   onAppearanceModeChange: (value: "dark" | "light" | "system") => void;
 };
 
-function SectionShell({
-  title,
-  description,
-  action,
-  children,
-}: {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-50">{title}</h2>
-          {description ? (
-            <p className="text-[11px] text-neutral-400">{description}</p>
-          ) : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 export default function OwnerSettingsOperationsSection({
   isUnlocked,
   currency,
@@ -94,12 +68,14 @@ export default function OwnerSettingsOperationsSection({
   onAppearanceModeChange,
 }: Props) {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <SectionShell
+    <div className="grid gap-5 md:grid-cols-2">
+      <OwnerSettingsPanel
+        id="operations-defaults"
+        tone="secondary"
         title="Operations defaults"
         description="Default pricing values used across work orders and quotes."
       >
-        <div className="grid gap-3 md:grid-cols-2 text-sm">
+        <div className="grid gap-3 text-sm md:grid-cols-2">
           <Input
             value={laborRate}
             onChange={(e) => onLaborRateChange(e.target.value)}
@@ -125,11 +101,13 @@ export default function OwnerSettingsOperationsSection({
             disabled={!isUnlocked}
           />
         </div>
-      </SectionShell>
+      </OwnerSettingsPanel>
 
-      <SectionShell
+      <OwnerSettingsPanel
+        id="pricing-validity"
+        tone="passive"
         title="Pricing validity"
-        description="Controls how many days menu repair pricing stays fresh before it becomes stale or expired."
+        description="Controls how long menu pricing remains fresh before requiring review."
         action={
           <Button
             onClick={onSavePricingValidDays}
@@ -140,7 +118,7 @@ export default function OwnerSettingsOperationsSection({
           </Button>
         }
       >
-        <div className="grid gap-3 md:grid-cols-[160px_1fr] text-sm">
+        <div className="grid gap-3 text-sm md:grid-cols-[160px_1fr]">
           <Input
             type="number"
             min={1}
@@ -153,15 +131,16 @@ export default function OwnerSettingsOperationsSection({
             disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
           />
           <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-[11px] text-neutral-400">
-            Default is 30 days. Allowed range is 1 to 90 days. Fresh pricing can
-            auto-flow faster; stale or expired pricing requires more review.
+            Default is 30 days. Allowed range is 1 to 90 days.
           </div>
         </div>
-      </SectionShell>
+      </OwnerSettingsPanel>
 
-      <SectionShell
-        title="Appearance"
-        description="Set your operational console mode. Preference persists per user and syncs with brand variables."
+      <OwnerSettingsPanel
+        id="appearance-mode"
+        tone="primary"
+        title="Appearance mode"
+        description="Select Dark, Light, or System mode as part of your shop branding profile."
       >
         <div className="flex flex-wrap gap-2">
           {([
@@ -181,63 +160,40 @@ export default function OwnerSettingsOperationsSection({
             </Button>
           ))}
         </div>
-        <p className="text-[11px] text-neutral-400">
-          {appearanceSaving ? "Saving appearance preference…" : "Applies immediately after save."}
+        <p className="text-[11px] text-[color:var(--theme-text-secondary,#94A3B8)]">
+          {appearanceSaving ? "Saving appearance preference..." : "Preference persists per user and applies immediately."}
         </p>
-      </SectionShell>
+      </OwnerSettingsPanel>
 
-      <SectionShell
+      <OwnerSettingsPanel
+        id="workflow-automation"
+        tone="secondary"
         title="Workflow & automation"
         description="Operational rules and automatic behaviors for shop workflows."
       >
         <div className="space-y-3">
           <label className="flex items-center gap-2 text-sm text-neutral-200">
-            <input
-              type="checkbox"
-              checked={useAi}
-              onChange={(e) => onUseAiChange(e.target.checked)}
-              disabled={!isUnlocked}
-            />
+            <input type="checkbox" checked={useAi} onChange={(e) => onUseAiChange(e.target.checked)} disabled={!isUnlocked} />
             Use AI features
           </label>
           <label className="flex items-center gap-2 text-sm text-neutral-200">
-            <input
-              type="checkbox"
-              checked={requireCauseCorrection}
-              onChange={(e) => onRequireCauseCorrectionChange(e.target.checked)}
-              disabled={!isUnlocked}
-            />
+            <input type="checkbox" checked={requireCauseCorrection} onChange={(e) => onRequireCauseCorrectionChange(e.target.checked)} disabled={!isUnlocked} />
             Require cause / correction on lines
           </label>
           <label className="flex items-center gap-2 text-sm text-neutral-200">
-            <input
-              type="checkbox"
-              checked={requireAuthorization}
-              onChange={(e) => onRequireAuthorizationChange(e.target.checked)}
-              disabled={!isUnlocked}
-            />
+            <input type="checkbox" checked={requireAuthorization} onChange={(e) => onRequireAuthorizationChange(e.target.checked)} disabled={!isUnlocked} />
             Require customer authorization
           </label>
           <label className="flex items-center gap-2 text-sm text-neutral-200">
-            <input
-              type="checkbox"
-              checked={autoGeneratePdf}
-              onChange={(e) => onAutoGeneratePdfChange(e.target.checked)}
-              disabled={!isUnlocked}
-            />
+            <input type="checkbox" checked={autoGeneratePdf} onChange={(e) => onAutoGeneratePdfChange(e.target.checked)} disabled={!isUnlocked} />
             Auto-generate quote PDF
           </label>
           <label className="flex items-center gap-2 text-sm text-neutral-200">
-            <input
-              type="checkbox"
-              checked={autoSendQuoteEmail}
-              onChange={(e) => onAutoSendQuoteEmailChange(e.target.checked)}
-              disabled={!isUnlocked}
-            />
+            <input type="checkbox" checked={autoSendQuoteEmail} onChange={(e) => onAutoSendQuoteEmailChange(e.target.checked)} disabled={!isUnlocked} />
             Auto-send quote email
           </label>
         </div>
-      </SectionShell>
+      </OwnerSettingsPanel>
     </div>
   );
 }
