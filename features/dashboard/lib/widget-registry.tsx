@@ -2,6 +2,7 @@
 
 import {
   advisorQueueWidgetModule,
+  optimizationOpportunitiesWidgetModule,
   approvalRiskWidgetModule,
   bookingsWidgetModule,
   comebackRiskWidgetModule,
@@ -36,6 +37,7 @@ export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   workOrderBoardWidgetModule,
   bookingsWidgetModule,
   advisorQueueWidgetModule,
+  optimizationOpportunitiesWidgetModule,
 ];
 
 export function getDashboardWidgetRegistry(role: string | null): DashboardWidgetModule[] {

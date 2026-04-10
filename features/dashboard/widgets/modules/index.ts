@@ -15,3 +15,4 @@ export { advisorQueueWidgetModule } from "./AdvisorQueueWidgetModule";
 export { technicianPerformanceWidgetModule } from "./TechnicianPerformanceWidgetModule";
 
 export { liveShopLoadWidgetModule } from "./LiveShopLoadWidgetModule";
+export { optimizationOpportunitiesWidgetModule } from "./OptimizationOpportunitiesWidgetModule";

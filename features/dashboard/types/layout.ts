@@ -13,7 +13,8 @@ export type DashboardWidgetId =
   | "comeback_risk"
   | "work_order_board"
   | "bookings"
-  | "advisor_queue";
+  | "advisor_queue"
+  | "optimization_opportunities";
 
 export type DashboardCountState = {
   appointments: number;
