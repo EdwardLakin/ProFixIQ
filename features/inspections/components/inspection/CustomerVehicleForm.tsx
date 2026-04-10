@@ -16,6 +16,7 @@ type CustomerRow = {
   last_name?: string | null;
   name?: string | null;
   phone?: string | null;
+  phone_number?: string | null;
   email?: string | null;
   address?: string | null;
   city?: string | null;
@@ -125,11 +126,19 @@ function CustomerAutocomplete({
         const { data, error } = await supabase
           .from("customers")
           .select(
-            "id, business_name, first_name, last_name, name, phone, email, address, city, province, postal_code, created_at",
+            "id, business_name, first_name, last_name, name, phone, phone_number, email, address, city, province, postal_code, created_at",
           )
           .eq("shop_id", shopId)
           .or(
-            `business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like},name.ilike.${like}`,
+            [
+              `business_name.ilike.${like}`,
+              `first_name.ilike.${like}`,
+              `last_name.ilike.${like}`,
+              `name.ilike.${like}`,
+              `email.ilike.${like}`,
+              `phone.ilike.${like}`,
+              `phone_number.ilike.${like}`,
+            ].join(","),
           )
           .order("created_at", { ascending: false })
           .limit(12);

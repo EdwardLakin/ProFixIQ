@@ -166,17 +166,19 @@ type CustomerPick = {
   business_name: string | null;
   first_name: string | null;
   last_name: string | null;
+  name: string | null;
   phone: string | null;
+  phone_number: string | null;
   email: string | null;
 };
 
 function formatCustomerTitle(c: CustomerPick): string {
   const person = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
-  return c.business_name || person || "Unnamed";
+  return c.business_name || person || c.name || "Unnamed";
 }
 
 function formatCustomerSub(c: CustomerPick): string {
-  const bits = [c.phone, c.email].filter(Boolean).join(" · ");
+  const bits = [c.phone, c.phone_number, c.email].filter(Boolean).join(" · ");
   const person = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
   if (c.business_name && person) return person;
   return bits || "—";
@@ -216,15 +218,17 @@ function CustomerSearch({
         const like = `%${term}%`;
         const { data, error } = await supabase
           .from("customers")
-          .select("id,business_name,first_name,last_name,phone,email,created_at")
+          .select("id,business_name,first_name,last_name,name,phone,phone_number,email,created_at")
           .eq("shop_id", shopId)
           .or(
             [
               `business_name.ilike.${like}`,
               `first_name.ilike.${like}`,
               `last_name.ilike.${like}`,
-              `phone.ilike.${like}`,
+              `name.ilike.${like}`,
               `email.ilike.${like}`,
+              `phone.ilike.${like}`,
+              `phone_number.ilike.${like}`,
             ].join(","),
           )
           .order("created_at", { ascending: false })
