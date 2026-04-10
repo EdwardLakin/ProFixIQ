@@ -967,6 +967,23 @@ export default function QuoteReviewView(props: {
                       safeTrim(l.description) ||
                       "—";
 
+                    const whyRecommended = [
+                      safeTrim(l.correction) ? "Corrective action maps directly to the identified issue." : "Recommendation is tied to the current finding.",
+                      laborHours > 0 ? `Labor time estimate recorded at ${laborHours.toFixed(2)}h.` : null,
+                      partsAmt > 0 ? `Parts are already scoped (${fmt(partsAmt)}).` : null,
+                    ].filter((item): item is string => Boolean(item));
+
+                    const supportingEvidence = [
+                      safeTrim(l.cause) ? `Finding detail: ${safeTrim(l.cause)}` : null,
+                      safeTrim(l.status) ? `Line status: ${statusLabel(l.status)}` : null,
+                      safeTrim(l.approval_state) ? `Decision state: ${statusLabel(l.approval_state)}` : null,
+                    ].filter((item): item is string => Boolean(item));
+
+                    const deferredConsequence =
+                      ap === "approved"
+                        ? null
+                        : "Deferring may keep the original issue active and can delay full work-order completion.";
+
                     return (
                       <div key={l.id} className={`${padX} py-4`}>
                         <div className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.10),rgba(0,0,0,0.88)_42%,rgba(2,6,23,0.96)_100%)] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.65)]">
@@ -984,6 +1001,9 @@ export default function QuoteReviewView(props: {
                             onDecline={() => void setDecision(l.id, "decline")}
                             onDefer={() => void setDecision(l.id, "defer")}
                             footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
+                            whyRecommended={whyRecommended}
+                            supportingEvidence={supportingEvidence}
+                            deferredConsequence={deferredConsequence}
                           />
                         </div>
 

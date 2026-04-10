@@ -6,6 +6,7 @@ import type {
   OptimizationImpactLevel,
   OptimizationOpportunity,
 } from "@/features/optimization/types";
+import { buildInsightExplanation } from "@/features/optimization/lib/buildInsightExplanation";
 
 type DB = Database;
 
@@ -975,6 +976,7 @@ export async function buildOptimizationOpportunities(
       whyNow: computeWhyNow(opportunity),
       confidenceLabel: computeConfidenceLabel(opportunity),
       impactLabel: computeImpactLabel(opportunity),
+      explanation: buildInsightExplanation(opportunity),
     };
   });
 

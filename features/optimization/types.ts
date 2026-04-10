@@ -1,3 +1,32 @@
+export type EvidenceItem = {
+  label: string;
+  value?: string | number | null;
+  detail?: string | null;
+  kind?: "metric" | "event" | "status" | "comparison" | "pattern" | "media";
+};
+
+export type OperationalExplanation = {
+  summary: string;
+  bullets: string[];
+  evidence?: EvidenceItem[];
+  riskIfIgnored?: string | null;
+  expectedOutcome?: string | null;
+  confidenceNote?: string | null;
+};
+
+export type StoryOpportunityExplanation = {
+  isStoryWorthy: boolean;
+  angle?: string | null;
+  whyStoryWorthy?: string[];
+  suggestedAudience?: string | null;
+  suggestedFormat?: "before_after" | "educational" | "trust_proof" | "repair_story" | "maintenance_tip" | null;
+};
+
+export type UnifiedInsightExplanation = {
+  operational: OperationalExplanation;
+  story?: StoryOpportunityExplanation | null;
+};
+
 export type OptimizationType =
   | "pricing_normalization"
   | "inspection_coverage_gap"
@@ -38,6 +67,7 @@ export type OptimizationOpportunity = {
     menuItemId?: string;
     inspectionTemplateId?: string;
   };
+  explanation?: UnifiedInsightExplanation;
   meta?: Record<string, unknown>;
 };
 
