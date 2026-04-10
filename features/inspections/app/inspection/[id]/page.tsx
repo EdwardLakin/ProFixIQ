@@ -6,6 +6,9 @@ import { createClient } from "@supabase/supabase-js";
 import { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
+import PageShell from "@/features/shared/components/PageShell";
+import Card from "@/features/shared/components/ui/Card";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,68 +67,75 @@ export default function InspectionDetailPage() {
     }
   }, [id, router]);
 
+  const statusVariant = (status: string) => {
+    const s = status.toLowerCase();
+    if (s === "completed" || s === "done") return "success" as const;
+    if (s === "in_progress" || s === "running") return "active" as const;
+    if (s === "failed") return "danger" as const;
+    return "neutral" as const;
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white px-4 py-6">
-        <p className="text-center text-white/70">Loading inspection...</p>
-      </div>
+      <PageShell title="Inspection details" description="Loading inspection result.">
+        <Card className="px-4 py-6 text-center text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+          Loading inspection...
+        </Card>
+      </PageShell>
     );
   }
 
   if (!inspection) {
     return (
-      <div className="min-h-screen bg-black text-white px-4 py-6">
-        <p className="text-center text-red-500">Inspection not found.</p>
-      </div>
+      <PageShell title="Inspection details" description="Inspection result lookup.">
+        <Card className="px-4 py-6 text-center text-sm text-rose-300">
+          Inspection not found.
+        </Card>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6">
-      <PreviousPageButton to="/inspection/saved" />
-      <h1 className="text-3xl text-orange-400 font-blackops mb-4 text-center">
-        {inspection.template_name || "Inspection Details"}
-      </h1>
+    <PageShell
+      eyebrow="Inspection"
+      title={inspection.template_name || "Inspection Details"}
+      description="Evidence-forward review of captured inspection findings."
+      actions={<PreviousPageButton to="/inspection/saved" />}
+    >
+      <Card className="mb-5 px-4 py-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <StatusBadge variant={statusVariant(inspection.status)}>
+            {inspection.status}
+          </StatusBadge>
+          <span className="text-[var(--theme-text-secondary,#94A3B8)]">
+            Created: {format(new Date(inspection.created_at), "PPpp")}
+          </span>
+        </div>
+      </Card>
 
-      <p className="text-white/80 text-center mb-2">
-        Created: {format(new Date(inspection.created_at), "PPpp")}
-      </p>
-      <p className="text-white/70 text-center mb-6 capitalize">
-        Status: {inspection.status}
-      </p>
-
-      <div className="space-y-6">
+      <div className="space-y-4">
         {inspection.result?.map((section, index) => (
-          <div
-            key={index}
-            className="border border-white/10 p-4 rounded-md bg-white/5"
-          >
-            <h2 className="text-lg font-bold text-orange-300 mb-2">
-              {section.title}
-            </h2>
+          <Card key={index} className="px-4 py-4">
+            <h2 className="mb-2 text-lg font-semibold">{section.title}</h2>
             <ul className="space-y-2">
               {section.items?.map((item, i) => (
-                <li key={i} className="text-sm text-white/90">
-                  <span className="font-semibold text-white">{item.name}:</span>{" "}
+                <li key={i} className="text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+                  <span className="font-semibold text-[var(--theme-text-primary,#E2E8F0)]">{item.name}:</span>{" "}
                   {item.status || "N/A"}
-                  {item.notes && (
-                    <span className="block text-white/60">
-                      Note: {item.notes}
-                    </span>
-                  )}
+                  {item.notes && <span className="block">Note: {item.notes}</span>}
                   {item.value && (
-                    <span className="block text-white/60">
+                    <span className="block">
                       {item.unit ? `${item.value} ${item.unit}` : item.value}
                     </span>
                   )}
                   {(item.photoUrls?.length ?? 0) > 0 && (
-                    <div className="mt-2 flex gap-2 flex-wrap">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       {item.photoUrls?.map((url, idx) => (
                         <img
                           key={idx}
                           src={url}
                           alt="Photo"
-                          className="w-24 h-24 object-cover rounded border border-white/20"
+                          className="h-24 w-24 rounded border border-[var(--theme-card-border,#334155)] object-cover"
                         />
                       ))}
                     </div>
@@ -133,9 +143,9 @@ export default function InspectionDetailPage() {
                 </li>
               ))}
             </ul>
-          </div>
+          </Card>
         ))}
       </div>
-    </div>
+    </PageShell>
   );
 }

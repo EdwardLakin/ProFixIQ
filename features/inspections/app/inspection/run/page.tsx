@@ -7,6 +7,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
+import PageShell from "@/features/shared/components/PageShell";
+import Card from "@/features/shared/components/ui/Card";
 
 type DB = Database;
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
@@ -163,12 +165,14 @@ export default function RunInspectionPage() {
   }, [sp, router, supabase]);
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
-      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl px-4 py-3 text-sm text-muted-foreground">
-        <div className="rounded-xl border border-slate-700/60 bg-slate-950/80 px-4 py-3 text-sm">
-          Preparing inspection…
-        </div>
-      </div>
-    </div>
+    <PageShell
+      eyebrow="Inspection"
+      title="Preparing inspection"
+      description="Normalizing template sections and launching run mode."
+    >
+      <Card className="mx-auto w-full max-w-3xl px-4 py-4 text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+        Preparing inspection…
+      </Card>
+    </PageShell>
   );
 }

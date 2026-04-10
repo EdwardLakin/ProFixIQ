@@ -10,6 +10,8 @@ import type {
 } from "@inspections/lib/inspection/types";
 import InspectionItemCard from "./InspectionItemCard";
 import { Button } from "@shared/components/ui/Button";
+import Card from "@/features/shared/components/ui/Card";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { pricingStatusClass, pricingStatusText } from "@/features/menu-repair-items/lib/pricingStatus";
 
 interface SectionDisplayProps {
@@ -89,8 +91,6 @@ type ItemExtended = InspectionSection["items"][number] & {
   parts?: PartRow[];
   laborHours?: number | null;
 };
-
-const COPPER = "var(--pfq-copper,#C57A4A)";
 
 function isGridSection(title: string): boolean {
   const t = (title || "").toLowerCase();
@@ -253,27 +253,17 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   };
 
   return (
-    <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
+    <Card className="mb-6 px-4 py-3 md:px-5 md:py-4">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,#334155)] pb-3">
         {gridSection ? (
-          <div
-            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
-            style={{
-              fontFamily: "Black Ops One, system-ui, sans-serif",
-              color: COPPER,
-            }}
-          >
+          <div className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,#E2E8F0)] transition-opacity hover:opacity-80 md:text-lg">
             {resolvedTitle}
           </div>
         ) : (
           <button
             onClick={toggleOpen}
-            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
-            style={{
-              fontFamily: "Black Ops One, system-ui, sans-serif",
-              color: COPPER,
-            }}
+            className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,#E2E8F0)] transition-opacity hover:opacity-80 md:text-lg"
             aria-expanded={open}
             type="button"
           >
@@ -282,13 +272,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className="hidden text-[11px] uppercase tracking-wide text-neutral-400 md:inline"
-            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-          >
-            {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA · {stats.recommend}{" "}
-            REC · {stats.unset} —
-          </span>
+          <div className="hidden items-center gap-1.5 md:flex">
+            <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
+            <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
+            <StatusBadge variant="info">{stats.na} NA</StatusBadge>
+            <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
+            <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
+          </div>
 
           {showBulkButtons ? (
             <div className="flex flex-wrap items-center gap-1">
@@ -953,6 +943,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
