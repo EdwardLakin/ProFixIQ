@@ -351,6 +351,11 @@ export function PartPicker({
     return "in_stock";
   };
 
+  const hasPartsWithoutStockRecords = useMemo(() => {
+    if (parts.length === 0) return false;
+    return Object.keys(stock).length === 0;
+  }, [parts, stock]);
+
   const confirmPick = () => {
     if (!selectedPartId) return;
 
@@ -558,6 +563,12 @@ export function PartPicker({
                 <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
                   Stock & pricing
                 </div>
+
+                {hasPartsWithoutStockRecords ? (
+                  <div className="mb-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                    Parts imported. Stock records not initialized yet.
+                  </div>
+                ) : null}
 
                 {!selectedPartId ? (
                   <div className="text-sm text-neutral-400">
