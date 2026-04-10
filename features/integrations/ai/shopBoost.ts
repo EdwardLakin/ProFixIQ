@@ -166,6 +166,7 @@ export async function buildShopBoostProfile(
     shopId,
     intakeId: intakeRow.id,
     aiSnapshot,
+    mergedStats,
   });
 
   // ✅ NEW: persist staff candidates from staff CSV (per-person)
@@ -1326,6 +1327,77 @@ function slugKey(v: string): string {
     .slice(0, 80);
 }
 
+function normalizeSuggestionText(v: string | null | undefined): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function usageBucket(v: string | null | undefined): "fleet" | "retail" | "both" {
+  return v === "fleet" ? "fleet" : v === "retail" ? "retail" : "both";
+}
+
+function countOccurrencesForSuggestion(name: string, stats: DerivedStats): number {
+  const needle = normalizeSuggestionText(name);
+  if (!needle) return 0;
+  return (stats.mostCommonRepairs ?? []).reduce((sum, repair) => {
+    const label = normalizeSuggestionText(repair.label);
+    if (!label) return sum;
+    return label.includes(needle) || needle.includes(label) ? sum + (repair.count ?? 0) : sum;
+  }, 0);
+}
+
+function weightedRevenueForSuggestion(name: string, stats: DerivedStats): number {
+  const needle = normalizeSuggestionText(name);
+  if (!needle) return 0;
+  return (stats.highValueRepairs ?? []).reduce((sum, repair) => {
+    const label = normalizeSuggestionText(repair.label);
+    if (!label) return sum;
+    return label.includes(needle) || needle.includes(label) ? sum + (repair.revenue ?? 0) : sum;
+  }, 0);
+}
+
+function computeSuggestionConfidence(args: {
+  label: string;
+  stats: DerivedStats;
+  kind: "menu" | "inspection";
+}): number {
+  const { label, stats, kind } = args;
+  const totalRos = Math.max(1, stats.totalRepairOrders || 0);
+  const occurrence = countOccurrencesForSuggestion(label, stats);
+  const occurrenceRatio = Math.min(1, occurrence / totalRos);
+  const repetitionBoost = Math.min(0.22, occurrenceRatio * 0.75);
+  const revenueWeight = Math.min(
+    0.16,
+    weightedRevenueForSuggestion(label, stats) / Math.max(1, stats.totalRevenue || 1),
+  );
+
+  const base = kind === "inspection" ? 0.48 : 0.44;
+  return Math.max(0.2, Math.min(0.97, base + repetitionBoost + revenueWeight));
+}
+
+function confidenceBucket(confidence: number): "low" | "medium" | "high" {
+  if (confidence >= 0.8) return "high";
+  if (confidence >= 0.5) return "medium";
+  return "low";
+}
+
+function inspectionStructureFingerprint(suggestion: {
+  name: string | null | undefined;
+  note?: string | null | undefined;
+  usageContext?: string | null | undefined;
+}): string {
+  const shape = [
+    normalizeSuggestionText(suggestion.name),
+    normalizeSuggestionText(suggestion.note),
+    usageBucket(suggestion.usageContext),
+  ].join("|");
+  return createHash("sha1").update(shape, "utf8").digest("hex").slice(0, 24);
+}
+
 /* -------------------------------------------------------------------------- */
 /* ✅ Persist suggestions                                                       */
 /* -------------------------------------------------------------------------- */
@@ -1338,7 +1410,7 @@ async function persistSuggestions(args: {
   issuesDetected: ShopHealthIssue[];
   mergedStats: DerivedStats;
 }): Promise<void> {
-  const { supabase, shopId, intakeId, aiSnapshot } = args;
+  const { supabase, shopId, intakeId, aiSnapshot, mergedStats } = args;
 
   const menuInserts: DB["public"]["Tables"]["menu_item_suggestions"]["Insert"][] = (
     aiSnapshot.menuSuggestions ?? []
@@ -1351,7 +1423,11 @@ async function persistSuggestions(args: {
     labor_hours_suggestion: Number.isFinite(Number(m.estimatedLaborHours))
       ? Number(m.estimatedLaborHours)
       : null,
-    confidence: 0.75,
+    confidence: computeSuggestionConfidence({
+      label: m.name ?? m.description ?? "menu",
+      stats: mergedStats,
+      kind: "menu",
+    }),
     reason: m.description ?? null,
   })) as DB["public"]["Tables"]["menu_item_suggestions"]["Insert"][];
 
@@ -1368,9 +1444,12 @@ async function persistSuggestions(args: {
     template_key: null,
     name: i.name ?? "Suggested inspection",
     items: { note: i.note ?? null, usageContext: i.usageContext ?? null },
-    applies_to:
-      i.usageContext === "fleet" ? "fleet" : i.usageContext === "retail" ? "retail" : "both",
-    confidence: 0.8,
+    applies_to: usageBucket(i.usageContext),
+    confidence: computeSuggestionConfidence({
+      label: i.name ?? i.note ?? "inspection",
+      stats: mergedStats,
+      kind: "inspection",
+    }),
   })) as DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"][];
 
   if (inspInserts.length > 0) {
@@ -1384,15 +1463,20 @@ async function materializeOperatingLayer(args: {
   shopId: string;
   intakeId: string;
   aiSnapshot: ShopHealthSnapshot;
+  mergedStats: DerivedStats;
 }): Promise<OperatingLayerSummary> {
-  const { supabase, shopId, intakeId, aiSnapshot } = args;
+  const { supabase, shopId, intakeId, aiSnapshot, mergedStats } = args;
 
   let menuItemsCreated = 0;
   let inspectionTemplatesCreated = 0;
   let itemsNeedReview = 0;
 
   for (const suggestion of aiSnapshot.menuSuggestions ?? []) {
-    const confidence = 0.75;
+    const confidence = computeSuggestionConfidence({
+      label: suggestion.name ?? suggestion.description ?? "menu",
+      stats: mergedStats,
+      kind: "menu",
+    });
     if (confidence < 0.5) {
       itemsNeedReview += 1;
       continue;
@@ -1433,7 +1517,11 @@ async function materializeOperatingLayer(args: {
   }
 
   for (const suggestion of aiSnapshot.inspectionSuggestions ?? []) {
-    const confidence = 0.8;
+    const confidence = computeSuggestionConfidence({
+      label: suggestion.name ?? suggestion.note ?? "inspection",
+      stats: mergedStats,
+      kind: "inspection",
+    });
     if (confidence < 0.5) {
       itemsNeedReview += 1;
       continue;
@@ -1443,14 +1531,20 @@ async function materializeOperatingLayer(args: {
     }
 
     const templateName = suggestion.name ?? "Shop Boost Inspection";
-    const { data: existing } = await supabase
+    const fingerprint = inspectionStructureFingerprint(suggestion);
+    const { data: existingByName } = await supabase
       .from("inspection_templates")
-      .select("id")
+      .select("id,sections")
       .eq("shop_id", shopId)
       .eq("template_name", templateName)
-      .maybeSingle<{ id: string }>();
+      .limit(50);
 
-    if (existing?.id) continue;
+    const hasFingerprintMatch = (existingByName ?? []).some((row) => {
+      const sections = (row as { sections?: unknown }).sections;
+      const secRecord = sections && typeof sections === "object" ? (sections as Record<string, unknown>) : null;
+      return String(secRecord?.structure_fingerprint ?? "") === fingerprint;
+    });
+    if (hasFingerprintMatch) continue;
 
     const { error } = await supabase.from("inspection_templates").insert({
       shop_id: shopId,
@@ -1460,13 +1554,15 @@ async function materializeOperatingLayer(args: {
       tags: [
         "shop_boost",
         `source_intake:${intakeId}`,
-        confidence >= 0.8 ? "confidence:high" : "confidence:medium",
+        `confidence:${confidenceBucket(confidence)}`,
       ],
       is_public: false,
       sections: {
         generated_by: "shop_boost",
         source_intake_id: intakeId,
         confidence,
+        confidence_bucket: confidenceBucket(confidence),
+        structure_fingerprint: fingerprint,
         note: suggestion.note ?? null,
       },
     } as DB["public"]["Tables"]["inspection_templates"]["Insert"]);
