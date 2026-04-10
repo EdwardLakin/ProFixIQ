@@ -36,3 +36,12 @@ export type OptimizationEngineOutput = {
   shopId: string;
   opportunities: OptimizationOpportunity[];
 };
+
+export type OptimizationActionType = "pricing" | "inspection" | "revenue";
+
+export type OptimizationApplyPayload = {
+  menuItemId?: string;
+  newPrice?: number;
+  inspectionTemplate?: unknown;
+  suggestionData?: unknown;
+};
