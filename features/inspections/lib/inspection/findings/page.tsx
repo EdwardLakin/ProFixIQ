@@ -18,9 +18,11 @@ import type {
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { cn } from "@shared/lib/utils";
@@ -396,6 +398,18 @@ export default function InspectionFindingsPage(): JSX.Element {
   const findings = useMemo(
     () => (session ? collectFindings(session) : []),
     [session],
+  );
+  const decisionEvents = useMemo(
+    () =>
+      deriveEventsFromFindings({
+        findings: findings.map((row) => ({
+          sectionTitle: row.sectionTitle,
+          item: row.item,
+        })),
+        sessionLastUpdated: session?.lastUpdated ?? null,
+        actorLabel: "Technician",
+      }),
+    [findings, session?.lastUpdated],
   );
 
   useEffect(() => {
@@ -978,6 +992,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       description="Review failed and recommended findings before final submission."
     >
       <div className="mx-auto max-w-5xl space-y-4">
+        <DecisionEventFeed events={decisionEvents} compact />
         {findings.length === 0 ? (
           <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-neutral-300")}>
             No failed or recommended findings to review.

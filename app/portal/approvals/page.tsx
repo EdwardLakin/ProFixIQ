@@ -8,11 +8,13 @@ import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
   type DecisionTimelineStage,
 } from "@/features/shared/components/ui/DecisionTimeline";
+import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import {
   formatDecisionStatus,
   getDecisionStatusView,
   resolveDecisionStatus,
 } from "@/features/shared/lib/decisionStatus";
+import { deriveEventsFromPortalApproval } from "@/features/shared/lib/decisionEvents";
 
 const COPPER = "#C57A4A";
 
@@ -36,6 +38,7 @@ type ApprovalLine = {
   hold_reason: string | null;
   work_order_id: string;
   created_at: string | null;
+  updated_at?: string | null;
 
   // joined
   work_orders: {
@@ -388,6 +391,18 @@ export default function PortalApprovalsPage() {
                           : "future",
                   },
                 ];
+                const decisionEvents = deriveEventsFromPortalApproval({
+                  line: {
+                    id: ln.id,
+                    description: ln.description,
+                    complaint: ln.complaint,
+                    created_at: ln.created_at,
+                    updated_at: ln.updated_at ?? null,
+                    approval_state: ln.approval_state,
+                    status: ln.status,
+                  },
+                  actorLabel: "Customer portal",
+                });
 
                 return (
                   <div key={ln.id} className={glass}>
@@ -431,6 +446,7 @@ export default function PortalApprovalsPage() {
 
                     <div className="px-4 py-4">
                       <DecisionTimeline stages={timelineStages} orientation="vertical" className="mb-3" />
+                      <DecisionEventFeed events={decisionEvents} compact className="mb-3" />
                       <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div>
                           <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">

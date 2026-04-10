@@ -26,9 +26,11 @@ import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
   type DecisionTimelineStage,
 } from "@/features/shared/components/ui/DecisionTimeline";
+import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
 import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -885,6 +887,15 @@ export default function WorkOrderIdClient(): JSX.Element {
       },
     ];
   }, [lines, wo?.status]);
+  const decisionEvents = useMemo(
+    () =>
+      deriveEventsFromWorkOrder({
+        workOrder: wo,
+        lines,
+        actorLabel: "Service team",
+      }),
+    [wo, lines],
+  );
 
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -1314,6 +1325,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </section>
 
           <DecisionTimeline stages={decisionTimelineStages} />
+          <DecisionEventFeed events={decisionEvents} />
 
           {/* Vehicle & Customer */}
           <section className={cn(PANEL_VARIANTS.secondary, "p-4")}>

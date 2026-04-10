@@ -9,8 +9,10 @@ import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActi
 import DecisionTimeline, {
   type DecisionTimelineStage,
 } from "@/features/shared/components/ui/DecisionTimeline";
+import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import { deriveEventsFromQuote } from "@/features/shared/lib/decisionEvents";
 import {
   calculateTax,
   getTaxAmount,
@@ -31,7 +33,16 @@ type ParamsShape = Record<string, string | string[] | undefined>;
 
 type QuoteLineRow = Pick<
   WorkOrderLineRow,
-  "id" | "description" | "complaint" | "labor_time" | "price_estimate" | "line_no" | "approval_state" | "status"
+  | "id"
+  | "description"
+  | "complaint"
+  | "labor_time"
+  | "price_estimate"
+  | "line_no"
+  | "approval_state"
+  | "status"
+  | "created_at"
+  | "updated_at"
 >;
 
 type AllocationWithPart = Pick<
@@ -52,6 +63,8 @@ type LineView = {
   totalAmount: number;
   approvalState: "pending" | "approved" | "declined" | null;
   status: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
   parts: Array<{
     name: string;
     qty: number;
@@ -183,7 +196,7 @@ export default function QuotePageClient(): JSX.Element {
 
     const { data: lineRowsRaw, error: lineErr } = await supabase
       .from("work_order_lines")
-      .select("id, description, complaint, labor_time, price_estimate, line_no, approval_state, status")
+      .select("id, description, complaint, labor_time, price_estimate, line_no, approval_state, status, created_at, updated_at")
       .eq("work_order_id", workOrderId)
       .order("line_no", { ascending: true });
 
@@ -254,6 +267,8 @@ export default function QuotePageClient(): JSX.Element {
             ? line.approval_state
             : null,
         status: line.status,
+        createdAt: line.created_at ?? null,
+        updatedAt: line.updated_at ?? null,
         parts,
       };
     });
@@ -314,6 +329,23 @@ export default function QuotePageClient(): JSX.Element {
           : "future",
     },
   ];
+  const decisionEvents = useMemo(
+    () =>
+      deriveEventsFromQuote({
+        workOrder,
+        lines: lines.map((line) => ({
+          id: line.id,
+          line_no: line.lineNo,
+          description: line.title,
+          approval_state: line.approvalState,
+          status: line.status,
+          created_at: line.createdAt,
+          updated_at: line.updatedAt,
+        })),
+        actorLabel: "Shop team",
+      }),
+    [workOrder, lines],
+  );
 
   return (
     <div
@@ -362,6 +394,7 @@ export default function QuotePageClient(): JSX.Element {
             </p>
           </div>
           <DecisionTimeline stages={timelineStages} className="mb-6" />
+          <DecisionEventFeed events={decisionEvents} className="mb-6" compact />
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
