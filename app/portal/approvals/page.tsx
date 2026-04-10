@@ -365,6 +365,9 @@ export default function PortalApprovalsPage() {
                             {summary.text}
                           </span>
                         </div>
+                        <div className="mt-2 text-xs text-neutral-300">
+                          Decision needed: approve required parts so this work order can continue.
+                        </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-neutral-400">
                           <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
@@ -395,12 +398,17 @@ export default function PortalApprovalsPage() {
                     </div>
 
                     <div className="px-4 py-4">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                          Parts
+                      <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                        <div>
+                          <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                            Evidence-backed recommendation
+                          </div>
+                          <div className="text-[0.7rem] text-neutral-500">
+                            Review pricing and approve each required part. This is the action step for this job.
+                          </div>
                         </div>
-                        <div className="text-[0.7rem] text-neutral-500">
-                          Approve each item to move the job forward.
+                        <div className="text-[0.68rem] text-neutral-400">
+                          Primary action: <span className="text-neutral-200">Approve</span>
                         </div>
                       </div>
 
@@ -465,12 +473,10 @@ export default function PortalApprovalsPage() {
                                         type="button"
                                         onClick={() => void approveItem(it.id)}
                                         disabled={isBusy}
-                                        className="inline-flex items-center rounded-full border border-white/12 bg-black/45 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-neutral-100 transition hover:bg-black/70 active:scale-95 disabled:opacity-60"
+                                        className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-emerald-100 transition hover:bg-emerald-500/20 active:scale-95 disabled:opacity-60"
                                         title="Approve item"
                                       >
-                                        <span style={{ color: COPPER }}>
-                                          {isBusy ? "..." : "Approve"}
-                                        </span>
+                                        {isBusy ? "..." : "Approve"}
                                       </button>
                                     ) : (
                                       <button

@@ -74,7 +74,10 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
   return (
     <div className="mt-6 space-y-3">
       <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-        Quote decisions
+        Decision actions
+      </div>
+      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-neutral-400">
+        For each recommendation, choose one clear action. Approve is the primary path when you want work to proceed.
       </div>
 
       <div className="space-y-2">
@@ -110,7 +113,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                     type="button"
                     onClick={() => void runDecision(l.id, "approve")}
                     disabled={!!loadingLineId || ap === "approved"}
-                    className="inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
                   >
                     {isBusy ? "Saving..." : ap === "approved" ? "Approved" : "Approve"}
                   </button>
@@ -119,7 +122,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                     type="button"
                     onClick={() => void runDecision(l.id, "decline")}
                     disabled={!!loadingLineId || ap === "declined"}
-                    className="inline-flex items-center justify-center rounded-full border border-red-400/70 bg-red-500/10 px-4 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full border border-white/20 bg-black/45 px-4 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-black/65 disabled:opacity-50"
                   >
                     {isBusy ? "Saving..." : ap === "declined" ? "Declined" : "Decline"}
                   </button>
@@ -128,7 +131,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                     type="button"
                     onClick={() => void runDecision(l.id, "defer")}
                     disabled={!!loadingLineId || ap === "pending"}
-                    className="inline-flex items-center justify-center rounded-full border border-amber-300/60 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-transparent px-3 py-1.5 text-[11px] font-medium text-neutral-300 transition hover:bg-white/5 disabled:opacity-50"
                   >
                     {isBusy ? "Saving..." : "Defer"}
                   </button>
