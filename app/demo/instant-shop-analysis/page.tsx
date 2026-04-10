@@ -4,6 +4,10 @@
 import React, { useMemo, useState, type FormEvent } from "react";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
+import {
+  SHOP_BOOST_UPLOAD_DATASETS,
+  type ShopBoostUploadDatasetKey,
+} from "@/features/integrations/shopBoost/uploadDatasets";
 
 type Country = "US" | "CA";
 
@@ -87,9 +91,7 @@ export default function InstantShopAnalysisPage() {
     avgMonthlyRos: "",
   });
 
-  const [customersFile, setCustomersFile] = useState<File | null>(null);
-  const [vehiclesFile, setVehiclesFile] = useState<File | null>(null);
-  const [partsFile, setPartsFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<Partial<Record<ShopBoostUploadDatasetKey, File>>>({});
 
   const [step, setStep] = useState<DemoStep>("form");
   const [demoId, setDemoId] = useState<string | null>(null);
@@ -129,7 +131,10 @@ export default function InstantShopAnalysisPage() {
       return;
     }
 
-    if (!customersFile && !vehiclesFile && !partsFile) {
+    const selectedEntries = Object.entries(uploadFiles).filter(
+      (entry): entry is [ShopBoostUploadDatasetKey, File] => !!entry[1],
+    );
+    if (selectedEntries.length === 0) {
       setRunError("Upload at least one CSV so we have some history to scan.");
       return;
     }
@@ -142,9 +147,9 @@ export default function InstantShopAnalysisPage() {
       form.append("shopName", shopName.trim());
       form.append("country", country);
       form.append("questionnaire", JSON.stringify({ ...questionnaire }));
-      if (customersFile) form.append("customersFile", customersFile);
-      if (vehiclesFile) form.append("vehiclesFile", vehiclesFile);
-      if (partsFile) form.append("partsFile", partsFile);
+      for (const [dataset, file] of selectedEntries) {
+        form.append(`${dataset}File`, file);
+      }
 
       const res = await fetch("/api/demo/shop-boost/run", {
         method: "POST",
@@ -390,30 +395,24 @@ export default function InstantShopAnalysisPage() {
               </div>
 
               <div className="space-y-3 text-xs">
-                <FileRow
-                  id="demo-customers"
-                  label="Customers"
-                  description="Names, phones, emails — helps connect vehicles and approvals."
-                  file={customersFile}
-                  accept=".csv,text/csv"
-                  onChange={setCustomersFile}
-                />
-                <FileRow
-                  id="demo-vehicles"
-                  label="Repair orders / vehicle history"
-                  description="RO exports, dates, complaint/cause/correction, totals."
-                  file={vehiclesFile}
-                  accept=".csv,text/csv"
-                  onChange={setVehiclesFile}
-                />
-                <FileRow
-                  id="demo-parts"
-                  label="Parts / inventory"
-                  description="Part numbers, cost, sell prices, preferred vendors."
-                  file={partsFile}
-                  accept=".csv,text/csv"
-                  onChange={setPartsFile}
-                />
+                {SHOP_BOOST_UPLOAD_DATASETS.map((dataset) => (
+                  <FileRow
+                    key={dataset.key}
+                    id={`demo-${dataset.key}`}
+                    label={dataset.label}
+                    description={dataset.description}
+                    file={uploadFiles[dataset.key] ?? null}
+                    accept=".csv,text/csv"
+                    onChange={(file) =>
+                      setUploadFiles((prev) => {
+                        const next = { ...prev };
+                        if (!file) delete next[dataset.key];
+                        else next[dataset.key] = file;
+                        return next;
+                      })
+                    }
+                  />
+                ))}
 
                 <p className={THEME.help}>
                   We use AI to interpret columns, so exports don&apos;t need to be perfect. Data
@@ -692,6 +691,15 @@ function FileRow({ id, label, description, file, accept, onChange }: FileRowProp
             onChange(selectedFile);
           }}
         />
+        {file ? (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="inline-flex cursor-pointer items-center rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-white/[0.04]"
+          >
+            Remove
+          </button>
+        ) : null}
         {!file ? (
           <span className="text-[10px] text-neutral-500">
             Optional, but highly recommended

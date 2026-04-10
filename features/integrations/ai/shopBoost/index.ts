@@ -13,6 +13,7 @@ import {
   type ShopHealthScoringInput,
 } from "./healthScoring";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
+import { SHOP_BOOST_UPLOAD_DATASET_KEYS, type ShopBoostUploadDatasetKey } from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
@@ -26,6 +27,10 @@ type BuildArgs = {
 };
 
 type IntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
+
+type UploadManifestRecord = Partial<
+  Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
+>;
 
 function nowIso() {
   return new Date().toISOString();
@@ -208,6 +213,8 @@ export async function buildShopBoostProfile(
 
   try {
     const intake = await loadIntake(shopId, intakeId);
+    const intakeBasics = (intake.intake_basics ?? {}) as Record<string, unknown>;
+    const uploadManifest = (intakeBasics.uploadManifest ?? {}) as UploadManifestRecord;
 
     const questionnaire = args.questionnaire ?? intake.questionnaire ?? {};
     const customersText = await downloadCsvIfPresent(
@@ -225,36 +232,31 @@ export async function buildShopBoostProfile(
     // ---------------------------------------------------------------------
     // 1) STORE IMPORT FILE METADATA
     // ---------------------------------------------------------------------
-    const filesToInsert: Array<
-      DB["public"]["Tables"]["shop_import_files"]["Insert"]
-    > = [];
+    const filesToInsert: Array<DB["public"]["Tables"]["shop_import_files"]["Insert"]> = [];
+    const rowCountByKind: Partial<Record<ShopBoostUploadDatasetKey, number>> = {
+      customers: customersRows.length,
+      vehicles: vehiclesRows.length,
+      parts: partsRows.length,
+    };
 
-    if (intake.customers_file_path) {
+    for (const kind of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+      const path =
+        kind === "customers"
+          ? intake.customers_file_path
+          : kind === "vehicles"
+            ? intake.vehicles_file_path
+            : kind === "parts"
+              ? intake.parts_file_path
+              : uploadManifest[kind]?.path ?? null;
+      if (!path) continue;
       filesToInsert.push({
-        shop_id: shopId,
         intake_id: intakeId,
-        kind: "customers",
-        storage_path: intake.customers_file_path,
-        row_count: customersRows.length,
-      } as unknown as DB["public"]["Tables"]["shop_import_files"]["Insert"]);
-    }
-    if (intake.vehicles_file_path) {
-      filesToInsert.push({
-        shop_id: shopId,
-        intake_id: intakeId,
-        kind: "vehicles",
-        storage_path: intake.vehicles_file_path,
-        row_count: vehiclesRows.length,
-      } as unknown as DB["public"]["Tables"]["shop_import_files"]["Insert"]);
-    }
-    if (intake.parts_file_path) {
-      filesToInsert.push({
-        shop_id: shopId,
-        intake_id: intakeId,
-        kind: "parts",
-        storage_path: intake.parts_file_path,
-        row_count: partsRows.length,
-      } as unknown as DB["public"]["Tables"]["shop_import_files"]["Insert"]);
+        kind,
+        storage_path: path,
+        original_filename: uploadManifest[kind]?.fileName ?? null,
+        parsed_row_count: rowCountByKind[kind] ?? null,
+        status: uploadManifest[kind]?.importMode === "staging" ? "needs_review" : "parsed",
+      } as DB["public"]["Tables"]["shop_import_files"]["Insert"]);
     }
 
     if (filesToInsert.length) {

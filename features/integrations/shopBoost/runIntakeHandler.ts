@@ -8,6 +8,11 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import {
+  SHOP_BOOST_UPLOAD_DATASETS,
+  SHOP_BOOST_UPLOAD_DATASET_KEYS,
+  type ShopBoostUploadDatasetKey,
+} from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
@@ -33,6 +38,16 @@ type RunMode = {
   runImport: boolean;
   // If true, allow JSON body to provide file paths (must be shop-scoped).
   allowProvidedPaths: boolean;
+};
+
+type UploadManifestEntry = {
+  dataset: ShopBoostUploadDatasetKey;
+  path: string;
+  fileName: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  target: string;
+  importMode: "direct" | "staging";
 };
 
 function safeFileName(name: string): string {
@@ -134,19 +149,11 @@ export async function runShopBoostIntake(
 
   let questionnaire: unknown = {};
 
-  let customersFile: File | null = null;
-  let vehiclesFile: File | null = null;
-  let partsFile: File | null = null;
-  let historyFile: File | null = null;
-  let staffFile: File | null = null;
+  const filesByDataset: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
 
   let providedIntakeId: string | null = null;
 
-  let providedCustomersPath: string | null = null;
-  let providedVehiclesPath: string | null = null;
-  let providedPartsPath: string | null = null;
-  let providedHistoryPath: string | null = null;
-  let providedStaffPath: string | null = null;
+  let providedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData().catch(() => null);
@@ -159,13 +166,10 @@ export async function runShopBoostIntake(
 
     questionnaire = parseQuestionnaire(formData.get("questionnaire"));
 
-    customersFile = asFile(formData.get("customersFile"));
-    vehiclesFile = asFile(formData.get("vehiclesFile"));
-    partsFile = asFile(formData.get("partsFile"));
-
-    if (mode.allowHistoryAndStaff) {
-      historyFile = asFile(formData.get("historyFile"));
-      staffFile = asFile(formData.get("staffFile"));
+    for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+      if (!mode.allowHistoryAndStaff && (key === "history" || key === "staff")) continue;
+      const file = asFile(formData.get(`${key}File`));
+      if (file) filesByDataset[key] = file;
     }
 
     const rawIntake = formData.get("intakeId");
@@ -177,12 +181,23 @@ export async function runShopBoostIntake(
       if ("intakeId" in body) providedIntakeId = asString(body["intakeId"]);
 
       if (mode.allowProvidedPaths) {
-        if ("customersPath" in body) providedCustomersPath = asString(body["customersPath"]);
-        if ("vehiclesPath" in body) providedVehiclesPath = asString(body["vehiclesPath"]);
-        if ("partsPath" in body) providedPartsPath = asString(body["partsPath"]);
-        if (mode.allowHistoryAndStaff) {
-          if ("historyPath" in body) providedHistoryPath = asString(body["historyPath"]);
-          if ("staffPath" in body) providedStaffPath = asString(body["staffPath"]);
+        if ("uploadPaths" in body && isRecord(body["uploadPaths"])) {
+          for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+            if (!mode.allowHistoryAndStaff && (key === "history" || key === "staff")) continue;
+            const maybePath = asString(body["uploadPaths"][key]);
+            if (maybePath) providedPaths[key] = maybePath;
+          }
+        } else {
+          const legacy: Partial<Record<ShopBoostUploadDatasetKey, string | null>> = {
+            customers: asString(body["customersPath"]),
+            vehicles: asString(body["vehiclesPath"]),
+            parts: asString(body["partsPath"]),
+            history: mode.allowHistoryAndStaff ? asString(body["historyPath"]) : null,
+            staff: mode.allowHistoryAndStaff ? asString(body["staffPath"]) : null,
+          };
+          for (const [key, value] of Object.entries(legacy) as Array<[ShopBoostUploadDatasetKey, string | null]>) {
+            if (value) providedPaths[key] = value;
+          }
         }
       }
     }
@@ -196,8 +211,8 @@ export async function runShopBoostIntake(
     providedIntakeId && UUID_RE.test(providedIntakeId) ? providedIntakeId : randomUUID();
 
   const uploadIfPresent = async (
-    file: File | null,
-    kind: "customers" | "vehicles" | "parts" | "history" | "staff",
+    kind: ShopBoostUploadDatasetKey,
+    file: File | undefined,
   ): Promise<string | null> => {
     if (!file) return null;
 
@@ -215,45 +230,22 @@ export async function runShopBoostIntake(
     return path;
   };
 
-  const [
-    customersPathUploaded,
-    vehiclesPathUploaded,
-    partsPathUploaded,
-    historyPathUploaded,
-    staffPathUploaded,
-  ] = await Promise.all([
-    uploadIfPresent(customersFile, "customers"),
-    uploadIfPresent(vehiclesFile, "vehicles"),
-    uploadIfPresent(partsFile, "parts"),
-    mode.allowHistoryAndStaff ? uploadIfPresent(historyFile, "history") : Promise.resolve(null),
-    mode.allowHistoryAndStaff ? uploadIfPresent(staffFile, "staff") : Promise.resolve(null),
-  ]);
-
-  const noUploads =
-    !customersFile &&
-    !vehiclesFile &&
-    !partsFile &&
-    (!mode.allowHistoryAndStaff || (!historyFile && !staffFile));
-
-  const jsonProvidedAny =
-    !!providedCustomersPath ||
-    !!providedVehiclesPath ||
-    !!providedPartsPath ||
-    (mode.allowHistoryAndStaff && (!!providedHistoryPath || !!providedStaffPath));
+  const uploadedPathEntries = await Promise.all(
+    SHOP_BOOST_UPLOAD_DATASET_KEYS.map(async (key) => [key, await uploadIfPresent(key, filesByDataset[key])] as const),
+  );
+  const uploadedPaths = Object.fromEntries(uploadedPathEntries) as Partial<
+    Record<ShopBoostUploadDatasetKey, string | null>
+  >;
+  const noUploads = Object.values(filesByDataset).length === 0;
+  const jsonProvidedAny = Object.values(providedPaths).some(Boolean);
 
   // ✅ fallback to latest intake paths when re-running with no uploads and no provided paths
-  let fallbackPaths: {
-    customersPath: string | null;
-    vehiclesPath: string | null;
-    partsPath: string | null;
-    historyPath: string | null;
-    staffPath: string | null;
-  } = { customersPath: null, vehiclesPath: null, partsPath: null, historyPath: null, staffPath: null };
+  let fallbackPaths: Partial<Record<ShopBoostUploadDatasetKey, string | null>> = {};
 
   if (noUploads && !jsonProvidedAny) {
     const { data: latestIntake } = await supabaseAdmin
       .from("shop_boost_intakes")
-      .select("customers_file_path, vehicles_file_path, parts_file_path, history_file_path, staff_file_path")
+      .select("customers_file_path, vehicles_file_path, parts_file_path, history_file_path, staff_file_path, intake_basics")
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -263,66 +255,83 @@ export async function runShopBoostIntake(
         parts_file_path: string | null;
         history_file_path: string | null;
         staff_file_path: string | null;
+        intake_basics: unknown;
       }>();
 
+    const intakeBasics = isRecord(latestIntake?.intake_basics) ? latestIntake.intake_basics : {};
+    const existingManifest = isRecord(intakeBasics.uploadManifest)
+      ? (intakeBasics.uploadManifest as Record<string, unknown>)
+      : {};
     fallbackPaths = {
-      customersPath: latestIntake?.customers_file_path ?? null,
-      vehiclesPath: latestIntake?.vehicles_file_path ?? null,
-      partsPath: latestIntake?.parts_file_path ?? null,
-      historyPath: latestIntake?.history_file_path ?? null,
-      staffPath: latestIntake?.staff_file_path ?? null,
+      customers: latestIntake?.customers_file_path ?? null,
+      vehicles: latestIntake?.vehicles_file_path ?? null,
+      parts: latestIntake?.parts_file_path ?? null,
+      history: latestIntake?.history_file_path ?? null,
+      staff: latestIntake?.staff_file_path ?? null,
     };
+    for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+      const manifestEntry = existingManifest[key];
+      const fromManifest = isRecord(manifestEntry) ? asString(manifestEntry.path) : null;
+      if (fromManifest) fallbackPaths[key] = fromManifest;
+    }
   }
 
-  const customersFinal = customersPathUploaded ?? providedCustomersPath ?? fallbackPaths.customersPath;
-  const vehiclesFinal = vehiclesPathUploaded ?? providedVehiclesPath ?? fallbackPaths.vehiclesPath;
-  const partsFinal = partsPathUploaded ?? providedPartsPath ?? fallbackPaths.partsPath;
-
-  const historyFinal = mode.allowHistoryAndStaff
-    ? historyPathUploaded ?? providedHistoryPath ?? fallbackPaths.historyPath
-    : null;
-
-  const staffFinal = mode.allowHistoryAndStaff
-    ? staffPathUploaded ?? providedStaffPath ?? fallbackPaths.staffPath
-    : null;
+  const finalPaths = Object.fromEntries(
+    SHOP_BOOST_UPLOAD_DATASET_KEYS.map((key) => [
+      key,
+      uploadedPaths[key] ?? providedPaths[key] ?? fallbackPaths[key] ?? null,
+    ]),
+  ) as Record<ShopBoostUploadDatasetKey, string | null>;
 
   // ✅ normalize legacy paths to canonical before enforcing + inserting
-  const customersFinalN = normalizeShopPath(shopId, customersFinal);
-  const vehiclesFinalN = normalizeShopPath(shopId, vehiclesFinal);
-  const partsFinalN = normalizeShopPath(shopId, partsFinal);
-
-  const historyFinalN = mode.allowHistoryAndStaff ? normalizeShopPath(shopId, historyFinal) : null;
-
-  const staffFinalN = mode.allowHistoryAndStaff ? normalizeShopPath(shopId, staffFinal) : null;
+  const normalizedPaths = Object.fromEntries(
+    Object.entries(finalPaths).map(([key, path]) => [key, normalizeShopPath(shopId, path)]),
+  ) as Record<ShopBoostUploadDatasetKey, string | null>;
 
   // ✅ enforce shop-scoped paths for any provided/fallback content
   if (
-    !isShopScopedPath(shopId, customersFinalN) ||
-    !isShopScopedPath(shopId, vehiclesFinalN) ||
-    !isShopScopedPath(shopId, partsFinalN) ||
-    !isShopScopedPath(shopId, historyFinalN) ||
-    !isShopScopedPath(shopId, staffFinalN)
+    Object.values(normalizedPaths).some((path) => !isShopScopedPath(shopId, path))
   ) {
     return { ok: false, error: "Invalid file path (must start with shops/<shopId>/)." };
   }
 
-  if (!customersFinalN && !vehiclesFinalN && !partsFinalN && !historyFinalN && !staffFinalN) {
+  if (!Object.values(normalizedPaths).some(Boolean)) {
     return {
       ok: false,
       error: "No uploads found and no previous intake files exist yet. Upload at least one CSV first.",
     };
   }
 
+  const uploadManifest = SHOP_BOOST_UPLOAD_DATASETS.reduce((acc, dataset) => {
+    const key = dataset.key;
+    const path = normalizedPaths[key];
+    if (!path) return acc;
+    const sourceFile = filesByDataset[key];
+    acc[key] = {
+      dataset: key,
+      path,
+      fileName: sourceFile?.name ?? null,
+      contentType: sourceFile?.type ?? null,
+      sizeBytes: sourceFile?.size ?? null,
+      target: dataset.target,
+      importMode: dataset.importMode,
+    } satisfies UploadManifestEntry;
+    return acc;
+  }, {} as Record<ShopBoostUploadDatasetKey, UploadManifestEntry>);
+
   const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
     id: intakeId,
     shop_id: shopId,
     questionnaire:
       questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
-    customers_file_path: customersFinalN,
-    vehicles_file_path: vehiclesFinalN,
-    parts_file_path: partsFinalN,
-    history_file_path: historyFinalN,
-    staff_file_path: staffFinalN,
+    customers_file_path: normalizedPaths.customers,
+    vehicles_file_path: normalizedPaths.vehicles,
+    parts_file_path: normalizedPaths.parts,
+    history_file_path: mode.allowHistoryAndStaff ? normalizedPaths.history : null,
+    staff_file_path: mode.allowHistoryAndStaff ? normalizedPaths.staff : null,
+    intake_basics: {
+      uploadManifest,
+    } as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["intake_basics"],
     status: "pending",
   };
 

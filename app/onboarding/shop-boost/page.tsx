@@ -8,6 +8,10 @@ import type { Database } from "@shared/types/types/supabase";
 
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
+import {
+  SHOP_BOOST_UPLOAD_DATASETS,
+  type ShopBoostUploadDatasetKey,
+} from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
@@ -40,6 +44,7 @@ type LinkageSummary = {
 };
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
+const UPLOAD_SESSION_STORAGE_KEY = "shop-boost-upload-session-v1";
 
 function safeFileName(name: string): string {
   const base = (name || "upload.csv").trim();
@@ -99,11 +104,7 @@ export default function ShopBoostOnboardingPage() {
     wantsPowerAddOns: true,
   });
 
-  const [customersFile, setCustomersFile] = useState<File | null>(null);
-  const [vehiclesFile, setVehiclesFile] = useState<File | null>(null);
-  const [partsFile, setPartsFile] = useState<File | null>(null);
-  const [historyFile, setHistoryFile] = useState<File | null>(null);
-  const [staffFile, setStaffFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<Partial<Record<ShopBoostUploadDatasetKey, File>>>({});
 
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
@@ -150,6 +151,32 @@ export default function ShopBoostOnboardingPage() {
     })();
   }, [supabase]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const existing = window.localStorage.getItem(UPLOAD_SESSION_STORAGE_KEY);
+    if (!existing) return;
+    try {
+      const parsed = JSON.parse(existing) as Partial<Record<ShopBoostUploadDatasetKey, string>>;
+      const draftFiles: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
+      for (const dataset of SHOP_BOOST_UPLOAD_DATASETS) {
+        const fileName = parsed[dataset.key];
+        if (!fileName) continue;
+        draftFiles[dataset.key] = new File([], fileName, { type: "text/csv" });
+      }
+      setUploadFiles(draftFiles);
+    } catch {
+      // ignore draft parse errors
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const draft = Object.fromEntries(
+      SHOP_BOOST_UPLOAD_DATASETS.map((dataset) => [dataset.key, uploadFiles[dataset.key]?.name ?? null]),
+    );
+    window.localStorage.setItem(UPLOAD_SESSION_STORAGE_KEY, JSON.stringify(draft));
+  }, [uploadFiles]);
+
   const handleQuestionToggle =
     (key: keyof QuestionnaireState) => (value: boolean) => {
       setQuestionnaire((prev) => ({
@@ -176,7 +203,11 @@ export default function ShopBoostOnboardingPage() {
       return;
     }
 
-    if (!customersFile && !vehiclesFile && !partsFile && !historyFile && !staffFile) {
+    const selectedEntries = Object.entries(uploadFiles).filter(
+      (entry): entry is [ShopBoostUploadDatasetKey, File] => !!entry[1],
+    );
+
+    if (selectedEntries.length === 0) {
       setError("Please upload at least one CSV file so we have data to scan.");
       return;
     }
@@ -186,13 +217,10 @@ export default function ShopBoostOnboardingPage() {
     // ✅ intakeId is ALWAYS UUID format now
     const intakeId = uuidv4();
 
-    const uploadIfPresent = async (
-      file: File | null,
-      kind: "customers" | "vehicles" | "parts" | "history" | "staff",
-    ): Promise<string | null> => {
-      if (!file) return null;
-
-      // ✅ RLS policy expects first path segment == shopId
+    const uploadDatasetFile = async (
+      kind: ShopBoostUploadDatasetKey,
+      file: File,
+    ): Promise<string> => {
       const safeName = safeFileName(file.name || `${kind}.csv`);
       const path = `shops/${shopId}/${intakeId}/${kind}-${safeName}`;
 
@@ -212,14 +240,10 @@ export default function ShopBoostOnboardingPage() {
     };
 
     try {
-      const [customersPath, vehiclesPath, partsPath, historyPath, staffPath] =
-        await Promise.all([
-          uploadIfPresent(customersFile, "customers"),
-          uploadIfPresent(vehiclesFile, "vehicles"),
-          uploadIfPresent(partsFile, "parts"),
-          uploadIfPresent(historyFile, "history"),
-          uploadIfPresent(staffFile, "staff"),
-        ]);
+      const uploadedPathEntries = await Promise.all(
+        selectedEntries.map(async ([kind, file]) => [kind, await uploadDatasetFile(kind, file)] as const),
+      );
+      const uploadPaths = Object.fromEntries(uploadedPathEntries);
 
       setStepStatus("processing");
 
@@ -230,11 +254,7 @@ export default function ShopBoostOnboardingPage() {
         body: JSON.stringify({
           intakeId,
           questionnaire,
-          customersPath,
-          vehiclesPath,
-          partsPath,
-          historyPath,
-          staffPath,
+          uploadPaths,
         }),
       });
 
@@ -455,41 +475,27 @@ export default function ShopBoostOnboardingPage() {
               </div>
 
               <div className="space-y-4 text-sm">
-                <UploadRow
-                  id="customers-upload"
-                  label="Customers"
-                  description="Names, phones, emails — we’ll attach vehicles and history where possible."
-                  currentFile={customersFile}
-                  onFileChange={setCustomersFile}
-                />
-                <UploadRow
-                  id="vehicles-upload"
-                  label="Vehicles"
-                  description="VIN/plate, unit #, year/make/model — links to customers and history."
-                  currentFile={vehiclesFile}
-                  onFileChange={setVehiclesFile}
-                />
-                <UploadRow
-                  id="parts-upload"
-                  label="Parts inventory"
-                  description="Part numbers, descriptions, cost and sell prices, preferred vendors."
-                  currentFile={partsFile}
-                  onFileChange={setPartsFile}
-                />
-                <UploadRow
-                  id="history-upload"
-                  label="History (repair orders)"
-                  description="RO#, date, complaint/cause/correction, totals — builds Work Orders + Lines so history works day 1."
-                  currentFile={historyFile}
-                  onFileChange={setHistoryFile}
-                />
-                <UploadRow
-                  id="staff-upload"
-                  label="Staff / team roster"
-                  description="Names, roles, phone/email/usernames — creates accounts and profiles."
-                  currentFile={staffFile}
-                  onFileChange={setStaffFile}
-                />
+                {SHOP_BOOST_UPLOAD_DATASETS.map((dataset) => (
+                  <UploadRow
+                    key={dataset.key}
+                    id={`${dataset.key}-upload`}
+                    label={dataset.label}
+                    description={dataset.description}
+                    helper={dataset.help}
+                    currentFile={uploadFiles[dataset.key] ?? null}
+                    onFileChange={(file) =>
+                      setUploadFiles((prev) => {
+                        const next = { ...prev };
+                        if (!file) {
+                          delete next[dataset.key];
+                        } else {
+                          next[dataset.key] = file;
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                ))}
 
                 <p className="text-[11px] text-neutral-500">
                   Don&apos;t worry about perfect formatting — we interpret columns and map them into ProFixIQ.
@@ -672,17 +678,19 @@ type UploadRowProps = {
   id: string;
   label: string;
   description: string;
+  helper?: string;
   currentFile: File | null;
   onFileChange: (f: File | null) => void;
 };
 
-function UploadRow({ id, label, description, currentFile, onFileChange }: UploadRowProps) {
+function UploadRow({ id, label, description, helper, currentFile, onFileChange }: UploadRowProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <div>
           <label className="text-xs text-neutral-300">{label}</label>
           <p className="text-[11px] text-neutral-500">{description}</p>
+          {helper ? <p className="text-[10px] text-neutral-400">{helper}</p> : null}
         </div>
         <span className="max-w-[140px] truncate text-[10px] text-neutral-400">
           {currentFile ? currentFile.name : "No file selected"}
@@ -705,6 +713,15 @@ function UploadRow({ id, label, description, currentFile, onFileChange }: Upload
             onFileChange(file);
           }}
         />
+        {currentFile ? (
+          <button
+            type="button"
+            onClick={() => onFileChange(null)}
+            className="inline-flex cursor-pointer items-center rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+          >
+            Remove
+          </button>
+        ) : null}
       </div>
     </div>
   );
