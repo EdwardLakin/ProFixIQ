@@ -5,6 +5,11 @@ import {
   getWorkOrderLineTransitionError,
   normalizeWorkOrderLineStatus,
 } from "@/features/work-orders/lib/line-status";
+import {
+  closeActiveLaborSegments,
+  startLaborSegment,
+  syncLinePunchMirrorFromSegments,
+} from "@/features/work-orders/server/laborSegments";
 
 type DB = Database;
 
@@ -150,7 +155,7 @@ export async function applyJobPunchTransition({
       );
     }
 
-    const lineTechId = line.assigned_tech_id ?? technicianId;
+    const lineTechId = technicianId;
 
     let openShiftQ = supabase
       .from("tech_shifts")
@@ -197,17 +202,23 @@ export async function applyJobPunchTransition({
     }
 
     if (!allowConcurrentJobPunches) {
-      const { data: activeJobRows, error: activeJobsErr } = await supabase
-        .from("work_order_lines")
+      let activeSegmentQuery = supabase
+        .from("work_order_line_labor_segments")
         .select("id")
-        .eq("assigned_tech_id", lineTechId)
-        .not("punched_in_at", "is", null)
-        .is("punched_out_at", null)
-        .neq("id", lineId);
+        .eq("technician_id", lineTechId)
+        .is("ended_at", null)
+        .neq("work_order_line_id", lineId)
+        .limit(1);
 
-      if (activeJobsErr) return err(400, activeJobsErr.message);
+      if (line.shop_id) {
+        activeSegmentQuery = activeSegmentQuery.eq("shop_id", line.shop_id);
+      }
 
-      if ((activeJobRows?.length ?? 0) > 0) {
+      const { data: activeSegments, error: activeSegmentErr } = await activeSegmentQuery;
+
+      if (activeSegmentErr) return err(400, activeSegmentErr.message);
+
+      if ((activeSegments?.length ?? 0) > 0) {
         return err(
           409,
           "Technician already has an active job punch. Complete/pause it first or retry with allowConcurrentJobPunches=true.",
@@ -218,6 +229,10 @@ export async function applyJobPunchTransition({
     const now = new Date().toISOString();
     const shouldResetPunchClock =
       action === "start" || status === "on_hold" || Boolean(line.punched_out_at);
+
+    if (!line.shop_id || !line.work_order_id) {
+      return err(409, "Cannot start labor segment until line has shop_id and work_order_id.");
+    }
 
     const { error: updateErr } = await supabase
       .from("work_order_lines")
@@ -235,6 +250,32 @@ export async function applyJobPunchTransition({
       .single();
 
     if (updateErr) return err(400, updateErr.message);
+
+    const { error: segmentErr } = await startLaborSegment({
+      supabase,
+      shopId: line.shop_id,
+      workOrderId: line.work_order_id,
+      workOrderLineId: lineId,
+      technicianId: lineTechId,
+      actorId: technicianId,
+      startedAtIso: now,
+      source: action === "start" ? "job_start" : "job_resume",
+    });
+
+    if (segmentErr) {
+      const message = segmentErr.message.toLowerCase();
+      if (message.includes("uq_wolls_active_by_tech") || message.includes("ex_wolls_no_overlap")) {
+        return err(409, "Technician already has overlapping active labor. Pause/finish current job first.");
+      }
+      return err(400, segmentErr.message);
+    }
+
+    const { error: syncErr } = await syncLinePunchMirrorFromSegments({
+      supabase,
+      workOrderLineId: lineId,
+    });
+
+    if (syncErr) return err(400, syncErr.message);
 
     await supabase.from("activity_logs").insert({
       entity_type: "work_order_line",
@@ -272,6 +313,19 @@ export async function applyJobPunchTransition({
 
     if (updateErr) return err(400, updateErr.message);
 
+    const pauseTechId = technicianId;
+    const { error: closeErr } = await closeActiveLaborSegments({
+      supabase,
+      workOrderLineId: lineId,
+      technicianId: pauseTechId,
+      endedAtIso: now,
+    });
+
+    if (closeErr) return err(400, closeErr.message);
+
+    const { error: syncErr } = await syncLinePunchMirrorFromSegments({ supabase, workOrderLineId: lineId });
+    if (syncErr) return err(400, syncErr.message);
+
     await supabase.from("activity_logs").insert({
       entity_type: "work_order_line",
       entity_id: lineId,
@@ -307,6 +361,19 @@ export async function applyJobPunchTransition({
   }
 
   const nowIso = new Date().toISOString();
+
+  const finishTechId = technicianId;
+  const { error: closeErr } = await closeActiveLaborSegments({
+    supabase,
+    workOrderLineId: lineId,
+    technicianId: finishTechId,
+    endedAtIso: nowIso,
+  });
+
+  if (closeErr) return err(400, closeErr.message);
+
+  const { error: syncErr } = await syncLinePunchMirrorFromSegments({ supabase, workOrderLineId: lineId });
+  if (syncErr) return err(400, syncErr.message);
 
   const updatePayload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
     status: "completed",

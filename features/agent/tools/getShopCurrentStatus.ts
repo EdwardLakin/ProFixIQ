@@ -24,6 +24,11 @@ type Row = {
   work_orders: WorkOrderRef;
 };
 
+type ActiveSegmentRow = {
+  work_order_line_id: string | null;
+  technician_id: string | null;
+};
+
 type ProfileRow = {
   id: string;
   full_name: string | null;
@@ -36,7 +41,11 @@ function getWorkOrder(workOrder: WorkOrderRef) {
 export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
   const supabase = getServerSupabase();
 
-  const [{ data: lines, error: linesError }, { data: profiles, error: profilesError }] =
+  const [
+    { data: lines, error: linesError },
+    { data: profiles, error: profilesError },
+    { data: activeSegments, error: activeSegmentsError },
+  ] =
     await Promise.all([
       supabase
         .from("work_order_lines")
@@ -64,12 +73,19 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
         .from("profiles")
         .select("id, full_name")
         .eq("shop_id", ctx.shopId),
+      supabase
+        .from("work_order_line_labor_segments")
+        .select("work_order_line_id, technician_id")
+        .eq("shop_id", ctx.shopId)
+        .is("ended_at", null),
     ]);
 
   if (linesError) throw new Error(linesError.message);
   if (profilesError) throw new Error(profilesError.message);
+  if (activeSegmentsError) throw new Error(activeSegmentsError.message);
 
   const rows = (lines ?? []) as unknown as Row[];
+  const segments = (activeSegments ?? []) as ActiveSegmentRow[];
   const people = (profiles ?? []) as ProfileRow[];
 
   const profileMap = new Map<string, string>();
@@ -77,6 +93,14 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
     if (profile.id) {
       profileMap.set(profile.id, profile.full_name ?? profile.id);
     }
+  }
+
+  const activeTechByLineId = new Map<string, string[]>();
+  for (const segment of segments) {
+    if (!segment.work_order_line_id || !segment.technician_id) continue;
+    const techs = activeTechByLineId.get(segment.work_order_line_id) ?? [];
+    techs.push(segment.technician_id);
+    activeTechByLineId.set(segment.work_order_line_id, techs);
   }
 
   const grouped = new Map<
@@ -89,11 +113,8 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
   >();
 
   for (const row of rows) {
-    const techKey = row.assigned_tech_id ?? "unassigned";
-    const techName =
-      techKey === "unassigned"
-        ? "Unassigned"
-        : profileMap.get(techKey) ?? techKey;
+    const activeTechIds = activeTechByLineId.get(row.id) ?? [];
+    const groupingTechIds = activeTechIds.length > 0 ? activeTechIds : [row.assigned_tech_id ?? "unassigned"];
 
     const wo = getWorkOrder(row.work_orders);
     const woId = wo?.id ?? row.id;
@@ -102,17 +123,22 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
     const lineLabel =
       row.description ?? row.complaint ?? row.status ?? "Active job";
 
-    if (!grouped.has(techName)) {
-      grouped.set(techName, []);
-    }
+    for (const techId of groupingTechIds) {
+      const techName =
+        techId === "unassigned"
+          ? "Unassigned"
+          : profileMap.get(techId) ?? techId;
 
-    grouped.get(techName)!.push({
-      id: woId,
-      href: row.assigned_tech_id
-        ? `/work-orders/${woId}/focused-job/${row.id}`
-        : `/work-orders/${woId}`,
-      label: `${woLabel} • ${lineLabel}`,
-    });
+      if (!grouped.has(techName)) {
+        grouped.set(techName, []);
+      }
+
+      grouped.get(techName)!.push({
+        id: woId,
+        href: techId !== "unassigned" ? `/work-orders/${woId}/focused-job/${row.id}` : `/work-orders/${woId}`,
+        label: `${woLabel} • ${lineLabel}`,
+      });
+    }
   }
 
   const techSections = Array.from(grouped.entries()).map(([tech, jobs]) => ({
