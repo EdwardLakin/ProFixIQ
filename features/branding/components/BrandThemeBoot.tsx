@@ -41,6 +41,16 @@ type UserThemePreferences = {
   shadow_style?: string | null;
 };
 
+function resolveThemeMode(mode: string): "light" | "dark" {
+  if (mode === "light") return "light";
+  if (mode === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return "dark";
+}
+
 function setVar(
   root: HTMLElement,
   name: string,
@@ -398,10 +408,22 @@ export default function BrandThemeBoot() {
       userPrefs.shadow_style || profile.shadow_style || "medium",
     );
 
-    const themeMode = String(
+    const themePreference = String(
       userPrefs.theme_mode || profile.theme_mode || "dark",
     ).toLowerCase();
-    root.setAttribute("data-theme-mode", themeMode);
+    const resolvedTheme = resolveThemeMode(themePreference);
+    root.setAttribute("data-theme-preference", themePreference);
+    root.setAttribute("data-theme-mode", resolvedTheme);
+    window.localStorage.setItem("pfq-theme-mode", themePreference);
+
+    if (themePreference === "system") {
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const onMediaChange = () => {
+        root.setAttribute("data-theme-mode", resolveThemeMode("system"));
+      };
+      media.addEventListener("change", onMediaChange);
+      return () => media.removeEventListener("change", onMediaChange);
+    }
   }, [data]);
 
   return null;

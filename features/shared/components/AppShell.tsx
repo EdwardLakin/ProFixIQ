@@ -233,7 +233,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!isAppRoute) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-foreground">
+      <div className="min-h-screen text-[var(--theme-text-primary,#E2E8F0)]">
         {children}
         <Toaster closeButton richColors position="top-right" theme="dark" />
       </div>

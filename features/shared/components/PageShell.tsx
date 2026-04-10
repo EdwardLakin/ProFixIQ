@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 type PageShellProps = {
   title: string;
   description?: string;
+  eyebrow?: string;
   actions?: ReactNode;
   children: ReactNode;
 };
@@ -12,6 +13,7 @@ type PageShellProps = {
 export default function PageShell({
   title,
   description,
+  eyebrow,
   actions,
   children,
 }: PageShellProps) {
@@ -27,11 +29,19 @@ export default function PageShell({
         }}
       >
         <div>
+          {eyebrow ? (
+            <p
+              className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+              style={{ color: "var(--theme-text-muted,#64748B)" }}
+            >
+              {eyebrow}
+            </p>
+          ) : null}
+
           <h1
-            className="text-xl tracking-[0.08em]"
+            className="text-xl font-semibold tracking-[0.03em]"
             style={{
-              fontFamily: "var(--font-blackops), system-ui, sans-serif",
-              color: "var(--brand-accent,#E2A164)",
+              color: "var(--theme-text-primary,#E2E8F0)",
             }}
           >
             {title}
