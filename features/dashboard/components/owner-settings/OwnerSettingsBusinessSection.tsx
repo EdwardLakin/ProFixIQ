@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
+import { OwnerSettingsPanel } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 
 type FileInputChangeEvent = {
   target: {
@@ -84,14 +85,12 @@ export default function OwnerSettingsBusinessSection({
   onGenerateLogo,
 }: Props) {
   return (
-    <SettingsSectionLike>
-      <div>
-        <h2 className="text-sm font-semibold text-neutral-50">Shop info</h2>
-        <p className="text-[11px] text-neutral-400">
-          Business identity, contact details, and location defaults.
-        </p>
-      </div>
-
+    <OwnerSettingsPanel
+      id="shop-info"
+      tone="secondary"
+      title="Business profile"
+      description="Business identity, contact details, and location defaults."
+    >
       <div className="grid gap-2 md:grid-cols-2">
         <div className="space-y-1">
           <div className={labelClass}>Country</div>
@@ -188,12 +187,7 @@ export default function OwnerSettingsBusinessSection({
           />
         </div>
 
-        <Button
-          onClick={onGenerateLogo}
-          variant="secondary"
-          className="mt-1"
-          disabled={!isUnlocked}
-        >
+        <Button onClick={onGenerateLogo} variant="secondary" className="mt-1" disabled={!isUnlocked}>
           Generate logo with AI
         </Button>
 
@@ -208,14 +202,6 @@ export default function OwnerSettingsBusinessSection({
           />
         ) : null}
       </div>
-    </SettingsSectionLike>
-  );
-}
-
-function SettingsSectionLike({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
-      {children}
-    </section>
+    </OwnerSettingsPanel>
   );
 }

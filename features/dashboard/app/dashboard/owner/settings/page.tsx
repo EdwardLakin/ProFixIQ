@@ -9,13 +9,13 @@ import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
-import { Button } from "@shared/components/ui/Button";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/OwnerSettingsHeader";
 import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
+import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 
@@ -283,7 +283,6 @@ export default function OwnerSettingsPage() {
   const labelClass = "text-xs text-neutral-400";
   const navChipClass =
     "inline-flex items-center rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-black/40 hover:text-white";
-  const sectionClass = "space-y-3 rounded-2xl border border-white/10 bg-black/25 p-5";
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -1004,43 +1003,7 @@ try {
     );
   })();
 
-  const seatLimitLabel =
-    seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
-
-  const seatPill = (() => {
-    const base =
-      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
-
-    if (seatsLimit == null) {
-      return (
-        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
-          Seats: Unlimited
-        </span>
-      );
-    }
-
-    if (seatsUsed >= seatsLimit) {
-      return (
-        <span className={`${base} border-red-500/25 bg-red-950/25 text-red-100`}>
-          Seats: {seatLimitLabel}
-        </span>
-      );
-    }
-
-    if (seatsLimit > 0 && seatsUsed / seatsLimit >= 0.9) {
-      return (
-        <span className={`${base} border-amber-500/25 bg-amber-950/20 text-amber-100`}>
-          Seats: {seatLimitLabel}
-        </span>
-      );
-    }
-
-    return (
-      <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
-        Seats: {seatLimitLabel}
-      </span>
-    );
-  })();
+  const seatLimitLabel = seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
 
     return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 text-foreground lg:p-6">
@@ -1052,196 +1015,21 @@ try {
         onSave={handleSave}
       />
 
-      <section className={sectionClass}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-            Plan: <span className="text-neutral-100">{planLabel(plan)}</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-            Seats: <span className="text-neutral-100">{seatLimitLabel}</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-            Billing: <span className="text-neutral-100">{String(subStatus).toUpperCase()}</span>
-          </span>
-          <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-            Stripe: <span className="text-neutral-100">{stripeAccountId ? "Connected" : "Not connected"}</span>
-          </span>
-          {orgId ? (
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-              Org: <span className="text-neutral-100">{orgName || "Linked"}</span>
-            </span>
-          ) : null}
+      <OwnerSettingsPanel
+        tone="passive"
+        title="System summary"
+        description="Current plan, seat utilization, and organization scope."
+      >
+        <div className="grid gap-3 md:grid-cols-4">
+          <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+          <OwnerSettingsStat label="Seats" value={seatLimitLabel} />
+          <OwnerSettingsStat label="Billing" value={String(subStatus).toUpperCase()} />
+          <OwnerSettingsStat
+            label="Stripe"
+            value={stripeAccountId ? "Connected" : "Not connected"}
+          />
         </div>
-      </section>
-
-      {/* ✅ Plan + Seats */}
-      <section className={sectionClass}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-50">Plan & seats</h2>
-            <p className="text-[11px] text-neutral-400">
-              Staff users are counted from{" "}
-              <span className="font-mono">profiles</span> for this shop. Starter and
-              Pro are limited.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-              Plan: <span className="text-neutral-100">{planLabel(plan)}</span>
-            </span>
-            {seatPill}
-          </div>
-        </div>
-
-        <div className="grid gap-2 md:grid-cols-3 text-sm">
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="text-[11px] text-neutral-400">Seats used</div>
-            <div className="mt-1 text-sm font-semibold text-neutral-100">
-              {seatsUsed}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="text-[11px] text-neutral-400">Seat limit</div>
-            <div className="mt-1 text-sm font-semibold text-neutral-100">
-              {seatsLimit == null ? "Unlimited" : seatsLimit}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="text-[11px] text-neutral-400">Remaining</div>
-            <div className="mt-1 text-sm font-semibold text-neutral-100">
-              {seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ✅ Organization + Locations */}
-      <section className={sectionClass}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-50">Organization</h2>
-            <p className="text-[11px] text-neutral-400">
-              Manage multi-location accounts. Each location is billed separately.
-            </p>
-          </div>
-          <div className="text-xs text-neutral-300">
-            {orgId ? (
-              <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                Org: <span className="text-neutral-100">{orgName || "—"}</span>
-              </span>
-            ) : (
-              <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                No organization linked
-              </span>
-            )}
-          </div>
-        </div>
-
-        {orgId ? (
-          <>
-            <div className="grid gap-2 md:grid-cols-3 text-sm">
-              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-                <div className="text-[11px] text-neutral-400">Organization name</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {orgName || "—"}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-                <div className="text-[11px] text-neutral-400">Organization ID</div>
-                <div className="mt-1 truncate text-sm font-semibold text-neutral-100">
-                  {orgId}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-                <div className="text-[11px] text-neutral-400">Locations</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {locations.length}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-xs font-semibold text-neutral-200">Locations</div>
-
-              {locations.length === 0 ? (
-                <div className="text-xs text-neutral-500">No locations found.</div>
-              ) : (
-                <ul className="space-y-3">
-                  {locations.map((loc) => {
-                    const isCurrent = loc.id === shopId;
-                    const status = parseStripeStatus(loc.stripe_subscription_status);
-
-                    const statusChip =
-                      status === "active" ? (
-                        <span className="rounded-full border border-emerald-500/20 bg-emerald-950/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
-                          ACTIVE
-                        </span>
-                      ) : status === "trialing" ? (
-                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
-                          TRIAL
-                        </span>
-                      ) : status === "past_due" ||
-                        status === "unpaid" ||
-                        status === "incomplete" ? (
-                        <span className="rounded-full border border-red-500/25 bg-red-950/25 px-2 py-0.5 text-[10px] font-semibold text-red-100">
-                          BILLING ISSUE
-                        </span>
-                      ) : (
-                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
-                          {String(status).toUpperCase()}
-                        </span>
-                      );
-
-                    return (
-                      <li
-                        key={loc.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-semibold text-neutral-100">
-                              {locationName(loc)}
-                            </div>
-                            {statusChip}
-                            {isCurrent ? (
-                              <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
-                                CURRENT
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="text-xs text-neutral-400">
-                            {formatLocationLine({
-                              city: loc.city ?? null,
-                              province: loc.province ?? null,
-                            })}
-                          </div>
-                        </div>
-
-                        <Button
-                          size="sm"
-                          variant={isCurrent ? "secondary" : "default"}
-                          disabled={!isUnlocked || isCurrent}
-                          onClick={() => void switchLocation(loc.id)}
-                        >
-                          {isCurrent ? "Selected" : "Switch"}
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="text-xs text-neutral-500">
-            This account is not linked to an organization yet.
-          </div>
-        )}
-      </section>
+      </OwnerSettingsPanel>
 
 
       <div className="sticky top-2 z-10 rounded-2xl border border-white/10 bg-black/35 p-3 backdrop-blur">
@@ -1260,6 +1048,10 @@ try {
 
       <div className="grid gap-5 lg:grid-cols-[1.7fr_0.95fr] lg:items-start">
         <div className="space-y-5">
+          <OwnerSettingsSectionIntro
+            title="Primary configuration"
+            description="Core identity and experience controls for your operational cockpit."
+          />
           <OwnerSettingsBusinessSection
             isUnlocked={isUnlocked}
             country={country}
@@ -1322,12 +1114,21 @@ try {
           />
           <BrandStudioSummaryCard />
 
-          <section id="quickbooks-integration" className={sectionClass}>
-            <QuickBooksConnectCard />
-          </section>
+          <OwnerSettingsSectionIntro
+            title="Secondary configuration"
+            description="Operational defaults, communication, and integrations."
+          />
 
-          <section id="communication-branding" className={sectionClass}>
-            <h2 className="text-sm font-semibold text-neutral-50">Communication</h2>
+          <OwnerSettingsPanel id="quickbooks-integration" tone="secondary" title="Accounting integration">
+            <QuickBooksConnectCard />
+          </OwnerSettingsPanel>
+
+          <OwnerSettingsPanel
+            id="communication-branding"
+            tone="secondary"
+            title="Communication"
+            description="Invoice defaults and completion messaging."
+          >
             <Input
               value={invoiceTerms}
               onChange={(e) => setInvoiceTerms(e.target.value)}
@@ -1349,7 +1150,12 @@ try {
               />
               Email customer when job is complete
             </label>
-          </section>
+          </OwnerSettingsPanel>
+
+          <OwnerSettingsSectionIntro
+            title="Passive controls"
+            description="Scheduling and calendar constraints that support shop operations."
+          />
 
           <OwnerSettingsSchedulingSection
             isUnlocked={isUnlocked}
