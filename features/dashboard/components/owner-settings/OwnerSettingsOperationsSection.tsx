@@ -19,6 +19,8 @@ type Props = {
   requireAuthorization: boolean;
   autoGeneratePdf: boolean;
   autoSendQuoteEmail: boolean;
+  appearanceMode: "dark" | "light" | "system";
+  appearanceSaving: boolean;
   onLaborRateChange: (value: string) => void;
   onSuppliesPercentChange: (value: string) => void;
   onDiagnosticFeeChange: (value: string) => void;
@@ -30,6 +32,7 @@ type Props = {
   onRequireAuthorizationChange: (value: boolean) => void;
   onAutoGeneratePdfChange: (value: boolean) => void;
   onAutoSendQuoteEmailChange: (value: boolean) => void;
+  onAppearanceModeChange: (value: "dark" | "light" | "system") => void;
 };
 
 function SectionShell({
@@ -75,6 +78,8 @@ export default function OwnerSettingsOperationsSection({
   requireAuthorization,
   autoGeneratePdf,
   autoSendQuoteEmail,
+  appearanceMode,
+  appearanceSaving,
   onLaborRateChange,
   onSuppliesPercentChange,
   onDiagnosticFeeChange,
@@ -86,6 +91,7 @@ export default function OwnerSettingsOperationsSection({
   onRequireAuthorizationChange,
   onAutoGeneratePdfChange,
   onAutoSendQuoteEmailChange,
+  onAppearanceModeChange,
 }: Props) {
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -151,6 +157,33 @@ export default function OwnerSettingsOperationsSection({
             auto-flow faster; stale or expired pricing requires more review.
           </div>
         </div>
+      </SectionShell>
+
+      <SectionShell
+        title="Appearance"
+        description="Set your operational console mode. Preference persists per user and syncs with brand variables."
+      >
+        <div className="flex flex-wrap gap-2">
+          {([
+            ["dark", "Dark"],
+            ["light", "Light"],
+            ["system", "System"],
+          ] as const).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              variant={appearanceMode === value ? "default" : "secondary"}
+              size="sm"
+              disabled={appearanceSaving}
+              onClick={() => onAppearanceModeChange(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <p className="text-[11px] text-neutral-400">
+          {appearanceSaving ? "Saving appearance preference…" : "Applies immediately after save."}
+        </p>
       </SectionShell>
 
       <SectionShell

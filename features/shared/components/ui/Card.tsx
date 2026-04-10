@@ -13,11 +13,11 @@ export default function Card({ children, onClick, className }: CardProps) {
     <div
       onClick={onClick}
       className={cn(
-        "rounded-[var(--theme-radius-xl,1rem)] border px-6 py-5 backdrop-blur-md transition duration-200",
+        "rounded-[var(--theme-radius-xl,1rem)] border px-6 py-5 backdrop-blur-sm transition duration-200",
         "border-[var(--theme-card-border,#334155)]",
-        "bg-[var(--theme-card-bg,#111827)]",
+        "bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_94%,transparent)]",
         "text-[var(--theme-text-primary,#FFFFFF)]",
-        "shadow-[var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))]",
+        "shadow-[var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))]",
         onClick
           ? "cursor-pointer hover:-translate-y-[1px] hover:brightness-105"
           : "",

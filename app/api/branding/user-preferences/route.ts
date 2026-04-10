@@ -68,13 +68,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const patch = {
+  const patch: Record<string, string | null> = {
     user_id: auth.userId,
     shop_id: auth.shopId,
-    theme_mode: normalizeThemeMode(body.themeMode),
-    radius_scale: normalizeRadiusScale(body.radiusScale),
-    shadow_style: normalizeShadowStyle(body.shadowStyle),
   };
+
+  if ("themeMode" in body) {
+    patch.theme_mode = normalizeThemeMode(body.themeMode);
+  }
+  if ("radiusScale" in body) {
+    patch.radius_scale = normalizeRadiusScale(body.radiusScale);
+  }
+  if ("shadowStyle" in body) {
+    patch.shadow_style = normalizeShadowStyle(body.shadowStyle);
+  }
 
   const { data, error } = await auth.supabase
     .from("user_theme_preferences")

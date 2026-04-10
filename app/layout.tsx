@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Inter, Black_Ops_One } from "next/font/google";
+import Script from "next/script";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
 import { cookies } from "next/headers";
@@ -41,11 +42,16 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${blackOps.variable} dark`}
+      className={`${inter.variable} ${blackOps.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <Script id="pfq-theme-preload" strategy="beforeInteractive">
+          {`(function(){try{var r=document.documentElement;var pref=localStorage.getItem('pfq-theme-mode')||'dark';var resolved=pref==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):pref;if(resolved!=='light'&&resolved!=='dark'){resolved='dark';}r.setAttribute('data-theme-preference',pref);r.setAttribute('data-theme-mode',resolved);}catch(_e){}})();`}
+        </Script>
+      </head>
       <body
-        className="min-h-screen text-white antialiased"
+        className="min-h-screen antialiased"
         style={{
           backgroundImage:
             "var(--app-shell-bg, radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",

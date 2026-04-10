@@ -235,6 +235,8 @@ export default function OwnerSettingsPage() {
   // Automation
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
   const [autoSendQuoteEmail, setAutoSendQuoteEmail] = useState(false);
+  const [appearanceMode, setAppearanceMode] = useState<"dark" | "light" | "system">("dark");
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
 
   // Pricing validity
   const [pricingValidDays, setPricingValidDays] = useState<number>(30);
@@ -532,6 +534,21 @@ try {
     // email logs
     await fetchEmailLogs();
 
+    try {
+      const prefRes = await fetch("/api/branding/user-preferences", { cache: "no-store" });
+      if (prefRes.ok) {
+        const prefJson = (await prefRes.json().catch(() => ({}))) as {
+          preferences?: { theme_mode?: string | null } | null;
+        };
+        const nextMode = String(prefJson?.preferences?.theme_mode ?? "dark").toLowerCase();
+        if (nextMode === "light" || nextMode === "system" || nextMode === "dark") {
+          setAppearanceMode(nextMode);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     setLoading(false);
   }, [supabase, fetchEmailLogs]);
 
@@ -641,6 +658,30 @@ try {
       toast.success("Pricing validity window updated.");
     } finally {
       setPricingValidDaysSaving(false);
+    }
+  };
+
+  const saveAppearanceMode = async (nextMode: "dark" | "light" | "system") => {
+    setAppearanceSaving(true);
+    try {
+      const res = await fetch("/api/branding/user-preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeMode: nextMode }),
+      });
+
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json?.ok) {
+        toast.error(json?.error || "Failed to save appearance mode");
+        return;
+      }
+
+      setAppearanceMode(nextMode);
+      window.localStorage.setItem("pfq-theme-mode", nextMode);
+      window.dispatchEvent(new Event("profixiq:brand-refresh"));
+      toast.success("Appearance mode updated.");
+    } finally {
+      setAppearanceSaving(false);
     }
   };
 
@@ -1264,6 +1305,8 @@ try {
             requireAuthorization={requireAuthorization}
             autoGeneratePdf={autoGeneratePdf}
             autoSendQuoteEmail={autoSendQuoteEmail}
+            appearanceMode={appearanceMode}
+            appearanceSaving={appearanceSaving}
             onLaborRateChange={setLaborRate}
             onSuppliesPercentChange={setSuppliesPercent}
             onDiagnosticFeeChange={setDiagnosticFee}
@@ -1275,6 +1318,7 @@ try {
             onRequireAuthorizationChange={setRequireAuthorization}
             onAutoGeneratePdfChange={setAutoGeneratePdf}
             onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
+            onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
           />
           <BrandStudioSummaryCard />
 

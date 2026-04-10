@@ -21,13 +21,14 @@ type StatusBadgeProps = {
 };
 
 const variantClasses: Record<StatusBadgeVariant, string> = {
-  neutral: "border-white/10 bg-white/5 text-neutral-100",
-  info: "border-slate-400/40 bg-slate-400/10 text-slate-100",
+  neutral:
+    "border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_84%,transparent)] text-[var(--theme-text-secondary,#94A3B8)]",
+  info: "border-sky-500/40 bg-sky-500/10 text-sky-200",
   active:
-    "border-[color:var(--accent-copper-soft,#fdba74)]/70 bg-[color:var(--accent-copper,#f97316)]/15 text-[color:var(--accent-copper-light,#fdba74)]",
-  warning: "border-amber-400/60 bg-amber-400/10 text-amber-100",
-  success: "border-emerald-400/60 bg-emerald-400/10 text-emerald-100",
-  danger: "border-rose-400/60 bg-rose-400/10 text-rose-100",
+    "border-[color:var(--accent-copper-soft,#fdba74)]/70 bg-[color:color-mix(in_srgb,var(--accent-copper,#f97316)_20%,transparent)] text-[color:var(--accent-copper-light,#fdba74)]",
+  warning: "border-amber-500/60 bg-amber-500/10 text-amber-200",
+  success: "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
+  danger: "border-rose-500/60 bg-rose-500/10 text-rose-200",
 };
 
 const sizeClasses: Record<StatusBadgeSize, string> = {
