@@ -54,6 +54,7 @@ const ACTIVE_FLOW_STATUSES: StatusKey[] = [
   "on_hold",
   "planned",
 ];
+const SEEDED_DEFAULT_STATUSES: StatusKey[] = [...ACTIVE_FLOW_STATUSES, "completed"];
 
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -208,6 +209,7 @@ export default function WorkOrdersView(): JSX.Element {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
+  const [isSeededShop, setIsSeededShop] = useState(false);
 
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
   const [techs, setTechs] = useState<
@@ -275,7 +277,8 @@ export default function WorkOrdersView(): JSX.Element {
       .limit(100);
 
     if (status === "") {
-      query = query.in("status", ACTIVE_FLOW_STATUSES as unknown as string[]);
+      const defaultStatuses = isSeededShop ? SEEDED_DEFAULT_STATUSES : ACTIVE_FLOW_STATUSES;
+      query = query.in("status", defaultStatuses as unknown as string[]);
     } else {
       query = query.eq("status", status);
     }
@@ -359,7 +362,7 @@ export default function WorkOrdersView(): JSX.Element {
 
     setTechRollupByWo(rollups);
     setLoading(false);
-  }, [q, status, supabase]);
+  }, [isSeededShop, q, status, supabase]);
 
   const runInvoiceReview = useCallback(
     async (woId: string) => {
@@ -470,6 +473,18 @@ export default function WorkOrdersView(): JSX.Element {
 
         setCurrentRole(prof?.role ?? null);
       }
+
+      const { data: seededRow, error: seededErr } = await supabase
+        .from("work_orders")
+        .select("id")
+        .not("source_intake_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+
+      if (seededErr) {
+        console.warn("[WorkOrdersView] failed to detect Shop Boost seed state:", seededErr.message);
+      }
+      setIsSeededShop(Boolean(seededRow?.id));
 
       try {
         const res = await fetch("/api/assignables");
