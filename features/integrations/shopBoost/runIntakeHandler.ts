@@ -342,6 +342,20 @@ export async function runShopBoostIntake(
     workOrderLinesImported: 0,
     invoicesImported: 0,
     partsImported: 0,
+    linkageSummary: {
+      linked: {
+        vehiclesCustomerId: 0,
+        workOrdersCustomerId: 0,
+        workOrdersVehicleId: 0,
+        invoicesCustomerId: 0,
+      },
+      unresolved: {
+        vehiclesCustomerId: 0,
+        workOrdersCustomerId: 0,
+        workOrdersVehicleId: 0,
+        invoicesCustomerId: 0,
+      },
+    },
   };
 
   if (mode.runImport) {
