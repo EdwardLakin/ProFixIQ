@@ -26,9 +26,10 @@ export async function GET() {
 
   const { data: actions, error: actionsError } = await supabase
     .from("optimization_actions")
-    .select("opportunity_id, action, type, created_at")
+    .select("opportunity_id, action, type, created_at, payload")
     .eq("shop_id", profile.shop_id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(25);
 
   if (actionsError) {
     return NextResponse.json({ error: actionsError.message }, { status: 500 });
@@ -40,6 +41,10 @@ export async function GET() {
       action: action.action,
       type: action.type,
       createdAt: action.created_at,
+      result:
+        action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+          ? ((action.payload as Record<string, unknown>).result as string | undefined) ?? null
+          : null,
     })),
   );
 }

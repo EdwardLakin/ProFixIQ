@@ -15,6 +15,9 @@ type ApplyBody = {
   type?: OptimizationActionType;
   payload?: OptimizationApplyPayload;
   opportunity?: OptimizationOpportunity;
+  preview?: {
+    changes?: Array<{ label?: string; before?: unknown; after?: unknown }>;
+  } | null;
 };
 
 const TYPE_MAP: Record<string, OptimizationActionType> = {
@@ -55,6 +58,11 @@ function toNonEmptyString(value: unknown): string | null {
 function safePayload(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+function nearlyEqual(a: number | null, b: number | null, tolerance = 0.01): boolean {
+  if (a === null || b === null) return false;
+  return Math.abs(a - b) <= tolerance;
 }
 
 function getJobsAnalyzed(opportunity: OptimizationOpportunity | null): number {
@@ -107,6 +115,7 @@ export async function POST(req: Request) {
   const type = normalizeType(body?.type);
   const payload = safePayload(body?.payload);
   const opportunity = body?.opportunity ?? null;
+  const previewChanges = Array.isArray(body?.preview?.changes) ? body?.preview?.changes ?? [] : [];
 
   if (!opportunityId || !type) {
     return NextResponse.json({ error: "opportunityId and type are required" }, { status: 400 });
@@ -153,6 +162,20 @@ export async function POST(req: Request) {
   try {
     let entityId: string | null = null;
     const affectedEntityIds: Record<string, string> = {};
+    const undoData: Record<string, unknown> = {};
+
+    const { data: priorApplied } = await supabase
+      .from("optimization_actions")
+      .select("id")
+      .eq("shop_id", profile.shop_id)
+      .eq("opportunity_id", opportunityId)
+      .eq("action", "applied")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (priorApplied?.id) {
+      return NextResponse.json({ blocked: true, reason: "This change is already applied" }, { status: 200 });
+    }
 
     if (type === "pricing") {
       const menuItemId = toNonEmptyString(payload.menuItemId);
@@ -178,18 +201,36 @@ export async function POST(req: Request) {
       }
 
       const expectedCurrent = Number((opportunity?.meta as Record<string, unknown> | undefined)?.currentMenuPrice);
-      if (
-        Number.isFinite(expectedCurrent) &&
-        existingMenu.total_price !== null &&
-        Math.abs(existingMenu.total_price - expectedCurrent) > 1
-      ) {
+      const expectedLaborHours = Number((opportunity?.meta as Record<string, unknown> | undefined)?.currentLaborHours);
+      const previewPriceBefore = previewChanges.find((change) =>
+        String(change?.label ?? "").toLowerCase().includes("price"),
+      )?.before;
+      const previewBefore = Number(previewPriceBefore);
+
+      const hasPricingConflict =
+        (Number.isFinite(expectedCurrent) &&
+          existingMenu.total_price !== null &&
+          Math.abs(existingMenu.total_price - expectedCurrent) > 0.01) ||
+        (Number.isFinite(previewBefore) &&
+          existingMenu.total_price !== null &&
+          Math.abs(existingMenu.total_price - previewBefore) > 0.01) ||
+        (Number.isFinite(expectedLaborHours) &&
+          existingMenu.labor_hours !== null &&
+          Math.abs(existingMenu.labor_hours - expectedLaborHours) > 0.01);
+
+      if (hasPricingConflict) {
         return NextResponse.json(
-          {
-            blocked: true,
-            reason: "Blocked: conflicting existing pricing data detected. Refresh opportunity data and review.",
-          },
+          { blocked: true, reason: "This item changed since preview. Refresh and try again." },
           { status: 200 },
         );
+      }
+
+      if (
+        existingMenu.total_price !== null &&
+        nearlyEqual(existingMenu.total_price, newPrice) &&
+        (newLaborHours === null || existingMenu.labor_hours === null || nearlyEqual(existingMenu.labor_hours, newLaborHours))
+      ) {
+        return NextResponse.json({ blocked: true, reason: "This change is already applied" }, { status: 200 });
       }
 
       const updatePayload: DB["public"]["Tables"]["menu_items"]["Update"] = { total_price: newPrice };
@@ -214,6 +255,10 @@ export async function POST(req: Request) {
 
       entityId = menuItemId;
       affectedEntityIds.menuItemId = menuItemId;
+      undoData.pricingBefore = {
+        totalPrice: existingMenu.total_price,
+        laborHours: existingMenu.labor_hours,
+      };
     }
 
     if (type === "inspection") {
@@ -237,7 +282,44 @@ export async function POST(req: Request) {
             } as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"]);
 
       let resolvedTemplateId: string | null = templateId;
+      let previousTemplateSnapshot: {
+        template_name: string | null;
+        sections: DB["public"]["Tables"]["inspection_templates"]["Row"]["sections"] | null;
+        description: string | null;
+      } | null = null;
+      let createdTemplate = false;
       if (templateId) {
+        const { data: existingTemplate, error: existingTemplateError } = await supabase
+          .from("inspection_templates")
+          .select("id,template_name,sections,description,updated_at")
+          .eq("id", templateId)
+          .eq("shop_id", profile.shop_id)
+          .single();
+        if (existingTemplateError || !existingTemplate) {
+          return NextResponse.json({ error: "Inspection template not found in shop context" }, { status: 404 });
+        }
+
+        const expectedUpdatedAt = toNonEmptyString((opportunity?.meta as Record<string, unknown> | undefined)?.currentTemplateUpdatedAt);
+        if (expectedUpdatedAt && existingTemplate.updated_at && existingTemplate.updated_at !== expectedUpdatedAt) {
+          return NextResponse.json(
+            { blocked: true, reason: "This item changed since preview. Refresh and try again." },
+            { status: 200 },
+          );
+        }
+
+        if (
+          existingTemplate.template_name === templateName &&
+          JSON.stringify(existingTemplate.sections ?? {}) === JSON.stringify(sections ?? {})
+        ) {
+          return NextResponse.json({ blocked: true, reason: "This change is already applied" }, { status: 200 });
+        }
+
+        previousTemplateSnapshot = {
+          template_name: existingTemplate.template_name,
+          sections: existingTemplate.sections,
+          description: existingTemplate.description,
+        };
+
         const { error: updateError } = await supabase
           .from("inspection_templates")
           .update({
@@ -271,6 +353,7 @@ export async function POST(req: Request) {
         }
 
         resolvedTemplateId = insertedTemplate?.id ?? null;
+        createdTemplate = true;
       }
 
       if (menuItemId && resolvedTemplateId) {
@@ -283,6 +366,13 @@ export async function POST(req: Request) {
 
         if (menuItemError || !menuItem) {
           return NextResponse.json({ error: "Menu item not found for inspection linkage" }, { status: 404 });
+        }
+
+        if (!templateId && menuItem.inspection_template_id) {
+          return NextResponse.json(
+            { blocked: true, reason: "This item changed since preview. Refresh and try again." },
+            { status: 200 },
+          );
         }
 
         if (menuItem.inspection_template_id && menuItem.inspection_template_id !== resolvedTemplateId) {
@@ -305,12 +395,17 @@ export async function POST(req: Request) {
         }
 
         affectedEntityIds.menuItemId = menuItemId;
+        undoData.previousMenuInspectionTemplateId = menuItem.inspection_template_id;
       }
 
       entityId = resolvedTemplateId;
       if (resolvedTemplateId) {
         affectedEntityIds.inspectionTemplateId = resolvedTemplateId;
       }
+      undoData.inspection = {
+        createdTemplate,
+        previousTemplateSnapshot,
+      };
     }
 
     if (type === "revenue") {
@@ -320,15 +415,28 @@ export async function POST(req: Request) {
         toNonEmptyString(suggestionRaw.suggestedService) ||
         opportunity?.title ||
         "Optimization Revenue Suggestion";
+      const reason =
+        toNonEmptyString(suggestionRaw.reason) ||
+        toNonEmptyString(suggestionRaw.summary) ||
+        opportunity?.summary ||
+        "Created from optimization engine recommendation";
+
+      const { data: existingSuggestion } = await supabase
+        .from("menu_item_suggestions")
+        .select("id")
+        .eq("shop_id", profile.shop_id)
+        .eq("title", title)
+        .eq("reason", reason)
+        .limit(1)
+        .maybeSingle();
+      if (existingSuggestion?.id) {
+        return NextResponse.json({ blocked: true, reason: "This change is already applied" }, { status: 200 });
+      }
 
       const insert: DB["public"]["Tables"]["menu_item_suggestions"]["Insert"] = {
         shop_id: profile.shop_id,
         title,
-        reason:
-          toNonEmptyString(suggestionRaw.reason) ||
-          toNonEmptyString(suggestionRaw.summary) ||
-          opportunity?.summary ||
-          "Created from optimization engine recommendation",
+        reason,
         confidence: (() => {
           const c = Number(suggestionRaw.confidence ?? opportunity?.confidence);
           return Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.7;
@@ -357,6 +465,7 @@ export async function POST(req: Request) {
       if (entityId) {
         affectedEntityIds.suggestionId = entityId;
       }
+      undoData.revenue = { title, reason };
     }
 
     const actionInsert: DB["public"]["Tables"]["optimization_actions"]["Insert"] = {
@@ -368,6 +477,8 @@ export async function POST(req: Request) {
         originalPayload: payload as unknown,
         preview,
         affectedEntityIds,
+        undoData,
+        result: "success",
       } as DB["public"]["Tables"]["optimization_actions"]["Insert"]["payload"],
       created_by: user.id,
     };
@@ -391,6 +502,12 @@ export async function POST(req: Request) {
       affectedEntityIds,
       message,
       impactEstimate: opportunity?.estimatedValue ?? Number((payload.suggestionData as Record<string, unknown> | undefined)?.estimatedValue) ?? null,
+      undoAction: {
+        opportunityId,
+        type,
+        affectedEntityIds,
+        undoData,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to apply optimization action";

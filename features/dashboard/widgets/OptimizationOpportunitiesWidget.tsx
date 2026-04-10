@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -20,8 +20,15 @@ type ActionsApiItem = {
   action: ActionState;
   type: OptimizationActionType;
   createdAt: string;
+  result?: string | null;
 };
 type OpportunityFilter = "active" | "all" | "applied" | "dismissed" | "critical";
+type UndoAction = {
+  opportunityId: string;
+  type: OptimizationActionType;
+  affectedEntityIds?: Record<string, string>;
+  undoData?: Record<string, unknown>;
+};
 
 const ACTIONS_SESSION_CACHE_KEY = "optimization-actions-cache-v1";
 const OPPORTUNITIES_SESSION_CACHE_KEY = "optimization-opportunities-cache-v1";
@@ -254,6 +261,15 @@ export default function OptimizationOpportunitiesWidget({
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [actionsByOpportunityId, setActionsByOpportunityId] = useState<Record<string, ActionState>>({});
   const [filter, setFilter] = useState<OpportunityFilter>("active");
+  const [activityLog, setActivityLog] = useState<ActionsApiItem[]>([]);
+  const [showRecentChanges, setShowRecentChanges] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [appliedPulseById, setAppliedPulseById] = useState<Record<string, number>>({});
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const undoDeadlineRef = useRef<number | null>(null);
+  const undoTimeoutRef = useRef<number | null>(null);
+  const [lastUndoAction, setLastUndoAction] = useState<UndoAction | null>(null);
 
   useEffect(() => {
     if (!shopId) return;
@@ -315,7 +331,8 @@ export default function OptimizationOpportunitiesWidget({
           );
         }
 
-        const hydratedActions = (Array.isArray(actionsPayload) ? actionsPayload : []).reduce<
+        const actionItems = Array.isArray(actionsPayload) ? actionsPayload : [];
+        const hydratedActions = actionItems.reduce<
           Record<string, ActionState>
         >((acc, action) => {
           if (!action.opportunityId) return acc;
@@ -327,6 +344,7 @@ export default function OptimizationOpportunitiesWidget({
           setSummary(opportunitiesPayload?.summary ?? null);
           setGroups(opportunitiesPayload?.groups ?? []);
           setActionsByOpportunityId(hydratedActions);
+          setActivityLog(actionItems.slice(-5).reverse());
           writeActionsCache(shopId, hydratedActions);
           writeOpportunitiesCache(shopId, opportunitiesPayload?.groups ?? [], opportunitiesPayload?.summary ?? null);
         }
@@ -343,6 +361,14 @@ export default function OptimizationOpportunitiesWidget({
       cancelled = true;
     };
   }, [shopId]);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimeoutRef.current) {
+        window.clearTimeout(undoTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const opportunities = useMemo(() => groups.flatMap((group) => group.opportunities ?? []), [groups]);
 
@@ -391,6 +417,30 @@ export default function OptimizationOpportunitiesWidget({
     return { applied, resolved: applied + dismissed };
   }, [actionsByOpportunityId]);
 
+  const highConfidenceCandidates = useMemo(() => {
+    return opportunities.filter((opportunity) => {
+      const actionState = actionsByOpportunityId[opportunity.id];
+      if (actionState) return false;
+      if (opportunity.confidence < 0.85) return false;
+      if (opportunity.priorityBand === "low") return false;
+      return true;
+    });
+  }, [actionsByOpportunityId, opportunities]);
+
+  async function applyAllHighConfidence() {
+    setBulkApplying(true);
+    setError(null);
+    try {
+      for (const opportunity of highConfidenceCandidates) {
+        // sequential on purpose to preserve guardrails and avoid duplicate writes
+        await applyOpportunity(opportunity);
+      }
+      setBulkConfirmOpen(false);
+    } finally {
+      setBulkApplying(false);
+    }
+  }
+
   async function dismissOpportunity(opportunity: OptimizationOpportunity) {
     setSubmittingId(opportunity.id);
     setError(null);
@@ -429,6 +479,7 @@ export default function OptimizationOpportunitiesWidget({
     setBlockedReason(null);
     setLoadingPreview(true);
     setError(null);
+    setApplyError(null);
 
     try {
       const response = await fetch("/api/optimization/apply?dryRun=true", {
@@ -463,10 +514,47 @@ export default function OptimizationOpportunitiesWidget({
     }
   }
 
-  async function confirmApply(opportunity: OptimizationOpportunity) {
+  async function undoLastApply() {
+    if (!lastUndoAction) return;
+    if (undoDeadlineRef.current && Date.now() > undoDeadlineRef.current) {
+      toast.error("Undo window expired");
+      setLastUndoAction(null);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/optimization/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lastUndoAction),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error ?? "Undo failed");
+      }
+
+      setActionsByOpportunityId((prev) => {
+        const next = { ...prev };
+        delete next[lastUndoAction.opportunityId];
+        if (shopId) writeActionsCache(shopId, next);
+        return next;
+      });
+      setLastUndoAction(null);
+      if (undoTimeoutRef.current) {
+        window.clearTimeout(undoTimeoutRef.current);
+      }
+      toast.success("Change reverted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Undo failed");
+    }
+  }
+
+  async function applyOpportunity(opportunity: OptimizationOpportunity): Promise<boolean> {
     setSubmittingId(opportunity.id);
     setError(null);
     setBlockedReason(null);
+    setApplyError(null);
 
     try {
       const response = await fetch("/api/optimization/apply", {
@@ -477,6 +565,7 @@ export default function OptimizationOpportunitiesWidget({
           type: actionTypeForOpportunity(opportunity.type),
           payload: getApplyPayload(opportunity),
           opportunity,
+          preview: executionPreview,
         }),
       });
 
@@ -489,13 +578,16 @@ export default function OptimizationOpportunitiesWidget({
             entityId?: string | null;
             message?: string;
             impactEstimate?: number | null;
+            undoAction?: UndoAction;
             error?: string;
           }
         | null;
       if (payload?.blocked) {
-        setBlockedReason(payload.reason ?? "Execution blocked by safety guardrails");
-        toast.error(payload.reason ?? "Execution blocked by safety guardrails");
-        return;
+        const reason = payload.reason ?? "Execution blocked by safety guardrails";
+        setBlockedReason(reason);
+        setApplyError(reason);
+        toast.error(reason);
+        return false;
       }
       if (!response.ok || !payload?.success || !payload.type) {
         throw new Error(payload?.error ?? "Failed to apply opportunity");
@@ -508,6 +600,25 @@ export default function OptimizationOpportunitiesWidget({
       });
       setSelected(null);
       setExecutionPreview(null);
+      setAppliedPulseById((prev) => ({ ...prev, [opportunity.id]: Date.now() }));
+      window.setTimeout(() => {
+        setAppliedPulseById((prev) => {
+          const next = { ...prev };
+          delete next[opportunity.id];
+          return next;
+        });
+      }, 1600);
+
+      if (payload.undoAction) {
+        setLastUndoAction(payload.undoAction);
+        undoDeadlineRef.current = Date.now() + 10_000;
+        if (undoTimeoutRef.current) {
+          window.clearTimeout(undoTimeoutRef.current);
+        }
+        undoTimeoutRef.current = window.setTimeout(() => {
+          setLastUndoAction(null);
+        }, 10_000);
+      }
 
       const destination = toOpportunityPath(payload.type, payload.entityId ?? null);
       const actionLabel =
@@ -517,7 +628,7 @@ export default function OptimizationOpportunitiesWidget({
             ? "View inspection template"
             : "View suggestion";
 
-      toast.success("Change applied successfully", {
+      toast.success("Applied successfully — Undo (10s)", {
         description:
           payload.impactEstimate && payload.impactEstimate > 0
             ? `${payload.message} · Estimated impact ${new Intl.NumberFormat("en-US", {
@@ -527,17 +638,42 @@ export default function OptimizationOpportunitiesWidget({
               }).format(payload.impactEstimate)}`
             : payload.message,
         action: {
+          label: "Undo",
+          onClick: () => {
+            void undoLastApply();
+          },
+        },
+      });
+      toast.message("Quick link", {
+        action: {
           label: actionLabel,
           onClick: () => router.push(destination),
         },
       });
+      return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to apply opportunity";
       setError(message);
-      toast.error(message);
+      setApplyError(message);
+      toast.error("Something went wrong", {
+        description: message,
+        action: selected
+          ? {
+              label: "Retry",
+              onClick: () => {
+                void applyOpportunity(opportunity);
+              },
+            }
+          : undefined,
+      });
+      return false;
     } finally {
       setSubmittingId(null);
     }
+  }
+
+  async function confirmApply(opportunity: OptimizationOpportunity) {
+    await applyOpportunity(opportunity);
   }
 
   return (
@@ -572,6 +708,23 @@ export default function OptimizationOpportunitiesWidget({
           </div>
         ) : (
           <div className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkConfirmOpen(true)}
+                disabled={highConfidenceCandidates.length === 0 || bulkApplying}
+                className="rounded-lg border border-[color:var(--brand-primary)]/50 bg-[color:color-mix(in_srgb,var(--brand-primary)_14%,transparent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--brand-primary)] disabled:opacity-40"
+              >
+                Apply all high-confidence
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRecentChanges((prev) => !prev)}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200"
+              >
+                {showRecentChanges ? "Hide recent changes" : "Recent changes"}
+              </button>
+            </div>
             <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-400">
               Suggestions are advisory only. Confirm with your team before changing menu pricing or inspection templates.
             </div>
@@ -595,6 +748,24 @@ export default function OptimizationOpportunitiesWidget({
                 <div className="mt-1 text-[10px] text-neutral-500">
                   Analyzed {new Date(summary.lastAnalyzedAt).toLocaleString()} · Data {summary.dataFreshness}
                 </div>
+              </div>
+            ) : null}
+
+            {showRecentChanges ? (
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">
+                <div className="font-semibold text-neutral-100">Last 5 changes</div>
+                <ul className="mt-1.5 space-y-1">
+                  {activityLog.length === 0 ? <li className="text-neutral-500">No actions yet.</li> : null}
+                  {activityLog.map((item) => (
+                    <li key={`${item.opportunityId}:${item.createdAt}`} className="flex items-center justify-between gap-2">
+                      <span className="text-neutral-200">
+                        {item.type} · {item.action}
+                        {item.result ? ` · ${item.result}` : ""}
+                      </span>
+                      <span className="text-[10px] text-neutral-500">{new Date(item.createdAt).toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
 
@@ -644,12 +815,13 @@ export default function OptimizationOpportunitiesWidget({
                 <div
                   key={opportunity.id}
                   className={[
-                    "rounded-2xl px-4 py-3",
+                    "rounded-2xl px-4 py-3 transition-all duration-500",
                     isApplied
                       ? "border border-emerald-500/35 bg-[color:color-mix(in_srgb,rgba(16,185,129,0.18)_55%,black)]"
                       : isDismissed
                         ? "border border-white/8 bg-black/15"
                         : "border border-white/10 bg-black/25",
+                    appliedPulseById[opportunity.id] ? "scale-[1.01] shadow-[0_0_0_1px_rgba(16,185,129,0.5)] opacity-90" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -779,16 +951,62 @@ export default function OptimizationOpportunitiesWidget({
         loadingPreview={loadingPreview}
         applying={selected ? submittingId === selected.id : false}
         blockedReason={blockedReason}
+        applyError={applyError}
         onCancel={() => {
           setSelected(null);
           setExecutionPreview(null);
           setBlockedReason(null);
+          setApplyError(null);
         }}
         onConfirm={() => {
           if (!selected) return;
           void confirmApply(selected);
         }}
+        onRetry={() => {
+          if (!selected) return;
+          void confirmApply(selected);
+        }}
       />
+      {bulkConfirmOpen ? (
+        <div className="fixed inset-0 z-[81] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#101114] p-5 text-neutral-100 shadow-2xl">
+            <div className="text-xs uppercase tracking-[0.16em] text-neutral-400">Batch execution</div>
+            <h3 className="mt-1 text-lg font-semibold">Apply all high-confidence changes?</h3>
+            <p className="mt-1 text-xs text-neutral-300">
+              {highConfidenceCandidates.length} changes will run sequentially with normal guardrails.
+            </p>
+            <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-lg border border-white/10 bg-black/25 p-2 text-xs">
+              {highConfidenceCandidates.map((opportunity) => (
+                <li key={opportunity.id} className="rounded border border-white/10 bg-black/20 px-2 py-1.5">
+                  <div className="font-semibold text-neutral-100">{opportunity.title}</div>
+                  <div className="text-neutral-400">
+                    {Math.round(opportunity.confidence * 100)}% confidence ·{" "}
+                    {opportunity.impactLabel ?? formatEstimatedImpact(opportunity.estimatedValue)}
+                  </div>
+                </li>
+              ))}
+              {highConfidenceCandidates.length === 0 ? <li className="text-neutral-500">No eligible opportunities.</li> : null}
+            </ul>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkConfirmOpen(false)}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={bulkApplying || highConfidenceCandidates.length === 0}
+                onClick={() => void applyAllHighConfidence()}
+                className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40"
+              >
+                {bulkApplying ? "Applying…" : "Apply all safe"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
