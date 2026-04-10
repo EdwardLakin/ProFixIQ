@@ -444,11 +444,17 @@ export async function getOpsNotifications(
       .slice(0, 3);
 
     for (const item of selected) {
+      const explanation = item.explanation?.operational;
       notifications.push({
         level: item.priorityBand === "critical" ? "urgent" : "warning",
         code: toOptimizationCode(item.type),
         title: item.title,
-        message: item.summary,
+        message: [
+          explanation?.summary ?? item.summary,
+          explanation?.riskIfIgnored ? `If deferred: ${explanation.riskIfIgnored}` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
         href: optimizationHref(item),
         entityType: "optimization_opportunity",
         entityId: item.id,

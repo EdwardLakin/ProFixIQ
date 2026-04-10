@@ -97,7 +97,7 @@ export default function OptimizationExecutionModal({
         <div className="mt-3 space-y-3 text-sm">
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">Summary</div>
-            <p className="mt-1 text-neutral-300">{opportunity.summary}</p>
+            <p className="mt-1 text-neutral-300">{opportunity.explanation?.operational.summary ?? opportunity.summary}</p>
           </section>
 
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">
@@ -112,11 +112,22 @@ export default function OptimizationExecutionModal({
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters</div>
             <ul className="mt-1.5 space-y-1 text-xs text-neutral-300">
-              {opportunity.reasoning.map((item) => (
+              {(opportunity.explanation?.operational.bullets ?? opportunity.reasoning).map((item) => (
                 <li key={item}>• {item}</li>
               ))}
             </ul>
           </section>
+          {opportunity.explanation?.operational.evidence?.length ? (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">What supports this</div>
+              <ul className="mt-1.5 space-y-1 text-xs text-neutral-300">
+                {opportunity.explanation.operational.evidence.slice(0, 4).map((item) => (
+                  <li key={`${item.label}:${item.value ?? ""}`}>• {item.label}{item.value != null ? `: ${item.value}` : ""}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-200">Expected impact</div>
             <div className="mt-1 text-xs text-neutral-300">
@@ -127,6 +138,12 @@ export default function OptimizationExecutionModal({
               {opportunity.impactLabel ??
                 (typeof opportunity.estimatedValue === "number" ? `+$${Math.round(opportunity.estimatedValue)}/month` : "Potential impact detected")}
             </div>
+            {opportunity.explanation?.operational.riskIfIgnored ? (
+              <div className="mt-1 text-xs text-neutral-400">If deferred: {opportunity.explanation.operational.riskIfIgnored}</div>
+            ) : null}
+            {opportunity.explanation?.story?.isStoryWorthy ? (
+              <div className="mt-1 text-xs text-sky-200">Story-worthy angle: {opportunity.explanation.story.angle ?? "Operational trust proof"}</div>
+            ) : null}
           </section>
 
           <section className="rounded-xl border border-white/10 bg-black/30 p-3">

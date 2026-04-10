@@ -91,7 +91,7 @@ function formatEstimatedImpact(value: number | undefined): string {
 }
 
 function getWhyThisMatters(opportunity: OptimizationOpportunity): string[] {
-  const entries = opportunity.reasoning.slice(0, 5);
+  const entries = opportunity.explanation?.operational.bullets ?? opportunity.reasoning.slice(0, 5);
   if (entries.length === 0) return [opportunity.sourceBasis];
   return entries;
 }
@@ -810,6 +810,8 @@ export default function OptimizationOpportunitiesWidget({
               const isApplied = actionState === "applied";
               const isDismissed = actionState === "dismissed";
               const whyThisMatters = getWhyThisMatters(opportunity);
+              const explanation = opportunity.explanation?.operational;
+              const story = opportunity.explanation?.story;
 
               return (
                 <div
@@ -862,8 +864,13 @@ export default function OptimizationOpportunitiesWidget({
 
                   {!isDismissed ? (
                     <>
-                      <div className="mt-1 text-xs text-neutral-300">{opportunity.summary}</div>
+                      <div className="mt-1 text-xs text-neutral-300">{explanation?.summary ?? opportunity.summary}</div>
                       <div className="mt-2 text-[11px] text-neutral-400">Suggested action: {opportunity.suggestedAction}</div>
+                      {story?.isStoryWorthy ? (
+                        <div className="mt-1 inline-flex rounded-full border border-sky-300/35 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-200">
+                          Ops + Story signal
+                        </div>
+                      ) : null}
                       {opportunity.whyNow ? (
                         <div className="mt-1 text-[11px] text-[color:var(--brand-primary)]">Why now: {opportunity.whyNow}</div>
                       ) : null}
@@ -885,12 +892,25 @@ export default function OptimizationOpportunitiesWidget({
                       ) : null}
 
                       <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5 text-[11px] text-neutral-300">
-                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters:</div>
+                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why recommended</div>
                         <ul className="mt-1.5 space-y-1">
                           {whyThisMatters.slice(0, 3).map((item) => (
                             <li key={item}>• {item}</li>
                           ))}
                         </ul>
+                        {explanation?.evidence?.length ? (
+                          <div className="mt-2">
+                            <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">What supports this</div>
+                            <ul className="mt-1 space-y-1 text-neutral-400">
+                              {explanation.evidence.slice(0, 3).map((evidence) => (
+                                <li key={`${evidence.label}:${evidence.value ?? ""}`}>• {evidence.label}{evidence.value != null ? `: ${evidence.value}` : ""}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {explanation?.riskIfIgnored ? (
+                          <div className="mt-2 text-neutral-400">What happens if deferred: {explanation.riskIfIgnored}</div>
+                        ) : null}
                       </div>
                     </>
                   ) : (

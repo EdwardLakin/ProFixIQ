@@ -13,6 +13,10 @@ export type OnboardingOptimizationAction = {
   estimatedValue?: number;
   href: string;
   plannerGoal: string;
+  explanationSummary?: string;
+  expectedOutcome?: string | null;
+  riskIfIgnored?: string | null;
+  isStoryWorthy?: boolean;
 };
 
 function toMenuItemPath(menuItemId?: string): string {
@@ -40,13 +44,14 @@ function toActionHref(opportunity: OptimizationOpportunity): string {
 }
 
 function toPlannerGoal(opportunity: OptimizationOpportunity): string {
+  const explanation = opportunity.explanation?.operational;
   if (opportunity.type === "pricing_normalization") {
-    return `Standardize pricing: ${opportunity.title}. ${opportunity.summary}`;
+    return `Standardize pricing: ${opportunity.title}. ${explanation?.summary ?? opportunity.summary}`;
   }
   if (opportunity.type === "inspection_coverage_gap") {
-    return `Improve inspection coverage: ${opportunity.title}. ${opportunity.summary}`;
+    return `Improve inspection coverage: ${opportunity.title}. ${explanation?.summary ?? opportunity.summary}`;
   }
-  return `Review missed-revenue opportunity: ${opportunity.title}. ${opportunity.summary}`;
+  return `Review missed-revenue opportunity: ${opportunity.title}. ${explanation?.summary ?? opportunity.summary}`;
 }
 
 function rankOpportunity(opportunity: OptimizationOpportunity): number {
@@ -90,5 +95,9 @@ export function selectTopOnboardingOptimizationActions(
     estimatedValue: opportunity.estimatedValue,
     href: toActionHref(opportunity),
     plannerGoal: toPlannerGoal(opportunity),
+    explanationSummary: opportunity.explanation?.operational.summary,
+    expectedOutcome: opportunity.explanation?.operational.expectedOutcome ?? null,
+    riskIfIgnored: opportunity.explanation?.operational.riskIfIgnored ?? null,
+    isStoryWorthy: Boolean(opportunity.explanation?.story?.isStoryWorthy),
   }));
 }

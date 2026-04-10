@@ -696,7 +696,18 @@ export default function ShopBoostOnboardingPage() {
                           className="rounded-md border border-sky-300/20 bg-black/25 p-2 text-xs"
                         >
                           <p className="font-medium text-sky-100">{action.title}</p>
-                          <p className="mt-0.5 text-sky-100/80">{action.summary}</p>
+                          <p className="mt-0.5 text-sky-100/80">{action.explanationSummary ?? action.summary}</p>
+                          {action.expectedOutcome ? (
+                            <p className="mt-1 text-[11px] text-sky-100/70">Expected outcome: {action.expectedOutcome}</p>
+                          ) : null}
+                          {action.riskIfIgnored ? (
+                            <p className="mt-1 text-[11px] text-sky-100/65">If deferred: {action.riskIfIgnored}</p>
+                          ) : null}
+                          {action.isStoryWorthy ? (
+                            <span className="mt-1 inline-flex rounded-full border border-sky-300/35 bg-sky-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-100">
+                              Story-worthy ops signal
+                            </span>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap gap-2">
                             <button
                               type="button"

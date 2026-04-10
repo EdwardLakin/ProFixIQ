@@ -41,6 +41,9 @@ export function QuoteLineCard(props: {
   onDefer?: () => void;
 
   footerNote?: string | null; // optional tiny footer line
+  whyRecommended?: string[];
+  supportingEvidence?: string[];
+  deferredConsequence?: string | null;
 }) {
   const {
     title,
@@ -56,6 +59,9 @@ export function QuoteLineCard(props: {
     onDecline,
     onDefer,
     footerNote,
+    whyRecommended = [],
+    supportingEvidence = [],
+    deferredConsequence,
   } = props;
 
   const total = partsTotal + laborTotal;
@@ -120,6 +126,35 @@ export function QuoteLineCard(props: {
           </div>
           <div className={codeBox}>{safeTrim(recommendedText) || "—"}</div>
         </div>
+
+
+        {(whyRecommended.length > 0 || supportingEvidence.length > 0 || deferredConsequence) ? (
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-neutral-200">
+            {whyRecommended.length > 0 ? (
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">Why recommended</div>
+                <ul className="mt-1 space-y-1 text-xs text-neutral-300">
+                  {whyRecommended.slice(0, 3).map((item) => (
+                    <li key={item}>• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {supportingEvidence.length > 0 ? (
+              <div className="mt-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">What supports this</div>
+                <ul className="mt-1 space-y-1 text-xs text-neutral-400">
+                  {supportingEvidence.slice(0, 3).map((item) => (
+                    <li key={item}>• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {deferredConsequence ? (
+              <div className="mt-2 text-xs text-neutral-400">What happens if deferred: {deferredConsequence}</div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Cost */}
         <div className="mt-4">
