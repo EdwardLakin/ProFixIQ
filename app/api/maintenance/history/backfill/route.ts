@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { backfillMaintenanceHistorySignals } from "@/features/maintenance/server/backfillMaintenanceHistorySignals";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -29,8 +30,8 @@ export async function POST() {
     return NextResponse.json({ error: "Unable to resolve shop context" }, { status: 400 });
   }
 
-  const role = String(profile.role ?? "").toLowerCase();
-  if (!["owner", "admin", "manager"].includes(role)) {
+  const actor = getActorCapabilities({ role: profile.role });
+  if (!actor.isKnownRole || !actor.canViewShopWideData) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

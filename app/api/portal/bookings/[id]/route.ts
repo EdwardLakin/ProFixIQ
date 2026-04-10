@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
-
-const STAFF_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 type PatchBody = {
   status?: "pending" | "confirmed" | "cancelled" | "completed";
@@ -34,7 +33,8 @@ async function getAuthedContext(supabase: ReturnType<typeof createRouteHandlerCl
     return { error: NextResponse.json({ error: "Profile/shop not found" }, { status: 403 }) };
   }
 
-  if (!STAFF_ROLES.has(String(profile.role ?? ""))) {
+  const actor = getActorCapabilities({ role: profile.role });
+  if (!actor.isKnownRole || !actor.canManageScheduling) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
 

@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 // ⬇️ If you ALREADY have a helper like this somewhere else, import that instead:
 // import { createRouteHandlerClient } from "@/features/shared/lib/supabase/server";
@@ -81,11 +82,8 @@ export async function POST(req: Request) {
     }
 
     const callerShopId = callerProfile.shop_id;
-    const callerRole = callerProfile.role ?? "mechanic";
-
-    // optionally: only allow certain roles to create users
-    const ALLOWED_CREATORS = new Set(["owner", "admin", "manager"]);
-    if (!ALLOWED_CREATORS.has(callerRole)) {
+    const actor = getActorCapabilities({ role: callerProfile.role });
+    if (!actor.isKnownRole || !actor.canManageUsers) {
       return NextResponse.json(
         { error: "You do not have permission to create users." },
         { status: 403 }

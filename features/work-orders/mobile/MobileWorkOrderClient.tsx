@@ -27,6 +27,10 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/mobile/MobileJobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import {
+  getOfflineSyncSummary,
+  subscribeOfflineMutations,
+} from "@/features/shared/lib/offline/mutations";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -243,6 +247,7 @@ export default function MobileWorkOrderClient({
     true,
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
+  const [offlineSummary, setOfflineSummary] = useState(() => getOfflineSyncSummary());
 
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -316,6 +321,11 @@ export default function MobileWorkOrderClient({
       sub?.subscription?.unsubscribe?.();
     };
   }, [routeId, setCurrentUserId, setUserId, setShopId]);
+
+  useEffect(() => {
+    const refresh = () => setOfflineSummary(getOfflineSyncSummary());
+    return subscribeOfflineMutations(refresh);
+  }, []);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -713,6 +723,13 @@ export default function MobileWorkOrderClient({
       }).length,
     [lines],
   );
+  const nextActionText = useMemo(() => {
+    if (approvalPending.length > 0) return "Review pending approvals before starting new labor actions.";
+    if (inProgressCount > 0) return "Continue active job punches and close blockers first.";
+    if (awaitingPartsCount > 0) return "Check parts holds and release next ready line.";
+    if (unassignedCount > 0) return "Assign the next unassigned line to keep throughput moving.";
+    return "Open a line to run inspection, notes, or punch actions.";
+  }, [approvalPending.length, awaitingPartsCount, inProgressCount, unassignedCount]);
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -934,6 +951,15 @@ export default function MobileWorkOrderClient({
           {viewError}
         </div>
       )}
+      {(offlineSummary.queued > 0 ||
+        offlineSummary.syncing > 0 ||
+        offlineSummary.failed > 0 ||
+        offlineSummary.conflicted > 0) && (
+        <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/35 px-3 py-2 text-xs text-amber-100">
+          Sync queue: pending {offlineSummary.queued + offlineSummary.syncing} • failed{" "}
+          {offlineSummary.failed} • conflicted {offlineSummary.conflicted}
+        </div>
+      )}
 
       {loading ? (
         <div className="grid gap-4">
@@ -962,6 +988,12 @@ export default function MobileWorkOrderClient({
               <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Unassigned</div>
               <div className="mt-1 text-base font-semibold text-neutral-200">{unassignedCount}</div>
             </div>
+          </div>
+          <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2 text-xs text-neutral-200">
+            <span className="font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)]">
+              Next action
+            </span>
+            <div className="mt-1">{nextActionText}</div>
           </div>
 
           {/* Header card */}
