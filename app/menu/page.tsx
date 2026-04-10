@@ -19,7 +19,9 @@ import { masterServicesList } from "@inspections/lib/inspection/masterServicesLi
 
 type DB = Database;
 
-type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"] & {
+  inspection_template?: { template_name: string | null } | null;
+};
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
@@ -244,7 +246,7 @@ export default function MenuItemsPage() {
 
     const { data, error } = await supabase
       .from("menu_items")
-      .select("*")
+      .select("*, inspection_template:inspection_templates(template_name)")
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(200);
@@ -966,6 +968,12 @@ export default function MenuItemsPage() {
                     <div className={`text-sm font-semibold text-[${COPPER}]`}>
                       {mi.name}
                     </div>
+                    {mi.inspection_template_id ? (
+                      <div className="mt-1 inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-emerald-200">
+                        Includes inspection
+                        {mi.inspection_template?.template_name ? ` • ${mi.inspection_template.template_name}` : ""}
+                      </div>
+                    ) : null}
 
                     {mi.description ? (
                       <span className="block line-clamp-2 text-xs text-neutral-400">
@@ -1025,6 +1033,12 @@ export default function MenuItemsPage() {
                     <div className={`text-sm font-semibold text-[${COPPER}]`}>
                       {mi.name}
                     </div>
+                    {mi.inspection_template_id ? (
+                      <div className="mt-1 inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-emerald-200">
+                        Includes inspection
+                        {mi.inspection_template?.template_name ? ` • ${mi.inspection_template.template_name}` : ""}
+                      </div>
+                    ) : null}
 
                     {mi.description ? (
                       <span className="block line-clamp-2 text-xs text-neutral-400">

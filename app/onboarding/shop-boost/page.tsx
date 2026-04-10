@@ -42,6 +42,13 @@ type LinkageSummary = {
     invoicesCustomerId: number;
   };
 };
+type ShopBuildSummary = {
+  menuItemsCreated: number;
+  inspectionTemplatesCreated: number;
+  linkedMenuToInspection: number;
+  menuSuggestions: number;
+  inspectionSuggestions: number;
+};
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 const UPLOAD_SESSION_STORAGE_KEY = "shop-boost-upload-session-v1";
@@ -109,6 +116,7 @@ export default function ShopBoostOnboardingPage() {
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
   const [linkageSummary, setLinkageSummary] = useState<LinkageSummary | null>(null);
+  const [shopBuildSummary, setShopBuildSummary] = useState<ShopBuildSummary | null>(null);
 
   // Load profile → shop_id + shop name
   useEffect(() => {
@@ -197,6 +205,7 @@ export default function ShopBoostOnboardingPage() {
     setError("");
     setSnapshot(null);
     setLinkageSummary(null);
+    setShopBuildSummary(null);
 
     if (!shopId) {
       setError("Shop not loaded yet.");
@@ -263,7 +272,9 @@ export default function ShopBoostOnboardingPage() {
         snapshot?: ShopHealthSnapshot | null;
         importSummary?: {
           linkageSummary?: LinkageSummary;
+          shopBuildSummary?: ShopBuildSummary;
         };
+        shopBuildSummary?: ShopBuildSummary;
         error?: string;
       };
 
@@ -275,6 +286,7 @@ export default function ShopBoostOnboardingPage() {
 
       setSnapshot(json.snapshot);
       setLinkageSummary(json.importSummary?.linkageSummary ?? null);
+      setShopBuildSummary(json.shopBuildSummary ?? json.importSummary?.shopBuildSummary ?? null);
       setStepStatus("done");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
@@ -328,6 +340,8 @@ export default function ShopBoostOnboardingPage() {
     (linkageSummary?.unresolved.invoicesCustomerId ?? 0);
   const unresolvedCounts = linkageSummary?.unresolved;
   const hasUnresolvedItems = itemsNeedingReview > 0;
+  const reviewItemsCount =
+    (shopBuildSummary?.menuSuggestions ?? 0) + (shopBuildSummary?.inspectionSuggestions ?? 0);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -520,16 +534,39 @@ export default function ShopBoostOnboardingPage() {
               {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
 
-            {stepStatus === "done" && linkageSummary && (
+            {stepStatus === "done" && (linkageSummary || shopBuildSummary) && (
               <section className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4 sm:p-5">
-                <h2 className="text-sm font-semibold text-neutral-100">Import linkage summary</h2>
+                <h2 className="text-base font-semibold text-neutral-100">Your shop is ready</h2>
                 <div className="mt-3 space-y-1 text-sm text-neutral-300">
-                  <p>{linkedVehicles} vehicles linked</p>
-                  <p>{fullyConnectedWorkOrders} work orders fully connected</p>
-                  <p>{itemsNeedingReview} items need review</p>
+                  <p>✔ {(shopBuildSummary?.menuItemsCreated ?? 0).toLocaleString()} services created</p>
+                  <p>
+                    ✔ {(shopBuildSummary?.inspectionTemplatesCreated ?? 0).toLocaleString()} inspections created
+                  </p>
+                  <p>
+                    ✔ {(shopBuildSummary?.linkedMenuToInspection ?? 0).toLocaleString()} services linked to
+                    inspections
+                  </p>
+                  <p>⚠ {reviewItemsCount.toLocaleString()} items need review</p>
                 </div>
 
-                {hasUnresolvedItems && unresolvedCounts && (
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/menu_item_suggestions")}
+                    className="rounded-md border border-neutral-600 px-2.5 py-1 text-neutral-100 hover:bg-white/5"
+                  >
+                    Review services
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/inspection_template_suggestions")}
+                    className="rounded-md border border-neutral-600 px-2.5 py-1 text-neutral-100 hover:bg-white/5"
+                  >
+                    Review inspections
+                  </button>
+                </div>
+
+                {hasUnresolvedItems && unresolvedCounts ? (
                   <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
                     <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-amber-200">
                       Needs review
@@ -585,7 +622,15 @@ export default function ShopBoostOnboardingPage() {
                       </button>
                     </div>
                   </div>
-                )}
+                ) : null}
+
+                {linkageSummary ? (
+                  <div className="mt-4 rounded-lg border border-neutral-700 bg-black/30 p-3 text-xs text-neutral-400">
+                    <p>{linkedVehicles} vehicles linked</p>
+                    <p>{fullyConnectedWorkOrders} work orders fully connected</p>
+                    <p>{itemsNeedingReview} operational linkage items need review</p>
+                  </div>
+                ) : null}
               </section>
             )}
           </form>

@@ -55,6 +55,13 @@ export type ShopBoostImportSummary = {
       invoicesCustomerId: number;
     };
   };
+  shopBuildSummary: {
+    menuItemsCreated: number;
+    inspectionTemplatesCreated: number;
+    linkedMenuToInspection: number;
+    menuSuggestions: number;
+    inspectionSuggestions: number;
+  };
 };
 
 type CsvRow = Record<string, string>;
@@ -484,9 +491,16 @@ async function bridgeOperatingLayerFromCsv(args: {
   intakeId: string;
   serviceCatalogCsv: string | null;
   historyCsv: string | null;
-}): Promise<void> {
+}): Promise<ShopBoostImportSummary["shopBuildSummary"]> {
   const { supabase, shopId, intakeId, serviceCatalogCsv, historyCsv } = args;
-  if (!serviceCatalogCsv && !historyCsv) return;
+  const summary: ShopBoostImportSummary["shopBuildSummary"] = {
+    menuItemsCreated: 0,
+    inspectionTemplatesCreated: 0,
+    linkedMenuToInspection: 0,
+    menuSuggestions: 0,
+    inspectionSuggestions: 0,
+  };
+  if (!serviceCatalogCsv && !historyCsv) return summary;
 
   const menuCandidates: MenuBridgeCandidate[] = [];
   const inspectionCandidates: InspectionBridgeCandidate[] = [];
@@ -548,6 +562,7 @@ async function bridgeOperatingLayerFromCsv(args: {
           .maybeSingle<{ id: string }>();
 
         if (created?.id) {
+          summary.inspectionTemplatesCreated += 1;
           highConfidenceTemplates.push({
             id: created.id,
             source: candidate.source,
@@ -589,6 +604,7 @@ async function bridgeOperatingLayerFromCsv(args: {
       .maybeSingle<{ id: string }>();
 
     if (createdSuggestion?.id) {
+      summary.inspectionSuggestions += 1;
       lowConfidenceTemplateSuggestions.push({
         id: createdSuggestion.id,
         source: candidate.source,
@@ -622,6 +638,8 @@ async function bridgeOperatingLayerFromCsv(args: {
           is_active: false,
           inspection_template_id: matchedTemplate?.id ?? null,
         } as DB["public"]["Tables"]["menu_items"]["Insert"]);
+        summary.menuItemsCreated += 1;
+        if (matchedTemplate?.id) summary.linkedMenuToInspection += 1;
       }
       continue;
     }
@@ -640,7 +658,10 @@ async function bridgeOperatingLayerFromCsv(args: {
       reason: `Derived from ${candidate.source} upload; review recommended.`,
       inspection_template_suggestion_id: matchedTemplateSuggestion?.id ?? null,
     } as DB["public"]["Tables"]["menu_item_suggestions"]["Insert"]);
+    summary.menuSuggestions += 1;
   }
+
+  return summary;
 }
 
 function parseDateIso(v: string | null): string | null {
@@ -743,6 +764,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
   if (intakeErr || !intake) {
     console.warn("[runShopBoostImport] intake missing", intakeErr);
+    const emptyShopBuildSummary: ShopBoostImportSummary["shopBuildSummary"] = {
+      menuItemsCreated: 0,
+      inspectionTemplatesCreated: 0,
+      linkedMenuToInspection: 0,
+      menuSuggestions: 0,
+      inspectionSuggestions: 0,
+    };
     return {
       customersImported: 0,
       vehiclesImported: 0,
@@ -764,6 +792,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           invoicesCustomerId: 0,
         },
       },
+      shopBuildSummary: emptyShopBuildSummary,
     };
   }
 
@@ -785,7 +814,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
   await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
   const serviceCatalogCsv = await downloadCsv(uploadManifest.serviceCatalog?.path ?? null);
-  await bridgeOperatingLayerFromCsv({
+  const shopBuildSummary = await bridgeOperatingLayerFromCsv({
     supabase,
     shopId,
     intakeId,
@@ -1640,7 +1669,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
                 invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
               },
             },
+            shopBuildSummary,
           },
+          shopBuildSummary,
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],
     )
@@ -1667,6 +1698,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
       },
     },
+    shopBuildSummary,
   };
 }
 
