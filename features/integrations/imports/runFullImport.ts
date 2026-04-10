@@ -36,6 +36,20 @@ export type ShopBoostImportSummary = {
   workOrderLinesImported: number;
   invoicesImported: number;
   partsImported: number;
+  linkageSummary: {
+    linked: {
+      vehiclesCustomerId: number;
+      workOrdersCustomerId: number;
+      workOrdersVehicleId: number;
+      invoicesCustomerId: number;
+    };
+    unresolved: {
+      vehiclesCustomerId: number;
+      workOrdersCustomerId: number;
+      workOrdersVehicleId: number;
+      invoicesCustomerId: number;
+    };
+  };
 };
 
 type CsvRow = Record<string, string>;
@@ -285,6 +299,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       workOrderLinesImported: 0,
       invoicesImported: 0,
       partsImported: 0,
+      linkageSummary: {
+        linked: {
+          vehiclesCustomerId: 0,
+          workOrdersCustomerId: 0,
+          workOrdersVehicleId: 0,
+          invoicesCustomerId: 0,
+        },
+        unresolved: {
+          vehiclesCustomerId: 0,
+          workOrdersCustomerId: 0,
+          workOrdersVehicleId: 0,
+          invoicesCustomerId: 0,
+        },
+      },
     };
   }
 
@@ -884,6 +912,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
+  const linkageCounters = {
+    vehiclesCustomerId: 0,
+    workOrdersCustomerId: 0,
+    workOrdersVehicleId: 0,
+    invoicesCustomerId: 0,
+  };
+
   // 6) Post-import linkage pass (safe, idempotent, shop-scoped)
   if (vehiclesCsv) {
     const { rows } = parseCsv(vehiclesCsv);
@@ -907,17 +942,43 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         `${vin}|${plate}|${unit ?? ""}|${year ?? ""}`,
       ).slice(0, 16)}`;
 
-      await supabase
+      const { data: linkedVehicles } = await supabase
         .from("vehicles")
         .update({ customer_id: matchedCustomerId } as DB["public"]["Tables"]["vehicles"]["Update"])
         .eq("shop_id", shopId)
         .eq("external_id", external_id)
         .eq("source_intake_id", intakeId)
-        .is("customer_id", null);
+        .is("customer_id", null)
+        .select("id");
+      linkageCounters.vehiclesCustomerId += linkedVehicles?.length ?? 0;
     }
   }
 
   if (historyCsv) {
+    const uniqueVehiclesByVin = new Map<string, string>();
+    const uniqueVehiclesByPlate = new Map<string, string>();
+    const conflictingVehicleVins = new Set<string>();
+    const conflictingVehiclePlates = new Set<string>();
+    const uniqueVehicleByCustomerId = new Map<string, string>();
+    const conflictingVehicleCustomers = new Set<string>();
+
+    const { data: vehiclesForLinkage } = await supabase
+      .from("vehicles")
+      .select("id,vin,license_plate,customer_id")
+      .eq("shop_id", shopId)
+      .limit(5000);
+
+    for (const vehicle of vehiclesForLinkage ?? []) {
+      const vehicleId = String(vehicle.id ?? "");
+      const vin = lower(String(vehicle.vin ?? ""));
+      const plate = lower(String(vehicle.license_plate ?? ""));
+      const customerId = String(vehicle.customer_id ?? "");
+
+      addUniqueMatch(uniqueVehiclesByVin, conflictingVehicleVins, vin, vehicleId);
+      addUniqueMatch(uniqueVehiclesByPlate, conflictingVehiclePlates, plate, vehicleId);
+      addUniqueMatch(uniqueVehicleByCustomerId, conflictingVehicleCustomers, customerId, vehicleId);
+    }
+
     const { rows } = parseCsv(historyCsv);
 
     for (let i = 0; i < rows.length; i += 1) {
@@ -945,13 +1006,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const complaint = pick(row, [/complaint/, /concern/]);
       const vin = lower(pick(row, [/vin/]) ?? "");
       const plate = lower(pick(row, [/plate/, /license/]) ?? "");
-      const vehicle_id =
-        (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) || null;
+      const vehicleIdFromVin =
+        vin && !conflictingVehicleVins.has(vin) ? uniqueVehiclesByVin.get(vin) ?? null : null;
+      const vehicleIdFromPlate =
+        plate && !conflictingVehiclePlates.has(plate) ? uniqueVehiclesByPlate.get(plate) ?? null : null;
+      const matchedVehicleId = vehicleIdFromVin || vehicleIdFromPlate || null;
       const historyFingerprint = sha1(
         [
           ro ?? "",
           dateOnly(dateIso),
-          vehicle_id ?? "",
+          matchedVehicleId ?? "",
           vin,
           plate,
           String(total ?? ""),
@@ -969,19 +1033,42 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       if (!workOrder?.id) continue;
 
-      await supabase
+      const { data: linkedWorkOrdersByCustomer } = await supabase
         .from("work_orders")
         .update({ customer_id: matchedCustomerId } as DB["public"]["Tables"]["work_orders"]["Update"])
         .eq("shop_id", shopId)
         .eq("id", workOrder.id)
-        .is("customer_id", null);
+        .is("customer_id", null)
+        .select("id");
+      linkageCounters.workOrdersCustomerId += linkedWorkOrdersByCustomer?.length ?? 0;
 
-      await supabase
+      const { data: linkedInvoicesByCustomer } = await supabase
         .from("invoices")
         .update({ customer_id: matchedCustomerId } as DB["public"]["Tables"]["invoices"]["Update"])
         .eq("shop_id", shopId)
         .eq("work_order_id", workOrder.id)
-        .is("customer_id", null);
+        .is("customer_id", null)
+        .select("id");
+      linkageCounters.invoicesCustomerId += linkedInvoicesByCustomer?.length ?? 0;
+
+      const customerScopedVehicleId =
+        !conflictingVehicleCustomers.has(matchedCustomerId) &&
+        uniqueVehicleByCustomerId.has(matchedCustomerId)
+          ? uniqueVehicleByCustomerId.get(matchedCustomerId) ?? null
+          : null;
+      const safeVehicleId = matchedVehicleId || customerScopedVehicleId;
+
+      if (!safeVehicleId) continue;
+
+      const { data: linkedWorkOrdersByVehicle } = await supabase
+        .from("work_orders")
+        .update({ vehicle_id: safeVehicleId } as DB["public"]["Tables"]["work_orders"]["Update"])
+        .eq("shop_id", shopId)
+        .eq("id", workOrder.id)
+        .is("vehicle_id", null)
+        .or(`customer_id.is.null,customer_id.eq.${matchedCustomerId}`)
+        .select("id");
+      linkageCounters.workOrdersVehicleId += linkedWorkOrdersByVehicle?.length ?? 0;
     }
   }
 
@@ -989,8 +1076,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
     : {};
 
-  const [customersCount, vehiclesCount, workOrdersCount, workOrderLinesCount, invoicesCount, partsCount] =
-    await Promise.all([
+  const [
+    customersCount,
+    vehiclesCount,
+    workOrdersCount,
+    workOrderLinesCount,
+    invoicesCount,
+    partsCount,
+    unresolvedVehiclesMissingCustomer,
+    unresolvedWorkOrdersMissingCustomer,
+    unresolvedWorkOrdersMissingVehicle,
+    unresolvedInvoicesMissingCustomer,
+  ] = await Promise.all([
       supabase
         .from("customers")
         .select("id", { count: "exact", head: true })
@@ -1021,6 +1118,30 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         .select("id", { count: "exact", head: true })
         .eq("shop_id", shopId)
         .eq("source_intake_id", intakeId),
+      supabase
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId)
+        .is("customer_id", null),
+      supabase
+        .from("work_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId)
+        .is("customer_id", null),
+      supabase
+        .from("work_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("source_intake_id", intakeId)
+        .is("vehicle_id", null),
+      supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .contains("metadata", { source_intake_id: intakeId })
+        .is("customer_id", null),
     ]);
 
   await supabase
@@ -1038,6 +1159,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             workOrderLinesImported: workOrderLinesCount.count ?? 0,
             invoicesImported: invoicesCount.count ?? 0,
             partsImported: partsCount.count ?? 0,
+            linkageSummary: {
+              linked: {
+                vehiclesCustomerId: linkageCounters.vehiclesCustomerId,
+                workOrdersCustomerId: linkageCounters.workOrdersCustomerId,
+                workOrdersVehicleId: linkageCounters.workOrdersVehicleId,
+                invoicesCustomerId: linkageCounters.invoicesCustomerId,
+              },
+              unresolved: {
+                vehiclesCustomerId: unresolvedVehiclesMissingCustomer.count ?? 0,
+                workOrdersCustomerId: unresolvedWorkOrdersMissingCustomer.count ?? 0,
+                workOrdersVehicleId: unresolvedWorkOrdersMissingVehicle.count ?? 0,
+                invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
+              },
+            },
           },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],
@@ -1051,6 +1186,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     workOrderLinesImported: workOrderLinesCount.count ?? 0,
     invoicesImported: invoicesCount.count ?? 0,
     partsImported: partsCount.count ?? 0,
+    linkageSummary: {
+      linked: {
+        vehiclesCustomerId: linkageCounters.vehiclesCustomerId,
+        workOrdersCustomerId: linkageCounters.workOrdersCustomerId,
+        workOrdersVehicleId: linkageCounters.workOrdersVehicleId,
+        invoicesCustomerId: linkageCounters.invoicesCustomerId,
+      },
+      unresolved: {
+        vehiclesCustomerId: unresolvedVehiclesMissingCustomer.count ?? 0,
+        workOrdersCustomerId: unresolvedWorkOrdersMissingCustomer.count ?? 0,
+        workOrdersVehicleId: unresolvedWorkOrdersMissingVehicle.count ?? 0,
+        invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
+      },
+    },
   };
 }
 
