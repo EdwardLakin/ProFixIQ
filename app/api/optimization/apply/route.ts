@@ -77,6 +77,8 @@ export async function POST(req: Request) {
   }
 
   try {
+    let entityId: string | null = null;
+
     if (type === "pricing") {
       const menuItemId = toNonEmptyString(payload.menuItemId);
       const newPrice = parsePrice(payload.newPrice);
@@ -97,6 +99,8 @@ export async function POST(req: Request) {
       if (updateError) {
         return NextResponse.json({ error: updateError.message }, { status: 500 });
       }
+
+      entityId = menuItemId;
     }
 
     if (type === "inspection") {
@@ -131,6 +135,8 @@ export async function POST(req: Request) {
         if (updateError) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
+
+        entityId = templateId;
       } else {
         const insert: DB["public"]["Tables"]["inspection_templates"]["Insert"] = {
           shop_id: profile.shop_id,
@@ -141,10 +147,16 @@ export async function POST(req: Request) {
           tags: ["optimization_engine"],
         };
 
-        const { error: insertError } = await supabase.from("inspection_templates").insert(insert);
+        const { data: insertedTemplate, error: insertError } = await supabase
+          .from("inspection_templates")
+          .insert(insert)
+          .select("id")
+          .single();
         if (insertError) {
           return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
+
+        entityId = insertedTemplate?.id ?? null;
       }
     }
 
@@ -177,10 +189,16 @@ export async function POST(req: Request) {
         })(),
       };
 
-      const { error: insertError } = await supabase.from("menu_item_suggestions").insert(insert);
+      const { data: insertedSuggestion, error: insertError } = await supabase
+        .from("menu_item_suggestions")
+        .insert(insert)
+        .select("id")
+        .single();
       if (insertError) {
         return NextResponse.json({ error: insertError.message }, { status: 500 });
       }
+
+      entityId = insertedSuggestion?.id ?? null;
     }
 
     const actionInsert: DB["public"]["Tables"]["optimization_actions"]["Insert"] = {
@@ -199,7 +217,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: actionError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    const message =
+      type === "pricing"
+        ? "Pricing update applied"
+        : type === "inspection"
+          ? "Inspection template update applied"
+          : "Revenue suggestion created";
+
+    return NextResponse.json({
+      success: true,
+      type,
+      entityId,
+      message,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to apply optimization action";
     return NextResponse.json({ error: message }, { status: 500 });
