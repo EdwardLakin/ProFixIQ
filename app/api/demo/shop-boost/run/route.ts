@@ -4,6 +4,11 @@ import { randomUUID } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
+import {
+  SHOP_BOOST_UPLOAD_DATASET_KEYS,
+  SHOP_BOOST_UPLOAD_DATASETS,
+  type ShopBoostUploadDatasetKey,
+} from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
@@ -99,11 +104,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       }
     }
 
-    const customersFile = asFile(formData.get("customersFile"));
-    const vehiclesFile = asFile(formData.get("vehiclesFile"));
-    const partsFile = asFile(formData.get("partsFile"));
+    const filesByDataset: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
+    for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+      const file = asFile(formData.get(`${key}File`));
+      if (file) filesByDataset[key] = file;
+    }
 
-    if (!customersFile && !vehiclesFile && !partsFile) {
+    if (Object.values(filesByDataset).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Please upload at least one CSV so we have some history to analyze." },
         { status: 400 },
@@ -149,8 +156,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     const intakeId = randomUUID();
 
     const uploadIfPresent = async (
-      file: File | null,
-      kind: "customers" | "vehicles" | "parts",
+      file: File | undefined,
+      kind: ShopBoostUploadDatasetKey,
     ): Promise<string | null> => {
       if (!file) return null;
 
@@ -170,11 +177,28 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     };
 
     // 2) Upload CSVs
-    const [customersPath, vehiclesPath, partsPath] = await Promise.all([
-      uploadIfPresent(customersFile, "customers"),
-      uploadIfPresent(vehiclesFile, "vehicles"),
-      uploadIfPresent(partsFile, "parts"),
-    ]);
+    const uploadedPathEntries = await Promise.all(
+      SHOP_BOOST_UPLOAD_DATASET_KEYS.map(async (key) => [key, await uploadIfPresent(filesByDataset[key], key)] as const),
+    );
+    const uploadPaths = Object.fromEntries(uploadedPathEntries) as Record<
+      ShopBoostUploadDatasetKey,
+      string | null
+    >;
+    const uploadManifest = SHOP_BOOST_UPLOAD_DATASETS.reduce((acc, dataset) => {
+      const path = uploadPaths[dataset.key];
+      if (!path) return acc;
+      const file = filesByDataset[dataset.key];
+      acc[dataset.key] = {
+        dataset: dataset.key,
+        path,
+        fileName: file?.name ?? null,
+        contentType: file?.type ?? null,
+        sizeBytes: file?.size ?? null,
+        target: dataset.target,
+        importMode: dataset.importMode,
+      };
+      return acc;
+    }, {} as Record<string, unknown>);
 
     // 3) Create intake row
     const intakePayload: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
@@ -182,9 +206,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       shop_id: shopId,
       questionnaire:
         questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
-      customers_file_path: customersPath,
-      vehicles_file_path: vehiclesPath,
-      parts_file_path: partsPath,
+      customers_file_path: uploadPaths.customers,
+      vehicles_file_path: uploadPaths.vehicles,
+      parts_file_path: uploadPaths.parts,
+      history_file_path: uploadPaths.history,
+      staff_file_path: uploadPaths.staff,
+      intake_basics: {
+        uploadManifest,
+      } as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["intake_basics"],
       status: "pending",
     };
 

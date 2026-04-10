@@ -2,6 +2,11 @@
 import { createHash } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  SHOP_BOOST_DIRECT_IMPORT_DATASETS,
+  SHOP_BOOST_UPLOAD_DATASET_KEYS,
+  type ShopBoostUploadDatasetKey,
+} from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
@@ -53,6 +58,9 @@ export type ShopBoostImportSummary = {
 };
 
 type CsvRow = Record<string, string>;
+type UploadManifestRecord = Partial<
+  Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
+>;
 
 function norm(s: string): string {
   return (s ?? "").trim();
@@ -273,6 +281,64 @@ async function downloadCsv(path: string | null): Promise<string | null> {
   return data.text();
 }
 
+async function stageSupplementalUploads(args: {
+  shopId: string;
+  intakeId: string;
+  uploadManifest: UploadManifestRecord;
+}): Promise<void> {
+  const supabase = createAdminSupabase();
+  const stagedKinds = SHOP_BOOST_UPLOAD_DATASET_KEYS.filter(
+    (key) => !SHOP_BOOST_DIRECT_IMPORT_DATASETS.includes(key),
+  );
+
+  for (const kind of stagedKinds) {
+    const path = args.uploadManifest[kind]?.path ?? null;
+    if (!path) continue;
+    const csv = await downloadCsv(path);
+    if (!csv) continue;
+    const { rows } = parseCsv(csv);
+
+    const { data: existingFile } = await supabase
+      .from("shop_import_files")
+      .select("id")
+      .eq("intake_id", args.intakeId)
+      .eq("storage_path", path)
+      .maybeSingle<{ id: string }>();
+
+    let fileId = existingFile?.id ?? null;
+    if (!fileId) {
+      const inserted = await supabase
+        .from("shop_import_files")
+        .insert({
+          intake_id: args.intakeId,
+          kind,
+          storage_path: path,
+          original_filename: args.uploadManifest[kind]?.fileName ?? null,
+          parsed_row_count: rows.length,
+          status: "needs_review",
+        } as DB["public"]["Tables"]["shop_import_files"]["Insert"])
+        .select("id")
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      fileId = inserted.data?.id ?? null;
+    }
+    if (!fileId || rows.length === 0) continue;
+
+    await supabase.from("shop_import_rows").delete().eq("file_id", fileId);
+
+    const payload = rows.slice(0, 500).map((row, index) => ({
+      intake_id: args.intakeId,
+      file_id: fileId,
+      row_number: index + 1,
+      entity_type: kind,
+      raw: row,
+      normalized: {},
+      errors: ["Auto-staged for mapping review"],
+    }));
+    await supabase.from("shop_import_rows").insert(payload);
+  }
+}
+
 export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImportSummary> {
   const { shopId, intakeId } = args;
   const supabase = createAdminSupabase();
@@ -317,6 +383,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   const intakeRow = intake as IntakeRow;
+  const intakeBasics = isRecord((intakeRow as unknown as Record<string, unknown>).intake_basics)
+    ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
+    : {};
+  const uploadManifest = isRecord(intakeBasics.uploadManifest)
+    ? (intakeBasics.uploadManifest as UploadManifestRecord)
+    : {};
 
   const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv] = await Promise.all([
     downloadCsv(intakeRow.customers_file_path ?? null),
@@ -325,6 +397,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     downloadCsv(intakeRow.history_file_path ?? null),
     downloadCsv(intakeRow.staff_file_path ?? null),
   ]);
+
+  await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
 
   // Build caches (keep light: only key columns)
   const customersByEmail = new Map<string, string>();
