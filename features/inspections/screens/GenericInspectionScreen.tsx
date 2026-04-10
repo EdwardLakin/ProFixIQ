@@ -48,6 +48,8 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
+import Card from "@/features/shared/components/ui/Card";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -2453,14 +2455,15 @@ type SmartMatchRow = {
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
 
   const cardBase =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-[var(--theme-radius-xl,1rem)] border border-[var(--theme-card-border,#334155)] " +
+    "bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_95%,transparent)] " +
+    "text-[var(--theme-text-primary,#E2E8F0)] shadow-[var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))] backdrop-blur-xl";
 
   const headerCard = `${cardBase} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
   const sectionCard = `${cardBase} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
 
   const sectionTitle =
-    "text-base md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
+    "text-base md:text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)] text-center tracking-[0.12em] uppercase";
 
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
@@ -2527,16 +2530,16 @@ type SmartMatchRow = {
 
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_color-mix(in_srgb,var(--brand-accent,#E39A6E)_18%,transparent),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
       <div className="relative space-y-4">
         <div className={headerCard}>
-          <div className="mb-3 border-b border-orange-300/40 pb-3 text-center">
-            <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
+          <div className="mb-3 border-b border-[var(--theme-card-border,#334155)] pb-3 text-center">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--theme-text-muted,#64748B)]">
               Inspection
             </div>
-            <div className="mt-1 text-lg md:text-xl font-blackops text-neutral-50">
+            <div className="mt-1 text-lg md:text-xl font-semibold text-[var(--theme-text-primary,#E2E8F0)]">
               {session?.templateitem || templateName || "Inspection"}
             </div>
           </div>
@@ -2583,19 +2586,20 @@ type SmartMatchRow = {
         </div>
 
         <div className="mt-1 flex items-center justify-center gap-2">
-          <div
-            className={[
-              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
-              voiceState === "listening"
-                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-                : voiceState === "connecting"
-                  ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                  : voiceState === "error"
-                    ? "border-red-500/50 bg-red-500/10 text-red-200"
-                    : "border-neutral-600/50 bg-black/40 text-neutral-300",
-              voicePulse ? "shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : "",
-            ].join(" ")}
-          >
+          <div className={voicePulse ? "rounded-full shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : ""}>
+            <StatusBadge
+              variant={
+                voiceState === "listening"
+                  ? "success"
+                  : voiceState === "connecting"
+                    ? "warning"
+                    : voiceState === "error"
+                      ? "danger"
+                      : "neutral"
+              }
+              size="md"
+              className="inline-flex items-center gap-2 px-3 py-1"
+            >
             <span
               className={[
                 "h-2 w-2 rounded-full",
@@ -2614,9 +2618,10 @@ type SmartMatchRow = {
               : voiceState === "connecting"
                 ? "Connecting…"
                 : voiceState === "error"
-                  ? "Voice error"
+                ? "Voice error"
                   : "Voice idle"}
             {voicePulse && <span className="text-emerald-200/80">• audio</span>}
+            </StatusBadge>
           </div>
 
           {/* ✅ visible wake indicator so you’re not relying on toast/beep */}
@@ -2647,7 +2652,7 @@ type SmartMatchRow = {
           const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
 
           return (
-            <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+            <Card className="mt-2 px-3 py-2.5 md:px-4 md:py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
                 Inspection Summary
               </div>
@@ -2721,12 +2726,12 @@ type SmartMatchRow = {
                   </span>
                 </li>
               </ul>
-            </div>
+            </Card>
           );
         })()}
 
         {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 ? (
-          <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 px-3 py-2.5 md:px-4 md:py-3 backdrop-blur-xl">
+          <Card className="mt-2 px-3 py-2.5 md:px-4 md:py-3">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
                 Voice Log
@@ -2775,21 +2780,21 @@ type SmartMatchRow = {
                   );
                 })}
             </div>
-          </div>
+          </Card>
         ) : (
           <div className="mt-2 text-center text-[11px] text-neutral-500">
             No voice commands captured yet.
           </div>
         )}
 
-        <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <Card className="mb-4 px-3 py-2.5 md:px-4 md:py-3">
           <ProgressTracker
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
             totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
           />
-        </div>
+        </Card>
 
         <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>
           {session.sections.map((section, sectionIndex) => {
@@ -3102,13 +3107,13 @@ type SmartMatchRow = {
                             onDismissSmartMatch={dismissSmartMatch}
                           />
 
-                          <div className="mt-4 border-t border-white/10 pt-3">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                          <div className="mt-4 border-t border-[var(--theme-card-border,#334155)] pt-3">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
                               Add custom item
                             </div>
                             <div className="flex flex-col gap-2 md:flex-row md:items-center">
                               <input
-                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                className="flex-1 rounded-lg border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_80%,transparent)] px-3 py-1.5 text-sm text-[var(--theme-text-primary,#E2E8F0)] placeholder:text-[var(--theme-text-muted,#64748B)] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
                                 placeholder="Item label (e.g. Rear frame inspection)"
                                 value={newLabel}
                                 onChange={(e) =>
@@ -3121,7 +3126,7 @@ type SmartMatchRow = {
                               />
                               <div className="flex items-center gap-2 md:w-auto">
                                 <select
-                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/70"
+                                  className="rounded-lg border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_80%,transparent)] px-2 py-1.5 text-sm text-[var(--theme-text-primary,#E2E8F0)] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
                                   value={newUnit}
                                   onChange={(e) =>
                                     setNewItemUnits((prev) => ({
