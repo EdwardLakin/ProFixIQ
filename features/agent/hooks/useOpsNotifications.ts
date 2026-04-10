@@ -18,7 +18,11 @@ export type OpsNotification = {
     | "shop_overloaded"
     | "tech_underutilized_capacity"
     | "active_job_running_too_long"
-    | "shop_throughput_below_capacity";
+    | "shop_throughput_below_capacity"
+    | "optimization_pricing_normalization"
+    | "optimization_inspection_coverage_gap"
+    | "optimization_missed_revenue"
+    | "optimization_review_queued_suggestions";
   title: string;
   message: string;
   href?: string;

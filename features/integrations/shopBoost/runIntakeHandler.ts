@@ -8,6 +8,11 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
+import {
+  selectTopOnboardingOptimizationActions,
+  type OnboardingOptimizationAction,
+} from "@/features/optimization/server/selectOnboardingRecommendedActions";
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
@@ -31,6 +36,17 @@ export type ShopBoostRunResp =
         linkedMenuToInspection: number;
         menuSuggestions: number;
         inspectionSuggestions: number;
+      };
+      onboardingOptimization: {
+        summary: {
+          totalOpportunities: number;
+          criticalCount: number;
+          highCount: number;
+          potentialMonthlyValue: number;
+          dataFreshness: "fresh" | "stale";
+          lastAnalyzedAt: string;
+        } | null;
+        nextActions: OnboardingOptimizationAction[];
       };
     }
   | { ok: false; error: string };
@@ -155,7 +171,7 @@ export async function runShopBoostIntake(
 
   let providedIntakeId: string | null = null;
 
-  let providedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
+  const providedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData().catch(() => null);
@@ -385,6 +401,37 @@ export async function runShopBoostIntake(
     });
   }
 
+  let onboardingOptimization: {
+    summary: {
+      totalOpportunities: number;
+      criticalCount: number;
+      highCount: number;
+      potentialMonthlyValue: number;
+      dataFreshness: "fresh" | "stale";
+      lastAnalyzedAt: string;
+    } | null;
+    nextActions: OnboardingOptimizationAction[];
+  } = {
+    summary: null,
+    nextActions: [],
+  };
+
+  try {
+    const optimizationOutput = await buildOptimizationOpportunities({
+      supabase: supabaseAdmin,
+      shopId,
+      limit: 10,
+      lookbackDays: 365,
+    });
+
+    onboardingOptimization = {
+      summary: optimizationOutput.summary,
+      nextActions: selectTopOnboardingOptimizationActions(optimizationOutput, 5),
+    };
+  } catch (error) {
+    console.warn("[shop-boost/intake] optimization handoff skipped", error);
+  }
+
   return {
     ok: true,
     shopId,
@@ -392,5 +439,6 @@ export async function runShopBoostIntake(
     snapshot,
     importSummary,
     shopBuildSummary: importSummary.shopBuildSummary,
+    onboardingOptimization,
   };
 }

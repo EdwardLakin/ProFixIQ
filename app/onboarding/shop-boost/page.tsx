@@ -12,6 +12,7 @@ import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
+import type { OnboardingOptimizationAction } from "@/features/optimization/server/selectOnboardingRecommendedActions";
 
 type DB = Database;
 
@@ -48,6 +49,14 @@ type ShopBuildSummary = {
   linkedMenuToInspection: number;
   menuSuggestions: number;
   inspectionSuggestions: number;
+};
+type OnboardingOptimizationSummary = {
+  totalOpportunities: number;
+  criticalCount: number;
+  highCount: number;
+  potentialMonthlyValue: number;
+  dataFreshness: "fresh" | "stale";
+  lastAnalyzedAt: string;
 };
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
@@ -117,6 +126,8 @@ export default function ShopBoostOnboardingPage() {
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
   const [linkageSummary, setLinkageSummary] = useState<LinkageSummary | null>(null);
   const [shopBuildSummary, setShopBuildSummary] = useState<ShopBuildSummary | null>(null);
+  const [optimizationSummary, setOptimizationSummary] = useState<OnboardingOptimizationSummary | null>(null);
+  const [optimizationNextActions, setOptimizationNextActions] = useState<OnboardingOptimizationAction[]>([]);
 
   // Load profile → shop_id + shop name
   useEffect(() => {
@@ -206,6 +217,8 @@ export default function ShopBoostOnboardingPage() {
     setSnapshot(null);
     setLinkageSummary(null);
     setShopBuildSummary(null);
+    setOptimizationSummary(null);
+    setOptimizationNextActions([]);
 
     if (!shopId) {
       setError("Shop not loaded yet.");
@@ -275,6 +288,10 @@ export default function ShopBoostOnboardingPage() {
           shopBuildSummary?: ShopBuildSummary;
         };
         shopBuildSummary?: ShopBuildSummary;
+        onboardingOptimization?: {
+          summary?: OnboardingOptimizationSummary | null;
+          nextActions?: OnboardingOptimizationAction[];
+        };
         error?: string;
       };
 
@@ -287,6 +304,8 @@ export default function ShopBoostOnboardingPage() {
       setSnapshot(json.snapshot);
       setLinkageSummary(json.importSummary?.linkageSummary ?? null);
       setShopBuildSummary(json.shopBuildSummary ?? json.importSummary?.shopBuildSummary ?? null);
+      setOptimizationSummary(json.onboardingOptimization?.summary ?? null);
+      setOptimizationNextActions(json.onboardingOptimization?.nextActions ?? []);
       setStepStatus("done");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
@@ -342,6 +361,7 @@ export default function ShopBoostOnboardingPage() {
   const hasUnresolvedItems = itemsNeedingReview > 0;
   const reviewItemsCount =
     (shopBuildSummary?.menuSuggestions ?? 0) + (shopBuildSummary?.inspectionSuggestions ?? 0);
+  const topNextActions = optimizationNextActions.slice(0, 5);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -537,16 +557,45 @@ export default function ShopBoostOnboardingPage() {
             {stepStatus === "done" && (linkageSummary || shopBuildSummary) && (
               <section className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4 sm:p-5">
                 <h2 className="text-base font-semibold text-neutral-100">Your shop is ready</h2>
-                <div className="mt-3 space-y-1 text-sm text-neutral-300">
-                  <p>✔ {(shopBuildSummary?.menuItemsCreated ?? 0).toLocaleString()} services created</p>
-                  <p>
-                    ✔ {(shopBuildSummary?.inspectionTemplatesCreated ?? 0).toLocaleString()} inspections created
-                  </p>
-                  <p>
-                    ✔ {(shopBuildSummary?.linkedMenuToInspection ?? 0).toLocaleString()} services linked to
-                    inspections
-                  </p>
-                  <p>⚠ {reviewItemsCount.toLocaleString()} items need review</p>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+                      What we built
+                    </h3>
+                    <div className="mt-2 space-y-1 text-xs text-emerald-100/90">
+                      <p>✔ {(shopBuildSummary?.menuItemsCreated ?? 0).toLocaleString()} services created</p>
+                      <p>
+                        ✔ {(shopBuildSummary?.inspectionTemplatesCreated ?? 0).toLocaleString()} inspections created
+                      </p>
+                      <p>
+                        ✔ {(shopBuildSummary?.linkedMenuToInspection ?? 0).toLocaleString()} services linked
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-200">
+                      What still needs review
+                    </h3>
+                    <div className="mt-2 space-y-1 text-xs text-amber-100/90">
+                      <p>⚠ {reviewItemsCount.toLocaleString()} suggestion items pending review</p>
+                      <p>⚠ {itemsNeedingReview.toLocaleString()} linkage issues need attention</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 p-3">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-200">
+                      What we recommend next
+                    </h3>
+                    <div className="mt-2 space-y-1 text-xs text-sky-100/90">
+                      <p>{(optimizationSummary?.totalOpportunities ?? 0).toLocaleString()} optimization opportunities found</p>
+                      <p>
+                        {(optimizationSummary?.criticalCount ?? 0).toLocaleString()} critical,{" "}
+                        {(optimizationSummary?.highCount ?? 0).toLocaleString()} high-priority
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -629,6 +678,48 @@ export default function ShopBoostOnboardingPage() {
                     <p>{linkedVehicles} vehicles linked</p>
                     <p>{fullyConnectedWorkOrders} work orders fully connected</p>
                     <p>{itemsNeedingReview} operational linkage items need review</p>
+                  </div>
+                ) : null}
+
+                {topNextActions.length > 0 ? (
+                  <div className="mt-4 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-sky-200">
+                      Next recommended actions
+                    </h3>
+                    <p className="mt-1 text-[11px] text-sky-100/85">
+                      These recommendations also appear in your AI operations workflow.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {topNextActions.map((action) => (
+                        <div
+                          key={action.id}
+                          className="rounded-md border border-sky-300/20 bg-black/25 p-2 text-xs"
+                        >
+                          <p className="font-medium text-sky-100">{action.title}</p>
+                          <p className="mt-0.5 text-sky-100/80">{action.summary}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => router.push(action.href)}
+                              className="rounded-md border border-sky-300/35 px-2 py-1 text-sky-100 hover:bg-white/5"
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                router.push(
+                                  `/agent/planner?planner=ops&allowCreate=0&goal=${encodeURIComponent(action.plannerGoal)}`,
+                                )
+                              }
+                              className="rounded-md border border-sky-300/35 px-2 py-1 text-sky-100 hover:bg-white/5"
+                            >
+                              Send to planner
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </section>
