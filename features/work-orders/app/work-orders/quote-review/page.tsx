@@ -449,7 +449,7 @@ function ApprovalsList(): JSX.Element {
                     </div>
                   </div>
                 </div>
-                <DecisionEventFeed events={decisionEvents} compact className="mt-4" />
+                <DecisionEventFeed events={decisionEvents} compact className="mt-4" maxVisible={5} />
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link

@@ -992,7 +992,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       description="Review failed and recommended findings before final submission."
     >
       <div className="mx-auto max-w-5xl space-y-4">
-        <DecisionEventFeed events={decisionEvents} compact />
+        <DecisionEventFeed events={decisionEvents} compact maxVisible={5} />
         {findings.length === 0 ? (
           <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-neutral-300")}>
             No failed or recommended findings to review.

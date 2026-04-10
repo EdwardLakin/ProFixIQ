@@ -1325,7 +1325,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </section>
 
           <DecisionTimeline stages={decisionTimelineStages} />
-          <DecisionEventFeed events={decisionEvents} />
+          <DecisionEventFeed events={decisionEvents} filter="all" maxVisible={6} />
 
           {/* Vehicle & Customer */}
           <section className={cn(PANEL_VARIANTS.secondary, "p-4")}>

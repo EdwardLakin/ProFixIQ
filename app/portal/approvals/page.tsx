@@ -446,7 +446,7 @@ export default function PortalApprovalsPage() {
 
                     <div className="px-4 py-4">
                       <DecisionTimeline stages={timelineStages} orientation="vertical" className="mb-3" />
-                      <DecisionEventFeed events={decisionEvents} compact className="mb-3" />
+                      <DecisionEventFeed events={decisionEvents} compact className="mb-3" maxVisible={4} />
                       <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div>
                           <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">

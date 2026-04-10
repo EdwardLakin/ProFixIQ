@@ -15,12 +15,17 @@ export type DecisionEvent = {
   actor?: string | null;
   label: string;
   meta?: string | null;
+  source?: "status" | "approval" | "evidence" | "system";
+  confidence?: "high" | "medium" | "low";
 };
 
 type EventDraft = Omit<DecisionEvent, "id" | "timestamp"> & {
   id?: string;
   timestamp: string | Date | null;
 };
+
+type DecisionEventSource = NonNullable<DecisionEvent["source"]>;
+type DecisionEventConfidence = NonNullable<DecisionEvent["confidence"]>;
 
 type MaybeDate = string | Date | null | undefined;
 
@@ -66,6 +71,11 @@ type PortalApprovalLineLike = {
   status?: string | null;
 };
 
+type TimestampCandidate = {
+  value: MaybeDate;
+  confidence: DecisionEventConfidence;
+};
+
 function norm(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replaceAll(" ", "_");
 }
@@ -92,6 +102,18 @@ function coalesceTimestamp(...values: MaybeDate[]): string | Date | null {
   return null;
 }
 
+function coalesceTimestampWithConfidence(
+  ...values: TimestampCandidate[]
+): { timestamp: string | Date | null; confidence: DecisionEventConfidence } {
+  for (const value of values) {
+    const parsed = readableTimestamp(value.value);
+    if (parsed) {
+      return { timestamp: parsed, confidence: value.confidence };
+    }
+  }
+  return { timestamp: null, confidence: "low" };
+}
+
 function cleanText(value: string | null | undefined): string | null {
   const text = (value ?? "").trim();
   return text.length > 0 ? text : null;
@@ -100,6 +122,32 @@ function cleanText(value: string | null | undefined): string | null {
 function pushEvent(target: EventDraft[], event: EventDraft): void {
   if (!event.timestamp || Number.isNaN(toTime(event.timestamp))) return;
   target.push(event);
+}
+
+export function resolveEventSource(input: {
+  type: DecisionEventType;
+  source?: DecisionEventSource;
+}): DecisionEventSource {
+  if (input.source) return input.source;
+  if (input.type === "evidence_added") return "evidence";
+  if (input.type === "approved" || input.type === "declined" || input.type === "sent_for_approval") {
+    return "approval";
+  }
+  if (input.type === "status_changed" || input.type === "work_started" || input.type === "completed") {
+    return "status";
+  }
+  return "system";
+}
+
+export function resolveEventConfidence(input: {
+  type: DecisionEventType;
+  confidence?: DecisionEventConfidence;
+}): DecisionEventConfidence {
+  if (input.confidence) return input.confidence;
+  if (input.type === "work_started" || input.type === "completed" || input.type === "status_changed") {
+    return "medium";
+  }
+  return "low";
 }
 
 function finalizeEvents(events: EventDraft[]): DecisionEvent[] {
@@ -131,6 +179,8 @@ function finalizeEvents(events: EventDraft[]): DecisionEvent[] {
         label: event.label,
         actor,
         meta,
+        source: resolveEventSource({ type: event.type, source: event.source }),
+        confidence: resolveEventConfidence({ type: event.type, confidence: event.confidence }),
       },
     ];
   });
@@ -153,6 +203,8 @@ export function deriveEventsFromWorkOrder(input: {
       actor,
       label: "Recommendation created",
       meta: cleanText(wo.custom_id ? `Work order ${wo.custom_id}` : null),
+      source: "system",
+      confidence: "high",
     });
   }
 
@@ -164,36 +216,56 @@ export function deriveEventsFromWorkOrder(input: {
       actor,
       label: "Recommendation created",
       meta: lineMeta,
+      source: "system",
+      confidence: line.created_at ? "high" : "low",
     });
 
     const approval = norm(line.approval_state);
     if (approval === "pending") {
+      const approvalTimestamp = coalesceTimestampWithConfidence(
+        { value: line.updated_at, confidence: "low" },
+        { value: line.created_at, confidence: "high" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(line.updated_at, line.created_at),
+        timestamp: approvalTimestamp.timestamp,
         type: "sent_for_approval",
         actor,
         label: "Sent for approval",
         meta: lineMeta,
+        source: "approval",
+        confidence: approvalTimestamp.confidence,
       });
     }
 
     if (approval === "approved") {
+      const approvedTimestamp = coalesceTimestampWithConfidence(
+        { value: line.approved_at, confidence: "high" },
+        { value: line.updated_at, confidence: "low" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(line.approved_at, line.updated_at),
+        timestamp: approvedTimestamp.timestamp,
         type: "approved",
         actor,
         label: "Approved",
         meta: lineMeta,
+        source: "approval",
+        confidence: approvedTimestamp.confidence,
       });
     }
 
     if (approval === "declined") {
+      const declinedTimestamp = coalesceTimestampWithConfidence(
+        { value: line.declined_at, confidence: "high" },
+        { value: line.updated_at, confidence: "low" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(line.declined_at, line.updated_at),
+        timestamp: declinedTimestamp.timestamp,
         type: "declined",
         actor,
         label: "Declined",
         meta: lineMeta,
+        source: "approval",
+        confidence: declinedTimestamp.confidence,
       });
     }
 
@@ -205,6 +277,8 @@ export function deriveEventsFromWorkOrder(input: {
         actor,
         label: "Work started",
         meta: lineMeta,
+        source: "status",
+        confidence: "medium",
       });
     }
 
@@ -215,6 +289,8 @@ export function deriveEventsFromWorkOrder(input: {
         actor,
         label: "Work completed",
         meta: lineMeta,
+        source: "status",
+        confidence: "medium",
       });
     }
   }
@@ -227,6 +303,8 @@ export function deriveEventsFromWorkOrder(input: {
       actor,
       label: "Status updated",
       meta: cleanText(wo?.status ?? null),
+      source: "status",
+      confidence: "medium",
     });
 
     if (woStatus === "in_progress" || woStatus === "queued") {
@@ -235,6 +313,8 @@ export function deriveEventsFromWorkOrder(input: {
         type: "work_started",
         actor,
         label: "Work started",
+        source: "status",
+        confidence: "medium",
       });
     }
 
@@ -244,25 +324,39 @@ export function deriveEventsFromWorkOrder(input: {
         type: "completed",
         actor,
         label: "Work completed",
+        source: "status",
+        confidence: "medium",
       });
     }
   }
 
   if (norm(wo?.status) === "declined") {
+    const declinedTimestamp = coalesceTimestampWithConfidence(
+      { value: wo?.declined_at, confidence: "high" },
+      { value: wo?.updated_at, confidence: "low" },
+    );
     pushEvent(events, {
-      timestamp: coalesceTimestamp(wo?.declined_at, wo?.updated_at),
+      timestamp: declinedTimestamp.timestamp,
       type: "declined",
       actor,
       label: "Declined",
+      source: "approval",
+      confidence: declinedTimestamp.confidence,
     });
   }
 
   if (norm(wo?.status) === "approved") {
+    const approvedTimestamp = coalesceTimestampWithConfidence(
+      { value: wo?.approved_at, confidence: "high" },
+      { value: wo?.updated_at, confidence: "low" },
+    );
     pushEvent(events, {
-      timestamp: coalesceTimestamp(wo?.approved_at, wo?.updated_at),
+      timestamp: approvedTimestamp.timestamp,
       type: "approved",
       actor,
       label: "Approved",
+      source: "approval",
+      confidence: approvedTimestamp.confidence,
     });
   }
 
@@ -283,32 +377,50 @@ export function deriveEventsFromFindings(input: {
 
     const status = norm(finding.item.status);
     if (status === "fail" || status === "recommend") {
+      const recommendationTimestamp = coalesceTimestampWithConfidence(
+        { value: finding.item.estimateSubmittedAt, confidence: "high" },
+        { value: finding.item.estimateLastUpdatedAt, confidence: "low" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(finding.item.estimateSubmittedAt, finding.item.estimateLastUpdatedAt),
+        timestamp: recommendationTimestamp.timestamp,
         type: "recommendation_created",
         actor,
         label: "Recommendation created",
         meta,
+        source: "status",
+        confidence: recommendationTimestamp.confidence,
       });
     }
 
     if (Array.isArray(finding.item.photoUrls) && finding.item.photoUrls.length > 0) {
+      const evidenceTimestamp = coalesceTimestampWithConfidence(
+        { value: finding.item.estimateLastUpdatedAt, confidence: "medium" },
+        { value: input.sessionLastUpdated, confidence: "low" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(finding.item.estimateLastUpdatedAt, input.sessionLastUpdated),
+        timestamp: evidenceTimestamp.timestamp,
         type: "evidence_added",
         actor,
         label: "Photo evidence added",
         meta,
+        source: "evidence",
+        confidence: evidenceTimestamp.confidence,
       });
     }
 
     if (finding.item.findingReviewed) {
+      const sentForApprovalTimestamp = coalesceTimestampWithConfidence(
+        { value: finding.item.estimateLastUpdatedAt, confidence: "medium" },
+        { value: input.sessionLastUpdated, confidence: "low" },
+      );
       pushEvent(events, {
-        timestamp: coalesceTimestamp(finding.item.estimateLastUpdatedAt, input.sessionLastUpdated),
+        timestamp: sentForApprovalTimestamp.timestamp,
         type: "sent_for_approval",
         actor,
         label: "Sent for approval",
         meta,
+        source: "approval",
+        confidence: sentForApprovalTimestamp.confidence,
       });
     }
   }
@@ -343,6 +455,8 @@ export function deriveEventsFromPortalApproval(input: {
     actor,
     label: "Sent for approval",
     meta: lineTitle,
+    source: "approval",
+    confidence: "high",
   });
 
   const approval = norm(input.line.approval_state);
@@ -353,6 +467,8 @@ export function deriveEventsFromPortalApproval(input: {
       actor,
       label: "Approved",
       meta: lineTitle,
+      source: "approval",
+      confidence: "low",
     });
   } else if (approval === "declined") {
     pushEvent(events, {
@@ -361,6 +477,8 @@ export function deriveEventsFromPortalApproval(input: {
       actor,
       label: "Declined",
       meta: lineTitle,
+      source: "approval",
+      confidence: "low",
     });
   }
 
@@ -372,6 +490,8 @@ export function deriveEventsFromPortalApproval(input: {
       actor,
       label: "Status updated",
       meta: cleanText(input.line.status ?? null),
+      source: "status",
+      confidence: "medium",
     });
   }
 
@@ -382,6 +502,8 @@ export function deriveEventsFromPortalApproval(input: {
       actor,
       label: "Work started",
       meta: lineTitle,
+      source: "status",
+      confidence: "medium",
     });
   }
 
@@ -392,6 +514,8 @@ export function deriveEventsFromPortalApproval(input: {
       actor,
       label: "Work completed",
       meta: lineTitle,
+      source: "status",
+      confidence: "medium",
     });
   }
 
