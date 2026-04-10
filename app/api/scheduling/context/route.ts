@@ -4,8 +4,7 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
-
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 export async function GET() {
   const supabase = createServerSupabaseRoute();
@@ -31,7 +30,9 @@ export async function GET() {
     );
   }
 
-  const canEditAll = ADMIN_ROLES.has(String(me.role ?? "").toLowerCase());
+  const canEditAll = getActorCapabilities({
+    role: me.role,
+  }).canManageScheduling;
 
   let users: Array<{
     id: string;

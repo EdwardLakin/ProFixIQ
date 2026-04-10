@@ -4,9 +4,9 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 const MAX_ROWS = 500;
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
 
 // ✅ Canonical invite statuses (status is TEXT)
 const INVITE_STATUS = {
@@ -42,8 +42,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Profile for current user not found" }, { status: 403 });
   }
 
-  const role = String(me.role ?? "").toLowerCase();
-  if (!ADMIN_ROLES.has(role)) {
+  const actor = getActorCapabilities({ role: me.role });
+  if (!actor.canManageUsers) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

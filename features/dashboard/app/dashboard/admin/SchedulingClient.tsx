@@ -8,6 +8,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -89,8 +90,6 @@ type TabKey = "shifts" | "sessions";
 
 // Admins can view/edit all staff in shop.
 // Everyone else can still view their own shifts/sessions.
-const ADMIN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-
 /* ---------------------------------------------------------------------- */
 /* Theme tokens (burnt copper / metallic / glass)                          */
 /* ---------------------------------------------------------------------- */
@@ -322,8 +321,7 @@ export default function SchedulingClient(): JSX.Element {
     useState<boolean>(false);
 
   const isAdmin = useMemo(() => {
-    const r = (me?.role ?? "").toLowerCase();
-    return ADMIN_ROLES.has(r);
+    return getActorCapabilities({ role: me?.role }).canManageScheduling;
   }, [me?.role]);
 
   const canEditAll = isAdmin;
@@ -355,7 +353,9 @@ export default function SchedulingClient(): JSX.Element {
           setCurrentShopId(ctx.shopId);
           setUsers(ctx.users ?? []);
           // If not admin, force selection to self.
-          const admin = ADMIN_ROLES.has((ctx.me.role ?? "").toLowerCase());
+          const admin = getActorCapabilities({
+            role: ctx.me.role,
+          }).canManageScheduling;
           if (!admin) setUserId(ctx.me.id);
           setLoading(false);
           return;
@@ -399,7 +399,9 @@ export default function SchedulingClient(): JSX.Element {
         setMe(prof);
         setCurrentShopId(prof.shop_id);
 
-        const admin = ADMIN_ROLES.has((prof.role ?? "").toLowerCase());
+        const admin = getActorCapabilities({
+          role: prof.role,
+        }).canManageScheduling;
         if (!admin) {
           setUsers([prof]);
           setUserId(prof.id);
