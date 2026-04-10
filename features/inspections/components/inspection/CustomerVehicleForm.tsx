@@ -122,7 +122,7 @@ function CustomerAutocomplete({
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
-        const like = `%${term}%`;
+        const like = `%${term.replaceAll("%", "").replaceAll("_", "")}%`;
         const { data, error } = await supabase
           .from("customers")
           .select(
@@ -600,6 +600,11 @@ export default function CustomerVehicleForm({
                 value={customer.phone ?? ""}
                 onChange={(e) => safeSetCustomer("phone", e.target.value || null)}
               />
+              <CustomerAutocomplete
+                q={customer.phone ?? ""}
+                shopId={shopId}
+                onPick={handlePickedCustomer}
+              />
             </div>
 
             {/* Email */}
@@ -611,6 +616,11 @@ export default function CustomerVehicleForm({
                 placeholder="Email"
                 value={customer.email ?? ""}
                 onChange={(e) => safeSetCustomer("email", e.target.value || null)}
+              />
+              <CustomerAutocomplete
+                q={customer.email ?? ""}
+                shopId={shopId}
+                onPick={handlePickedCustomer}
               />
             </div>
 
