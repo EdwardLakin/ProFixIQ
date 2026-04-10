@@ -17,9 +17,12 @@ import type {
 
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+import { cn } from "@shared/lib/utils";
 
 type FindingRow = {
   sectionIndex: number;
@@ -961,7 +964,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         title="Inspection findings"
         description="Review findings before submission."
       >
-        <div className="rounded-2xl border border-white/10 bg-black/50 p-4 text-sm text-neutral-300">
+        <div className={cn(PANEL_VARIANTS.secondary, "p-4 text-sm text-neutral-300")}>
           Loading findings…
         </div>
       </PageShell>
@@ -975,7 +978,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     >
       <div className="mx-auto max-w-5xl space-y-4">
         {findings.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-black/50 p-4 text-sm text-neutral-300">
+          <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-neutral-300")}>
             No failed or recommended findings to review.
           </div>
         ) : (
@@ -994,7 +997,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             return (
               <div
                 key={key}
-                className="rounded-2xl border border-white/10 bg-black/60 p-4"
+                className={cn(PANEL_VARIANTS.primary, "p-4")}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -1005,16 +1008,12 @@ export default function InspectionFindingsPage(): JSX.Element {
                       {itemLabel}
                     </div>
                   </div>
-                  <div
-                    className={[
-                      "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                      status === "fail"
-                        ? "border border-red-500/40 bg-red-500/15 text-red-200"
-                        : "border border-amber-500/40 bg-amber-500/15 text-amber-200",
-                    ].join(" ")}
+                  <StatusBadge
+                    variant={status === "fail" ? "danger" : "warning"}
+                    className="px-3 py-1 text-[10px]"
                   >
                     {status}
-                  </div>
+                  </StatusBadge>
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -1179,7 +1178,7 @@ export default function InspectionFindingsPage(): JSX.Element {
           })
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/60 p-4">
+        <div className={cn(PANEL_VARIANTS.secondary, "flex flex-wrap items-center justify-between gap-3 p-4")}>
           <div className="text-sm text-neutral-300">
             Reviewed findings:{" "}
             <span className="font-semibold text-white">
