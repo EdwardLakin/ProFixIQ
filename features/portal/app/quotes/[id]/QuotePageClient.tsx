@@ -331,7 +331,7 @@ export default function QuotePageClient(): JSX.Element {
               {titleLabel}
             </h1>
             <p className="text-xs text-neutral-400 sm:text-sm">
-              Review your quote with parts, labor, and totals.
+              Review each recommendation with pricing context, then decide what should proceed.
             </p>
           </div>
 
@@ -371,11 +371,16 @@ export default function QuotePageClient(): JSX.Element {
                 <div key={line.id} className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+                        Recommendation
+                      </div>
                       <div className="text-sm font-semibold text-white">
                         {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
                       </div>
                       {line.complaint ? (
-                        <div className="mt-1 text-xs text-neutral-400">{line.complaint}</div>
+                        <div className="mt-1 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-neutral-300">
+                          <span className="text-neutral-500">Issue observed:</span> {line.complaint}
+                        </div>
                       ) : null}
                     </div>
 
@@ -389,7 +394,7 @@ export default function QuotePageClient(): JSX.Element {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor evidence</div>
                       <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.laborAmount)}</div>
                       <div className="mt-1 text-xs text-neutral-400">{line.laborHours.toFixed(1)} hr</div>
                     </div>
@@ -401,7 +406,7 @@ export default function QuotePageClient(): JSX.Element {
                     </div>
 
                     <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Line total</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Decision total</div>
                       <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.totalAmount)}</div>
                     </div>
                   </div>

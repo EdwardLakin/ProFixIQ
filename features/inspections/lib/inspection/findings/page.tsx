@@ -1002,7 +1002,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                      {row.sectionTitle}
+                      Decision unit • {row.sectionTitle}
                     </div>
                     <div className="text-lg font-semibold text-neutral-100">
                       {itemLabel}
@@ -1016,25 +1016,74 @@ export default function InspectionFindingsPage(): JSX.Element {
                   </StatusBadge>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1">
+                <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className={cn(PANEL_VARIANTS.secondary, "space-y-3 p-3")}>
                     <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                      Note
+                      Evidence and technician explanation
                     </div>
-                    <textarea
-                      className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
-                      value={String(row.item.notes ?? "")}
-                      onChange={(e) =>
-                        updateFinding(row.sectionIndex, row.itemIndex, {
-                          notes: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
-
-                  <div className="space-y-3">
                     <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                        Technician notes
+                      </div>
+                      <textarea
+                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        value={String(row.item.notes ?? "")}
+                        onChange={(e) =>
+                          updateFinding(row.sectionIndex, row.itemIndex, {
+                            notes: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <div>
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+                        <span className="rounded-full border border-white/10 px-3 py-1">
+                          Visual proof: {photos.length} photo{photos.length === 1 ? "" : "s"}
+                        </span>
+
+                        <input
+                          ref={(el) => {
+                            fileInputRefs.current[key] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            void handleUploadPhoto(row, file);
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 disabled:opacity-60"
+                          onClick={() => fileInputRefs.current[key]?.click()}
+                          disabled={isUploading}
+                        >
+                          {isUploading ? "Uploading photo..." : "Add photo evidence"}
+                        </button>
+                      </div>
+                      {photos.length > 0 ? (
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {photos.map((url, i) => (
+                            <PhotoThumbnail key={`${url}-${i}`} url={url} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-xs text-neutral-500">
+                          Add at least one photo for stronger customer approval confidence.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={cn(PANEL_VARIANTS.passive, "space-y-3 p-3")}>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      Recommendation and scope
+                    </div>
+                    <label className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
                         Labor hours
                       </div>
                       <input
@@ -1084,8 +1133,8 @@ export default function InspectionFindingsPage(): JSX.Element {
                     </label>
 
                     <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                        Parts
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                        Parts and quantities
                       </div>
                       <textarea
                         className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
@@ -1106,31 +1155,12 @@ export default function InspectionFindingsPage(): JSX.Element {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-                  <span className="rounded-full border border-white/10 px-3 py-1">
-                    Photos: {photos.length}
-                  </span>
-
-                  <input
-                    ref={(el) => {
-                      fileInputRefs.current[key] = el;
-                    }}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      void handleUploadPhoto(row, file);
-                    }}
-                  />
-
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 disabled:opacity-60"
-                    onClick={() => fileInputRefs.current[key]?.click()}
-                    disabled={isUploading}
+                    className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200 hover:bg-emerald-500/20"
+                    onClick={() => markReviewed(row)}
                   >
-                    {isUploading ? "Uploading photo..." : "Add photo"}
+                    {reviewed ? "Reviewed" : "Mark reviewed"}
                   </button>
 
                   <button
@@ -1156,23 +1186,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   >
                     Mark photo reviewed
                   </button>
-
-                  <button
-                    type="button"
-                    className="rounded-full border border-emerald-500/30 px-3 py-1 text-emerald-200 hover:bg-emerald-500/10"
-                    onClick={() => markReviewed(row)}
-                  >
-                    {reviewed ? "Reviewed" : "Mark reviewed"}
-                  </button>
                 </div>
-
-                {photos.length > 0 && (
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    {photos.map((url, i) => (
-                      <PhotoThumbnail key={`${url}-${i}`} url={url} />
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })
