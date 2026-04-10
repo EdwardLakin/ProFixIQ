@@ -21,6 +21,10 @@ import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
+import PageShell from "@/features/shared/components/PageShell";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
+import { cn } from "@shared/lib/utils";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -110,25 +114,21 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] sm:text-xs font-semibold tracking-wide";
-
-const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/35 border-blue-400/45 text-blue-100",
-  awaiting: "bg-sky-900/35 border-sky-400/40 text-sky-100",
-  queued: "bg-indigo-900/35 border-indigo-400/40 text-indigo-100",
-  in_progress: "bg-amber-900/30 border-amber-400/40 text-amber-100",
-  on_hold: "bg-amber-900/35 border-amber-400/45 text-amber-100",
-  planned: "bg-purple-900/35 border-purple-400/45 text-purple-100",
-  new: "bg-neutral-900/60 border-neutral-500/45 text-neutral-100",
-  completed: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
-  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
-  invoiced: "bg-teal-900/30 border-teal-400/40 text-teal-100",
-};
-
-const chip = (s: string | null | undefined): string => {
+const statusToBadgeVariant = (s: string | null | undefined) => {
   const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
-  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
+  const map: Record<KnownStatus, "neutral" | "info" | "active" | "warning" | "success"> = {
+    awaiting_approval: "info",
+    awaiting: "info",
+    queued: "active",
+    in_progress: "active",
+    on_hold: "warning",
+    planned: "neutral",
+    new: "neutral",
+    completed: "success",
+    ready_to_invoice: "success",
+    invoiced: "success",
+  };
+  return map[key] ?? "info";
 };
 
 // roles allowed to assign jobs
@@ -1201,9 +1201,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
   );
 
-  const cardBase =
-    "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-  const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
+  const cardInner = cn(PANEL_VARIANTS.passive, "p-3");
 
   // ✅ layout: when panel mode, show a 2-col grid and render FocusedJobModal as a right panel
   const showPanel = prefersPanel && !!focusedJobId;
@@ -1218,38 +1216,40 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={focusedJobId}
       />
 
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <PreviousPageButton />
-      </div>
+      <PageShell
+        eyebrow={wo?.custom_id ? `Work order ${wo.custom_id}` : "Work order"}
+        title={wo?.custom_id ? `Operational cockpit · ${wo.custom_id}` : "Operational cockpit"}
+        description="Run live jobs, review evidence, and process approvals from a single command surface."
+        actions={<PreviousPageButton />}
+      >
+        {authChecked && !currentUserId && (
+          <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}>
+            You appear signed out on this tab. If actions fail, open{" "}
+            <Link href="/sign-in" className="underline hover:text-white">
+              Sign In
+            </Link>{" "}
+            and return here.
+          </section>
+        )}
 
-      {authChecked && !currentUserId && (
-        <div className="mb-4 rounded-2xl border border-[rgba(184,115,51,0.30)] bg-black/45 p-3 text-sm text-amber-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
-          You appear signed out on this tab. If actions fail, open{" "}
-          <Link href="/sign-in" className="underline hover:text-white">
-            Sign In
-          </Link>{" "}
-          and return here.
-        </div>
-      )}
+        {viewError && (
+          <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-red-200")}>
+            {viewError}
+          </section>
+        )}
 
-      {viewError && (
-        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
-          {viewError}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="mt-6 grid gap-4">
-          <Skeleton className="h-24" />
-          <Skeleton className="h-40" />
-          <Skeleton className="h-56" />
-        </div>
-      ) : !wo ? (
-        <div className="mt-6 text-sm text-red-400">Work order not found.</div>
-      ) : (
-        <div className="space-y-6">
+        {loading ? (
+          <div className="mt-1 grid gap-4">
+            <Skeleton className="h-24" />
+            <Skeleton className="h-40" />
+            <Skeleton className="h-56" />
+          </div>
+        ) : !wo ? (
+          <div className="mt-2 text-sm text-red-400">Work order not found.</div>
+        ) : (
+          <div className="space-y-6">
           {/* Header */}
-          <div className={`${cardBase} p-4`}>
+          <section className={cn(PANEL_VARIANTS.primary, "p-4")}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
@@ -1274,24 +1274,21 @@ export default function WorkOrderIdClient(): JSX.Element {
                       Intake
                     </button>
 
-                  <span className={chip(wo.status)}>
+                  <StatusBadge variant={statusToBadgeVariant(wo.status)} size="md">
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
+                  </StatusBadge>
 
                   {isWaiter && (
-                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-red-500/60 bg-red-500/10 px-4 py-1.5 text-xs sm:text-sm font-semibold uppercase tracking-[0.16em] text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.9)]">
+                    <StatusBadge variant="danger" size="md">
                       Waiter
-                    </span>
+                    </StatusBadge>
                   )}
                 </div>
               </div>
-          </div>
-
-          <div className="mb-6">
-          </div>
+          </section>
 
           {/* Vehicle & Customer */}
-          <div className={`${cardBase} p-4`}>
+          <section className={cn(PANEL_VARIANTS.secondary, "p-4")}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
                 Vehicle &amp; Customer
@@ -1309,7 +1306,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             {showDetails && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {/* Vehicle */}
-                <div className={`${cardInner} p-3`}>
+                <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Vehicle
                   </h3>
@@ -1341,7 +1338,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
 
                 {/* Customer */}
-                <div className={`${cardInner} p-3`}>
+                <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Customer
                   </h3>
@@ -1377,11 +1374,15 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
           {/* Awaiting Customer Approval */}
-          <div
-            className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
+          <section
+            className={cn(
+              PANEL_VARIANTS.secondary,
+              "p-4",
+              hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
+            )}
             onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
             role={hasAnyApprovalItems ? "button" : undefined}
             tabIndex={hasAnyApprovalItems ? 0 : undefined}
@@ -1529,7 +1530,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </>
               )}
-          </div>
+          </section>
 
           {/* Workspace */}
           <section className={showPanel ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]" : "space-y-6"}>
@@ -1537,7 +1538,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             <div className="space-y-6">
 
             {/* Jobs list */}
-            <div className={`${cardBase} p-4 sm:p-5`}>
+            <section className={cn(PANEL_VARIANTS.primary, "p-4 sm:p-5")}>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold text-foreground sm:text-base">
@@ -1697,14 +1698,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                   })}
                 </div>
               )}
-            </div>
+            </section>
 
-            <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
+            <section className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-muted-foreground")}>
               <p>
                 Select a job card above to open the focused job panel with full editing, punch and
                 inspection controls.
               </p>
-            </div>
+            </section>
             </div>
 
             {/* Right: focused job workspace pane */}
@@ -1725,6 +1726,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         </div>
       )}
+      </PageShell>
 
       {/* Focused job modal (mobile fallback) */}
       {!prefersPanel && focusedOpen && focusedJobId && (
