@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 
 type DB = Database;
 
@@ -31,10 +33,6 @@ const INPUT_DARK =
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
-}
-
-function statusLabel(s: string | null | undefined): string {
-  return (s ?? "").replaceAll("_", " ").trim() || "—";
 }
 
 function queueAccent(waitingForParts: boolean): {
@@ -386,13 +384,16 @@ function ApprovalsList(): JSX.Element {
                       >
                         {w.waiting_for_parts ? "Waiting for parts" : "Quotes ready"}
                       </span>
+                      <StatusBadge variant={formatDecisionStatus({ workStatus: w.status }).variant}>
+                        {formatDecisionStatus({ workStatus: w.status }).label}
+                      </StatusBadge>
                     </div>
 
                     <div className="mt-3 text-base font-semibold text-white">
                       {w.shops?.name || "Shop"}
                     </div>
                     <div className="mt-1 text-sm text-neutral-300">
-                      {statusLabel(w.status)}
+                      {formatDecisionStatus({ workStatus: w.status }).label}
                       {typeof w.labor_hours === "number"
                         ? ` • ${w.labor_hours.toFixed(1)}h`
                         : ""}

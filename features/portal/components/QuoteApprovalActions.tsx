@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 
 type Decision = "approve" | "decline" | "defer";
 
@@ -16,21 +18,6 @@ type Props = {
   lines: LineLite[];
   onChanged?: () => void | Promise<void>;
 };
-
-function safeTrim(x: unknown): string {
-  return typeof x === "string" ? x.trim() : "";
-}
-
-function labelize(v: string | null | undefined): string {
-  return (v ?? "").replaceAll("_", " ").trim() || "—";
-}
-
-function pillClass(approval: string | null) {
-  const ap = safeTrim(approval).toLowerCase();
-  if (ap === "approved") return "border-emerald-400/50 bg-emerald-500/10 text-emerald-100";
-  if (ap === "declined") return "border-red-400/50 bg-red-500/10 text-red-100";
-  return "border-amber-400/40 bg-amber-500/10 text-amber-100";
-}
 
 export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: Props) {
   const [loadingLineId, setLoadingLineId] = useState<string | null>(null);
@@ -74,15 +61,19 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
   return (
     <div className="mt-6 space-y-3">
       <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-        Decision actions
+        Approvals
       </div>
       <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-neutral-400">
-        For each recommendation, choose one clear action. Approve is the primary path when you want work to proceed.
+        For each recommendation: confirm the issue, review evidence, then choose Approve or Decline.
       </div>
 
       <div className="space-y-2">
         {lines.map((l) => {
           const ap = l.approval_state ?? "pending";
+          const decisionStatus = formatDecisionStatus({
+            approvalState: l.approval_state,
+            workStatus: l.status,
+          });
           const isBusy = loadingLineId === l.id;
 
           return (
@@ -97,14 +88,9 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                       {l.description?.trim() || "Line item"}
                     </div>
 
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] ${pillClass(
-                        ap,
-                      )}`}
-                      title={`approval_state=${ap} status=${l.status ?? "null"}`}
-                    >
-                      {labelize(ap)} • {labelize(l.status)}
-                    </span>
+                    <StatusBadge variant={decisionStatus.variant}>
+                      {decisionStatus.label}
+                    </StatusBadge>
                   </div>
                 </div>
 

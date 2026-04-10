@@ -4,6 +4,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toaster, toast } from "sonner";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import DecisionTimeline, {
+  type DecisionTimelineStage,
+} from "@/features/shared/components/ui/DecisionTimeline";
+import {
+  formatDecisionStatus,
+  getDecisionStatusView,
+  resolveDecisionStatus,
+} from "@/features/shared/lib/decisionStatus";
 
 const COPPER = "#C57A4A";
 
@@ -73,16 +82,6 @@ function fmtDate(iso: string | null | undefined) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
-}
-
-function statusLabel(s: string | null | undefined) {
-  return (s ?? "pending").replaceAll("_", " ");
-}
-
-function badgeTone(kind: "pending" | "approved" | "mixed") {
-  if (kind === "approved") return "border-emerald-400/40 bg-emerald-400/10 text-emerald-100";
-  if (kind === "mixed") return "border-amber-400/40 bg-amber-400/10 text-amber-100";
-  return "border-sky-400/40 bg-sky-400/10 text-sky-100";
 }
 
 async function readJson(res: Response): Promise<unknown> {
@@ -231,12 +230,12 @@ export default function PortalApprovalsPage() {
 
   const lineSummary = (ln: ApprovalLine) => {
     const items = Array.isArray(ln.part_request_items) ? ln.part_request_items : [];
-    if (items.length === 0) return { kind: "pending" as const, text: "No items" };
+    if (items.length === 0) return getDecisionStatusView("recommended");
 
     const approvedCount = items.filter((it) => Boolean(it.approved)).length;
-    if (approvedCount === 0) return { kind: "pending" as const, text: "Awaiting your approval" };
-    if (approvedCount === items.length) return { kind: "approved" as const, text: "All items approved" };
-    return { kind: "mixed" as const, text: `${approvedCount}/${items.length} approved` };
+    if (approvedCount === 0) return getDecisionStatusView("awaiting_approval");
+    if (approvedCount === items.length) return getDecisionStatusView("approved");
+    return getDecisionStatusView("in_progress");
   };
 
   const shell =
@@ -349,6 +348,46 @@ export default function PortalApprovalsPage() {
                 const title = (ln.description ?? ln.complaint ?? "Job").trim();
                 const summary = lineSummary(ln);
                 const items = Array.isArray(ln.part_request_items) ? ln.part_request_items : [];
+                const lineDecisionStatus = formatDecisionStatus({
+                  approvalState: ln.approval_state,
+                  workStatus: ln.status,
+                });
+                const timelineStages: DecisionTimelineStage[] = [
+                  { key: "inspection", label: "Inspection completed", state: "past" },
+                  { key: "recommendation", label: "Recommendation issued", state: "past" },
+                  {
+                    key: "approval",
+                    label: "Awaiting approval",
+                    state:
+                      resolveDecisionStatus({
+                        approvalState: ln.approval_state,
+                        workStatus: ln.status,
+                      }) === "awaiting_approval"
+                        ? "current"
+                        : resolveDecisionStatus({
+                              approvalState: ln.approval_state,
+                              workStatus: ln.status,
+                            }) === "approved"
+                          ? "past"
+                          : "future",
+                  },
+                  {
+                    key: "execution",
+                    label: "Work started",
+                    state:
+                      resolveDecisionStatus({
+                        approvalState: ln.approval_state,
+                        workStatus: ln.status,
+                      }) === "in_progress"
+                        ? "current"
+                        : resolveDecisionStatus({
+                              approvalState: ln.approval_state,
+                              workStatus: ln.status,
+                            }) === "completed"
+                          ? "past"
+                          : "future",
+                  },
+                ];
 
                 return (
                   <div key={ln.id} className={glass}>
@@ -356,14 +395,7 @@ export default function PortalApprovalsPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="truncate text-sm font-semibold text-neutral-100">{title}</div>
-                          <span
-                            className={cx(
-                              "inline-flex items-center rounded-full border px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]",
-                              badgeTone(summary.kind),
-                            )}
-                          >
-                            {summary.text}
-                          </span>
+                          <StatusBadge variant={summary.variant}>{summary.label}</StatusBadge>
                         </div>
                         <div className="mt-2 text-xs text-neutral-300">
                           Decision needed: approve required parts so this work order can continue.
@@ -371,10 +403,10 @@ export default function PortalApprovalsPage() {
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-neutral-400">
                           <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
-                            Status: {statusLabel(ln.status)}
+                            Work: {lineDecisionStatus.label}
                           </span>
                           <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
-                            Approval: {statusLabel(ln.approval_state)}
+                            Approval: {formatDecisionStatus({ approvalState: ln.approval_state }).label}
                           </span>
                           {ln.hold_reason ? (
                             <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
@@ -398,6 +430,7 @@ export default function PortalApprovalsPage() {
                     </div>
 
                     <div className="px-4 py-4">
+                      <DecisionTimeline stages={timelineStages} orientation="vertical" className="mb-3" />
                       <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div>
                           <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
@@ -450,7 +483,7 @@ export default function PortalApprovalsPage() {
                                             : "border-white/10 bg-black/40 text-neutral-300",
                                         )}
                                       >
-                                        {approved ? "Approved" : "Not approved"}
+                                        {approved ? "Approved" : "Awaiting approval"}
                                       </span>
                                     </div>
                                   </div>

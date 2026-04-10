@@ -20,6 +20,7 @@ import { Button } from "@shared/components/ui/Button";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { cn } from "@shared/lib/utils";
@@ -990,6 +991,11 @@ export default function InspectionFindingsPage(): JSX.Element {
             ).toLowerCase() as InspectionItemStatus;
             const photos = row.item.photoUrls ?? [];
             const reviewed = row.item.findingReviewed === true;
+            const decisionStatus = formatDecisionStatus({
+              findingStatus: status,
+              hasEvidence: photos.length > 0,
+              isReviewed: reviewed,
+            });
             const laborHoursText = draftUi[key]?.laborHoursText ?? "";
             const partsText = draftUi[key]?.partsText ?? "";
             const isUploading = uploadingKey === key;
@@ -1009,17 +1015,17 @@ export default function InspectionFindingsPage(): JSX.Element {
                     </div>
                   </div>
                   <StatusBadge
-                    variant={status === "fail" ? "danger" : "warning"}
+                    variant={decisionStatus.variant}
                     className="px-3 py-1 text-[10px]"
                   >
-                    {status}
+                    {decisionStatus.label}
                   </StatusBadge>
                 </div>
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                   <div className={cn(PANEL_VARIANTS.secondary, "space-y-3 p-3")}>
                     <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                      Evidence and technician explanation
+                      Evidence
                     </div>
                     <label className="space-y-1">
                       <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
@@ -1080,7 +1086,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                   <div className={cn(PANEL_VARIANTS.passive, "space-y-3 p-3")}>
                     <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                      Recommendation and scope
+                      Recommendation
                     </div>
                     <label className="space-y-1">
                       <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
@@ -1186,6 +1192,9 @@ export default function InspectionFindingsPage(): JSX.Element {
                   >
                     Mark photo reviewed
                   </button>
+                </div>
+                <div className="mt-2 text-[11px] text-neutral-500">
+                  Action needed: mark reviewed so this recommendation can move to approval.
                 </div>
               </div>
             );

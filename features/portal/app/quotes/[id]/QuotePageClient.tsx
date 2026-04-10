@@ -6,6 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
+import DecisionTimeline, {
+  type DecisionTimelineStage,
+} from "@/features/shared/components/ui/DecisionTimeline";
+import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import {
   calculateTax,
   getTaxAmount,
@@ -84,10 +89,6 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
-}
-
-function labelize(v: string | null | undefined): string {
-  return (v ?? "").replaceAll("_", " ").trim() || "—";
 }
 
 function getShopProvinceCode(shop: ShopRow | null): ProvinceCode | null {
@@ -287,6 +288,32 @@ export default function QuotePageClient(): JSX.Element {
   const taxRes = provinceCode ? calculateTax(subtotal, provinceCode) : null;
   const taxAmount = taxRes ? getTaxAmount(taxRes) : 0;
   const grandTotal = subtotal + taxAmount;
+  const timelineStages: DecisionTimelineStage[] = [
+    { key: "inspection", label: "Inspection completed", state: "past" },
+    {
+      key: "recommendation",
+      label: "Recommendation issued",
+      state: lines.length > 0 ? "past" : "future",
+    },
+    {
+      key: "approval",
+      label: "Awaiting approval",
+      state: lines.some((line) => resolveDecisionStatus({ approvalState: line.approvalState }) === "awaiting_approval")
+        ? "current"
+        : lines.some((line) => resolveDecisionStatus({ approvalState: line.approvalState }) === "approved")
+          ? "past"
+          : "future",
+    },
+    {
+      key: "execution",
+      label: "Work started",
+      state: lines.some((line) => resolveDecisionStatus({ workStatus: line.status }) === "in_progress")
+        ? "current"
+        : lines.some((line) => resolveDecisionStatus({ workStatus: line.status }) === "completed")
+          ? "past"
+          : "future",
+    },
+  ];
 
   return (
     <div
@@ -334,6 +361,7 @@ export default function QuotePageClient(): JSX.Element {
               Review each recommendation with pricing context, then decide what should proceed.
             </p>
           </div>
+          <DecisionTimeline stages={timelineStages} className="mb-6" />
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
@@ -386,8 +414,22 @@ export default function QuotePageClient(): JSX.Element {
 
                     <div className="text-right">
                       <div className="text-sm font-semibold text-white">{formatCurrency(line.totalAmount)}</div>
-                      <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                        {labelize(line.approvalState)} • {labelize(line.status)}
+                      <div className="mt-1 flex justify-end">
+                        <StatusBadge
+                          variant={
+                            formatDecisionStatus({
+                              approvalState: line.approvalState,
+                              workStatus: line.status,
+                            }).variant
+                          }
+                        >
+                          {
+                            formatDecisionStatus({
+                              approvalState: line.approvalState,
+                              workStatus: line.status,
+                            }).label
+                          }
+                        </StatusBadge>
                       </div>
                     </div>
                   </div>

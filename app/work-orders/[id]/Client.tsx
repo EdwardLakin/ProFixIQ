@@ -23,8 +23,12 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import DecisionTimeline, {
+  type DecisionTimelineStage,
+} from "@/features/shared/components/ui/DecisionTimeline";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
+import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -99,37 +103,6 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
 
 type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
-
-/* ---------------------------- Badges ---------------------------- */
-
-type KnownStatus =
-  | "awaiting_approval"
-  | "awaiting"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "planned"
-  | "new"
-  | "completed"
-  | "ready_to_invoice"
-  | "invoiced";
-
-const statusToBadgeVariant = (s: string | null | undefined) => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
-  const map: Record<KnownStatus, "neutral" | "info" | "active" | "warning" | "success"> = {
-    awaiting_approval: "info",
-    awaiting: "info",
-    queued: "active",
-    in_progress: "active",
-    on_hold: "warning",
-    planned: "neutral",
-    new: "neutral",
-    completed: "success",
-    ready_to_invoice: "success",
-    invoiced: "success",
-  };
-  return map[key] ?? "info";
-};
 
 // roles allowed to assign jobs
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -862,6 +835,56 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   const hasAnyApprovalItems = approvalPending.length > 0 || approvalPendingQuotes.length > 0;
+  const decisionTimelineStages = useMemo<DecisionTimelineStage[]>(() => {
+    const hasRecommendedLines = lines.length > 0;
+    const hasAwaitingApproval = lines.some(
+      (line) =>
+        resolveDecisionStatus({
+          approvalState: line.approval_state,
+          workStatus: line.status,
+        }) === "awaiting_approval",
+    );
+    const hasDeclined = lines.some(
+      (line) =>
+        resolveDecisionStatus({
+          approvalState: line.approval_state,
+          workStatus: line.status,
+        }) === "declined",
+    );
+    const hasInProgress = lines.some(
+      (line) =>
+        resolveDecisionStatus({
+          approvalState: line.approval_state,
+          workStatus: line.status,
+        }) === "in_progress",
+    );
+    const isCompleted =
+      resolveDecisionStatus({ workStatus: wo?.status ?? null }) === "completed";
+
+    return [
+      { key: "inspection", label: "Inspection completed", state: "past" },
+      {
+        key: "recommendation",
+        label: "Recommendation issued",
+        state: hasRecommendedLines ? "past" : "future",
+      },
+      {
+        key: "approval",
+        label: hasDeclined ? "Declined" : "Awaiting approval",
+        state: hasAwaitingApproval ? "current" : hasDeclined || hasInProgress || isCompleted ? "past" : "future",
+      },
+      {
+        key: "execution",
+        label: "Work started",
+        state: hasInProgress ? "current" : isCompleted ? "past" : "future",
+      },
+      {
+        key: "completed",
+        label: "Completed",
+        state: isCompleted ? "current" : "future",
+      },
+    ];
+  }, [lines, wo?.status]);
 
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -1274,8 +1297,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                       Intake
                     </button>
 
-                  <StatusBadge variant={statusToBadgeVariant(wo.status)} size="md">
-                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                  <StatusBadge
+                    variant={formatDecisionStatus({ workStatus: wo.status }).variant}
+                    size="md"
+                  >
+                    {formatDecisionStatus({ workStatus: wo.status }).label}
                   </StatusBadge>
 
                   {isWaiter && (
@@ -1286,6 +1312,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
               </div>
           </section>
+
+          <DecisionTimeline stages={decisionTimelineStages} />
 
           {/* Vehicle & Customer */}
           <section className={cn(PANEL_VARIANTS.secondary, "p-4")}>
@@ -1425,8 +1453,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 <div className="mt-0.5 text-[11px] text-muted-foreground">
                                   {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
                                   {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •
-                                  Status: {(ln.status ?? "awaiting").replaceAll("_", " ")} •
-                                  Approval: {(ln.approval_state ?? "pending").replaceAll("_", " ")}
+                                  Decision:{" "}
+                                  {
+                                    formatDecisionStatus({
+                                      approvalState: ln.approval_state,
+                                      workStatus: ln.status,
+                                    }).label
+                                  }
                                 </div>
 
                                 {isAwaitingPartsBase && (
@@ -1490,7 +1523,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 {typeof q.est_labor_hours === "number"
                                   ? `${q.est_labor_hours}h`
                                   : "—"}{" "}
-                                • Status: {(q.status ?? "pending_parts").replaceAll("_", " ")}
+                                • Decision: {formatDecisionStatus({ workStatus: q.status }).label}
                               </div>
                               {q.notes && (
                                 <div className="mt-1 text-[11px] text-muted-foreground">
