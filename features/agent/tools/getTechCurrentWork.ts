@@ -101,6 +101,19 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as Row[];
+  const lineIds = rows.map((row) => row.id);
+
+  const { data: activeSegments } =
+    lineIds.length === 0
+      ? { data: [] as Array<{ work_order_line_id: string }> }
+      : await supabase
+          .from("work_order_line_labor_segments")
+          .select("work_order_line_id")
+          .eq("shop_id", ctx.shopId)
+          .is("ended_at", null)
+          .in("work_order_line_id", lineIds);
+
+  const activeLineIds = new Set((activeSegments ?? []).map((segment) => segment.work_order_line_id));
 
   if (rows.length === 0) {
     return {
@@ -127,6 +140,7 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
           : `/mobile/jobs/${row.id}`,
         label:
           `${wo?.custom_id ? `WO #${wo.custom_id}` : "Job"} • ` +
+          `${activeLineIds.has(row.id) ? "active_now" : "queued"} • ` +
           `${row.status ?? "unknown"} • ` +
           `${row.description ?? row.complaint ?? "No description"}`,
       };

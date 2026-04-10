@@ -128,18 +128,17 @@ export default function PunchController(): JSX.Element {
   }
 
   async function countActiveJobsForTech(uid: string): Promise<number> {
-    const { data: activeLines, error: listErr } = await supabase
-      .from("work_order_lines")
+    const { data: activeSegments, error: listErr } = await supabase
+      .from("work_order_line_labor_segments")
       .select("id")
-      .eq("assigned_tech_id", uid)
-      .not("punched_in_at", "is", null)
-      .is("punched_out_at", null);
+      .eq("technician_id", uid)
+      .is("ended_at", null);
 
     if (listErr) {
       throw new Error(listErr.message);
     }
 
-    return activeLines?.length ?? 0;
+    return activeSegments?.length ?? 0;
   }
 
   async function insertPunch(

@@ -33,6 +33,10 @@ type LineLite = Pick<
 >;
 
 type ShopTimezoneLite = Pick<DB["public"]["Tables"]["shops"]["Row"], "timezone">;
+type LaborSegmentLite = Pick<
+  DB["public"]["Tables"]["work_order_line_labor_segments"]["Row"],
+  "work_order_line_id" | "technician_id" | "started_at" | "ended_at"
+>;
 
 export type TechnicianIdleBreakdown = {
   availableIdleSeconds: number;
@@ -229,7 +233,7 @@ export async function getTechnicianLoadMetricsWithClient(
     };
   }
 
-  const [linesRes, shiftsRes] = await Promise.all([
+  const [linesRes, shiftsRes, segmentsRes] = await Promise.all([
     supabase
       .from("work_order_lines")
       .select("id, shop_id, work_order_id, assigned_tech_id, punched_in_at, punched_out_at, labor_time")
@@ -244,13 +248,22 @@ export async function getTechnicianLoadMetricsWithClient(
       .in("user_id", techIds)
       .lt("start_time", dayEndIso)
       .or(`end_time.is.null,end_time.gte.${dayStartIso}`),
+    supabase
+      .from("work_order_line_labor_segments")
+      .select("work_order_line_id, technician_id, started_at, ended_at")
+      .eq("shop_id", shopId)
+      .in("technician_id", techIds)
+      .lt("started_at", dayEndIso)
+      .or(`ended_at.is.null,ended_at.gte.${dayStartIso}`),
   ]);
 
   if (linesRes.error) throw linesRes.error;
   if (shiftsRes.error) throw shiftsRes.error;
+  if (segmentsRes.error) throw segmentsRes.error;
 
   const lines = (linesRes.data as LineLite[] | null) ?? [];
   const shifts = (shiftsRes.data as ShiftLite[] | null) ?? [];
+  const laborSegments = (segmentsRes.data as LaborSegmentLite[] | null) ?? [];
   const shiftIds = shifts.map((s) => s.id).filter(Boolean);
 
   let punches: PunchLite[] = [];
@@ -300,52 +313,53 @@ export async function getTechnicianLoadMetricsWithClient(
   );
 
   const durationTotals = new Map<string, { totalSeconds: number; count: number }>();
+  const activeLineIdsByTech = new Map<string, Set<string>>();
+  const lineDurationByTech = new Map<string, Map<string, number>>();
 
-  for (const line of lines) {
-    const techId = line.assigned_tech_id;
+  for (const segment of laborSegments) {
+    const techId = segment.technician_id;
     if (!techId) continue;
+
     const row = rowsByTech.get(techId);
     if (!row) continue;
 
-    const activeSeconds = clampOverlapSeconds(
-      line.punched_in_at,
-      line.punched_out_at,
+    const segSeconds = clampOverlapSeconds(
+      segment.started_at,
+      segment.ended_at,
       dayStartMs,
       dayEndMs,
       nowMs,
     );
+    row.activeSecondsToday += segSeconds;
 
-    row.activeSecondsToday += activeSeconds;
-
-    if (line.punched_in_at && !line.punched_out_at) {
-      row.currentActiveJobs += 1;
+    if (!segment.ended_at && segment.work_order_line_id) {
+      const activeSet = activeLineIdsByTech.get(techId) ?? new Set<string>();
+      activeSet.add(segment.work_order_line_id);
+      activeLineIdsByTech.set(techId, activeSet);
     }
 
-    if (line.punched_in_at && line.punched_out_at) {
-      const outMs = new Date(line.punched_out_at).getTime();
-      const inMs = new Date(line.punched_in_at).getTime();
-
-      if (
-        outMs >= dayStartMs &&
-        outMs < dayEndMs &&
-        Number.isFinite(inMs) &&
-        Number.isFinite(outMs) &&
-        outMs > inMs
-      ) {
-        row.completedJobsToday += 1;
-
-        const item = durationTotals.get(techId) ?? { totalSeconds: 0, count: 0 };
-        item.totalSeconds += clampOverlapSeconds(
-          line.punched_in_at,
-          line.punched_out_at,
-          dayStartMs,
-          dayEndMs,
-          nowMs,
-        );
-        item.count += 1;
-        durationTotals.set(techId, item);
-      }
+    if (segment.work_order_line_id) {
+      const byLine = lineDurationByTech.get(techId) ?? new Map<string, number>();
+      byLine.set(segment.work_order_line_id, (byLine.get(segment.work_order_line_id) ?? 0) + segSeconds);
+      lineDurationByTech.set(techId, byLine);
     }
+
+    if (!segment.ended_at) continue;
+
+    const endedMs = new Date(segment.ended_at).getTime();
+    if (!Number.isFinite(endedMs) || endedMs < dayStartMs || endedMs >= dayEndMs) continue;
+
+    row.completedJobsToday += 1;
+    const item = durationTotals.get(techId) ?? { totalSeconds: 0, count: 0 };
+    item.totalSeconds += segSeconds;
+    item.count += 1;
+    durationTotals.set(techId, item);
+  }
+
+  for (const [techId, activeLineIds] of activeLineIdsByTech.entries()) {
+    const row = rowsByTech.get(techId);
+    if (!row) continue;
+    row.currentActiveJobs = activeLineIds.size;
   }
 
   const punchesByShiftId = new Map<string, PunchLite[]>();
@@ -379,7 +393,6 @@ export async function getTechnicianLoadMetricsWithClient(
 
     const netShiftSeconds = Math.max(0, shiftSeconds - breakSeconds);
     row.shiftSecondsToday += netShiftSeconds;
-    row.workedSecondsToday = row.shiftSecondsToday;
   }
 
   for (const line of lines) {
@@ -387,12 +400,9 @@ export async function getTechnicianLoadMetricsWithClient(
     if (!techId) continue;
     const row = rowsByTech.get(techId);
     if (!row) continue;
-    if (!line.punched_in_at || !line.punched_out_at) continue;
 
-    const outMs = new Date(line.punched_out_at).getTime();
-    const inMs = new Date(line.punched_in_at).getTime();
-    if (!Number.isFinite(inMs) || !Number.isFinite(outMs) || outMs <= inMs) continue;
-    if (outMs < dayStartMs || outMs >= dayEndMs) continue;
+    const actualSeconds = lineDurationByTech.get(techId)?.get(line.id) ?? 0;
+    if (actualSeconds <= 0) continue;
 
     row.expectedActualSummary.eligibleCompletedJobs += 1;
 
@@ -403,15 +413,6 @@ export async function getTechnicianLoadMetricsWithClient(
     if (expectedSecondsRaw <= 0) continue;
 
     row.expectedActualSummary.expectedDataAvailable = true;
-    const actualSeconds = clampOverlapSeconds(
-      line.punched_in_at,
-      line.punched_out_at,
-      dayStartMs,
-      dayEndMs,
-      nowMs,
-    );
-
-    if (actualSeconds <= 0) continue;
 
     const varianceSeconds = actualSeconds - expectedSecondsRaw;
     const efficiencyPct = toPercent(expectedSecondsRaw, actualSeconds);
@@ -419,7 +420,7 @@ export async function getTechnicianLoadMetricsWithClient(
     row.completedJobVariance.push({
       lineId: line.id,
       workOrderId: line.work_order_id ?? null,
-      completedAtIso: line.punched_out_at,
+      completedAtIso: line.punched_out_at ?? line.punched_in_at ?? dayEndIso,
       expectedSeconds: expectedSecondsRaw,
       actualActiveSeconds: actualSeconds,
       varianceSeconds,
@@ -428,6 +429,7 @@ export async function getTechnicianLoadMetricsWithClient(
   }
 
   for (const row of rowsByTech.values()) {
+    row.workedSecondsToday = row.activeSecondsToday;
     const totals = durationTotals.get(row.techId);
     row.avgJobDurationSeconds =
       totals && totals.count > 0 ? Math.round(totals.totalSeconds / totals.count) : 0;

@@ -22,11 +22,10 @@ export async function POST() {
   const admin = createAdminSupabase();
 
   const { data: activeJobs, error: activeJobsErr } = await admin
-    .from("work_order_lines")
+    .from("work_order_line_labor_segments")
     .select("id")
-    .eq("assigned_tech_id", user.id)
-    .not("punched_in_at", "is", null)
-    .is("punched_out_at", null)
+    .eq("technician_id", user.id)
+    .is("ended_at", null)
     .limit(2);
 
   if (activeJobsErr) return NextResponse.json({ error: activeJobsErr.message }, { status: 500 });

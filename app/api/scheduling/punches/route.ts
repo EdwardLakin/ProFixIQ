@@ -124,12 +124,11 @@ export async function POST(req: NextRequest) {
 
   if (body.event_type === "end_shift" && shift.user_id) {
     const { data: activeJobPunches, error: activeJobsErr } = await admin
-      .from("work_order_lines")
+      .from("work_order_line_labor_segments")
       .select("id")
       .eq("shop_id", a.me.shop_id)
-      .eq("assigned_tech_id", shift.user_id)
-      .not("punched_in_at", "is", null)
-      .is("punched_out_at", null);
+      .eq("technician_id", shift.user_id)
+      .is("ended_at", null);
 
     if (activeJobsErr) {
       return NextResponse.json({ error: activeJobsErr.message }, { status: 500 });

@@ -47,14 +47,27 @@ export function ActiveJobWidget(): JSX.Element {
         return;
       }
 
-      // 🔍 Find the current user's active punched-in line
+      const { data: activeSegment, error: activeSegmentErr } = await supabase
+        .from("work_order_line_labor_segments")
+        .select("work_order_line_id")
+        .eq("technician_id", user.id)
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (activeSegmentErr) throw activeSegmentErr;
+
+      if (!activeSegment?.work_order_line_id) {
+        setState({ line: null, workOrder: null, vehicle: null });
+        setLoading(false);
+        return;
+      }
+
       const { data: line, error: lineErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("assigned_tech_id", user.id)
-        .not("punched_in_at", "is", null)
-        .is("punched_out_at", null)
-        .order("punched_in_at", { ascending: false })
+        .eq("id", activeSegment.work_order_line_id)
         .maybeSingle<WorkOrderLine>();
 
       if (lineErr) throw lineErr;
