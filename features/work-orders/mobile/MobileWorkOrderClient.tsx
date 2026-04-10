@@ -690,6 +690,29 @@ export default function MobileWorkOrderClient({
     );
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
+  const inProgressCount = useMemo(
+    () => lines.filter((l) => (l.status ?? "").toLowerCase() === "in_progress").length,
+    [lines],
+  );
+  const onHoldCount = useMemo(
+    () => lines.filter((l) => (l.status ?? "").toLowerCase() === "on_hold").length,
+    [lines],
+  );
+  const unassignedCount = useMemo(
+    () => lines.filter((l) => !l.assigned_tech_id).length,
+    [lines],
+  );
+  const awaitingPartsCount = useMemo(
+    () =>
+      lines.filter((l) => {
+        const holdReason = (l.hold_reason ?? "").toLowerCase();
+        return (
+          ((l.status ?? "").toLowerCase() === "on_hold" && holdReason.includes("part")) ||
+          holdReason.includes("quote")
+        );
+      }).length,
+    [lines],
+  );
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -922,6 +945,25 @@ export default function MobileWorkOrderClient({
         <div className="text-sm text-red-300">Work order not found.</div>
       ) : (
         <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">In progress</div>
+              <div className="mt-1 text-base font-semibold text-[var(--accent-copper-light)]">{inProgressCount}</div>
+            </div>
+            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">On hold</div>
+              <div className="mt-1 text-base font-semibold text-amber-200">{onHoldCount}</div>
+            </div>
+            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Parts waiting</div>
+              <div className="mt-1 text-base font-semibold text-sky-200">{awaitingPartsCount}</div>
+            </div>
+            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Unassigned</div>
+              <div className="mt-1 text-base font-semibold text-neutral-200">{unassignedCount}</div>
+            </div>
+          </div>
+
           {/* Header card */}
           <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -959,7 +1001,7 @@ export default function MobileWorkOrderClient({
               </div>
             </div>
 
-            <div className="mt-3 grid gap-3 text-[11px] text-neutral-300 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 text-[11px] text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <div className="text-neutral-500">Created</div>
                 <div>{createdAtText}</div>
@@ -1006,7 +1048,7 @@ export default function MobileWorkOrderClient({
             </div>
 
             {showDetails && (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
                 <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3">
                   <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                     Vehicle
@@ -1136,7 +1178,7 @@ export default function MobileWorkOrderClient({
                           key={ln.id}
                           className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3"
                         >
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-white">
                                 {idx + 1}.{" "}
@@ -1235,7 +1277,7 @@ export default function MobileWorkOrderClient({
                         key={q.id}
                         className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3"
                       >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium text-white">
                               {idx + 1}. {q.description}
