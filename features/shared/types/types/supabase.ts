@@ -6924,6 +6924,54 @@ export type Database = {
           },
         ]
       }
+      optimization_actions: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          opportunity_id: string
+          payload: Json
+          shop_id: string
+          type: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_id: string
+          payload?: Json
+          shop_id: string
+          type: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_id?: string
+          payload?: Json
+          shop_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "optimization_actions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "optimization_actions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_barcodes: {
         Row: {
           barcode: string
