@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   OptimizationEngineOutput,
+  OptimizationGroup,
   OptimizationImpactLevel,
   OptimizationOpportunity,
 } from "@/features/optimization/types";
@@ -134,6 +135,42 @@ function labelForGroup(line: LineWithOrder, menuById: Map<string, MenuItemSlim>)
   return line.service_code?.trim() || line.description?.trim() || "Service";
 }
 
+function normalizeFrequency(count: number, maxCount: number): number {
+  if (maxCount <= 0) return 0;
+  return clamp01(count / maxCount);
+}
+
+function classifyPriorityBand(score: number): OptimizationOpportunity["priorityBand"] {
+  if (score >= 0.85) return "critical";
+  if (score >= 0.65) return "high";
+  if (score >= 0.45) return "medium";
+  return "low";
+}
+
+function impactWeight(impactLevel: OptimizationImpactLevel): number {
+  if (impactLevel === "high") return 1;
+  if (impactLevel === "medium") return 0.6;
+  return 0.3;
+}
+
+function getOpportunityJobCount(opportunity: OptimizationOpportunity): number {
+  const meta = opportunity.meta ?? {};
+  return (
+    toNum(meta.jobsAnalyzed) ??
+    toNum(meta.jobs) ??
+    toNum(meta.sourceFamilyCount) ??
+    toNum(meta.flaggedFindings) ??
+    0
+  );
+}
+
+function getServiceGroupKey(opportunity: OptimizationOpportunity): string {
+  const meta = opportunity.meta ?? {};
+  const explicitGroup = typeof meta.serviceGroupKey === "string" ? meta.serviceGroupKey : null;
+  if (explicitGroup) return explicitGroup;
+  return opportunity.type;
+}
+
 function buildPriceNormalizationSignals(params: {
   lines: LineWithOrder[];
   menuById: Map<string, MenuItemSlim>;
@@ -178,13 +215,15 @@ function buildPriceNormalizationSignals(params: {
 
     opportunities.push({
       id: `pricing:${key}`,
-      optimizationType: "pricing_normalization",
+      type: "pricing_normalization",
       title: `Normalize pricing for ${serviceLabel}`,
       summary:
         `${priceValues.length} historical jobs show meaningful price spread. ` +
         `Median is $${med.toFixed(2)} with ${under} underpriced and ${over} overpriced outliers.`,
       confidence,
       impactLevel: inferImpactLevel(confidence * Math.min(1, (under + over) / 5)),
+      priorityScore: 0,
+      priorityBand: "low",
       estimatedValue:
         under > 0
           ? roundMoney(
@@ -194,25 +233,25 @@ function buildPriceNormalizationSignals(params: {
                 Math.max(1, priceValues.length),
             )
           : undefined,
-      sourceBasis: [
-        `${priceValues.length} shop-scoped work-order lines in matching service cluster`,
-        `Robust center: median $${med.toFixed(2)} (IQR $${iqr.toFixed(2)})`,
-        currentMenu ? `Current menu price observed at $${currentMenu.toFixed(2)}` : "No direct menu anchor found",
+      reasoning: [
+        `Observed across ${priceValues.length} jobs in this service cluster`,
+        `Price variance is ${(variationRatio * 100).toFixed(0)}% around a median of $${med.toFixed(2)}`,
+        `${under + over} outliers detected outside the expected pricing band`,
       ],
+      sourceBasis: `Price clustering from ${priceValues.length} work-order lines with median $${med.toFixed(2)} and IQR $${iqr.toFixed(2)}.`,
       suggestedAction:
         `Review this cluster and set a standard target near $${roundMoney(med).toFixed(2)} ` +
         `(keep exceptions documented by severity/vehicle class).`,
-      targetRefs: [
-        ...(lineSeed.menu_item_id
-          ? [{ entityType: "menu_item" as const, id: lineSeed.menu_item_id, label: serviceLabel }]
-          : []),
-        { entityType: "service_family", id: key, label: serviceLabel },
-      ],
+      targetRefs: {
+        menuItemId: lineSeed.menu_item_id ?? undefined,
+      },
       meta: {
         jobsAnalyzed: priceValues.length,
         recommendedPrice: roundMoney(med),
         underpricedOutliers: under,
         overpricedOutliers: over,
+        currentMenuPrice: currentMenu ?? undefined,
+        serviceGroupKey: key,
       },
     });
 
@@ -228,23 +267,30 @@ function buildPriceNormalizationSignals(params: {
         const laborConfidence = clamp01(0.45 + Math.min(laborValues.length, 24) / 60 + Math.min(laborDeviation, 0.8) * 0.35);
         opportunities.push({
           id: `pricing:labor:${key}`,
-          optimizationType: "pricing_normalization",
+          type: "pricing_normalization",
           title: `Labor-hour variance on ${serviceLabel}`,
           summary:
             `${laborValues.length} jobs have labor-time entries with a wide spread. ` +
             `Median labor is ${laborMed.toFixed(2)}h and band variance is high.`,
           confidence: laborConfidence,
           impactLevel: inferImpactLevel(laborConfidence * 0.8),
-          sourceBasis: [
-            `${laborValues.length} comparable jobs with recorded labor_time`,
-            `Median labor ${laborMed.toFixed(2)}h (IQR ${laborIqr.toFixed(2)}h)`,
+          priorityScore: 0,
+          priorityBand: "low",
+          reasoning: [
+            `Observed across ${laborValues.length} jobs with labor-time capture`,
+            `Labor spread is ${laborIqr.toFixed(2)}h around a ${laborMed.toFixed(2)}h median`,
           ],
+          sourceBasis: `Labor-time distribution shows median ${laborMed.toFixed(2)}h with IQR ${laborIqr.toFixed(2)}h.`,
           suggestedAction:
             `Review estimator consistency and define a default labor baseline around ${laborMed.toFixed(2)}h for this service family.`,
-          targetRefs: [{ entityType: "service_family", id: key, label: serviceLabel }],
+          targetRefs: {
+            menuItemId: lineSeed.menu_item_id ?? undefined,
+          },
           meta: {
+            jobsAnalyzed: laborValues.length,
             laborMedianHours: Number(laborMed.toFixed(2)),
             laborIqrHours: Number(laborIqr.toFixed(2)),
+            serviceGroupKey: key,
           },
         });
       }
@@ -268,24 +314,31 @@ function buildPriceNormalizationSignals(params: {
         const markupConfidence = clamp01(0.44 + Math.min(partMarkupValues.length, 18) / 54 + Math.min(markupIqr, 1.2) * 0.22);
         opportunities.push({
           id: `pricing:markup:${key}`,
-          optimizationType: "pricing_normalization",
+          type: "pricing_normalization",
           title: `Part markup variance on ${serviceLabel}`,
           summary:
             `Markup proxy varies more than expected on low-labor cases. ` +
             `Median is ${markupMedian.toFixed(2)}x with notable spread.`,
           confidence: markupConfidence,
           impactLevel: inferImpactLevel(markupConfidence * 0.75),
-          sourceBasis: [
-            `${partMarkupValues.length} low-labor jobs with captured part cost`,
-            `Markup median ${markupMedian.toFixed(2)}x (IQR ${markupIqr.toFixed(2)}x)`,
-            "Markup signal only uses low-labor lines to keep inference conservative",
+          priorityScore: 0,
+          priorityBand: "low",
+          reasoning: [
+            `Observed across ${partMarkupValues.length} low-labor jobs with part-cost capture`,
+            `Part markup spread is ${markupIqr.toFixed(2)}x around ${markupMedian.toFixed(2)}x median`,
+            "Signal constrained to low-labor jobs to reduce mixed-cost noise",
           ],
+          sourceBasis: `Parts-only markup signal from ${partMarkupValues.length} jobs with median ${markupMedian.toFixed(2)}x markup.`,
           suggestedAction:
             `Review parts matrix for this service and align advisor quoting to a target near ${markupMedian.toFixed(2)}x when parts-only patterns apply.`,
-          targetRefs: [{ entityType: "service_family", id: key, label: serviceLabel }],
+          targetRefs: {
+            menuItemId: lineSeed.menu_item_id ?? undefined,
+          },
           meta: {
+            jobsAnalyzed: partMarkupValues.length,
             markupMedian: Number(markupMedian.toFixed(2)),
             markupIqr: Number(markupIqr.toFixed(2)),
+            serviceGroupKey: key,
           },
         });
       }
@@ -367,37 +420,32 @@ function buildInspectionCoverageSignals(params: {
 
     opportunities.push({
       id: `inspection:${family}`,
-      optimizationType: "inspection_coverage_gap",
+      type: "inspection_coverage_gap",
       title: `Inspection coverage gap: ${familyLabel}`,
       summary:
         `${stats.jobs} jobs mapped to ${familyLabel}, but only ${Math.round(coverageRate * 100)}% ` +
         `show inspection linkage. This suggests inconsistent inspection usage for a repeat service family.`,
       confidence,
       impactLevel: inferImpactLevel(confidence * (1 - coverageRate)),
-      sourceBasis: [
-        `${stats.jobs} work-order lines observed in this family`,
-        `${stats.withInspection} lines had inspection session/template/work-order inspection linkage`,
-        `${templateMatches.length} matching templates currently published; ${suggestionMatches.length} pending template suggestions`,
+      priorityScore: 0,
+      priorityBand: "low",
+      reasoning: [
+        `Observed across ${stats.jobs} jobs in ${familyLabel}`,
+        `Inspection linkage is ${Math.round(coverageRate * 100)}% for this family`,
+        `${templateMatches.length} related templates exist with ${suggestionMatches.length} pending suggestions`,
       ],
+      sourceBasis: `${stats.withInspection} of ${stats.jobs} lines include inspection linkage in this service family.`,
       suggestedAction:
         `Review ${familyLabel} defaults and attach a standard inspection template to the most common menu items before expanding coverage rules.`,
-      targetRefs: [
-        ...[...stats.menuRefs].slice(0, 3).map((menuId) => ({
-          entityType: "menu_item" as const,
-          id: menuId,
-          label: menuById.get(menuId)?.name ?? stats.sampleLabel,
-        })),
-        ...templateMatches.slice(0, 2).map((template) => ({
-          entityType: "inspection_template" as const,
-          id: template.id,
-          label: template.template_name,
-        })),
-        { entityType: "service_family", id: family, label: familyLabel },
-      ],
+      targetRefs: {
+        menuItemId: [...stats.menuRefs][0],
+        inspectionTemplateId: templateMatches[0]?.id,
+      },
       meta: {
         jobs: stats.jobs,
         coverageRate: Number(coverageRate.toFixed(2)),
         inspectionLinkedRate: Number(linkedRate.toFixed(2)),
+        serviceGroupKey: family,
       },
     });
   }
@@ -454,30 +502,30 @@ function buildMissedRevenueSignals(params: {
 
     opportunities.push({
       id: `revenue:pair:${a}:${b}`,
-      optimizationType: "missed_revenue",
+      type: "missed_revenue",
       title: `Companion service often missed: ${a.replaceAll("_", " ")} → ${b.replaceAll("_", " ")}`,
       summary:
         `${bothCount} of ${aCount} similar jobs included both service families. ` +
         `${missingCount} jobs included ${a.replaceAll("_", " ")} but not ${b.replaceAll("_", " ")}.`,
       confidence,
       impactLevel: inferImpactLevel(confidence * Math.min(1, missingCount / 10)),
+      priorityScore: 0,
+      priorityBand: "low",
       estimatedValue: roundMoney(missingCount * 18),
-      sourceBasis: [
-        `${aCount} historical work orders containing ${a.replaceAll("_", " ")}`,
-        `${bothCount} work orders also contained ${b.replaceAll("_", " ")}`,
-        `Association confidence ${(confidenceAB * 100).toFixed(0)}%`,
+      reasoning: [
+        `${bothCount} of ${aCount} ${a.replaceAll("_", " ")} jobs also sold ${b.replaceAll("_", " ")}`,
+        `${missingCount} jobs included ${a.replaceAll("_", " ")} without ${b.replaceAll("_", " ")}`,
+        `Association confidence is ${(confidenceAB * 100).toFixed(0)}%`,
       ],
+      sourceBasis: `Companion-service correlation measured from ${aCount} work orders with ${bothCount} paired occurrences.`,
       suggestedAction:
         `Add a review checklist prompt: when ${a.replaceAll("_", " ")} is sold, confirm whether ${b.replaceAll("_", " ")} should also be quoted.`,
-      targetRefs: [
-        { entityType: "service_pair", id: `${a}:${b}`, label: `${a} -> ${b}` },
-        { entityType: "service_family", id: a, label: a.replaceAll("_", " ") },
-        { entityType: "service_family", id: b, label: b.replaceAll("_", " ") },
-      ],
+      targetRefs: {},
       meta: {
         sourceFamilyCount: aCount,
         pairCount: bothCount,
         missingCount,
+        serviceGroupKey: [a, b].sort().join("__"),
       },
     });
   }
@@ -528,25 +576,29 @@ function buildMissedRevenueSignals(params: {
 
     opportunities.push({
       id: "revenue:inspection-finding-gaps",
-      optimizationType: "missed_revenue",
+      type: "missed_revenue",
       title: "Inspection findings without matching line items",
       summary:
         `${findingMisses} flagged inspection findings had no matching service-family line item in the same work order. ` +
         `This indicates likely missed recommendation capture on some visits.`,
       confidence,
       impactLevel: inferImpactLevel(confidence * Math.min(1, findingMisses / 8)),
+      priorityScore: 0,
+      priorityBand: "low",
       estimatedValue: roundMoney(findingMisses * 45),
-      sourceBasis: [
-        `${findingSignals} flagged inspection result items reviewed`,
-        `${findingMisses} findings lacked matching service-family lines in the same RO`,
-        "Heuristic uses conservative keyword family mapping to avoid forced precision",
+      reasoning: [
+        `${findingSignals} flagged inspection findings were analyzed`,
+        `${findingMisses} flagged findings had no matching service line`,
+        `Gap rate is ${(findingMisses / findingSignals * 100).toFixed(0)}% across reviewed findings`,
       ],
+      sourceBasis: `Inspection finding-to-line reconciliation found ${findingMisses} missed captures out of ${findingSignals} flagged items.`,
       suggestedAction:
         "Add an advisor review step for flagged findings before finalizing the quote so recommendable work is explicitly accepted or declined.",
-      targetRefs: [{ entityType: "service_family", id: "inspection_findings", label: "Inspection findings" }],
+      targetRefs: {},
       meta: {
         flaggedFindings: findingSignals,
         missingCapturedRecommendations: findingMisses,
+        serviceGroupKey: "inspection_findings",
       },
     });
   }
@@ -662,17 +714,94 @@ export async function buildOptimizationOpportunities(
     inspectionResultItems: (resultItems ?? []) as InspectionResultItemRow[],
   });
 
-  const opportunities = [...pricing, ...coverage, ...missedRevenue]
+  const scoredOpportunities = [...pricing, ...coverage, ...missedRevenue];
+  const maxJobCount = scoredOpportunities.reduce((max, item) => Math.max(max, getOpportunityJobCount(item)), 0);
+
+  const opportunitiesWithPriority = scoredOpportunities.map((opportunity) => {
+    const frequencyWeight = normalizeFrequency(getOpportunityJobCount(opportunity), maxJobCount);
+    const priorityScore = clamp01(
+      opportunity.confidence * 0.4 + impactWeight(opportunity.impactLevel) * 0.4 + frequencyWeight * 0.2,
+    );
+
+    return {
+      ...opportunity,
+      priorityScore: Number(priorityScore.toFixed(4)),
+      priorityBand: classifyPriorityBand(priorityScore),
+      reasoning: opportunity.reasoning.slice(0, 5),
+    };
+  });
+
+  const dedupedByCluster = new Map<string, OptimizationOpportunity>();
+  for (const opportunity of opportunitiesWithPriority) {
+    const dedupeKey =
+      opportunity.type === "pricing_normalization"
+        ? `pricing:${getServiceGroupKey(opportunity)}`
+        : opportunity.type === "inspection_coverage_gap"
+          ? `inspection:${getServiceGroupKey(opportunity)}`
+          : `revenue:${getServiceGroupKey(opportunity)}`;
+
+    const existing = dedupedByCluster.get(dedupeKey);
+    if (!existing || opportunity.priorityScore > existing.priorityScore) {
+      dedupedByCluster.set(dedupeKey, opportunity);
+    }
+  }
+
+  const bandWeight: Record<OptimizationOpportunity["priorityBand"], number> = {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+  };
+
+  const opportunities = [...dedupedByCluster.values()]
     .sort((a, b) => {
-      const impactScore = (impact: OptimizationImpactLevel): number =>
-        impact === "high" ? 1 : impact === "medium" ? 0.65 : 0.35;
-      return b.confidence * impactScore(b.impactLevel) - a.confidence * impactScore(a.impactLevel);
+      const bandDelta = bandWeight[b.priorityBand] - bandWeight[a.priorityBand];
+      if (bandDelta !== 0) return bandDelta;
+      const scoreDelta = b.priorityScore - a.priorityScore;
+      if (scoreDelta !== 0) return scoreDelta;
+      return (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0);
     })
     .slice(0, Math.max(1, limit));
+
+  const grouped = opportunities.reduce<Map<string, OptimizationGroup>>((acc, opportunity) => {
+    const serviceGroup = getServiceGroupKey(opportunity);
+    const key = `${opportunity.type}:${serviceGroup}`;
+    const current = acc.get(key) ?? {
+      groupKey: serviceGroup,
+      type: opportunity.type,
+      opportunities: [],
+      totalEstimatedValue: 0,
+      avgConfidence: 0,
+    };
+
+    current.opportunities.push(opportunity);
+    current.totalEstimatedValue = (current.totalEstimatedValue ?? 0) + (opportunity.estimatedValue ?? 0);
+    current.avgConfidence =
+      current.opportunities.reduce((sum, item) => sum + item.confidence, 0) / current.opportunities.length;
+
+    acc.set(key, current);
+    return acc;
+  }, new Map());
+
+  const groups = [...grouped.values()].map((group) => ({
+    ...group,
+    totalEstimatedValue: group.totalEstimatedValue && group.totalEstimatedValue > 0 ? roundMoney(group.totalEstimatedValue) : undefined,
+    avgConfidence: Number(group.avgConfidence.toFixed(3)),
+  }));
+
+  const summary = {
+    totalOpportunities: opportunities.length,
+    criticalCount: opportunities.filter((item) => item.priorityBand === "critical").length,
+    highCount: opportunities.filter((item) => item.priorityBand === "high").length,
+    potentialMonthlyValue: roundMoney(
+      opportunities.reduce((sum, item) => sum + (item.estimatedValue && item.estimatedValue > 0 ? item.estimatedValue : 0), 0),
+    ),
+  };
 
   return {
     generatedAt: new Date().toISOString(),
     shopId,
-    opportunities,
+    summary,
+    groups,
   };
 }

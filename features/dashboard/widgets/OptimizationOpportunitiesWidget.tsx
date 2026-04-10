@@ -8,6 +8,7 @@ import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidge
 import type {
   OptimizationActionType,
   OptimizationApplyPayload,
+  OptimizationGroup,
   OptimizationOpportunity,
 } from "@/features/optimization/types";
 
@@ -18,23 +19,23 @@ type ActionsApiItem = {
   type: OptimizationActionType;
   createdAt: string;
 };
-type OpportunityFilter = "active" | "all" | "applied" | "dismissed";
+type OpportunityFilter = "active" | "all" | "applied" | "dismissed" | "critical";
 
 const ACTIONS_SESSION_CACHE_KEY = "optimization-actions-cache-v1";
 
-function badgeTone(type: OptimizationOpportunity["optimizationType"]): string {
+function badgeTone(type: OptimizationOpportunity["type"]): string {
   if (type === "pricing_normalization") return "text-[color:var(--brand-primary)]";
   if (type === "inspection_coverage_gap") return "text-sky-300";
   return "text-[color:var(--brand-accent)]";
 }
 
-function typeLabel(type: OptimizationOpportunity["optimizationType"]): string {
+function typeLabel(type: OptimizationOpportunity["type"]): string {
   if (type === "pricing_normalization") return "Pricing";
   if (type === "inspection_coverage_gap") return "Inspection";
   return "Missed revenue";
 }
 
-function actionTypeForOpportunity(type: OptimizationOpportunity["optimizationType"]): OptimizationActionType {
+function actionTypeForOpportunity(type: OptimizationOpportunity["type"]): OptimizationActionType {
   if (type === "pricing_normalization") return "pricing";
   if (type === "inspection_coverage_gap") return "inspection";
   return "revenue";
@@ -46,13 +47,20 @@ function confidenceLabel(confidence: number): string {
   return "Low confidence";
 }
 
+function priorityBadgeTone(band: OptimizationOpportunity["priorityBand"]): string {
+  if (band === "critical") return "border-red-400/40 bg-red-500/15 text-red-200";
+  if (band === "high") return "border-orange-400/40 bg-orange-500/15 text-orange-200";
+  if (band === "medium") return "border-yellow-400/40 bg-yellow-500/15 text-yellow-100";
+  return "border-white/15 bg-black/35 text-neutral-300";
+}
+
 function toNumber(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-function parseCurrentPriceFromSource(sourceBasis: string[]): number | null {
-  const anchor = sourceBasis.find((line) => line.toLowerCase().includes("current menu price observed at"));
+function parseCurrentPriceFromSource(sourceBasis: string): number | null {
+  const anchor = sourceBasis.toLowerCase().includes("current menu price observed at") ? sourceBasis : "";
   if (!anchor) return null;
   const match = anchor.match(/\$([0-9]+(?:\.[0-9]+)?)/);
   if (!match) return null;
@@ -73,26 +81,8 @@ function formatEstimatedImpact(value: number | undefined): string {
 }
 
 function getWhyThisMatters(opportunity: OptimizationOpportunity): string[] {
-  const entries = [...opportunity.sourceBasis];
-  const meta = (opportunity.meta ?? {}) as Record<string, unknown>;
-  const jobsCount =
-    toNumber(meta.jobsAnalyzed) ??
-    toNumber(meta.jobs) ??
-    toNumber(meta.sourceFamilyCount) ??
-    toNumber(meta.flaggedFindings);
-
-  if (jobsCount && jobsCount > 0) {
-    entries.push(`Based on ${Math.round(jobsCount)} jobs from your shop history`);
-  }
-
-  if (opportunity.optimizationType === "pricing_normalization") {
-    entries.push("Price varies significantly across similar jobs");
-  } else if (opportunity.optimizationType === "inspection_coverage_gap") {
-    entries.push("This service is not consistently inspected");
-  } else {
-    entries.push("Common companion services are missing");
-  }
-
+  const entries = opportunity.reasoning.slice(0, 5);
+  if (entries.length === 0) return [opportunity.sourceBasis];
   return entries;
 }
 
@@ -136,18 +126,17 @@ function toOpportunityPath(type: OptimizationActionType, entityId: string | null
 }
 
 function getApplyPayload(opportunity: OptimizationOpportunity): OptimizationApplyPayload {
-  const actionType = actionTypeForOpportunity(opportunity.optimizationType);
+  const actionType = actionTypeForOpportunity(opportunity.type);
   const meta = (opportunity.meta ?? {}) as Record<string, unknown>;
 
   if (actionType === "pricing") {
-    const menuItemRef = opportunity.targetRefs.find((ref) => ref.entityType === "menu_item");
     return {
-      menuItemId: menuItemRef?.id,
+      menuItemId: opportunity.targetRefs?.menuItemId,
       newPrice: toNumber(meta.recommendedPrice) ?? undefined,
       suggestionData: {
         title: opportunity.title,
         summary: opportunity.summary,
-        sourceBasis: opportunity.sourceBasis,
+        sourceBasis: [opportunity.sourceBasis, ...opportunity.reasoning],
       },
     };
   }
@@ -160,12 +149,12 @@ function getApplyPayload(opportunity: OptimizationOpportunity): OptimizationAppl
         sections: {
           optimization_recommended: {
             title: "Optimization recommendation",
-            items: opportunity.sourceBasis.map((basis, idx) => ({ id: `basis_${idx + 1}`, label: basis })),
+            items: opportunity.reasoning.map((basis, idx) => ({ id: `basis_${idx + 1}`, label: basis })),
           },
         },
       },
       suggestionData: {
-        sourceBasis: opportunity.sourceBasis,
+        sourceBasis: [opportunity.sourceBasis, ...opportunity.reasoning],
       },
     };
   }
@@ -189,6 +178,12 @@ export default function OptimizationOpportunitiesWidget({
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<{
+    totalOpportunities: number;
+    criticalCount: number;
+    highCount: number;
+    potentialMonthlyValue: number;
+  } | null>(null);
   const [opportunities, setOpportunities] = useState<OptimizationOpportunity[]>([]);
   const [selected, setSelected] = useState<OptimizationOpportunity | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -221,7 +216,13 @@ export default function OptimizationOpportunitiesWidget({
         ]);
 
         const opportunitiesPayload = (await opportunitiesResponse.json().catch(() => null)) as {
-          opportunities?: OptimizationOpportunity[];
+          groups?: OptimizationGroup[];
+          summary?: {
+            totalOpportunities: number;
+            criticalCount: number;
+            highCount: number;
+            potentialMonthlyValue: number;
+          };
           error?: string;
         } | null;
 
@@ -250,7 +251,8 @@ export default function OptimizationOpportunitiesWidget({
         }, {});
 
         if (!cancelled) {
-          setOpportunities(opportunitiesPayload?.opportunities ?? []);
+          setSummary(opportunitiesPayload?.summary ?? null);
+          setOpportunities((opportunitiesPayload?.groups ?? []).flatMap((group) => group.opportunities ?? []));
           setActionsByOpportunityId(hydratedActions);
           writeActionsCache(shopId, hydratedActions);
         }
@@ -277,12 +279,25 @@ export default function OptimizationOpportunitiesWidget({
     const filtered = enriched.filter(({ actionState }) => {
       if (filter === "all") return true;
       if (filter === "active") return !actionState;
+      if (filter === "critical") return !actionState;
       if (filter === "applied") return actionState === "applied";
       return actionState === "dismissed";
     });
 
-    return filtered.slice(0, 4);
+    const scoped =
+      filter === "critical"
+        ? filtered.filter(({ opportunity }) => opportunity.priorityBand === "critical")
+        : filtered;
+
+    return scoped.slice(0, 4);
   }, [actionsByOpportunityId, filter, opportunities]);
+
+  const recommendedNext = useMemo(() => {
+    return opportunities
+      .filter((opportunity) => !actionsByOpportunityId[opportunity.id])
+      .sort((a, b) => b.priorityScore - a.priorityScore)
+      .slice(0, 2);
+  }, [actionsByOpportunityId, opportunities]);
 
   const hasOnlyCompleted = useMemo(() => {
     if (opportunities.length === 0) return false;
@@ -302,7 +317,7 @@ export default function OptimizationOpportunitiesWidget({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           opportunityId: opportunity.id,
-          type: actionTypeForOpportunity(opportunity.optimizationType),
+          type: actionTypeForOpportunity(opportunity.type),
         }),
       });
 
@@ -335,7 +350,7 @@ export default function OptimizationOpportunitiesWidget({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           opportunityId: opportunity.id,
-          type: actionTypeForOpportunity(opportunity.optimizationType),
+          type: actionTypeForOpportunity(opportunity.type),
           payload: getApplyPayload(opportunity),
         }),
       });
@@ -416,10 +431,30 @@ export default function OptimizationOpportunitiesWidget({
             <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-400">
               Suggestions are advisory only. Confirm with your team before changing menu pricing or inspection templates.
             </div>
+            {recommendedNext.length > 0 ? (
+              <div className="rounded-xl border border-[color:var(--brand-primary)]/30 bg-[color:color-mix(in_srgb,var(--brand-primary)_12%,transparent)] px-3 py-2.5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--brand-primary)]">
+                  Recommended next
+                </div>
+                <div className="mt-1.5 space-y-1 text-xs text-neutral-200">
+                  {recommendedNext.map((opportunity) => (
+                    <div key={opportunity.id}>
+                      • {opportunity.title} ({Math.round(opportunity.priorityScore * 100)} priority)
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {summary ? (
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-300">
+                {summary.totalOpportunities} opportunities · {summary.criticalCount} critical · {summary.highCount} high · Potential {formatEstimatedImpact(summary.potentialMonthlyValue).replace("Estimated impact: ", "")}
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-1.5">
               {([
                 ["active", "Active"],
+                ["critical", "Critical only"],
                 ["all", "All"],
                 ["applied", "Applied"],
                 ["dismissed", "Dismissed"],
@@ -471,10 +506,18 @@ export default function OptimizationOpportunitiesWidget({
                   ].join(" ")}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className={["text-[11px] uppercase tracking-[0.15em]", badgeTone(opportunity.optimizationType)].join(" ")}>
-                      {typeLabel(opportunity.optimizationType)} · {Math.round(opportunity.confidence * 100)}% confidence
+                    <div className={["text-[11px] uppercase tracking-[0.15em]", badgeTone(opportunity.type)].join(" ")}>
+                      {typeLabel(opportunity.type)} · {Math.round(opportunity.confidence * 100)}% confidence
                     </div>
                     <div className="flex items-center gap-2">
+                      <span
+                        className={[
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                          priorityBadgeTone(opportunity.priorityBand),
+                        ].join(" ")}
+                      >
+                        {opportunity.priorityBand}
+                      </span>
                       {isApplied ? (
                         <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
                           Applied
@@ -505,7 +548,7 @@ export default function OptimizationOpportunitiesWidget({
                       </div>
 
                       <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5 text-[11px] text-neutral-300">
-                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters</div>
+                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why this matters:</div>
                         <ul className="mt-1.5 space-y-1">
                           {whyThisMatters.slice(0, 3).map((item) => (
                             <li key={item}>• {item}</li>
@@ -570,13 +613,14 @@ export default function OptimizationOpportunitiesWidget({
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-              {actionTypeForOpportunity(selected.optimizationType) === "pricing" ? (
+              {actionTypeForOpportunity(selected.type) === "pricing" ? (
                 <>
                   <div className="font-semibold text-neutral-100">Pricing preview</div>
                   <div className="mt-1">
                     {(() => {
-                      const currentPrice = parseCurrentPriceFromSource(selected.sourceBasis);
-                      const nextPrice = Number((selected.meta as Record<string, unknown> | undefined)?.recommendedPrice ?? 0);
+                      const meta = (selected.meta as Record<string, unknown> | undefined) ?? {};
+                      const currentPrice = toNumber(meta.currentMenuPrice) ?? parseCurrentPriceFromSource(selected.sourceBasis);
+                      const nextPrice = Number(meta.recommendedPrice ?? 0);
                       return (
                         <>
                           Current price → New price: <span className="text-neutral-100">{typeof currentPrice === "number" ? `$${currentPrice.toFixed(2)}` : "Not available"}</span> →
@@ -588,18 +632,19 @@ export default function OptimizationOpportunitiesWidget({
                 </>
               ) : null}
 
-              {actionTypeForOpportunity(selected.optimizationType) === "inspection" ? (
+              {actionTypeForOpportunity(selected.type) === "inspection" ? (
                 <>
                   <div className="font-semibold text-neutral-100">Inspection preview</div>
                   <ul className="mt-1 list-disc space-y-1 pl-5">
-                    {selected.sourceBasis.slice(0, 3).map((basis) => (
+                    <li>{selected.sourceBasis}</li>
+                    {selected.reasoning.slice(0, 2).map((basis) => (
                       <li key={basis}>{basis}</li>
                     ))}
                   </ul>
                 </>
               ) : null}
 
-              {actionTypeForOpportunity(selected.optimizationType) === "revenue" ? (
+              {actionTypeForOpportunity(selected.type) === "revenue" ? (
                 <>
                   <div className="font-semibold text-neutral-100">Missed revenue preview</div>
                   <div className="mt-1">Suggested service: {selected.title}</div>
