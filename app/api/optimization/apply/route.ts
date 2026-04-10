@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
+import { buildExecutionPreview } from "@/features/optimization/server/buildExecutionPreview";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { OptimizationActionType, OptimizationApplyPayload } from "@/features/optimization/types";
+import type {
+  OptimizationActionType,
+  OptimizationApplyPayload,
+  OptimizationOpportunity,
+} from "@/features/optimization/types";
 
 type DB = Database;
 
@@ -9,11 +14,13 @@ type ApplyBody = {
   opportunityId?: string;
   type?: OptimizationActionType;
   payload?: OptimizationApplyPayload;
+  opportunity?: OptimizationOpportunity;
 };
 
 const TYPE_MAP: Record<string, OptimizationActionType> = {
   pricing_normalization: "pricing",
   inspection_coverage_gap: "inspection",
+  inspection_gap: "inspection",
   missed_revenue: "revenue",
 };
 
@@ -27,10 +34,16 @@ function normalizeType(value: unknown): OptimizationActionType | null {
   return TYPE_MAP[value] ?? null;
 }
 
-function parsePrice(value: unknown): number | null {
+function parsePositive(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.round(n * 100) / 100;
+}
+
+function parseRatio(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(1, n));
 }
 
 function toNonEmptyString(value: unknown): string | null {
@@ -44,8 +57,30 @@ function safePayload(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function getJobsAnalyzed(opportunity: OptimizationOpportunity | null): number {
+  if (!opportunity?.meta || typeof opportunity.meta !== "object") return 0;
+  const meta = opportunity.meta as Record<string, unknown>;
+  const n = Number(meta.jobsAnalyzed ?? meta.jobs ?? meta.sampleSize ?? 0);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function checkGuardrails(opportunity: OptimizationOpportunity | null): string | null {
+  const confidence = opportunity ? parseRatio(opportunity.confidence) : null;
+  if (confidence !== null && confidence < 0.6) {
+    return "Blocked: confidence is below 0.60. Review additional data before applying.";
+  }
+
+  const jobs = getJobsAnalyzed(opportunity);
+  if (jobs > 0 && jobs < 4) {
+    return "Blocked: insufficient sample size to apply safely.";
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
+  const dryRun = new URL(req.url).searchParams.get("dryRun") === "true";
 
   const {
     data: { user },
@@ -71,17 +106,58 @@ export async function POST(req: Request) {
   const opportunityId = toNonEmptyString(body?.opportunityId);
   const type = normalizeType(body?.type);
   const payload = safePayload(body?.payload);
+  const opportunity = body?.opportunity ?? null;
 
   if (!opportunityId || !type) {
     return NextResponse.json({ error: "opportunityId and type are required" }, { status: 400 });
   }
 
+  const guardrailBlock = checkGuardrails(opportunity);
+  if (guardrailBlock) {
+    return NextResponse.json({ blocked: true, reason: guardrailBlock }, { status: 200 });
+  }
+
+  const previewSource: OptimizationOpportunity =
+    opportunity ??
+    ({
+      id: opportunityId,
+      type:
+        type === "pricing"
+          ? "pricing_normalization"
+          : type === "inspection"
+            ? "inspection_coverage_gap"
+            : "missed_revenue",
+      title: toNonEmptyString(payload.title) ?? "Optimization execution",
+      summary: toNonEmptyString(payload.summary) ?? "Pending optimization execution",
+      confidence: 0.7,
+      impactLevel: "medium",
+      priorityScore: 0.6,
+      priorityBand: "medium",
+      reasoning: [],
+      sourceBasis: "Generated from optimization execution payload",
+      targetRefs: {
+        menuItemId: toNonEmptyString(payload.menuItemId) ?? undefined,
+      },
+      meta: {
+        recommendedPrice: parsePositive(payload.newPrice),
+        recommendedLaborHours: parsePositive(payload.newLaborHours),
+      },
+    } satisfies OptimizationOpportunity);
+
+  const preview = buildExecutionPreview(previewSource);
+
+  if (dryRun) {
+    return NextResponse.json({ dryRun: true, preview, type });
+  }
+
   try {
     let entityId: string | null = null;
+    const affectedEntityIds: Record<string, string> = {};
 
     if (type === "pricing") {
       const menuItemId = toNonEmptyString(payload.menuItemId);
-      const newPrice = parsePrice(payload.newPrice);
+      const newPrice = parsePositive(payload.newPrice);
+      const newLaborHours = parsePositive(payload.newLaborHours);
 
       if (!menuItemId || newPrice === null) {
         return NextResponse.json(
@@ -90,9 +166,45 @@ export async function POST(req: Request) {
         );
       }
 
+      const { data: existingMenu, error: existingMenuError } = await supabase
+        .from("menu_items")
+        .select("id,total_price,labor_hours")
+        .eq("id", menuItemId)
+        .eq("shop_id", profile.shop_id)
+        .single();
+
+      if (existingMenuError || !existingMenu) {
+        return NextResponse.json({ error: "Menu item not found in shop context" }, { status: 404 });
+      }
+
+      const expectedCurrent = Number((opportunity?.meta as Record<string, unknown> | undefined)?.currentMenuPrice);
+      if (
+        Number.isFinite(expectedCurrent) &&
+        existingMenu.total_price !== null &&
+        Math.abs(existingMenu.total_price - expectedCurrent) > 1
+      ) {
+        return NextResponse.json(
+          {
+            blocked: true,
+            reason: "Blocked: conflicting existing pricing data detected. Refresh opportunity data and review.",
+          },
+          { status: 200 },
+        );
+      }
+
+      const updatePayload: DB["public"]["Tables"]["menu_items"]["Update"] = { total_price: newPrice };
+      const canUpdateLaborHours =
+        newLaborHours !== null &&
+        (opportunity?.confidence ?? 0) >= 0.8 &&
+        getJobsAnalyzed(opportunity) >= 8;
+
+      if (canUpdateLaborHours) {
+        updatePayload.labor_hours = newLaborHours;
+      }
+
       const { error: updateError } = await supabase
         .from("menu_items")
-        .update({ total_price: newPrice })
+        .update(updatePayload)
         .eq("id", menuItemId)
         .eq("shop_id", profile.shop_id);
 
@@ -101,26 +213,30 @@ export async function POST(req: Request) {
       }
 
       entityId = menuItemId;
+      affectedEntityIds.menuItemId = menuItemId;
     }
 
     if (type === "inspection") {
       const templateRaw = safePayload(payload.inspectionTemplate);
-      const templateId = toNonEmptyString(templateRaw.templateId);
+      const templateId = toNonEmptyString(templateRaw.templateId) ?? opportunity?.targetRefs?.inspectionTemplateId ?? null;
+      const menuItemId = toNonEmptyString(payload.menuItemId) ?? opportunity?.targetRefs?.menuItemId ?? undefined;
       const templateName =
         toNonEmptyString(templateRaw.templateName) ||
         toNonEmptyString(templateRaw.name) ||
+        opportunity?.title.replace(/^Inspection coverage gap:\s*/i, "").trim() ||
         "Optimization Inspection Template";
 
       const sections =
         templateRaw.sections && typeof templateRaw.sections === "object"
           ? (templateRaw.sections as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"])
           : ({
-              generated: {
+              optimization_recommended: {
                 title: "Generated from optimization suggestion",
-                items: Array.isArray(templateRaw.items) ? templateRaw.items : [],
+                items: opportunity?.reasoning?.map((reason, idx) => ({ id: `reason_${idx + 1}`, label: reason })) ?? [],
               },
             } as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"]);
 
+      let resolvedTemplateId: string | null = templateId;
       if (templateId) {
         const { error: updateError } = await supabase
           .from("inspection_templates")
@@ -135,15 +251,13 @@ export async function POST(req: Request) {
         if (updateError) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
-
-        entityId = templateId;
       } else {
         const insert: DB["public"]["Tables"]["inspection_templates"]["Insert"] = {
           shop_id: profile.shop_id,
           user_id: user.id,
           template_name: templateName,
           sections,
-          description: toNonEmptyString(templateRaw.description),
+          description: toNonEmptyString(templateRaw.description) ?? opportunity?.summary ?? null,
           tags: ["optimization_engine"],
         };
 
@@ -156,7 +270,46 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
 
-        entityId = insertedTemplate?.id ?? null;
+        resolvedTemplateId = insertedTemplate?.id ?? null;
+      }
+
+      if (menuItemId && resolvedTemplateId) {
+        const { data: menuItem, error: menuItemError } = await supabase
+          .from("menu_items")
+          .select("id,inspection_template_id")
+          .eq("id", menuItemId)
+          .eq("shop_id", profile.shop_id)
+          .single();
+
+        if (menuItemError || !menuItem) {
+          return NextResponse.json({ error: "Menu item not found for inspection linkage" }, { status: 404 });
+        }
+
+        if (menuItem.inspection_template_id && menuItem.inspection_template_id !== resolvedTemplateId) {
+          return NextResponse.json(
+            {
+              blocked: true,
+              reason: "Blocked: menu item is already linked to a different inspection template.",
+            },
+            { status: 200 },
+          );
+        }
+
+        const { error: linkError } = await supabase
+          .from("menu_items")
+          .update({ inspection_template_id: resolvedTemplateId })
+          .eq("id", menuItemId)
+          .eq("shop_id", profile.shop_id);
+        if (linkError) {
+          return NextResponse.json({ error: linkError.message }, { status: 500 });
+        }
+
+        affectedEntityIds.menuItemId = menuItemId;
+      }
+
+      entityId = resolvedTemplateId;
+      if (resolvedTemplateId) {
+        affectedEntityIds.inspectionTemplateId = resolvedTemplateId;
       }
     }
 
@@ -165,6 +318,7 @@ export async function POST(req: Request) {
       const title =
         toNonEmptyString(suggestionRaw.title) ||
         toNonEmptyString(suggestionRaw.suggestedService) ||
+        opportunity?.title ||
         "Optimization Revenue Suggestion";
 
       const insert: DB["public"]["Tables"]["menu_item_suggestions"]["Insert"] = {
@@ -173,9 +327,10 @@ export async function POST(req: Request) {
         reason:
           toNonEmptyString(suggestionRaw.reason) ||
           toNonEmptyString(suggestionRaw.summary) ||
+          opportunity?.summary ||
           "Created from optimization engine recommendation",
         confidence: (() => {
-          const c = Number(suggestionRaw.confidence);
+          const c = Number(suggestionRaw.confidence ?? opportunity?.confidence);
           return Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0.7;
         })(),
         category: toNonEmptyString(suggestionRaw.category),
@@ -184,7 +339,7 @@ export async function POST(req: Request) {
           return Number.isFinite(h) ? h : null;
         })(),
         price_suggestion: (() => {
-          const p = Number(suggestionRaw.priceSuggestion);
+          const p = Number(suggestionRaw.priceSuggestion ?? opportunity?.estimatedValue);
           return Number.isFinite(p) ? p : null;
         })(),
       };
@@ -199,6 +354,9 @@ export async function POST(req: Request) {
       }
 
       entityId = insertedSuggestion?.id ?? null;
+      if (entityId) {
+        affectedEntityIds.suggestionId = entityId;
+      }
     }
 
     const actionInsert: DB["public"]["Tables"]["optimization_actions"]["Insert"] = {
@@ -208,6 +366,8 @@ export async function POST(req: Request) {
       action: "applied",
       payload: {
         originalPayload: payload as unknown,
+        preview,
+        affectedEntityIds,
       } as DB["public"]["Tables"]["optimization_actions"]["Insert"]["payload"],
       created_by: user.id,
     };
@@ -219,16 +379,18 @@ export async function POST(req: Request) {
 
     const message =
       type === "pricing"
-        ? "Pricing update applied"
+        ? "Pricing normalization applied to menu item"
         : type === "inspection"
-          ? "Inspection template update applied"
-          : "Revenue suggestion created";
+          ? "Inspection template prepared and linked"
+          : "Revenue opportunity saved as suggestion";
 
     return NextResponse.json({
       success: true,
       type,
       entityId,
+      affectedEntityIds,
       message,
+      impactEstimate: opportunity?.estimatedValue ?? Number((payload.suggestionData as Record<string, unknown> | undefined)?.estimatedValue) ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to apply optimization action";

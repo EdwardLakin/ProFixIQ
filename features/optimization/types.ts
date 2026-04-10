@@ -68,6 +68,22 @@ export type OptimizationActionType = "pricing" | "inspection" | "revenue";
 export type OptimizationApplyPayload = {
   menuItemId?: string;
   newPrice?: number;
+  newLaborHours?: number;
   inspectionTemplate?: unknown;
   suggestionData?: unknown;
+};
+
+export type OptimizationExecutionType =
+  | "pricing_normalization"
+  | "inspection_gap"
+  | "missed_revenue";
+
+export type ExecutionPreview = {
+  type: OptimizationActionType;
+  changes: Array<{
+    label: string;
+    before?: unknown;
+    after?: unknown;
+  }>;
+  warnings?: string[];
 };
