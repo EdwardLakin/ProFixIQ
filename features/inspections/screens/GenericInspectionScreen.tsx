@@ -48,8 +48,9 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
-import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
+import { cn } from "@shared/lib/utils";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -2454,13 +2455,10 @@ type SmartMatchRow = {
     ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
 
-  const cardBase =
-    "rounded-[var(--theme-radius-xl,1rem)] border border-[var(--theme-card-border,#334155)] " +
-    "bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_95%,transparent)] " +
-    "text-[var(--theme-text-primary,#E2E8F0)] shadow-[var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))] backdrop-blur-xl";
-
-  const headerCard = `${cardBase} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
-  const sectionCard = `${cardBase} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
+  const headerCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
+  const sectionCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
+  const supportCard = `${PANEL_VARIANTS.secondary} px-3 py-2.5 md:px-4 md:py-3`;
+  const passiveCard = `${PANEL_VARIANTS.passive} px-3 py-2.5 md:px-4 md:py-3`;
 
   const sectionTitle =
     "text-base md:text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)] text-center tracking-[0.12em] uppercase";
@@ -2585,7 +2583,9 @@ type SmartMatchRow = {
           </Button>
         </div>
 
-        <div className="mt-1 flex items-center justify-center gap-2">
+        <div className="mt-1 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.85fr)] lg:items-start">
+          <section className="space-y-2">
+            <div className="flex items-center justify-center gap-2 lg:justify-start">
           <div className={voicePulse ? "rounded-full shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : ""}>
             <StatusBadge
               variant={
@@ -2632,8 +2632,9 @@ type SmartMatchRow = {
           )}
         </div>
 
-        {/* ✅ UI ADDITION: Summary + Voice Log */}
-        {(() => {
+
+            {/* ✅ UI ADDITION: Summary + Voice Log */}
+            {(() => {
           const sections = session.sections ?? [];
           const allItems = sections.flatMap((s) => s.items ?? []);
 
@@ -2652,7 +2653,7 @@ type SmartMatchRow = {
           const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
 
           return (
-            <Card className="mt-2 px-3 py-2.5 md:px-4 md:py-3">
+            <div className={supportCard}>
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
                 Inspection Summary
               </div>
@@ -2726,12 +2727,14 @@ type SmartMatchRow = {
                   </span>
                 </li>
               </ul>
-            </Card>
+            </div>
           );
         })()}
+          </section>
 
+          <aside className="space-y-2 lg:sticky lg:top-4">
         {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 ? (
-          <Card className="mt-2 px-3 py-2.5 md:px-4 md:py-3">
+          <div className={passiveCard}>
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
                 Voice Log
@@ -2780,21 +2783,23 @@ type SmartMatchRow = {
                   );
                 })}
             </div>
-          </Card>
+          </div>
         ) : (
           <div className="mt-2 text-center text-[11px] text-neutral-500">
             No voice commands captured yet.
           </div>
         )}
 
-        <Card className="mb-4 px-3 py-2.5 md:px-4 md:py-3">
+        <div className={supportCard + " mb-4"}>
           <ProgressTracker
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
             totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
           />
-        </Card>
+        </div>
+          </aside>
+        </div>
 
         <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>
           {session.sections.map((section, sectionIndex) => {
@@ -2855,7 +2860,7 @@ type SmartMatchRow = {
             return (
               <div
                 key={`${section.title}-${sectionIndex}`}
-                className={sectionCard}
+                className={cn(sectionCard, safeSectionIndex === sectionIndex ? "" : "opacity-95")}
                 data-section-index={sectionIndex}
               >
                 {/* ✅ Only show the OUTER header for GRID sections.
