@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -94,7 +95,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (profile.role !== "owner" && profile.role !== "admin") {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || (actor.canonicalRole !== "owner" && actor.canonicalRole !== "admin")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -164,7 +166,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (profile.role !== "owner" && profile.role !== "admin") {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || (actor.canonicalRole !== "owner" && actor.canonicalRole !== "admin")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

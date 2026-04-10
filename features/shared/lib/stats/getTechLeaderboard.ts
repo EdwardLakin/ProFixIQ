@@ -51,6 +51,12 @@ type WorkOrderLineSlim = {
   punchable: boolean | null;
 };
 
+type LaborSegmentSlim = {
+  technician_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+};
+
 export type TechLeaderboardRow = {
   techId: string;
   name: string;
@@ -102,6 +108,24 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+function getOverlapHours(
+  startedAt: string | null | undefined,
+  endedAt: string | null | undefined,
+  rangeStartIso: string,
+  rangeEndIso: string,
+): number {
+  if (!startedAt) return 0;
+  const startMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startMs)) return 0;
+  const endMs = endedAt ? new Date(endedAt).getTime() : new Date().getTime();
+  if (!Number.isFinite(endMs)) return 0;
+  const windowStart = new Date(rangeStartIso).getTime();
+  const windowEnd = new Date(rangeEndIso).getTime();
+  const overlapMs = Math.min(endMs, windowEnd) - Math.max(startMs, windowStart);
+  if (overlapMs <= 0) return 0;
+  return overlapMs / (1000 * 60 * 60);
 }
 
 export async function getTechLeaderboard(
@@ -164,8 +188,8 @@ export async function getTechLeaderboard(
     return { shop_id: shopId, start: startIso, end: endIso, rows: [] };
   }
 
-  // 2) Invoices + timecards in range
-  const [invoicesRes, timecardsRes] = await Promise.all([
+  // 2) Invoices + labor segments in range (timecards kept as fallback)
+  const [invoicesRes, timecardsRes, segmentsRes] = await Promise.all([
     supabase
       .from("invoices")
       .select("id, tech_id, shop_id, work_order_id, total, labor_cost, created_at")
@@ -181,13 +205,22 @@ export async function getTechLeaderboard(
       .in("user_id", techIds)
       .gte("clock_in", startIso)
       .lt("clock_in", endExclusiveIso),
+    supabase
+      .from("work_order_line_labor_segments")
+      .select("technician_id, started_at, ended_at")
+      .eq("shop_id", shopId)
+      .in("technician_id", techIds)
+      .lt("started_at", endExclusiveIso)
+      .or(`ended_at.gte.${startIso},ended_at.is.null`),
   ]);
 
   if (invoicesRes.error) throw invoicesRes.error;
   if (timecardsRes.error) throw timecardsRes.error;
+  if (segmentsRes.error) throw segmentsRes.error;
 
   const invoices: InvoiceSlim[] = (invoicesRes.data as InvoiceSlim[]) ?? [];
   const timecards: TimecardSlim[] = (timecardsRes.data as TimecardSlim[]) ?? [];
+  const segments: LaborSegmentSlim[] = (segmentsRes.data as LaborSegmentSlim[]) ?? [];
 
   // 3) Seed rows so techs show even with 0 activity
   const byTech = new Map<string, TechLeaderboardRow>();
@@ -232,15 +265,25 @@ export async function getTechLeaderboard(
     }
   }
 
-  // 5) Aggregate clocked hours from payroll timecards
+  // 5) Aggregate clocked hours from labor segments (source of truth)
+  for (const seg of segments) {
+    const techId = seg.technician_id;
+    if (!techId) continue;
+    const row = byTech.get(techId);
+    if (!row) continue;
+    row.clockedHours += getOverlapHours(seg.started_at, seg.ended_at, startIso, endExclusiveIso);
+  }
+
+  // Compatibility fallback for historical windows where no segments were created yet.
   for (const tc of timecards) {
     const techId = tc.user_id;
     if (!techId) continue;
 
     const row = byTech.get(techId);
     if (!row) continue;
-
-    row.clockedHours += safeNum(tc.hours_worked);
+    if (row.clockedHours <= 0) {
+      row.clockedHours += safeNum(tc.hours_worked);
+    }
   }
 
   // 6) Billed hours = sum(work_order_lines.labor_time) for invoiced work orders

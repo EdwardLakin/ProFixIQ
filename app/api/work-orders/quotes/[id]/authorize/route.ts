@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,29 @@ export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("shop_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (profileErr || !profile?.shop_id) {
+      return NextResponse.json({ error: "Unable to resolve actor profile" }, { status: 403 });
+    }
+
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || !actor.canAuthorizeQuotes) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Extract `[id]` from the pathname .../quotes/<id>/authorize
     const segments = req.nextUrl.pathname.split("/").filter(Boolean);
     const id = segments[segments.length - 2]; // the segment before "authorize"
@@ -35,6 +59,9 @@ export async function POST(req: NextRequest) {
 
     if (!q.shop_id) {
       return NextResponse.json({ error: "Quote line is missing shop_id" }, { status: 400 });
+    }
+    if (q.shop_id !== profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // 2) Turn it into a punchable job line

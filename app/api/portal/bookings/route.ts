@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 export const runtime = "nodejs";
 
@@ -64,19 +65,8 @@ export async function GET(req: Request): Promise<Response> {
     return bad("Profile / shop not found", 403);
   }
 
-  const staffRoles = [
-    "owner",
-    "admin",
-    "manager",
-    "advisor",
-    "mechanic",
-    "parts",
-  ] as const;
-
-  if (
-    !profile.role ||
-    !staffRoles.includes(profile.role as (typeof staffRoles)[number])
-  ) {
+  const actor = getActorCapabilities({ role: profile.role });
+  if (!actor.isKnownRole || (!actor.canManageScheduling && !actor.canViewShopWideData)) {
     return bad("Not allowed", 403);
   }
 

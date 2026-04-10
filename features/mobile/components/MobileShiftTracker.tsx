@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { formatDistanceToNow } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  runMutationWithOfflineQueue,
+  getOfflineSyncSummary,
+  replayQueuedMutations,
+  subscribeOfflineMutations,
+  type PendingMutation,
+} from "@/features/shared/lib/offline/mutations";
 
 type DB = Database;
 
@@ -34,24 +41,90 @@ export default function MobileShiftTracker({ userId }: Props) {
   const [mode, setMode] = useState<Mode>("none");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
+
+  const refreshOfflineSummary = useCallback(() => {
+    setSyncSummary(getOfflineSyncSummary());
+  }, []);
+
+  useEffect(() => {
+    return subscribeOfflineMutations(refreshOfflineSummary);
+  }, [refreshOfflineSummary]);
 
   const insertPunch = useCallback(
     async (sid: string, event: PunchEventType) => {
-      const { error } = await supabase.from("punch_events").insert({
-        shift_id: sid,
-        user_id: userId,
-        profile_id: userId,
-        event_type: event,
-        timestamp: new Date().toISOString(),
-      });
+      const timestamp = new Date().toISOString();
+      const mutationId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${sid}:${event}:${Date.now()}`;
 
-      if (error) {
+      try {
+        const result = await runMutationWithOfflineQueue({
+          clientMutationId: mutationId,
+          actionType: "shift:punch-event",
+          payload: {
+            shift_id: sid,
+            user_id: userId,
+            profile_id: userId,
+            event_type: event,
+            timestamp,
+          },
+          runner: async () => {
+            const { error } = await supabase.from("punch_events").insert({
+              shift_id: sid,
+              user_id: userId,
+              profile_id: userId,
+              event_type: event,
+              timestamp,
+            });
+            if (error) throw error;
+          },
+        });
+        if (result.queued) {
+          setErr("Punch event queued for sync once connection is restored.");
+        }
+      } catch (error) {
+        const e = error as { code?: string; message?: string };
         console.error("[MobileShiftTracker] insertPunch failed:", error);
-        setErr(`${error.code ?? "punch_error"}: ${error.message}`);
+        setErr(`${e.code ?? "punch_error"}: ${e.message ?? "Failed to record punch event"}`);
       }
     },
     [supabase, userId],
   );
+
+  const replayOfflineMutations = useCallback(async () => {
+    const result = await replayQueuedMutations({
+      handlers: {
+        "shift:punch-event": async (mutation: PendingMutation) => {
+          const payload = mutation.payload as
+            | {
+                shift_id?: string;
+                user_id?: string;
+                profile_id?: string;
+                event_type?: PunchEventType;
+                timestamp?: string;
+              }
+            | undefined;
+          if (!payload?.shift_id || !payload?.user_id || !payload?.event_type || !payload?.timestamp) {
+            return { conflicted: "Queued shift punch payload is incomplete." };
+          }
+          const { error } = await supabase.from("punch_events").insert({
+            shift_id: payload.shift_id,
+            user_id: payload.user_id,
+            profile_id: payload.profile_id ?? payload.user_id,
+            event_type: payload.event_type,
+            timestamp: payload.timestamp,
+          });
+          if (error) throw error;
+        },
+      },
+    });
+
+    if (result.failed > 0) {
+      setErr(`${result.failed} queued punch event(s) still failing to sync.`);
+    }
+  }, [supabase]);
 
   const punchOutActiveJobsForShiftEnd = useCallback(async () => {
     if (!userId) return;
@@ -151,6 +224,16 @@ export default function MobileShiftTracker({ userId }: Props) {
   useEffect(() => {
     void loadOpenShift();
   }, [loadOpenShift]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    if (navigator.onLine) {
+      void replayOfflineMutations();
+    }
+    const onOnline = () => void replayOfflineMutations();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [replayOfflineMutations]);
 
   const startShift = useCallback(async () => {
     if (busy || !userId) return;
@@ -300,6 +383,15 @@ export default function MobileShiftTracker({ userId }: Props) {
           {niceStatus}
         </span>
       </div>
+      {(syncSummary.queued > 0 ||
+        syncSummary.failed > 0 ||
+        syncSummary.syncing > 0 ||
+        syncSummary.conflicted > 0) && (
+        <div className="rounded-md border border-amber-400/35 bg-amber-500/10 px-2 py-1 text-[0.65rem] text-amber-100">
+          Sync queue • Pending {syncSummary.queued + syncSummary.syncing} • Failed{" "}
+          {syncSummary.failed} • Conflicted {syncSummary.conflicted}
+        </div>
+      )}
 
       {err && (
         <div className="rounded-md border border-red-500/40 bg-red-950/70 px-2 py-1 text-[0.65rem] text-red-200">
