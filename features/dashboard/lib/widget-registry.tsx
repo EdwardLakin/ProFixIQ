@@ -23,20 +23,20 @@ import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   statsOverviewWidgetModule,
-  dailySummaryWidgetModule,
   liveShopLoadWidgetModule,
+  dailySummaryWidgetModule,
+  workOrderBoardWidgetModule,
   suggestedActionsWidgetModule,
-  reportsPerformanceWidgetModule,
+  advisorQueueWidgetModule,
+  bookingsWidgetModule,
   shopPulseWidgetModule,
-  revenueWatchWidgetModule,
   techLoadWidgetModule,
   technicianPerformanceWidgetModule,
-  approvalRiskWidgetModule,
   waitingPartsWidgetModule,
+  approvalRiskWidgetModule,
+  revenueWatchWidgetModule,
   comebackRiskWidgetModule,
-  workOrderBoardWidgetModule,
-  bookingsWidgetModule,
-  advisorQueueWidgetModule,
+  reportsPerformanceWidgetModule,
   optimizationOpportunitiesWidgetModule,
 ];
 

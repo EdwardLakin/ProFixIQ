@@ -6,9 +6,10 @@ export const techLoadWidgetModule: DashboardWidgetModule = {
   title: "Technician Load",
   description: "Current active jobs and load balance",
   roles: ["owner", "admin", "manager", "advisor", "parts"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <TechLoadWidget shopId={context.shopId} />,
 };

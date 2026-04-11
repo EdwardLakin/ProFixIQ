@@ -8,7 +8,7 @@ function MetricCard({
   tone,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   hint: string;
   tone: string;
 }) {
@@ -53,7 +53,7 @@ function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
   const tech = isTechRole(context.role);
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+    <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-4">
       <MetricCard
         label="Appointments"
         value={context.counts.appointments}
@@ -73,9 +73,9 @@ function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
         tone={metricTone("partsRequests")}
       />
       <MetricCard
-        label="Role"
-        value={0}
-        hint={context.role ?? "—"}
+        label="My role"
+        value={(context.role ?? "Unknown").toUpperCase()}
+        hint="Role-aware dashboard context"
         tone="text-[color:var(--theme-text-primary,#ffffff)]"
       />
     </div>
@@ -87,8 +87,8 @@ export const statsOverviewWidgetModule: DashboardWidgetModule = {
   title: "Stats Overview",
   description: "Top counts and operational context",
   roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
-  defaultW: 6,
-  defaultH: 4,
+  defaultW: 8,
+  defaultH: 3,
   minW: 4,
   minH: 3,
   render: (context) => <StatsOverviewWidget context={context} />,

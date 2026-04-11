@@ -7,8 +7,9 @@ export const dailySummaryWidgetModule: DashboardWidgetModule = {
   description: "Role-aware operational snapshot",
   roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
   defaultW: 4,
-  defaultH: 5,
+  defaultH: 4,
   minW: 3,
-  minH: 4,
+  minH: 3,
+  selfContained: true,
   render: () => <DailySummaryCard />,
 };

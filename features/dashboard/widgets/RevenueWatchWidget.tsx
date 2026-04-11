@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
+import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import { getShopStats } from "@shared/lib/stats/getShopStats";
 
 function money(n: number | null | undefined): string {
@@ -39,7 +40,7 @@ export default function RevenueWatchWidget({
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load revenue watch.");
+          setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
         }
       } finally {
         if (!cancelled) setLoading(false);

@@ -6,9 +6,10 @@ export const revenueWatchWidgetModule: DashboardWidgetModule = {
   title: "Revenue Watch",
   description: "Financial watchpoints",
   roles: ["owner", "admin", "manager"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <RevenueWatchWidget shopId={context.shopId} />,
 };

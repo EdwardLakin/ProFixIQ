@@ -172,9 +172,9 @@ export default function DashboardWidgetBoard({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div
-        className="rounded-3xl border px-4 py-3"
+        className="rounded-2xl border px-4 py-3"
         style={{
           borderColor: "var(--theme-card-border,#334155)",
           background:
@@ -182,18 +182,18 @@ export default function DashboardWidgetBoard({
         }}
       >
         <div
-          className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+          className="text-[10px] font-semibold uppercase tracking-[0.18em]"
           style={{ color: "var(--brand-accent,#E39A6E)" }}
         >
           Widget Layout
         </div>
         <div
-          className="mt-1 text-sm"
+          className="mt-1 text-xs sm:text-sm"
           style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
         >
-          Drag and resize widgets on desktop. Small screens keep simple stacked cards.
+          Board controls. Move, resize, and toggle widgets. Layout saves automatically.
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
           {orderedWidgets.map(({ item, widget }) => {
             const enabled = item.hidden !== true;
 
@@ -202,7 +202,7 @@ export default function DashboardWidgetBoard({
                 key={item.id}
                 type="button"
                 onClick={() => handleWidgetVisibilityToggle(item.id)}
-                className="rounded-full border px-3 py-1.5 text-xs transition"
+                className="rounded-full border px-2.5 py-1 text-[11px] transition"
                 style={{
                   borderColor: enabled
                     ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
@@ -226,9 +226,13 @@ export default function DashboardWidgetBoard({
         <div className="space-y-4">
           {visibleWidgets.map(({ item, widget }) => (
             <div key={item.id}>
-              <DashboardWidgetShell title={widget.title} description={widget.description}>
-                {widget.render(context, item)}
-              </DashboardWidgetShell>
+              {widget.selfContained ? (
+                widget.render(context, item)
+              ) : (
+                <DashboardWidgetShell title={widget.title} description={widget.description}>
+                  {widget.render(context, item)}
+                </DashboardWidgetShell>
+              )}
             </div>
           ))}
         </div>
@@ -240,8 +244,8 @@ export default function DashboardWidgetBoard({
               width={Math.max(width, 320)}
               gridConfig={{
                 cols: DASHBOARD_GRID_COLUMNS,
-                rowHeight: 96,
-                margin: [16, 16],
+                rowHeight: 84,
+                margin: [12, 12],
                 containerPadding: [0, 0],
               }}
               dragConfig={{
@@ -265,14 +269,18 @@ export default function DashboardWidgetBoard({
                     >
                       Move
                     </button>
-                    <DashboardWidgetShell
-                      title={widget.title}
-                      description={widget.description}
-                      className="min-h-0"
-                      scrollClassName="pb-3"
-                    >
-                      {widget.render(context, item)}
-                    </DashboardWidgetShell>
+                    {widget.selfContained ? (
+                      <div className="h-full min-h-0">{widget.render(context, item)}</div>
+                    ) : (
+                      <DashboardWidgetShell
+                        title={widget.title}
+                        description={widget.description}
+                        className="min-h-0"
+                        scrollClassName="pb-2"
+                      >
+                        {widget.render(context, item)}
+                      </DashboardWidgetShell>
+                    )}
                   </div>
                 </div>
               ))}
@@ -281,9 +289,13 @@ export default function DashboardWidgetBoard({
             <div className="grid gap-4">
               {visibleWidgets.map(({ item, widget }) => (
                 <div key={item.id}>
-                  <DashboardWidgetShell title={widget.title} description={widget.description}>
-                    {widget.render(context, item)}
-                  </DashboardWidgetShell>
+                  {widget.selfContained ? (
+                    widget.render(context, item)
+                  ) : (
+                    <DashboardWidgetShell title={widget.title} description={widget.description}>
+                      {widget.render(context, item)}
+                    </DashboardWidgetShell>
+                  )}
                 </div>
               ))}
             </div>

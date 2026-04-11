@@ -6,6 +6,7 @@ import {
   getTechnicianLoadMetrics,
   type TechnicianLoadMetricResult,
 } from "@shared/lib/stats/getTechnicianLoadMetrics";
+import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import { useVisibilityPolling } from "@/features/shared/hooks/useVisibilityPolling";
 
 type UseTechnicianLoadMetricsOptions = {
@@ -50,7 +51,9 @@ export function useTechnicianLoadMetrics(
       setMetrics(result);
     } catch (e) {
       hasLoadedRef.current = true;
-      setError(e instanceof Error ? e.message : "Failed to load technician load metrics.");
+      setError(
+        toDashboardFallbackMessage(e, "Data unavailable for technician metrics. Try refresh."),
+      );
       setMetrics(null);
     } finally {
       setLoading(false);

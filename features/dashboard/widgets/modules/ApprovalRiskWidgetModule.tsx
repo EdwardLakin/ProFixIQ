@@ -6,9 +6,10 @@ export const approvalRiskWidgetModule: DashboardWidgetModule = {
   title: "Approval Risk",
   description: "Work awaiting decision",
   roles: ["owner", "admin", "manager", "advisor"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <ApprovalRiskWidget shopId={context.shopId} />,
 };

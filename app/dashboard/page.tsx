@@ -34,6 +34,7 @@ function isTechRole(role: string | null): boolean {
 export default function DashboardPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestLayoutRef = useRef<DashboardWidgetLayout[] | undefined>(undefined);
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export default function DashboardPage() {
       if (!shopId) return;
 
       setLayout(nextLayout);
+      latestLayoutRef.current = nextLayout;
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -69,13 +71,39 @@ export default function DashboardPage() {
     [shopId, supabase, userId],
   );
 
+  const flushPendingLayoutSave = useCallback(() => {
+    if (!shopId || !latestLayoutRef.current) return;
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    void saveDashboardLayout({
+      supabase,
+      shopId,
+      userId,
+      layout: latestLayoutRef.current,
+    });
+  }, [shopId, supabase, userId]);
+
   useEffect(() => {
+    const flushOnVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingLayoutSave();
+      }
+    };
+
+    window.addEventListener("pagehide", flushPendingLayoutSave);
+    document.addEventListener("visibilitychange", flushOnVisibility);
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
+      window.removeEventListener("pagehide", flushPendingLayoutSave);
+      document.removeEventListener("visibilitychange", flushOnVisibility);
+      flushPendingLayoutSave();
     };
-  }, []);
+  }, [flushPendingLayoutSave]);
 
   useEffect(() => {
     void (async () => {
@@ -136,6 +164,7 @@ export default function DashboardPage() {
         ]);
 
         setLayout(loadedLayout);
+        latestLayoutRef.current = loadedLayout;
         setCounts({
           appointments: 0,
           workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
@@ -163,6 +192,7 @@ export default function DashboardPage() {
       ]);
 
       setLayout(loadedLayout);
+      latestLayoutRef.current = loadedLayout;
       setCounts({
         appointments: appt.error ? 0 : appt.count ?? 0,
         workOrders: wo.error ? 0 : wo.count ?? 0,
@@ -175,9 +205,9 @@ export default function DashboardPage() {
   const displayName = name?.trim() || "there";
 
   return (
-    <div className="w-full space-y-5 xl:space-y-6">
+    <div className="w-full space-y-4 xl:space-y-5">
       <section
-        className="rounded-3xl border px-5 py-5 backdrop-blur-xl xl:px-7 xl:py-6"
+        className="rounded-2xl border px-5 py-4 backdrop-blur-xl xl:px-6 xl:py-5"
         style={{
           borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
           background: "var(--dashboard-hero-bg, var(--dashboard-shell-bg))",
@@ -188,11 +218,11 @@ export default function DashboardPage() {
             <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
               Dashboard
             </div>
-            <h1 className="mt-2 text-3xl font-semibold text-white xl:text-4xl">
+            <h1 className="mt-1.5 text-3xl font-semibold text-white xl:text-4xl">
               Welcome back, {displayName} 👋
             </h1>
-            <p className="mt-2 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
-              Brand-aware widget dashboard with a stable default grid and responsive stacking.
+            <p className="mt-1.5 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
+              Command-center board with persistent layout, compact controls, and role-aware widget context.
             </p>
           </div>
 

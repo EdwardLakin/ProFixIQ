@@ -6,9 +6,10 @@ export const liveShopLoadWidgetModule: DashboardWidgetModule = {
   title: "Live Shop Load",
   description: "Real-time active jobs, tech capacity, and utilization",
   roles: ["owner", "admin", "manager", "advisor", "parts"],
-  defaultW: 6,
-  defaultH: 3,
+  defaultW: 4,
+  defaultH: 4,
   minW: 4,
   minH: 3,
+  selfContained: true,
   render: (context) => <LiveShopLoadWidget shopId={context.shopId} />,
 };

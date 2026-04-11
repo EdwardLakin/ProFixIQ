@@ -6,9 +6,10 @@ export const shopPulseWidgetModule: DashboardWidgetModule = {
   title: "Shop Pulse",
   description: "Current shop health snapshot",
   roles: ["owner", "admin", "manager"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <ShopPulseWidget shopId={context.shopId} />,
 };

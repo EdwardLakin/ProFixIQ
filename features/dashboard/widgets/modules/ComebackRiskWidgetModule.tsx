@@ -6,9 +6,10 @@ export const comebackRiskWidgetModule: DashboardWidgetModule = {
   title: "Comeback Risk",
   description: "Potential return work alerts",
   roles: ["owner", "admin", "manager", "advisor"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <ComebackRiskWidget shopId={context.shopId} />,
 };

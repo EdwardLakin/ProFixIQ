@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
+import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import StatusBadge from "@shared/components/ui/StatusBadge";
 import { cn } from "@shared/lib/utils";
 
@@ -78,7 +79,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
         if (!cancelled) setRows((data as BoardRow[]) ?? []);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load shop pulse.");
+          setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
           setRows([]);
         }
       } finally {
