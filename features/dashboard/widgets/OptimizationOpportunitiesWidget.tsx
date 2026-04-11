@@ -240,8 +240,10 @@ function getApplyPayload(opportunity: OptimizationOpportunity): OptimizationAppl
 
 export default function OptimizationOpportunitiesWidget({
   shopId,
+  compact = false,
 }: {
   shopId: string | null;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -675,6 +677,63 @@ export default function OptimizationOpportunitiesWidget({
 
   async function confirmApply(opportunity: OptimizationOpportunity) {
     await applyOpportunity(opportunity);
+  }
+
+  const topOpportunity = visibleOpportunities[0]?.opportunity ?? opportunities[0] ?? null;
+
+  if (compact) {
+    return (
+      <DashboardWidgetShell
+        eyebrow="AI · Optimization"
+        title="Optimization Opportunities"
+        subtitle="Preview mode for command center."
+        rightSlot={
+          <Link
+            href="/dashboard/owner/reports"
+            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+          >
+            Open full view →
+          </Link>
+        }
+        compact
+      >
+        {loading ? (
+          <div className="text-sm text-neutral-300">Scanning pricing, inspections, and revenue patterns…</div>
+        ) : error ? (
+          <div className="text-sm text-[color:var(--brand-accent)]">{error}</div>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Open</div>
+                <div className="mt-1 text-base font-semibold text-white">{summary?.totalOpportunities ?? opportunities.length}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Critical</div>
+                <div className="mt-1 text-base font-semibold text-[color:var(--brand-accent)]">{summary?.criticalCount ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Value</div>
+                <div className="mt-1 text-base font-semibold text-[color:var(--brand-primary)]">
+                  {summary ? formatEstimatedImpact(summary.potentialMonthlyValue).replace("Estimated impact: ", "") : "—"}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-neutral-200">
+              {topOpportunity ? (
+                <>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Top opportunity</div>
+                  <div className="mt-1 font-semibold text-white">{topOpportunity.title}</div>
+                  <div className="mt-0.5 text-xs text-neutral-400">{topOpportunity.impactLabel ?? formatEstimatedImpact(topOpportunity.estimatedValue)}</div>
+                </>
+              ) : (
+                "No active optimization opportunities right now."
+              )}
+            </div>
+          </div>
+        )}
+      </DashboardWidgetShell>
+    );
   }
 
   return (

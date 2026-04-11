@@ -7,9 +7,9 @@ export const optimizationOpportunitiesWidgetModule: DashboardWidgetModule = {
   description: "Pricing, inspection, and missed revenue opportunities",
   roles: ["owner", "admin", "manager"],
   defaultW: 6,
-  defaultH: 4,
+  defaultH: 3,
   minW: 3,
   minH: 3,
   selfContained: true,
-  render: (context) => <OptimizationOpportunitiesWidget shopId={context.shopId} />,
+  render: (context) => <OptimizationOpportunitiesWidget shopId={context.shopId} compact />,
 };

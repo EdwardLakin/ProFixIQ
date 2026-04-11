@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Settings2, X } from "lucide-react";
 
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { buildDefaultDashboardLayout } from "@/features/dashboard/lib/defaultLayout";
@@ -24,8 +25,6 @@ type DashboardZoneKey = "top" | "primary" | "secondary" | "business";
 
 type DashboardZoneConfig = {
   key: DashboardZoneKey;
-  title: string;
-  subtitle: string;
   widgetIds: DashboardWidgetId[];
 };
 
@@ -35,33 +34,19 @@ const MAX_WIDGET_HEIGHT = 7;
 const DASHBOARD_ZONES: DashboardZoneConfig[] = [
   {
     key: "top",
-    title: "Top Bar",
-    subtitle: "Daily summary and current shop status.",
-    widgetIds: ["daily_summary", "shop_pulse", "live_shop_load"],
+    widgetIds: ["daily_summary", "shop_pulse", "suggested_actions"],
   },
   {
     key: "primary",
-    title: "Primary Operations",
-    subtitle: "Live execution board for advisors and technicians.",
-    widgetIds: [
-      "work_order_board",
-      "advisor_queue",
-      "tech_load",
-      "bookings",
-      "suggested_actions",
-    ],
+    widgetIds: ["work_order_board", "advisor_queue", "tech_load", "bookings"],
   },
   {
     key: "secondary",
-    title: "Secondary Signals",
-    subtitle: "Operational risks and blockers that need attention.",
-    widgetIds: ["approval_risk", "waiting_parts", "comeback_risk", "optimization_opportunities"],
+    widgetIds: ["approval_risk", "waiting_parts", "comeback_risk", "live_shop_load"],
   },
   {
     key: "business",
-    title: "Business & Performance",
-    subtitle: "Commercial and performance indicators.",
-    widgetIds: ["revenue_watch", "reports_performance", "stats_overview", "tech_performance"],
+    widgetIds: ["revenue_watch", "reports_performance", "stats_overview", "tech_performance", "optimization_opportunities"],
   },
 ];
 
@@ -91,6 +76,7 @@ export default function DashboardWidgetBoard({
   );
 
   const [layout, setLayout] = useState<DashboardWidgetLayout[]>(computedInitialLayout);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const prevSerializedRef = useRef<string>(JSON.stringify(computedInitialLayout));
 
   useEffect(() => {
@@ -198,7 +184,15 @@ export default function DashboardWidgetBoard({
     widget: DashboardWidgetModule,
     emphasis: "dominant" | "normal" = "normal",
   ) => {
-    const heightClass = item.h >= 6 ? "min-h-[28rem]" : item.h >= 5 ? "min-h-[24rem]" : "min-h-[20rem]";
+    const heightClass = item.id === "work_order_board"
+      ? item.h >= 6
+        ? "min-h-[28rem]"
+        : "min-h-[24rem]"
+      : item.h >= 5
+        ? "min-h-[17rem]"
+        : item.h >= 4
+          ? "min-h-[14.5rem]"
+          : "min-h-[12.5rem]";
     const emphasisClass = emphasis === "dominant" ? "ring-1 ring-[var(--brand-accent,#E39A6E)]/35" : "";
 
     return (
@@ -223,98 +217,119 @@ export default function DashboardWidgetBoard({
 
   return (
     <div className="space-y-4">
-      <div
-        className="rounded-2xl border px-4 py-3"
-        style={{
-          borderColor: "var(--theme-card-border,#334155)",
-          background:
-            "linear-gradient(180deg, color-mix(in srgb, var(--theme-card-bg,#111827) 92%, black), color-mix(in srgb, var(--brand-secondary,#0F172A) 58%, black))",
-        }}
-      >
-        <div
-          className="text-[10px] font-semibold uppercase tracking-[0.18em]"
-          style={{ color: "var(--brand-accent,#E39A6E)" }}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setControlsOpen(true)}
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-black/40"
         >
-          Command Center Layout
-        </div>
-        <div
-          className="mt-1 text-xs sm:text-sm"
-          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
-        >
-          Fixed operational zones with widget visibility and compact height controls.
-        </div>
+          <Settings2 className="h-3.5 w-3.5" />
+          Layout controls
+        </button>
+      </div>
 
-        <div className="mt-3 grid gap-2 lg:grid-cols-2">
-          {orderedWidgets.map(({ item, widget }) => {
-            const enabled = item.hidden !== true;
-            const minH = Math.max(widget.minH, MIN_WIDGET_HEIGHT);
-            const maxH = widget.maxH ?? MAX_WIDGET_HEIGHT;
-            const canShrink = item.h > minH;
-            const canGrow = item.h < maxH;
-
-            return (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
-                style={{
-                  borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 82%, transparent)",
-                  background: "color-mix(in srgb, var(--theme-card-bg,#111827) 90%, black)",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleWidgetVisibilityToggle(item.id)}
-                  className="rounded-full border px-2.5 py-1 text-[11px] transition"
-                  style={{
-                    borderColor: enabled
-                      ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
-                      : "var(--theme-card-border,#334155)",
-                    background: enabled
-                      ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 22%, transparent)"
-                      : "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
-                    color: enabled
-                      ? "var(--theme-text-primary,#F8FAFC)"
-                      : "var(--theme-text-secondary,#94A3B8)",
-                  }}
-                  aria-pressed={enabled}
-                  aria-label={`${enabled ? "Hide" : "Show"} ${widget.title} widget`}
-                >
-                  {enabled ? "On" : "Off"} · {widget.title}
-                </button>
-
-                <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
-                  <span>Height</span>
-                  <button
-                    type="button"
-                    onClick={() => handleWidgetHeightAdjust(item.id, -1)}
-                    disabled={!canShrink}
-                    className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label={`Decrease ${widget.title} height`}
-                  >
-                    −
-                  </button>
-                  <span className="w-4 text-center text-neutral-200">{item.h}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleWidgetHeightAdjust(item.id, 1)}
-                    disabled={!canGrow}
-                    className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label={`Increase ${widget.title} height`}
-                  >
-                    +
-                  </button>
+      {controlsOpen ? (
+        <div className="fixed inset-0 z-[75] bg-black/60 p-3 sm:p-4" onClick={() => setControlsOpen(false)}>
+          <aside
+            className="ml-auto h-full w-full max-w-xl overflow-y-auto rounded-2xl border p-4"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              borderColor: "var(--theme-card-border,#334155)",
+              background:
+                "linear-gradient(180deg, color-mix(in srgb, var(--theme-card-bg,#111827) 95%, black), color-mix(in srgb, var(--brand-secondary,#0F172A) 62%, black))",
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--brand-accent,#E39A6E)" }}>
+                  Command Center Layout
+                </div>
+                <div className="mt-1 text-xs text-neutral-300">
+                  Toggle widgets and adjust compact heights. Changes persist automatically.
                 </div>
               </div>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setControlsOpen(false)}
+                className="rounded-full border border-white/10 bg-black/30 p-1.5 text-neutral-200"
+                aria-label="Close layout controls"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {orderedWidgets.map(({ item, widget }) => {
+                const enabled = item.hidden !== true;
+                const minH = Math.max(widget.minH, MIN_WIDGET_HEIGHT);
+                const maxH = widget.maxH ?? MAX_WIDGET_HEIGHT;
+                const canShrink = item.h > minH;
+                const canGrow = item.h < maxH;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 82%, transparent)",
+                      background: "color-mix(in srgb, var(--theme-card-bg,#111827) 90%, black)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleWidgetVisibilityToggle(item.id)}
+                      className="rounded-full border px-2.5 py-1 text-[11px] transition"
+                      style={{
+                        borderColor: enabled
+                          ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
+                          : "var(--theme-card-border,#334155)",
+                        background: enabled
+                          ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 22%, transparent)"
+                          : "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
+                        color: enabled
+                          ? "var(--theme-text-primary,#F8FAFC)"
+                          : "var(--theme-text-secondary,#94A3B8)",
+                      }}
+                      aria-pressed={enabled}
+                      aria-label={`${enabled ? "Hide" : "Show"} ${widget.title} widget`}
+                    >
+                      {enabled ? "On" : "Off"} · {widget.title}
+                    </button>
+
+                    <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
+                      <span>Height</span>
+                      <button
+                        type="button"
+                        onClick={() => handleWidgetHeightAdjust(item.id, -1)}
+                        disabled={!canShrink}
+                        className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={`Decrease ${widget.title} height`}
+                      >
+                        −
+                      </button>
+                      <span className="w-4 text-center text-neutral-200">{item.h}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleWidgetHeightAdjust(item.id, 1)}
+                        disabled={!canGrow}
+                        className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={`Increase ${widget.title} height`}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
         </div>
-      </div>
+      ) : null}
 
       <section className="space-y-2">
         <header>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Top Bar</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Top Awareness Strip</h2>
         </header>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {DASHBOARD_ZONES[0].widgetIds
             .map((id) => visibleById.get(id))
             .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))

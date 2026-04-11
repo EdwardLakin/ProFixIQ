@@ -17,7 +17,13 @@ function signedDurationLabel(seconds: number): string {
   return `${seconds > 0 ? "+" : "-"}${durationLabel(Math.abs(seconds))}`;
 }
 
-export default function TechnicianPerformanceWidget({ shopId }: { shopId: string | null }) {
+export default function TechnicianPerformanceWidget({
+  shopId,
+  compact = false,
+}: {
+  shopId: string | null;
+  compact?: boolean;
+}) {
   const { metrics, loading, error } = useTechnicianLoadMetrics(shopId, {
     enabled: true,
     pollMs: 30_000,
@@ -39,6 +45,38 @@ export default function TechnicianPerformanceWidget({ shopId }: { shopId: string
     (sum, row) => sum + row.expectedActualSummary.pairedJobs,
     0,
   );
+  const topTech = rows[0] ?? null;
+
+  if (compact) {
+    return (
+      <DashboardWidgetShell
+        eyebrow="AI · Technician Performance"
+        title="Technician Performance"
+        subtitle="Compact productivity preview."
+        compact
+      >
+        {loading ? (
+          <div className="text-sm text-neutral-300">Loading technician performance…</div>
+        ) : error ? (
+          <div className="text-sm text-[color:var(--brand-accent)]">{error}</div>
+        ) : !topTech ? (
+          <div className="text-sm text-neutral-400">No technician performance data found for today.</div>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-3 gap-2">
+              <Metric label="Completed" value={String(completedTotal)} />
+              <Metric label="Avg duration" value={durationLabel(avgDurationAcrossTeam)} tone="accent" />
+              <Metric label="Paired jobs" value={String(pairedJobsTotal)} tone="secondary" />
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-neutral-200">
+              Top performer: <span className="font-semibold text-white">{topTech.name}</span> ·{" "}
+              {topTech.completedJobsToday} jobs · {topTech.utilizationPct}% active
+            </div>
+          </div>
+        )}
+      </DashboardWidgetShell>
+    );
+  }
 
   return (
     <DashboardWidgetShell

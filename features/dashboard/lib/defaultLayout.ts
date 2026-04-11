@@ -12,30 +12,30 @@ type StructuredSlot = {
   y: number;
   w: number;
   h: number;
+  hidden?: boolean;
 };
 
 const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
-  { id: "daily_summary", x: 0, y: 0, w: 12, h: 3 },
-  { id: "shop_pulse", x: 0, y: 3, w: 12, h: 3 },
+  { id: "daily_summary", x: 0, y: 0, w: 4, h: 3 },
+  { id: "shop_pulse", x: 4, y: 0, w: 4, h: 3 },
+  { id: "suggested_actions", x: 8, y: 0, w: 4, h: 3 },
 
-  { id: "work_order_board", x: 0, y: 6, w: 8, h: 6 },
-  { id: "advisor_queue", x: 0, y: 12, w: 4, h: 4 },
-  { id: "tech_load", x: 4, y: 12, w: 4, h: 4 },
+  { id: "work_order_board", x: 0, y: 3, w: 8, h: 6 },
+  { id: "approval_risk", x: 8, y: 3, w: 4, h: 3 },
+  { id: "waiting_parts", x: 8, y: 6, w: 4, h: 3 },
+  { id: "comeback_risk", x: 8, y: 9, w: 4, h: 3, hidden: true },
 
-  { id: "approval_risk", x: 8, y: 6, w: 4, h: 4 },
-  { id: "waiting_parts", x: 8, y: 10, w: 4, h: 4 },
-  { id: "comeback_risk", x: 8, y: 14, w: 4, h: 4 },
+  { id: "advisor_queue", x: 0, y: 9, w: 4, h: 3 },
+  { id: "tech_load", x: 4, y: 9, w: 4, h: 3 },
+  { id: "stats_overview", x: 8, y: 12, w: 4, h: 3 },
 
-  { id: "revenue_watch", x: 0, y: 18, w: 4, h: 4 },
-  { id: "reports_performance", x: 4, y: 18, w: 4, h: 4 },
-  { id: "stats_overview", x: 8, y: 18, w: 4, h: 4 },
+  { id: "revenue_watch", x: 0, y: 12, w: 4, h: 3 },
+  { id: "reports_performance", x: 4, y: 12, w: 4, h: 3 },
+  { id: "bookings", x: 0, y: 15, w: 4, h: 3, hidden: true },
 
-  { id: "live_shop_load", x: 0, y: 22, w: 4, h: 4 },
-  { id: "bookings", x: 4, y: 22, w: 4, h: 4 },
-  { id: "suggested_actions", x: 8, y: 22, w: 4, h: 4 },
-
-  { id: "tech_performance", x: 0, y: 26, w: 6, h: 4 },
-  { id: "optimization_opportunities", x: 6, y: 26, w: 6, h: 4 },
+  { id: "live_shop_load", x: 4, y: 15, w: 4, h: 3, hidden: true },
+  { id: "tech_performance", x: 8, y: 15, w: 4, h: 3, hidden: true },
+  { id: "optimization_opportunities", x: 0, y: 18, w: 6, h: 3, hidden: true },
 ];
 
 export function buildDefaultDashboardLayout(
@@ -57,6 +57,7 @@ export function buildDefaultDashboardLayout(
         y: slot.y,
         w: Math.max(widget.minW, Math.min(widget.defaultW, slot.w)),
         h: Math.max(widget.minH, Math.min(widget.defaultH, slot.h)),
+        hidden: slot.hidden === true ? true : undefined,
       };
     }
 
