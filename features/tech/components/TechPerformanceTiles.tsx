@@ -103,13 +103,23 @@ export default function TechPerformanceTiles({
 
         // Optional fallback: assigned jobs count (if not passed in)
         if (typeof assignedJobsCount !== "number") {
-          const { count } = await supabase
-            .from("work_order_lines")
-            .select("id", { count: "exact", head: true })
-            .eq("assigned_tech_id", user.id)
-            .is("punched_out_at", null);
+          const { data: activeSegments, error: activeSegmentError } = await supabase
+            .from("work_order_line_labor_segments")
+            .select("work_order_line_id")
+            .eq("technician_id", user.id)
+            .is("ended_at", null);
 
-          setAssignedFallback(count ?? 0);
+          if (activeSegmentError) {
+            const { count } = await supabase
+              .from("work_order_lines")
+              .select("id", { count: "exact", head: true })
+              .eq("assigned_tech_id", user.id)
+              .is("punched_out_at", null);
+            setAssignedFallback(count ?? 0);
+          } else {
+            const uniqueActiveLines = new Set((activeSegments ?? []).map((row) => row.work_order_line_id));
+            setAssignedFallback(uniqueActiveLines.size);
+          }
         }
       } finally {
         setLoading(false);

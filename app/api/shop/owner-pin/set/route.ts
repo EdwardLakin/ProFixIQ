@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import bcrypt from "bcryptjs";
 import type { Database } from "@shared/types/types/supabase";
 import { getRouteHandlerCookies, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -61,7 +62,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (profile.role !== "owner" && profile.role !== "admin") {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || !actor.canOverrideOperationalState) {
       return NextResponse.json({ error: "Only owner/admin can set PIN" }, { status: 403 });
     }
 

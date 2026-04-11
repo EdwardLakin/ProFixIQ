@@ -7,6 +7,7 @@ import Stripe from "stripe";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -20,7 +21,6 @@ type ShopScope = Pick<
   "id" | "email" | "shop_name" | "name" | "stripe_customer_id"
 >;
 
-const ALLOWED_ROLES = new Set(["owner", "admin", "manager"]);
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -104,8 +104,8 @@ export async function POST() {
       return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
     }
 
-    const role = String(profile.role ?? "").trim().toLowerCase();
-    if (!ALLOWED_ROLES.has(role)) {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || !actor.canManageBilling) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import { getOfflineSyncSummary, subscribeOfflineMutations } from "@/features/shared/lib/offline/mutations";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -66,6 +67,13 @@ function cleanText(v: string | null | undefined): string {
   return String(v ?? "").trim().replace(/\s+/g, " ");
 }
 
+function nextActionLabel(status: RollupStatus): string {
+  if (status === "in_progress") return "Resume focused job";
+  if (status === "on_hold") return "Review hold reason + resume";
+  if (status === "awaiting") return "Start line when bay is free";
+  return "Review completion notes";
+}
+
 function formatVehicle(v: VehiclePick | null | undefined): string | null {
   if (!v) return null;
 
@@ -107,6 +115,14 @@ export default function MobileTechQueuePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RollupStatus | null>(null);
+  const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
+
+
+  useEffect(() => {
+    const refresh = () => setSyncSummary(getOfflineSyncSummary());
+    refresh();
+    return subscribeOfflineMutations(refresh);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -334,6 +350,11 @@ export default function MobileTechQueuePage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
+        {(syncSummary.queued > 0 || syncSummary.syncing > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
+          <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+            Sync status: pending {syncSummary.queued + syncSummary.syncing} • failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
+          </div>
+        )}
         {/* HERO (match MobileTechHome vibe) */}
         <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="space-y-1">
@@ -467,6 +488,10 @@ export default function MobileTechQueuePage() {
 
                     <div className="mt-1 truncate text-[0.75rem] text-neutral-400">
                       {vehicleLabel ? vehicleLabel : "—"}
+                    </div>
+
+                    <div className="mt-2 text-[0.65rem] uppercase tracking-[0.12em] text-amber-200/90">
+                      Next action: {nextActionLabel(bucket)}
                     </div>
 
                     <div className="mt-2 flex flex-wrap gap-1">
