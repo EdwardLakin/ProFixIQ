@@ -36,6 +36,7 @@ type Props = {
   maxItems?: number;
   collapsible?: boolean;
   hideDescription?: boolean;
+  embedded?: boolean;
 };
 
 export default function SuggestedActionsPanel({
@@ -47,6 +48,7 @@ export default function SuggestedActionsPanel({
   maxItems,
   collapsible = false,
   hideDescription = false,
+  embedded = false,
 }: Props) {
   const { loading, data, reload } = useSuggestedActions(true, context);
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -80,17 +82,22 @@ export default function SuggestedActionsPanel({
   } as const;
 
   return (
-    <section className={compact ? "border p-3" : "border p-5"} style={sectionStyle}>
+    <section
+      className={embedded ? (compact ? "space-y-3" : "space-y-4") : compact ? "border p-3" : "border p-5"}
+      style={embedded ? undefined : sectionStyle}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div
-            className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
-          >
-            {title}
-          </div>
+          {!embedded ? (
+            <div
+              className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
+              {title}
+            </div>
+          ) : null}
 
-          {!hideDescription && (
+          {!hideDescription && !embedded && (
             <div
               className={compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}
               style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
@@ -155,7 +162,7 @@ export default function SuggestedActionsPanel({
             <div
               key={item.id}
               className={compact ? "border px-3 py-2.5" : "border p-4"}
-              style={itemStyle}
+              style={embedded ? undefined : itemStyle}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

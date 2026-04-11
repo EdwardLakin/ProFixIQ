@@ -10,6 +10,5 @@ export const shopPulseWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <ShopPulseWidget shopId={context.shopId} />,
+  render: (context) => <ShopPulseWidget shopId={context.shopId} embedded />,
 };

@@ -9,34 +9,38 @@ function levelClasses(level: string): string {
   return "border-sky-500/30 bg-sky-500/10 text-sky-200";
 }
 
-export default function DailySummaryCard() {
+export default function DailySummaryCard({ embedded = false }: { embedded?: boolean }) {
   const { data, loading, error, reload } = useDailySummary(true);
 
-  return (
-    <section
-      className="border p-3 md:p-4"
-      style={{
+  const containerClassName = embedded ? "space-y-3" : "border p-3 md:p-4";
+  const containerStyle = embedded
+    ? undefined
+    : {
         borderColor: "var(--theme-card-border,#334155)",
         background: "var(--theme-card-bg,#111827)",
         borderRadius: "var(--theme-radius-xl,1rem)",
         boxShadow: "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
-      }}
-    >
+      };
+
+  return (
+    <section className={containerClassName} style={containerStyle}>
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div
-            className="text-xs font-semibold uppercase tracking-[0.18em]"
-            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
-          >
-            Daily Summary
+        {!embedded ? (
+          <div>
+            <div
+              className="text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
+              Daily Summary
+            </div>
+            <div
+              className="mt-0.5 text-xs"
+              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            >
+              Role-aware operational snapshot for today
+            </div>
           </div>
-          <div
-            className="mt-0.5 text-xs"
-            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
-          >
-            Role-aware operational snapshot for today
-          </div>
-        </div>
+        ) : <div />}
 
         <button
           type="button"
@@ -73,7 +77,7 @@ export default function DailySummaryCard() {
       ) : (
         <>
           <div
-            className="mt-3 border p-3"
+            className="border p-3"
             style={{
               borderColor: "var(--theme-card-border,#334155)",
               background: "var(--theme-surface-2,#0B1220)",
