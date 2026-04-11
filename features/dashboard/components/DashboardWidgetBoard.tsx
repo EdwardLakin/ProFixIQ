@@ -7,6 +7,13 @@ import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidge
 import { buildDefaultDashboardLayout } from "@/features/dashboard/lib/defaultLayout";
 import { normalizeDashboardLayout } from "@/features/dashboard/lib/dashboard-layouts";
 import {
+  DASHBOARD_WIDGET_RESPONSIVE_META,
+  getDashboardViewport,
+  getDashboardZoneColumns,
+  getWidgetSpanForViewport,
+  type DashboardViewport,
+} from "@/features/dashboard/lib/dashboard-responsive-layout";
+import {
   getWidgetsForView,
   type DashboardView,
 } from "@/features/dashboard/lib/dashboard-views";
@@ -57,7 +64,21 @@ export default function DashboardWidgetBoard({
 
   const [layout, setLayout] = useState<DashboardWidgetLayout[]>(computedInitialLayout);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [viewport, setViewport] = useState<DashboardViewport>("desktop");
+  const [screenWidth, setScreenWidth] = useState(1536);
   const prevSerializedRef = useRef<string>(JSON.stringify(computedInitialLayout));
+
+  useEffect(() => {
+    const syncViewport = () => {
+      const width = window.innerWidth;
+      setScreenWidth(width);
+      setViewport(getDashboardViewport(width));
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
 
   useEffect(() => {
     const serialized = JSON.stringify(computedInitialLayout);
@@ -138,6 +159,9 @@ export default function DashboardWidgetBoard({
     );
   };
 
+  const zoneColumns = getDashboardZoneColumns(screenWidth);
+  const isCompactDensity = viewport !== "desktop";
+
   const renderWidget = (
     item: DashboardWidgetLayout,
     widget: DashboardWidgetModule,
@@ -150,24 +174,25 @@ export default function DashboardWidgetBoard({
     const emphasis = options?.emphasis ?? "normal";
     const compact = options?.compact ?? false;
     const className = options?.className ?? "";
+    const meta = DASHBOARD_WIDGET_RESPONSIVE_META[item.id];
 
-    const heightClass = item.id === "work_order_board"
-      ? "h-full min-h-[26rem]"
-      : compact
-        ? "h-full min-h-[9.5rem]"
-        : item.h >= 5
-          ? "min-h-[17rem]"
-          : item.h >= 4
-            ? "min-h-[14.5rem]"
-            : "min-h-[12.5rem]";
-    const emphasisClass = emphasis === "dominant" ? "ring-1 ring-[var(--brand-accent,#E39A6E)]/35" : "";
+    const emphasisClass =
+      emphasis === "dominant" ? "ring-1 ring-[var(--brand-accent,#E39A6E)]/35" : "";
     const compactDensityClass = compact
       ? "[&_p]:hidden [&_.pfq-widget-shell]:pr-0 [&_.pfq-widget-shell]:text-[12px] [&_.pfq-widget-shell]:leading-snug"
       : "";
     const renderItem = compact ? { ...item, h: Math.min(item.h, 3) } : item;
+    const minHeight = compact ? meta.compactMinHeightRem : meta.preferredMinHeightRem;
 
     return (
-      <div key={item.id} className={`min-h-0 ${heightClass} ${className}`}>
+      <div
+        key={item.id}
+        className={`min-h-0 ${className}`}
+        style={{
+          gridColumn: `span ${getWidgetSpanForViewport(item.id, viewport, zoneColumns)} / span ${getWidgetSpanForViewport(item.id, viewport, zoneColumns)}`,
+          minHeight: `${minHeight}rem`,
+        }}
+      >
         <div className={`h-full min-h-0 ${emphasisClass} ${compactDensityClass}`}>
           {widget.selfContained ? (
             <div className="h-full min-h-0">{widget.render(context, renderItem)}</div>
@@ -187,30 +212,34 @@ export default function DashboardWidgetBoard({
     );
   };
 
-  const operationTopIds: DashboardWidgetId[] = [
-    "daily_summary",
-    "shop_pulse",
-    "suggested_actions",
-  ];
-  const operationSideIds: DashboardWidgetId[] = [
-    "advisor_queue",
-    "tech_load",
-    "approval_risk",
-    "waiting_parts",
-    "live_shop_load",
-  ];
+  const operationTopIds: DashboardWidgetId[] = ["daily_summary", "shop_pulse", "suggested_actions"];
+  const operationPrimaryIds: DashboardWidgetId[] = ["work_order_board"];
+  const operationSecondaryIds: DashboardWidgetId[] = ["approval_risk", "waiting_parts"];
+  const operationBusinessIds: DashboardWidgetId[] = ["advisor_queue", "tech_load", "live_shop_load"];
 
-  const performanceTopIds: DashboardWidgetId[] = [
-    "stats_overview",
-    "revenue_watch",
-    "reports_performance",
-  ];
-  const performanceBottomIds: DashboardWidgetId[] = [
-    "tech_performance",
-    "bookings",
-    "optimization_opportunities",
-    "comeback_risk",
-  ];
+  const performanceTopIds: DashboardWidgetId[] = ["stats_overview", "revenue_watch", "reports_performance"];
+  const performancePrimaryIds: DashboardWidgetId[] = ["tech_performance", "optimization_opportunities"];
+  const performanceSecondaryIds: DashboardWidgetId[] = ["comeback_risk"];
+  const performanceBusinessIds: DashboardWidgetId[] = ["bookings"];
+
+  const renderZone = (ids: DashboardWidgetId[], options?: { compact?: boolean; emphasis?: "dominant" | "normal" }) => (
+    <div
+      className="grid gap-3"
+      style={{
+        gridTemplateColumns: `repeat(${zoneColumns}, minmax(0, 1fr))`,
+      }}
+    >
+      {ids
+        .map((id) => visibleById.get(id))
+        .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+        .map(({ item, widget }) =>
+          renderWidget(item, widget, {
+            compact: options?.compact ?? isCompactDensity,
+            emphasis: options?.emphasis,
+          }),
+        )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -323,58 +352,19 @@ export default function DashboardWidgetBoard({
       ) : null}
 
       {view === "operations" ? (
-        <section className="grid gap-3 xl:h-[calc(100vh-16.5rem)] xl:grid-rows-[auto_minmax(0,1fr)_auto]">
-          <div className="grid gap-3 md:grid-cols-3">
-            {operationTopIds
-              .map((id) => visibleById.get(id))
-              .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-              .map(({ item, widget }) => renderWidget(item, widget, { compact: true }))}
-          </div>
-
-          <div className="min-h-0">
-            {(() => {
-              const board = visibleById.get("work_order_board");
-              if (!board) return null;
-              return renderWidget(board.item, board.widget, {
-                emphasis: "dominant",
-                className: "h-full",
-              });
-            })()}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {operationSideIds
-              .map((id) => visibleById.get(id))
-              .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-              .map(({ item, widget }) => renderWidget(item, widget, { compact: true }))}
-          </div>
+        <section className="space-y-3">
+          {renderZone(operationTopIds, { compact: true })}
+          {renderZone(operationPrimaryIds, { emphasis: "dominant" })}
+          {renderZone(operationSecondaryIds, { compact: true })}
+          {renderZone(operationBusinessIds)}
         </section>
       ) : (
-        <>
-          <section className="space-y-2">
-            <header>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Business Snapshot</h2>
-            </header>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {performanceTopIds
-                .map((id) => visibleById.get(id))
-                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-                .map(({ item, widget }) => renderWidget(item, widget))}
-            </div>
-          </section>
-
-          <section className="space-y-2">
-            <header>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Trends & Optimization</h2>
-            </header>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {performanceBottomIds
-                .map((id) => visibleById.get(id))
-                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-                .map(({ item, widget }) => renderWidget(item, widget))}
-            </div>
-          </section>
-        </>
+        <section className="space-y-3">
+          {renderZone(performanceTopIds, { compact: true })}
+          {renderZone(performancePrimaryIds)}
+          {renderZone(performanceSecondaryIds)}
+          {renderZone(performanceBusinessIds)}
+        </section>
       )}
     </div>
   );
