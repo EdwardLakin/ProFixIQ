@@ -6,6 +6,10 @@ import { Settings2, X } from "lucide-react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { buildDefaultDashboardLayout } from "@/features/dashboard/lib/defaultLayout";
 import { normalizeDashboardLayout } from "@/features/dashboard/lib/dashboard-layouts";
+import {
+  getWidgetsForView,
+  type DashboardView,
+} from "@/features/dashboard/lib/dashboard-views";
 import { getDashboardWidgetRegistry } from "@/features/dashboard/lib/widget-registry";
 import type {
   DashboardRenderContext,
@@ -15,40 +19,15 @@ import type {
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 type Props = {
+  view: DashboardView;
   role: string | null;
   context: DashboardRenderContext;
   initialLayout?: DashboardWidgetLayout[];
   onLayoutChange?: (nextLayout: DashboardWidgetLayout[]) => void;
 };
 
-type DashboardZoneKey = "top" | "primary" | "secondary" | "business";
-
-type DashboardZoneConfig = {
-  key: DashboardZoneKey;
-  widgetIds: DashboardWidgetId[];
-};
-
 const MIN_WIDGET_HEIGHT = 3;
 const MAX_WIDGET_HEIGHT = 7;
-
-const DASHBOARD_ZONES: DashboardZoneConfig[] = [
-  {
-    key: "top",
-    widgetIds: ["daily_summary", "shop_pulse", "suggested_actions"],
-  },
-  {
-    key: "primary",
-    widgetIds: ["work_order_board", "advisor_queue", "tech_load", "bookings"],
-  },
-  {
-    key: "secondary",
-    widgetIds: ["approval_risk", "waiting_parts", "comeback_risk", "live_shop_load"],
-  },
-  {
-    key: "business",
-    widgetIds: ["revenue_watch", "reports_performance", "stats_overview", "tech_performance", "optimization_opportunities"],
-  },
-];
 
 function orderLayout(layout: DashboardWidgetLayout[]): DashboardWidgetLayout[] {
   return [...layout].sort((a, b) => {
@@ -59,6 +38,7 @@ function orderLayout(layout: DashboardWidgetLayout[]): DashboardWidgetLayout[] {
 }
 
 export default function DashboardWidgetBoard({
+  view,
   role,
   context,
   initialLayout,
@@ -102,7 +82,7 @@ export default function DashboardWidgetBoard({
     [registry],
   );
 
-  const orderedWidgets = useMemo(
+  const allWidgets = useMemo(
     () =>
       orderLayout(layout)
         .map((item) => ({ item, widget: widgetById.get(item.id) }))
@@ -115,43 +95,22 @@ export default function DashboardWidgetBoard({
     [layout, widgetById],
   );
 
+  const viewIds = useMemo(() => new Set(getWidgetsForView(view)), [view]);
+
+  const viewWidgets = useMemo(
+    () => allWidgets.filter(({ item }) => viewIds.has(item.id)),
+    [allWidgets, viewIds],
+  );
+
   const visibleWidgets = useMemo(
-    () => orderedWidgets.filter(({ item }) => item.hidden !== true),
-    [orderedWidgets],
+    () => viewWidgets.filter(({ item }) => item.hidden !== true),
+    [viewWidgets],
   );
 
   const visibleById = useMemo(
     () => new Map(visibleWidgets.map((entry) => [entry.item.id, entry] as const)),
     [visibleWidgets],
   );
-
-  const widgetZoneById = useMemo(() => {
-    const zoneMap = new Map<DashboardWidgetId, DashboardZoneKey>();
-
-    for (const zone of DASHBOARD_ZONES) {
-      for (const widgetId of zone.widgetIds) {
-        zoneMap.set(widgetId, zone.key);
-      }
-    }
-
-    return zoneMap;
-  }, []);
-
-  const zoneEntries = useMemo(() => {
-    const zoneBuckets = {
-      top: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
-      primary: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
-      secondary: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
-      business: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
-    };
-
-    for (const entry of visibleWidgets) {
-      const zone = widgetZoneById.get(entry.item.id) ?? "business";
-      zoneBuckets[zone].push(entry);
-    }
-
-    return zoneBuckets;
-  }, [visibleWidgets, widgetZoneById]);
 
   const handleWidgetVisibilityToggle = (widgetId: DashboardWidgetLayout["id"]) => {
     setLayout((currentLayout) =>
@@ -215,6 +174,31 @@ export default function DashboardWidgetBoard({
     );
   };
 
+  const operationTopIds: DashboardWidgetId[] = [
+    "daily_summary",
+    "shop_pulse",
+    "suggested_actions",
+  ];
+  const operationSideIds: DashboardWidgetId[] = [
+    "advisor_queue",
+    "tech_load",
+    "approval_risk",
+    "waiting_parts",
+    "live_shop_load",
+  ];
+
+  const performanceTopIds: DashboardWidgetId[] = [
+    "stats_overview",
+    "revenue_watch",
+    "reports_performance",
+  ];
+  const performanceBottomIds: DashboardWidgetId[] = [
+    "tech_performance",
+    "bookings",
+    "optimization_opportunities",
+    "comeback_risk",
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -224,7 +208,7 @@ export default function DashboardWidgetBoard({
           className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-black/40"
         >
           <Settings2 className="h-3.5 w-3.5" />
-          Layout controls
+          View controls
         </button>
       </div>
 
@@ -242,23 +226,23 @@ export default function DashboardWidgetBoard({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--brand-accent,#E39A6E)" }}>
-                  Command Center Layout
+                  {view === "operations" ? "Operations Controls" : "Performance Controls"}
                 </div>
                 <div className="mt-1 text-xs text-neutral-300">
-                  Toggle widgets and adjust compact heights. Changes persist automatically.
+                  Lightweight personalization only: toggle widget visibility and compact height.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setControlsOpen(false)}
                 className="rounded-full border border-white/10 bg-black/30 p-1.5 text-neutral-200"
-                aria-label="Close layout controls"
+                aria-label="Close view controls"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="mt-3 grid gap-2">
-              {orderedWidgets.map(({ item, widget }) => {
+              {viewWidgets.map(({ item, widget }) => {
                 const enabled = item.hidden !== true;
                 const minH = Math.max(widget.minH, MIN_WIDGET_HEIGHT);
                 const maxH = widget.maxH ?? MAX_WIDGET_HEIGHT;
@@ -325,56 +309,74 @@ export default function DashboardWidgetBoard({
         </div>
       ) : null}
 
-      <section className="space-y-2">
-        <header>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Top Awareness Strip</h2>
-        </header>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {DASHBOARD_ZONES[0].widgetIds
-            .map((id) => visibleById.get(id))
-            .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-            .map(({ item, widget }) => renderWidget(item, widget))}
-        </div>
-      </section>
+      {view === "operations" ? (
+        <>
+          <section className="space-y-2">
+            <header>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Live Awareness</h2>
+            </header>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {operationTopIds
+                .map((id) => visibleById.get(id))
+                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+                .map(({ item, widget }) => renderWidget(item, widget))}
+            </div>
+          </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
-        <div className="space-y-2">
-          <header>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Primary Operations</h2>
-          </header>
-          <div className="grid gap-3 md:grid-cols-2">
-            {zoneEntries.primary
-              .filter(({ item }) => item.id === "work_order_board")
-              .map(({ item, widget }) => (
-                <div key={item.id} className="md:col-span-2">
-                  {renderWidget(item, widget, "dominant")}
-                </div>
-              ))}
+          <section className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
+            <div className="space-y-2">
+              <header>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Immediate Action</h2>
+              </header>
+              <div>
+                {(() => {
+                  const board = visibleById.get("work_order_board");
+                  if (!board) return null;
+                  return renderWidget(board.item, board.widget, "dominant");
+                })()}
+              </div>
+            </div>
 
-            {zoneEntries.primary
-              .filter(({ item }) => item.id !== "work_order_board")
-              .map(({ item, widget }) => renderWidget(item, widget))}
-          </div>
-        </div>
+            <div className="space-y-2">
+              <header>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Throughput & Blockers</h2>
+              </header>
+              <div className="grid gap-3">
+                {operationSideIds
+                  .map((id) => visibleById.get(id))
+                  .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+                  .map(({ item, widget }) => renderWidget(item, widget))}
+              </div>
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          <section className="space-y-2">
+            <header>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Business Snapshot</h2>
+            </header>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {performanceTopIds
+                .map((id) => visibleById.get(id))
+                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+                .map(({ item, widget }) => renderWidget(item, widget))}
+            </div>
+          </section>
 
-        <div className="space-y-2">
-          <header>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Secondary Signals</h2>
-          </header>
-          <div className="grid gap-3">
-            {zoneEntries.secondary.map(({ item, widget }) => renderWidget(item, widget))}
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <header>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Business & Performance</h2>
-        </header>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {zoneEntries.business.map(({ item, widget }) => renderWidget(item, widget))}
-        </div>
-      </section>
+          <section className="space-y-2">
+            <header>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Trends & Optimization</h2>
+            </header>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {performanceBottomIds
+                .map((id) => visibleById.get(id))
+                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+                .map(({ item, widget }) => renderWidget(item, widget))}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
