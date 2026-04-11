@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import GridLayout, {
-  type Layout,
-  type LayoutItem,
-  useContainerWidth,
-} from "react-grid-layout";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
-import {
-  DASHBOARD_GRID_COLUMNS,
-  buildDefaultDashboardLayout,
-} from "@/features/dashboard/lib/defaultLayout";
+import { buildDefaultDashboardLayout } from "@/features/dashboard/lib/defaultLayout";
 import { normalizeDashboardLayout } from "@/features/dashboard/lib/dashboard-layouts";
 import { getDashboardWidgetRegistry } from "@/features/dashboard/lib/widget-registry";
 import type {
   DashboardRenderContext,
+  DashboardWidgetId,
   DashboardWidgetLayout,
 } from "@/features/dashboard/types/layout";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
@@ -27,24 +20,57 @@ type Props = {
   onLayoutChange?: (nextLayout: DashboardWidgetLayout[]) => void;
 };
 
-function compareLayoutPosition(a: DashboardWidgetLayout, b: DashboardWidgetLayout): number {
-  if (a.y !== b.y) return a.y - b.y;
-  if (a.x !== b.x) return a.x - b.x;
-  return a.id.localeCompare(b.id);
-}
+type DashboardZoneKey = "top" | "primary" | "secondary" | "business";
 
-function normalizeGridLayoutItem(
-  item: LayoutItem,
-  fallback: DashboardWidgetLayout,
-): DashboardWidgetLayout {
-  return {
-    id: fallback.id,
-    x: Number.isFinite(item.x) ? item.x : fallback.x,
-    y: Number.isFinite(item.y) ? item.y : fallback.y,
-    w: Number.isFinite(item.w) ? item.w : fallback.w,
-    h: Number.isFinite(item.h) ? item.h : fallback.h,
-    hidden: fallback.hidden === true,
-  };
+type DashboardZoneConfig = {
+  key: DashboardZoneKey;
+  title: string;
+  subtitle: string;
+  widgetIds: DashboardWidgetId[];
+};
+
+const MIN_WIDGET_HEIGHT = 3;
+const MAX_WIDGET_HEIGHT = 7;
+
+const DASHBOARD_ZONES: DashboardZoneConfig[] = [
+  {
+    key: "top",
+    title: "Top Bar",
+    subtitle: "Daily summary and current shop status.",
+    widgetIds: ["daily_summary", "shop_pulse", "live_shop_load"],
+  },
+  {
+    key: "primary",
+    title: "Primary Operations",
+    subtitle: "Live execution board for advisors and technicians.",
+    widgetIds: [
+      "work_order_board",
+      "advisor_queue",
+      "tech_load",
+      "bookings",
+      "suggested_actions",
+    ],
+  },
+  {
+    key: "secondary",
+    title: "Secondary Signals",
+    subtitle: "Operational risks and blockers that need attention.",
+    widgetIds: ["approval_risk", "waiting_parts", "comeback_risk", "optimization_opportunities"],
+  },
+  {
+    key: "business",
+    title: "Business & Performance",
+    subtitle: "Commercial and performance indicators.",
+    widgetIds: ["revenue_watch", "reports_performance", "stats_overview", "tech_performance"],
+  },
+];
+
+function orderLayout(layout: DashboardWidgetLayout[]): DashboardWidgetLayout[] {
+  return [...layout].sort((a, b) => {
+    if (a.y !== b.y) return a.y - b.y;
+    if (a.x !== b.x) return a.x - b.x;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export default function DashboardWidgetBoard({
@@ -54,7 +80,6 @@ export default function DashboardWidgetBoard({
   onLayoutChange,
 }: Props) {
   const registry = useMemo(() => getDashboardWidgetRegistry(role), [role]);
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
 
   const computedInitialLayout = useMemo(
     () =>
@@ -67,17 +92,6 @@ export default function DashboardWidgetBoard({
 
   const [layout, setLayout] = useState<DashboardWidgetLayout[]>(computedInitialLayout);
   const prevSerializedRef = useRef<string>(JSON.stringify(computedInitialLayout));
-  const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1280 });
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsSmallScreen(query.matches);
-
-    update();
-    query.addEventListener("change", update);
-
-    return () => query.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     const serialized = JSON.stringify(computedInitialLayout);
@@ -94,7 +108,7 @@ export default function DashboardWidgetBoard({
     if (serialized === prevSerializedRef.current) return;
 
     prevSerializedRef.current = serialized;
-    onLayoutChange(layout);
+    onLayoutChange(orderLayout(layout));
   }, [layout, onLayoutChange]);
 
   const widgetById = useMemo(
@@ -104,64 +118,54 @@ export default function DashboardWidgetBoard({
 
   const orderedWidgets = useMemo(
     () =>
-      layout
+      orderLayout(layout)
         .map((item) => ({ item, widget: widgetById.get(item.id) }))
         .filter(
           (
             entry,
           ): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } =>
             Boolean(entry.widget),
-        )
-        .sort((a, b) => compareLayoutPosition(a.item, b.item)),
+        ),
     [layout, widgetById],
   );
+
   const visibleWidgets = useMemo(
     () => orderedWidgets.filter(({ item }) => item.hidden !== true),
     [orderedWidgets],
   );
 
-  const gridLayout = useMemo(
-    () =>
-      visibleWidgets.map(({ item, widget }) => ({
-        i: item.id,
-        x: item.x,
-        y: item.y,
-        w: item.w,
-        h: item.h,
-        minW: widget.minW,
-        minH: widget.minH,
-        maxW: widget.maxW,
-        maxH: widget.maxH,
-      } satisfies LayoutItem)),
+  const visibleById = useMemo(
+    () => new Map(visibleWidgets.map((entry) => [entry.item.id, entry] as const)),
     [visibleWidgets],
   );
 
-  const handleGridLayoutChange = (nextGridLayout: Layout) => {
-    const fallbackById = new Map(layout.map((item) => [item.id, item] as const));
-    const visibleById = new Map(
-      nextGridLayout.map((item) => [item.i as DashboardWidgetLayout["id"], item] as const),
-    );
+  const widgetZoneById = useMemo(() => {
+    const zoneMap = new Map<DashboardWidgetId, DashboardZoneKey>();
 
-    const nextLayout = layout
-      .map((current) => {
-        const fallback = fallbackById.get(current.id);
-        if (!fallback) return current;
+    for (const zone of DASHBOARD_ZONES) {
+      for (const widgetId of zone.widgetIds) {
+        zoneMap.set(widgetId, zone.key);
+      }
+    }
 
-        const visibleItem = visibleById.get(current.id);
-        if (!visibleItem) return fallback;
+    return zoneMap;
+  }, []);
 
-        return normalizeGridLayoutItem(visibleItem, fallback);
-      })
-      .sort(compareLayoutPosition);
+  const zoneEntries = useMemo(() => {
+    const zoneBuckets = {
+      top: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
+      primary: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
+      secondary: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
+      business: [] as Array<{ item: DashboardWidgetLayout; widget: DashboardWidgetModule }>,
+    };
 
-    if (!nextLayout.length) return;
+    for (const entry of visibleWidgets) {
+      const zone = widgetZoneById.get(entry.item.id) ?? "business";
+      zoneBuckets[zone].push(entry);
+    }
 
-    const currentSerialized = JSON.stringify(layout);
-    const nextSerialized = JSON.stringify(nextLayout);
-    if (currentSerialized === nextSerialized) return;
-
-    setLayout(nextLayout);
-  };
+    return zoneBuckets;
+  }, [visibleWidgets, widgetZoneById]);
 
   const handleWidgetVisibilityToggle = (widgetId: DashboardWidgetLayout["id"]) => {
     setLayout((currentLayout) =>
@@ -171,8 +175,54 @@ export default function DashboardWidgetBoard({
     );
   };
 
+  const handleWidgetHeightAdjust = (widgetId: DashboardWidgetId, delta: number) => {
+    const widget = widgetById.get(widgetId);
+    if (!widget) return;
+
+    setLayout((currentLayout) =>
+      currentLayout.map((item) => {
+        if (item.id !== widgetId) return item;
+
+        const maxH = widget.maxH ?? MAX_WIDGET_HEIGHT;
+        const minH = Math.max(widget.minH, MIN_WIDGET_HEIGHT);
+        const nextHeight = Math.max(minH, Math.min(maxH, item.h + delta));
+
+        if (nextHeight === item.h) return item;
+        return { ...item, h: nextHeight };
+      }),
+    );
+  };
+
+  const renderWidget = (
+    item: DashboardWidgetLayout,
+    widget: DashboardWidgetModule,
+    emphasis: "dominant" | "normal" = "normal",
+  ) => {
+    const heightClass = item.h >= 6 ? "min-h-[28rem]" : item.h >= 5 ? "min-h-[24rem]" : "min-h-[20rem]";
+    const emphasisClass = emphasis === "dominant" ? "ring-1 ring-[var(--brand-accent,#E39A6E)]/35" : "";
+
+    return (
+      <div key={item.id} className={`h-full min-h-0 ${heightClass}`}>
+        <div className={`h-full min-h-0 ${emphasisClass}`}>
+          {widget.selfContained ? (
+            <div className="h-full min-h-0">{widget.render(context, item)}</div>
+          ) : (
+            <DashboardWidgetShell
+              title={widget.title}
+              description={widget.description}
+              className="min-h-0"
+              scrollClassName="pb-2"
+            >
+              {widget.render(context, item)}
+            </DashboardWidgetShell>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div
         className="rounded-2xl border px-4 py-3"
         style={{
@@ -185,123 +235,131 @@ export default function DashboardWidgetBoard({
           className="text-[10px] font-semibold uppercase tracking-[0.18em]"
           style={{ color: "var(--brand-accent,#E39A6E)" }}
         >
-          Widget Layout
+          Command Center Layout
         </div>
         <div
           className="mt-1 text-xs sm:text-sm"
           style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
         >
-          Board controls. Move, resize, and toggle widgets. Layout saves automatically.
+          Fixed operational zones with widget visibility and compact height controls.
         </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
+
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {orderedWidgets.map(({ item, widget }) => {
             const enabled = item.hidden !== true;
+            const minH = Math.max(widget.minH, MIN_WIDGET_HEIGHT);
+            const maxH = widget.maxH ?? MAX_WIDGET_HEIGHT;
+            const canShrink = item.h > minH;
+            const canGrow = item.h < maxH;
 
             return (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                onClick={() => handleWidgetVisibilityToggle(item.id)}
-                className="rounded-full border px-2.5 py-1 text-[11px] transition"
+                className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
                 style={{
-                  borderColor: enabled
-                    ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
-                    : "var(--theme-card-border,#334155)",
-                  background: enabled
-                    ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 22%, transparent)"
-                    : "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
-                  color: enabled ? "var(--theme-text-primary,#F8FAFC)" : "var(--theme-text-secondary,#94A3B8)",
+                  borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 82%, transparent)",
+                  background: "color-mix(in srgb, var(--theme-card-bg,#111827) 90%, black)",
                 }}
-                aria-pressed={enabled}
-                aria-label={`${enabled ? "Hide" : "Show"} ${widget.title} widget`}
               >
-                {enabled ? "On" : "Off"} · {widget.title}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleWidgetVisibilityToggle(item.id)}
+                  className="rounded-full border px-2.5 py-1 text-[11px] transition"
+                  style={{
+                    borderColor: enabled
+                      ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 60%, transparent)"
+                      : "var(--theme-card-border,#334155)",
+                    background: enabled
+                      ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 22%, transparent)"
+                      : "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
+                    color: enabled
+                      ? "var(--theme-text-primary,#F8FAFC)"
+                      : "var(--theme-text-secondary,#94A3B8)",
+                  }}
+                  aria-pressed={enabled}
+                  aria-label={`${enabled ? "Hide" : "Show"} ${widget.title} widget`}
+                >
+                  {enabled ? "On" : "Off"} · {widget.title}
+                </button>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
+                  <span>Height</span>
+                  <button
+                    type="button"
+                    onClick={() => handleWidgetHeightAdjust(item.id, -1)}
+                    disabled={!canShrink}
+                    className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={`Decrease ${widget.title} height`}
+                  >
+                    −
+                  </button>
+                  <span className="w-4 text-center text-neutral-200">{item.h}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleWidgetHeightAdjust(item.id, 1)}
+                    disabled={!canGrow}
+                    className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={`Increase ${widget.title} height`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {isSmallScreen ? (
-        <div className="space-y-4">
-          {visibleWidgets.map(({ item, widget }) => (
-            <div key={item.id}>
-              {widget.selfContained ? (
-                widget.render(context, item)
-              ) : (
-                <DashboardWidgetShell title={widget.title} description={widget.description}>
-                  {widget.render(context, item)}
-                </DashboardWidgetShell>
-              )}
-            </div>
-          ))}
+      <section className="space-y-2">
+        <header>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Top Bar</h2>
+        </header>
+        <div className="grid gap-3 md:grid-cols-2">
+          {DASHBOARD_ZONES[0].widgetIds
+            .map((id) => visibleById.get(id))
+            .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+            .map(({ item, widget }) => renderWidget(item, widget))}
         </div>
-      ) : (
-        <div ref={containerRef as RefObject<HTMLDivElement>}>
-          {mounted ? (
-            <GridLayout
-              className="dashboard-widget-grid"
-              width={Math.max(width, 320)}
-              gridConfig={{
-                cols: DASHBOARD_GRID_COLUMNS,
-                rowHeight: 84,
-                margin: [12, 12],
-                containerPadding: [0, 0],
-              }}
-              dragConfig={{
-                enabled: true,
-                handle: ".widget-drag-handle",
-              }}
-              resizeConfig={{
-                enabled: true,
-                handles: ["e", "s", "se"],
-              }}
-              layout={gridLayout}
-              onLayoutChange={handleGridLayoutChange}
-            >
-              {visibleWidgets.map(({ item, widget }) => (
-                <div key={item.id} className="h-full min-h-0">
-                  <div className="relative flex h-full min-h-0 flex-col">
-                    <button
-                      type="button"
-                      className="widget-drag-handle absolute right-2 top-2 z-10 cursor-move rounded-md border border-white/15 bg-black/35 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-neutral-200"
-                      aria-label={`Drag ${widget.title}`}
-                    >
-                      Move
-                    </button>
-                    {widget.selfContained ? (
-                      <div className="h-full min-h-0">{widget.render(context, item)}</div>
-                    ) : (
-                      <DashboardWidgetShell
-                        title={widget.title}
-                        description={widget.description}
-                        className="min-h-0"
-                        scrollClassName="pb-2"
-                      >
-                        {widget.render(context, item)}
-                      </DashboardWidgetShell>
-                    )}
-                  </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
+        <div className="space-y-2">
+          <header>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Primary Operations</h2>
+          </header>
+          <div className="grid gap-3 md:grid-cols-2">
+            {zoneEntries.primary
+              .filter(({ item }) => item.id === "work_order_board")
+              .map(({ item, widget }) => (
+                <div key={item.id} className="md:col-span-2">
+                  {renderWidget(item, widget, "dominant")}
                 </div>
               ))}
-            </GridLayout>
-          ) : (
-            <div className="grid gap-4">
-              {visibleWidgets.map(({ item, widget }) => (
-                <div key={item.id}>
-                  {widget.selfContained ? (
-                    widget.render(context, item)
-                  ) : (
-                    <DashboardWidgetShell title={widget.title} description={widget.description}>
-                      {widget.render(context, item)}
-                    </DashboardWidgetShell>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+
+            {zoneEntries.primary
+              .filter(({ item }) => item.id !== "work_order_board")
+              .map(({ item, widget }) => renderWidget(item, widget))}
+          </div>
         </div>
-      )}
+
+        <div className="space-y-2">
+          <header>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Secondary Signals</h2>
+          </header>
+          <div className="grid gap-3">
+            {zoneEntries.secondary.map(({ item, widget }) => renderWidget(item, widget))}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <header>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Business & Performance</h2>
+        </header>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {zoneEntries.business.map(({ item, widget }) => renderWidget(item, widget))}
+        </div>
+      </section>
     </div>
   );
 }
