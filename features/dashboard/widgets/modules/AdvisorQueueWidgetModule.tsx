@@ -1,4 +1,4 @@
-import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
+import { WorkOrderBoardModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const advisorQueueWidgetModule: DashboardWidgetModule = {
@@ -10,5 +10,6 @@ export const advisorQueueWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  render: () => <AdvisorQueueWidget embedded />,
+  selfContained: true,
+  render: () => <WorkOrderBoardModule mode="standard" />,
 };

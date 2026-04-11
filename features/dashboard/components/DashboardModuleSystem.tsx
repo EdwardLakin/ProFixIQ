@@ -1,0 +1,89 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { cn } from "@shared/lib/utils";
+
+export type DashboardModuleMode = "signal" | "standard" | "feature";
+
+export function DashboardModuleShell({
+  mode = "standard",
+  className,
+  children,
+}: {
+  mode?: DashboardModuleMode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "h-full min-h-0 rounded-2xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_90%,black)] text-white",
+        mode === "signal" ? "p-3.5" : mode === "feature" ? "p-5" : "p-4",
+        className,
+      )}
+    >
+      <div className="flex h-full min-h-0 flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
+export function DashboardModuleHeader({
+  eyebrow,
+  title,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        {eyebrow ? (
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">{eyebrow}</div>
+        ) : null}
+        <h3 className="mt-1 truncate text-base font-semibold tracking-tight text-white">{title}</h3>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
+export function DashboardMetric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "primary" | "accent"; }) {
+  const toneClass =
+    tone === "accent"
+      ? "text-[color:var(--brand-accent)]"
+      : tone === "primary"
+        ? "text-[color:var(--brand-primary)]"
+        : "text-white";
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
+      <div className={cn("mt-1 text-2xl font-semibold leading-none", toneClass)}>{value}</div>
+    </div>
+  );
+}
+
+export function DashboardMetricRow({ children, columns = 3 }: { children: ReactNode; columns?: 2 | 3 | 4 }) {
+  return <div className={cn("grid gap-2.5", columns === 2 ? "grid-cols-2" : columns === 4 ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-3")}>{children}</div>;
+}
+
+export function DashboardSignalList({ items }: { items: Array<{ label: string; value?: string; tone?: "default" | "accent"; }>; }) {
+  return (
+    <div className="space-y-1.5">
+      {items.map((item) => (
+        <div key={`${item.label}-${item.value ?? ""}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs">
+          <span className="text-neutral-300">{item.label}</span>
+          {item.value ? (
+            <span className={cn("font-semibold", item.tone === "accent" ? "text-[color:var(--brand-accent)]" : "text-white")}>{item.value}</span>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function DashboardActionBar({ children }: { children: ReactNode }) {
+  return <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/10 pt-2">{children}</div>;
+}

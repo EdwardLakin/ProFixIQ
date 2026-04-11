@@ -1,4 +1,4 @@
-import TechLoadWidget from "@/features/dashboard/widgets/TechLoadWidget";
+import { TechLoadModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const techLoadWidgetModule: DashboardWidgetModule = {
@@ -10,5 +10,6 @@ export const techLoadWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  render: (context) => <TechLoadWidget shopId={context.shopId} embedded />,
+  selfContained: true,
+  render: (context) => <TechLoadModule shopId={context.shopId} mode="standard" />,
 };

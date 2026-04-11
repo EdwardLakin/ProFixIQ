@@ -1,4 +1,4 @@
-import ShopPulseWidget from "@/features/dashboard/widgets/ShopPulseWidget";
+import { ShopPulseModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const shopPulseWidgetModule: DashboardWidgetModule = {
@@ -10,5 +10,6 @@ export const shopPulseWidgetModule: DashboardWidgetModule = {
   defaultH: 3,
   minW: 3,
   minH: 3,
-  render: (context) => <ShopPulseWidget shopId={context.shopId} embedded />,
+  selfContained: true,
+  render: (context) => <ShopPulseModule shopId={context.shopId} mode="signal" />,
 };

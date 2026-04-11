@@ -1,4 +1,4 @@
-import TechnicianPerformanceWidget from "@/features/dashboard/widgets/TechnicianPerformanceWidget";
+import { PerformanceModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const technicianPerformanceWidgetModule: DashboardWidgetModule = {
@@ -11,5 +11,5 @@ export const technicianPerformanceWidgetModule: DashboardWidgetModule = {
   minW: 3,
   minH: 3,
   selfContained: true,
-  render: (context) => <TechnicianPerformanceWidget shopId={context.shopId} compact />,
+  render: (context) => <PerformanceModule shopId={context.shopId} mode="standard" />,
 };
