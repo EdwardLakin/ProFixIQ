@@ -49,7 +49,7 @@ export async function replayQueuedInspectionSaves(): Promise<void> {
 export async function saveInspectionSession(
   session: InspectionSession,
   workOrderLineId: string
-): Promise<void> {
+): Promise<{ queued: boolean; conflicted: boolean }> {
   if (!workOrderLineId) {
     throw new Error("Missing workOrderLineId");
   }
@@ -60,7 +60,7 @@ export async function saveInspectionSession(
       ? crypto.randomUUID()
       : `${workOrderLineId}:${Date.now()}`;
 
-  await runMutationWithOfflineQueue({
+  const result = await runMutationWithOfflineQueue({
     clientMutationId: mutationId,
     actionType: ACTION_SAVE_INSPECTION,
     payload,
@@ -70,4 +70,6 @@ export async function saveInspectionSession(
   if (typeof navigator !== "undefined" && navigator.onLine) {
     await replayQueuedInspectionSaves();
   }
+
+  return result;
 }

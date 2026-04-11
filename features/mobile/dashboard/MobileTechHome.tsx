@@ -41,7 +41,9 @@ type Props = {
 
 type ShiftStatus = "none" | "active" | "break" | "lunch" | "ended";
 
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
+  active_segment_started_at?: string | null;
+};
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
@@ -201,28 +203,64 @@ export function MobileTechHome({
 
       setLoadingCurrentJob(true);
       try {
-        const { data, error } = await supabase
-          .from("work_order_lines")
-          .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
-          )
-          .eq("assigned_tech_id", uid)
-          .not("punched_in_at", "is", null)
-          .is("punched_out_at", null)
-          .order("punched_in_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { data: activeSegments, error: segmentError } = await supabase
+          .from("work_order_line_labor_segments")
+          .select("work_order_line_id, started_at")
+          .eq("technician_id", uid)
+          .is("ended_at", null)
+          .order("started_at", { ascending: false })
+          .limit(1);
 
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.error("[MobileTechHome] current job load error:", error);
-          setCurrentJob(null);
-          setCurrentJobWorkOrder(null);
-          setCurrentJobVehicle(null);
-          return;
+        const activeLineId = activeSegments?.[0]?.work_order_line_id ?? null;
+
+        let line: WorkOrderLine | null = null;
+
+        if (activeLineId) {
+          const { data: activeLine, error } = await supabase
+            .from("work_order_lines")
+            .select(
+              "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
+            )
+            .eq("id", activeLineId)
+            .maybeSingle();
+
+          if (error) {
+            console.error("[MobileTechHome] current job active-line load error:", error);
+          } else if (activeLine) {
+            line = {
+              ...(activeLine as WorkOrderLine),
+              active_segment_started_at: activeSegments?.[0]?.started_at ?? null,
+            };
+          }
         }
 
-        const line = (data as WorkOrderLine | null) ?? null;
+        if (!line) {
+          const { data, error } = await supabase
+            .from("work_order_lines")
+            .select(
+              "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
+            )
+            .eq("assigned_tech_id", uid)
+            .not("punched_in_at", "is", null)
+            .is("punched_out_at", null)
+            .order("punched_in_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (error) {
+            console.error("[MobileTechHome] current job fallback load error:", error);
+            setCurrentJob(null);
+            setCurrentJobWorkOrder(null);
+            setCurrentJobVehicle(null);
+            return;
+          }
+
+          line = (data as WorkOrderLine | null) ?? null;
+        }
+
+        if (segmentError) {
+          console.error("[MobileTechHome] active segment load error:", segmentError);
+        }
         setCurrentJob(line);
 
         if (!line?.work_order_id) {

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -12,7 +13,6 @@ type CreateOrgBody = {
   name?: string;
 };
 
-const ALLOWED_ROLES = new Set(["owner", "admin"]);
 
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -54,8 +54,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const role = String(profile.role ?? "").toLowerCase();
-    if (!ALLOWED_ROLES.has(role)) {
+    const actor = getActorCapabilities({ role: profile.role });
+    if (!actor.isKnownRole || !actor.canManageBilling) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
