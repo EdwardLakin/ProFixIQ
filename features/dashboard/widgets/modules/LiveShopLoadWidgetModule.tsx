@@ -1,4 +1,4 @@
-import LiveShopLoadWidget from "@/features/dashboard/widgets/LiveShopLoadWidget";
+import { LiveShopLoadModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const liveShopLoadWidgetModule: DashboardWidgetModule = {
@@ -11,5 +11,5 @@ export const liveShopLoadWidgetModule: DashboardWidgetModule = {
   minW: 4,
   minH: 3,
   selfContained: true,
-  render: (context) => <LiveShopLoadWidget shopId={context.shopId} />,
+  render: (context) => <LiveShopLoadModule shopId={context.shopId} mode="standard" />,
 };

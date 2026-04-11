@@ -1,4 +1,4 @@
-import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
+import { RevenueWatchModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const reportsPerformanceWidgetModule: DashboardWidgetModule = {
@@ -11,5 +11,5 @@ export const reportsPerformanceWidgetModule: DashboardWidgetModule = {
   minW: 3,
   minH: 3,
   selfContained: true,
-  render: () => <ReportsPerformanceWidget compact />,
+  render: (context) => <RevenueWatchModule shopId={context.shopId} mode="signal" />,
 };

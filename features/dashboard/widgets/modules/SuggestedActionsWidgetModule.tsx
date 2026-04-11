@@ -1,4 +1,4 @@
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import { SuggestedActionsModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const suggestedActionsWidgetModule: DashboardWidgetModule = {
@@ -10,14 +10,6 @@ export const suggestedActionsWidgetModule: DashboardWidgetModule = {
   defaultH: 3,
   minW: 3,
   minH: 3,
-  render: (_context, item) => (
-    <SuggestedActionsPanel
-      context={{ pageType: "dashboard", pageTitle: "Dashboard" }}
-      compact={item.h <= 4}
-      maxItems={item.h <= 4 ? 3 : 5}
-      collapsible={false}
-      hideDescription={item.h <= 3}
-      embedded
-    />
-  ),
+  selfContained: true,
+  render: (_context, item) => <SuggestedActionsModule mode="standard" maxItems={item.h <= 4 ? 3 : 5} />,
 };

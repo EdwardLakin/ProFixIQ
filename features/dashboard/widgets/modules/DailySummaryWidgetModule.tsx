@@ -1,4 +1,4 @@
-import DailySummaryCard from "@/features/shared/components/DailySummaryCard";
+import { DailySummaryModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const dailySummaryWidgetModule: DashboardWidgetModule = {
@@ -10,5 +10,6 @@ export const dailySummaryWidgetModule: DashboardWidgetModule = {
   defaultH: 3,
   minW: 3,
   minH: 3,
-  render: () => <DailySummaryCard embedded />,
+  selfContained: true,
+  render: () => <DailySummaryModule mode="signal" />,
 };

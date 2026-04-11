@@ -1,4 +1,4 @@
-import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
+import { WorkOrderBoardModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const workOrderBoardWidgetModule: DashboardWidgetModule = {
@@ -11,5 +11,5 @@ export const workOrderBoardWidgetModule: DashboardWidgetModule = {
   minW: 5,
   minH: 4,
   selfContained: true,
-  render: () => <WorkOrderBoardWidget />,
+  render: () => <WorkOrderBoardModule mode="feature" />,
 };

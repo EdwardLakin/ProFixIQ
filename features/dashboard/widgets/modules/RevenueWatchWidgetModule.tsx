@@ -1,4 +1,4 @@
-import RevenueWatchWidget from "@/features/dashboard/widgets/RevenueWatchWidget";
+import { RevenueWatchModule } from "@/features/dashboard/widgets/modules/RefinedDashboardModules";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
 
 export const revenueWatchWidgetModule: DashboardWidgetModule = {
@@ -10,5 +10,6 @@ export const revenueWatchWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  render: (context) => <RevenueWatchWidget shopId={context.shopId} embedded />,
+  selfContained: true,
+  render: (context) => <RevenueWatchModule shopId={context.shopId} mode="standard" />,
 };
