@@ -55,17 +55,24 @@ export function normalizeDashboardLayout(
 ): DashboardWidgetLayout[] {
   const defaults = getDashboardDefaultLayoutMap(widgets);
 
+  const widgetsById = new Map(widgets.map((widget) => [widget.id, widget] as const));
+
   const merged = layout
     .map((item) => {
       const fallback = defaults.get(item.id);
-      if (!fallback) return null;
+      const widget = widgetsById.get(item.id);
+      if (!fallback || !widget) return null;
+
+      const maxHeight = widget.maxH ?? 7;
+      const minHeight = Math.max(widget.minH, 3);
+      const parsedHeight = Number.isFinite(item.h) ? item.h : fallback.h;
 
       const normalized: DashboardWidgetLayout = {
         id: item.id,
-        x: Number.isFinite(item.x) ? item.x : fallback.x,
-        y: Number.isFinite(item.y) ? item.y : fallback.y,
-        w: Number.isFinite(item.w) ? item.w : fallback.w,
-        h: Number.isFinite(item.h) ? item.h : fallback.h,
+        x: fallback.x,
+        y: fallback.y,
+        w: fallback.w,
+        h: Math.min(maxHeight, Math.max(minHeight, parsedHeight)),
       };
       if (item.hidden === true) {
         normalized.hidden = true;

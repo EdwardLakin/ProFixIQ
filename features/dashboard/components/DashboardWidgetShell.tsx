@@ -54,12 +54,12 @@ export default function DashboardWidgetShell({
               </div>
             ) : null}
 
-            <h2 className="mt-1 text-base font-semibold text-white sm:text-lg">
+            <h2 className="mt-1 text-[17px] font-semibold leading-tight text-white sm:text-[19px]">
               {title}
             </h2>
 
             {bodyText ? (
-              <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
+              <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-neutral-300 sm:text-[13px]">
                 {bodyText}
               </p>
             ) : null}
@@ -90,7 +90,7 @@ export default function DashboardWidgetShell({
           </div>
         </div>
 
-        <div className={cn("mt-4 min-h-0 flex-1 overflow-hidden", contentClassName)}>
+        <div className={cn("mt-3 min-h-0 flex-1 overflow-hidden", contentClassName)}>
           <div
             className={cn(
               "pfq-widget-shell h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-1",
