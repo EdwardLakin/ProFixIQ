@@ -6,9 +6,10 @@ export const workOrderBoardWidgetModule: DashboardWidgetModule = {
   title: "Work Order Board",
   description: "Live workboard snapshot",
   roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
-  defaultW: 6,
-  defaultH: 6,
-  minW: 4,
+  defaultW: 8,
+  defaultH: 5,
+  minW: 5,
   minH: 4,
+  selfContained: true,
   render: () => <WorkOrderBoardWidget />,
 };

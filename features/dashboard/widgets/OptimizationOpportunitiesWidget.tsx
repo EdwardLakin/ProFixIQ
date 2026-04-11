@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import OptimizationExecutionModal from "../../../components/optimization/OptimizationExecutionModal";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
+import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import type {
   ExecutionPreview,
   OptimizationActionType,
@@ -350,7 +351,7 @@ export default function OptimizationOpportunitiesWidget({
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load optimization opportunities");
+          setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
         }
       } finally {
         if (!cancelled) setLoading(false);

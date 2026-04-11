@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
+import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 
 type DB = Database;
 type SnapshotRow = DB["public"]["Tables"]["shop_health_snapshots"]["Row"];
@@ -43,7 +44,7 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
         if (!cancelled) setSnapshot((data as SnapshotRow | null) ?? null);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load comeback risk.");
+          setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
           setSnapshot(null);
         }
       } finally {

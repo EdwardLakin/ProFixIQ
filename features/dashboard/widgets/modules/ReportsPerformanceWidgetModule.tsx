@@ -7,8 +7,9 @@ export const reportsPerformanceWidgetModule: DashboardWidgetModule = {
   description: "Revenue and team performance",
   roles: ["owner", "admin", "manager"],
   defaultW: 6,
-  defaultH: 6,
+  defaultH: 5,
   minW: 4,
   minH: 4,
+  selfContained: true,
   render: () => <ReportsPerformanceWidget />,
 };

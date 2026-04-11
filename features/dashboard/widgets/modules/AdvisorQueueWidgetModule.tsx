@@ -7,8 +7,9 @@ export const advisorQueueWidgetModule: DashboardWidgetModule = {
   description: "Queue and approvals workload",
   roles: ["owner", "admin", "manager", "advisor"],
   defaultW: 4,
-  defaultH: 5,
+  defaultH: 4,
   minW: 3,
-  minH: 4,
+  minH: 3,
+  selfContained: true,
   render: () => <AdvisorQueueWidget />,
 };

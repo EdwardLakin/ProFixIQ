@@ -6,9 +6,10 @@ export const technicianPerformanceWidgetModule: DashboardWidgetModule = {
   title: "Technician Performance",
   description: "Completed jobs and average duration today",
   roles: ["owner", "admin", "manager", "advisor", "parts"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <TechnicianPerformanceWidget shopId={context.shopId} />,
 };

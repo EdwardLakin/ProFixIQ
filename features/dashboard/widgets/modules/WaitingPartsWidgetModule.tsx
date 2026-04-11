@@ -6,9 +6,10 @@ export const waitingPartsWidgetModule: DashboardWidgetModule = {
   title: "Waiting Parts",
   description: "Blocked by parts availability",
   roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
-  defaultW: 3,
+  defaultW: 4,
   defaultH: 4,
   minW: 3,
   minH: 3,
+  selfContained: true,
   render: (context) => <WaitingPartsWidget shopId={context.shopId} />,
 };
