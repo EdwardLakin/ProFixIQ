@@ -7695,13 +7695,17 @@ export type Database = {
           default_cost: number | null
           default_price: number | null
           description: string | null
+          external_id: string | null
           id: string
+          import_notes: string | null
           low_stock_threshold: number | null
           name: string
+          normalized_part_key: string | null
           part_number: string | null
           price: number | null
           shop_id: string | null
           sku: string | null
+          source_intake_id: string | null
           subcategory: string | null
           supplier: string | null
           taxable: boolean | null
@@ -7715,13 +7719,17 @@ export type Database = {
           default_cost?: number | null
           default_price?: number | null
           description?: string | null
+          external_id?: string | null
           id?: string
+          import_notes?: string | null
           low_stock_threshold?: number | null
           name: string
+          normalized_part_key?: string | null
           part_number?: string | null
           price?: number | null
           shop_id?: string | null
           sku?: string | null
+          source_intake_id?: string | null
           subcategory?: string | null
           supplier?: string | null
           taxable?: boolean | null
@@ -7735,13 +7743,17 @@ export type Database = {
           default_cost?: number | null
           default_price?: number | null
           description?: string | null
+          external_id?: string | null
           id?: string
+          import_notes?: string | null
           low_stock_threshold?: number | null
           name?: string
+          normalized_part_key?: string | null
           part_number?: string | null
           price?: number | null
           shop_id?: string | null
           sku?: string | null
+          source_intake_id?: string | null
           subcategory?: string | null
           supplier?: string | null
           taxable?: boolean | null
