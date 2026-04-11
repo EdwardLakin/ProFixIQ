@@ -171,7 +171,7 @@ export default function ShopPulseWidget({
               </div>
             ) : (
               <div className="mt-3 flex max-h-32 flex-wrap gap-2 overflow-y-auto pr-1">
-                {pulse.messages.map((msg, index) => (
+                {(embedded ? pulse.messages.slice(0, 3) : pulse.messages).map((msg, index) => (
                   <StatusBadge
                     key={`${msg}-${index}`}
                     variant={msg.includes("high-risk") ? "danger" : "neutral"}

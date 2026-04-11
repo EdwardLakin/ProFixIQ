@@ -83,7 +83,7 @@ function SummaryMiniCard({
   );
 }
 
-export default function ReportsPerformanceWidget() {
+export default function ReportsPerformanceWidget({ compact = false }: { compact?: boolean }) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [shopId, setShopId] = useState<string | null>(null);
@@ -165,6 +165,45 @@ export default function ReportsPerformanceWidget() {
   }, [shopId, range]);
 
   const topTech = techRows[0] ?? null;
+
+  if (compact) {
+    return (
+      <section className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-900/70 to-slate-950/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.8)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-orange-300/80">Dashboard · Reports</div>
+            <h2 className="mt-1 text-base text-orange-400" style={{ fontFamily: "var(--font-blackops)" }}>
+              Performance Snapshot
+            </h2>
+          </div>
+          <Link
+            href="/dashboard/owner/reports"
+            className="rounded-full border border-orange-500/60 bg-orange-500/10 px-3 py-1 text-xs text-orange-100 hover:bg-orange-500 hover:text-black"
+          >
+            Open full view →
+          </Link>
+        </div>
+        {loading ? (
+          <div className="mt-3 text-sm text-neutral-300">Loading performance snapshot…</div>
+        ) : error ? (
+          <div className="mt-3 text-sm text-red-200">{error}</div>
+        ) : !stats ? (
+          <div className="mt-3 text-sm text-neutral-300">No data yet.</div>
+        ) : (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <SummaryMiniCard label="Revenue" value={money(stats.total.revenue)} accent="text-emerald-400" />
+            <SummaryMiniCard label="Profit" value={money(stats.total.profit)} accent="text-amber-300" />
+            <SummaryMiniCard label="Jobs" value={String(stats.total.jobs ?? 0)} accent="text-sky-400" />
+            <SummaryMiniCard
+              label="Top tech"
+              value={topTech ? `${topTech.name.split(" ")[0]} · ${pct(topTech.efficiencyPct)}` : "—"}
+              accent="text-cyan-300"
+            />
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-900/70 to-slate-950/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.8)]">

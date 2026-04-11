@@ -74,6 +74,34 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
         >
           No summary available.
         </div>
+      ) : embedded ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <MiniMetric label="Actions" value={String(data.actionItems.length)} />
+            <MiniMetric label="Alerts" value={String(data.notifications.length)} />
+            <MiniMetric label="Links" value={String(data.links.length)} />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Priority signal</div>
+            <div className="mt-1 text-sm text-neutral-100">
+              {data.notifications[0]?.title ?? data.summaryText.slice(0, 84)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Next action</div>
+            <div className="mt-1 text-sm text-neutral-200">{data.actionItems[0] ?? "Monitor board flow and clear blockers."}</div>
+            <div className="mt-2">
+              <Link
+                href={data.links[0]?.href ?? "/dashboard"}
+                className="rounded-full border border-[color:var(--brand-primary,#C97A3D)]/45 bg-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_16%,transparent)] px-2.5 py-1 text-[11px] text-[color:var(--brand-primary,#C97A3D)]"
+              >
+                Open full view →
+              </Link>
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           <div
@@ -171,5 +199,14 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
         </>
       )}
     </section>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</div>
+      <div className="mt-1 text-base font-semibold text-white">{value}</div>
+    </div>
   );
 }
