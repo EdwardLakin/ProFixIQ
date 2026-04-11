@@ -10,6 +10,5 @@ export const dailySummaryWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: () => <DailySummaryCard />,
+  render: () => <DailySummaryCard embedded />,
 };

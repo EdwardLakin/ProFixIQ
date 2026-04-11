@@ -10,6 +10,5 @@ export const advisorQueueWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: () => <AdvisorQueueWidget />,
+  render: () => <AdvisorQueueWidget embedded />,
 };

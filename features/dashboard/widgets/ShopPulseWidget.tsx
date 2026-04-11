@@ -52,7 +52,13 @@ function MetricTile(props: {
   );
 }
 
-export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
+export default function ShopPulseWidget({
+  shopId,
+  embedded = false,
+}: {
+  shopId: string | null;
+  embedded?: boolean;
+}) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,20 +126,18 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
     };
   }, [rows]);
 
-  return (
-    <DashboardWidgetShell
-      eyebrow="AI · Shop Pulse"
-      title="What needs attention right now"
-      subtitle="Fast operational summary from the live work board."
-      rightSlot={
-        <Link
-          href="/work-orders/board"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
-        >
-          Open board →
-        </Link>
-      }
-    >
+  const content = (
+    <>
+      {embedded ? (
+        <div className="mb-2 flex justify-end">
+          <Link
+            href="/work-orders/board"
+            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
+          >
+            Open board →
+          </Link>
+        </div>
+      ) : null}
       {loading ? (
         <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
           Loading AI pulse…
@@ -184,6 +188,26 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <DashboardWidgetShell
+      eyebrow="AI · Shop Pulse"
+      title="What needs attention right now"
+      subtitle="Fast operational summary from the live work board."
+      rightSlot={
+        <Link
+          href="/work-orders/board"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
+        >
+          Open board →
+        </Link>
+      }
+    >
+      {content}
     </DashboardWidgetShell>
   );
 }

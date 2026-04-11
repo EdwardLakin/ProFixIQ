@@ -136,7 +136,7 @@ function BucketButton({
   );
 }
 
-export default function AdvisorQueueWidget(): JSX.Element {
+export default function AdvisorQueueWidget({ embedded = false }: { embedded?: boolean }): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   
@@ -286,15 +286,19 @@ export default function AdvisorQueueWidget(): JSX.Element {
   if (isTech) return <></>;
 
   return (
-    <section className={PANEL + " overflow-hidden"}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+    <section className={embedded ? "space-y-4" : PANEL + " overflow-hidden"}>
+      <div className={embedded ? "flex items-center justify-end gap-2" : "flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3"}>
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-            My advisor queue
-          </div>
-          <div className="mt-1 text-sm font-semibold text-white">
-            Only work orders assigned to you (last 30 days)
-          </div>
+          {!embedded ? (
+            <>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                My advisor queue
+              </div>
+              <div className="mt-1 text-sm font-semibold text-white">
+                Only work orders assigned to you (last 30 days)
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -320,7 +324,7 @@ export default function AdvisorQueueWidget(): JSX.Element {
       ) : err ? (
         <div className="px-4 py-5 text-sm text-red-200">{err}</div>
       ) : (
-        <div className="space-y-4 px-4 py-4">
+        <div className={embedded ? "space-y-4" : "space-y-4 px-4 py-4"}>
           <div className="grid gap-3 md:grid-cols-4">
             {(["awaiting", "in_progress", "on_hold", "ready_to_invoice"] as Bucket[]).map((b) => (
               <BucketButton

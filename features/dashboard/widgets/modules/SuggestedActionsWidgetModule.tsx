@@ -10,7 +10,6 @@ export const suggestedActionsWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
   render: (_context, item) => (
     <SuggestedActionsPanel
       context={{ pageType: "dashboard", pageTitle: "Dashboard" }}
@@ -18,6 +17,7 @@ export const suggestedActionsWidgetModule: DashboardWidgetModule = {
       maxItems={item.h <= 4 ? 4 : 8}
       collapsible={false}
       hideDescription={item.h <= 3}
+      embedded
     />
   ),
 };
