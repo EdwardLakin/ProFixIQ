@@ -141,32 +141,45 @@ export default function DashboardWidgetBoard({
   const renderWidget = (
     item: DashboardWidgetLayout,
     widget: DashboardWidgetModule,
-    emphasis: "dominant" | "normal" = "normal",
+    options?: {
+      emphasis?: "dominant" | "normal";
+      compact?: boolean;
+      className?: string;
+    },
   ) => {
+    const emphasis = options?.emphasis ?? "normal";
+    const compact = options?.compact ?? false;
+    const className = options?.className ?? "";
+
     const heightClass = item.id === "work_order_board"
-      ? item.h >= 6
-        ? "min-h-[28rem]"
-        : "min-h-[24rem]"
-      : item.h >= 5
-        ? "min-h-[17rem]"
-        : item.h >= 4
-          ? "min-h-[14.5rem]"
-          : "min-h-[12.5rem]";
+      ? "h-full min-h-[26rem]"
+      : compact
+        ? "h-full min-h-[9.5rem]"
+        : item.h >= 5
+          ? "min-h-[17rem]"
+          : item.h >= 4
+            ? "min-h-[14.5rem]"
+            : "min-h-[12.5rem]";
     const emphasisClass = emphasis === "dominant" ? "ring-1 ring-[var(--brand-accent,#E39A6E)]/35" : "";
+    const compactDensityClass = compact
+      ? "[&_p]:hidden [&_.pfq-widget-shell]:pr-0 [&_.pfq-widget-shell]:text-[12px] [&_.pfq-widget-shell]:leading-snug"
+      : "";
+    const renderItem = compact ? { ...item, h: Math.min(item.h, 3) } : item;
 
     return (
-      <div key={item.id} className={`h-full min-h-0 ${heightClass}`}>
-        <div className={`h-full min-h-0 ${emphasisClass}`}>
+      <div key={item.id} className={`min-h-0 ${heightClass} ${className}`}>
+        <div className={`h-full min-h-0 ${emphasisClass} ${compactDensityClass}`}>
           {widget.selfContained ? (
-            <div className="h-full min-h-0">{widget.render(context, item)}</div>
+            <div className="h-full min-h-0">{widget.render(context, renderItem)}</div>
           ) : (
             <DashboardWidgetShell
               title={widget.title}
-              description={widget.description}
+              description={compact ? undefined : widget.description}
+              compact={compact}
               className="min-h-0"
               scrollClassName="pb-2"
             >
-              {widget.render(context, item)}
+              {widget.render(context, renderItem)}
             </DashboardWidgetShell>
           )}
         </div>
@@ -310,46 +323,32 @@ export default function DashboardWidgetBoard({
       ) : null}
 
       {view === "operations" ? (
-        <>
-          <section className="space-y-2">
-            <header>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Live Awareness</h2>
-            </header>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {operationTopIds
-                .map((id) => visibleById.get(id))
-                .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-                .map(({ item, widget }) => renderWidget(item, widget))}
-            </div>
-          </section>
+        <section className="grid gap-3 xl:h-[calc(100vh-16.5rem)] xl:grid-rows-[auto_minmax(0,1fr)_auto]">
+          <div className="grid gap-3 md:grid-cols-3">
+            {operationTopIds
+              .map((id) => visibleById.get(id))
+              .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+              .map(({ item, widget }) => renderWidget(item, widget, { compact: true }))}
+          </div>
 
-          <section className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
-            <div className="space-y-2">
-              <header>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Immediate Action</h2>
-              </header>
-              <div>
-                {(() => {
-                  const board = visibleById.get("work_order_board");
-                  if (!board) return null;
-                  return renderWidget(board.item, board.widget, "dominant");
-                })()}
-              </div>
-            </div>
+          <div className="min-h-0">
+            {(() => {
+              const board = visibleById.get("work_order_board");
+              if (!board) return null;
+              return renderWidget(board.item, board.widget, {
+                emphasis: "dominant",
+                className: "h-full",
+              });
+            })()}
+          </div>
 
-            <div className="space-y-2">
-              <header>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Throughput & Blockers</h2>
-              </header>
-              <div className="grid gap-3">
-                {operationSideIds
-                  .map((id) => visibleById.get(id))
-                  .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
-                  .map(({ item, widget }) => renderWidget(item, widget))}
-              </div>
-            </div>
-          </section>
-        </>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {operationSideIds
+              .map((id) => visibleById.get(id))
+              .filter((entry): entry is { item: DashboardWidgetLayout; widget: DashboardWidgetModule } => Boolean(entry))
+              .map(({ item, widget }) => renderWidget(item, widget, { compact: true }))}
+          </div>
+        </section>
       ) : (
         <>
           <section className="space-y-2">
