@@ -10,6 +10,5 @@ export const approvalRiskWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <ApprovalRiskWidget shopId={context.shopId} />,
+  render: (context) => <ApprovalRiskWidget shopId={context.shopId} embedded />,
 };

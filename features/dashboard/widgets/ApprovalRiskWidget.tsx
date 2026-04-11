@@ -16,7 +16,13 @@ function hoursInState(seconds: number | null | undefined): number {
   return s / 3600;
 }
 
-export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }) {
+export default function ApprovalRiskWidget({
+  shopId,
+  embedded = false,
+}: {
+  shopId: string | null;
+  embedded?: boolean;
+}) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,21 +64,8 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
 
   const aged = useMemo(() => rows.filter((r) => hoursInState(r.time_in_stage_seconds) >= 24), [rows]);
 
-  return (
-    <DashboardWidgetShell
-      eyebrow="AI · Approval Risk"
-      title="Quotes and approvals aging"
-      subtitle="Work orders waiting too long for customer or fleet approval."
-      rightSlot={
-        <Link
-          href="/work-orders/view"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
-        >
-          Open queue →
-        </Link>
-      }
-      compact
-    >
+  const content = (
+    <>
       {loading ? (
         <div className="text-sm text-neutral-300">Loading approval risk…</div>
       ) : error ? (
@@ -99,7 +92,7 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
               <Link
                 key={row.work_order_id}
                 href={`/work-orders/${row.work_order_id}`}
-                className="block rounded-xl border border-white/10 bg-black/25 px-3 py-3 transition hover:bg-black/35"
+                className="block rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 transition hover:bg-black/35"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -121,6 +114,27 @@ export default function ApprovalRiskWidget({ shopId }: { shopId: string | null }
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <DashboardWidgetShell
+      eyebrow="AI · Approval Risk"
+      title="Quotes and approvals aging"
+      subtitle="Work orders waiting too long for customer or fleet approval."
+      rightSlot={
+        <Link
+          href="/work-orders/view"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+        >
+          Open queue →
+        </Link>
+      }
+      compact
+    >
+      {content}
     </DashboardWidgetShell>
   );
 }

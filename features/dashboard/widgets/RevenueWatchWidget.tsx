@@ -14,9 +14,11 @@ function money(n: number | null | undefined): string {
 export default function RevenueWatchWidget({
   shopId,
   goal = 10000,
+  embedded = false,
 }: {
   shopId: string | null;
   goal?: number;
+  embedded?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,21 +56,8 @@ export default function RevenueWatchWidget({
 
   const pct = goal > 0 ? Math.max(0, Math.min(100, Math.round((revenue / goal) * 100))) : 0;
 
-  return (
-    <DashboardWidgetShell
-      eyebrow="AI · Revenue Watch"
-      title="Current month pace"
-      subtitle="Fast monthly revenue and profit pulse."
-      rightSlot={
-        <Link
-          href="/dashboard/owner/reports"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
-        >
-          Open reports →
-        </Link>
-      }
-      compact
-    >
+  const content = (
+    <>
       {loading ? (
         <div className="text-sm text-neutral-300">Loading revenue watch…</div>
       ) : error ? (
@@ -100,6 +89,27 @@ export default function RevenueWatchWidget({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <DashboardWidgetShell
+      eyebrow="AI · Revenue Watch"
+      title="Current month pace"
+      subtitle="Fast monthly revenue and profit pulse."
+      rightSlot={
+        <Link
+          href="/dashboard/owner/reports"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+        >
+          Open reports →
+        </Link>
+      }
+      compact
+    >
+      {content}
     </DashboardWidgetShell>
   );
 }

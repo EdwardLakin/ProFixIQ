@@ -42,7 +42,13 @@ function toneClasses(tone: "high" | "balanced" | "low"): { pill: string; bar: st
   };
 }
 
-export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
+export default function TechLoadWidget({
+  shopId,
+  embedded = false,
+}: {
+  shopId: string | null;
+  embedded?: boolean;
+}) {
   const { metrics, loading, error } = useTechnicianLoadMetrics(shopId, {
     enabled: true,
     pollMs: 30_000,
@@ -65,13 +71,8 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
     };
   }, [rows]);
 
-  return (
-    <DashboardWidgetShell
-      eyebrow="AI · Technician Load"
-      title="Technician Load"
-      subtitle="Today in shop timezone: utilization, active jobs, and active vs idle balance."
-      compact
-    >
+  const content = (
+    <>
       {loading ? (
         <div className="text-sm text-neutral-300">Loading technician load…</div>
       ) : error ? (
@@ -157,6 +158,19 @@ export default function TechLoadWidget({ shopId }: { shopId: string | null }) {
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <DashboardWidgetShell
+      eyebrow="AI · Technician Load"
+      title="Technician Load"
+      subtitle="Today in shop timezone: utilization, active jobs, and active vs idle balance."
+      compact
+    >
+      {content}
     </DashboardWidgetShell>
   );
 }
