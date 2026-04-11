@@ -10,6 +10,5 @@ export const revenueWatchWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <RevenueWatchWidget shopId={context.shopId} />,
+  render: (context) => <RevenueWatchWidget shopId={context.shopId} embedded />,
 };

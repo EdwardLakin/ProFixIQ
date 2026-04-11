@@ -10,6 +10,5 @@ export const techLoadWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <TechLoadWidget shopId={context.shopId} />,
+  render: (context) => <TechLoadWidget shopId={context.shopId} embedded />,
 };

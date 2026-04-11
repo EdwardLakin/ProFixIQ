@@ -10,6 +10,5 @@ export const comebackRiskWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <ComebackRiskWidget shopId={context.shopId} />,
+  render: (context) => <ComebackRiskWidget shopId={context.shopId} embedded />,
 };

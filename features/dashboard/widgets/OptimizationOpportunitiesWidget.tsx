@@ -708,7 +708,7 @@ export default function OptimizationOpportunitiesWidget({
             </div>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
@@ -725,9 +725,6 @@ export default function OptimizationOpportunitiesWidget({
               >
                 {showRecentChanges ? "Hide recent changes" : "Recent changes"}
               </button>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-400">
-              Suggestions are advisory only. Confirm with your team before changing menu pricing or inspection templates.
             </div>
             {recommendedNext.length > 0 ? (
               <div className="rounded-xl border border-[color:var(--brand-primary)]/30 bg-[color:color-mix(in_srgb,var(--brand-primary)_12%,transparent)] px-3 py-2.5">
@@ -818,7 +815,7 @@ export default function OptimizationOpportunitiesWidget({
                 <div
                   key={opportunity.id}
                   className={[
-                    "rounded-2xl px-4 py-3 transition-all duration-500",
+                    "rounded-2xl px-3 py-2.5 transition-all duration-500",
                     isApplied
                       ? "border border-emerald-500/35 bg-[color:color-mix(in_srgb,rgba(16,185,129,0.18)_55%,black)]"
                       : isDismissed
@@ -892,7 +889,7 @@ export default function OptimizationOpportunitiesWidget({
                         </details>
                       ) : null}
 
-                      <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5 text-[11px] text-neutral-300">
+                      <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-[11px] text-neutral-300">
                         <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why recommended</div>
                         <ul className="mt-1.5 space-y-1">
                           {whyThisMatters.slice(0, 3).map((item) => (
@@ -918,7 +915,7 @@ export default function OptimizationOpportunitiesWidget({
                     <div className="mt-2 text-xs text-neutral-400">Hidden from active recommendations.</div>
                   )}
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-2.5 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void openExecutionModal(opportunity)}
@@ -948,9 +945,9 @@ export default function OptimizationOpportunitiesWidget({
             })}
 
             {groups.length > 0 ? (
-              <div className="grid gap-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+              <div className="grid gap-2">
                 {groups.map((group) => (
-                  <div key={`${group.type}:${group.groupKey}`} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                  <div key={`${group.type}:${group.groupKey}`} className="rounded-lg border border-white/10 bg-black/15 px-3 py-2">
                     <div className="text-xs font-semibold text-neutral-100">{groupLabel(group)} Optimization</div>
                     <div className="mt-1 text-[11px] text-neutral-400">
                       {group.opportunities.length} opportunities ·

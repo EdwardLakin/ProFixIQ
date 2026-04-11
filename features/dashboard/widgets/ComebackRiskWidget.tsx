@@ -18,7 +18,13 @@ function getString(v: unknown): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
 
-export default function ComebackRiskWidget({ shopId }: { shopId: string | null }) {
+export default function ComebackRiskWidget({
+  shopId,
+  embedded = false,
+}: {
+  shopId: string | null;
+  embedded?: boolean;
+}) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,21 +82,8 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
           ? "border-[color:color-mix(in_srgb,var(--brand-accent)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_15%,transparent)] text-[color:var(--brand-accent)]"
           : "border-[color:color-mix(in_srgb,var(--brand-secondary)_68%,white_18%)] bg-[color:color-mix(in_srgb,var(--brand-secondary)_76%,black)] text-[color:var(--theme-text-secondary)]";
 
-  return (
-    <DashboardWidgetShell
-      eyebrow="AI · Comeback Risk"
-      title="Quality risk watch"
-      subtitle="Uses the latest shop health snapshot as a quick comeback-risk indicator."
-      rightSlot={
-        <Link
-          href="/dashboard/owner/reports?tab=health"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
-        >
-          Open health →
-        </Link>
-      }
-      compact
-    >
+  const content = (
+    <>
       {loading ? (
         <div className="text-sm text-neutral-300">Loading comeback risk…</div>
       ) : error ? (
@@ -127,6 +120,27 @@ export default function ComebackRiskWidget({ shopId }: { shopId: string | null }
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <DashboardWidgetShell
+      eyebrow="AI · Comeback Risk"
+      title="Quality risk watch"
+      subtitle="Uses the latest shop health snapshot as a quick comeback-risk indicator."
+      rightSlot={
+        <Link
+          href="/dashboard/owner/reports?tab=health"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+        >
+          Open health →
+        </Link>
+      }
+      compact
+    >
+      {content}
     </DashboardWidgetShell>
   );
 }

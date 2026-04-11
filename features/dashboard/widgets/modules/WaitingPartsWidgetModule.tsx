@@ -10,6 +10,5 @@ export const waitingPartsWidgetModule: DashboardWidgetModule = {
   defaultH: 4,
   minW: 3,
   minH: 3,
-  selfContained: true,
-  render: (context) => <WaitingPartsWidget shopId={context.shopId} />,
+  render: (context) => <WaitingPartsWidget shopId={context.shopId} embedded />,
 };
