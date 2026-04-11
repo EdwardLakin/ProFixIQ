@@ -22,6 +22,20 @@ export type DashboardCountState = {
   partsRequests: number;
 };
 
+export type DashboardViewportSpans = {
+  desktop: number;
+  laptop: number;
+  tablet: number;
+  mobile: number;
+};
+
+export type DashboardWidgetLayoutMeta = {
+  mode: "signal" | "standard" | "feature";
+  span: DashboardViewportSpans;
+  preferredMinHeightRem: number;
+  compactMinHeightRem: number;
+};
+
 export type DashboardWidgetLayout = {
   id: DashboardWidgetId;
   x: number;
@@ -40,6 +54,7 @@ export type DashboardLayoutItem = DashboardWidgetLayout & {
   minH?: number;
   maxW?: number;
   maxH?: number;
+  responsive?: DashboardWidgetLayoutMeta;
 };
 
 export type DashboardRenderContext = {
@@ -59,4 +74,5 @@ export type DashboardWidgetDefinition = {
   minH: number;
   maxW?: number;
   maxH?: number;
+  responsive?: DashboardWidgetLayoutMeta;
 };
