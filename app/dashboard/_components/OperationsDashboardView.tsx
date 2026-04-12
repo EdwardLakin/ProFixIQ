@@ -26,21 +26,6 @@ export default async function OperationsDashboardView() {
   const hasTechnicianActivity = payload.technicianActivity.length > 0;
   const hasRightRailSignals = payload.blockerStack.length > 0 || payload.alerts.length > 0 || payload.suggestedActions.length > 0;
 
-  const alertHrefByLabel: Record<string, string> = {
-    "Blocked jobs climbing": "/work-orders/board?stage=on_hold",
-    "Approval queue aging": "/work-orders/board?stage=awaiting_approval",
-    "Parts constraints active": "/parts/requests",
-    "Blocker pressure stable": "/work-orders/board",
-    "Approval queue healthy": "/work-orders/board?stage=awaiting_approval",
-    "No parts constraints": "/parts/requests",
-  };
-
-  const blockerHrefByLabel: Record<string, string> = {
-    "Approvals pending": "/work-orders/board?stage=awaiting_approval",
-    "Waiting parts": "/parts/requests",
-    "On hold / blocked": "/work-orders/board?stage=on_hold",
-  };
-
   return (
     <DashboardShell>
       <DashboardTopStrip
@@ -206,7 +191,9 @@ export default async function OperationsDashboardView() {
               <div className="space-y-1.5">
                 {payload.dailySummary.map((item) => {
                   const href =
-                    item.label === "Today's bookings"
+                    item.href
+                      ? item.href
+                      : item.label === "Today's bookings"
                       ? "/dashboard/bookings"
                       : item.label === "Approval queue"
                         ? "/work-orders/board?stage=awaiting_approval"
@@ -289,7 +276,7 @@ export default async function OperationsDashboardView() {
                 {payload.alerts.map((alert) => (
                   <Link
                     key={alert.label}
-                    href={alertHrefByLabel[alert.label] ?? "/work-orders/board"}
+                    href={alert.href}
                     className="group block rounded-lg border p-2 transition hover:-translate-y-0.5 hover:brightness-[1.14] hover:shadow-[0_0_0_1px_rgba(248,113,113,0.26),0_12px_24px_rgba(0,0,0,0.36)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     style={{
                       borderColor: alert.tone === "critical" ? "rgba(248,113,113,0.7)" : alert.tone === "warning" ? "rgba(251,191,36,0.48)" : "rgba(148,163,184,0.25)",
@@ -335,7 +322,7 @@ export default async function OperationsDashboardView() {
                     return (
                       <Link
                         key={blocker.label}
-                        href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
+                        href={blocker.href ?? "/work-orders/board"}
                         className={rowClass}
                       >
                         <span className="text-neutral-300">{blocker.label}</span>

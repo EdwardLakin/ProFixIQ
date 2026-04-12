@@ -185,21 +185,17 @@ export default function AskAssistantEntry({
           type="button"
           title={assistantLabel}
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-slate-400/20 bg-slate-950/70 px-2.5 text-xs font-medium text-slate-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-slate-900/80 hover:text-white"
         >
-          <span aria-hidden>✨</span>
-          <span className="hidden lg:inline">Assistant</span>
-          <span className="lg:hidden">Assistant</span>
+          <span>Assistant</span>
         </button>
 
         <Link
           href={plannerHref}
           title={plannerLabel}
-          className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-slate-400/20 bg-slate-950/70 px-2.5 text-xs font-medium text-slate-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-slate-900/80 hover:text-white"
         >
-          <span aria-hidden>⚡</span>
-          <span className="hidden lg:inline">Planner</span>
-          <span className="lg:hidden">Planner</span>
+          <span>Planner</span>
         </Link>
 
         <Dialog open={open} onOpenChange={setOpen}>
