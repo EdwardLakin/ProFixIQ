@@ -1,5 +1,5 @@
-import CuratedDashboardPage from "../_components/CuratedDashboardPage";
+import PerformanceDashboardView from "../_components/PerformanceDashboardView";
 
 export default function PerformanceDashboardPage() {
-  return <CuratedDashboardPage view="performance" />;
+  return <PerformanceDashboardView />;
 }

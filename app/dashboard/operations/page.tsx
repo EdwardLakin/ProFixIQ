@@ -1,5 +1,5 @@
-import CuratedDashboardPage from "../_components/CuratedDashboardPage";
+import OperationsDashboardView from "../_components/OperationsDashboardView";
 
 export default function OperationsDashboardPage() {
-  return <CuratedDashboardPage view="operations" />;
+  return <OperationsDashboardView />;
 }
