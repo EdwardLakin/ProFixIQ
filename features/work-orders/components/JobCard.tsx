@@ -292,7 +292,8 @@ export function JobCard({
       className={cn(
         "relative overflow-hidden p-0",
         "transition hover:-translate-y-[1px] hover:border-[color:var(--accent-copper-soft,#fdba74)]",
-        selected && "border-[color:var(--accent-copper-soft,#fdba74)] shadow-[0_0_0_1px_rgba(253,186,116,0.4)]",
+        selected &&
+          "border-[color:var(--accent-copper-light,#fdba74)] shadow-[0_0_0_1px_rgba(253,186,116,0.7),0_10px_30px_rgba(249,115,22,0.22)]",
         surfaceCfg.surfaceClass,
       )}
     >
