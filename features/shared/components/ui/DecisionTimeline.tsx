@@ -14,6 +14,7 @@ type Props = {
   stages: DecisionTimelineStage[];
   orientation?: "horizontal" | "vertical";
   className?: string;
+  compact?: boolean;
 };
 
 function stageTone(state: DecisionTimelineStage["state"]): string {
@@ -26,6 +27,7 @@ export default function DecisionTimeline({
   stages,
   orientation = "horizontal",
   className,
+  compact = false,
 }: Props) {
   if (!Array.isArray(stages) || stages.length === 0) return null;
 
@@ -34,11 +36,12 @@ export default function DecisionTimeline({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-black/25 p-3",
+        "rounded-2xl border border-white/10 bg-black/25",
+        compact ? "p-2.5" : "p-3",
         className,
       )}
     >
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+      <div className={cn("text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500", compact ? "mb-1.5" : "mb-2")}>
         Decision timeline
       </div>
       <ol
@@ -47,9 +50,16 @@ export default function DecisionTimeline({
         )}
       >
         {stages.map((stage) => (
-          <li key={stage.key} className={cn("rounded-xl border px-3 py-2", stageTone(stage.state))}>
+          <li
+            key={stage.key}
+            className={cn(
+              "rounded-xl border",
+              compact ? "px-2.5 py-1.5" : "px-3 py-2",
+              stageTone(stage.state),
+            )}
+          >
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold">{stage.label}</div>
+              <div className={cn("font-semibold", compact ? "text-[11px]" : "text-xs")}>{stage.label}</div>
               <StatusBadge
                 size="sm"
                 variant={stage.state === "current" ? "active" : stage.state === "past" ? "success" : "neutral"}
@@ -58,7 +68,7 @@ export default function DecisionTimeline({
                 {stage.state}
               </StatusBadge>
             </div>
-            {stage.description ? (
+            {stage.description && !compact ? (
               <div className="mt-1 text-[11px] text-neutral-400">{stage.description}</div>
             ) : null}
           </li>
