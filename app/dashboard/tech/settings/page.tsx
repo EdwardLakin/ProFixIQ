@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
+import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
+import ProfileContactCard from "@/features/users/components/ProfileContactCard";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -39,9 +41,8 @@ async function sha256Base64(dataUrl: string): Promise<string> {
 }
 
 export default function TechSettingsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // profile fields (from profiles table)
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,12 +58,11 @@ export default function TechSettingsPage() {
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [postal, setPostal] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
-  // ✅ saved tech signature state
   const [sigPath, setSigPath] = useState<string | null>(null);
   const [sigBusy, setSigBusy] = useState(false);
 
-  // local (non-DB) prefs for the tech queue
   const [prefs, setPrefs] = useState<TechPrefs>({
     defaultBucket: "awaiting",
     showUnassigned: false,
@@ -70,7 +70,6 @@ export default function TechSettingsPage() {
     autoRefresh: false,
   });
 
-  // load profile + prefs
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -89,7 +88,7 @@ export default function TechSettingsPage() {
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select(
-          "id, shop_id, username, full_name, email, phone, street, city, province, postal_code, tech_signature_path, tech_signature_hash",
+          "id, shop_id, username, full_name, email, phone, street, city, province, postal_code, avatar_url, tech_signature_path",
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -111,14 +110,10 @@ export default function TechSettingsPage() {
         setCity(profile.city ?? "");
         setProvince(profile.province ?? "");
         setPostal(profile.postal_code ?? "");
-
-        const p = profile as unknown as {
-          tech_signature_path?: string | null;
-        };
-        setSigPath(p.tech_signature_path ?? null);
+        setAvatarUrl(profile.avatar_url ?? null);
+        setSigPath(profile.tech_signature_path ?? null);
       }
 
-      // local prefs
       try {
         const raw = localStorage.getItem(PREFS_KEY);
         if (raw) {
@@ -126,7 +121,6 @@ export default function TechSettingsPage() {
           setPrefs((prev) => ({
             ...prev,
             ...parsed,
-            // guard: never allow completed
             defaultBucket:
               parsed.defaultBucket === "awaiting" ||
               parsed.defaultBucket === "in_progress" ||
@@ -136,14 +130,13 @@ export default function TechSettingsPage() {
           }));
         }
       } catch {
-        // ignore
+        // noop
       }
 
       setLoading(false);
     })();
   }, [supabase]);
 
-  // helper to persist prefs to localStorage
   const savePrefs = (next: TechPrefs) => {
     setPrefs(next);
     localStorage.setItem(PREFS_KEY, JSON.stringify(next));
@@ -171,7 +164,6 @@ export default function TechSettingsPage() {
         .eq("id", profileId);
 
       if (updErr) throw updErr;
-
       setOk("Profile updated.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save profile.");
@@ -180,7 +172,6 @@ export default function TechSettingsPage() {
     }
   };
 
-  // ✅ capture and persist a saved tech signature (1-time setup, update anytime)
   const captureAndSaveSignature = async () => {
     if (!profileId) return;
 
@@ -190,11 +181,10 @@ export default function TechSettingsPage() {
 
     try {
       const dataUrl = await openSignaturePad({ shopName: "ProFixIQ" });
-      if (!dataUrl) return; // user cancelled
+      if (!dataUrl) return;
 
       const blob = dataUrlToBlob(dataUrl);
       const hash = await sha256Base64(dataUrl);
-
       const path = `tech-signatures/${profileId}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
@@ -204,16 +194,14 @@ export default function TechSettingsPage() {
 
       if (up.error) throw up.error;
 
-      const update: Database["public"]["Tables"]["profiles"]["Update"] = {
-        tech_signature_path: path,
-        tech_signature_hash: hash,
-        tech_signature_updated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
       const { error: updErr } = await supabase
         .from("profiles")
-        .update(update)
+        .update({
+          tech_signature_path: path,
+          tech_signature_hash: hash,
+          tech_signature_updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", profileId);
 
       if (updErr) throw updErr;
@@ -227,326 +215,172 @@ export default function TechSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-6 text-white">
-        <div className="h-6 w-36 animate-pulse rounded bg-neutral-800" />
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="h-40 rounded-lg bg-neutral-900/50" />
-          <div className="h-40 rounded-lg bg-neutral-900/50" />
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="p-6 text-sm text-neutral-300">Loading settings…</div>;
 
   return (
-    <div className="p-6 text-white space-y-6">
-      {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6 p-6 text-white">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 p-4">
         <div>
-          <h1 className="text-2xl font-blackops text-orange-400">
-            Tech Settings
-          </h1>
+          <h1 className="text-2xl font-blackops text-orange-400">Tech Settings</h1>
           <p className="text-sm text-neutral-400">
-            Personal info and queue preferences for your workstation.
+            Control your profile identity, workstation preferences, and signature tools.
           </p>
         </div>
-        {shopId ? (
-          <div className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs text-neutral-300">
-            Shop: <span className="text-orange-300">{shopId}</span>
-          </div>
-        ) : null}
+        <div className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-300">
+          {username ? `@${username}` : "Technician"}
+          {shopId ? ` • Shop workspace` : ""}
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        {/* LEFT: profile */}
-        <div className="space-y-6">
-          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-100">
-                  Your Profile
-                </h2>
-                <p className="text-xs text-neutral-400">
-                  This is what your team sees on work orders.
-                </p>
-              </div>
-              {username ? (
-                <span className="rounded bg-neutral-900 px-2 py-1 text-[10px] text-neutral-400">
-                  Username: <span className="text-white">{username}</span>
-                </span>
-              ) : null}
-            </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ProfileIdentityCard
+          supabase={supabase}
+          userId={profileId ?? ""}
+          shopId={shopId}
+          fullName={fullName || username || "Technician"}
+          email={email}
+          roleLabel="Tech"
+          avatarUrl={avatarUrl}
+          onAvatarChange={setAvatarUrl}
+          title="Profile identity"
+        />
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300">Full name</label>
-                <input
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  placeholder="Jane Tech"
-                />
-              </div>
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-neutral-100">Work Preferences</h2>
+            <span className="text-[11px] text-neutral-500">Local workstation</span>
+          </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300">
-                  Email (profile only)
-                </label>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  placeholder="jane@example.com"
-                  type="email"
-                />
-                <p className="text-[10px] text-neutral-500">
-                  Changing this won’t change your login email.
-                </p>
-              </div>
+          <label className="space-y-1 text-xs text-neutral-300">
+            <span>Default queue status</span>
+            <select
+              value={prefs.defaultBucket}
+              onChange={(e) =>
+                savePrefs({ ...prefs, defaultBucket: e.target.value as TechPrefs["defaultBucket"] })
+              }
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+            >
+              <option value="awaiting">Awaiting</option>
+              <option value="in_progress">In progress</option>
+              <option value="on_hold">On hold</option>
+            </select>
+          </label>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300">Phone</label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  placeholder="+1 (555) 123-4567"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300">
-                  Street address
-                </label>
-                <input
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  placeholder="123 Fleet Ave."
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">City</label>
-                  <input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">
-                    Province
-                  </label>
-                  <input
-                    value={province}
-                    onChange={(e) => setProvince(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">Postal</label>
-                  <input
-                    value={postal}
-                    onChange={(e) => setPostal(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleSaveProfile}
-                disabled={saving}
-                className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
-              >
-                {saving ? "Saving…" : "Save profile"}
-              </button>
-              {error && <span className="text-xs text-red-300">{error}</span>}
-              {ok && <span className="text-xs text-green-300">{ok}</span>}
-            </div>
-          </section>
-
-          {/* ✅ Saved Signature */}
-          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-100">
-                  Saved Signature
-                </h2>
-                <p className="text-xs text-neutral-400">
-                  Used automatically when you sign inspections as a technician.
-                </p>
-              </div>
-              <span className="text-[10px] text-neutral-500">
-                Signatures bucket
-              </span>
-            </div>
-
-            <div className="text-xs text-neutral-300">
-              Status:{" "}
-              {sigPath ? (
-                <span className="text-green-300">On file ✅</span>
-              ) : (
-                <span className="text-amber-300">Not set</span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={captureAndSaveSignature}
-                disabled={sigBusy || !profileId}
-                className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
-              >
-                {sigBusy
-                  ? "Opening…"
-                  : sigPath
-                    ? "Update signature"
-                    : "Capture signature"}
-              </button>
-              {sigPath ? (
-                <span className="text-[11px] text-neutral-400 truncate">
-                  {sigPath}
-                </span>
-              ) : null}
-            </div>
-
-            <p className="text-[10px] text-neutral-500">
-              Tech signing will pull this signature automatically, so you don’t
-              have to re-sign every inspection.
-            </p>
-          </section>
-
-          {/* Notifications */}
-          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Notifications
-              </h2>
-              <span className="text-[10px] text-neutral-500">
-                Local preference
-              </span>
-            </div>
-            <p className="text-xs text-neutral-400">
-              These are per-device; your manager controls shop-wide emails.
-            </p>
-
-            <label className="flex items-center gap-2 text-sm">
+          <div className="grid gap-2 text-sm">
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={prefs.autoRefresh}
-                onChange={(e) =>
-                  savePrefs({ ...prefs, autoRefresh: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-neutral-500 bg-neutral-900"
+                onChange={(e) => savePrefs({ ...prefs, autoRefresh: e.target.checked })}
               />
               Auto-refresh tech queue
             </label>
-
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={prefs.showUnassigned}
-                onChange={(e) =>
-                  savePrefs({ ...prefs, showUnassigned: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-neutral-500 bg-neutral-900"
+                onChange={(e) => savePrefs({ ...prefs, showUnassigned: e.target.checked })}
               />
-              Show unassigned jobs too
+              Show unassigned jobs
             </label>
-          </section>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={prefs.compactCards}
+                onChange={(e) => savePrefs({ ...prefs, compactCards: e.target.checked })}
+              />
+              Compact card layout
+            </label>
+          </div>
+        </section>
 
-          {/* ✅ Host for the signature modal */}
-          <SignaturePad />
-        </div>
+        <ProfileContactCard
+          fullName={fullName}
+          email={email}
+          phone={phone}
+          street={street}
+          city={city}
+          province={province}
+          postal={postal}
+          onFullNameChange={setFullName}
+          onEmailChange={setEmail}
+          onPhoneChange={setPhone}
+          onStreetChange={setStreet}
+          onCityChange={setCity}
+          onProvinceChange={setProvince}
+          onPostalChange={setPostal}
+          title="Contact & Address"
+          subtitle="Used for technician identity and internal communication details."
+        />
 
-        {/* RIGHT: work prefs */}
-        <div className="space-y-6">
-          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Work Preferences
-              </h2>
-              <span className="text-[10px] text-neutral-500">
-                Used by /tech/queue
-              </span>
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-neutral-100">Saved Signature</h2>
+            <span className="text-[11px] text-neutral-500">Inspections</span>
+          </div>
+          <p className="text-xs text-neutral-400">
+            Status: {sigPath ? "On file" : "Not set"}. Used automatically while signing inspections.
+          </p>
+          <button
+            type="button"
+            onClick={captureAndSaveSignature}
+            disabled={sigBusy || !profileId}
+            className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+          >
+            {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
+          </button>
+          {sigPath ? <p className="text-[11px] text-neutral-500 break-all">{sigPath}</p> : null}
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-neutral-100">Notifications</h2>
+          <p className="text-xs text-neutral-400">Per-device queue behavior and prompt settings.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={prefs.autoRefresh}
+              onChange={(e) => savePrefs({ ...prefs, autoRefresh: e.target.checked })}
+            />
+            Queue auto-refresh
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={prefs.showUnassigned}
+              onChange={(e) => savePrefs({ ...prefs, showUnassigned: e.target.checked })}
+            />
+            Include unassigned work
+          </label>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-neutral-100">Account Metadata</h2>
+          <dl className="space-y-2 text-xs text-neutral-300">
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500">Username</dt>
+              <dd>{username || "—"}</dd>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-[11px] text-neutral-300">
-                Default queue status
-              </label>
-              <select
-                value={prefs.defaultBucket}
-                onChange={(e) =>
-                  savePrefs({
-                    ...prefs,
-                    defaultBucket: e.target.value as TechPrefs["defaultBucket"],
-                  })
-                }
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-              >
-                <option value="awaiting">Awaiting</option>
-                <option value="in_progress">In progress</option>
-                <option value="on_hold">On hold</option>
-              </select>
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500">Shop</dt>
+              <dd>{shopId ? "Linked" : "Not linked"}</dd>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-[11px] text-neutral-300">Card layout</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => savePrefs({ ...prefs, compactCards: false })}
-                  className={`rounded border px-3 py-2 text-sm ${
-                    !prefs.compactCards
-                      ? "border-orange-500 bg-orange-500/10"
-                      : "border-neutral-700 bg-neutral-900"
-                  }`}
-                >
-                  Full cards
-                </button>
-                <button
-                  type="button"
-                  onClick={() => savePrefs({ ...prefs, compactCards: true })}
-                  className={`rounded border px-3 py-2 text-sm ${
-                    prefs.compactCards
-                      ? "border-orange-500 bg-orange-500/10"
-                      : "border-neutral-700 bg-neutral-900"
-                  }`}
-                >
-                  Compact
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-neutral-100">Account</h2>
-            <p className="text-xs text-neutral-400">
-              Username and shop are managed by your owner/admin.
-            </p>
-            <dl className="space-y-1 text-xs text-neutral-300">
-              <div className="flex justify-between gap-3">
-                <dt className="text-neutral-500">Username</dt>
-                <dd>{username || "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-neutral-500">Shop</dt>
-                <dd>{shopId || "—"}</dd>
-              </div>
-            </dl>
-          </section>
-        </div>
+          </dl>
+        </section>
       </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={handleSaveProfile}
+          disabled={saving}
+          className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save profile"}
+        </button>
+        {error && <span className="text-xs text-red-300">{error}</span>}
+        {ok && <span className="text-xs text-green-300">{ok}</span>}
+      </div>
+
+      <SignaturePad />
     </div>
   );
 }

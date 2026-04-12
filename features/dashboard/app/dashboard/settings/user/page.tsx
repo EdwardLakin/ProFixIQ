@@ -7,6 +7,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
+import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
+import ProfileContactCard from "@/features/users/components/ProfileContactCard";
 
 type StatusKind = "success" | "error" | "info";
 
@@ -14,11 +16,14 @@ export default function SettingsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
+  const [userId, setUserId] = useState<string | null>(null);
+  const [shopId, setShopId] = useState<string | null>(null);
+
   const [email, setEmail] = useState("");
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
-
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -34,22 +39,21 @@ export default function SettingsPage() {
 
       if (!user) return;
 
+      setUserId(user.id);
       if (user.email) setEmail(user.email);
       setEmailVerified(Boolean(user.email_confirmed_at));
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("avatar_url")
+        .select("shop_id, full_name, email, phone, avatar_url")
         .eq("id", user.id)
         .maybeSingle();
 
-      const persistedAvatar = profile?.avatar_url ?? null;
-      if (persistedAvatar) {
-        setPhotoUrl(persistedAvatar);
-        setAvatarPath(persistedAvatar.split("/profile-photos/")[1] ?? null);
-      } else if (typeof user.user_metadata?.avatar_url === "string") {
-        setPhotoUrl(user.user_metadata.avatar_url);
-      }
+      setShopId(profile?.shop_id ?? null);
+      setFullName(profile?.full_name ?? "");
+      setPhone(profile?.phone ?? "");
+      setAvatarUrl(profile?.avatar_url ?? null);
+      if (profile?.email) setEmail(profile.email);
     };
     void loadUser();
   }, [supabase]);
@@ -57,6 +61,24 @@ export default function SettingsPage() {
   const showStatus = (msg: string, type: StatusKind = "info") => {
     setStatus(msg);
     setStatusType(type);
+  };
+
+  const saveContact = async () => {
+    if (!userId) return;
+    setBusy(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        full_name: fullName,
+        email,
+        phone,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+    setBusy(false);
+
+    if (error) showStatus(error.message, "error");
+    else showStatus("Profile details saved.", "success");
   };
 
   const handlePasswordUpdate = async () => {
@@ -112,53 +134,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const filePath = `avatars/${crypto.randomUUID()}-${file.name}`;
-    setBusy(true);
-    const { error } = await supabase.storage
-      .from("profile-photos")
-      .upload(filePath, file, { upsert: true });
-
-    if (error) {
-      setBusy(false);
-      showStatus(error.message, "error");
-      return;
-    }
-
-    const { data } = supabase.storage
-      .from("profile-photos")
-      .getPublicUrl(filePath);
-
-    setPhotoUrl(data.publicUrl);
-    setAvatarPath(filePath);
-    await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
-    await supabase.auth.updateUser({ data: { avatar_url: data.publicUrl } });
-    setBusy(false);
-    showStatus("Profile photo updated.", "success");
-    router.refresh();
-  };
-
-  const handleRemovePhoto = async () => {
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
-    if (!userId) return;
-    setBusy(true);
-
-    if (avatarPath) {
-      await supabase.storage.from("profile-photos").remove([avatarPath]);
-    }
-
-    await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
-    await supabase.auth.updateUser({ data: { avatar_url: null } });
-    setPhotoUrl(null);
-    setAvatarPath(null);
-    setBusy(false);
-    showStatus("Profile photo removed.", "success");
-  };
-
   const statusClass =
     statusType === "success"
       ? "text-emerald-400"
@@ -166,16 +141,17 @@ export default function SettingsPage() {
       ? "text-red-400"
       : "text-neutral-300";
 
+  if (!userId) {
+    return <div className="p-6 text-sm text-neutral-300">Loading settings…</div>;
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 text-foreground">
-      {/* header */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 text-foreground">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-blackops text-orange-400">
-            User Settings
-          </h1>
-          <p className="text-xs text-neutral-400">
-            Manage your password, email verification, and profile photo.
+          <h1 className="text-2xl font-blackops text-orange-400">User Settings</h1>
+          <p className="text-sm text-neutral-400">
+            Manage your profile identity, security, and communication details.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.back()} size="sm">
@@ -183,75 +159,22 @@ export default function SettingsPage() {
         </Button>
       </div>
 
-      {/* content cards */}
-      <div className="space-y-6">
-        {/* Account info */}
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-50">
-            Account
-          </h2>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ProfileIdentityCard
+          supabase={supabase}
+          userId={userId}
+          shopId={shopId}
+          fullName={fullName || email || "User"}
+          email={email}
+          roleLabel="User"
+          avatarUrl={avatarUrl}
+          onAvatarChange={setAvatarUrl}
+        />
+
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-neutral-50">Account</h2>
           <p className="text-xs text-neutral-400">
-            Signed in as{" "}
-            <span className="font-mono text-orange-300">{email || "—"}</span>
-          </p>
-          {emailVerified != null && (
-            <p className="mt-1 text-xs">
-              Status:{" "}
-              <span
-                className={
-                  emailVerified ? "text-emerald-400" : "text-yellow-300"
-                }
-              >
-                {emailVerified ? "Email verified" : "Email not verified"}
-              </span>
-            </p>
-          )}
-        </section>
-
-        {/* Password */}
-        <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-neutral-50">
-            Change password
-          </h2>
-          <div className="grid gap-2 md:grid-cols-2">
-            <Input
-              type="password"
-              placeholder="New password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-            <Input
-              type="password"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
-          <p className="text-[11px] text-neutral-500">
-            Use at least 8 characters. Avoid reusing passwords from other
-            services.
-          </p>
-          <Button
-            onClick={handlePasswordUpdate}
-            disabled={busy || !newPassword || !confirmPassword}
-          >
-            {busy ? "Updating…" : "Update password"}
-          </Button>
-        </section>
-
-        {/* Email verification */}
-        <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-neutral-50">
-            Email verification
-          </h2>
-          <p className="text-xs text-neutral-400 mb-2">
-            We use your email for security notices and portal invites.
-          </p>
-          <p className="text-sm mb-2">
-            Current email:{" "}
-            <span className="font-mono text-orange-300">
-              {email || "Unknown"}
-            </span>
+            Status: {emailVerified ? "Email verified" : "Email not verified"}
           </p>
           <Button
             onClick={handleResendVerification}
@@ -260,49 +183,50 @@ export default function SettingsPage() {
           >
             {busy ? "Sending…" : "Resend verification email"}
           </Button>
-        </section>
 
-        {/* Profile photo */}
-        <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-neutral-50">
-            Profile photo
-          </h2>
-          <p className="text-xs text-neutral-400">
-            This avatar appears in the app where your profile is shown.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-4">
-            <div>
+          <div className="pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-300">
+              Change password
+            </h3>
+            <div className="grid gap-2">
               <Input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoUpload}
-                disabled={busy}
+                type="password"
+                placeholder="New password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
               />
-              <p className="mt-1 text-[11px] text-neutral-500">
-                Recommended: square image, at least 256×256.
-              </p>
+              <Input
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
             </div>
-            {photoUrl && (
-              <div className="flex items-center gap-3">
-                <img
-                  src={photoUrl}
-                  alt="Profile"
-                  className="h-20 w-20 rounded-full border border-border object-cover"
-                />
-                <Button variant="outline" size="sm" onClick={handleRemovePhoto} disabled={busy}>
-                  Remove photo
-                </Button>
-              </div>
-            )}
+            <Button
+              className="mt-3"
+              onClick={handlePasswordUpdate}
+              disabled={busy || !newPassword || !confirmPassword}
+            >
+              {busy ? "Updating…" : "Update password"}
+            </Button>
           </div>
         </section>
+      </div>
 
-        {/* Status line */}
-        {status && (
-          <div className="rounded-lg border border-border bg-card px-4 py-2 text-sm">
-            <span className={statusClass}>{status}</span>
-          </div>
-        )}
+      <ProfileContactCard
+        fullName={fullName}
+        email={email}
+        phone={phone}
+        onFullNameChange={setFullName}
+        onEmailChange={setEmail}
+        onPhoneChange={setPhone}
+      />
+
+      <div className="flex items-center gap-3">
+        <Button onClick={saveContact} disabled={busy}>
+          {busy ? "Saving…" : "Save profile details"}
+        </Button>
+        {status ? <span className={`text-sm ${statusClass}`}>{status}</span> : null}
       </div>
     </div>
   );
