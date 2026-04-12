@@ -16,9 +16,11 @@ export default function TabsBar() {
     useTabs();
 
   const pathname = usePathname() || "/";
+  const isDashboardRoute =
+    pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 
-  // ❌ Never show tabs on auth routes
-  if (AUTH_ROUTES.has(pathname)) {
+  // ❌ Never show tabs on auth routes or polished dashboard surfaces
+  if (AUTH_ROUTES.has(pathname) || isDashboardRoute) {
     return null;
   }
 

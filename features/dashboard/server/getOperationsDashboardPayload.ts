@@ -2,7 +2,7 @@ import { endOfDay, startOfDay, startOfMonth } from "date-fns";
 
 import { createDashboardServerClient, getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
 
-const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
+const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
 
 type OpSignal = { label: string; value: string; tone?: "default" | "accent" };
@@ -135,7 +135,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .from("part_requests")
       .select("id,status", { count: "exact" })
       .eq("shop_id", identity.shopId)
-      .not("status", "in", `(${CLOSED_PART_STATUSES.map((status) => `'${status}'`).join(",")})`)
+      .in("status", OPEN_PART_STATUSES as unknown as string[])
       .limit(120),
     supabase
       .from("profiles")
