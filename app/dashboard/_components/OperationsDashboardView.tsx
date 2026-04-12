@@ -14,6 +14,12 @@ function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }
   );
 }
 
+function getCountSeverity(count: number): "neutral" | "amber" | "red" {
+  if (count > 50) return "red";
+  if (count > 20) return "amber";
+  return "neutral";
+}
+
 export default async function OperationsDashboardView() {
   const payload = await getOperationsDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
@@ -52,9 +58,25 @@ export default async function OperationsDashboardView() {
         className="mb-0.5"
         items={[
           { label: "Active jobs", value: String(payload.topSummary.activeJobs) },
-          { label: "Blocked", value: String(payload.topSummary.blockedJobs), tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default" },
-          { label: "Approvals", value: String(payload.topSummary.waitingApprovals), tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default" },
-          { label: "Waiting parts", value: String(payload.topSummary.waitingParts), tone: payload.topSummary.waitingParts > 0 ? "accent" : "default" },
+          {
+            label: "Blocked",
+            value: String(payload.topSummary.blockedJobs),
+            tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
+            indicator: payload.topSummary.blockedJobs > 0 ? "red" : undefined,
+            pulse: payload.topSummary.blockedJobs > 0,
+          },
+          {
+            label: "Approvals",
+            value: String(payload.topSummary.waitingApprovals),
+            tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
+            indicator: payload.topSummary.waitingApprovals > 0 ? "accent" : undefined,
+          },
+          {
+            label: "Waiting parts",
+            value: String(payload.topSummary.waitingParts),
+            tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
+            indicator: payload.topSummary.waitingParts > 0 ? "amber" : undefined,
+          },
         ]}
       />
 
@@ -96,16 +118,16 @@ export default async function OperationsDashboardView() {
               action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
               <div className="grid h-full gap-2.5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {payload.liveWork.length > 0 ? (
                     payload.liveWork.map((item) => (
                       <Link
                         key={item.id}
                         href={`/work-orders/${item.id}`}
-                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:bg-black/45 hover:shadow-[0_0_0_1px_rgba(227,154,110,0.2),0_8px_20px_rgba(0,0,0,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/25 px-2.5 py-[0.32rem] text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:bg-black/45 hover:shadow-[0_0_0_1px_rgba(227,154,110,0.2),0_8px_20px_rgba(0,0,0,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       >
                         <div>
-                          <div className="font-bold tracking-wide text-white">{item.label}</div>
+                          <div className="font-extrabold tracking-wide text-white/95">{item.label}</div>
                           <div className="text-neutral-400">{item.stage}</div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -268,7 +290,7 @@ export default async function OperationsDashboardView() {
                   <Link
                     key={alert.label}
                     href={alertHrefByLabel[alert.label] ?? "/work-orders/board"}
-                    className="group block rounded-lg border p-2 transition hover:-translate-y-px hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                    className="group block rounded-lg border p-2 transition hover:-translate-y-0.5 hover:brightness-[1.14] hover:shadow-[0_0_0_1px_rgba(248,113,113,0.26),0_12px_24px_rgba(0,0,0,0.36)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     style={{
                       borderColor: alert.tone === "critical" ? "rgba(248,113,113,0.7)" : alert.tone === "warning" ? "rgba(251,191,36,0.48)" : "rgba(148,163,184,0.25)",
                       background: alert.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.48), rgba(69,10,10,0.24))" : alert.tone === "warning" ? "rgba(120,53,15,0.24)" : "rgba(15,23,42,0.5)",
@@ -280,7 +302,7 @@ export default async function OperationsDashboardView() {
                         {alert.tone === "critical" ? <TriangleAlert className="h-3.5 w-3.5 text-red-300" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
                         {alert.label}
                       </span>
-                      <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                      <ChevronRight className="h-3.5 w-3.5 text-neutral-400 transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                     </div>
                     <div className="mt-1 text-[11px] text-neutral-300">{alert.detail}</div>
                   </Link>
@@ -293,17 +315,37 @@ export default async function OperationsDashboardView() {
             <DashboardPanel title="Action Rail" eyebrow="Urgency" className="border-amber-300/30 bg-[linear-gradient(150deg,rgba(36,22,8,0.42),rgba(8,11,24,0.84))]">
               <div className="space-y-1.5">
                 {payload.blockerStack.map((blocker) => (
-                  <Link
-                    key={blocker.label}
-                    href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
-                    className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
-                  >
-                    <span className="text-neutral-300">{blocker.label}</span>
-                    <span className={blocker.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
-                      {blocker.value}
-                      <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
-                    </span>
-                  </Link>
+                  (() => {
+                    const count = Number.parseInt(blocker.value, 10);
+                    const severity = Number.isFinite(count) ? getCountSeverity(count) : "neutral";
+                    const valueClass =
+                      severity === "red"
+                        ? "inline-flex items-center gap-1 font-semibold text-red-300"
+                        : severity === "amber"
+                          ? "inline-flex items-center gap-1 font-semibold text-amber-300"
+                          : blocker.tone === "accent"
+                            ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]"
+                            : "inline-flex items-center gap-1 font-semibold text-white";
+                    const rowClass =
+                      severity === "red"
+                        ? "group flex items-center justify-between rounded-lg border border-red-400/35 bg-red-950/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-red-300/60 hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/50"
+                        : severity === "amber"
+                          ? "group flex items-center justify-between rounded-lg border border-amber-300/30 bg-amber-950/10 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-amber-300/55 hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/45"
+                          : "group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60";
+                    return (
+                      <Link
+                        key={blocker.label}
+                        href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
+                        className={rowClass}
+                      >
+                        <span className="text-neutral-300">{blocker.label}</span>
+                        <span className={valueClass}>
+                          {blocker.value}
+                          <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                        </span>
+                      </Link>
+                    );
+                  })()
                 ))}
               </div>
             </DashboardPanel>

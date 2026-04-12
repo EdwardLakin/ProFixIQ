@@ -23,6 +23,15 @@ function EmbeddedEmptyState({
   );
 }
 
+function riskHrefForLabel(label: string): string {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("comeback") || normalized.includes("warranty")) return "/work-orders/board?stage=comeback";
+  if (normalized.includes("on-hold") || normalized.includes("on hold") || normalized.includes("blocked")) return "/work-orders/board?stage=on_hold";
+  if (normalized.includes("approval")) return "/work-orders/board?stage=awaiting_approval";
+  if (normalized.includes("parts")) return "/parts/requests";
+  return "/dashboard/owner/reports";
+}
+
 export default async function PerformanceDashboardView() {
   const payload = await getPerformanceDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
@@ -111,17 +120,21 @@ export default async function PerformanceDashboardView() {
                 <CompactSignalList items={payload.businessSignals} />
                 <div className="mt-3 space-y-1.5">
                   {payload.optimizationSummary.map((item) => (
-                    <div
+                    <Link
                       key={item.label}
-                      className="rounded-lg border px-2.5 py-2"
+                      href={riskHrefForLabel(item.label)}
+                      className="group flex items-start justify-between gap-2 rounded-lg border px-2.5 py-2 transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(148,163,184,0.18),0_10px_18px_rgba(0,0,0,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       style={{
                         borderColor: item.tone === "critical" ? "rgba(239,68,68,0.35)" : item.tone === "warning" ? "rgba(245,158,11,0.35)" : "rgba(148,163,184,0.25)",
                         background: item.tone === "critical" ? "rgba(127,29,29,0.16)" : item.tone === "warning" ? "rgba(120,53,15,0.15)" : "rgba(15,23,42,0.42)",
                       }}
                     >
-                      <div className="text-xs font-semibold text-white">{item.label}</div>
-                      <div className="mt-1 text-[11px] text-neutral-300">{item.detail}</div>
-                    </div>
+                      <div>
+                        <div className="text-xs font-semibold text-white">{item.label}</div>
+                        <div className="mt-1 text-[11px] text-neutral-300">{item.detail}</div>
+                      </div>
+                      <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400 transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    </Link>
                   ))}
                 </div>
               </>

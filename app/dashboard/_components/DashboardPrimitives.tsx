@@ -63,7 +63,13 @@ export function MetricStrip({
   items,
   className,
 }: {
-  items: Array<{ label: string; value: string; tone?: "default" | "accent" }>;
+  items: Array<{
+    label: string;
+    value: string;
+    tone?: "default" | "accent";
+    indicator?: "red" | "amber" | "accent";
+    pulse?: boolean;
+  }>;
   className?: string;
 }) {
   return (
@@ -84,7 +90,20 @@ export function MetricStrip({
               style={{ background: "linear-gradient(to bottom, transparent, rgba(148,163,184,0.35), transparent)" }}
             />
           ) : null}
-          <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">{item.label}</div>
+          <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-neutral-400">
+            <span>{item.label}</span>
+            {item.indicator ? (
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  item.indicator === "red"
+                    ? "bg-red-400/90 shadow-[0_0_8px_rgba(248,113,113,0.45)]"
+                    : item.indicator === "amber"
+                      ? "bg-amber-300/90 shadow-[0_0_7px_rgba(245,158,11,0.35)]"
+                      : "bg-[var(--brand-accent,#E39A6E)]/90 shadow-[0_0_7px_rgba(227,154,110,0.35)]"
+                } ${item.pulse ? "animate-pulse" : ""}`}
+              />
+            ) : null}
+          </div>
           <div
             className={
               item.tone === "accent"
