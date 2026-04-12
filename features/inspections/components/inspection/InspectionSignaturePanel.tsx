@@ -1,8 +1,10 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 export type SignatureRole = "technician" | "customer" | "advisor";
 
@@ -84,8 +86,12 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   techSettingsHref,
   lockNameInput,
 }) => {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const defaultLock = role === "technician";
-  const nameLocked = typeof lockNameInput === "boolean" ? lockNameInput : defaultLock;
+  const [autoFilledName, setAutoFilledName] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const shouldLockFromProps = typeof lockNameInput === "boolean" ? lockNameInput : defaultLock;
+  const nameLocked = shouldLockFromProps && role === "technician" && !!autoFilledName;
 
   const [name, setName] = useState(defaultName ?? "");
   const [confirm, setConfirm] = useState(false);
@@ -139,19 +145,25 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 
     void (async () => {
       try {
-        const res = await fetch("/api/profile", {
-          method: "GET",
-          credentials: "include",
-          headers: { "Cache-Control": "no-store" },
-        });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user?.id) return;
 
-        const json = (await res.json().catch(() => null)) as ProfileResponse | null;
-        if (!res.ok || json?.error) return;
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("full_name, first_name, last_name")
+          .eq("id", user.id)
+          .maybeSingle<ProfileResponse>();
+        if (error) return;
 
-        const n = pickNameFromProfile(json);
+        const n = pickNameFromProfile(data ?? null);
         if (!n) return;
 
-        if (!cancelled) setName(n);
+        if (!cancelled) {
+          setName(n);
+          setAutoFilledName(n);
+        }
       } catch {
         // ignore: name autofill is a convenience, not required
       }
@@ -160,7 +172,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [role, name]);
+  }, [role, name, supabase]);
 
   const header = useMemo(() => `${roleLabel(role)} Signature`, [role]);
 
@@ -240,9 +252,15 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
         </div>
       </div>
 
-      <label className="mt-1 text-[11px] text-zinc-300">
+      <label
+        className="mt-1 text-[11px] text-zinc-300"
+        onClick={() => {
+          if (!nameLocked) nameInputRef.current?.focus();
+        }}
+      >
         Full name
         <input
+          ref={nameInputRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}

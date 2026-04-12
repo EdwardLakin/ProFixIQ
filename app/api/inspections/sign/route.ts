@@ -49,8 +49,7 @@ function isSignRequestBody(value: unknown): value is SignRequestBody {
 
   if (typeof inspectionId !== "string" || inspectionId.trim().length < 8)
     return false;
-  if (typeof signedName !== "string" || signedName.trim().length === 0)
-    return false;
+  if (typeof signedName !== "string") return false;
   if (typeof role !== "string") return false;
 
   return ALLOWED_ROLES.includes(role as Role);
@@ -135,6 +134,25 @@ export async function POST(req: NextRequest) {
   const { inspectionId, role, signedName, signatureImagePath, signatureHash } =
     bodyUnknown;
 
+  let effectiveSignedName = signedName.trim();
+  if (!effectiveSignedName && role === "technician") {
+    const profileNameRes = await supabase
+      .from("profiles")
+      .select("full_name, first_name, last_name")
+      .eq("id", user.id)
+      .maybeSingle<{ full_name?: string | null; first_name?: string | null; last_name?: string | null }>();
+
+    if (!profileNameRes.error) {
+      const full = (profileNameRes.data?.full_name ?? "").trim();
+      const joined = `${profileNameRes.data?.first_name ?? ""} ${profileNameRes.data?.last_name ?? ""}`.trim();
+      effectiveSignedName = full || joined;
+    }
+  }
+
+  if (!effectiveSignedName) {
+    return NextResponse.json({ error: "Signed name is required." }, { status: 400 });
+  }
+
   // Fetch user's shop_id (required for RLS-scoped insert/upsert)
   const prof = await supabase
     .from("profiles")
@@ -178,7 +196,7 @@ export async function POST(req: NextRequest) {
   const rpcArgs: SignInspectionArgs = {
     p_inspection_id: inspectionId,
     p_role: role,
-    p_signed_name: signedName.trim(),
+    p_signed_name: effectiveSignedName,
     p_signature_image_path: signatureImagePath ?? null,
     p_signature_hash: signatureHash ?? null,
   };
@@ -189,5 +207,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, data });
+  return NextResponse.json({ success: true, data, signedName: effectiveSignedName });
 }

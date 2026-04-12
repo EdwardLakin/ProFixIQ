@@ -12,6 +12,7 @@ import type {
 type Props = {
   session: InspectionSession;
   workOrderLineId?: string | null;
+  disabled?: boolean;
 };
 
 type ItemLike = {
@@ -50,7 +51,7 @@ function countFindings(session: InspectionSession): number {
   return count;
 }
 
-export default function FinishInspectionButton({ session, workOrderLineId }: Props) {
+export default function FinishInspectionButton({ session, workOrderLineId, disabled = false }: Props) {
   const router = useRouter();
 
   const findingsCount = useMemo(() => countFindings(session), [session]);
@@ -89,6 +90,7 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
       onClick={handleFinish}
       type="button"
       size="sm"
+      disabled={disabled}
       className={[
         "font-semibold tracking-[0.18em] uppercase text-[11px]",
         "border border-[var(--accent-copper-light)]",

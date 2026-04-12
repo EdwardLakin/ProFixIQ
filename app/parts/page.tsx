@@ -100,7 +100,7 @@ function QuickButton({
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm text-whitetypedefs shadow-sm backdrop-blur-md transition ${
+      className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm text-white shadow-sm backdrop-blur-md transition ${
         accent
           ? "border-orange-400/60 bg-white/[0.03] hover:bg-orange-500/10 hover:border-orange-400"
           : "border-neutral-700 bg-white/[0.02] hover:bg-neutral-800/80"
@@ -243,9 +243,10 @@ export default function PartsDashboardPage(): JSX.Element {
     openRequestsCount === null || loading
       ? "…"
       : openRequestsCount.toLocaleString();
+  const hasOpenRequests = (openRequestsCount ?? 0) > 0;
 
   return (
-    <div className="relative space-y-8 p-6 text-white fade-in">
+    <div className="relative space-y-6 p-5 text-white fade-in md:space-y-7 md:p-6">
       {/* soft gradient background for this page */}
       <div
         aria-hidden
@@ -253,12 +254,12 @@ export default function PartsDashboardPage(): JSX.Element {
       />
 
       {/* welcome panel */}
-      <section className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
+      <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-5 shadow-card backdrop-blur-md">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(249,115,22,0.18),transparent_45%)]" />
         <div>
-          <h1 className="text-2xl font-semibold text-white">
-            Parts dashboard
-          </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">Parts command center</div>
+          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">Parts dashboard</h1>
+          <p className="mt-2 max-w-2xl text-sm text-neutral-300">
             Overview of your catalog, movement, and open requests.
           </p>
         </div>
@@ -274,7 +275,7 @@ export default function PartsDashboardPage(): JSX.Element {
        compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* overview cards */}
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-4">
         <OverviewCard
           title="SKUs in catalog"
           value={skuTotalDisplay}
@@ -297,10 +298,26 @@ export default function PartsDashboardPage(): JSX.Element {
         />
       </section>
 
+      {hasOpenRequests && (
+        <section className="rounded-xl border border-orange-400/45 bg-orange-500/10 px-4 py-3 shadow-[0_0_24px_rgba(249,115,22,0.2)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-orange-200/80">Bottleneck signal</div>
+              <p className="text-sm text-orange-100">
+                You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} awaiting action.
+              </p>
+            </div>
+            <Link href="/parts/requests" className="rounded-full border border-orange-300/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-orange-100 hover:bg-orange-500/20">
+              Open requests
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* quick actions */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
-        <div className="flex flex-wrap gap-3">
+      <section className="space-y-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">Quick actions</h2>
+        <div className="flex flex-wrap gap-2">
           <QuickButton href="/parts/po" accent>
             Create PO
           </QuickButton>
@@ -312,7 +329,7 @@ export default function PartsDashboardPage(): JSX.Element {
       </section>
 
       {/* recent moves */}
-      <section className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
         <div className="mb-2 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Recent stock moves</h2>
@@ -326,7 +343,9 @@ export default function PartsDashboardPage(): JSX.Element {
         {loading ? (
           <div className="text-sm text-neutral-400">Loading…</div>
         ) : recentMoves.length === 0 ? (
-          <div className="text-sm text-neutral-400">No recent moves</div>
+          <div className="rounded-lg border border-dashed border-neutral-700 bg-black/20 px-3 py-4 text-sm text-neutral-400">
+            No recent moves in the last 30 days. Once receiving, adjustments, or issues post, movement will appear here.
+          </div>
         ) : (
           <ul className="divide-y divide-neutral-800 text-sm">
             {recentMoves.map((m) => (

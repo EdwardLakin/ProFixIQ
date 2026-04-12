@@ -1314,7 +1314,10 @@ type SmartMatchRow = {
         });
 
         const data = (await res.json().catch(() => null)) as
-          | { session?: InspectionSession | null }
+          | {
+              session?: InspectionSession | null;
+              inspectionMeta?: { locked?: boolean | null };
+            }
           | null;
 
         if (cancelled) return;
@@ -1338,6 +1341,7 @@ type SmartMatchRow = {
             loaded.id ?? inspectionId ?? workOrderLineId ?? "loaded",
           );
         }
+        setIsLocked(Boolean(data?.inspectionMeta?.locked));
       } catch (err) {
         console.error("[inspection] failed to load saved inspection", err);
       } finally {
@@ -2451,6 +2455,38 @@ type SmartMatchRow = {
     toast.success("Inspection snapshot locked by signature.");
   };
 
+  const handleReopenLockedInspection = async (): Promise<void> => {
+    if (!inspectionId) {
+      toast.error("Inspection id missing; cannot reopen.");
+      return;
+    }
+
+    const reason = window.prompt("Reopen reason (required for audit trail):", "");
+    if (!reason || !reason.trim()) {
+      toast.error("A reopen reason is required.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/inspections/reopen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ inspectionId, reason: reason.trim() }),
+      });
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok || json?.error) throw new Error(json?.error ?? "Failed to reopen inspection");
+
+      setIsLocked(false);
+      try {
+        localStorage.removeItem(lockKey);
+      } catch {}
+      toast.success("Inspection reopened. Editing is enabled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to reopen inspection.");
+    }
+  };
+
   const shell = isEmbed
     ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
@@ -2487,6 +2523,7 @@ type SmartMatchRow = {
         size="sm"
         className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
         onClick={() => router.push(findingsHref)}
+        disabled={isLocked}
       >
         Review findings
       </Button>
@@ -2494,13 +2531,27 @@ type SmartMatchRow = {
       <SaveInspectionButton
         session={session}
         workOrderLineId={workOrderLineId}
+        disabled={isLocked}
       />
 
       {workOrderLineId && (
         <FinishInspectionButton
           session={session}
           workOrderLineId={workOrderLineId}
+          disabled={isLocked}
         />
+      )}
+
+      {isLocked && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="font-medium border-amber-500/70 text-[11px] tracking-[0.16em] uppercase text-amber-100"
+          onClick={() => void handleReopenLockedInspection()}
+        >
+          Reopen inspection
+        </Button>
       )}
     </>
   );

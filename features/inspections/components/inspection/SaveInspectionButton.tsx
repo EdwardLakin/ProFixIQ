@@ -12,6 +12,7 @@ import { getOfflineSyncSummary, subscribeOfflineMutations } from "@/features/sha
 type Props = {
   session: InspectionSession;
   workOrderLineId: string;
+  disabled?: boolean;
 };
 
 function errorMessage(err: unknown): string {
@@ -20,7 +21,7 @@ function errorMessage(err: unknown): string {
   return "Failed to save inspection.";
 }
 
-export function SaveInspectionButton({ session, workOrderLineId }: Props) {
+export function SaveInspectionButton({ session, workOrderLineId, disabled = false }: Props) {
   const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export function SaveInspectionButton({ session, workOrderLineId }: Props) {
         type="button"
         variant="outline"
         size="sm"
+        disabled={disabled}
         className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
       >
         Save Progress

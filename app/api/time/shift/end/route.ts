@@ -36,18 +36,28 @@ export async function POST() {
     );
   }
 
-  const { data: shift, error: shiftErr } = await admin
+  const { data: shifts, error: shiftErr } = await admin
     .from("tech_shifts")
-    .select("id, shop_id")
+    .select("id, shop_id, start_time")
     .eq("user_id", user.id)
     .eq("status", "open")
     .order("start_time", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(5);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
-  if (!shift) return NextResponse.json({ error: "No active shift" }, { status: 404 });
-  if (shift.shop_id !== me.shop_id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const shift =
+    (shifts ?? []).find((s) => s.shop_id === me.shop_id) ??
+    (shifts ?? []).find((s) => s.shop_id == null) ??
+    null;
+  if (!shift) {
+    return NextResponse.json(
+      {
+        error:
+          "No active shift found in your current shop scope. If you recently switched shops, refresh and start a new shift.",
+      },
+      { status: 409 },
+    );
+  }
 
   const now = new Date().toISOString();
   const { error: updErr } = await admin
