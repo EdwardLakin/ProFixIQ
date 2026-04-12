@@ -40,6 +40,7 @@ export default async function OperationsDashboardView() {
       />
 
       <MetricStrip
+        className="mb-0.5"
         items={[
           { label: "Active jobs", value: String(payload.topSummary.activeJobs) },
           { label: "Blocked", value: String(payload.topSummary.blockedJobs), tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default" },
@@ -48,7 +49,7 @@ export default async function OperationsDashboardView() {
         ]}
       />
 
-      <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.95fr)_minmax(300px,1fr)] 2xl:grid-cols-[minmax(0,2.08fr)_minmax(320px,1fr)]">
+      <div className="grid gap-2 xl:grid-cols-[minmax(0,1.95fr)_minmax(300px,1fr)] 2xl:grid-cols-[minmax(0,2.08fr)_minmax(320px,1fr)]">
         <section className="space-y-3">
           {payload.sectionErrors.length > 0 ? (
             <section className="rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-transparent px-3 py-2.5">
@@ -75,32 +76,32 @@ export default async function OperationsDashboardView() {
           <div
             className="space-y-2 rounded-[22px] border border-white/10 p-2.5 md:p-3"
             style={{
-              background: "linear-gradient(160deg, rgba(3,7,18,0.82), rgba(6,11,24,0.55) 45%, rgba(2,6,23,0.7))",
-              boxShadow: "inset 0 1px 0 rgba(148,163,184,0.08), 0 20px 40px rgba(0,0,0,0.28)",
+              background: "linear-gradient(160deg, rgba(4,8,20,0.9), rgba(8,14,30,0.72) 45%, rgba(4,10,24,0.8))",
+              boxShadow: "inset 0 1px 0 rgba(148,163,184,0.1), 0 20px 40px rgba(0,0,0,0.28)",
             }}
           >
             <div className="grid gap-2 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
             <DashboardPanel
               title="Live Work Command Surface"
-              className="min-h-[330px] border-white/15"
+              className="min-h-[330px] border-white/10 bg-[linear-gradient(155deg,rgba(9,16,34,0.92),rgba(8,14,29,0.82))]"
               action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
               <div className="grid h-full gap-2.5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {payload.liveWork.length > 0 ? (
                     payload.liveWork.map((item) => (
                       <Link
                         key={item.id}
                         href={`/work-orders/${item.id}`}
-                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:bg-black/45 hover:shadow-[0_0_0_1px_rgba(227,154,110,0.2),0_8px_20px_rgba(0,0,0,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       >
                         <div>
-                          <div className="font-semibold text-white">{item.label}</div>
+                          <div className="font-bold tracking-wide text-white">{item.label}</div>
                           <div className="text-neutral-400">{item.stage}</div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <div className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-300">P{item.priority}</div>
-                          <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                          <div className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-200">P{item.priority}</div>
+                          <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                         </div>
                       </Link>
                     ))
@@ -108,13 +109,13 @@ export default async function OperationsDashboardView() {
                     <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-400">No active jobs currently in motion.</div>
                   )}
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {payload.flowMix.length > 0 ? (
                     payload.flowMix.map((row) => (
                       <Link
                         key={row.label}
                         href={`/work-orders/board?stage=${encodeURIComponent(row.label.toLowerCase().replaceAll(" ", "_"))}`}
-                        className="group block rounded-lg border border-white/10 bg-black/20 p-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                        className="group block rounded-lg border border-white/8 bg-black/20 p-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-neutral-300">{row.label}</span>
@@ -135,10 +136,10 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title="Active Job Summary" className="min-h-[330px] border-white/10 bg-[linear-gradient(155deg,rgba(2,6,23,0.82),rgba(8,12,24,0.68))]">
+            <DashboardPanel title="Active Job Summary" className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]">
               <div className="space-y-2.5">
                 {payload.activeJobSummary.map((metric) => (
-                  <div key={metric.label} className="rounded-lg border border-white/10 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
+                  <div key={metric.label} className="rounded-lg border border-white/5 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-neutral-400">{metric.label}</span>
                       <span className="text-[13px] font-semibold text-neutral-100">{metric.value}</span>
@@ -156,13 +157,13 @@ export default async function OperationsDashboardView() {
           </div>
 
             <div className="grid gap-2 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
-            <DashboardPanel title="Live Shop Load" className="min-h-[252px] border-white/10">
+            <DashboardPanel title="Live Shop Load" className="min-h-[252px] border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]">
               <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
             </DashboardPanel>
 
             <DashboardPanel
               title="Daily Summary"
-              className="border-white/10"
+              className="border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]"
               action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
             >
               <div className="space-y-1.5">
@@ -179,12 +180,12 @@ export default async function OperationsDashboardView() {
                     <Link
                       key={`${item.label}-${item.value}`}
                       href={href}
-                      className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                      className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     >
                       <span className="text-neutral-300">{item.label}</span>
                       <span className={item.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
                         {item.value}
-                        <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                        <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                       </span>
                     </Link>
                   );
@@ -241,28 +242,11 @@ export default async function OperationsDashboardView() {
         </section>
 
         {hasRightRailSignals ? (
-          <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
-            <DashboardPanel title="Action Rail" eyebrow="Urgency">
-              <div className="space-y-1.5">
-                {payload.blockerStack.map((blocker) => (
-                  <Link
-                    key={blocker.label}
-                    href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
-                    className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
-                  >
-                    <span className="text-neutral-300">{blocker.label}</span>
-                    <span className={blocker.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
-                      {blocker.value}
-                      <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </DashboardPanel>
-
+          <aside className="space-y-2.5 xl:sticky xl:top-3 xl:self-start">
             <DashboardPanel
               title="High Impact Alerts"
               action={<Link href="/work-orders/board" className="text-xs text-neutral-300 hover:text-white">View all</Link>}
+              className="border-red-400/45 bg-[linear-gradient(150deg,rgba(32,10,10,0.64),rgba(12,9,16,0.86))] shadow-[0_0_0_1px_rgba(239,68,68,0.12)]"
             >
               <div className="space-y-1.5">
                 {payload.alerts.map((alert) => (
@@ -271,9 +255,9 @@ export default async function OperationsDashboardView() {
                     href={alertHrefByLabel[alert.label] ?? "/work-orders/board"}
                     className="group block rounded-lg border p-2 transition hover:-translate-y-px hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     style={{
-                      borderColor: alert.tone === "critical" ? "rgba(248,113,113,0.62)" : alert.tone === "warning" ? "rgba(251,191,36,0.42)" : "rgba(148,163,184,0.25)",
-                      background: alert.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.36), rgba(69,10,10,0.2))" : alert.tone === "warning" ? "rgba(120,53,15,0.2)" : "rgba(15,23,42,0.5)",
-                      boxShadow: alert.tone === "critical" ? "0 0 0 1px rgba(239,68,68,0.15), inset 0 1px 0 rgba(254,202,202,0.15)" : undefined,
+                      borderColor: alert.tone === "critical" ? "rgba(248,113,113,0.7)" : alert.tone === "warning" ? "rgba(251,191,36,0.48)" : "rgba(148,163,184,0.25)",
+                      background: alert.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.48), rgba(69,10,10,0.24))" : alert.tone === "warning" ? "rgba(120,53,15,0.24)" : "rgba(15,23,42,0.5)",
+                      boxShadow: alert.tone === "critical" ? "0 0 0 1px rgba(239,68,68,0.2), inset 0 1px 0 rgba(254,202,202,0.18)" : undefined,
                     }}
                   >
                     <div className="flex items-center justify-between gap-2 text-xs font-semibold text-white">
@@ -289,8 +273,30 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title="Suggested Actions">
-              <ActionRow actions={payload.suggestedActions} />
+            <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+            <DashboardPanel title="Action Rail" eyebrow="Urgency" className="border-amber-300/30 bg-[linear-gradient(150deg,rgba(36,22,8,0.42),rgba(8,11,24,0.84))]">
+              <div className="space-y-1.5">
+                {payload.blockerStack.map((blocker) => (
+                  <Link
+                    key={blocker.label}
+                    href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
+                    className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                  >
+                    <span className="text-neutral-300">{blocker.label}</span>
+                    <span className={blocker.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
+                      {blocker.value}
+                      <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </DashboardPanel>
+
+            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+            <DashboardPanel title="Suggested Actions" className="border-white/10 bg-[linear-gradient(150deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))]">
+              <ActionRow actions={payload.suggestedActions} emphasis="subtle" />
             </DashboardPanel>
           </aside>
         ) : null}

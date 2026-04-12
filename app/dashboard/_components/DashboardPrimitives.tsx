@@ -59,9 +59,15 @@ export function DashboardTopStrip({
   );
 }
 
-export function MetricStrip({ items }: { items: Array<{ label: string; value: string; tone?: "default" | "accent" }> }) {
+export function MetricStrip({
+  items,
+  className,
+}: {
+  items: Array<{ label: string; value: string; tone?: "default" | "accent" }>;
+  className?: string;
+}) {
   return (
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <div className={`grid grid-cols-2 gap-2 lg:grid-cols-4 ${className ?? ""}`}>
       {items.map((item, index) => (
         <section
           key={item.label}
@@ -112,7 +118,7 @@ export function DashboardPanel({
       className={`rounded-2xl border p-3 md:p-3.5 ${className ?? ""}`}
       style={{
         borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 78%, transparent)",
-        background: "linear-gradient(155deg, rgba(2,6,23,0.9), rgba(10,15,28,0.78))",
+        background: "linear-gradient(155deg, rgba(2,6,23,0.88), rgba(10,15,28,0.76))",
       }}
     >
       <header className="mb-2.5 flex items-start justify-between gap-2">
@@ -149,14 +155,24 @@ export function CompactSignalList({
   );
 }
 
-export function ActionRow({ actions }: { actions: Array<{ label: string; href: string; tone?: "primary" | "neutral"; detail?: string }> }) {
+export function ActionRow({
+  actions,
+  emphasis = "default",
+}: {
+  actions: Array<{ label: string; href: string; tone?: "primary" | "neutral"; detail?: string }>;
+  emphasis?: "default" | "subtle";
+}) {
   return (
     <div className="space-y-1.5">
       {actions.map((action) => (
         <Link
           key={`${action.href}-${action.label}`}
           href={action.href}
-          className="group block rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+          className={`group block rounded-lg border px-2.5 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60 ${
+            emphasis === "subtle"
+              ? "border-white/5 bg-black/15 hover:border-white/15 hover:bg-black/25"
+              : "border-white/10 bg-black/20 hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40"
+          }`}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white">{action.label}</div>
