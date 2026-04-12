@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   const buildQuery = (sameShopOnly: boolean) => {
     let qry = admin
       .from("profiles")
-      .select("id, user_id, full_name, role, email, shop_id")
+      .select("id, user_id, full_name, role, email, shop_id, avatar_url")
       .order("full_name", { ascending: true })
       .limit(MAX_ROWS);
 
@@ -86,6 +86,7 @@ export async function GET(req: Request) {
       full_name: u.full_name,
       role: u.role,
       email: u.email,
+      avatar_url: (u as { avatar_url?: string | null }).avatar_url ?? null,
     })) ?? [];
 
   return NextResponse.json({ users: normalized });

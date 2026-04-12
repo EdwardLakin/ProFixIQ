@@ -18,7 +18,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/mobile", label: "Home" },
   { href: "/mobile/work-orders", label: "Jobs" },
-  { href: "/mobile/messages", label: "Chat" },
+  { href: "/mobile/messages", label: "Inbox" },
   { href: "/mobile/settings", label: "Me" },
 ];
 

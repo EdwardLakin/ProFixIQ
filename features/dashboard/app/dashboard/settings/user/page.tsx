@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -36,8 +37,17 @@ export default function SettingsPage() {
       if (user.email) setEmail(user.email);
       setEmailVerified(Boolean(user.email_confirmed_at));
 
-      // if you ever store avatar in user_metadata or profiles, hydrate it here
-      if (typeof user.user_metadata?.avatar_url === "string") {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const persistedAvatar = profile?.avatar_url ?? null;
+      if (persistedAvatar) {
+        setPhotoUrl(persistedAvatar);
+        setAvatarPath(persistedAvatar.split("/profile-photos/")[1] ?? null);
+      } else if (typeof user.user_metadata?.avatar_url === "string") {
         setPhotoUrl(user.user_metadata.avatar_url);
       }
     };
@@ -123,9 +133,30 @@ export default function SettingsPage() {
       .getPublicUrl(filePath);
 
     setPhotoUrl(data.publicUrl);
+    setAvatarPath(filePath);
+    await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    await supabase.auth.updateUser({ data: { avatar_url: data.publicUrl } });
     setBusy(false);
     showStatus("Profile photo updated.", "success");
     router.refresh();
+  };
+
+  const handleRemovePhoto = async () => {
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (!userId) return;
+    setBusy(true);
+
+    if (avatarPath) {
+      await supabase.storage.from("profile-photos").remove([avatarPath]);
+    }
+
+    await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
+    await supabase.auth.updateUser({ data: { avatar_url: null } });
+    setPhotoUrl(null);
+    setAvatarPath(null);
+    setBusy(false);
+    showStatus("Profile photo removed.", "success");
   };
 
   const statusClass =
@@ -252,11 +283,16 @@ export default function SettingsPage() {
               </p>
             </div>
             {photoUrl && (
-              <img
-                src={photoUrl}
-                alt="Profile"
-                className="h-20 w-20 rounded-full border border-border object-cover"
-              />
+              <div className="flex items-center gap-3">
+                <img
+                  src={photoUrl}
+                  alt="Profile"
+                  className="h-20 w-20 rounded-full border border-border object-cover"
+                />
+                <Button variant="outline" size="sm" onClick={handleRemovePhoto} disabled={busy}>
+                  Remove photo
+                </Button>
+              </div>
             )}
           </div>
         </section>
