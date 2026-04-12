@@ -40,7 +40,7 @@ export default async function OperationsDashboardView() {
       />
 
       <MetricStrip
-        className="mb-0.5"
+        className="mb-0"
         items={[
           { label: "Active jobs", value: String(payload.topSummary.activeJobs) },
           {
@@ -65,8 +65,8 @@ export default async function OperationsDashboardView() {
         ]}
       />
 
-      <div className="grid gap-2 xl:grid-cols-[minmax(0,1.95fr)_minmax(300px,1fr)] 2xl:grid-cols-[minmax(0,2.08fr)_minmax(320px,1fr)]">
-        <section className="space-y-3">
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1.72fr)_minmax(276px,0.9fr)] xl:grid-cols-[minmax(0,1.92fr)_minmax(304px,0.96fr)] 2xl:grid-cols-[minmax(0,2.1fr)_minmax(340px,1fr)]">
+        <section className="space-y-2.5">
           {payload.sectionErrors.length > 0 ? (
             <section className="rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-transparent px-3 py-2.5">
               <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300">
@@ -90,19 +90,19 @@ export default async function OperationsDashboardView() {
           ) : null}
 
           <div
-            className="space-y-1.5 rounded-[22px] border border-white/5 p-2.5 md:p-3"
+            className="space-y-1.5 rounded-[22px] border border-white/5 p-2.5 md:p-2.5"
             style={{
               background: "linear-gradient(158deg, rgba(4,8,20,0.92), rgba(8,14,30,0.78) 48%, rgba(4,10,24,0.86))",
               boxShadow: "inset 0 1px 0 rgba(148,163,184,0.06), 0 16px 28px rgba(0,0,0,0.24)",
             }}
           >
-            <div className="grid gap-1.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
+            <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
             <DashboardPanel
               title="Live Work Command Surface"
-              className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
+              className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
               action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
-              <div className="grid h-full gap-2.5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className="grid h-full gap-2 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                 <div className="space-y-0.5">
                   {payload.liveWork.length > 0 ? (
                     payload.liveWork.map((item) => (
@@ -158,8 +158,8 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title="Active Job Summary" className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
-              <div className="space-y-2.5">
+            <DashboardPanel title="Active Job Summary" className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+              <div className="space-y-2">
                 {payload.activeJobSummary.map((metric) => (
                   <div key={metric.label} className="rounded-lg border border-white/5 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
                     <div className="flex items-center justify-between text-xs">
@@ -178,8 +178,8 @@ export default async function OperationsDashboardView() {
             </DashboardPanel>
           </div>
 
-            <div className="grid gap-1.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
-            <DashboardPanel title="Live Shop Load" className="min-h-[252px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
+            <DashboardPanel title="Live Shop Load" className="min-h-[236px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
               <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
             </DashboardPanel>
 
@@ -266,7 +266,7 @@ export default async function OperationsDashboardView() {
         </section>
 
         {hasRightRailSignals ? (
-          <aside className="space-y-2.5 xl:sticky xl:top-3 xl:self-start">
+          <aside className="space-y-2 lg:sticky lg:top-2.5 lg:self-start">
             <DashboardPanel
               title="High Impact Alerts"
               action={<Link href="/work-orders/board" className="text-xs text-neutral-300 hover:text-white">View all</Link>}

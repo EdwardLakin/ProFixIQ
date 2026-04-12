@@ -5,7 +5,7 @@ import DashboardViewSwitcher from "./DashboardViewSwitcher";
 import type { DashboardView } from "@/features/dashboard/lib/dashboard-views";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-[1580px] space-y-2.5 pt-1 md:space-y-3.5 md:pt-2">{children}</div>;
+  return <div className="mx-auto w-full max-w-[1640px] space-y-2 pt-0.5 md:space-y-2.5 md:pt-1">{children}</div>;
 }
 
 export function DashboardTopStrip({
@@ -23,7 +23,7 @@ export function DashboardTopStrip({
 }) {
   return (
     <section
-      className="relative z-10 rounded-2xl border px-4 py-3 backdrop-blur-xl md:px-5"
+      className="relative z-10 rounded-2xl border px-4 py-2.5 backdrop-blur-xl md:px-5 md:py-2"
       style={{
         borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
         background:
@@ -31,11 +31,11 @@ export function DashboardTopStrip({
         boxShadow: "0 16px 30px rgba(0,0,0,0.4)",
       }}
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{title}</div>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-white md:text-2xl">{name}</h1>
-          <p className="mt-1 text-xs text-neutral-300 md:text-sm">{subtitle}</p>
+          <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-white md:text-[1.7rem]">{name}</h1>
+          <p className="mt-0.5 text-xs text-neutral-300 md:text-sm">{subtitle}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -73,11 +73,11 @@ export function MetricStrip({
   className?: string;
 }) {
   return (
-    <div className={`grid grid-cols-2 gap-2 lg:grid-cols-4 ${className ?? ""}`}>
+    <div className={`grid grid-cols-2 gap-1.5 lg:grid-cols-4 ${className ?? ""}`}>
       {items.map((item, index) => (
         <section
           key={item.label}
-          className="relative rounded-xl border px-3 py-2.5"
+          className="relative rounded-xl border px-3 py-2"
           style={{
             borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 85%, transparent)",
             background: "linear-gradient(155deg, rgba(15,23,42,0.96), rgba(2,6,23,0.88))",
@@ -134,13 +134,13 @@ export function DashboardPanel({
 }) {
   return (
     <section
-      className={`rounded-2xl border p-3 md:p-3.5 ${className ?? ""}`}
+      className={`rounded-2xl border p-3 md:p-3 ${className ?? ""}`}
       style={{
         borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 78%, transparent)",
         background: "linear-gradient(155deg, rgba(2,6,23,0.88), rgba(10,15,28,0.76))",
       }}
     >
-      <header className="mb-2.5 flex items-start justify-between gap-2">
+      <header className="mb-2 flex items-start justify-between gap-2">
         <div>
           {eyebrow ? <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{eyebrow}</div> : null}
           <h2 className="text-sm font-semibold text-white md:text-base">{title}</h2>
