@@ -151,26 +151,29 @@ export function CompactSignalList({
 
 export function ActionRow({ actions }: { actions: Array<{ label: string; href: string; tone?: "primary" | "neutral"; detail?: string }> }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {actions.map((action) => (
         <Link
           key={`${action.href}-${action.label}`}
           href={action.href}
-          className="group block rounded-lg border border-white/10 bg-black/20 p-2.5 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+          className="group block rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white">{action.label}</div>
-            <span
-              className={
-                action.tone === "primary"
-                  ? "rounded-full border border-[var(--accent-copper-soft)]/80 bg-[var(--accent-copper)]/15 px-2.5 py-1 text-[10px] font-semibold text-[var(--accent-copper-light)]"
-                  : "rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold text-neutral-200"
-              }
-            >
-              Open
-            </span>
+            <div className="inline-flex items-center gap-1.5">
+              <span
+                className={
+                  action.tone === "primary"
+                    ? "rounded-full border border-[var(--accent-copper-soft)]/80 bg-[var(--accent-copper)]/15 px-2.5 py-0.5 text-[10px] font-semibold text-[var(--accent-copper-light)]"
+                    : "rounded-full border border-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-neutral-200"
+                }
+              >
+                Open
+              </span>
+              <span className="text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]">→</span>
+            </div>
           </div>
-          {action.detail ? <div className="mt-1 text-[11px] text-neutral-400">{action.detail}</div> : null}
+          {action.detail ? <div className="mt-0.5 text-[11px] text-neutral-400">{action.detail}</div> : null}
         </Link>
       ))}
     </div>
