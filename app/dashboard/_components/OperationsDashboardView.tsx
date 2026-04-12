@@ -5,6 +5,15 @@ import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOp
 import { ActionRow, CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
 
+function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/15 px-3 py-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{label}</div>
+      <div className="mt-1 text-xs text-neutral-500">{detail}</div>
+    </div>
+  );
+}
+
 export default async function OperationsDashboardView() {
   const payload = await getOperationsDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
@@ -74,16 +83,16 @@ export default async function OperationsDashboardView() {
           ) : null}
 
           <div
-            className="space-y-2 rounded-[22px] border border-white/10 p-2.5 md:p-3"
+            className="space-y-1.5 rounded-[22px] border border-white/5 p-2.5 md:p-3"
             style={{
-              background: "linear-gradient(160deg, rgba(4,8,20,0.9), rgba(8,14,30,0.72) 45%, rgba(4,10,24,0.8))",
-              boxShadow: "inset 0 1px 0 rgba(148,163,184,0.1), 0 20px 40px rgba(0,0,0,0.28)",
+              background: "linear-gradient(158deg, rgba(4,8,20,0.92), rgba(8,14,30,0.78) 48%, rgba(4,10,24,0.86))",
+              boxShadow: "inset 0 1px 0 rgba(148,163,184,0.06), 0 16px 28px rgba(0,0,0,0.24)",
             }}
           >
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
+            <div className="grid gap-1.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
             <DashboardPanel
               title="Live Work Command Surface"
-              className="min-h-[330px] border-white/10 bg-[linear-gradient(155deg,rgba(9,16,34,0.92),rgba(8,14,29,0.82))]"
+              className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
               action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
               <div className="grid h-full gap-2.5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -106,7 +115,10 @@ export default async function OperationsDashboardView() {
                       </Link>
                     ))
                   ) : (
-                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-400">No active jobs currently in motion.</div>
+                    <EmbeddedEmptyState
+                      label="Live work idle"
+                      detail="No active jobs are currently in motion."
+                    />
                   )}
                 </div>
                 <div className="space-y-1">
@@ -130,13 +142,16 @@ export default async function OperationsDashboardView() {
                       </Link>
                     ))
                   ) : (
-                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-400">Flow mix will populate as stages progress.</div>
+                    <EmbeddedEmptyState
+                      label="Flow signal pending"
+                      detail="Stage mix will appear as work transitions through the board."
+                    />
                   )}
                 </div>
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title="Active Job Summary" className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]">
+            <DashboardPanel title="Active Job Summary" className="min-h-[330px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
               <div className="space-y-2.5">
                 {payload.activeJobSummary.map((metric) => (
                   <div key={metric.label} className="rounded-lg border border-white/5 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
@@ -156,14 +171,14 @@ export default async function OperationsDashboardView() {
             </DashboardPanel>
           </div>
 
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
-            <DashboardPanel title="Live Shop Load" className="min-h-[252px] border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]">
+            <div className="grid gap-1.5 lg:grid-cols-[minmax(0,1.62fr)_minmax(248px,0.9fr)]">
+            <DashboardPanel title="Live Shop Load" className="min-h-[252px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
               <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
             </DashboardPanel>
 
             <DashboardPanel
               title="Daily Summary"
-              className="border-white/5 bg-[linear-gradient(155deg,rgba(6,11,24,0.8),rgba(9,14,28,0.7))]"
+              className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]"
               action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
             >
               <div className="space-y-1.5">
