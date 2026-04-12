@@ -625,6 +625,90 @@ export default function FocusedJobModal(props: {
           ) : (
             <div className={isPanelVariant ? "grid gap-3 xl:grid-cols-[1.1fr_1fr]" : "space-y-4"}>
               <div className="space-y-3">
+              {mode === "tech" ? (
+                <SectionCard title="Operational actions">
+                  {line.status !== "completed" ? (
+                    <JobPunchButton
+                      lineId={line.id}
+                      punchedInAt={line.punched_in_at}
+                      punchedOutAt={line.punched_out_at}
+                      status={line.status as WorkflowStatus}
+                      onFinishRequested={() => {
+                        closeAllSubModals();
+                        setPrefillCause(line.cause ?? "");
+                        setPrefillCorrection(line.correction ?? "");
+                        setOpenComplete(true);
+                      }}
+                      onUpdated={refresh}
+                      disabled={completionBlocked}
+                    />
+                  ) : null}
+
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      className={btnAccent}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setPrefillCause(line?.cause ?? "");
+                        setPrefillCorrection(line?.correction ?? "");
+                        setOpenComplete(true);
+                      }}
+                      disabled={completionBlocked}
+                    >
+                      Complete
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnWarn}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenHold(true);
+                      }}
+                      disabled={busy}
+                    >
+                      {line.status === "on_hold" ? "On Hold" : "Hold"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnDanger}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenParts(true);
+                      }}
+                      disabled={busy}
+                    >
+                      Request Parts
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnInfo}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenAi(true);
+                      }}
+                    >
+                      AI Assist
+                    </button>
+                  </div>
+
+                  {completionBlocked ? (
+                    <div className="mt-2 text-[11px] text-amber-300">
+                      {line.status === "awaiting_approval"
+                        ? "Awaiting approval — punching disabled"
+                        : line.status === "declined"
+                          ? "Declined — punching disabled"
+                          : line.approval_state && line.approval_state !== "approved"
+                            ? "Not approved — punching disabled"
+                            : ""}
+                    </div>
+                  ) : null}
+                </SectionCard>
+              ) : null}
+
               <SectionCard title="Quick status">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <MetaStat
@@ -684,78 +768,10 @@ export default function FocusedJobModal(props: {
                 </SectionCard>
               ) : null}
 
-              {mode === "tech" && line.status !== "completed" ? (
-                <SectionCard title="Punch controls">
-                  <JobPunchButton
-                    lineId={line.id}
-                    punchedInAt={line.punched_in_at}
-                    punchedOutAt={line.punched_out_at}
-                    status={line.status as WorkflowStatus}
-                    onFinishRequested={() => {
-                      closeAllSubModals();
-                      setPrefillCause(line.cause ?? "");
-                      setPrefillCorrection(line.correction ?? "");
-                      setOpenComplete(true);
-                    }}
-                    onUpdated={refresh}
-                    disabled={completionBlocked}
-                  />
-                  {completionBlocked ? (
-                    <div className="mt-2 text-[11px] text-amber-300">
-                      {line.status === "awaiting_approval"
-                        ? "Awaiting approval — punching disabled"
-                        : line.status === "declined"
-                          ? "Declined — punching disabled"
-                          : line.approval_state && line.approval_state !== "approved"
-                            ? "Not approved — punching disabled"
-                            : ""}
-                    </div>
-                  ) : null}
-                </SectionCard>
-              ) : null}
-
               <SectionCard title="Actions">
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      <button
-                        type="button"
-                        className={btnAccent}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setPrefillCause(line?.cause ?? "");
-                          setPrefillCorrection(line?.correction ?? "");
-                          setOpenComplete(true);
-                        }}
-                        disabled={completionBlocked}
-                      >
-                        Complete
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnDanger}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenParts(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Request Parts
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnWarn}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenHold(true);
-                        }}
-                        disabled={busy}
-                      >
-                        {line.status === "on_hold" ? "On Hold" : "Hold"}
-                      </button>
-
                       <button
                         type="button"
                         className={btnNeutral}
@@ -779,31 +795,6 @@ export default function FocusedJobModal(props: {
                         Chat
                       </button>
 
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
                     </>
                   ) : (
                     <>
@@ -841,20 +832,6 @@ export default function FocusedJobModal(props: {
                         DTC Assist
                       </button>
 
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
                     </>
                   )}
                 </div>
@@ -862,6 +839,35 @@ export default function FocusedJobModal(props: {
               </div>
 
               <div className="space-y-3">
+              <SectionCard title="Tech notes">
+                <textarea
+                  rows={3}
+                  value={techNotes}
+                  onChange={(e) => setTechNotes(e.target.value)}
+                  onBlur={saveNotes}
+                  disabled={savingNotes}
+                  className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+                  placeholder="Add notes for this job…"
+                />
+              </SectionCard>
+
+              <SectionCard title="History">
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    if (!vehicle?.id) {
+                      toast.error("No vehicle linked to this work order yet.");
+                      return;
+                    }
+                    setOpenVehicleHistory(true);
+                  }}
+                  disabled={busy || !vehicle?.id}
+                >
+                  Vehicle History
+                </button>
+              </SectionCard>
+
               <SectionCard title="Parts used">
                 {allocsLoading ? (
                   <div className="text-sm text-neutral-300">Loading…</div>
@@ -900,18 +906,6 @@ export default function FocusedJobModal(props: {
                     </ul>
                   </div>
                 )}
-              </SectionCard>
-
-              <SectionCard title="Tech notes">
-                <textarea
-                  rows={3}
-                  value={techNotes}
-                  onChange={(e) => setTechNotes(e.target.value)}
-                  onBlur={saveNotes}
-                  disabled={savingNotes}
-                  className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
-                  placeholder="Add notes for this job…"
-                />
               </SectionCard>
 
               <SectionCard title="AI suggested repairs">

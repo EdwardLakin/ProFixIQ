@@ -1618,29 +1618,11 @@ export default function WorkOrderIdClient(): JSX.Element {
           </section>
 
           {/* Workspace */}
-          <section
-            className={
-              showPanel
-                ? "grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"
-                : "space-y-4"
-            }
-          >
+          <section className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-start md:gap-4">
             {/* Left: jobs list/cards */}
-            <div className="space-y-4">
-
-            {/* Jobs list */}
-            <section className={cn(PANEL_VARIANTS.primary, "p-3 sm:p-4", showPanel && "xl:sticky xl:top-4")}>
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                    Job navigator
-                  </h2>
-                  <p className="text-[11px] text-muted-foreground">
-                    Select a job to keep controls and updates in the focused cockpit.
-                  </p>
-                </div>
-
-                {linesNeedingQuote.length > 0 && (
+            <div className="space-y-2">
+              {linesNeedingQuote.length > 0 && (
+                <div className="flex justify-end">
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(37,99,235,0.9)] hover:bg-blue-500 disabled:opacity-60"
@@ -1650,11 +1632,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                   >
                     ⚡ Quote all lines
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
               {sortedLines.length > 0 && (
-                <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5">
+                <div className="rounded-xl border border-white/10 bg-black/50 px-3 py-2">
                   {(() => {
                     const total = sortedLines.length;
                     const done = sortedLines.filter((ln) => {
@@ -1731,78 +1713,69 @@ export default function WorkOrderIdClient(): JSX.Element {
                     });
 
                     return (
-                      <div key={ln.id} className="relative">
-                        <JobCard
-                          index={idx}
-                          line={ln}
-                          parts={partsForLine}
-                          technicians={assignables}
-                          canAssign={canAssign}
-                          isPunchedIn={punchedIn}
-                          onOpen={() => openFocusedJob(ln.id)}
-                          onAssign={
-                            canAssign
-                              ? async (techId: string) => {
-                                  try {
-                                    const res = await fetch("/api/work-orders/assign-line", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        work_order_line_id: ln.id,
-                                        tech_id: techId,
-                                      }),
-                                    });
+                      <JobCard
+                        key={ln.id}
+                        index={idx}
+                        line={ln}
+                        parts={partsForLine}
+                        technicians={assignables}
+                        canAssign={canAssign}
+                        isPunchedIn={punchedIn}
+                        onOpen={() => openFocusedJob(ln.id)}
+                        onAssign={
+                          canAssign
+                            ? async (techId: string) => {
+                                try {
+                                  const res = await fetch("/api/work-orders/assign-line", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      work_order_line_id: ln.id,
+                                      tech_id: techId,
+                                    }),
+                                  });
 
-                                    const json = await res.json().catch(() => ({}));
+                                  const json = await res.json().catch(() => ({}));
 
-                                    if (!res.ok) {
-                                      throw new Error(
-                                        typeof json?.error === "string"
-                                          ? json.error
-                                          : "Failed to assign technician."
-                                      );
-                                    }
-
-                                    toast.success("Technician assigned.");
-                                    await fetchAll();
-                                  } catch (e) {
-                                    const msg = e instanceof Error ? e.message : "Failed to assign technician.";
-                                    toast.error(msg);
+                                  if (!res.ok) {
+                                    throw new Error(
+                                      typeof json?.error === "string"
+                                        ? json.error
+                                        : "Failed to assign technician."
+                                    );
                                   }
+
+                                  toast.success("Technician assigned.");
+                                  await fetchAll();
+                                } catch (e) {
+                                  const msg = e instanceof Error ? e.message : "Failed to assign technician.";
+                                  toast.error(msg);
                                 }
-                              : undefined
-                          }
-                          onOpenInspection={
-                            ln.job_type === "inspection"
-                              ? () => void openInspectionForLine(ln)
-                              : undefined
-                          }
-                          onAddPart={() => setPartsLineId(ln.id)}
-                          reviewOk={reviewOk}
-                          reviewIssues={reviewIssuesByLine[ln.id] ?? []}
-                          canDelete={canDeleteLine}
-                          onDelete={() => openDeleteForLine(ln.id)}
-                          compact={showPanel}
-                          selected={panelLineId === ln.id}
-                        />
-                      </div>
+                              }
+                            : undefined
+                        }
+                        onOpenInspection={
+                          ln.job_type === "inspection"
+                            ? () => void openInspectionForLine(ln)
+                            : undefined
+                        }
+                        onAddPart={() => setPartsLineId(ln.id)}
+                        reviewOk={reviewOk}
+                        reviewIssues={reviewIssuesByLine[ln.id] ?? []}
+                        canDelete={canDeleteLine}
+                        onDelete={() => openDeleteForLine(ln.id)}
+                        compact={showPanel}
+                        selected={panelLineId === ln.id}
+                      />
                     );
                   })}
                 </div>
               )}
-            </section>
-
-            <section className={cn(PANEL_VARIANTS.passive, "p-3 text-sm text-muted-foreground")}>
-              <p>
-                Select a job card above to open the focused job panel with full editing, punch and
-                inspection controls.
-              </p>
-            </section>
             </div>
 
             {/* Right: focused job workspace pane */}
-            {showPanel && panelLineId ? (
-              <div className="self-start">
+            <div className="md:sticky md:top-4">
+              {panelLineId ? (
                 <FocusedJobModal
                   key={panelLineId}
                   isOpen={true}
@@ -1812,8 +1785,12 @@ export default function WorkOrderIdClient(): JSX.Element {
                   mode="tech"
                   variant="panel"
                 />
-              </div>
-            ) : null}
+              ) : (
+                <section className={cn(PANEL_VARIANTS.passive, "rounded-2xl p-4 text-sm text-muted-foreground")}>
+                  Select a job
+                </section>
+              )}
+            </div>
           </section>
 
         </div>
