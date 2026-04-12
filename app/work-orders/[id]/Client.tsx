@@ -197,6 +197,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [authChecked, setAuthChecked] = useState<boolean>(false);
 
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
+  const [showFullHistory, setShowFullHistory] = useState(false);
 
   // ✅ focused job
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -837,6 +838,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   const hasAnyApprovalItems = approvalPending.length > 0 || approvalPendingQuotes.length > 0;
+  const recentApprovalPending = useMemo(() => approvalPending.slice(0, 2), [approvalPending]);
+  const recentApprovalPendingQuotes = useMemo(
+    () => approvalPendingQuotes.slice(0, 2),
+    [approvalPendingQuotes],
+  );
   const decisionTimelineStages = useMemo<DecisionTimelineStage[]>(() => {
     const hasRecommendedLines = lines.length > 0;
     const hasAwaitingApproval = lines.some(
@@ -913,6 +919,15 @@ export default function WorkOrderIdClient(): JSX.Element {
       return ta - tb;
     });
   }, [activeJobLines]);
+
+  useEffect(() => {
+    if (!prefersPanel) return;
+    if (jobFromQuery) return;
+    if (sortedLines.length === 0) return;
+    const fallbackLineId = sortedLines[0]?.id;
+    if (!fallbackLineId) return;
+    router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(fallbackLineId)}`);
+  }, [prefersPanel, jobFromQuery, sortedLines, routeId, router]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
@@ -1237,11 +1252,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const cardInner = cn(PANEL_VARIANTS.passive, "p-3");
 
-  // ✅ layout: when panel mode, show a 2-col grid and render FocusedJobModal as a right panel
-  const showPanel = prefersPanel && !!focusedJobId;
+  // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
+  const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
+  const showPanel = prefersPanel && !!panelLineId;
 
   return (
-    <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
+    <div className="w-full bg-background px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -1253,7 +1269,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       <PageShell
         eyebrow={wo?.custom_id ? `Work order ${wo.custom_id}` : "Work order"}
         title={wo?.custom_id ? `Operational cockpit · ${wo.custom_id}` : "Operational cockpit"}
-        description="Run live jobs, review evidence, and process approvals from a single command surface."
+        description="Desktop command surface for active job processing."
         actions={<PreviousPageButton />}
       >
         {authChecked && !currentUserId && (
@@ -1281,12 +1297,12 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : !wo ? (
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4">
           {/* Header */}
-          <section className={cn(PANEL_VARIANTS.primary, "p-4")}>
+          <section className={cn(PANEL_VARIANTS.primary, "p-3")}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+                  <h1 className="text-lg font-semibold text-foreground sm:text-xl">
                     Work Order{" "}
                     <span className="text-[rgba(184,115,51,0.95)]">
                       {wo.custom_id || `#${wo.id.slice(0, 8)}`}
@@ -1298,7 +1314,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-4 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)]"
+                    className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)]"
                     onClick={() => {
                       if (!wo?.id) return;
                       router.push(`/work-orders/${wo.id}/intake`);
@@ -1324,11 +1340,29 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
           </section>
 
-          <DecisionTimeline stages={decisionTimelineStages} />
-          <DecisionEventFeed events={decisionEvents} filter="all" maxVisible={6} />
+          <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <DecisionTimeline stages={decisionTimelineStages} compact />
+            <div className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+              <DecisionEventFeed
+                events={decisionEvents}
+                filter="all"
+                maxVisible={showFullHistory ? 12 : 3}
+                compact
+              />
+              {decisionEvents.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowFullHistory((prev) => !prev)}
+                  className="mt-2 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                >
+                  {showFullHistory ? "Show recent only" : "View full history"}
+                </button>
+              ) : null}
+            </div>
+          </section>
 
           {/* Vehicle & Customer */}
-          <section className={cn(PANEL_VARIANTS.secondary, "p-4")}>
+          <section className={cn(PANEL_VARIANTS.secondary, "p-3")}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
                 Vehicle &amp; Customer
@@ -1344,7 +1378,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {showDetails && (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 {/* Vehicle */}
                 <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1420,7 +1454,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           <section
             className={cn(
               PANEL_VARIANTS.secondary,
-              "p-4",
+              "p-3",
               hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
             )}
             onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
@@ -1442,9 +1476,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
               ) : (
                 <>
-                  {approvalPending.length > 0 && (
+                  {recentApprovalPending.length > 0 && (
                     <div className="space-y-2">
-                      {approvalPending.map((ln, idx) => {
+                      {recentApprovalPending.map((ln, idx) => {
                         const isAwaitingPartsBase =
                           (ln.status === "on_hold" &&
                             (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
@@ -1518,12 +1552,12 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                   )}
 
-                  {approvalPendingQuotes.length > 0 && (
-                    <div className={approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"}>
+                  {recentApprovalPendingQuotes.length > 0 && (
+                    <div className={recentApprovalPending.length > 0 ? "mt-3 space-y-2" : "space-y-2"}>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
                         Quote suggestions
                       </div>
-                      {approvalPendingQuotes.map((q, idx) => (
+                      {recentApprovalPendingQuotes.map((q, idx) => (
                         <div key={q.id} className={`${cardInner} p-3`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -1573,25 +1607,36 @@ export default function WorkOrderIdClient(): JSX.Element {
                       ))}
                     </div>
                   )}
+                  {(approvalPending.length > recentApprovalPending.length ||
+                    approvalPendingQuotes.length > recentApprovalPendingQuotes.length) && (
+                    <div className="pt-1 text-[11px] text-muted-foreground">
+                      Showing recent approvals. Open Quote Review for full queue.
+                    </div>
+                  )}
                 </>
               )}
           </section>
 
           {/* Workspace */}
-          <section className={showPanel ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]" : "space-y-6"}>
+          <section
+            className={
+              showPanel
+                ? "grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"
+                : "space-y-4"
+            }
+          >
             {/* Left: jobs list/cards */}
-            <div className="space-y-6">
+            <div className="space-y-4">
 
             {/* Jobs list */}
-            <section className={cn(PANEL_VARIANTS.primary, "p-4 sm:p-5")}>
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <section className={cn(PANEL_VARIANTS.primary, "p-3 sm:p-4", showPanel && "xl:sticky xl:top-4")}>
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                    Jobs in this work order
+                    Job navigator
                   </h2>
                   <p className="text-[11px] text-muted-foreground">
-                    Click any card to open the focused panel with full controls, punch and
-                    inspections.
+                    Select a job to keep controls and updates in the focused cockpit.
                   </p>
                 </div>
 
@@ -1647,7 +1692,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   actions in the focused panel to start building this work order.
                 </p>
               ) : (
-                <div className="space-y-2">
+                <div className="max-h-[70vh] space-y-2 overflow-auto pr-1">
                   {sortedLines.map((ln, idx) => {
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
@@ -1737,6 +1782,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                           reviewIssues={reviewIssuesByLine[ln.id] ?? []}
                           canDelete={canDeleteLine}
                           onDelete={() => openDeleteForLine(ln.id)}
+                          compact={showPanel}
+                          selected={panelLineId === ln.id}
                         />
                       </div>
                     );
@@ -1745,7 +1792,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </section>
 
-            <section className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-muted-foreground")}>
+            <section className={cn(PANEL_VARIANTS.passive, "p-3 text-sm text-muted-foreground")}>
               <p>
                 Select a job card above to open the focused job panel with full editing, punch and
                 inspection controls.
@@ -1754,13 +1801,13 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Right: focused job workspace pane */}
-            {showPanel ? (
+            {showPanel && panelLineId ? (
               <div className="self-start">
                 <FocusedJobModal
-                  key={focusedJobId}
+                  key={panelLineId}
                   isOpen={true}
                   onClose={closeFocusedPanel}
-                  workOrderLineId={focusedJobId}
+                  workOrderLineId={panelLineId}
                   onChanged={fetchAll}
                   mode="tech"
                   variant="panel"

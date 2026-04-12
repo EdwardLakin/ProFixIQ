@@ -58,6 +58,8 @@ type JobCardProps = {
   pricing?: PricingSummary | null;
   reviewIssues?: ReviewIssue[];
   reviewOk?: boolean;
+  compact?: boolean;
+  selected?: boolean;
 };
 
 const CARD_SURFACE: Record<
@@ -241,6 +243,8 @@ export function JobCard({
   pricing,
   reviewIssues,
   reviewOk,
+  compact = false,
+  selected = false,
 }: JobCardProps): JSX.Element {
   const statusKey = (line.status ?? "awaiting")
     .toLowerCase()
@@ -288,13 +292,14 @@ export function JobCard({
       className={cn(
         "relative overflow-hidden p-0",
         "transition hover:-translate-y-[1px] hover:border-[color:var(--accent-copper-soft,#fdba74)]",
+        selected && "border-[color:var(--accent-copper-soft,#fdba74)] shadow-[0_0_0_1px_rgba(253,186,116,0.4)]",
         surfaceCfg.surfaceClass,
       )}
     >
       <div className={cn("absolute inset-y-0 left-0 w-1", surfaceCfg.railClass)} />
 
-      <div className="relative p-5 pl-6">
-        <div className="flex flex-col gap-4">
+      <div className={cn("relative pl-6", compact ? "p-3.5" : "p-5")}>
+        <div className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4")}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -309,24 +314,24 @@ export function JobCard({
                 ) : null}
               </div>
 
-              <div className="mt-3 flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200">
+              <div className={cn("flex items-start gap-3", compact ? "mt-2" : "mt-3")}>
+                <div className={cn("flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200", compact ? "h-6 w-6" : "h-8 w-8")}>
                   {index + 1}
                 </div>
 
                 <div className="min-w-0">
-                  <h3 className="text-base font-semibold text-white sm:text-lg">
+                  <h3 className={cn("font-semibold text-white", compact ? "text-sm sm:text-base" : "text-base sm:text-lg")}>
                     {jobLabel}
                   </h3>
-                  <p className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">
+                  <p className={cn("text-xs uppercase tracking-[0.16em] text-neutral-500", compact ? "mt-0.5" : "mt-1")}>
                     Created {createdLabel}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onOpen}>
+            <div className={cn("flex flex-wrap items-center", compact ? "gap-1.5" : "gap-2")}>
+              <Button type="button" variant={selected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
                 Open
               </Button>
 
@@ -357,7 +362,7 @@ export function JobCard({
                 variant="ghost"
                 size="sm"
                 onClick={() => setCollapsed((v) => !v)}
-                className="border border-white/10 bg-black/20"
+                className={cn("border border-white/10 bg-black/20", compact && "px-2")}
               >
                 {collapsed ? (
                   <>
@@ -372,7 +377,7 @@ export function JobCard({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className={cn("flex flex-wrap", compact ? "gap-1.5" : "gap-2")}>
             <ReviewPill
               tone={reviewFlags.missingComplaint ? "warn" : "ok"}
               label={reviewFlags.missingComplaint ? "Complaint missing" : "Complaint ok"}

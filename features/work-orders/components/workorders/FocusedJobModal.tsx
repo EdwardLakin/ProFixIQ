@@ -90,9 +90,9 @@ function SectionCard({
   titleRight?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/32 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <div className="rounded-2xl border border-white/10 bg-black/32 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       {title ? (
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
             {title}
           </div>
@@ -548,9 +548,9 @@ export default function FocusedJobModal(props: {
         <div
           className={`${isPanelVariant ? "" : "sticky top-0 z-20"} border-b border-white/10 bg-[rgba(5,5,5,0.82)] px-4 py-3 backdrop-blur-xl sm:px-5`}
         >
-          <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="mb-2 flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-lg font-semibold tracking-tight text-white">
+              <div className="truncate text-base font-semibold tracking-tight text-white sm:text-lg">
                 {titleText}
               </div>
               {workOrder ? (
@@ -589,7 +589,7 @@ export default function FocusedJobModal(props: {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             <span className={`inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(line?.status ?? null)}`}>
               {String(line?.status || "awaiting").replaceAll("_", " ")}
             </span>
@@ -614,7 +614,7 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
 
-        <div className={`${isPanelVariant ? "" : "min-h-0 flex-1 overflow-y-auto"} px-4 py-4 sm:px-5`}>
+        <div className={`${isPanelVariant ? "" : "min-h-0 flex-1 overflow-y-auto"} px-3 py-3 sm:px-4`}>
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
@@ -623,7 +623,8 @@ export default function FocusedJobModal(props: {
           ) : !line ? (
             <div className="text-sm text-neutral-300">No job found.</div>
           ) : (
-            <div className="space-y-4">
+            <div className={isPanelVariant ? "grid gap-3 xl:grid-cols-[1.1fr_1fr]" : "space-y-4"}>
+              <div className="space-y-3">
               <SectionCard title="Quick status">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <MetaStat
@@ -858,7 +859,9 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
               </SectionCard>
+              </div>
 
+              <div className="space-y-3">
               <SectionCard title="Parts used">
                 {allocsLoading ? (
                   <div className="text-sm text-neutral-300">Loading…</div>
@@ -901,7 +904,7 @@ export default function FocusedJobModal(props: {
 
               <SectionCard title="Tech notes">
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={techNotes}
                   onChange={(e) => setTechNotes(e.target.value)}
                   onBlur={saveNotes}
@@ -912,19 +915,24 @@ export default function FocusedJobModal(props: {
               </SectionCard>
 
               <SectionCard title="AI suggested repairs">
-                {line && workOrder ? (
-                  <SuggestedQuickAdd
-                    jobId={line.id}
-                    workOrderId={workOrder.id}
-                    vehicleId={vehicle?.id ?? null}
-                    onAdded={async () => {
-                      toast.success("Suggested line added");
-                      await refresh();
-                    }}
-                  />
-                ) : (
-                  <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
-                )}
+                <details className="group" open={!isPanelVariant}>
+                  <summary className="cursor-pointer text-xs text-neutral-300 transition group-open:mb-2 hover:text-neutral-100">
+                    {isPanelVariant ? "Expand AI suggestions" : "AI suggestions"}
+                  </summary>
+                  {line && workOrder ? (
+                    <SuggestedQuickAdd
+                      jobId={line.id}
+                      workOrderId={workOrder.id}
+                      vehicleId={vehicle?.id ?? null}
+                      onAdded={async () => {
+                        toast.success("Suggested line added");
+                        await refresh();
+                      }}
+                    />
+                  ) : (
+                    <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
+                  )}
+                </details>
               </SectionCard>
 
               <div className="px-1 text-xs text-neutral-500">
@@ -932,6 +940,7 @@ export default function FocusedJobModal(props: {
                 {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
                 {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
                 {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+              </div>
               </div>
             </div>
           )}
