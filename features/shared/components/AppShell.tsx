@@ -302,7 +302,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="flex min-h-screen overflow-x-hidden text-foreground">
+      <div
+        className={cn(
+          "flex min-h-screen overflow-x-hidden text-foreground transition-[filter,opacity] duration-200",
+          chatOpen && "pointer-events-none opacity-70 blur-[1.5px] saturate-75",
+        )}
+      >
         <aside
           className={cn(
             "hidden shrink-0 overflow-hidden border-r backdrop-blur-xl transition-all duration-300 md:flex md:flex-col",
@@ -361,7 +366,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header
-            className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b px-3 backdrop-blur-xl md:flex lg:px-4"
+            className="fixed inset-x-0 top-0 z-30 hidden h-14 items-center justify-between border-b px-3 backdrop-blur-xl md:flex lg:px-4"
             style={{
               borderColor:
                 "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
@@ -444,7 +449,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {punchOpen && userId ? (
             <div
               ref={punchRef}
-              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border p-3 backdrop-blur-xl md:block"
+              className="fixed right-6 top-20 z-30 hidden w-72 rounded-xl border p-3 backdrop-blur-xl md:block"
               style={{
                 borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
                 background:
@@ -458,13 +463,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-5 md:pb-6 md:pt-20 lg:px-6 xl:px-8 2xl:px-10">
-            <TabsBridge>
+            <TabsBridge tabsSubdued={chatOpen}>
               <div className="relative z-0 min-w-0">{children}</div>
             </TabsBridge>
           </main>
 
           <nav
-            className="fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+            className="fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
             style={{
               borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
               background:

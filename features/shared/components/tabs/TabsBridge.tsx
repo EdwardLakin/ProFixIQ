@@ -31,8 +31,10 @@ export function useTabsScopedStorageKey(subkey: string) {
 
 export default function TabsBridge({
   children,
+  tabsSubdued = false,
 }: {
   children: React.ReactNode;
+  tabsSubdued?: boolean;
 }) {
   const session = useSession();
   const userId = session?.user?.id ?? null;
@@ -193,7 +195,7 @@ export default function TabsBridge({
   return (
     <TabsProvider userId={userId ?? undefined}>
       {/* No tab bar on the mobile companion routes */}
-      {!isMobileRoute && <TabsBar />}
+      {!isMobileRoute && <TabsBar subdued={tabsSubdued} />}
       {children}
     </TabsProvider>
   );
