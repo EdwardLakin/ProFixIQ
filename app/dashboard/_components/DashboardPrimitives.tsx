@@ -5,7 +5,7 @@ import DashboardViewSwitcher from "./DashboardViewSwitcher";
 import type { DashboardView } from "@/features/dashboard/lib/dashboard-views";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-[1580px] space-y-3 md:space-y-4">{children}</div>;
+  return <div className="mx-auto w-full max-w-[1580px] space-y-2.5 pt-1 md:space-y-3.5 md:pt-2">{children}</div>;
 }
 
 export function DashboardTopStrip({
@@ -23,7 +23,7 @@ export function DashboardTopStrip({
 }) {
   return (
     <section
-      className="sticky top-16 z-20 rounded-2xl border px-4 py-3 backdrop-blur-xl md:px-5"
+      className="relative z-10 rounded-2xl border px-4 py-3 backdrop-blur-xl md:px-5"
       style={{
         borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
         background:
@@ -62,21 +62,28 @@ export function DashboardTopStrip({
 export function MetricStrip({ items }: { items: Array<{ label: string; value: string; tone?: "default" | "accent" }> }) {
   return (
     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <section
           key={item.label}
-          className="rounded-xl border p-3"
+          className="relative rounded-xl border px-3 py-2.5"
           style={{
-            borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 74%, transparent)",
-            background: "linear-gradient(155deg, rgba(15,23,42,0.88), rgba(2,6,23,0.72))",
+            borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 85%, transparent)",
+            background: "linear-gradient(155deg, rgba(15,23,42,0.96), rgba(2,6,23,0.88))",
+            boxShadow: "inset 0 1px 0 rgba(148,163,184,0.12)",
           }}
         >
-          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{item.label}</div>
+          {index < items.length - 1 ? (
+            <span
+              className="pointer-events-none absolute right-0 top-2 hidden h-[calc(100%-1rem)] w-px lg:block"
+              style={{ background: "linear-gradient(to bottom, transparent, rgba(148,163,184,0.35), transparent)" }}
+            />
+          ) : null}
+          <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">{item.label}</div>
           <div
             className={
               item.tone === "accent"
-                ? "mt-1.5 text-2xl font-semibold leading-none text-[var(--brand-accent,#E39A6E)]"
-                : "mt-1.5 text-2xl font-semibold leading-none text-white"
+                ? "mt-1 text-[1.85rem] font-semibold leading-none text-[var(--brand-accent,#E39A6E)]"
+                : "mt-1 text-[1.85rem] font-semibold leading-none text-white"
             }
           >
             {item.value}
@@ -102,13 +109,13 @@ export function DashboardPanel({
 }) {
   return (
     <section
-      className={`rounded-2xl border p-3.5 md:p-4 ${className ?? ""}`}
+      className={`rounded-2xl border p-3 md:p-3.5 ${className ?? ""}`}
       style={{
         borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 78%, transparent)",
         background: "linear-gradient(155deg, rgba(2,6,23,0.9), rgba(10,15,28,0.78))",
       }}
     >
-      <header className="mb-3 flex items-start justify-between gap-2">
+      <header className="mb-2.5 flex items-start justify-between gap-2">
         <div>
           {eyebrow ? <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{eyebrow}</div> : null}
           <h2 className="text-sm font-semibold text-white md:text-base">{title}</h2>
