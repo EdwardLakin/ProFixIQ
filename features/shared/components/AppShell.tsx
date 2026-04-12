@@ -313,7 +313,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             "hidden shrink-0 overflow-hidden border-r backdrop-blur-xl transition-all duration-300 md:flex md:flex-col",
             HEADER_OFFSET_DESKTOP,
             sidebarOpen
-              ? "translate-x-0 border-r md:w-56 xl:w-60"
+              ? "translate-x-0 border-r md:w-52 lg:w-56 xl:w-60"
               : "pointer-events-none -translate-x-full md:w-0",
           )}
           style={{
@@ -328,7 +328,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               sidebarOpen ? "opacity-100" : "opacity-0",
             )}
           >
-            <div className="flex h-14 items-center justify-between border-b border-white/10 px-3 xl:px-4">
+            <div className="flex h-12 items-center justify-between border-b border-white/10 px-3 xl:px-4">
               <Link
                 href="/dashboard"
                 className="flex min-w-0 items-center gap-3 transition-colors hover:opacity-95"
@@ -366,7 +366,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header
-            className="fixed inset-x-0 top-0 z-30 hidden h-14 items-center justify-between border-b px-3 backdrop-blur-xl md:flex lg:px-4"
+            className="fixed inset-x-0 top-0 z-30 hidden h-12 items-center justify-between border-b px-3 backdrop-blur-xl md:flex lg:px-4"
             style={{
               borderColor:
                 "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
@@ -462,7 +462,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
 
-          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-5 md:pb-6 md:pt-20 lg:px-6 xl:px-8 2xl:px-10">
+          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">
             <TabsBridge tabsSubdued={chatOpen}>
               <div className="relative z-0 min-w-0">{children}</div>
             </TabsBridge>
