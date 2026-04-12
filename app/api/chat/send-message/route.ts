@@ -23,6 +23,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         conversationId?: string;
         content?: string;
         senderId?: string;
+        metadata?: Record<string, unknown>;
       }
     | null;
 
@@ -82,7 +83,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       content,
       sent_at: now,
       attachments: [],
-      metadata: {},
+      metadata: body?.metadata ?? {},
     })
     .select("*")
     .maybeSingle();

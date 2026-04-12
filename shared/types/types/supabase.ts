@@ -7583,6 +7583,7 @@ export type Database = {
       profiles: {
         Row: {
           agent_role: string | null
+          avatar_url: string | null
           business_name: string | null
           city: string | null
           completed_onboarding: boolean
@@ -7611,6 +7612,7 @@ export type Database = {
         }
         Insert: {
           agent_role?: string | null
+          avatar_url?: string | null
           business_name?: string | null
           city?: string | null
           completed_onboarding?: boolean
@@ -7639,6 +7641,7 @@ export type Database = {
         }
         Update: {
           agent_role?: string | null
+          avatar_url?: string | null
           business_name?: string | null
           city?: string | null
           completed_onboarding?: boolean

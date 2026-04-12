@@ -23,7 +23,7 @@ function getTitleFromPath(pathname: string): string {
   if (pathname === "/mobile") return "Tech Home";
 
   if (pathname.startsWith("/mobile/work-orders")) return "Work Orders";
-  if (pathname.startsWith("/mobile/messages")) return "Messages";
+  if (pathname.startsWith("/mobile/messages")) return "Inbox";
   if (pathname.startsWith("/mobile/settings")) return "Settings";
 
   return "ProFixIQ";

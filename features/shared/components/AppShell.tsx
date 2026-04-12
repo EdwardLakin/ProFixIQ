@@ -10,7 +10,7 @@ import { Toaster } from "sonner";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
-import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+import InboxModal from "@/features/chat/components/InboxModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
@@ -405,8 +405,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </ActionButton>
               ) : null}
 
-              <ActionButton onClick={() => setChatOpen(true)} title="Messages">
-                <span>Messages</span>
+              <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
+                <span>Inbox</span>
               </ActionButton>
 
               {userId ? (
@@ -475,7 +475,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
-              <NavItem href="/chat" label="Messages" />
+              <NavItem href="/chat" label="Inbox" />
               <NavItem href="/mobile/appointments" label="Schedule" />
 
               <button
@@ -501,16 +501,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }}
       />
 
-      <NewChatModal
-        isOpen={chatOpen}
+      <InboxModal
+        open={chatOpen}
         onClose={() => {
           setChatOpen(false);
           setIncomingConvoId(null);
         }}
-        created_by={userId ?? undefined}
-        context_type={null}
-        context_id={null}
-        activeConversationId={incomingConvoId}
+        seedConversationId={incomingConvoId}
       />
 
       {userId ? (
