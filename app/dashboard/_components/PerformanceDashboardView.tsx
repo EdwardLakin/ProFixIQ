@@ -74,7 +74,7 @@ export default async function PerformanceDashboardView() {
       />
 
       <MetricStrip
-        className="mb-0.5"
+        className="mb-0"
         items={[
           {
             label: "Revenue",
@@ -99,14 +99,54 @@ export default async function PerformanceDashboardView() {
         ]}
       />
 
+      <DashboardPanel
+        title="Decision rail"
+        eyebrow="Immediate focus"
+        className="border-amber-300/30 bg-[linear-gradient(150deg,rgba(36,22,8,0.42),rgba(8,11,24,0.84))] shadow-[0_0_0_1px_rgba(251,191,36,0.12)]"
+        action={<Link href="/dashboard/owner/reports" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open reports <ChevronRight className="h-3 w-3" /></Link>}
+      >
+        <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            {payload.optimizationSummary.map((item) => (
+              <Link
+                key={item.label}
+                href={riskHrefForLabel(item.label)}
+                className="group flex items-start justify-between gap-2 rounded-lg border px-2.5 py-1.5 transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(148,163,184,0.18),0_10px_18px_rgba(0,0,0,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                style={{
+                  borderColor: item.tone === "critical" ? "rgba(248,113,113,0.58)" : item.tone === "warning" ? "rgba(251,191,36,0.46)" : "rgba(148,163,184,0.25)",
+                  background: item.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.48), rgba(69,10,10,0.24))" : item.tone === "warning" ? "rgba(120,53,15,0.24)" : "rgba(15,23,42,0.5)",
+                  boxShadow: item.tone === "critical" ? "0 0 0 1px rgba(239,68,68,0.2), inset 0 1px 0 rgba(254,202,202,0.18)" : undefined,
+                }}
+              >
+                <div>
+                  <div className="text-xs font-semibold text-white">{item.label}</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-200">{item.detail}</div>
+                </div>
+                <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400 transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+              </Link>
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            <DashboardPanel title="Prioritized signals" className="border-white/10 bg-[linear-gradient(150deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))] p-2.5 md:p-2.5">
+              {payload.businessSignals.length > 0 ? (
+                <CompactSignalList items={payload.businessSignals.slice(0, 5)} />
+              ) : (
+                <EmbeddedEmptyState compact label="Signal activation pending" detail="No active risk/opportunity signals — verify new jobs are entering billing flow." />
+              )}
+            </DashboardPanel>
+          </div>
+        </div>
+      </DashboardPanel>
+
       <div
-        className="grid gap-2 rounded-[22px] border border-white/5 p-2.5 md:p-3 xl:grid-cols-[minmax(0,2.2fr)_minmax(320px,0.95fr)]"
+        className="space-y-1.5 rounded-[22px] border border-white/5 p-2.5 md:p-2.5"
         style={{
           background: "linear-gradient(158deg, rgba(4,8,20,0.92), rgba(8,14,30,0.78) 48%, rgba(4,10,24,0.86))",
           boxShadow: "inset 0 1px 0 rgba(148,163,184,0.06), 0 16px 28px rgba(0,0,0,0.24)",
         }}
       >
-        <section className="space-y-2">
+        <section className="grid gap-1.5 xl:grid-cols-[minmax(0,1.85fr)_minmax(252px,0.92fr)]">
           <DashboardPanel
             title="Executive trend"
             className="border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
@@ -117,112 +157,93 @@ export default async function PerformanceDashboardView() {
               </div>
             }
           >
-            <div className="grid gap-2 xl:grid-cols-[minmax(0,1.65fr)_minmax(220px,0.9fr)]">
+            <div className="grid gap-1.5">
               <PerformanceTrendPanel data={payload.trend} />
-              <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+              <div className="grid gap-1 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
                   <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">Revenue pace</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{latest && previous ? deltaText(latest.revenue, previous.revenue) : "N/A"}</div>
-                  <div className="text-[11px] text-neutral-400">vs previous month</div>
+                  <div className="mt-0.5 text-base font-semibold text-white">{latest && previous ? deltaText(latest.revenue, previous.revenue) : "N/A"}</div>
+                  <div className="text-[10px] text-neutral-400">vs prior month</div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
                   <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">Profit pace</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{latest && previous ? deltaText(latest.profit, previous.profit) : "N/A"}</div>
-                  <div className="text-[11px] text-neutral-400">current month trend</div>
+                  <div className="mt-0.5 text-base font-semibold text-white">{latest && previous ? deltaText(latest.profit, previous.profit) : "N/A"}</div>
+                  <div className="text-[10px] text-neutral-400">trend right now</div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 sm:col-span-2 xl:col-span-1">
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
                   {payload.revenueWatch.length > 0 ? (
                     <>
-                      <CompactSignalList items={payload.revenueWatch} />
+                      <CompactSignalList items={payload.revenueWatch.slice(0, 2)} />
                       <MiniSparkline data={payload.trend} dataKey="revenue" />
                     </>
                   ) : (
-                    <EmbeddedEmptyState compact label="Revenue watch idle" detail="Monthly comparisons populate as billing periods close." />
+                    <EmbeddedEmptyState compact label="Revenue watch idle" detail="Monthly comparisons activate as periods close." />
                   )}
                 </div>
               </div>
             </div>
           </DashboardPanel>
 
-          <div className="grid gap-2 lg:grid-cols-2">
-            <DashboardPanel title="Technician output" className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
-              {payload.technicianPerformance.some((tech) => tech.completed > 0) ? (
-                <div className="grid gap-1.5">
-                  {payload.technicianPerformance.slice(0, 4).map((tech) => (
-                    <div key={tech.label} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-white">{tech.label}</span>
-                        <span className="text-neutral-300">{tech.completed} jobs</span>
-                      </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                        <div className="h-full bg-[var(--brand-accent,#E39A6E)]" style={{ width: `${tech.utilizationPct}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <DashboardPanel title="Performance signals" className="border-white/10 bg-[linear-gradient(155deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))]">
+            <div className="space-y-1.5">
+              <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">Revenue pace</div>
+                <div className="mt-0.5 text-base font-semibold text-white">{latest && previous ? deltaText(latest.revenue, previous.revenue) : "N/A"}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">Profit pace</div>
+                <div className="mt-0.5 text-base font-semibold text-white">{latest && previous ? deltaText(latest.profit, previous.profit) : "N/A"}</div>
+              </div>
+              {payload.revenueWatch.length > 0 ? (
+                <CompactSignalList items={payload.revenueWatch} />
               ) : (
-                <EmbeddedEmptyState
-                  compact
-                  label="Throughput standby"
-                  detail="No meaningful technician output yet for this period."
-                  hint="Close active jobs to activate this signal."
-                />
+                <EmbeddedEmptyState compact label="Pace signal pending" detail="No pace signal yet — close jobs to refresh revenue cadence." />
               )}
-            </DashboardPanel>
-
-            <DashboardPanel
-              title="Business risk & opportunity"
-              className="border-white/10 bg-[linear-gradient(155deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))]"
-              action={<Link href="/dashboard/operations" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Operations view <ChevronRight className="h-3 w-3" /></Link>}
-            >
-              {payload.businessSignals.length > 0 ? (
-                <>
-                  <CompactSignalList items={payload.businessSignals} />
-                  <MiniSparkline data={payload.trend} dataKey="profit" />
-                </>
-              ) : (
-                <EmbeddedEmptyState compact label="Opportunity feed waiting" detail="Signals appear when trend and risk thresholds are met." />
-              )}
-            </DashboardPanel>
-          </div>
-        </section>
-
-        <aside className="space-y-2 xl:sticky xl:top-3 xl:self-start">
-          <DashboardPanel
-            title="Intelligence rail"
-            className="border-amber-300/30 bg-[linear-gradient(150deg,rgba(36,22,8,0.42),rgba(8,11,24,0.84))]"
-            action={<Link href="/dashboard/owner/reports" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open reports <ChevronRight className="h-3 w-3" /></Link>}
-          >
-            <div className="space-y-2">
-              {payload.optimizationSummary.map((item) => (
-                <Link
-                  key={item.label}
-                  href={riskHrefForLabel(item.label)}
-                  className="group flex items-start justify-between gap-2 rounded-lg border px-2.5 py-2 transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(148,163,184,0.18),0_10px_18px_rgba(0,0,0,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
-                  style={{
-                    borderColor: item.tone === "critical" ? "rgba(239,68,68,0.35)" : item.tone === "warning" ? "rgba(245,158,11,0.35)" : "rgba(148,163,184,0.25)",
-                    background: item.tone === "critical" ? "rgba(127,29,29,0.16)" : item.tone === "warning" ? "rgba(120,53,15,0.15)" : "rgba(15,23,42,0.42)",
-                  }}
-                >
-                  <div>
-                    <div className="text-xs font-semibold text-white">{item.label}</div>
-                    <div className="mt-1 text-[11px] text-neutral-300">{item.detail}</div>
-                  </div>
-                  <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400 transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
-                </Link>
-              ))}
-
-              {payload.businessSignals.length > 0 ? (
-                <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-400">Signal snapshot</div>
-                  <div className="mt-1.5 grid gap-1">
-                    <CompactSignalList items={payload.businessSignals.slice(0, 3)} />
-                  </div>
-                </div>
-              ) : null}
             </div>
           </DashboardPanel>
-        </aside>
+        </section>
+
+        <section className="grid gap-1.5 lg:grid-cols-2">
+          <DashboardPanel title="Technician output" className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            {payload.technicianPerformance.some((tech) => tech.completed > 0) ? (
+              <div className="grid gap-1">
+                {payload.technicianPerformance.slice(0, 4).map((tech) => (
+                  <div key={tech.label} className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-white">{tech.label}</span>
+                      <span className="text-neutral-300">{tech.completed} jobs</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full bg-[var(--brand-accent,#E39A6E)]" style={{ width: `${tech.utilizationPct}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmbeddedEmptyState
+                compact
+                label="Throughput blocked"
+                detail="No active technician output — jobs not flowing."
+                hint="Move work orders into active technician stages."
+              />
+            )}
+          </DashboardPanel>
+
+          <DashboardPanel
+            title="Business risk & opportunity"
+            className="border-white/10 bg-[linear-gradient(155deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))]"
+            action={<Link href="/dashboard/operations" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Operations view <ChevronRight className="h-3 w-3" /></Link>}
+          >
+            {payload.businessSignals.length > 0 ? (
+              <>
+                <CompactSignalList items={payload.businessSignals} />
+                <MiniSparkline data={payload.trend} dataKey="profit" />
+              </>
+            ) : (
+              <EmbeddedEmptyState compact label="Risk feed inactive" detail="No live risk/opportunity triggers — validate approvals, parts, and comeback queues." />
+            )}
+          </DashboardPanel>
+        </section>
       </div>
 
       {payload.sectionErrors.length > 0 ? (

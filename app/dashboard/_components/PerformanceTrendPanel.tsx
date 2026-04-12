@@ -33,7 +33,7 @@ export function MiniSparkline({ data, dataKey }: { data: TrendPoint[]; dataKey: 
 
 export default function PerformanceTrendPanel({
   data,
-  heightClassName = "h-[180px] lg:h-[195px]",
+  heightClassName = "h-[138px] lg:h-[148px]",
 }: {
   data: TrendPoint[];
   heightClassName?: string;
@@ -41,7 +41,7 @@ export default function PerformanceTrendPanel({
   return (
     <div className={`${heightClassName} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 6, right: 10, bottom: -2, left: -16 }}>
+        <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: -4, left: -18 }}>
           <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
           <XAxis dataKey="label" tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} width={36} />
