@@ -5,7 +5,13 @@ import { createDashboardServerClient, getDashboardIdentity } from "@/features/da
 const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
 
-type OpSignal = { label: string; value: string; tone?: "default" | "accent" };
+type OpSignal = {
+  label: string;
+  value: string;
+  tone?: "default" | "accent";
+  href?: string;
+  targetKind?: "item" | "filtered";
+};
 type OpAction = {
   label: string;
   href: string;
@@ -40,7 +46,13 @@ export type OperationsDashboardPayload = {
     utilizationPct: number;
   }>;
   blockerStack: OpSignal[];
-  alerts: Array<{ label: string; detail: string; tone: "critical" | "warning" | "info" }>;
+  alerts: Array<{
+    label: string;
+    detail: string;
+    tone: "critical" | "warning" | "info";
+    href: string;
+    targetKind: "item" | "filtered";
+  }>;
   suggestedActions: OpAction[];
   flowMix: Array<{ label: string; value: number }>;
   revenueEfficiency: {
@@ -128,12 +140,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .limit(48),
     supabase
       .from("work_order_lines")
-      .select("id", { count: "exact", head: true })
+      .select("id,work_order_id,status,updated_at", { count: "exact" })
       .eq("shop_id", identity.shopId)
       .in("approval_state", ["requested", "pending", "awaiting_approval"]),
     supabase
       .from("part_requests")
-      .select("id,status", { count: "exact" })
+      .select("id,status,work_order_id,job_id,created_at", { count: "exact" })
       .eq("shop_id", identity.shopId)
       .in("status", OPEN_PART_STATUSES as unknown as string[])
       .limit(120),
@@ -165,6 +177,10 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   const boardRows = boardResult.error ? [] : boardResult.data ?? [];
   const activeBoardRows = boardRows.filter((row) => row.overall_stage !== "completed");
+  const mostRecentBlockedWorkOrderId =
+    activeBoardRows.find(
+      (row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold",
+    )?.work_order_id ?? null;
 
   if (boardResult.error) {
     payload.sectionErrors.push(`Live work section: ${boardResult.error.message}`);
@@ -226,21 +242,64 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.topSummary.waitingParts = partsResult.count ?? (partsResult.data ?? []).length;
   }
 
+  const recentApprovalLine = approvalsResult.error
+    ? null
+    : (approvalsResult.data ?? [])
+        .filter((row) => !!row.work_order_id)
+        .sort(
+          (a, b) =>
+            new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime(),
+        )[0] ?? null;
+  const approvalTargetHref = recentApprovalLine?.work_order_id
+    ? `/work-orders/${recentApprovalLine.work_order_id}`
+    : "/work-orders/board?stage=awaiting_approval";
+  const approvalTargetKind: "item" | "filtered" = recentApprovalLine?.work_order_id
+    ? "item"
+    : "filtered";
+
+  const recentPartsRequest = partsResult.error
+    ? null
+    : (partsResult.data ?? [])
+        .filter((row) => !!row.work_order_id)
+        .sort(
+          (a, b) =>
+            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+        )[0] ?? null;
+  const waitingPartsTargetHref = recentPartsRequest?.work_order_id
+    ? `/work-orders/${recentPartsRequest.work_order_id}`
+    : "/parts/requests?status=requested,quoted,approved";
+  const waitingPartsTargetKind: "item" | "filtered" = recentPartsRequest?.work_order_id
+    ? "item"
+    : "filtered";
+
+  const blockedTargetHref = mostRecentBlockedWorkOrderId
+    ? `/work-orders/${mostRecentBlockedWorkOrderId}`
+    : "/work-orders/board?stage=on_hold";
+  const blockedTargetKind: "item" | "filtered" = mostRecentBlockedWorkOrderId
+    ? "item"
+    : "filtered";
+
   payload.blockerStack = [
     {
       label: "Approvals pending",
       value: String(payload.topSummary.waitingApprovals),
       tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
+      href: approvalTargetHref,
+      targetKind: approvalTargetKind,
     },
     {
       label: "Waiting parts",
       value: String(payload.topSummary.waitingParts),
       tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
+      href: waitingPartsTargetHref,
+      targetKind: waitingPartsTargetKind,
     },
     {
       label: "On hold / blocked",
       value: String(payload.topSummary.blockedJobs),
       tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
+      href: blockedTargetHref,
+      targetKind: blockedTargetKind,
     },
   ];
 
@@ -250,8 +309,20 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   payload.dailySummary = [
     { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
-    { label: "Approval queue", value: String(payload.topSummary.waitingApprovals), tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default" },
-    { label: "Parts waiting", value: String(payload.topSummary.waitingParts), tone: payload.topSummary.waitingParts > 0 ? "accent" : "default" },
+    {
+      label: "Approval queue",
+      value: String(payload.topSummary.waitingApprovals),
+      tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
+      href: approvalTargetHref,
+      targetKind: approvalTargetKind,
+    },
+    {
+      label: "Parts waiting",
+      value: String(payload.topSummary.waitingParts),
+      tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
+      href: waitingPartsTargetHref,
+      targetKind: waitingPartsTargetKind,
+    },
     { label: "Active board", value: String(payload.topSummary.activeJobs) },
   ];
 
@@ -295,33 +366,45 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           label: "Blocked jobs climbing",
           detail: `${payload.topSummary.blockedJobs} jobs currently in blocked stages.`,
           tone: "critical",
+          href: blockedTargetHref,
+          targetKind: blockedTargetKind,
         }
       : {
           label: "Blocker pressure stable",
           detail: "No blocked stage spike detected.",
           tone: "info",
+          href: "/work-orders/board?stage=on_hold",
+          targetKind: "filtered",
         },
     payload.topSummary.waitingApprovals > 3
       ? {
           label: "Approval queue aging",
           detail: `${payload.topSummary.waitingApprovals} approvals need advisor follow-up.`,
           tone: "warning",
+          href: approvalTargetHref,
+          targetKind: approvalTargetKind,
         }
       : {
           label: "Approval queue healthy",
           detail: "Approval queue is below action threshold.",
           tone: "info",
+          href: "/work-orders/board?stage=awaiting_approval",
+          targetKind: "filtered",
         },
     payload.topSummary.waitingParts > 0
       ? {
           label: "Parts constraints active",
           detail: `${payload.topSummary.waitingParts} open part requests still unresolved.`,
           tone: "warning",
+          href: waitingPartsTargetHref,
+          targetKind: waitingPartsTargetKind,
         }
       : {
           label: "No parts constraints",
           detail: "Parts flow is currently clear.",
           tone: "info",
+          href: "/parts/requests?status=requested,quoted,approved",
+          targetKind: "filtered",
         },
   ];
 
@@ -329,7 +412,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.topSummary.waitingApprovals > 0
       ? {
           label: "Clear approval queue",
-          href: "/work-orders/board?stage=awaiting_approval",
+          href: approvalTargetHref,
           tone: "primary",
           detail: "Prioritize pending approvals to free advisor handoffs.",
         }
@@ -342,7 +425,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.topSummary.waitingParts > 0
       ? {
           label: "Resolve waiting parts",
-          href: "/dashboard/operations?focus=parts",
+          href: waitingPartsTargetHref,
           tone: "primary",
           detail: "Parts backlog is blocking active jobs.",
         }

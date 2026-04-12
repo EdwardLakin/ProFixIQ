@@ -46,12 +46,12 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-md transition"
+    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
     style={{
-      borderColor: "rgba(255,255,255,0.10)",
+      borderColor: "rgba(148,163,184,0.22)",
       background:
-        "linear-gradient(135deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 42%, black))",
-      color: "#f5f5f5",
+        "linear-gradient(145deg, rgba(2,6,23,0.82), color-mix(in srgb, var(--brand-secondary, #0F172A) 58%, rgba(0,0,0,0.92)))",
+      color: "rgb(226,232,240)",
     }}
   >
     {children}
@@ -105,8 +105,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isAppRoute =
     !isPortalRoute &&
     !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-
-  const isTech = (userRole ?? "").toLowerCase() === "tech";
 
   const canSeeAgentConsole =
     !!userRole &&
@@ -408,7 +406,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               ) : null}
 
               <ActionButton onClick={() => setChatOpen(true)} title="Messages">
-                💬 <span className="hidden lg:inline">Messages</span>
+                <span>Messages</span>
               </ActionButton>
 
               {userId ? (
@@ -416,16 +414,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   onClick={() => setAgentDialogOpen(true)}
                   title="Submit a request to ProFixIQ Agent"
                 >
-                  🤖 <span className="hidden lg:inline">Agent Request</span>
-                </ActionButton>
-              ) : null}
-
-              {!isTech ? (
-                <ActionButton
-                  onClick={() => router.push("/agent/planner")}
-                  title="AI Planner"
-                >
-                  ⚡ <span className="hidden lg:inline">AI Planner</span>
+                  <span>Agent Request</span>
                 </ActionButton>
               ) : null}
 
@@ -436,7 +425,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   onClick={() => router.push("/agent")}
                   title="ProFixIQ Agent Console"
                 >
-                  🧠 <span className="hidden lg:inline">Agent</span>
+                  <span>Agent Console</span>
                 </ActionButton>
               ) : null}
 
