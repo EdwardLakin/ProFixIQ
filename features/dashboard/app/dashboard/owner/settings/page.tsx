@@ -18,6 +18,7 @@ import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings
 import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
+import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 
 type FileInputChangeEvent = {
   target: {
@@ -171,6 +172,9 @@ export default function OwnerSettingsPage() {
   const [loading, setLoading] = useState(true);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerAvatarUrl, setOwnerAvatarUrl] = useState<string | null>(null);
 
   // Current active shop
   const [shopId, setShopId] = useState<string | null>(null);
@@ -342,9 +346,15 @@ export default function OwnerSettingsPage() {
 
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("shop_id, organization_id")
+      .select("shop_id, organization_id, full_name, email, avatar_url")
       .eq("id", uid)
-      .maybeSingle<{ shop_id: string | null; organization_id: string | null }>();
+      .maybeSingle<{
+        shop_id: string | null;
+        organization_id: string | null;
+        full_name: string | null;
+        email: string | null;
+        avatar_url: string | null;
+      }>();
 
     if (profErr) {
       toast.error(profErr.message);
@@ -356,6 +366,10 @@ export default function OwnerSettingsPage() {
       setLoading(false);
       return;
     }
+
+    setOwnerName(profile.full_name ?? "");
+    setOwnerEmail(profile.email ?? "");
+    setOwnerAvatarUrl(profile.avatar_url ?? null);
 
     const sid = profile.shop_id;
     setShopId(sid);
@@ -1030,6 +1044,21 @@ try {
           />
         </div>
       </OwnerSettingsPanel>
+
+      {userId ? (
+        <ProfileIdentityCard
+          supabase={supabase}
+          userId={userId}
+          shopId={shopId}
+          fullName={ownerName || "Owner"}
+          email={ownerEmail}
+          roleLabel="Owner"
+          avatarUrl={ownerAvatarUrl}
+          onAvatarChange={setOwnerAvatarUrl}
+          title="Owner identity"
+          subtitle="Shown in owner/admin identity surfaces, chat, and collaborative workflow views."
+        />
+      ) : null}
 
 
       <div className="sticky top-2 z-10 rounded-2xl border border-white/10 bg-black/35 p-3 backdrop-blur">
