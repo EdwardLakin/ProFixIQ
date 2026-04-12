@@ -24,14 +24,21 @@ export type PerformanceDashboardPayload = {
     efficiencyPct: number;
   };
   trend: TrendPoint[];
-  technicianPerformance: PerfSignal[];
+  technicianPerformance: Array<{ label: string; completed: number; pace: string; utilizationPct: number }>;
   businessSignals: PerfSignal[];
+  revenueWatch: Array<{ label: string; value: string; tone?: "default" | "accent" }>;
+  optimizationSummary: Array<{ label: string; detail: string; tone: "critical" | "warning" | "info" }>;
   sectionErrors: string[];
   fetchAudit: string[];
 };
 
 function asMoney(value: number): number {
   return Number.isFinite(value) ? Math.round(value) : 0;
+}
+
+function pct(delta: number, baseline: number): number {
+  if (!baseline) return 0;
+  return Math.round((delta / baseline) * 100);
 }
 
 export async function getPerformanceDashboardPayload(): Promise<PerformanceDashboardPayload> {
@@ -42,6 +49,8 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
     trend: [],
     technicianPerformance: [],
     businessSignals: [],
+    revenueWatch: [],
+    optimizationSummary: [],
     sectionErrors: [],
     fetchAudit: [],
   };
@@ -80,12 +89,12 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
       .gte("updated_at", startOfMonth(new Date()).toISOString())
       .in("status", ["completed", "ready_to_invoice", "invoiced"])
       .not("assigned_tech_id", "is", null)
-      .limit(400),
+      .limit(500),
     supabase
       .from("v_work_order_board_cards_shop")
       .select("risk_level,overall_stage")
       .eq("shop_id", identity.shopId)
-      .limit(100),
+      .limit(140),
   ]);
 
   if (invoiceResult.error || expenseResult.error) {
@@ -133,12 +142,30 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
     }));
 
     const latest = payload.trend[payload.trend.length - 1];
+    const previous = payload.trend[payload.trend.length - 2];
     payload.kpis.revenue = latest?.revenue ?? 0;
     payload.kpis.profit = latest?.profit ?? 0;
     payload.kpis.jobs = latest?.jobs ?? 0;
     payload.kpis.efficiencyPct = payload.kpis.revenue > 0 ? Math.round((payload.kpis.profit / payload.kpis.revenue) * 100) : 0;
 
-    payload.fetchAudit.push("Single finance range query now feeds KPI strip and trend chart data.");
+    const revenueDelta = (latest?.revenue ?? 0) - (previous?.revenue ?? 0);
+    const jobsDelta = (latest?.jobs ?? 0) - (previous?.jobs ?? 0);
+    payload.revenueWatch = [
+      {
+        label: "Revenue vs last month",
+        value: `${revenueDelta >= 0 ? "+" : ""}${pct(revenueDelta, previous?.revenue ?? 0)}%`,
+        tone: revenueDelta < 0 ? "accent" : "default",
+      },
+      {
+        label: "Jobs pace",
+        value: `${jobsDelta >= 0 ? "+" : ""}${jobsDelta}`,
+        tone: jobsDelta < 0 ? "accent" : "default",
+      },
+      {
+        label: "Current margin",
+        value: `${payload.kpis.efficiencyPct}%`,
+      },
+    ];
   }
 
   if (techProfilesResult.error || completedLinesResult.error) {
@@ -153,12 +180,18 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
       byTech.set(row.assigned_tech_id, (byTech.get(row.assigned_tech_id) ?? 0) + 1);
     });
 
+    const maxCompleted = Math.max(1, ...[...byTech.values()]);
     payload.technicianPerformance = techs
-      .map((tech) => ({
-        label: tech.full_name ?? "Unassigned tech",
-        value: `${byTech.get(tech.id) ?? 0} completed`,
-      }))
-      .sort((a, b) => Number.parseInt(b.value, 10) - Number.parseInt(a.value, 10))
+      .map((tech) => {
+        const completedCount = byTech.get(tech.id) ?? 0;
+        return {
+          label: tech.full_name ?? "Unassigned tech",
+          completed: completedCount,
+          pace: completedCount >= Math.ceil(maxCompleted * 0.75) ? "On pace" : "Watch",
+          utilizationPct: Math.round((completedCount / maxCompleted) * 100),
+        };
+      })
+      .sort((a, b) => b.completed - a.completed)
       .slice(0, 6);
   }
 
@@ -176,11 +209,45 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
       { label: "Warning queue", value: String(warnRisk), tone: warnRisk > 0 ? "accent" : "default" },
       { label: "On-hold revenue", value: String(onHold), tone: onHold > 0 ? "accent" : "default" },
     ];
+
+    payload.optimizationSummary = [
+      highRisk > 0
+        ? {
+            label: "Comeback exposure",
+            detail: `${highRisk} high-risk jobs require immediate QA review.`,
+            tone: "critical",
+          }
+        : {
+            label: "Comeback exposure",
+            detail: "No critical comeback concentration detected.",
+            tone: "info",
+          },
+      warnRisk > 0
+        ? {
+            label: "Margin pressure",
+            detail: `${warnRisk} jobs are in warning tier for margin.`,
+            tone: "warning",
+          }
+        : {
+            label: "Margin pressure",
+            detail: "Warning-tier margin pressure is currently low.",
+            tone: "info",
+          },
+      onHold > 0
+        ? {
+            label: "On-hold revenue",
+            detail: `${onHold} jobs are stalled and carrying deferred revenue.`,
+            tone: "warning",
+          }
+        : {
+            label: "On-hold revenue",
+            detail: "No material on-hold revenue risk right now.",
+            tone: "info",
+          },
+    ];
   }
 
-  if (payload.sectionErrors.length === 0) {
-    payload.fetchAudit.push("Removed first-paint widget fan-out; performance view hydrates only interactive chart chrome.");
-  }
+  payload.fetchAudit.push("Performance dashboard now ships a single curated payload with finance, throughput, and risk sections.");
 
   return payload;
 }
