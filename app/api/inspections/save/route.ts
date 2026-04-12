@@ -86,6 +86,24 @@ export async function POST(req: NextRequest) {
 
   const nowIso = new Date().toISOString();
 
+  const { data: existingInspection, error: existingInspectionErr } = await supabase
+    .from("inspections")
+    .select("id, locked")
+    .eq("work_order_line_id", workOrderLineId)
+    .maybeSingle();
+
+  if (existingInspectionErr) {
+    console.error("[inspections/save] existing inspection lookup failed", existingInspectionErr);
+    return NextResponse.json({ error: "Failed to verify inspection lock state" }, { status: 500 });
+  }
+
+  if (existingInspection?.locked) {
+    return NextResponse.json(
+      { error: "Inspection is finalized and locked. Reopen is required before editing." },
+      { status: 409 },
+    );
+  }
+
   // NOTE: Supabase Json type wants a JSON-compatible value.
   const sessionJson = session as unknown as Json;
 
@@ -117,7 +135,7 @@ export async function POST(req: NextRequest) {
     summary: sessionJson,
     is_draft: true,
     completed: false,
-    locked: false,
+    locked: existingInspection?.locked ?? false,
     status: "draft",
     updated_at: nowIso,
   } satisfies DB["public"]["Tables"]["inspections"]["Insert"];
