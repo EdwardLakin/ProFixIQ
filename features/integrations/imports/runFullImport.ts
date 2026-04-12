@@ -7,6 +7,7 @@ import {
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
+import { runPartsImportPipeline, type PartsPipelineSummary } from "@/features/integrations/imports/runPartsImportPipeline";
 
 type DB = Database;
 
@@ -62,6 +63,7 @@ export type ShopBoostImportSummary = {
     menuSuggestions: number;
     inspectionSuggestions: number;
   };
+  partsPipeline?: PartsPipelineSummary;
 };
 
 type CsvRow = Record<string, string>;
@@ -138,28 +140,6 @@ function normalizeText(s: string | null | undefined): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function normalizePartToken(s: string | null | undefined): string {
-  return String(s ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-}
-
-function buildNormalizedPartKey(args: {
-  partNumber: string | null;
-  sku: string | null;
-  name: string;
-  supplier: string | null;
-  category: string | null;
-}): string {
-  const partNo = normalizePartToken(args.partNumber);
-  const sku = normalizePartToken(args.sku);
-  const fallbackName = normalizeText(args.name);
-  const supplier = normalizeText(args.supplier);
-  const category = normalizeText(args.category);
-  return [partNo || "-", sku || "-", fallbackName || "-", supplier || "-", category || "-"].join("|");
 }
 
 function dateOnly(iso: string | null): string {
@@ -831,9 +811,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const conflictingCustomerPhones = new Set<string>();
   const vehiclesByVin = new Map<string, string>();
   const vehiclesByPlate = new Map<string, string>();
-  const partsByNumber = new Map<string, string>();
-  const partsBySku = new Map<string, string>();
-  const partsByNormalizedKey = new Map<string, string>();
   const staffByEmail = new Map<string, string>();
   const staffByName = new Map<string, string>();
 
@@ -893,36 +870,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
-  // Existing parts
-  {
-    const { data } = await supabase
-      .from("parts")
-      .select("id,part_number,sku,name,supplier,category,shop_id,normalized_part_key")
-      .eq("shop_id", shopId)
-      .limit(5000);
-
-    for (const r of data ?? []) {
-      const rec = r as unknown as Record<string, unknown>;
-      const partNumber = lower(String(rec.part_number ?? ""));
-      const sku = lower(String(rec.sku ?? ""));
-      const supplier = String(rec.supplier ?? "");
-      const category = String(rec.category ?? "");
-      const normalizedPartKeyRaw = String(rec.normalized_part_key ?? "").trim();
-      const normalizedPartKey =
-        normalizedPartKeyRaw ||
-        buildNormalizedPartKey({
-          partNumber: String(rec.part_number ?? ""),
-          sku: String(rec.sku ?? ""),
-          name: String(rec.name ?? ""),
-          supplier,
-          category,
-        });
-      const id = String(rec.id ?? "");
-      if (partNumber && id) partsByNumber.set(partNumber, id);
-      if (sku && id) partsBySku.set(sku, id);
-      if (id) partsByNormalizedKey.set(normalizedPartKey, id);
-    }
-  }
+  let partsPipelineSummary: PartsPipelineSummary | undefined;
 
   // 1) Import customers
   if (customersCsv) {
@@ -1084,98 +1032,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
-  // 3) Import parts (name required)
+  // 3) Import parts (staged pipeline with review queue + safe promotion)
   if (partsCsv) {
-    const { rows } = parseCsv(partsCsv);
-
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
-
-      const partNumber = pick(row, [/part number/, /^pn$/, /p\/n/, /part_no/]);
-      const sku = pick(row, [/sku/]);
-      const name =
-        pick(row, [/^name$/, /part name/, /description/]) ??
-        partNumber ??
-        sku ??
-        `Part ${i + 1}`;
-
-      const cost = parseMoney(pick(row, [/^cost$/, /unit cost/, /buy/]));
-      const price = parseMoney(pick(row, [/^price$/, /sell/, /retail/]));
-      const supplier = pick(row, [/supplier/, /vendor/]);
-      const category = pick(row, [/category/]);
-      const normalizedPartKey = buildNormalizedPartKey({
-        partNumber,
-        sku,
-        name,
-        supplier,
-        category,
-      });
-      const external_id = `import:${intakeId}:part:${sha1(normalizedPartKey).slice(0, 20)}`;
-
-      const existingId =
-        partsByNormalizedKey.get(normalizedPartKey) ||
-        (partNumber && partsByNumber.get(lower(partNumber))) ||
-        (sku && partsBySku.get(lower(sku)));
-
-      if (existingId) {
-        await supabase
-          .from("parts")
-          .update({
-            shop_id: shopId,
-            name,
-            part_number: partNumber ?? null,
-            sku: sku ?? null,
-            supplier: supplier ?? null,
-            category: category ?? null,
-            cost: cost ?? null,
-            price: price ?? null,
-            default_cost: cost ?? null,
-            default_price: price ?? null,
-            normalized_part_key: normalizedPartKey,
-            source_intake_id: intakeId,
-            external_id,
-            import_notes: JSON.stringify({
-              source: "shop_boost",
-              source_intake_id: intakeId,
-              normalized_part_key: normalizedPartKey,
-            }),
-          } as DB["public"]["Tables"]["parts"]["Update"])
-          .eq("id", existingId);
-        continue;
-      }
-
-      const { data: inserted } = await supabase
-        .from("parts")
-        .insert({
-          shop_id: shopId,
-          name,
-          part_number: partNumber ?? null,
-          sku: sku ?? null,
-          supplier: supplier ?? null,
-          category: category ?? null,
-          cost: cost ?? null,
-          price: price ?? null,
-          default_cost: cost ?? null,
-          default_price: price ?? null,
-          normalized_part_key: normalizedPartKey,
-          source_intake_id: intakeId,
-          external_id,
-          import_notes: JSON.stringify({
-            source: "shop_boost",
-            source_intake_id: intakeId,
-            normalized_part_key: normalizedPartKey,
-          }),
-        } as DB["public"]["Tables"]["parts"]["Insert"])
-        .select("id")
-        .limit(1);
-
-      const id = (inserted ?? [])[0]?.id as string | undefined;
-      if (id) {
-        if (partNumber) partsByNumber.set(lower(partNumber), id);
-        if (sku) partsBySku.set(lower(sku), id);
-        partsByNormalizedKey.set(normalizedPartKey, id);
-      }
-    }
+    partsPipelineSummary = await runPartsImportPipeline({
+      shopId,
+      intakeId,
+      partsCsv,
+      partsFilePath: intakeRow.parts_file_path ?? null,
+      sourceSystem: typeof intakeRow.source === "string" ? intakeRow.source : null,
+    });
   }
 
   // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
@@ -1669,6 +1534,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
                 invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
               },
             },
+            partsPipeline: partsPipelineSummary ?? null,
             shopBuildSummary,
           },
           shopBuildSummary,
@@ -1698,6 +1564,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         invoicesCustomerId: unresolvedInvoicesMissingCustomer.count ?? 0,
       },
     },
+    partsPipeline: partsPipelineSummary,
     shopBuildSummary,
   };
 }
