@@ -153,11 +153,14 @@ export function ActionRow({ actions }: { actions: Array<{ label: string; href: s
   return (
     <div className="space-y-2">
       {actions.map((action) => (
-        <div key={`${action.href}-${action.label}`} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+        <Link
+          key={`${action.href}-${action.label}`}
+          href={action.href}
+          className="group block rounded-lg border border-white/10 bg-black/20 p-2.5 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-white">{action.label}</div>
-            <Link
-              href={action.href}
+            <span
               className={
                 action.tone === "primary"
                   ? "rounded-full border border-[var(--accent-copper-soft)]/80 bg-[var(--accent-copper)]/15 px-2.5 py-1 text-[10px] font-semibold text-[var(--accent-copper-light)]"
@@ -165,10 +168,10 @@ export function ActionRow({ actions }: { actions: Array<{ label: string; href: s
               }
             >
               Open
-            </Link>
+            </span>
           </div>
           {action.detail ? <div className="mt-1 text-[11px] text-neutral-400">{action.detail}</div> : null}
-        </div>
+        </Link>
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ActivitySquare, AlertTriangle, ArrowRight, TriangleAlert } from "lucide-react";
+import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert } from "lucide-react";
 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
 import { ActionRow, CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
@@ -9,7 +9,22 @@ export default async function OperationsDashboardView() {
   const payload = await getOperationsDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
   const hasTechnicianActivity = payload.technicianActivity.length > 0;
-  const hasLiveFlowData = payload.liveWork.length > 0 || payload.flowMix.length > 0;
+  const hasRightRailSignals = payload.blockerStack.length > 0 || payload.alerts.length > 0 || payload.suggestedActions.length > 0;
+
+  const alertHrefByLabel: Record<string, string> = {
+    "Blocked jobs climbing": "/work-orders/board?stage=on_hold",
+    "Approval queue aging": "/work-orders/board?stage=awaiting_approval",
+    "Parts constraints active": "/parts/requests",
+    "Blocker pressure stable": "/work-orders/board",
+    "Approval queue healthy": "/work-orders/board?stage=awaiting_approval",
+    "No parts constraints": "/parts/requests",
+  };
+
+  const blockerHrefByLabel: Record<string, string> = {
+    "Approvals pending": "/work-orders/board?stage=awaiting_approval",
+    "Waiting parts": "/parts/requests",
+    "On hold / blocked": "/work-orders/board?stage=on_hold",
+  };
 
   return (
     <DashboardShell>
@@ -33,140 +48,220 @@ export default async function OperationsDashboardView() {
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-12">
-        <DashboardPanel title="Active Job Summary" className="min-h-[270px] md:min-h-[288px] xl:col-span-4">
-          <div className="space-y-2.5">
-            {payload.activeJobSummary.map((metric) => (
-              <div key={metric.label} className="rounded-lg border border-white/10 bg-black/20 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-300">{metric.label}</span>
-                  <span className="text-sm font-semibold text-white">{metric.value}</span>
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.85fr)_minmax(292px,1fr)] 2xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <section className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,1fr)]">
+            <DashboardPanel
+              title="Live Work Command Surface"
+              className="min-h-[316px]"
+              action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
+            >
+              <div className="grid h-full gap-2.5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                <div className="space-y-1.5">
+                  {payload.liveWork.length > 0 ? (
+                    payload.liveWork.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/work-orders/${item.id}`}
+                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                      >
+                        <div>
+                          <div className="font-semibold text-white">{item.label}</div>
+                          <div className="text-neutral-400">{item.stage}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-300">P{item.priority}</div>
+                          <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-400">No active jobs currently in motion.</div>
+                  )}
                 </div>
-                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-[var(--brand-accent,#E39A6E)]"
-                    style={{ width: `${metric.pct}%` }}
-                  />
+                <div className="space-y-1.5">
+                  {payload.flowMix.length > 0 ? (
+                    payload.flowMix.map((row) => (
+                      <Link
+                        key={row.label}
+                        href={`/work-orders/board?stage=${encodeURIComponent(row.label.toLowerCase().replaceAll(" ", "_"))}`}
+                        className="group block rounded-lg border border-white/10 bg-black/20 p-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-neutral-300">{row.label}</span>
+                          <span className="font-semibold text-white">{row.value}</span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[var(--brand-primary,#C1663B)] to-[var(--brand-accent,#E39A6E)]"
+                            style={{ width: `${Math.min(100, row.value * 12)}%` }}
+                          />
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-400">Flow mix will populate as stages progress.</div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </DashboardPanel>
+            </DashboardPanel>
 
-        <DashboardPanel title="Live Shop Load" className="min-h-[270px] md:min-h-[288px] xl:col-span-5">
-          <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Daily Summary"
-          className="xl:col-span-3"
-          action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
-        >
-          <CompactSignalList items={payload.dailySummary} />
-        </DashboardPanel>
-
-        {hasTechnicianActivity ? (
-          <DashboardPanel title="Technician Activity" className="xl:col-span-5">
-            <div className="space-y-1.5">
-              {payload.technicianActivity.map((tech) => (
-                <div key={tech.id} className="grid grid-cols-[minmax(0,1fr)_76px_60px] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-white">{tech.name}</div>
-                    <div className="text-[11px] text-neutral-400">{tech.stage} · {tech.elapsed}</div>
-                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full bg-[var(--brand-accent,#E39A6E)]" style={{ width: `${tech.utilizationPct}%` }} />
-                    </div>
-                  </div>
-                  <div className="text-right text-xs text-neutral-300">{tech.activeLines} lines</div>
-                  <button type="button" className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-neutral-300">View</button>
-                </div>
-              ))}
-            </div>
-          </DashboardPanel>
-        ) : null}
-
-        <DashboardPanel
-          title="High Impact Alerts"
-          className="xl:col-span-3"
-          action={<Link href="/work-orders/board" className="text-xs text-neutral-300 hover:text-white">View all</Link>}
-        >
-          <div className="space-y-1.5">
-            {payload.alerts.map((alert) => (
-              <div
-                key={alert.label}
-                className="rounded-lg border p-2"
-                style={{
-                  borderColor: alert.tone === "critical" ? "rgba(239,68,68,0.4)" : alert.tone === "warning" ? "rgba(245,158,11,0.38)" : "rgba(148,163,184,0.25)",
-                  background: alert.tone === "critical" ? "rgba(127,29,29,0.18)" : alert.tone === "warning" ? "rgba(120,53,15,0.18)" : "rgba(15,23,42,0.5)",
-                }}
-              >
-                <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                  {alert.tone === "critical" ? <TriangleAlert className="h-3.5 w-3.5 text-red-300" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
-                  {alert.label}
-                </div>
-                <div className="mt-1 text-[11px] text-neutral-300">{alert.detail}</div>
-              </div>
-            ))}
-          </div>
-        </DashboardPanel>
-
-        <DashboardPanel title="Suggested Actions" className="xl:col-span-4">
-          <ActionRow actions={payload.suggestedActions} />
-        </DashboardPanel>
-
-        {hasLiveFlowData ? (
-          <DashboardPanel title="Technician / Flow Mix" className="xl:col-span-8">
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1.5">
-                {payload.liveWork.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs">
-                    <div>
-                      <div className="font-semibold text-white">{item.label}</div>
-                      <div className="text-neutral-400">{item.stage}</div>
-                    </div>
-                    <div className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-300">P{item.priority}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-1.5">
-                {payload.flowMix.map((row) => (
-                  <div key={row.label} className="rounded-lg border border-white/10 bg-black/20 p-2">
+            <DashboardPanel title="Active Job Summary" className="min-h-[316px]">
+              <div className="space-y-2.5">
+                {payload.activeJobSummary.map((metric) => (
+                  <div key={metric.label} className="rounded-lg border border-white/10 bg-black/20 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-300">{row.label}</span>
-                      <span className="font-semibold text-white">{row.value}</span>
+                      <span className="text-neutral-300">{metric.label}</span>
+                      <span className="text-sm font-semibold text-white">{metric.value}</span>
                     </div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[var(--brand-primary,#C1663B)] to-[var(--brand-accent,#E39A6E)]"
-                        style={{ width: `${Math.min(100, row.value * 12)}%` }}
+                        className="h-full rounded-full bg-[var(--brand-accent,#E39A6E)]"
+                        style={{ width: `${metric.pct}%` }}
                       />
                     </div>
                   </div>
                 ))}
               </div>
+            </DashboardPanel>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,1fr)]">
+            <DashboardPanel title="Live Shop Load" className="min-h-[274px]">
+              <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
+            </DashboardPanel>
+
+            <DashboardPanel
+              title="Daily Summary"
+              action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
+            >
+              <div className="space-y-1.5">
+                {payload.dailySummary.map((item) => {
+                  const href =
+                    item.label === "Today's bookings"
+                      ? "/dashboard/bookings"
+                      : item.label === "Approval queue"
+                        ? "/work-orders/board?stage=awaiting_approval"
+                        : item.label === "Parts waiting"
+                          ? "/parts/requests"
+                          : "/work-orders/board";
+                  return (
+                    <Link
+                      key={`${item.label}-${item.value}`}
+                      href={href}
+                      className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                    >
+                      <span className="text-neutral-300">{item.label}</span>
+                      <span className={item.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
+                        {item.value}
+                        <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </DashboardPanel>
+          </div>
+
+          {hasTechnicianActivity ? (
+            <DashboardPanel title="Technician Activity" className="min-h-[236px]">
+              <div className="space-y-1.5">
+                {payload.technicianActivity.map((tech) => (
+                  <Link
+                    key={tech.id}
+                    href="/dashboard/manager/dispatch"
+                    className="group grid grid-cols-[minmax(0,1fr)_76px_auto] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-semibold text-white">{tech.name}</div>
+                      <div className="text-[11px] text-neutral-400">{tech.stage} · {tech.elapsed}</div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full bg-[var(--brand-accent,#E39A6E)]" style={{ width: `${tech.utilizationPct}%` }} />
+                      </div>
+                    </div>
+                    <div className="text-right text-xs text-neutral-300">{tech.activeLines} lines</div>
+                    <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-neutral-300">
+                      Open <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </DashboardPanel>
+          ) : null}
+
+          <DashboardPanel
+            title="Revenue & Efficiency Snapshot"
+            action={<Link href="/dashboard/performance" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open <ArrowRight className="h-3 w-3" /></Link>}
+          >
+            <div className="grid gap-2 md:grid-cols-[minmax(180px,0.8fr)_minmax(0,1fr)]">
+              <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
+                <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Revenue (MTD)</div>
+                <div className="mt-1 text-xl font-semibold text-white">${payload.revenueEfficiency.revenue.toLocaleString()}</div>
+              </div>
+              <CompactSignalList
+                items={[
+                  { label: "Profit", value: `$${payload.revenueEfficiency.profit.toLocaleString()}` },
+                  { label: "Efficiency", value: `${payload.revenueEfficiency.efficiencyPct}%` },
+                  { label: "Active lines", value: String(payload.revenueEfficiency.completedLines) },
+                ]}
+              />
             </div>
           </DashboardPanel>
-        ) : null}
+        </section>
 
-        <DashboardPanel
-          title="Revenue & Efficiency Snapshot"
-          className="xl:col-span-4"
-          action={<Link href="/dashboard/performance" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open <ArrowRight className="h-3 w-3" /></Link>}
-        >
-          <div className="space-y-2">
-            <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
-              <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Revenue (MTD)</div>
-              <div className="mt-1 text-xl font-semibold text-white">${payload.revenueEfficiency.revenue.toLocaleString()}</div>
-            </div>
-            <CompactSignalList
-              items={[
-                { label: "Profit", value: `$${payload.revenueEfficiency.profit.toLocaleString()}` },
-                { label: "Efficiency", value: `${payload.revenueEfficiency.efficiencyPct}%` },
-                { label: "Active lines", value: String(payload.revenueEfficiency.completedLines) },
-              ]}
-            />
-          </div>
-        </DashboardPanel>
+        {hasRightRailSignals ? (
+          <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
+            <DashboardPanel title="Action Rail" eyebrow="Urgency">
+              <div className="space-y-1.5">
+                {payload.blockerStack.map((blocker) => (
+                  <Link
+                    key={blocker.label}
+                    href={blockerHrefByLabel[blocker.label] ?? "/work-orders/board"}
+                    className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                  >
+                    <span className="text-neutral-300">{blocker.label}</span>
+                    <span className={blocker.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
+                      {blocker.value}
+                      <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </DashboardPanel>
+
+            <DashboardPanel
+              title="High Impact Alerts"
+              action={<Link href="/work-orders/board" className="text-xs text-neutral-300 hover:text-white">View all</Link>}
+            >
+              <div className="space-y-1.5">
+                {payload.alerts.map((alert) => (
+                  <Link
+                    key={alert.label}
+                    href={alertHrefByLabel[alert.label] ?? "/work-orders/board"}
+                    className="group block rounded-lg border p-2 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                    style={{
+                      borderColor: alert.tone === "critical" ? "rgba(239,68,68,0.4)" : alert.tone === "warning" ? "rgba(245,158,11,0.38)" : "rgba(148,163,184,0.25)",
+                      background: alert.tone === "critical" ? "rgba(127,29,29,0.18)" : alert.tone === "warning" ? "rgba(120,53,15,0.18)" : "rgba(15,23,42,0.5)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-white">
+                      <span className="inline-flex items-center gap-2">
+                        {alert.tone === "critical" ? <TriangleAlert className="h-3.5 w-3.5 text-red-300" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
+                        {alert.label}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    </div>
+                    <div className="mt-1 text-[11px] text-neutral-300">{alert.detail}</div>
+                  </Link>
+                ))}
+              </div>
+            </DashboardPanel>
+
+            <DashboardPanel title="Suggested Actions">
+              <ActionRow actions={payload.suggestedActions} />
+            </DashboardPanel>
+          </aside>
+        ) : null}
       </div>
 
       {payload.sectionErrors.length > 0 ? (
@@ -177,10 +272,15 @@ export default async function OperationsDashboardView() {
           </div>
           <div className="space-y-1 text-xs text-amber-200">
             {payload.sectionErrors.map((warning) => (
-              <div key={warning} className="flex items-start gap-2 rounded-md border border-amber-500/25 bg-black/20 px-2 py-1.5">
+              <Link
+                key={warning}
+                href="/dashboard/operations"
+                className="group flex items-start gap-2 rounded-md border border-amber-500/25 bg-black/20 px-2 py-1.5 transition hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
+              >
                 <AlertTriangle className="mt-0.5 h-3 w-3" />
-                <span>{warning}</span>
-              </div>
+                <span className="flex-1">{warning}</span>
+                <ChevronRight className="mt-0.5 h-3 w-3 text-amber-200/70 transition group-hover:text-amber-100" />
+              </Link>
             ))}
           </div>
         </section>
