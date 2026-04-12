@@ -196,8 +196,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   // ✅ prevents “logged out” banner flashing / sticking
   const [authChecked, setAuthChecked] = useState<boolean>(false);
 
-  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
+  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", false);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showApprovalSummary, setShowApprovalSummary] = useState(false);
 
   // ✅ focused job
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -1297,9 +1299,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : !wo ? (
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
           {/* Header */}
-          <section className={cn(PANEL_VARIANTS.primary, "p-3")}>
+          <section className={cn(PANEL_VARIANTS.primary, "p-2.5 sm:p-3")}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <h1 className="text-lg font-semibold text-foreground sm:text-xl">
@@ -1340,29 +1342,47 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
           </section>
 
-          <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <DecisionTimeline stages={decisionTimelineStages} compact />
-            <div className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
-              <DecisionEventFeed
-                events={decisionEvents}
-                filter="all"
-                maxVisible={showFullHistory ? 12 : 3}
-                compact
-              />
-              {decisionEvents.length > 3 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowFullHistory((prev) => !prev)}
-                  className="mt-2 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                >
-                  {showFullHistory ? "Show recent only" : "View full history"}
-                </button>
-              ) : null}
-            </div>
+          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}> 
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 text-left"
+              onClick={() => setShowTimeline((prev) => !prev)}
+              aria-expanded={showTimeline}
+            >
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Decision timeline & recent events
+              </span>
+              <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
+                {showTimeline ? "Hide" : "Show"}
+              </span>
+            </button>
+
+            {showTimeline ? (
+              <div className="mt-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <DecisionTimeline stages={decisionTimelineStages} compact />
+                <div className={cn(PANEL_VARIANTS.passive, "p-2")}> 
+                  <DecisionEventFeed
+                    events={decisionEvents}
+                    filter="all"
+                    maxVisible={showFullHistory ? 10 : 3}
+                    compact
+                  />
+                  {decisionEvents.length > 3 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullHistory((prev) => !prev)}
+                      className="mt-1.5 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                    >
+                      {showFullHistory ? "Show recent only" : "View full history"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {/* Vehicle & Customer */}
-          <section className={cn(PANEL_VARIANTS.secondary, "p-3")}>
+          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}> 
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
                 Vehicle &amp; Customer
@@ -1378,7 +1398,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {showDetails && (
-              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
                 {/* Vehicle */}
                 <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1454,7 +1474,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           <section
             className={cn(
               PANEL_VARIANTS.secondary,
-              "p-3",
+              "p-2.5",
               hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
             )}
             onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
@@ -1472,9 +1492,24 @@ export default function WorkOrderIdClient(): JSX.Element {
             }
             aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
           >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Approval queue
+                </div>
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowApprovalSummary((prev) => !prev);
+                  }}
+                >
+                  {showApprovalSummary ? "Hide" : "Show"}
+                </button>
+              </div>
               {!hasAnyApprovalItems ? (
-                <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
-              ) : (
+                <p className="text-[11px] text-muted-foreground">Approval queue clear.</p>
+              ) : showApprovalSummary ? (
                 <>
                   {recentApprovalPending.length > 0 && (
                     <div className="space-y-2">
@@ -1614,11 +1649,15 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                   )}
                 </>
+              ) : (
+                <div className="text-[11px] text-muted-foreground">
+                  {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
+                </div>
               )}
           </section>
 
           {/* Workspace */}
-          <section className="grid gap-3 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-start md:gap-4">
+          <section className="grid gap-3 lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)] lg:items-start lg:gap-4">
             {/* Left: jobs list/cards */}
             <div className="space-y-2">
               {linesNeedingQuote.length > 0 && (
@@ -1635,36 +1674,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
               )}
 
-              {sortedLines.length > 0 && (
-                <div className="rounded-xl border border-white/10 bg-black/50 px-3 py-2">
-                  {(() => {
-                    const total = sortedLines.length;
-                    const done = sortedLines.filter((ln) => {
-                      const s = (ln.status ?? "").toLowerCase();
-                      return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
-                    }).length;
-                    const pct = total ? Math.round((done / total) * 100) : 0;
-
-                    return (
-                      <>
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-300">
-                          <span className="font-medium">
-                            Job progress: <span className="text-white">{done}/{total} done</span>
-                          </span>
-                          <span className="text-[10px] text-neutral-400">{pct}% complete</span>
-                        </div>
-                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-900">
-                          <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,_rgba(15,118,110,0.9),_rgba(16,185,129,0.9),_rgba(249,115,22,0.95))] transition-[width]"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-
               {sortedLines.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No jobs added yet. Use the{" "}
@@ -1674,7 +1683,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   actions in the focused panel to start building this work order.
                 </p>
               ) : (
-                <div className="max-h-[70vh] space-y-2 overflow-auto pr-1">
+                <div className="max-h-[72vh] space-y-1.5 overflow-auto pr-1">
                   {sortedLines.map((ln, idx) => {
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
@@ -1774,7 +1783,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Right: focused job workspace pane */}
-            <div className="md:sticky md:top-4">
+            <div className="lg:sticky lg:top-20">
               {panelLineId ? (
                 <FocusedJobModal
                   key={panelLineId}

@@ -47,16 +47,14 @@ const btnBase =
   "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
 const btnNeutral =
   btnBase + " border-white/10 bg-black/35 text-neutral-100 hover:bg-white/5";
-const btnWarn =
-  btnBase +
-  " border-amber-400/45 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
-const btnDanger =
-  btnBase + " border-red-500/45 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
   btnBase + " border-sky-500/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
-const btnAccent =
+const btnPrimary =
   btnBase +
-  " border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20";
+  " border-[var(--accent-copper-soft)] bg-[var(--accent-copper,#f97316)]/20 text-[var(--accent-copper-light)] shadow-[0_0_20px_rgba(249,115,22,0.2)] hover:bg-[var(--accent-copper,#f97316)]/30";
+const btnSecondary = btnInfo;
+const btnTertiary =
+  btnBase + " border-white/10 bg-black/25 text-neutral-200 hover:bg-white/5";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -528,6 +526,14 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
   const isPanelVariant = variant === "panel";
+  const partsCount = allocs.length;
+  const laborDisplay =
+    typeof line?.labor_time === "number" ? `${line.labor_time.toFixed(1)} h` : "—";
+  const lineTotal = Number(
+    (line as unknown as { line_total?: number | null; total_price?: number | null })?.line_total ??
+      (line as unknown as { total_price?: number | null })?.total_price ??
+      0,
+  );
 
   if (!isOpen) return null;
 
@@ -558,6 +564,9 @@ export default function FocusedJobModal(props: {
                   WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                 </div>
               ) : null}
+              <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Selected job
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -623,7 +632,7 @@ export default function FocusedJobModal(props: {
           ) : !line ? (
             <div className="text-sm text-neutral-300">No job found.</div>
           ) : (
-            <div className={isPanelVariant ? "grid gap-3 xl:grid-cols-[1.1fr_1fr]" : "space-y-4"}>
+            <div className={isPanelVariant ? "grid gap-3 xl:grid-cols-[1.05fr_1fr]" : "space-y-4"}>
               <div className="space-y-3">
               {mode === "tech" ? (
                 <SectionCard title="Operational actions">
@@ -647,7 +656,21 @@ export default function FocusedJobModal(props: {
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
-                      className={btnAccent}
+                      className={btnPrimary}
+                      onClick={async () => {
+                        if (!line?.id || busy) return;
+                        closeAllSubModals();
+                        await runJobPunchTransition(line.id, "start");
+                        await refresh();
+                      }}
+                      disabled={busy || line?.status === "in_progress" || line?.status === "completed"}
+                    >
+                      Start Job
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnPrimary}
                       onClick={() => {
                         closeAllSubModals();
                         setPrefillCause(line?.cause ?? "");
@@ -661,7 +684,7 @@ export default function FocusedJobModal(props: {
 
                     <button
                       type="button"
-                      className={btnWarn}
+                      className={btnSecondary}
                       onClick={() => {
                         closeAllSubModals();
                         setOpenHold(true);
@@ -673,7 +696,7 @@ export default function FocusedJobModal(props: {
 
                     <button
                       type="button"
-                      className={btnDanger}
+                      className={btnSecondary}
                       onClick={() => {
                         closeAllSubModals();
                         setOpenParts(true);
@@ -685,13 +708,52 @@ export default function FocusedJobModal(props: {
 
                     <button
                       type="button"
-                      className={btnInfo}
+                      className={btnSecondary}
                       onClick={() => {
                         closeAllSubModals();
                         setOpenAi(true);
                       }}
                     >
                       AI Assist
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnTertiary}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenPhoto(true);
+                      }}
+                      disabled={busy}
+                    >
+                      Add Photo
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnTertiary}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenChat(true);
+                      }}
+                    >
+                      Chat
+                    </button>
+
+                    <button
+                      type="button"
+                      className={btnTertiary}
+                      onClick={() => {
+                        if (!vehicle?.id) {
+                          toast.error("No vehicle linked to this work order yet.");
+                          return;
+                        }
+                        closeAllSubModals();
+                        setOpenVehicleHistory(true);
+                      }}
+                      disabled={busy || !vehicle?.id}
+                    >
+                      Vehicle History
                     </button>
                   </div>
 
@@ -710,7 +772,7 @@ export default function FocusedJobModal(props: {
               ) : null}
 
               <SectionCard title="Quick status">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2.5 sm:grid-cols-2">
                   <MetaStat
                     label="Start"
                     value={createdStart}
@@ -726,6 +788,20 @@ export default function FocusedJobModal(props: {
                   <MetaStat
                     label="Job type"
                     value={String(line.job_type ?? "—").replaceAll("_", " ")}
+                  />
+                  <MetaStat
+                    label="Assigned tech"
+                    value={line.assigned_tech_id ? `${line.assigned_tech_id.slice(0, 8)}…` : "Unassigned"}
+                  />
+                  <MetaStat label="Parts count" value={String(partsCount)} />
+                  <MetaStat label="Labor" value={laborDisplay} />
+                  <MetaStat
+                    label="Line total"
+                    value={new Intl.NumberFormat("en-CA", {
+                      style: "currency",
+                      currency: "CAD",
+                      maximumFractionDigits: 2,
+                    }).format(lineTotal)}
                   />
                 </div>
               </SectionCard>
@@ -768,74 +844,45 @@ export default function FocusedJobModal(props: {
                 </SectionCard>
               ) : null}
 
-              <SectionCard title="Actions">
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {mode === "tech" ? (
-                    <>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenPhoto(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Add Photo
-                      </button>
+              {mode !== "tech" ? (
+                <SectionCard title="Actions">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <button
+                      type="button"
+                      className={btnNeutral}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenChat(true);
+                      }}
+                    >
+                      Chat
+                    </button>
 
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
+                    <button
+                      type="button"
+                      className={btnInfo}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenAi(true);
+                      }}
+                    >
+                      AI Assist
+                    </button>
 
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenDtc(true);
-                        }}
-                        disabled={busy}
-                      >
-                        DTC Assist
-                      </button>
-
-                    </>
-                  )}
-                </div>
-              </SectionCard>
+                    <button
+                      type="button"
+                      className={btnInfo}
+                      onClick={() => {
+                        closeAllSubModals();
+                        setOpenDtc(true);
+                      }}
+                      disabled={busy}
+                    >
+                      DTC Assist
+                    </button>
+                  </div>
+                </SectionCard>
+              ) : null}
               </div>
 
               <div className="space-y-3">
@@ -849,23 +896,6 @@ export default function FocusedJobModal(props: {
                   className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
                   placeholder="Add notes for this job…"
                 />
-              </SectionCard>
-
-              <SectionCard title="History">
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    if (!vehicle?.id) {
-                      toast.error("No vehicle linked to this work order yet.");
-                      return;
-                    }
-                    setOpenVehicleHistory(true);
-                  }}
-                  disabled={busy || !vehicle?.id}
-                >
-                  Vehicle History
-                </button>
               </SectionCard>
 
               <SectionCard title="Parts used">

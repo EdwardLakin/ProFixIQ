@@ -66,55 +66,80 @@ const CARD_SURFACE: Record<
   KnownStatus,
   {
     badgeVariant: "info" | "active" | "warning" | "success";
-    railClass: string;
     surfaceClass: string;
     label: string;
   }
 > = {
   awaiting: {
     badgeVariant: "info",
-    railClass: "bg-slate-400/80",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(10,10,10,0.96))]",
     label: "Awaiting",
   },
   in_progress: {
     badgeVariant: "active",
-    railClass:
-      "bg-[linear-gradient(180deg,var(--accent-copper,#f97316),var(--accent-copper-light,#fdba74))]",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),rgba(10,10,10,0.96))]",
     label: "In Progress",
   },
   on_hold: {
     badgeVariant: "warning",
-    railClass: "bg-amber-400/85",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.14),rgba(10,10,10,0.96))]",
     label: "On Hold",
   },
   completed: {
     badgeVariant: "success",
-    railClass: "bg-emerald-400/85",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
     label: "Completed",
   },
   ready_to_invoice: {
     badgeVariant: "success",
-    railClass: "bg-emerald-400/85",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
     label: "Ready to Invoice",
   },
   invoiced: {
     badgeVariant: "success",
-    railClass: "bg-emerald-400/85",
     surfaceClass:
       "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
     label: "Invoiced",
   },
 };
+
+function statusRailTone(args: {
+  status: string | null;
+  holdReason: string | null;
+  approvalState: string | null;
+  reviewFlags: ReviewFlags;
+}): "healthy" | "needs" | "blocked" {
+  const status = norm(args.status);
+  const hold = norm(args.holdReason);
+  const approval = norm(args.approvalState);
+
+  if (
+    status === "on_hold" ||
+    status === "declined" ||
+    hold.includes("block") ||
+    hold.includes("part") ||
+    hold.includes("urgent")
+  ) {
+    return "blocked";
+  }
+
+  if (
+    approval === "pending" ||
+    args.reviewFlags.missingCause ||
+    args.reviewFlags.missingComplaint ||
+    args.reviewFlags.missingCorrection ||
+    args.reviewFlags.noParts
+  ) {
+    return "needs";
+  }
+
+  return "healthy";
+}
 
 function norm(s: unknown): string {
   return String(s ?? "").trim().toLowerCase();
@@ -196,7 +221,7 @@ function ReviewPill({
     <span
       title={title}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]",
         tone === "ok"
           ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
           : tone === "warn"
@@ -275,6 +300,12 @@ export function JobCard({
     partsCount: parts.length,
     reviewIssues,
   });
+  const railTone = statusRailTone({
+    status: line.status,
+    holdReason: line.hold_reason,
+    approvalState: line.approval_state,
+    reviewFlags,
+  });
 
   const createdLabel = line.created_at
     ? formatDistanceToNow(new Date(line.created_at), { addSuffix: true })
@@ -288,19 +319,43 @@ export function JobCard({
   void onDelete;
 
   return (
-    <Card
-      className={cn(
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className="outline-none"
+      aria-label={`Open job ${index + 1}: ${jobLabel}`}
+      aria-pressed={selected}
+    >
+      <Card
+        className={cn(
         "relative overflow-hidden p-0",
         "transition hover:-translate-y-[1px] hover:border-[color:var(--accent-copper-soft,#fdba74)]",
+        "focus-within:border-[color:var(--accent-copper-light,#fdba74)] focus-within:shadow-[0_0_0_1px_rgba(253,186,116,0.55),0_10px_30px_rgba(249,115,22,0.18)]",
         selected &&
-          "border-[color:var(--accent-copper-light,#fdba74)] shadow-[0_0_0_1px_rgba(253,186,116,0.7),0_10px_30px_rgba(249,115,22,0.22)]",
+          "scale-[1.01] border-[color:var(--accent-copper-light,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),rgba(10,10,10,0.96))] shadow-[0_0_0_1px_rgba(253,186,116,0.7),0_12px_34px_rgba(249,115,22,0.24)]",
         surfaceCfg.surfaceClass,
       )}
-    >
-      <div className={cn("absolute inset-y-0 left-0 w-1", surfaceCfg.railClass)} />
+      >
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 w-1",
+            railTone === "healthy"
+              ? "bg-emerald-400/90"
+              : railTone === "needs"
+                ? "bg-amber-400/90"
+                : "bg-red-400/90",
+          )}
+        />
 
-      <div className={cn("relative pl-6", compact ? "p-3.5" : "p-5")}>
-        <div className={cn("flex flex-col", compact ? "gap-2.5" : "gap-4")}>
+        <div className={cn("relative pl-5", compact ? "p-3" : "p-4")}>
+          <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -315,13 +370,13 @@ export function JobCard({
                 ) : null}
               </div>
 
-              <div className={cn("flex items-start gap-3", compact ? "mt-2" : "mt-3")}>
+              <div className={cn("flex items-start gap-2.5", compact ? "mt-1.5" : "mt-2")}>
                 <div className={cn("flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200", compact ? "h-6 w-6" : "h-8 w-8")}>
                   {index + 1}
                 </div>
 
                 <div className="min-w-0">
-                  <h3 className={cn("font-semibold text-white", compact ? "text-sm sm:text-base" : "text-base sm:text-lg")}>
+                  <h3 className={cn("font-semibold text-white", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>
                     {jobLabel}
                   </h3>
                   <p className={cn("text-xs uppercase tracking-[0.16em] text-neutral-500", compact ? "mt-0.5" : "mt-1")}>
@@ -331,7 +386,7 @@ export function JobCard({
               </div>
             </div>
 
-            <div className={cn("flex flex-wrap items-center", compact ? "gap-1.5" : "gap-2")}>
+            <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5")}>
               <Button type="button" variant={selected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
                 Open
               </Button>
@@ -378,27 +433,25 @@ export function JobCard({
             </div>
           </div>
 
-          <div className={cn("flex flex-wrap", compact ? "gap-1.5" : "gap-2")}>
-            <ReviewPill
-              tone={reviewFlags.missingComplaint ? "warn" : "ok"}
-              label={reviewFlags.missingComplaint ? "Complaint missing" : "Complaint ok"}
-              title="Complaint / description completeness"
-            />
-            <ReviewPill
-              tone={reviewFlags.missingCause ? "warn" : "ok"}
-              label={reviewFlags.missingCause ? "Cause missing" : "Cause ok"}
-              title="Cause completeness"
-            />
-            <ReviewPill
-              tone={reviewFlags.missingCorrection ? "warn" : "ok"}
-              label={reviewFlags.missingCorrection ? "Correction missing" : "Correction ok"}
-              title="Correction completeness"
-            />
-            <ReviewPill
-              tone={reviewFlags.noParts ? "warn" : "ok"}
-              label={reviewFlags.noParts ? "No parts" : "Parts added"}
-              title="Parts completeness"
-            />
+          <div className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5")}>
+            {reviewFlags.missingComplaint ? (
+              <ReviewPill tone="warn" label="Complaint missing" title="Complaint / description completeness" />
+            ) : null}
+            {reviewFlags.missingCause ? (
+              <ReviewPill tone="warn" label="Cause missing" title="Cause completeness" />
+            ) : null}
+            {reviewFlags.missingCorrection ? (
+              <ReviewPill tone="warn" label="Correction missing" title="Correction completeness" />
+            ) : null}
+            {reviewFlags.noParts ? (
+              <ReviewPill tone="warn" label="No parts" title="Parts completeness" />
+            ) : null}
+            {norm(line.status) === "on_hold" ? (
+              <ReviewPill tone="warn" label="Blocked" title="Line currently blocked or on hold" />
+            ) : null}
+            {norm(line.approval_state) === "pending" ? (
+              <ReviewPill tone="info" label="Waiting approval" title="Waiting for approval decision" />
+            ) : null}
             {reviewFlags.otherIssues > 0 ? (
               <ReviewPill
                 tone="info"
@@ -410,7 +463,7 @@ export function JobCard({
 
           {!collapsed ? (
             <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
                 <MetaTile label="Assigned Tech" value={assignedTech} />
                 <MetaTile label="Parts" value={String(parts.length)} />
                 <MetaTile
@@ -421,12 +474,12 @@ export function JobCard({
               </div>
 
               {canAssign && onAssign ? (
-                <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                <div className="rounded-xl border border-white/10 bg-black/25 p-3">
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                     Assign technician
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
                     {technicians.length === 0 ? (
                       <span className="text-sm text-neutral-400">
                         No technicians available.
@@ -458,8 +511,9 @@ export function JobCard({
             </>
           ) : null}
         </div>
-      </div>
-    </Card>
+        </div>
+      </Card>
+    </div>
   );
 }
 
