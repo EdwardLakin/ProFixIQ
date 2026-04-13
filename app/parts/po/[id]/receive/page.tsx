@@ -8,6 +8,8 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
+import { receiveProgressLabel, toReceiveProgressDisplay } from "@/features/parts/lib/status-display";
+import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -120,6 +122,7 @@ export default function PoReceivePage(): JSX.Element {
   const [lines, setLines] = useState<PurchaseOrderLine[]>([]);
   const [locs, setLocs] = useState<StockLoc[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
+  const [trustByPartId, setTrustByPartId] = useState<Record<string, PartTrustMeta>>({});
 
   const [selectedLoc, setSelectedLoc] = useState<string>("");
   const [qty, setQty] = useState<number>(1);
@@ -196,13 +199,46 @@ export default function PoReceivePage(): JSX.Element {
         if (sid) {
           const { data: partRows, error: partErr } = await supabase
             .from("parts")
-            .select("id, name, sku, category")
+            .select("*")
             .eq("shop_id", sid)
             .order("name", { ascending: true })
             .limit(700);
 
           if (partErr) throw partErr;
-          setParts((partRows ?? []) as PartRow[]);
+          const partList = (partRows ?? []) as PartRow[];
+          setParts(partList);
+          const partIds = partList.map((p) => String(p.id));
+          const [aliasRes, stagingRes, candRes] = await Promise.all([
+            supabase.from("shop_parts_source_aliases").select("part_id").in("part_id", partIds).eq("shop_id", sid),
+            supabase.from("shop_parts_import_staging").select("matched_part_id,status").in("matched_part_id", partIds).eq("shop_id", sid),
+            supabase.from("shop_parts_import_match_candidates").select("candidate_part_id").in("candidate_part_id", partIds).eq("shop_id", sid),
+          ]);
+          const aliasCount: Record<string, number> = {};
+          (aliasRes.data ?? []).forEach((r: any) => (aliasCount[String(r.part_id)] = (aliasCount[String(r.part_id)] ?? 0) + 1));
+          const stagingCount: Record<string, number> = {};
+          (stagingRes.data ?? []).forEach((r: any) => {
+            const st = String(r.status ?? "").toLowerCase();
+            if (st === "pending" || st === "review" || st === "ambiguous") {
+              stagingCount[String(r.matched_part_id)] = (stagingCount[String(r.matched_part_id)] ?? 0) + 1;
+            }
+          });
+          const candCount: Record<string, number> = {};
+          (candRes.data ?? []).forEach((r: any) => (candCount[String(r.candidate_part_id)] = (candCount[String(r.candidate_part_id)] ?? 0) + 1));
+          const trustMap: Record<string, PartTrustMeta> = {};
+          partList.forEach((p: any) => {
+            const id = String(p.id);
+            trustMap[id] = buildPartTrustMeta({
+              sku: p.sku,
+              partNumber: p.part_number ?? null,
+              normalizedPartKey: p.normalized_part_key ?? null,
+              sourceIntakeId: p.source_intake_id ?? null,
+              importConfidence: p.import_confidence ?? null,
+              aliasCount: aliasCount[id] ?? 0,
+              pendingStagingCount: stagingCount[id] ?? 0,
+              ambiguousCandidateCount: (candCount[id] ?? 0) > 1 ? candCount[id] : 0,
+            });
+          });
+          setTrustByPartId(trustMap);
         } else {
           setParts([]);
         }
@@ -618,6 +654,8 @@ export default function PoReceivePage(): JSX.Element {
                     const ordered = n(ln.qty);
                     const received = n(ln.received_qty);
                     const rem = Math.max(0, ordered - received);
+                    const trust = ln.part_id ? trustByPartId[String(ln.part_id)] : null;
+                    const recvState = toReceiveProgressDisplay({ qtyApproved: ordered, qtyReceived: received });
 
                     return (
                       <tr key={String(ln.id)} className="border-t border-white/5 hover:bg-white/5">
@@ -626,6 +664,11 @@ export default function PoReceivePage(): JSX.Element {
                             {ln.part_id ? String(ln.part_id).slice(0, 8) : "—"}
                           </div>
                           <div className="text-xs text-neutral-500">{ln.description ?? "—"}</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[11px] text-neutral-400">{receiveProgressLabel(recvState)}</span>
+                            {trust ? <span className={`rounded-full border px-2 py-0.5 text-[10px] ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}
+                          </div>
+                          {trust && trust.reasons.length > 0 ? <div className="text-[11px] text-amber-200">{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
                         </td>
                         <td className="p-3 font-mono">{ordered}</td>
                         <td className="p-3 font-mono">{received}</td>

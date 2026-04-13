@@ -170,7 +170,7 @@ export default function PartsRequestsPage(): JSX.Element {
     if (requestIds.length) {
       const { data: items, error: itemsErr } = await supabase
         .from("part_request_items")
-        .select("request_id, description, part_id, qty, quoted_price")
+        .select("request_id, description, part_id, qty, quoted_price, status, qty_approved, qty_received, qty_consumed")
         .in("request_id", requestIds);
 
       if (itemsErr) {
@@ -198,10 +198,11 @@ export default function PartsRequestsPage(): JSX.Element {
 
           (itemStatesByRequest[row.request_id] ||= []).push(
             toItemFlowDisplay({
-              rawStatus: null,
+              rawStatus: (row as { status?: string | null }).status ?? null,
               qty: row.qty,
-              qtyApproved: row.qty,
-              qtyReceived: 0,
+              qtyApproved: (row as { qty_approved?: unknown }).qty_approved ?? row.qty,
+              qtyReceived: (row as { qty_received?: unknown }).qty_received ?? 0,
+              qtyAllocated: (row as { qty_consumed?: unknown }).qty_consumed ?? 0,
             }),
           );
         });

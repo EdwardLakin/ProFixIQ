@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { receiveProgressLabel } from "@/features/parts/lib/status-display";
 
 type DB = Database;
 
@@ -75,14 +76,12 @@ export default function ReceiveFromPOPage(): JSX.Element {
           >
             Receive from PO
           </h1>
-          <div className="text-sm text-neutral-400">
-            Receive from PO: items tied to this purchase order.
-          </div>
+          <div className="text-sm text-neutral-400">PO lens into the shared receiving workflow.</div>
         </div>
 
         <button
           onClick={() => void load()}
-          className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
+          className="rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-neutral-100 hover:bg-white/5"
         >
           Refresh
         </button>
@@ -162,7 +161,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
                       <td className="p-3">
                         <Link
                           href={`/parts/po/${encodeURIComponent(id)}/receive`}
-                          className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
+                          className="inline-flex items-center justify-center rounded-lg border border-sky-500/35 bg-neutral-950/20 px-4 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-900/20"
                         >
                           Open receive →
                         </Link>
@@ -175,7 +174,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
           </div>
 
           <div className="border-t border-white/10 px-4 py-3 text-[11px] text-neutral-500">
-            Tip: Receiving from a PO updates inventory and increments PO line received_qty (FIFO) until complete.
+            Tip: Shared receive language: {receiveProgressLabel("partial")} and {receiveProgressLabel("received")} apply across Inbox, PO, and Scan.
           </div>
         </div>
       )}

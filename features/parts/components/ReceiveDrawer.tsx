@@ -19,6 +19,7 @@ export type ReceiveDrawerItem = {
 
   part_name?: string | null;
   sku?: string | null;
+  trust_reasons?: string[];
 };
 
 type ReceiveResult =
@@ -289,6 +290,11 @@ export default function ReceiveDrawer(props: {
                     <span className="text-neutral-200">{item.status ?? "—"}</span>
                   </div>
                 </div>
+                {Array.isArray(item.trust_reasons) && item.trust_reasons.length > 0 ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[11px] text-amber-200">
+                    Trust review: {item.trust_reasons.slice(0, 2).join(" · ")}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (

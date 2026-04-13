@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
 import Link from "next/link";
+import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -66,6 +67,7 @@ export default function ReceivePage(): JSX.Element {
   const [qty, setQty] = useState<number>(1);
 
   const [lastResult, setLastResult] = useState<ReceiveResult | null>(null);
+  const [lastTrust, setLastTrust] = useState<PartTrustMeta | null>(null);
   const [busy, setBusy] = useState(false);
 
   const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
@@ -186,6 +188,20 @@ export default function ReceivePage(): JSX.Element {
         window.setTimeout(() => setLastScan(""), 1200);
         return;
       }
+      const { data: partRow } = await supabase
+        .from("parts")
+        .select("id, sku, part_number, normalized_part_key, source_intake_id, import_confidence")
+        .eq("id", part_id)
+        .maybeSingle();
+      setLastTrust(
+        buildPartTrustMeta({
+          sku: (partRow as any)?.sku ?? null,
+          partNumber: (partRow as any)?.part_number ?? null,
+          normalizedPartKey: (partRow as any)?.normalized_part_key ?? null,
+          sourceIntakeId: (partRow as any)?.source_intake_id ?? null,
+          importConfidence: (partRow as any)?.import_confidence ?? null,
+        }),
+      );
 
       setBusy(true);
       try {
@@ -342,6 +358,12 @@ export default function ReceivePage(): JSX.Element {
               <pre className="mt-2 max-h-64 overflow-auto rounded border border-neutral-800 bg-black/60 p-2 text-xs text-neutral-200">
                 {JSON.stringify(lastResult.result ?? {}, null, 2)}
               </pre>
+            ) : null}
+            {lastTrust ? (
+              <div className="mt-1 text-xs">
+                <span className={`inline-flex rounded-full border px-2 py-1 ${trustBadgeTone(lastTrust.level)}`}>Trust: {lastTrust.level}</span>
+                {lastTrust.reasons.length > 0 ? <span className="ml-2 text-amber-200">{lastTrust.reasons.slice(0, 2).join(" · ")}</span> : null}
+              </div>
             ) : null}
           </div>
         )}
