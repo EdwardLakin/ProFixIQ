@@ -19,6 +19,10 @@ type AdminSummary = {
   shopCount: number;
   audit24hCount: number;
   incompleteShopCount: number;
+  openPayrollPeriods: number;
+  payrollBlockingExceptions: number;
+  payrollWarningExceptions: number;
+  onboardingMissingEmployees: number;
 };
 
 const CANONICAL_ADMIN_ROUTES = [
@@ -41,6 +45,12 @@ const CANONICAL_ADMIN_ROUTES = [
     nextStep: "Review shops with incomplete operations profile",
   },
   {
+    href: "/dashboard/admin/payroll-time",
+    label: "Payroll Time",
+    description: "Pay-period review, exception triage, approval lock, and export snapshots.",
+    nextStep: "Resolve blocking exceptions before approval",
+  },
+  {
     href: "/dashboard/admin/audit",
     label: "Audit",
     description: "Recent privileged actions and governance event timeline.",
@@ -58,7 +68,17 @@ export default function AdminLandingClient() {
       const now = new Date();
       const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-      const [usersCount, employeesCount, shopsCount, audit24hCount, incompleteShops] = await Promise.all([
+      const [
+        usersCount,
+        employeesCount,
+        shopsCount,
+        audit24hCount,
+        incompleteShops,
+        openPeriods,
+        blockingExceptions,
+        warningExceptions,
+        onboardingMissing,
+      ] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("profiles").select("id", { count: "exact", head: true }).not("role", "is", null),
         supabase.from("shops").select("id", { count: "exact", head: true }),
@@ -67,9 +87,38 @@ export default function AdminLandingClient() {
           .from("shops")
           .select("id", { count: "exact", head: true })
           .or("email.is.null,phone_number.is.null,timezone.is.null"),
+        supabase
+          .from("payroll_pay_periods")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["open", "draft"]),
+        supabase
+          .from("payroll_time_exceptions")
+          .select("id", { count: "exact", head: true })
+          .eq("resolved", false)
+          .eq("severity", "blocking"),
+        supabase
+          .from("payroll_time_exceptions")
+          .select("id", { count: "exact", head: true })
+          .eq("resolved", false)
+          .eq("severity", "warning"),
+        supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .not("role", "is", null)
+          .eq("completed_onboarding", false),
       ]);
 
-      const failed = [usersCount, employeesCount, shopsCount, audit24hCount, incompleteShops].find((r) => r.error);
+      const failed = [
+        usersCount,
+        employeesCount,
+        shopsCount,
+        audit24hCount,
+        incompleteShops,
+        openPeriods,
+        blockingExceptions,
+        warningExceptions,
+        onboardingMissing,
+      ].find((r) => r.error);
       if (failed?.error) {
         setError(failed.error.message);
         setSummary(null);
@@ -82,6 +131,10 @@ export default function AdminLandingClient() {
         shopCount: shopsCount.count ?? 0,
         audit24hCount: audit24hCount.count ?? 0,
         incompleteShopCount: incompleteShops.count ?? 0,
+        openPayrollPeriods: openPeriods.count ?? 0,
+        payrollBlockingExceptions: blockingExceptions.count ?? 0,
+        payrollWarningExceptions: warningExceptions.count ?? 0,
+        onboardingMissingEmployees: onboardingMissing.count ?? 0,
       });
     })();
   }, [supabase]);
@@ -95,10 +148,7 @@ export default function AdminLandingClient() {
       />
 
       <AdminPanel>
-        <AdminPanelTitle
-          title="Immediate Attention"
-          description="Live snapshot from current admin datasets."
-        />
+        <AdminPanelTitle title="Immediate Attention" description="Live snapshot from governance, workforce, and payroll-time datasets." />
         {error ? <p className="px-4 py-3 text-xs text-red-300">Failed to load summary: {error}</p> : null}
         {!summary ? (
           <AdminEmptyState title="Loading governance summary" body="Collecting counts from canonical admin surfaces." />
@@ -108,6 +158,10 @@ export default function AdminLandingClient() {
             <AdminStatCard label="Employees" value={summary.employeeCount} hint="Profiles with assigned roles." />
             <AdminStatCard label="Shops" value={summary.shopCount} hint="Tenant records in oversight scope." />
             <AdminStatCard label="Audit (24h)" value={summary.audit24hCount} hint="Privileged events in last day." />
+            <AdminStatCard label="Open payroll periods" value={summary.openPayrollPeriods} hint="Open or draft periods needing reviewer attention." />
+            <AdminStatCard label="Payroll blocking exceptions" value={summary.payrollBlockingExceptions} hint="Must be cleared before approval lock." />
+            <AdminStatCard label="Payroll warnings" value={summary.payrollWarningExceptions} hint="Non-blocking anomalies to review." />
+            <AdminStatCard label="Employees missing onboarding" value={summary.onboardingMissingEmployees} hint="Workforce readiness follow-up." />
           </AdminStatGrid>
         )}
       </AdminPanel>
@@ -115,7 +169,7 @@ export default function AdminLandingClient() {
       <AdminPanel>
         <AdminPanelTitle
           title="Canonical Governance Workflows"
-          description="Each route represents a concrete admin task area with a clear next action."
+          description="Canonical route system for governance, workforce oversight, and payroll-time readiness."
         />
 
         <div className="grid gap-3 p-4 md:grid-cols-2">
@@ -135,12 +189,37 @@ export default function AdminLandingClient() {
 
       <AdminPanel>
         <AdminPanelTitle
+          title="Priority Task Lanes"
+          description="Recommended operating sequence for daily admin review."
+        />
+        <div className="grid gap-3 p-4 md:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Governance</p>
+            <p className="mt-2 text-sm font-medium text-white">Users → Audit</p>
+            <p className="mt-2 text-xs text-neutral-400">Validate account changes, then inspect privileged actions for anomalies.</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Workforce</p>
+            <p className="mt-2 text-sm font-medium text-white">Employees → Payroll Time</p>
+            <p className="mt-2 text-xs text-neutral-400">Close onboarding gaps, then review exception posture by pay period.</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Tenant quality</p>
+            <p className="mt-2 text-sm font-medium text-white">Shops → Users</p>
+            <p className="mt-2 text-xs text-neutral-400">Resolve shop metadata gaps and verify ownership/account coverage.</p>
+          </div>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
           title="Governance Guidance"
           description="Use canonical pages for task completion and auditable operational decisions."
         />
         <div className="space-y-2 p-4 text-sm text-neutral-300">
           <p>• Use Users for account-level edits and role governance actions.</p>
-          <p>• Use Employees for workforce profile completeness and activity posture.</p>
+          <p>• Use Employees for workforce profile completeness, onboarding posture, and payroll readiness context.</p>
+          <p>• Use Payroll Time for pay-period review, exception resolution, period approval, and export snapshots.</p>
           <p>• Use Shops to identify incomplete tenant records before operational impact.</p>
           <p>• Use Audit to validate sensitive changes and investigate anomalies quickly.</p>
           {summary ? (

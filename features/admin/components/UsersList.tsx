@@ -83,10 +83,12 @@ export default function UsersList(): JSX.Element {
   const summary = useMemo(() => {
     const privileged = rows.filter((row) => row.role === "owner" || row.role === "admin").length;
     const missingPhone = rows.filter((row) => !row.phone).length;
+    const unassignedRole = rows.filter((row) => !row.role).length;
     return {
       total: rows.length,
       privileged,
       missingPhone,
+      unassignedRole,
     };
   }, [rows]);
 
@@ -148,6 +150,7 @@ export default function UsersList(): JSX.Element {
           <AdminStatCard label="Users in scope" value={summary.total} />
           <AdminStatCard label="Privileged users" value={summary.privileged} hint="Owner/Admin roles" />
           <AdminStatCard label="Missing phone" value={summary.missingPhone} hint="Potential contact gaps" />
+          <AdminStatCard label="Missing role assignment" value={summary.unassignedRole} hint="Needs governance follow-up" />
           <AdminStatCard label="Visible rows" value={filteredRows.length} hint="After role filters" />
         </AdminStatGrid>
       </AdminPanel>
@@ -191,7 +194,20 @@ export default function UsersList(): JSX.Element {
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="User Directory" description="Edit or remove account records. Review role and identity context before changes." />
+        <AdminPanelTitle
+          title="User Directory"
+          description="Edit or remove account records. Review role and identity context before changes."
+          action={
+            <div className="flex items-center gap-3 text-xs">
+              <Link href="/dashboard/admin/employees" className="font-medium text-orange-300 hover:text-orange-200">
+                Workforce posture →
+              </Link>
+              <Link href="/dashboard/admin/payroll-time" className="font-medium text-orange-300 hover:text-orange-200">
+                Payroll review →
+              </Link>
+            </div>
+          }
+        />
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">

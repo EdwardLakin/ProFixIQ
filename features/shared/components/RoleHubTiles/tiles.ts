@@ -213,6 +213,48 @@ export const TILES: Tile[] = [
     roles: ["owner", "admin", "manager", "advisor"],
     scopes: ["management", "all"],
   },
+  {
+    href: "/dashboard/admin",
+    title: "Admin Dashboard",
+    subtitle: "Governance and workforce command hub",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
+  {
+    href: "/dashboard/admin/users",
+    title: "User Governance",
+    subtitle: "Identity, role access, and account controls",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
+  {
+    href: "/dashboard/admin/employees",
+    title: "Employees",
+    subtitle: "Workforce posture and onboarding readiness",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
+  {
+    href: "/dashboard/admin/payroll-time",
+    title: "Payroll Time",
+    subtitle: "Pay-period review, exceptions, and export",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
+  {
+    href: "/dashboard/admin/shops",
+    title: "Shop Oversight",
+    subtitle: "Tenant profile quality and owner posture",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
+  {
+    href: "/dashboard/admin/audit",
+    title: "Audit",
+    subtitle: "Sensitive action timeline and investigation",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+  },
 
   // --- Settings & Reports ---
   {

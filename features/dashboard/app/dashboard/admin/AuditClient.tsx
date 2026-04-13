@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, Json } from "@shared/types/types/supabase";
 import {
@@ -101,6 +102,27 @@ export default function AdminAuditClient() {
           <AdminStatCard label="Last 24 hours" value={summary.last24h} />
           <AdminStatCard label="Visible rows" value={summary.visible} />
         </AdminStatGrid>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Follow-up Paths"
+          description="Move from suspicious events into the right operational surface without losing context."
+        />
+        <div className="grid gap-3 p-4 md:grid-cols-3">
+          <Link href="/dashboard/admin/users" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-white">Identity follow-up</p>
+            <p className="mt-1 text-xs text-neutral-400">Use Users when actions involve role or account governance changes.</p>
+          </Link>
+          <Link href="/dashboard/admin/shops" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-white">Tenant follow-up</p>
+            <p className="mt-1 text-xs text-neutral-400">Use Shops when actions indicate shop ownership or profile risk.</p>
+          </Link>
+          <Link href="/dashboard/admin/payroll-time" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-white">Payroll follow-up</p>
+            <p className="mt-1 text-xs text-neutral-400">Use Payroll Time when edits affect employee time review or approvals.</p>
+          </Link>
+        </div>
       </AdminPanel>
 
       <AdminPanel>
