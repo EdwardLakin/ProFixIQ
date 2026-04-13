@@ -49,7 +49,7 @@ export default function SignUpClient() {
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
         const redirect = sp.get("redirect");
-        router.replace(redirect || "/dashboard");
+        router.replace(redirect || "/onboarding");
       }
     })();
   }, [router, sp, supabase]);
@@ -89,14 +89,14 @@ export default function SignUpClient() {
 
     if (!data.session) {
       setNotice(
-        "Check your email to confirm your account. After confirming, we’ll take you to your dashboard."
+        "Check your email to confirm your account. After confirming, we’ll take you to onboarding."
       );
       setLoading(false);
       return;
     }
 
     const redirect = sp.get("redirect");
-    await go(redirect || "/dashboard");
+    await go(redirect || "/onboarding");
     setLoading(false);
   };
 

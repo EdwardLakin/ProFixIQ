@@ -3,6 +3,7 @@ import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
+import { headers } from "next/headers";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -39,6 +40,18 @@ export default async function RootLayout({
     data: { session },
   } = await supabase.auth.getSession();
 
+  const hdrs = await headers();
+  const pathname = hdrs.get("x-next-pathname") ?? "";
+
+  const useAppShell =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/work-orders") ||
+    pathname.startsWith("/inspections") ||
+    pathname.startsWith("/parts") ||
+    pathname.startsWith("/mobile") ||
+    pathname.startsWith("/tech") ||
+    pathname.startsWith("/portal");
+
   return (
     <html
       lang="en"
@@ -60,7 +73,7 @@ export default async function RootLayout({
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
             <BrandThemeBoot />
-            <AppShell>{children}</AppShell>
+            {useAppShell ? <AppShell>{children}</AppShell> : children}
           </VoiceProvider>
 
           <Toaster
