@@ -375,7 +375,7 @@ export default function AdminQuickPanel() {
           <h3 className="text-sm font-semibold text-neutral-300">
             Certifications Expiring (30 days)
           </h3>
-          <Link href="/dashboard/admin/certifications" className="text-xs text-orange-400 underline">
+          <Link href="/dashboard/admin/employee-docs" className="text-xs text-orange-400 underline">
             Manage
           </Link>
         </div>

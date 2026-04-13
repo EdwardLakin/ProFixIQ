@@ -1,3 +1,7 @@
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import EmployeesClient from "@/features/dashboard/app/dashboard/admin/EmployeesClient";
-export default function Page(){ return <EmployeesClient/>; }
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  redirect("/dashboard/admin/users");
+}

@@ -289,14 +289,9 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     icon: "📈",
     roles: ["owner", "admin", "manager"],
   },
-  "/dashboard/admin/scheduling": {
-    title: () => "Scheduling",
-    icon: "📅",
-    roles: ["owner", "admin", "manager", "advisor"],
-  },
-  "/dashboard/admin/billing": {
-    title: () => "Billing",
-    icon: "💳",
+  "/dashboard/admin": {
+    title: () => "Admin",
+    icon: "🛡️",
     roles: ["owner", "admin"],
   },
   "/dashboard/owner/payments": {

@@ -200,7 +200,7 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin/scheduling",
+    href: "/dashboard/appointments",
     title: "Scheduling",
     subtitle: "Calendar & bookings",
     roles: ["owner", "admin", "manager", "advisor"],

@@ -1,3 +1,7 @@
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import CreateUserClient from "@/features/dashboard/app/dashboard/admin/CreateUserClient";
-export default function Page(){ return <CreateUserClient/>; }
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  redirect("/dashboard/owner/create-user");
+}

@@ -1,9 +1,10 @@
-"use client";
-
 import { Suspense } from "react";
 import FeaturePage from "@/features/dashboard/app/dashboard/owner/create-user/page";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-export default function Page() {
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+
   return (
     <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
       <FeaturePage />

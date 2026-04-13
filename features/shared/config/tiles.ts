@@ -373,7 +373,7 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
-    href: "/dashboard/admin/scheduling",
+    href: "/dashboard/appointments",
     title: "Scheduling",
     subtitle: "Calendar & bookings",
     roles: ["owner", "admin", "manager", "advisor"],

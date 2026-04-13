@@ -2,12 +2,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import Stripe from "stripe";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -22,16 +19,10 @@ type CheckoutPayload = {
   applyFoundingDiscount?: boolean;
 };
 
-type ProfileScope = Pick<
-  DB["public"]["Tables"]["profiles"]["Row"],
-  "id" | "role" | "shop_id"
->;
-
 type ShopScope = Pick<
   DB["public"]["Tables"]["shops"]["Row"],
   "id" | "email" | "shop_name" | "name" | "stripe_customer_id"
 >;
-
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -86,7 +77,7 @@ async function resolvePriceId(stripe: Stripe, input: string): Promise<string | n
 
 async function createCustomerIfMissing(
   stripe: Stripe,
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: any,
   shop: ShopScope,
 ): Promise<string> {
   const existing = (shop.stripe_customer_id ?? "").trim();
@@ -121,43 +112,21 @@ export async function POST(req: Request) {
       apiVersion: "2022-11-15",
     });
 
-    const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", user.id)
-      .maybeSingle<ProfileScope>();
-
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
-    }
-
-    if (!profile?.shop_id) {
-      return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
-    }
-
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || !actor.canManageBilling) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBilling",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: req,
+    });
+    if (!access.ok) return access.response;
 
     const body = (await req.json().catch(() => null)) as CheckoutPayload | null;
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const requestedShopId = String(body.shopId ?? profile.shop_id).trim();
-    if (!requestedShopId || requestedShopId !== profile.shop_id) {
+    const requestedShopId = String(body.shopId ?? access.profile.shop_id).trim();
+    if (!requestedShopId || requestedShopId !== access.profile.shop_id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -174,7 +143,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: shop, error: shopError } = await supabase
+    const { data: shop, error: shopError } = await access.supabase
       .from("shops")
       .select("id, email, shop_name, name, stripe_customer_id")
       .eq("id", requestedShopId)
@@ -188,7 +157,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Shop not found." }, { status: 404 });
     }
 
-    const customerId = await createCustomerIfMissing(stripe, supabase, shop);
+    const customerId = await createCustomerIfMissing(stripe, access.supabase, shop);
 
     const baseUrl = getBaseUrl();
     const successUrl = `${baseUrl}${
@@ -223,7 +192,7 @@ export async function POST(req: Request) {
         ...(enableTrial ? { trial_period_days: trialDays } : {}),
         metadata: {
           shop_id: shop.id,
-          supabase_user_id: user.id,
+          supabase_user_id: access.profile.id,
           purpose: "profixiq_subscription",
           founding_discount_applied: applyFoundingDiscount ? "true" : "false",
           trial_enabled: enableTrial ? "true" : "false",
@@ -232,7 +201,7 @@ export async function POST(req: Request) {
       },
       metadata: {
         shop_id: shop.id,
-        supabase_user_id: user.id,
+        supabase_user_id: access.profile.id,
         purpose: "profixiq_subscription",
       },
       customer_update: {
@@ -241,25 +210,13 @@ export async function POST(req: Request) {
       },
     });
 
-    if (!session.url) {
-      return NextResponse.json(
-        { error: "Stripe did not return a Checkout URL" },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      ok: true,
-      url: session.url,
-      customerId,
-      priceId,
-    });
+    return NextResponse.json({ ok: true, sessionId: session.id, url: session.url });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message =
+      error instanceof Error ? error.message : "Failed to create Stripe checkout session.";
+
     console.error("[stripe/checkout] error", error);
-    return NextResponse.json(
-      { error: "Checkout failed", details: message },
-      { status: 500 },
-    );
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

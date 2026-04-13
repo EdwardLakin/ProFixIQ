@@ -1,10 +1,7 @@
 // app/api/admin/staff-invite-candidates/route.ts
 import { NextResponse } from "next/server";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const MAX_ROWS = 500;
 
@@ -17,35 +14,16 @@ const INVITE_STATUS = {
 } as const;
 
 export async function GET(req: Request) {
-  const supabaseUser = createServerSupabaseRoute();
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageUsers",
+    allowRoles: ["owner", "admin"],
+  });
+  if (!access.ok) return access.response;
+
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
 
   const status = (searchParams.get("status")?.trim() ?? INVITE_STATUS.pending).toLowerCase();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabaseUser.auth.getUser();
-
-  if (userErr || !user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: me, error: meErr } = await supabaseUser
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (meErr || !me || !me.shop_id) {
-    return NextResponse.json({ error: "Profile for current user not found" }, { status: 403 });
-  }
-
-  const actor = getActorCapabilities({ role: me.role });
-  if (!actor.canManageUsers) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   const admin = createAdminSupabase();
 
@@ -54,7 +32,7 @@ export async function GET(req: Request) {
     .select(
       "id, shop_id, intake_id, full_name, email, phone, username, role, source, confidence, notes, status, created_at, updated_at, created_user_id, created_profile_id, error",
     )
-    .eq("shop_id", me.shop_id)
+     .eq("shop_id", access.profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(MAX_ROWS);
 

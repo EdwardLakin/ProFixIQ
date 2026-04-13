@@ -1,64 +1,10 @@
 // app/api/admin/users/[id]/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
-
-type CallerProfile = Pick<
-  DB["public"]["Tables"]["profiles"]["Row"],
-  "id" | "role" | "shop_id"
->;
-
-type CallerOk = { ok: true; me: CallerProfile };
-type CallerBad = { ok: false; res: NextResponse };
-type CallerResult = CallerOk | CallerBad;
-
-async function getCaller(): Promise<CallerResult> {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      ok: false,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
-  }
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<CallerProfile>();
-
-  if (meErr || !me || !me.shop_id) {
-    return {
-      ok: false,
-      res: NextResponse.json(
-        { error: "Profile not found or missing shop" },
-        { status: 403 },
-      ),
-    };
-  }
-
-  const actor = getActorCapabilities({ role: me.role });
-  if (!actor.canManageUsers) {
-    return {
-      ok: false,
-      res: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
-    };
-  }
-
-  return { ok: true, me };
-}
 
 type TargetCheckOk = { ok: true };
 type TargetCheckBad = { ok: false; message: string };
@@ -86,12 +32,12 @@ async function assertTargetInSameShop(
 
 type PutBody = {
   full_name?: string | null;
+  phone?: string | null;
   role?: DB["public"]["Enums"]["user_role_enum"] | null;
 };
 
 type RouteContext = { params: { id: string } };
 
-// ✅ PUT /api/admin/users/:id
 export async function PUT(req: NextRequest, context: unknown) {
   const { params } = context as RouteContext;
   const id = params?.id;
@@ -100,8 +46,11 @@ export async function PUT(req: NextRequest, context: unknown) {
     return NextResponse.json({ error: "Missing user id" }, { status: 400 });
   }
 
-  const caller = await getCaller();
-  if (!caller.ok) return caller.res;
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageUsers",
+    allowRoles: ["owner", "admin"],
+  });
+  if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as PutBody | null;
 
@@ -109,19 +58,20 @@ export async function PUT(req: NextRequest, context: unknown) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (body.full_name === undefined && body.role === undefined) {
+  if (body.full_name === undefined && body.role === undefined && body.phone === undefined) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
   const admin = createAdminSupabase();
 
-  const check = await assertTargetInSameShop(admin, caller.me.shop_id!, id);
+  const check = await assertTargetInSameShop(admin, access.profile.shop_id!, id);
   if (!check.ok) {
     return NextResponse.json({ error: check.message }, { status: 403 });
   }
 
   const update: Partial<DB["public"]["Tables"]["profiles"]["Update"]> = {
     ...(body.full_name !== undefined ? { full_name: body.full_name } : {}),
+    ...(body.phone !== undefined ? { phone: body.phone } : {}),
     ...(body.role !== undefined ? { role: body.role } : {}),
   };
 
@@ -134,7 +84,6 @@ export async function PUT(req: NextRequest, context: unknown) {
   return NextResponse.json({ ok: true });
 }
 
-// ✅ DELETE /api/admin/users/:id
 export async function DELETE(_req: NextRequest, context: unknown) {
   const { params } = context as RouteContext;
   const id = params?.id;
@@ -143,17 +92,19 @@ export async function DELETE(_req: NextRequest, context: unknown) {
     return NextResponse.json({ error: "Missing user id" }, { status: 400 });
   }
 
-  const caller = await getCaller();
-  if (!caller.ok) return caller.res;
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageUsers",
+    allowRoles: ["owner", "admin"],
+  });
+  if (!access.ok) return access.response;
 
   const admin = createAdminSupabase();
 
-  const check = await assertTargetInSameShop(admin, caller.me.shop_id!, id);
+  const check = await assertTargetInSameShop(admin, access.profile.shop_id!, id);
   if (!check.ok) {
     return NextResponse.json({ error: check.message }, { status: 403 });
   }
 
-  // Delete profile row first
   const { error: profileErr } = await admin
     .from("profiles")
     .delete()
@@ -163,7 +114,6 @@ export async function DELETE(_req: NextRequest, context: unknown) {
     return NextResponse.json({ error: profileErr.message }, { status: 500 });
   }
 
-  // Delete auth user
   const { error: authErr } = await admin.auth.admin.deleteUser(id);
 
   if (authErr) {

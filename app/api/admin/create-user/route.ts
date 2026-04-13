@@ -3,14 +3,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
-
-// ⬇️ If you ALREADY have a helper like this somewhere else, import that instead:
-// import { createRouteHandlerClient } from "@/features/shared/lib/supabase/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"; // <-- this is the common one
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Body = {
   username: string;
@@ -47,51 +42,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Temporary password is required." }, { status: 400 });
     }
 
-    // 1) get the caller (the shop admin creating the user)
-    const cookieStore = cookies();
-    const userScopedSupabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageUsers",
+      allowRoles: ["owner", "admin"],
+    });
+    if (!access.ok) return access.response;
 
-    const {
-      data: { user: caller },
-    } = await userScopedSupabase.auth.getUser();
-
-    if (!caller) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-
-    // 2) get caller's profile to know their shop + role
-    const { data: callerProfile, error: callerProfileErr } = await userScopedSupabase
-      .from("profiles")
-      .select("shop_id, role")
-      .eq("id", caller.id)
-      .maybeSingle();
-
-    if (callerProfileErr) {
-      return NextResponse.json(
-        { error: `Failed to load caller profile: ${callerProfileErr.message}` },
-        { status: 500 }
-      );
-    }
-
-    if (!callerProfile?.shop_id) {
-      // tenant-safe: you can't create users if you're not in a shop
-      return NextResponse.json(
-        { error: "Your profile has no shop_id. Cannot create user for a shop." },
-        { status: 403 }
-      );
-    }
-
-    const callerShopId = callerProfile.shop_id;
-    const actor = getActorCapabilities({ role: callerProfile.role });
-    if (!actor.isKnownRole || !actor.canManageUsers) {
-      return NextResponse.json(
-        { error: "You do not have permission to create users." },
-        { status: 403 }
-      );
-    }
-
-    // 3) we now have the shop_id we MUST use
-    const effectiveShopId = callerShopId;
+    // Always force the creator's shop_id to preserve tenant boundaries.
+    const effectiveShopId = access.profile.shop_id;
 
     // 4) build service client to actually create auth user
     const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
