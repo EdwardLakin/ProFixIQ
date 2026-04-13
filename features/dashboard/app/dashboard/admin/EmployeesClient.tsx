@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -28,6 +29,7 @@ export default function AdminEmployeesClient() {
   const [err, setErr] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [payrollExceptionMap, setPayrollExceptionMap] = useState<Record<string, { blocking: number; warning: number }>>({});
 
   useEffect(() => {
     (async () => {
@@ -40,6 +42,23 @@ export default function AdminEmployeesClient() {
 
       if (error) setErr(error.message);
       setRows(data ?? []);
+
+      const { data: exceptionRows } = await supabase
+        .from("payroll_time_exceptions")
+        .select("user_id, severity, resolved")
+        .eq("resolved", false)
+        .returns<Array<{ user_id: string; severity: "blocking" | "warning"; resolved: boolean }>>();
+
+      if (exceptionRows) {
+        const next: Record<string, { blocking: number; warning: number }> = {};
+        for (const row of exceptionRows) {
+          const key = row.user_id;
+          if (!next[key]) next[key] = { blocking: 0, warning: 0 };
+          if (row.severity === "blocking") next[key].blocking += 1;
+          if (row.severity === "warning") next[key].warning += 1;
+        }
+        setPayrollExceptionMap(next);
+      }
     })();
   }, [supabase]);
 
@@ -70,14 +89,19 @@ export default function AdminEmployeesClient() {
       const diff = Date.now() - new Date(row.last_active_at).getTime();
       return diff <= 1000 * 60 * 60 * 24 * 30;
     }).length;
+    const payrollFollowUp = allRows.filter((row) => {
+      const profile = payrollExceptionMap[row.id];
+      return (profile?.blocking ?? 0) > 0 || (profile?.warning ?? 0) > 0;
+    }).length;
 
     return {
       total: allRows.length,
       onboardingMissing,
       contactGaps,
       recentlyActive,
+      payrollFollowUp,
     };
-  }, [rows]);
+  }, [payrollExceptionMap, rows]);
 
   return (
     <AdminPageShell>
@@ -97,6 +121,7 @@ export default function AdminEmployeesClient() {
           <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
           <AdminStatCard label="Contact gaps" value={summary.contactGaps} hint="Missing email or phone" />
           <AdminStatCard label="Active in 30d" value={summary.recentlyActive} />
+          <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Employees with open payroll exceptions" />
         </AdminStatGrid>
       </AdminPanel>
 
@@ -137,7 +162,12 @@ export default function AdminEmployeesClient() {
       <AdminPanel>
         <AdminPanelTitle
           title="Employee Records"
-          description="Directory posture across role, onboarding, contact completeness, and activity recency."
+          description="Directory posture across role, onboarding, contact completeness, activity recency, and payroll exception linkage."
+          action={
+            <Link href="/dashboard/admin/payroll-time" className="text-xs font-medium text-orange-300 hover:text-orange-200">
+              Open Payroll Time →
+            </Link>
+          }
         />
 
         {!rows ? (
@@ -154,6 +184,7 @@ export default function AdminEmployeesClient() {
                   <th className="px-4 py-2.5 text-left">Onboarding</th>
                   <th className="px-4 py-2.5 text-left">Contact</th>
                   <th className="px-4 py-2.5 text-left">Last active</th>
+                  <th className="px-4 py-2.5 text-left">Payroll posture</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -172,6 +203,15 @@ export default function AdminEmployeesClient() {
                     <td className="px-4 py-2.5 text-neutral-300">{r.phone ?? "Missing phone"}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-neutral-300">
                       {r.last_active_at ? new Date(r.last_active_at).toLocaleDateString() : "Never recorded"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {payrollExceptionMap[r.id]?.blocking ? (
+                        <AdminBadge>{payrollExceptionMap[r.id].blocking} blocking</AdminBadge>
+                      ) : payrollExceptionMap[r.id]?.warning ? (
+                        <AdminBadge>{payrollExceptionMap[r.id].warning} warning</AdminBadge>
+                      ) : (
+                        <span className="text-xs text-neutral-500">No open payroll exceptions</span>
+                      )}
                     </td>
                   </tr>
                 ))}

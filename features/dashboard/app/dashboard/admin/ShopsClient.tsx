@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -130,7 +131,15 @@ export default function AdminShopsClient() {
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="Shop Directory" description="Review key metadata and governance posture before taking follow-up action." />
+        <AdminPanelTitle
+          title="Shop Directory"
+          description="Review key metadata and governance posture before taking follow-up action."
+          action={
+            <Link href="/dashboard/admin/users" className="text-xs font-medium text-orange-300 hover:text-orange-200">
+              Validate owner/user posture →
+            </Link>
+          }
+        />
 
         {!rows ? (
           <AdminEmptyState title="Loading shops" body="Reading tenant shop records." />
@@ -145,6 +154,7 @@ export default function AdminShopsClient() {
                   <th className="px-4 py-2.5 text-left">Location</th>
                   <th className="px-4 py-2.5 text-left">Contact</th>
                   <th className="px-4 py-2.5 text-left">Plan</th>
+                  <th className="px-4 py-2.5 text-left">Owner</th>
                   <th className="px-4 py-2.5 text-left">Health</th>
                   <th className="px-4 py-2.5 text-left">Created</th>
                 </tr>
@@ -159,6 +169,9 @@ export default function AdminShopsClient() {
                       <p>{s.phone_number ?? "No phone"}</p>
                     </td>
                     <td className="px-4 py-2.5">{s.plan ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <AdminBadge>{s.owner_id ? "Assigned" : "Missing owner"}</AdminBadge>
+                    </td>
                     <td className="px-4 py-2.5">
                       <AdminBadge>{healthLabel(s)}</AdminBadge>
                     </td>

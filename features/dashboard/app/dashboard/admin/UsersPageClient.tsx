@@ -9,7 +9,7 @@ export default function UsersPageClient() {
       <AdminPageHeader
         eyebrow="Identity Governance"
         title="Users"
-        subtitle="Search, update, and maintain user records with clear role and contact visibility."
+        subtitle="Search, update, and maintain account identity/role access. Use Employees and Payroll Time for workforce posture and pay-period readiness."
       />
       <UsersList />
     </AdminPageShell>

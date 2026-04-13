@@ -389,6 +389,14 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
+    href: "/dashboard/admin/payroll-time",
+    title: "Payroll Time",
+    subtitle: "Pay period review, exception triage, and export workflow",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
     href: "/dashboard/owner/create-user",
     title: "Create User",
     subtitle: "Add team members",

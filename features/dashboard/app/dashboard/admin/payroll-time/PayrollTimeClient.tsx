@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AdminBadge,
   AdminEmptyState,
@@ -60,6 +61,8 @@ export default function PayrollTimeClient() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [csvPreview, setCsvPreview] = useState<string | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [exceptionSeverityFilter, setExceptionSeverityFilter] = useState<"all" | "blocking" | "warning">("all");
 
   const activePeriod = useMemo(
     () => periods.find((p) => p.id === activePeriodId) ?? null,
@@ -80,6 +83,19 @@ export default function PayrollTimeClient() {
       warnings,
     };
   }, [entries, exceptions]);
+
+  const filteredEntries = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter((entry) => {
+      const person = `${entry.profiles?.full_name ?? ""} ${entry.profiles?.email ?? ""} ${entry.user_id}`.toLowerCase();
+      return person.includes(q);
+    });
+  }, [employeeSearch, entries]);
+
+  const filteredExceptions = useMemo(() => {
+    return exceptions.filter((item) => (exceptionSeverityFilter === "all" ? true : item.severity === exceptionSeverityFilter));
+  }, [exceptionSeverityFilter, exceptions]);
 
   const load = useCallback(async (periodId?: string | null) => {
     setLoading(true);
@@ -168,6 +184,22 @@ export default function PayrollTimeClient() {
       </AdminPanel>
 
       <AdminPanel>
+        <AdminPanelTitle
+          title="Connected Workforce Context"
+          description="Payroll review stays aligned with employee identity/workforce posture."
+        />
+        <div className="flex flex-wrap items-center gap-3 p-4 text-xs">
+          <Link href="/dashboard/admin/employees" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+            Open Employees
+          </Link>
+          <Link href="/dashboard/admin/users" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+            Open User Governance
+          </Link>
+          <span className="text-neutral-400">Use Employees for onboarding/contact posture. Use Users for identity/role corrections.</span>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
         <AdminPanelTitle title="Pay Period Review" description="Rebuild while open, approve to lock, then export to a payroll-provider-ready CSV snapshot." />
         <AdminToolbar>
           <select
@@ -217,10 +249,21 @@ export default function PayrollTimeClient() {
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="Employee Daily Payroll Entries" description="Attendance is payroll base truth; job time is supplemental visibility for productivity context." />
+        <AdminPanelTitle
+          title="Employee Daily Payroll Entries"
+          description="Attendance is payroll base truth; job time is supplemental visibility for productivity context."
+        />
+        <AdminToolbar>
+          <input
+            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-96"
+            placeholder="Filter entries by employee name, email, or id"
+            value={employeeSearch}
+            onChange={(event) => setEmployeeSearch(event.target.value)}
+          />
+        </AdminToolbar>
         {loading ? (
           <AdminEmptyState title="Loading payroll period" body="Collecting derived payroll-ready rows." />
-        ) : entries.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <AdminEmptyState title="No derived entries" body="Run rebuild to derive payroll-ready entries from attendance and job source layers." />
         ) : (
           <div className="overflow-x-auto">
@@ -238,7 +281,7 @@ export default function PayrollTimeClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {entries.map((entry) => (
+                {filteredEntries.map((entry) => (
                   <tr key={entry.id} className="text-neutral-200">
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-neutral-100">{entry.profiles?.full_name ?? entry.user_id}</p>
@@ -269,7 +312,18 @@ export default function PayrollTimeClient() {
 
       <AdminPanel>
         <AdminPanelTitle title="Exception Queue" description="Exceptions keep traceability; unresolved blocking exceptions prevent period approval." />
-        {exceptions.length === 0 ? (
+        <AdminToolbar>
+          <select
+            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-64"
+            value={exceptionSeverityFilter}
+            onChange={(event) => setExceptionSeverityFilter(event.target.value as "all" | "blocking" | "warning")}
+          >
+            <option value="all">All severities</option>
+            <option value="blocking">Blocking only</option>
+            <option value="warning">Warnings only</option>
+          </select>
+        </AdminToolbar>
+        {filteredExceptions.length === 0 ? (
           <AdminEmptyState title="No exceptions" body="No flagged anomalies in this period." />
         ) : (
           <div className="overflow-x-auto">
@@ -284,7 +338,7 @@ export default function PayrollTimeClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {exceptions.map((item) => (
+                {filteredExceptions.map((item) => (
                   <tr key={item.id} className="text-neutral-200">
                     <td className="px-4 py-2.5">
                       <AdminBadge>{item.severity}</AdminBadge>
