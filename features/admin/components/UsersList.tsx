@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import {
+  AdminBadge,
   AdminEmptyState,
+  AdminField,
   AdminPanel,
   AdminPanelTitle,
+  AdminStatCard,
+  AdminStatGrid,
+  AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 type DB = Database;
@@ -22,12 +28,21 @@ type UserRow = {
   shop_id: string | null;
 };
 
+const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
+  { value: "owner", label: "Owner" },
+  { value: "admin", label: "Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "advisor", label: "Advisor" },
+  { value: "mechanic", label: "Mechanic" },
+];
+
 function safeMsg(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
 export default function UsersList(): JSX.Element {
   const [search, setSearch] = useState<string>("");
+  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +75,21 @@ export default function UsersList(): JSX.Element {
     void load();
   }, [load]);
 
+  const filteredRows = useMemo(
+    () => rows.filter((row) => (roleFilter === "all" ? true : row.role === roleFilter)),
+    [roleFilter, rows],
+  );
+
+  const summary = useMemo(() => {
+    const privileged = rows.filter((row) => row.role === "owner" || row.role === "admin").length;
+    const missingPhone = rows.filter((row) => !row.phone).length;
+    return {
+      total: rows.length,
+      privileged,
+      missingPhone,
+    };
+  }, [rows]);
+
   async function saveEdit(): Promise<void> {
     if (!editId) return;
 
@@ -76,7 +106,8 @@ export default function UsersList(): JSX.Element {
     });
 
     if (!res.ok) {
-      setError(`Failed to save (${res.status})`);
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      setError(payload?.error ?? `Failed to save (${res.status})`);
       return;
     }
 
@@ -105,28 +136,62 @@ export default function UsersList(): JSX.Element {
     <div className="space-y-4">
       <AdminPanel>
         <AdminPanelTitle
-          title="Filter"
-          description="Query by name, email, or phone to quickly locate managed users."
+          title="Workflow Purpose"
+          description="Users covers account governance. Use Employees for workforce posture and activity review."
+          action={
+            <Link href="/dashboard/admin/employees" className="text-xs font-medium text-orange-300 hover:text-orange-200">
+              Open Employees →
+            </Link>
+          }
+        />
+        <AdminStatGrid>
+          <AdminStatCard label="Users in scope" value={summary.total} />
+          <AdminStatCard label="Privileged users" value={summary.privileged} hint="Owner/Admin roles" />
+          <AdminStatCard label="Missing phone" value={summary.missingPhone} hint="Potential contact gaps" />
+          <AdminStatCard label="Visible rows" value={filteredRows.length} hint="After role filters" />
+        </AdminStatGrid>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Filter & Locate"
+          description="Search by name, email, or phone, then narrow by role for targeted governance actions."
           action={
             <Button type="button" variant="default" className="font-semibold" onClick={() => void load()} disabled={loading}>
-              {loading ? "Loading…" : "Search"}
+              {loading ? "Loading…" : "Refresh"}
             </Button>
           }
         />
 
-        <div className="p-4">
-          <input
-            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
-            placeholder="Search name, email, or phone…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
-        </div>
+        <AdminToolbar>
+          <AdminField label="Search" className="flex-1">
+            <input
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              placeholder="Search name, email, or phone…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Role" className="w-full md:w-52">
+            <select
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as UserRole | "all")}
+            >
+              <option value="all">All roles</option>
+              {ROLE_OPTIONS.map((role) => (
+                <option key={role.value} value={role.value}>
+                  {role.label}
+                </option>
+              ))}
+            </select>
+          </AdminField>
+        </AdminToolbar>
+        {error ? <p className="px-4 pb-3 text-xs text-red-300">{error}</p> : null}
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="Directory" description="Administrative user list with role and contact context." />
+        <AdminPanelTitle title="User Directory" description="Edit or remove account records. Review role and identity context before changes." />
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -136,11 +201,12 @@ export default function UsersList(): JSX.Element {
                 <th className="px-4 py-2.5 text-left">Email</th>
                 <th className="px-4 py-2.5 text-left">Phone</th>
                 <th className="px-4 py-2.5 text-left">Role</th>
+                <th className="px-4 py-2.5 text-left">Created</th>
                 <th className="px-4 py-2.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {rows.map((u) => (
+              {filteredRows.map((u) => (
                 <tr key={u.id} className="text-neutral-200">
                   <td className="px-4 py-2.5">
                     <div className="font-medium text-neutral-100">{u.full_name ?? "—"}</div>
@@ -149,7 +215,10 @@ export default function UsersList(): JSX.Element {
                   <td className="px-4 py-2.5">{u.email ?? "—"}</td>
                   <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
                   <td className="px-4 py-2.5">
-                    <span className="rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-xs">{u.role ?? "—"}</span>
+                    <AdminBadge>{u.role ?? "—"}</AdminBadge>
+                  </td>
+                  <td className="px-4 py-2.5 text-neutral-300">
+                    {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="inline-flex gap-2">
@@ -167,7 +236,13 @@ export default function UsersList(): JSX.Element {
                       >
                         Edit
                       </Button>
-                      <Button type="button" size="xs" variant="ghost" className="text-red-300" onClick={() => void deleteUser(u.id)}>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="text-red-300"
+                        onClick={() => void deleteUser(u.id)}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -177,8 +252,11 @@ export default function UsersList(): JSX.Element {
             </tbody>
           </table>
 
-          {!loading && rows.length === 0 ? (
-            <AdminEmptyState title="No users found" body="Try expanding your search terms or add users from Owner onboarding tools." />
+          {!loading && filteredRows.length === 0 ? (
+            <AdminEmptyState
+              title="No users found"
+              body="Try adjusting search and role filters, or confirm users exist in the current shop scope."
+            />
           ) : null}
 
           {loading ? <AdminEmptyState title="Loading users" body="Fetching the latest user directory." /> : null}
@@ -215,11 +293,11 @@ export default function UsersList(): JSX.Element {
                   onChange={(e) => setEditRole(e.target.value as UserRole | "")}
                 >
                   <option value="">—</option>
-                  <option value="owner">Owner</option>
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="advisor">Advisor</option>
-                  <option value="mechanic">Mechanic</option>
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
                 </select>
               </label>
 
