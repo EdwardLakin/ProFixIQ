@@ -25,9 +25,22 @@ export default function SignUpClient() {
   }, []);
 
   const emailRedirectTo = useMemo(() => {
+    const params = new URLSearchParams();
+
     const redirect = sp.get("redirect");
-    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    return `${origin}/auth/callback${tail}`;
+    const priceId = sp.get("priceId");
+    const interval = sp.get("interval");
+    const trial = sp.get("trial");
+    const founding = sp.get("founding");
+
+    if (redirect) params.set("redirect", redirect);
+    if (priceId) params.set("priceId", priceId);
+    if (interval) params.set("interval", interval);
+    if (trial) params.set("trial", trial);
+    if (founding) params.set("founding", founding);
+
+    const tail = params.toString();
+    return `${origin}/auth/callback${tail ? `?${tail}` : ""}`;
   }, [origin, sp]);
 
   useEffect(() => {
@@ -49,7 +62,20 @@ export default function SignUpClient() {
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
         const redirect = sp.get("redirect");
-        router.replace(redirect || "/onboarding");
+        const params = new URLSearchParams();
+
+        const priceId = sp.get("priceId");
+        const interval = sp.get("interval");
+        const trial = sp.get("trial");
+        const founding = sp.get("founding");
+
+        if (priceId) params.set("priceId", priceId);
+        if (interval) params.set("interval", interval);
+        if (trial) params.set("trial", trial);
+        if (founding) params.set("founding", founding);
+
+        const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
+        router.replace(redirect || onboardingTarget);
       }
     })();
   }, [router, sp, supabase]);
@@ -96,7 +122,21 @@ export default function SignUpClient() {
     }
 
     const redirect = sp.get("redirect");
-    await go(redirect || "/onboarding");
+    const params = new URLSearchParams();
+
+    const priceId = sp.get("priceId");
+    const interval = sp.get("interval");
+    const trial = sp.get("trial");
+    const founding = sp.get("founding");
+
+    if (priceId) params.set("priceId", priceId);
+    if (interval) params.set("interval", interval);
+    if (trial) params.set("trial", trial);
+    if (founding) params.set("founding", founding);
+
+    const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
+
+    await go(redirect || onboardingTarget);
     setLoading(false);
   };
 
