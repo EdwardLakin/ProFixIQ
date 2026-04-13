@@ -110,9 +110,9 @@ export default function AdminAuditClient() {
           description="Move from suspicious events into the right operational surface without losing context."
         />
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <Link href="/dashboard/admin/users" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
+          <Link href="/dashboard/admin/people" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
             <p className="text-sm font-medium text-white">Identity follow-up</p>
-            <p className="mt-1 text-xs text-neutral-400">Use Users when actions involve role or account governance changes.</p>
+            <p className="mt-1 text-xs text-neutral-400">Use People when actions involve person identity, workforce status, or credential readiness.</p>
           </Link>
           <Link href="/dashboard/admin/shops" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
             <p className="text-sm font-medium text-white">Tenant follow-up</p>

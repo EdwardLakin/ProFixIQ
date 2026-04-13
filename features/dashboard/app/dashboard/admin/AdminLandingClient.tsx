@@ -22,21 +22,21 @@ type AdminSummary = {
   openPayrollPeriods: number;
   payrollBlockingExceptions: number;
   payrollWarningExceptions: number;
-  onboardingMissingEmployees: number;
+  onboardingMissingWorkforce: number;
 };
 
 const CANONICAL_ADMIN_ROUTES = [
   {
-    href: "/dashboard/admin/users",
-    label: "User Governance",
-    description: "Identity records, role updates, and account-level controls.",
-    nextStep: "Review roles and profile edits",
+    href: "/dashboard/admin/people",
+    label: "People & Staff",
+    description: "Canonical person records for identity/access, workforce profile, certifications, and payroll posture.",
+    nextStep: "Open person workspace and manage sections",
   },
   {
-    href: "/dashboard/admin/employees",
-    label: "Employees",
-    description: "Workforce profile coverage and activity posture by role.",
-    nextStep: "Find missing profile and onboarding data",
+    href: "/dashboard/admin/people?view=workforce",
+    label: "Workforce Readiness View",
+    description: "Filtered workforce posture view sourced from canonical People records.",
+    nextStep: "Close onboarding/certification gaps",
   },
   {
     href: "/dashboard/admin/shops",
@@ -134,7 +134,7 @@ export default function AdminLandingClient() {
         openPayrollPeriods: openPeriods.count ?? 0,
         payrollBlockingExceptions: blockingExceptions.count ?? 0,
         payrollWarningExceptions: warningExceptions.count ?? 0,
-        onboardingMissingEmployees: onboardingMissing.count ?? 0,
+        onboardingMissingWorkforce: onboardingMissing.count ?? 0,
       });
     })();
   }, [supabase]);
@@ -144,7 +144,7 @@ export default function AdminLandingClient() {
       <AdminPageHeader
         eyebrow="Admin Control Surface"
         title="Administration"
-        subtitle="Use this page to triage governance work, then move directly into users, employees, shops, or audit actions."
+        subtitle="Use this page to triage governance work, then move directly into People, payroll, shops, or audit actions."
       />
 
       <AdminPanel>
@@ -154,14 +154,14 @@ export default function AdminLandingClient() {
           <AdminEmptyState title="Loading governance summary" body="Collecting counts from canonical admin surfaces." />
         ) : (
           <AdminStatGrid>
-            <AdminStatCard label="Users" value={summary.userCount} hint="Identity records in profiles." />
-            <AdminStatCard label="Employees" value={summary.employeeCount} hint="Profiles with assigned roles." />
+            <AdminStatCard label="People" value={summary.userCount} hint="Canonical shop-scoped person records." />
+            <AdminStatCard label="Workforce profiles" value={summary.employeeCount} hint="People with assigned workforce posture." />
             <AdminStatCard label="Shops" value={summary.shopCount} hint="Tenant records in oversight scope." />
             <AdminStatCard label="Audit (24h)" value={summary.audit24hCount} hint="Privileged events in last day." />
             <AdminStatCard label="Open payroll periods" value={summary.openPayrollPeriods} hint="Open or draft periods needing reviewer attention." />
             <AdminStatCard label="Payroll blocking exceptions" value={summary.payrollBlockingExceptions} hint="Must be cleared before approval lock." />
             <AdminStatCard label="Payroll warnings" value={summary.payrollWarningExceptions} hint="Non-blocking anomalies to review." />
-            <AdminStatCard label="Employees missing onboarding" value={summary.onboardingMissingEmployees} hint="Workforce readiness follow-up." />
+            <AdminStatCard label="Workforce missing onboarding" value={summary.onboardingMissingWorkforce} hint="Workforce readiness follow-up." />
           </AdminStatGrid>
         )}
       </AdminPanel>
@@ -195,17 +195,17 @@ export default function AdminLandingClient() {
         <div className="grid gap-3 p-4 md:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-black/25 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Governance</p>
-            <p className="mt-2 text-sm font-medium text-white">Users → Audit</p>
+            <p className="mt-2 text-sm font-medium text-white">People → Audit</p>
             <p className="mt-2 text-xs text-neutral-400">Validate account changes, then inspect privileged actions for anomalies.</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/25 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Workforce</p>
-            <p className="mt-2 text-sm font-medium text-white">Employees → Payroll Time</p>
-            <p className="mt-2 text-xs text-neutral-400">Close onboarding gaps, then review exception posture by pay period.</p>
+            <p className="mt-2 text-sm font-medium text-white">People → Payroll Time</p>
+            <p className="mt-2 text-xs text-neutral-400">Close onboarding/certification gaps, then review payroll exceptions.</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/25 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Tenant quality</p>
-            <p className="mt-2 text-sm font-medium text-white">Shops → Users</p>
+            <p className="mt-2 text-sm font-medium text-white">Shops → People</p>
             <p className="mt-2 text-xs text-neutral-400">Resolve shop metadata gaps and verify ownership/account coverage.</p>
           </div>
         </div>
@@ -217,8 +217,8 @@ export default function AdminLandingClient() {
           description="Use canonical pages for task completion and auditable operational decisions."
         />
         <div className="space-y-2 p-4 text-sm text-neutral-300">
-          <p>• Use Users for account-level edits and role governance actions.</p>
-          <p>• Use Employees for workforce profile completeness, onboarding posture, and payroll readiness context.</p>
+          <p>• Use People for account-level edits and role governance actions.</p>
+          <p>• Use Workforce Readiness View for workforce profile completeness, onboarding posture, and payroll readiness context.</p>
           <p>• Use Payroll Time for pay-period review, exception resolution, period approval, and export snapshots.</p>
           <p>• Use Shops to identify incomplete tenant records before operational impact.</p>
           <p>• Use Audit to validate sensitive changes and investigate anomalies quickly.</p>

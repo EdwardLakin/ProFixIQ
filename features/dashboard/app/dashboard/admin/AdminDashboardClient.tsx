@@ -8,7 +8,7 @@ import AdminQuickPanel from "@/features/admin/components/AdminQuickPanel";
 export default function AdminDashboardClient() {
   const tiles = [
     { href: "/dashboard/admin/audit", label: "Audit Logs" },
-    { href: "/dashboard/admin/users", label: "User Governance" },
+    { href: "/dashboard/admin/people", label: "People & Staff" },
     { href: "/dashboard/admin/shops", label: "Shops" },
     { href: "/dashboard/admin/roles", label: "Roles" },
     { href: "/dashboard/admin/employee-docs", label: "Employee Documents" },
