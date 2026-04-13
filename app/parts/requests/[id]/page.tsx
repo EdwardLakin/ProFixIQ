@@ -7,6 +7,19 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  RequestHeaderSection,
+  RequestItemsTable,
+  RequestProcurementPanel,
+  RequestReceivingPanel,
+  RequestStatusSummary,
+} from "./request-detail-components";
+import {
+  itemFlowLabel,
+  requestFlowLabel,
+  toItemFlowDisplay,
+  toRequestFlowDisplay,
+} from "@/features/parts/lib/status-display";
 
 type DB = Database;
 
@@ -117,23 +130,6 @@ function isRowComplete(it: UiItem): boolean {
   return hasPart && hasPrice && qty > 0;
 }
 
-function isPersistedRowComplete(it: UiItem): boolean {
-  const hasPart = isNonEmptyString(it.part_id ?? null);
-  const hasPrice = it.quoted_price != null;
-  const qty = toNum(it.qty, 0);
-  return hasPart && hasPrice && qty > 0;
-}
-
-function computeRequestBadge(
-  req: RequestRow,
-  items: UiItem[],
-): "needs_quote" | "quoted" {
-  const status = (req.status ?? "requested").toLowerCase();
-  if (status === "approved" || status === "fulfilled") return "quoted";
-  const allDone = items.length > 0 && items.every((it) => isPersistedRowComplete(it));
-  return allDone ? "quoted" : "needs_quote";
-}
-
 function n(v: unknown): number {
   const num = typeof v === "number" ? v : Number(v);
   return Number.isFinite(num) ? num : 0;
@@ -190,7 +186,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_BORDER = "border-sky-500/35";
   const ACCENT_TEXT = "text-sky-200";
-  const ACCENT_TEXT_SOFT = "text-sky-300";
   const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
 
@@ -212,6 +207,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
   const pillNeedsQuote = `${pillBase} border-red-500/35 bg-red-950/35 text-red-200`;
   const pillQuoted = `${pillBase} border-teal-500/35 bg-teal-950/25 text-teal-200`;
+  const pillProgress = `${pillBase} border-sky-500/35 bg-sky-950/25 text-sky-200`;
+  const pillComplete = `${pillBase} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
 
   const supplierNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -1047,6 +1044,31 @@ if (!lineId || !isUuid(lineId)) {
     label: String(s.name ?? String(s.id).slice(0, 8)),
   }));
 
+  const requestSummary = useMemo(() => {
+    let waiting = 0;
+    let ordered = 0;
+    let partiallyReceived = 0;
+    let complete = 0;
+    for (const r of requests) {
+      const requestState = toRequestFlowDisplay({
+        rawStatus: r.req.status,
+        itemStates: r.items.map((it) =>
+          toItemFlowDisplay({
+            rawStatus: (it as { status?: string | null }).status,
+            qty: it.qty,
+            qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
+            qtyReceived: (it as { qty_received?: unknown }).qty_received,
+          }),
+        ),
+      });
+      if (requestState === "pending") waiting += 1;
+      else if (requestState === "in_progress") ordered += 1;
+      else if (requestState === "ready") partiallyReceived += 1;
+      else complete += 1;
+    }
+    return { waiting, ordered, partiallyReceived, complete };
+  }, [requests]);
+
   return (
     <div className={pageWrap}>
       <button className={btnGhost} onClick={() => router.back()} type="button">
@@ -1061,47 +1083,25 @@ if (!lineId || !isUuid(lineId)) {
         </div>
       ) : (
         <>
-          <div className={`${glassCard} overflow-hidden`}>
-            <div className={`${glassHeader} px-4 py-3`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-xl font-semibold tracking-wide">
-                    Work Order <span className={ACCENT_TEXT}>{woDisplay}</span>
-                  </div>
-                  <div className="mt-1 text-sm text-neutral-400">
-                    Parts requests for this work order.
-                  </div>
-                </div>
-
-                {/* Optional PO selector (for receive drawer default) */}
-                <div className="flex items-center gap-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                    PO
-                  </div>
-                  <select
-                    className={`${selectBase} w-72`}
-                    value={selectedPo}
-                    onChange={(e) => setSelectedPo(e.target.value)}
-                    title="Optional: choose PO to apply receiving against"
-                  >
-                    <option value="">— none —</option>
-                    {pos.map((po) => (
-                      <option key={String(po.id)} value={String(po.id)}>
-                        {poLabelById.get(String(po.id)) ??
-                          `${String(po.id).slice(0, 8)} • ${String(po.status ?? "open")}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-3 text-xs text-neutral-400">
-                Add parts to attach them to the work order line. The request becomes{" "}
-                <span className={ACCENT_TEXT_SOFT}>quoted</span> automatically once
-                every row has a part + qty + price.
-              </div>
-            </div>
-          </div>
+          <RequestHeaderSection
+            title={
+              <>
+                Work Order <span className={ACCENT_TEXT}>{woDisplay}</span>
+              </>
+            }
+            subtitle="Parts requests for this work order."
+            selectedPo={selectedPo}
+            poOptions={poOptions}
+            onSelectedPoChange={setSelectedPo}
+            statusSummary={
+              <RequestStatusSummary
+                waiting={requestSummary.waiting}
+                ordered={requestSummary.ordered}
+                partiallyReceived={requestSummary.partiallyReceived}
+                complete={requestSummary.complete}
+              />
+            }
+          />
 
           {requests.length === 0 ? (
             <div className={`${glassCard} p-4 text-neutral-400`}>
@@ -1110,8 +1110,18 @@ if (!lineId || !isUuid(lineId)) {
           ) : (
             <div className="space-y-4">
               {requests.map((r) => {
-                const badge = computeRequestBadge(r.req, r.items);
                 const busy = savingReqId === r.req.id;
+                const requestState = toRequestFlowDisplay({
+                  rawStatus: r.req.status,
+                  itemStates: r.items.map((it) =>
+                    toItemFlowDisplay({
+                      rawStatus: (it as { status?: string | null }).status,
+                      qty: it.qty,
+                      qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
+                      qtyReceived: (it as { qty_received?: unknown }).qty_received,
+                    }),
+                  ),
+                });
 
                 const linkedLineId = resolveWorkOrderLineId(r.req, r.items);
                 const lineId = getEffectiveWorkOrderLineId(r.req, r.items);
@@ -1164,10 +1174,16 @@ if (!lineId || !isUuid(lineId)) {
                         <div className="flex items-center gap-2">
                           <span
                             className={
-                              badge === "needs_quote" ? pillNeedsQuote : pillQuoted
+                              requestState === "pending"
+                                ? pillNeedsQuote
+                                : requestState === "in_progress"
+                                  ? pillProgress
+                                  : requestState === "ready"
+                                    ? pillQuoted
+                                    : pillComplete
                             }
                           >
-                            {badge === "needs_quote" ? "Needs quote" : "Quoted"}
+                            {requestFlowLabel(requestState)}
                           </span>
 
                           <button
@@ -1183,8 +1199,8 @@ if (!lineId || !isUuid(lineId)) {
                       </div>
                     </div>
 
-                    <div className="p-3">
-                      <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/20">
+                    <div className="p-3 space-y-3">
+                      <RequestItemsTable>
                         <table className="w-full text-sm">
                           <thead className="bg-white/5 text-neutral-400">
                             <tr>
@@ -1239,6 +1255,12 @@ if (!lineId || !isUuid(lineId)) {
                                 const poLabel = uiPoId
                                   ? poLabelById.get(uiPoId) ?? uiPoId.slice(0, 8)
                                   : "";
+                                const itemState = toItemFlowDisplay({
+                                  rawStatus: (it as { status?: string | null }).status,
+                                  qty: it.qty,
+                                  qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
+                                  qtyReceived: (it as { qty_received?: unknown }).qty_received,
+                                });
 
                                 return (
                                   <tr
@@ -1302,6 +1324,11 @@ if (!lineId || !isUuid(lineId)) {
 
                                         {approved > 0 ? (
                                           <div className="text-[11px] text-neutral-500">
+                                            State{" "}
+                                            <span className="text-neutral-200">
+                                              {itemFlowLabel(itemState)}
+                                            </span>{" "}
+                                            <span className="text-neutral-600">·</span>{" "}
                                             Approved{" "}
                                             <span className="text-neutral-200">
                                               {approved}
@@ -1554,6 +1581,11 @@ if (!lineId || !isUuid(lineId)) {
                             )}
                           </tbody>
                         </table>
+                      </RequestItemsTable>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <RequestProcurementPanel />
+                        <RequestReceivingPanel />
                       </div>
 
                       {locations.length === 0 && (

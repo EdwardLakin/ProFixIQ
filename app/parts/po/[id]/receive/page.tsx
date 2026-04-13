@@ -390,7 +390,8 @@ export default function PoReceivePage(): JSX.Element {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Purchase order</div>
-          <h1 className="text-2xl font-bold">Receive PO</h1>
+          <h1 className="text-2xl font-bold">Receive from PO</h1>
+          <div className="mt-1 text-xs text-neutral-500">Receive from PO: items tied to this purchase order.</div>
           <div className="mt-1 text-sm text-neutral-400">
             PO: <span className="font-mono text-neutral-200">{poId.slice(0, 8)}</span> • Status:{" "}
             <span className="text-neutral-200">{poStatus}</span> • Supplier:{" "}
