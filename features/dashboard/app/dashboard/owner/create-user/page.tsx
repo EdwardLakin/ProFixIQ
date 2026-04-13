@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import UsersList from "@/features/admin/components/UsersList";
 import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
@@ -22,6 +23,7 @@ type CreatePayload = {
 const COPPER = "#C57A4A";
 
 export default function CreateUserPage(): JSX.Element {
+  const router = useRouter();
   const [form, setForm] = useState<CreatePayload>({
     username: "",
     password: "",
@@ -34,6 +36,9 @@ export default function CreateUserPage(): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
+  const [createdPersonHref, setCreatedPersonHref] = useState<string | null>(null);
+  const [openPeopleAfterCreate, setOpenPeopleAfterCreate] = useState(true);
 
   // force UsersList to re-run its effect
   const [listRefreshKey, setListRefreshKey] = useState(0);
@@ -84,6 +89,8 @@ export default function CreateUserPage(): JSX.Element {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
+    setCreatedUserId(null);
+    setCreatedPersonHref(null);
 
     try {
       const body: CreatePayload = {
@@ -108,13 +115,16 @@ export default function CreateUserPage(): JSX.Element {
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(t || "Failed to create user.");
-      }
+      const payload = (await res.json().catch(() => null)) as
+        | { error?: string; user_id?: string; people_record_href?: string }
+        | null;
+
+      if (!res.ok) throw new Error(payload?.error || "Failed to create user.");
 
       // local feedback
       setSuccess(`User "${body.username}" created.`);
+      setCreatedUserId(payload?.user_id ?? null);
+      setCreatedPersonHref(payload?.people_record_href ?? null);
       setRecentUsers((prev) =>
         [
           {
@@ -138,6 +148,10 @@ export default function CreateUserPage(): JSX.Element {
 
       // refresh list below
       setListRefreshKey((k) => k + 1);
+
+      if (openPeopleAfterCreate && payload?.people_record_href) {
+        router.push(payload.people_record_href);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unexpected error");
     } finally {
@@ -179,8 +193,8 @@ export default function CreateUserPage(): JSX.Element {
 
   return (
     <PageShell
-      title="Create User"
-      description="Add shop and fleet staff with a username and temporary password."
+      title="Create User (Access Provisioning)"
+      description="Provision account access, assign the initial role, and link the person to your shop. Complete workforce/profile setup in People."
     >
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -189,12 +203,13 @@ export default function CreateUserPage(): JSX.Element {
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-white">New team member</h2>
             <p className="text-sm text-neutral-400">
-              Create a username-based account for{" "}
+              This step provisions access only: create login credentials, set an
+              initial role, and link the person to your shop. For{" "}
               <span style={{ color: COPPER }}>
-                shop staff, drivers, dispatchers, and fleet managers
+                workforce profile, certifications, payroll readiness, and ongoing
+                staff management
               </span>
-              . They&apos;ll sign in with their username and the temporary
-              password you set here.
+              , continue in People after create.
             </p>
             <p className="text-[11px] text-neutral-500">
               If they forget it later, an owner or manager can issue a new
@@ -211,7 +226,16 @@ export default function CreateUserPage(): JSX.Element {
               )}
               {success && (
                 <div className="rounded-md border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.45)]">
-                  {success}
+                  {success}{" "}
+                  {createdPersonHref ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(createdPersonHref)}
+                      className="ml-2 underline underline-offset-2"
+                    >
+                      Open People record →
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -330,6 +354,14 @@ export default function CreateUserPage(): JSX.Element {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs text-neutral-400">
+              <input
+                type="checkbox"
+                checked={openPeopleAfterCreate}
+                onChange={(e) => setOpenPeopleAfterCreate(e.target.checked)}
+              />
+              Open People record immediately after create
+            </label>
             <button
               type="button"
               onClick={() => void submit()}
@@ -339,8 +371,8 @@ export default function CreateUserPage(): JSX.Element {
               {submitting ? "Creating…" : "Create user"}
             </button>
             <p className="text-xs text-neutral-500">
-              Share the username and temporary password with the team member
-              when you&apos;re ready for them to sign in.
+              Next step: complete workforce/profile setup in People, then share
+              credentials for first sign-in.
             </p>
           </div>
         </div>
@@ -378,6 +410,18 @@ export default function CreateUserPage(): JSX.Element {
                 ))}
               </ul>
             )}
+            {createdUserId ? (
+              <p className="mt-3 text-xs text-neutral-500">
+                Latest person record:{" "}
+                <button
+                  type="button"
+                  className="text-orange-300 hover:text-orange-200"
+                  onClick={() => router.push(`/dashboard/admin/people/${createdUserId}?from=create-user`)}
+                >
+                  Open workspace
+                </button>
+              </p>
+            ) : null}
           </div>
 
           {/* reset */}

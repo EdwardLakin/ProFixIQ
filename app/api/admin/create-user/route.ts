@@ -132,6 +132,27 @@ export async function POST(req: Request) {
       );
     }
 
+    // Seed the canonical workforce profile row so People detail is immediately usable.
+    const { error: workforceErr } = await serviceSupabase
+      .from("people_workforce_profiles")
+      .upsert(
+        {
+          shop_id: effectiveShopId,
+          user_id: newUserId,
+          employment_status: "active",
+          payroll_ready: false,
+          notes: "Seeded during account provisioning; complete in People detail.",
+        },
+        { onConflict: "shop_id,user_id" }
+      );
+
+    if (workforceErr) {
+      return NextResponse.json(
+        { error: `Workforce profile seed failed: ${workforceErr.message}` },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       user_id: newUserId,
@@ -139,6 +160,7 @@ export async function POST(req: Request) {
       email,
       must_change_password: true,
       shop_id: effectiveShopId,
+      people_record_href: `/dashboard/admin/people/${newUserId}?from=create-user`,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
