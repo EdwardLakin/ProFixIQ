@@ -1,7 +1,7 @@
-// app/dashboard/admin/scheduling/page.tsx
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import SchedulingClient from "@/features/dashboard/app/dashboard/admin/SchedulingClient";
-
-export default function Page() {
-  return <SchedulingClient />;
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin", "manager", "advisor"] });
+  redirect("/dashboard/appointments");
 }

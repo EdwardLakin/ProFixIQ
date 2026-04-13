@@ -1,7 +1,7 @@
-// app/dashboard/admin/certifications/page.tsx
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import CertificationsClient from "@/features/dashboard/app/dashboard/admin/CertificationsClient";
-
-export default function Page() {
-  return <CertificationsClient />;
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  redirect("/dashboard/admin");
 }

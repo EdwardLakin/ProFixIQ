@@ -1,7 +1,7 @@
-// app/dashboard/admin/teams/page.tsx
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import TeamsClient from "@/features/dashboard/app/dashboard/admin/TeamsClient";
-
-export default function Page() {
-  return <TeamsClient />;
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  redirect("/dashboard/admin");
 }

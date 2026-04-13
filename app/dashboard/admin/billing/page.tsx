@@ -1,7 +1,7 @@
-// app/dashboard/admin/billing/page.tsx
+import { redirect } from "next/navigation";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
-import BillingClient from "@/features/dashboard/app/dashboard/admin/BillingClient";
-
-export default function Page() {
-  return <BillingClient />;
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  redirect("/dashboard/owner/settings#billing");
 }

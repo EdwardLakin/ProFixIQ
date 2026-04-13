@@ -1,3 +1,7 @@
-
 import AuditClient from "@/features/dashboard/app/dashboard/admin/AuditClient";
-export default function Page(){ return <AuditClient/>; }
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+
+export default async function Page() {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+  return <AuditClient />;
+}
