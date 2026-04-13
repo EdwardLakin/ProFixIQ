@@ -135,8 +135,8 @@ export default function AdminShopsClient() {
           title="Shop Directory"
           description="Review key metadata and governance posture before taking follow-up action."
           action={
-            <Link href="/dashboard/admin/users" className="text-xs font-medium text-orange-300 hover:text-orange-200">
-              Validate owner/user posture →
+            <Link href="/dashboard/admin/people" className="text-xs font-medium text-orange-300 hover:text-orange-200">
+              Validate owner/staff posture →
             </Link>
           }
         />

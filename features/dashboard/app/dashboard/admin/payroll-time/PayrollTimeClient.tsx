@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AdminBadge,
   AdminEmptyState,
@@ -63,6 +64,8 @@ export default function PayrollTimeClient() {
   const [csvPreview, setCsvPreview] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [exceptionSeverityFilter, setExceptionSeverityFilter] = useState<"all" | "blocking" | "warning">("all");
+  const searchParams = useSearchParams();
+  const personIdFilter = searchParams.get("person_id")?.trim() || "";
 
   const activePeriod = useMemo(
     () => periods.find((p) => p.id === activePeriodId) ?? null,
@@ -86,12 +89,13 @@ export default function PayrollTimeClient() {
 
   const filteredEntries = useMemo(() => {
     const q = employeeSearch.trim().toLowerCase();
-    if (!q) return entries;
-    return entries.filter((entry) => {
+    const base = personIdFilter ? entries.filter((entry) => entry.user_id === personIdFilter) : entries;
+    if (!q) return base;
+    return base.filter((entry) => {
       const person = `${entry.profiles?.full_name ?? ""} ${entry.profiles?.email ?? ""} ${entry.user_id}`.toLowerCase();
       return person.includes(q);
     });
-  }, [employeeSearch, entries]);
+  }, [employeeSearch, entries, personIdFilter]);
 
   const filteredExceptions = useMemo(() => {
     return exceptions.filter((item) => (exceptionSeverityFilter === "all" ? true : item.severity === exceptionSeverityFilter));
@@ -189,13 +193,13 @@ export default function PayrollTimeClient() {
           description="Payroll review stays aligned with employee identity/workforce posture."
         />
         <div className="flex flex-wrap items-center gap-3 p-4 text-xs">
-          <Link href="/dashboard/admin/employees" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
-            Open Employees
+          <Link href="/dashboard/admin/people?view=workforce" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+            Open People & Staff
           </Link>
-          <Link href="/dashboard/admin/users" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
-            Open User Governance
+          <Link href="/dashboard/admin/people" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+            Open People Directory
           </Link>
-          <span className="text-neutral-400">Use Employees for onboarding/contact posture. Use Users for identity/role corrections.</span>
+          <span className="text-neutral-400">Use People for all person-level governance, certifications, onboarding, and workforce updates.</span>
         </div>
       </AdminPanel>
 
@@ -254,6 +258,7 @@ export default function PayrollTimeClient() {
           description="Attendance is payroll base truth; job time is supplemental visibility for productivity context."
         />
         <AdminToolbar>
+          {personIdFilter ? <p className="text-xs text-orange-300">Filtered to person: {personIdFilter.slice(0, 8)}</p> : null}
           <input
             className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-96"
             placeholder="Filter entries by employee name, email, or id"
@@ -284,7 +289,7 @@ export default function PayrollTimeClient() {
                 {filteredEntries.map((entry) => (
                   <tr key={entry.id} className="text-neutral-200">
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-neutral-100">{entry.profiles?.full_name ?? entry.user_id}</p>
+                      <p className="font-medium text-neutral-100"><Link href={`/dashboard/admin/people/${entry.user_id}`} className="font-medium text-neutral-100 hover:text-orange-300">{entry.profiles?.full_name ?? entry.user_id}</Link></p>
                       <p className="text-xs text-neutral-500">{entry.profiles?.email ?? ""}</p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">{entry.work_date}</td>

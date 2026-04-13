@@ -294,17 +294,12 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     icon: "🛡️",
     roles: ["owner", "admin"],
   },
-  "/dashboard/admin/users": {
-    title: () => "User Governance",
-    icon: "👤",
+  "/dashboard/admin/people": {
+    title: () => "People & Staff",
+    icon: "👥",
     roles: ["owner", "admin"],
   },
-  "/dashboard/admin/employees": {
-    title: () => "Employees",
-    icon: "🧑‍🔧",
-    roles: ["owner", "admin"],
-  },
-  "/dashboard/admin/payroll-time": {
+    "/dashboard/admin/payroll-time": {
     title: () => "Payroll Time",
     icon: "⏱️",
     roles: ["owner", "admin"],
