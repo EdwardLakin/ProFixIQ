@@ -242,7 +242,7 @@ export default function ProFixIQLanding() {
             </p>
           </div>
 
-          <div className="mt-10">
+                    <div className="mt-10">
             <PricingSection
               onCheckout={async ({
                 priceId,
@@ -251,33 +251,22 @@ export default function ProFixIQLanding() {
                 priceId: string;
                 interval: Interval;
               }) => {
-                const res = await fetch("/api/stripe/checkout", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    planKey: priceId,
-                    shopId: "public_landing",
-                    userId: null,
-                    interval,
-                  }),
+                const params = new URLSearchParams({
+                  priceId,
+                  interval,
+                  trial: "1",
+                  founding: "1",
                 });
 
-                const data = await res.json().catch(() => ({}));
-
-                if (!res.ok) {
-                  alert(data?.details || data?.error || "Checkout failed");
-                  return;
-                }
-
-                if (data?.url) {
-                  window.location.href = data.url;
-                  return;
-                }
-
-                alert("No checkout URL returned");
+                window.location.href = `/signup?${params.toString()}`;
               }}
               onStartFree={() => {
-                window.location.href = "/onboarding/profile";
+                const params = new URLSearchParams({
+                  trial: "1",
+                  founding: "1",
+                });
+
+                window.location.href = `/signup?${params.toString()}`;
               }}
             />
           </div>

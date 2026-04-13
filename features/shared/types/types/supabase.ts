@@ -8357,6 +8357,135 @@ export type Database = {
           },
         ]
       }
+      payroll_employee_mappings: {
+        Row: {
+          created_at: string
+          external_employee_id: string | null
+          id: string
+          is_active: boolean
+          pay_group: string | null
+          provider_type: string
+          shop_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_employee_id?: string | null
+          id?: string
+          is_active?: boolean
+          pay_group?: string | null
+          provider_type?: string
+          shop_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          external_employee_id?: string | null
+          id?: string
+          is_active?: boolean
+          pay_group?: string | null
+          provider_type?: string
+          shop_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_employee_mappings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_employee_mappings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_employee_mappings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_export_batches: {
+        Row: {
+          created_at: string
+          exported_at: string | null
+          exported_by: string | null
+          id: string
+          payload: Json
+          period_id: string
+          provider_type: string
+          row_count: number
+          shop_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          exported_at?: string | null
+          exported_by?: string | null
+          id?: string
+          payload?: Json
+          period_id: string
+          provider_type?: string
+          row_count?: number
+          shop_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          exported_at?: string | null
+          exported_by?: string | null
+          id?: string
+          payload?: Json
+          period_id?: string
+          provider_type?: string
+          row_count?: number
+          shop_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_export_batches_exported_by_fkey"
+            columns: ["exported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_batches_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_pay_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_batches_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_batches_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_export_log: {
         Row: {
           created_at: string | null
@@ -8399,32 +8528,157 @@ export type Database = {
           },
         ]
       }
+      payroll_export_rows: {
+        Row: {
+          batch_id: string
+          created_at: string
+          employee_external_id: string | null
+          id: string
+          overtime_hours: number
+          period_id: string
+          regular_hours: number
+          row_payload: Json
+          shop_id: string
+          total_hours: number
+          unpaid_break_hours: number
+          user_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          employee_external_id?: string | null
+          id?: string
+          overtime_hours?: number
+          period_id: string
+          regular_hours?: number
+          row_payload?: Json
+          shop_id: string
+          total_hours?: number
+          unpaid_break_hours?: number
+          user_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          employee_external_id?: string | null
+          id?: string
+          overtime_hours?: number
+          period_id?: string
+          regular_hours?: number
+          row_payload?: Json
+          shop_id?: string
+          total_hours?: number
+          unpaid_break_hours?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_export_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_export_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_rows_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_pay_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_rows_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_pay_periods: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           created_at: string | null
           end_date: string
+          exported_at: string | null
+          exported_by: string | null
           id: string
+          locked_at: string | null
+          notes: string | null
+          period_end: string | null
+          period_start: string | null
           processed: boolean | null
           shop_id: string | null
           start_date: string
+          status: string
+          updated_at: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string | null
           end_date: string
+          exported_at?: string | null
+          exported_by?: string | null
           id?: string
+          locked_at?: string | null
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
           processed?: boolean | null
           shop_id?: string | null
           start_date: string
+          status?: string
+          updated_at?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string | null
           end_date?: string
+          exported_at?: string | null
+          exported_by?: string | null
           id?: string
+          locked_at?: string | null
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
           processed?: boolean | null
           shop_id?: string | null
           start_date?: string
+          status?: string
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payroll_pay_periods_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_pay_periods_exported_by_fkey"
+            columns: ["exported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payroll_pay_periods_shop_id_fkey"
             columns: ["shop_id"]
@@ -8483,6 +8737,204 @@ export type Database = {
           },
         ]
       }
+      payroll_time_entries: {
+        Row: {
+          adjustment_minutes: number
+          approval_state: string
+          approved_at: string | null
+          approved_by: string | null
+          attendance_minutes: number
+          blocking_exception_count: number
+          created_at: string
+          has_exceptions: boolean
+          id: string
+          job_minutes: number
+          overtime_minutes: number
+          paid_break_minutes: number
+          period_id: string
+          regular_minutes: number
+          shop_id: string
+          source_snapshot: Json
+          unpaid_break_minutes: number
+          updated_at: string
+          user_id: string
+          warning_exception_count: number
+          work_date: string
+          worked_minutes: number
+        }
+        Insert: {
+          adjustment_minutes?: number
+          approval_state?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          attendance_minutes?: number
+          blocking_exception_count?: number
+          created_at?: string
+          has_exceptions?: boolean
+          id?: string
+          job_minutes?: number
+          overtime_minutes?: number
+          paid_break_minutes?: number
+          period_id: string
+          regular_minutes?: number
+          shop_id: string
+          source_snapshot?: Json
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id: string
+          warning_exception_count?: number
+          work_date: string
+          worked_minutes?: number
+        }
+        Update: {
+          adjustment_minutes?: number
+          approval_state?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          attendance_minutes?: number
+          blocking_exception_count?: number
+          created_at?: string
+          has_exceptions?: boolean
+          id?: string
+          job_minutes?: number
+          overtime_minutes?: number
+          paid_break_minutes?: number
+          period_id?: string
+          regular_minutes?: number
+          shop_id?: string
+          source_snapshot?: Json
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id?: string
+          warning_exception_count?: number
+          work_date?: string
+          worked_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_time_entries_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_entries_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_pay_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_entries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_entries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_time_exceptions: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          message: string
+          period_id: string
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          shop_id: string
+          source_ref: Json
+          source_type: string
+          user_id: string
+          work_date: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          message: string
+          period_id: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+          shop_id: string
+          source_ref?: Json
+          source_type?: string
+          user_id: string
+          work_date?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          message?: string
+          period_id?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          shop_id?: string
+          source_ref?: Json
+          source_type?: string
+          user_id?: string
+          work_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_time_exceptions_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_pay_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_exceptions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_exceptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_exceptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_time_exceptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_timecards: {
         Row: {
           clock_in: string
@@ -8531,6 +8983,70 @@ export type Database = {
           },
           {
             foreignKeyName: "payroll_timecards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      people_workforce_profiles: {
+        Row: {
+          created_at: string
+          employment_status: string
+          id: string
+          notes: string | null
+          payroll_ready: boolean
+          shop_id: string
+          start_date: string | null
+          updated_at: string
+          user_id: string
+          workforce_category: string | null
+          workforce_role: string | null
+        }
+        Insert: {
+          created_at?: string
+          employment_status?: string
+          id?: string
+          notes?: string | null
+          payroll_ready?: boolean
+          shop_id: string
+          start_date?: string | null
+          updated_at?: string
+          user_id: string
+          workforce_category?: string | null
+          workforce_role?: string | null
+        }
+        Update: {
+          created_at?: string
+          employment_status?: string
+          id?: string
+          notes?: string | null
+          payroll_ready?: boolean
+          shop_id?: string
+          start_date?: string | null
+          updated_at?: string
+          user_id?: string
+          workforce_category?: string | null
+          workforce_role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "people_workforce_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "people_workforce_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "people_workforce_profiles_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -9707,14 +10223,18 @@ export type Database = {
           customers_file_path: string | null
           history_file_path: string | null
           id: string
+          import_counts: Json | null
           intake_basics: Json | null
+          parse_summary: Json | null
           parts_file_path: string | null
           processed_at: string | null
           questionnaire: Json
           shop_id: string
           source: string | null
+          source_system_guess: string | null
           staff_file_path: string | null
           status: string
+          upload_status: string | null
           vehicles_file_path: string | null
         }
         Insert: {
@@ -9723,14 +10243,18 @@ export type Database = {
           customers_file_path?: string | null
           history_file_path?: string | null
           id?: string
+          import_counts?: Json | null
           intake_basics?: Json | null
+          parse_summary?: Json | null
           parts_file_path?: string | null
           processed_at?: string | null
           questionnaire: Json
           shop_id: string
           source?: string | null
+          source_system_guess?: string | null
           staff_file_path?: string | null
           status?: string
+          upload_status?: string | null
           vehicles_file_path?: string | null
         }
         Update: {
@@ -9739,14 +10263,18 @@ export type Database = {
           customers_file_path?: string | null
           history_file_path?: string | null
           id?: string
+          import_counts?: Json | null
           intake_basics?: Json | null
+          parse_summary?: Json | null
           parts_file_path?: string | null
           processed_at?: string | null
           questionnaire?: Json
           shop_id?: string
           source?: string | null
+          source_system_guess?: string | null
           staff_file_path?: string | null
           status?: string
+          upload_status?: string | null
           vehicles_file_path?: string | null
         }
         Relationships: [
@@ -10255,8 +10783,13 @@ export type Database = {
           id: string
           intake_id: string
           normalized: Json
+          original_headers: Json | null
+          parse_status: string | null
+          parse_warnings: Json | null
           raw: Json
+          raw_payload: Json | null
           row_number: number | null
+          shop_id: string | null
         }
         Insert: {
           created_at?: string
@@ -10266,8 +10799,13 @@ export type Database = {
           id?: string
           intake_id: string
           normalized?: Json
+          original_headers?: Json | null
+          parse_status?: string | null
+          parse_warnings?: Json | null
           raw?: Json
+          raw_payload?: Json | null
           row_number?: number | null
+          shop_id?: string | null
         }
         Update: {
           created_at?: string
@@ -10277,8 +10815,13 @@ export type Database = {
           id?: string
           intake_id?: string
           normalized?: Json
+          original_headers?: Json | null
+          parse_status?: string | null
+          parse_warnings?: Json | null
           raw?: Json
+          raw_payload?: Json | null
           row_number?: number | null
+          shop_id?: string | null
         }
         Relationships: [
           {
@@ -10301,6 +10844,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_shop_boost_overview"
             referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_import_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_import_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -10512,6 +11069,398 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_parts_import_match_candidates: {
+        Row: {
+          candidate_part_id: string | null
+          confidence: number
+          created_at: string
+          id: string
+          metadata: Json
+          rank: number
+          reason: string | null
+          shop_id: string
+          staging_row_id: string
+        }
+        Insert: {
+          candidate_part_id?: string | null
+          confidence: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          rank?: number
+          reason?: string | null
+          shop_id: string
+          staging_row_id: string
+        }
+        Update: {
+          candidate_part_id?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          rank?: number
+          reason?: string | null
+          shop_id?: string
+          staging_row_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_parts_import_match_candidates_candidate_part_id_fkey"
+            columns: ["candidate_part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_match_candidates_candidate_part_id_fkey"
+            columns: ["candidate_part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_match_candidates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_match_candidates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_match_candidates_staging_row_id_fkey"
+            columns: ["staging_row_id"]
+            isOneToOne: false
+            referencedRelation: "shop_parts_import_staging"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_parts_import_staging: {
+        Row: {
+          auto_promote: boolean
+          cost: number | null
+          created_at: string
+          id: string
+          intake_id: string
+          mapped_category: string | null
+          match_reason: string | null
+          matched_part_id: string | null
+          normalized_brand: string | null
+          normalized_name: string | null
+          normalized_name_key: string | null
+          normalized_part_number: string | null
+          normalized_sku: string | null
+          normalized_vendor: string | null
+          pack_info: string | null
+          price: number | null
+          promoted_at: string | null
+          quantity_on_hand: number | null
+          raw_echo: Json
+          raw_row_id: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          shop_id: string
+          source_confidence: number | null
+          source_system: string | null
+          status: string
+          suggested_action: string | null
+          unit_of_measure: string | null
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          auto_promote?: boolean
+          cost?: number | null
+          created_at?: string
+          id?: string
+          intake_id: string
+          mapped_category?: string | null
+          match_reason?: string | null
+          matched_part_id?: string | null
+          normalized_brand?: string | null
+          normalized_name?: string | null
+          normalized_name_key?: string | null
+          normalized_part_number?: string | null
+          normalized_sku?: string | null
+          normalized_vendor?: string | null
+          pack_info?: string | null
+          price?: number | null
+          promoted_at?: string | null
+          quantity_on_hand?: number | null
+          raw_echo?: Json
+          raw_row_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id: string
+          source_confidence?: number | null
+          source_system?: string | null
+          status?: string
+          suggested_action?: string | null
+          unit_of_measure?: string | null
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          auto_promote?: boolean
+          cost?: number | null
+          created_at?: string
+          id?: string
+          intake_id?: string
+          mapped_category?: string | null
+          match_reason?: string | null
+          matched_part_id?: string | null
+          normalized_brand?: string | null
+          normalized_name?: string | null
+          normalized_name_key?: string | null
+          normalized_part_number?: string | null
+          normalized_sku?: string | null
+          normalized_vendor?: string | null
+          pack_info?: string | null
+          price?: number | null
+          promoted_at?: string | null
+          quantity_on_hand?: number | null
+          raw_echo?: Json
+          raw_row_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id?: string
+          source_confidence?: number | null
+          source_system?: string | null
+          status?: string
+          suggested_action?: string | null
+          unit_of_measure?: string | null
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_parts_import_staging_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_matched_part_id_fkey"
+            columns: ["matched_part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_matched_part_id_fkey"
+            columns: ["matched_part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_raw_row_id_fkey"
+            columns: ["raw_row_id"]
+            isOneToOne: false
+            referencedRelation: "shop_import_rows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_import_staging_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_parts_source_aliases: {
+        Row: {
+          alias_type: string
+          created_at: string
+          id: string
+          intake_id: string | null
+          legacy_label: string | null
+          legacy_part_number: string | null
+          legacy_sku: string | null
+          metadata: Json
+          part_id: string
+          raw_row_id: string | null
+          shop_id: string
+          source_hash: string | null
+          source_system: string | null
+          staging_row_id: string | null
+          updated_at: string
+          vendor_alias: string | null
+        }
+        Insert: {
+          alias_type?: string
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          legacy_label?: string | null
+          legacy_part_number?: string | null
+          legacy_sku?: string | null
+          metadata?: Json
+          part_id: string
+          raw_row_id?: string | null
+          shop_id: string
+          source_hash?: string | null
+          source_system?: string | null
+          staging_row_id?: string | null
+          updated_at?: string
+          vendor_alias?: string | null
+        }
+        Update: {
+          alias_type?: string
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          legacy_label?: string | null
+          legacy_part_number?: string | null
+          legacy_sku?: string | null
+          metadata?: Json
+          part_id?: string
+          raw_row_id?: string | null
+          shop_id?: string
+          source_hash?: string | null
+          source_system?: string | null
+          staging_row_id?: string | null
+          updated_at?: string
+          vendor_alias?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_parts_source_aliases_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_raw_row_id_fkey"
+            columns: ["raw_row_id"]
+            isOneToOne: false
+            referencedRelation: "shop_import_rows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_parts_source_aliases_staging_row_id_fkey"
+            columns: ["staging_row_id"]
+            isOneToOne: false
+            referencedRelation: "shop_parts_import_staging"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_payroll_settings: {
+        Row: {
+          cadence: string
+          created_at: string
+          daily_overtime_after_minutes: number
+          enabled: boolean
+          id: string
+          shop_id: string
+          suspicious_shift_minutes: number
+          updated_at: string
+          week_starts_on: number
+          weekly_overtime_after_minutes: number
+        }
+        Insert: {
+          cadence?: string
+          created_at?: string
+          daily_overtime_after_minutes?: number
+          enabled?: boolean
+          id?: string
+          shop_id: string
+          suspicious_shift_minutes?: number
+          updated_at?: string
+          week_starts_on?: number
+          weekly_overtime_after_minutes?: number
+        }
+        Update: {
+          cadence?: string
+          created_at?: string
+          daily_overtime_after_minutes?: number
+          enabled?: boolean
+          id?: string
+          shop_id?: string
+          suspicious_shift_minutes?: number
+          updated_at?: string
+          week_starts_on?: number
+          weekly_overtime_after_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_payroll_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_payroll_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -11793,6 +12742,76 @@ export type Database = {
           {
             foreignKeyName: "shops_owner_fk"
             columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_certifications: {
+        Row: {
+          cert_name: string
+          cert_number: string | null
+          cert_type: string
+          created_at: string
+          expiry_date: string | null
+          id: string
+          issue_date: string | null
+          issuing_body: string | null
+          notes: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cert_name: string
+          cert_number?: string | null
+          cert_type?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string | null
+          issuing_body?: string | null
+          notes?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cert_name?: string
+          cert_number?: string | null
+          cert_type?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string | null
+          issuing_body?: string | null
+          notes?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_certifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_certifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_certifications_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
