@@ -1,13 +1,17 @@
-// features/dashboard/app/dashboard/admin/UsersPageClient.tsx
 "use client";
 
 import UsersList from "@/features/admin/components/UsersList";
+import { AdminPageHeader, AdminPageShell } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 export default function UsersPageClient() {
   return (
-    <div className="p-6 text-white">
-      <h1 className="mb-4 text-2xl font-semibold">Users</h1>
+    <AdminPageShell>
+      <AdminPageHeader
+        eyebrow="Identity Governance"
+        title="Users"
+        subtitle="Search, update, and maintain user records with clear role and contact visibility."
+      />
       <UsersList />
-    </div>
+    </AdminPageShell>
   );
 }
