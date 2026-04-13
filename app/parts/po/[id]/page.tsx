@@ -43,7 +43,7 @@ function statusPill(status: string | null | undefined): string {
   if (s === "received") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
   if (s === "receiving") return "border-sky-500/40 bg-sky-500/10 text-sky-200";
   if (s === "ordered") return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
-  if (s === "open" || s === "draft") return "border-[#8b5a2b]/50 bg-[#8b5a2b]/10 text-[#f1c08a]";
+  if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-sky-200";
   if (s === "cancelled" || s === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
   return "border-white/10 bg-white/5 text-neutral-200";
 }
@@ -403,14 +403,14 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const header =
     "border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent px-5 py-4";
   const input =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35";
+    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35";
   const select =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35";
+    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/35";
 
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-[#8b5a2b]/60 text-[#c88a4d] bg-neutral-950/20 hover:bg-[#8b5a2b]/10`;
+  const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
   const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
   if (loading) {
@@ -460,7 +460,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Purchase Order</div>
               <div className="mt-1 truncate text-2xl font-semibold text-white">
-                PO <span className="text-[#c88a4d]">{String(po.id).slice(0, 8)}</span>
+                PO <span className="text-sky-200">{String(po.id).slice(0, 8)}</span>
               </div>
               <div className="mt-2 text-sm text-neutral-400">
                 Supplier: <span className="text-neutral-200">{supplierName}</span>
@@ -535,7 +535,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             </div>
             <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
               <div className="text-xs text-neutral-400">Remaining</div>
-              <div className="mt-1 text-2xl font-semibold text-[#c88a4d]">{totals.remaining}</div>
+              <div className="mt-1 text-2xl font-semibold text-sky-200">{totals.remaining}</div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
               <div className="text-xs text-neutral-400">Est. Cost</div>
@@ -658,7 +658,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                           <td className="p-3 text-neutral-200">{l.ui_part_name}</td>
                           <td className="p-3 text-right tabular-nums text-neutral-200">{ordered}</td>
                           <td className="p-3 text-right tabular-nums text-neutral-200">{received}</td>
-                          <td className="p-3 text-right tabular-nums text-[#c88a4d]">{remaining}</td>
+                          <td className="p-3 text-right tabular-nums text-sky-200">{remaining}</td>
                           <td className="p-3 text-right tabular-nums text-neutral-200">{unitCost.toFixed(2)}</td>
                           <td className="p-3 text-right tabular-nums text-neutral-200">{lineCost.toFixed(2)}</td>
                           <td className="p-3 text-right">

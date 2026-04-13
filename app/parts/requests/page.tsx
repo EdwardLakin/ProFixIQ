@@ -111,21 +111,21 @@ export default function PartsRequestsPage(): JSX.Element {
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
   const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
-  const COPPER_BORDER = "border-[#8b5a2b]/60";
-  const COPPER_TEXT = "text-[#c88a4d]";
-  const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
-  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+  const ACCENT_BORDER = "border-sky-500/35";
+  const ACCENT_TEXT = "text-sky-200";
+  const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
 
   const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const CARD_PAD = `${CARD} p-3`;
-  const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${COPPER_FOCUS_RING}`;
-  const SELECT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none ${COPPER_FOCUS_RING}`;
+  const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const SELECT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
   const BTN_GHOST = `${BTN_BASE} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const BTN_COPPER = `${BTN_BASE} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
   const PILL_BASE =
@@ -134,7 +134,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-950/25 text-teal-200`;
   const PILL_APPROVED = `${PILL_BASE} border-sky-500/35 bg-sky-950/25 text-sky-200`;
   const PILL_FULFILLED = `${PILL_BASE} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
-  const PILL_MIXED = `${PILL_BASE} ${COPPER_BORDER} bg-neutral-950/20 ${COPPER_TEXT}`;
+  const PILL_MIXED = `${PILL_BASE} border-neutral-500/40 bg-neutral-900/50 text-neutral-200`;
 
   function pillFor(status: BucketStatus): string {
     if (status === "needs_quote") return PILL_NEEDS;
@@ -469,7 +469,7 @@ export default function PartsRequestsPage(): JSX.Element {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link href="/parts" className={BTN_COPPER}>
+          <Link href="/parts" className={BTN_ACCENT}>
             Parts Dashboard
           </Link>
           <button
@@ -583,7 +583,7 @@ export default function PartsRequestsPage(): JSX.Element {
                 <div className="mt-3">
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>Completion</span>
-                    <span className={COPPER_TEXT}>{b.completionPct}%</span>
+                    <span className={ACCENT_TEXT}>{b.completionPct}%</span>
                   </div>
                   <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-white/10 bg-black/40">
                     <div
@@ -605,7 +605,7 @@ export default function PartsRequestsPage(): JSX.Element {
                     {isDeleting ? "Deleting…" : "Delete"}
                   </button>
 
-                  <Link href={href} className={BTN_COPPER}>
+                  <Link href={href} className={BTN_ACCENT}>
                     Open requests →
                   </Link>
                 </div>

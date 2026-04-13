@@ -187,25 +187,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [recvOpen, setRecvOpen] = useState<boolean>(false);
   const [recvItem, setRecvItem] = useState<DrawerItem | null>(null);
 
-  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
-  const COPPER_BORDER = "border-[#8b5a2b]/60";
-  const COPPER_TEXT = "text-[#c88a4d]";
-  const COPPER_TEXT_SOFT = "text-[#b27a45]";
-  const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
-  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+  // ---- Theme (glass + neutral accent styling) ----
+  const ACCENT_BORDER = "border-sky-500/35";
+  const ACCENT_TEXT = "text-sky-200";
+  const ACCENT_TEXT_SOFT = "text-sky-300";
+  const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
 
   const pageWrap = "space-y-3 p-4 text-white";
   const glassCard =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
     "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
-  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
-  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const btnCopper = `${btnBase} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
   const pillBase =
@@ -1066,7 +1066,7 @@ if (!lineId || !isUuid(lineId)) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xl font-semibold tracking-wide">
-                    Work Order <span className={COPPER_TEXT}>{woDisplay}</span>
+                    Work Order <span className={ACCENT_TEXT}>{woDisplay}</span>
                   </div>
                   <div className="mt-1 text-sm text-neutral-400">
                     Parts requests for this work order.
@@ -1097,7 +1097,7 @@ if (!lineId || !isUuid(lineId)) {
 
               <div className="mt-3 text-xs text-neutral-400">
                 Add parts to attach them to the work order line. The request becomes{" "}
-                <span className={COPPER_TEXT_SOFT}>quoted</span> automatically once
+                <span className={ACCENT_TEXT_SOFT}>quoted</span> automatically once
                 every row has a part + qty + price.
               </div>
             </div>
@@ -1130,7 +1130,7 @@ if (!lineId || !isUuid(lineId)) {
                         <div>
                           <div className="text-sm font-semibold">
                             Request{" "}
-                            <span className={COPPER_TEXT}>
+                            <span className={ACCENT_TEXT}>
                               #{r.req.id.slice(0, 8)}
                             </span>
                           </div>

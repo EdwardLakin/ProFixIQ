@@ -29,7 +29,7 @@ function statusPill(status: string | null | undefined): string {
   if (s === "received") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
   if (s === "receiving") return "border-sky-500/40 bg-sky-500/10 text-sky-200";
   if (s === "ordered") return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
-  if (s === "open" || s === "draft") return "border-orange-500/40 bg-orange-500/10 text-orange-200";
+  if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-sky-200";
   if (s === "cancelled" || s === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
   return "border-white/10 bg-white/5 text-neutral-200";
 }
@@ -314,7 +314,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
     <div className={pageWrap}>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
       />
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -328,7 +328,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
         <div className="flex items-center gap-2">
           <button
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/60 disabled:opacity-60"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/60 disabled:opacity-60"
             onClick={() => (shopId ? void refresh(shopId) : null)}
             disabled={!shopId || loading}
             type="button"
@@ -337,7 +337,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
           </button>
 
           <button
-            className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
+            className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
             onClick={() => setOpen(true)}
             disabled={!shopId}
             type="button"
@@ -401,14 +401,14 @@ export default function PurchaseOrdersPage(): JSX.Element {
                         <div className="inline-flex items-center gap-2">
                           <Link
                             href={`/parts/po/${id}`}
-                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/55"
+                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/55"
                           >
                             Open
                           </Link>
 
                           <Link
                             href={`/parts/po/${id}/receive`}
-                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/55"
+                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/55"
                           >
                             Receive
                           </Link>
@@ -439,7 +439,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                 </div>
 
                 <button
-                  className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
+                  className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 disabled:opacity-60"
                   onClick={closeModal}
                   disabled={busyCreate}
                   type="button"
@@ -505,7 +505,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                       <button
                         type="button"
-                        className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
+                        className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 disabled:opacity-60"
                         onClick={addLine}
                         disabled={busyCreate}
                       >
@@ -728,7 +728,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     </button>
 
                     <button
-                      className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
                       onClick={() => void createPo()}
                       disabled={!shopId || busyCreate}
                       type="button"
