@@ -1,0 +1,312 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AdminBadge,
+  AdminEmptyState,
+  AdminPageHeader,
+  AdminPageShell,
+  AdminPanel,
+  AdminPanelTitle,
+  AdminStatCard,
+  AdminStatGrid,
+  AdminToolbar,
+} from "@/features/dashboard/app/dashboard/admin/AdminSurface";
+
+type Period = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  status: "draft" | "open" | "approved" | "exported";
+  approved_at: string | null;
+  exported_at: string | null;
+};
+
+type Entry = {
+  id: string;
+  user_id: string;
+  work_date: string;
+  worked_minutes: number;
+  regular_minutes: number;
+  overtime_minutes: number;
+  unpaid_break_minutes: number;
+  job_minutes: number;
+  has_exceptions: boolean;
+  blocking_exception_count: number;
+  warning_exception_count: number;
+  profiles?: { full_name?: string | null; email?: string | null } | null;
+};
+
+type Exception = {
+  id: string;
+  user_id: string;
+  work_date: string | null;
+  severity: "warning" | "blocking";
+  code: string;
+  message: string;
+  resolved: boolean;
+};
+
+function fmtHours(minutes: number | null | undefined) {
+  return ((minutes ?? 0) / 60).toFixed(2);
+}
+
+export default function PayrollTimeClient() {
+  const [periods, setPeriods] = useState<Period[]>([]);
+  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [exceptions, setExceptions] = useState<Exception[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [csvPreview, setCsvPreview] = useState<string | null>(null);
+
+  const activePeriod = useMemo(
+    () => periods.find((p) => p.id === activePeriodId) ?? null,
+    [periods, activePeriodId],
+  );
+
+  const summary = useMemo(() => {
+    const employeeSet = new Set(entries.map((entry) => entry.user_id));
+    const totalMinutes = entries.reduce((acc, entry) => acc + Number(entry.worked_minutes ?? 0), 0);
+    const overtimeMinutes = entries.reduce((acc, entry) => acc + Number(entry.overtime_minutes ?? 0), 0);
+    const blocking = exceptions.filter((item) => item.severity === "blocking" && !item.resolved).length;
+    const warnings = exceptions.filter((item) => item.severity === "warning" && !item.resolved).length;
+    return {
+      employees: employeeSet.size,
+      totalHours: fmtHours(totalMinutes),
+      overtimeHours: fmtHours(overtimeMinutes),
+      blocking,
+      warnings,
+    };
+  }, [entries, exceptions]);
+
+  const load = useCallback(async (periodId?: string | null) => {
+    setLoading(true);
+    setError(null);
+    const url = periodId ? `/api/payroll-time/periods?period_id=${periodId}` : "/api/payroll-time/periods";
+    const res = await fetch(url, { cache: "no-store" });
+    const body = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      setError(body?.error ?? "Failed to load payroll time data");
+      setLoading(false);
+      return;
+    }
+
+    setPeriods((body?.periods ?? []) as Period[]);
+    setActivePeriodId((body?.activePeriodId as string | null) ?? null);
+    setEntries((body?.entries ?? []) as Entry[]);
+    setExceptions((body?.exceptions ?? []) as Exception[]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function runAction(path: string, actionName: string, payload: Record<string, unknown>) {
+    setBusyAction(actionName);
+    setError(null);
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      setError(body?.error ?? `${actionName} failed`);
+      setBusyAction(null);
+      return null;
+    }
+    setBusyAction(null);
+    return body;
+  }
+
+  async function handleRebuild() {
+    if (!activePeriodId) return;
+    const result = await runAction("/api/payroll-time/rebuild", "rebuild", { period_id: activePeriodId });
+    if (result) await load(activePeriodId);
+  }
+
+  async function handleApprove() {
+    if (!activePeriodId) return;
+    const result = await runAction("/api/payroll-time/approve", "approve", { period_id: activePeriodId });
+    if (result) await load(activePeriodId);
+  }
+
+  async function handleExport() {
+    if (!activePeriodId) return;
+    const result = await runAction("/api/payroll-time/export", "export", {
+      period_id: activePeriodId,
+      provider_type: "csv",
+    });
+    if (result?.csv) setCsvPreview(String(result.csv));
+    await load(activePeriodId);
+  }
+
+  return (
+    <AdminPageShell>
+      <AdminPageHeader
+        eyebrow="Workforce Payroll-Ready Time"
+        title="Payroll Time Tracking"
+        subtitle="Attendance-first payroll-hour review by pay period with exception triage, approval locking, and export snapshots."
+      />
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Current Period Signals"
+          description="Trust posture before approval/export. Blocking exceptions should be cleared before lock."
+        />
+        <AdminStatGrid>
+          <AdminStatCard label="Employees in period" value={summary.employees} />
+          <AdminStatCard label="Worked hours" value={summary.totalHours} />
+          <AdminStatCard label="Overtime-ready hours" value={summary.overtimeHours} />
+          <AdminStatCard label="Blocking exceptions" value={summary.blocking} />
+          <AdminStatCard label="Warnings" value={summary.warnings} />
+        </AdminStatGrid>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle title="Pay Period Review" description="Rebuild while open, approve to lock, then export to a payroll-provider-ready CSV snapshot." />
+        <AdminToolbar>
+          <select
+            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-80"
+            value={activePeriodId ?? ""}
+            onChange={(event) => void load(event.target.value)}
+          >
+            {periods.map((period) => (
+              <option key={period.id} value={period.id}>
+                {period.period_start} → {period.period_end} ({period.status})
+              </option>
+            ))}
+          </select>
+          <button
+            className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs uppercase tracking-[0.12em] text-neutral-100 disabled:opacity-50"
+            onClick={() => void handleRebuild()}
+            disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+          >
+            {busyAction === "rebuild" ? "Rebuilding…" : "Rebuild from source"}
+          </button>
+          <button
+            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-emerald-200 disabled:opacity-50"
+            onClick={() => void handleApprove()}
+            disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+          >
+            {busyAction === "approve" ? "Approving…" : "Approve + lock"}
+          </button>
+          <button
+            className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
+            onClick={() => void handleExport()}
+            disabled={!activePeriodId || busyAction !== null || activePeriod?.status !== "approved"}
+          >
+            {busyAction === "export" ? "Exporting…" : "Export CSV snapshot"}
+          </button>
+        </AdminToolbar>
+
+        {activePeriod ? (
+          <div className="px-4 pb-4 text-xs text-neutral-400">
+            <span className="mr-2">Period status:</span>
+            <AdminBadge>{activePeriod.status}</AdminBadge>
+            {activePeriod.approved_at ? <span className="ml-3">Approved: {new Date(activePeriod.approved_at).toLocaleString()}</span> : null}
+            {activePeriod.exported_at ? <span className="ml-3">Exported: {new Date(activePeriod.exported_at).toLocaleString()}</span> : null}
+          </div>
+        ) : null}
+
+        {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle title="Employee Daily Payroll Entries" description="Attendance is payroll base truth; job time is supplemental visibility for productivity context." />
+        {loading ? (
+          <AdminEmptyState title="Loading payroll period" body="Collecting derived payroll-ready rows." />
+        ) : entries.length === 0 ? (
+          <AdminEmptyState title="No derived entries" body="Run rebuild to derive payroll-ready entries from attendance and job source layers." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Employee</th>
+                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-right">Worked</th>
+                  <th className="px-4 py-2.5 text-right">Regular</th>
+                  <th className="px-4 py-2.5 text-right">OT-ready</th>
+                  <th className="px-4 py-2.5 text-right">Unpaid break</th>
+                  <th className="px-4 py-2.5 text-right">Job context</th>
+                  <th className="px-4 py-2.5 text-left">Exceptions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="text-neutral-200">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-neutral-100">{entry.profiles?.full_name ?? entry.user_id}</p>
+                      <p className="text-xs text-neutral-500">{entry.profiles?.email ?? ""}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5">{entry.work_date}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.worked_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.regular_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.overtime_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.job_minutes)}h</td>
+                    <td className="px-4 py-2.5">
+                      {entry.blocking_exception_count > 0 ? (
+                        <AdminBadge>{entry.blocking_exception_count} blocking</AdminBadge>
+                      ) : entry.warning_exception_count > 0 ? (
+                        <AdminBadge>{entry.warning_exception_count} warning</AdminBadge>
+                      ) : (
+                        <span className="text-xs text-neutral-500">Clean</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle title="Exception Queue" description="Exceptions keep traceability; unresolved blocking exceptions prevent period approval." />
+        {exceptions.length === 0 ? (
+          <AdminEmptyState title="No exceptions" body="No flagged anomalies in this period." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Severity</th>
+                  <th className="px-4 py-2.5 text-left">Code</th>
+                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-left">Message</th>
+                  <th className="px-4 py-2.5 text-left">State</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {exceptions.map((item) => (
+                  <tr key={item.id} className="text-neutral-200">
+                    <td className="px-4 py-2.5">
+                      <AdminBadge>{item.severity}</AdminBadge>
+                    </td>
+                    <td className="px-4 py-2.5">{item.code}</td>
+                    <td className="px-4 py-2.5">{item.work_date ?? "—"}</td>
+                    <td className="px-4 py-2.5">{item.message}</td>
+                    <td className="px-4 py-2.5">{item.resolved ? "resolved" : "open"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminPanel>
+
+      {csvPreview ? (
+        <AdminPanel>
+          <AdminPanelTitle title="Latest CSV Snapshot" description="Export foundation artifact (provider adapter-compatible row shape)." />
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-4 text-xs text-neutral-300">{csvPreview}</pre>
+        </AdminPanel>
+      ) : null}
+    </AdminPageShell>
+  );
+}
