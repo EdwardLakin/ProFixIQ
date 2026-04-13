@@ -15,6 +15,11 @@ const CANONICAL_ADMIN_ROUTES = [
     description: "Manage account identity, role posture, and privileged profile edits.",
   },
   {
+    href: "/dashboard/admin/employees",
+    label: "Employees",
+    description: "Review employee directory posture, role spread, and profile coverage.",
+  },
+  {
     href: "/dashboard/admin/shops",
     label: "Shop Oversight",
     description: "Review tenant records and operational completeness across shops.",
@@ -43,7 +48,7 @@ export default async function AdminLandingPage() {
           description="Use these destinations for controlled high-trust platform administration."
         />
 
-        <div className="grid gap-3 p-4 md:grid-cols-3">
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           {CANONICAL_ADMIN_ROUTES.map((route) => (
             <Link
               key={route.href}

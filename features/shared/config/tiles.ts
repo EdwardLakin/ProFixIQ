@@ -349,6 +349,46 @@ export const TILES: Tile[] = [
   /* ADMIN                                                                   */
   /* ---------------------------------------------------------------------- */
   {
+    href: "/dashboard/admin",
+    title: "Admin Dashboard",
+    subtitle: "Governance command surface",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/admin/users",
+    title: "User Governance",
+    subtitle: "Users, identity posture, and role controls",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/admin/employees",
+    title: "Employees",
+    subtitle: "Employee directory and role visibility",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/admin/shops",
+    title: "Shop Oversight",
+    subtitle: "Tenant records and shop-level readiness",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/admin/audit",
+    title: "Audit",
+    subtitle: "Administrative action trails",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
     href: "/dashboard/owner/create-user",
     title: "Create User",
     subtitle: "Add team members",
