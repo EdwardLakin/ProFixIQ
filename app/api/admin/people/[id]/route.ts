@@ -3,6 +3,8 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Ctx = { params: { id: string } };
+type ActionSeverity = "blocking" | "warning" | "informational";
+type ActionReason = { code: string; severity: ActionSeverity; label: string; action_label: string; action_href: string };
 
 async function assertTarget(admin: any, shopId: string, userId: string) {
   const { data, error } = await admin.from("profiles").select("id, shop_id").eq("id", userId).maybeSingle();
@@ -63,23 +65,125 @@ export async function GET(_req: NextRequest, context: unknown) {
     notes: null,
   };
 
+  const now = Date.now();
+  const in30 = now + 1000 * 60 * 60 * 24 * 30;
+  const certifications = (certs ?? []).map((cert: any) => {
+    const expiryTs = cert.expiry_date ? new Date(cert.expiry_date).getTime() : null;
+    const isExpired = cert.status === "expired" || (expiryTs ? expiryTs < now : false);
+    const daysRemaining = expiryTs ? Math.ceil((expiryTs - now) / (1000 * 60 * 60 * 24)) : null;
+    let lifecycle_group: "expired" | "expiring_soon" | "active";
+    if (isExpired) lifecycle_group = "expired";
+    else if (expiryTs && expiryTs <= in30) lifecycle_group = "expiring_soon";
+    else lifecycle_group = "active";
+    return { ...cert, days_remaining: daysRemaining, lifecycle_group };
+  });
+
+  const reasons: ActionReason[] = [];
+  if (blocking > 0) {
+    reasons.push({
+      code: "payroll_blocking_exceptions",
+      severity: "blocking",
+      label: `${blocking} payroll blocking issue${blocking > 1 ? "s" : ""}`,
+      action_label: "Review payroll entries",
+      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+    });
+  }
+  if (!profile.payroll_ready) {
+    reasons.push({
+      code: "payroll_not_ready",
+      severity: "blocking",
+      label: "Payroll profile is not ready",
+      action_label: "Fix payroll data",
+      action_href: `/dashboard/admin/people/${params.id}#workforce`,
+    });
+  }
+  const missingWorkforceData = [
+    !profile.workforce_role ? "Workforce role" : null,
+    !profile.start_date ? "Start date" : null,
+    !person.phone ? "Phone number" : null,
+  ].filter(Boolean) as string[];
+  if (missingWorkforceData.length > 0) {
+    reasons.push({
+      code: "workforce_profile_missing",
+      severity: "blocking",
+      label: `Missing required profile fields: ${missingWorkforceData.join(", ")}`,
+      action_label: "Complete workforce profile",
+      action_href: `/dashboard/admin/people/${params.id}#workforce`,
+    });
+  }
+  const expiredCount = certifications.filter((cert: any) => cert.lifecycle_group === "expired").length;
+  if (expiredCount > 0) {
+    reasons.push({
+      code: "cert_expired",
+      severity: "blocking",
+      label: `${expiredCount} certification${expiredCount > 1 ? "s are" : " is"} expired`,
+      action_label: "Update certification",
+      action_href: `/dashboard/admin/people/${params.id}#certifications`,
+    });
+  }
+  const expiringSoonCount = certifications.filter((cert: any) => cert.lifecycle_group === "expiring_soon").length;
+  if (expiringSoonCount > 0) {
+    reasons.push({
+      code: "cert_expiring_soon",
+      severity: "warning",
+      label: `${expiringSoonCount} certification${expiringSoonCount > 1 ? "s" : ""} expiring soon`,
+      action_label: "Renew certification",
+      action_href: `/dashboard/admin/people/${params.id}#certifications`,
+    });
+  }
+  if (warning > 0) {
+    reasons.push({
+      code: "payroll_warning_exceptions",
+      severity: "warning",
+      label: `${warning} payroll warning${warning > 1 ? "s" : ""}`,
+      action_label: "Review payroll entries",
+      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+    });
+  }
+  if (profile.employment_status === "inactive" && (openEntries?.count ?? 0) > 0) {
+    reasons.push({
+      code: "inactive_in_payroll_scope",
+      severity: "informational",
+      label: "Inactive employee still has open payroll entries",
+      action_label: "Review payroll entries",
+      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+    });
+  }
+
+  const prioritizedAudit = (audit ?? [])
+    .map((row: any) => {
+      const action = (row.action ?? "").toLowerCase();
+      const priority = action.includes("employment") || action.includes("role")
+        ? 3
+        : action.includes("cert")
+          ? 2
+          : action.includes("payroll")
+            ? 2
+            : 1;
+      return { ...row, priority };
+    })
+    .sort((a: any, b: any) => (b.priority - a.priority) || ((new Date(b.created_at ?? 0).getTime()) - (new Date(a.created_at ?? 0).getTime())));
+
   return NextResponse.json({
     ...person,
     workforce_profile: profile,
-    certifications: certs ?? [],
+    certifications,
+    needs_action: reasons.length > 0,
+    action_reasons: reasons,
+    action_counts: {
+      blocking: reasons.filter((reason) => reason.severity === "blocking").length,
+      warning: reasons.filter((reason) => reason.severity === "warning").length,
+      informational: reasons.filter((reason) => reason.severity === "informational").length,
+    },
     payroll_posture: {
       is_payroll_ready: Boolean(profile.payroll_ready),
       open_period_entries: openEntries?.count ?? 0,
       blocking_exceptions: blocking,
       warning_exceptions: warning,
       in_current_period: (openEntries?.count ?? 0) > 0,
-      missing_workforce_data: [
-        !profile.workforce_role ? "Workforce role" : null,
-        !profile.start_date ? "Start date" : null,
-        !person.phone ? "Phone number" : null,
-      ].filter(Boolean),
+      missing_workforce_data: missingWorkforceData,
     },
-    audit_preview: audit ?? [],
+    audit_preview: prioritizedAudit,
   });
 }
 
