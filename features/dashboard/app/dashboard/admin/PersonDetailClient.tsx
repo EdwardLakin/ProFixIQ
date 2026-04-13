@@ -100,7 +100,7 @@ function statusTone(status: "active" | "inactive" | "on_leave") {
   return "text-emerald-300";
 }
 
-export default function PersonDetailClient({ personId }: { personId: string }) {
+export default function PersonDetailClient({ personId, from }: { personId: string; from?: string | null }) {
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -250,6 +250,22 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
         title={detail.full_name ?? "Person record"}
         subtitle="Manage identity/access, workforce profile, certifications/licensing, payroll posture, and activity from one canonical staff record."
       />
+
+      {from === "create-user" ? (
+        <AdminPanel>
+          <AdminPanelTitle
+            title="Account created successfully"
+            description="This person is now provisioned for access and linked to the canonical People record. Continue setup here."
+          />
+          <div className="space-y-1 px-4 pb-4 text-xs text-neutral-300">
+            <p>Next actions:</p>
+            <p>• Complete workforce profile (role/category/start date).</p>
+            <p>• Add certifications/licensing if required.</p>
+            <p>• Review payroll readiness when staffing details are complete.</p>
+            <p>• Ask the user to sign in and finish personal onboarding details.</p>
+          </div>
+        </AdminPanel>
+      ) : null}
 
       <div id="needs-action">
       <AdminPanel>

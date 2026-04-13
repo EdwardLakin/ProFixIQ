@@ -184,6 +184,36 @@ export async function POST(_req: NextRequest, context: unknown) {
       );
     }
 
+    const { error: workforceErr } = await admin
+      .from("people_workforce_profiles")
+      .upsert(
+        {
+          shop_id: shopId,
+          user_id: createdUser.user.id,
+          employment_status: "active",
+          payroll_ready: false,
+          notes: "Seeded from staff invite candidate; complete in People detail.",
+        },
+        { onConflict: "shop_id,user_id" }
+      );
+
+    if (workforceErr) {
+      await admin
+        .from("staff_invite_candidates")
+        .update({
+          status: INVITE_STATUS.error,
+          error: workforceErr.message,
+          updated_at: new Date().toISOString(),
+          created_by: access.profile.id,
+        } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
+        .eq("id", candidateId);
+
+      return NextResponse.json(
+        { error: workforceErr.message },
+        { status: 500 },
+      );
+    }
+
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
     const { data: shop } = await admin
@@ -247,6 +277,7 @@ export async function POST(_req: NextRequest, context: unknown) {
       ok: true,
       status: finalStatus,
       created_user_id: createdUser.user.id,
+      people_record_href: `/dashboard/admin/people/${createdUser.user.id}?from=create-user`,
       ...(sendErrMsg
         ? {
             warning: "User created but invite failed to send",
