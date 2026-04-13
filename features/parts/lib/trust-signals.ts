@@ -40,6 +40,18 @@ export function buildPartTrustMeta(input: {
 
 export function trustBadgeTone(level: PartTrustLevel): string {
   if (level === "low") return "border-rose-500/30 bg-rose-950/25 text-rose-200";
-  if (level === "review") return "border-amber-500/30 bg-amber-950/20 text-amber-200";
+  if (level === "review") return "border-sky-500/30 bg-sky-950/20 text-sky-200";
   return "border-emerald-500/30 bg-emerald-950/20 text-emerald-200";
+}
+
+export function trustLevelLabel(level: PartTrustLevel): string {
+  if (level === "low") return "Low trust";
+  if (level === "review") return "Needs review";
+  return "High trust";
+}
+
+export function trustReasonTone(level: PartTrustLevel): string {
+  if (level === "low") return "text-rose-200";
+  if (level === "review") return "text-sky-200";
+  return "text-neutral-300";
 }

@@ -362,7 +362,7 @@ export default function ReceivePage(): JSX.Element {
             {lastTrust ? (
               <div className="mt-1 text-xs">
                 <span className={`inline-flex rounded-full border px-2 py-1 ${trustBadgeTone(lastTrust.level)}`}>Trust: {lastTrust.level}</span>
-                {lastTrust.reasons.length > 0 ? <span className="ml-2 text-amber-200">{lastTrust.reasons.slice(0, 2).join(" · ")}</span> : null}
+                {lastTrust.reasons.length > 0 ? <span className="ml-2 text-sky-200">{lastTrust.reasons.slice(0, 2).join(" · ")}</span> : null}
               </div>
             ) : null}
           </div>

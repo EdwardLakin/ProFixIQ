@@ -668,7 +668,7 @@ export default function PoReceivePage(): JSX.Element {
                             <span className="text-[11px] text-neutral-400">{receiveProgressLabel(recvState)}</span>
                             {trust ? <span className={`rounded-full border px-2 py-0.5 text-[10px] ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}
                           </div>
-                          {trust && trust.reasons.length > 0 ? <div className="text-[11px] text-amber-200">{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
+                          {trust && trust.reasons.length > 0 ? <div className="text-[11px] text-sky-200">{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
                         </td>
                         <td className="p-3 font-mono">{ordered}</td>
                         <td className="p-3 font-mono">{received}</td>
