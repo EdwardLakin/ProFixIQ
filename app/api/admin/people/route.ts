@@ -3,6 +3,22 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const DAY = 1000 * 60 * 60 * 24;
+type ActionSeverity = "blocking" | "warning" | "informational";
+
+type ActionReason = {
+  code:
+    | "cert_expired"
+    | "cert_expiring_soon"
+    | "workforce_profile_missing"
+    | "payroll_not_ready"
+    | "payroll_blocking_exceptions"
+    | "payroll_warning_exceptions"
+    | "inactive_in_payroll_scope";
+  severity: ActionSeverity;
+  label: string;
+  action_label: string;
+  action_href: string;
+};
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
@@ -83,11 +99,86 @@ export async function GET() {
     const payrollExceptions = exceptionByUser.get(profile.id) ?? { blocking: 0, warning: 0 };
     const cert = certByUser.get(profile.id) ?? { open: 0, expiring30: 0, expiring60: 0, expired: 0, revoked: 0 };
     const openPeriodEntries = openEntriesByUser.get(profile.id) ?? 0;
+    const employmentStatus = workforceRow?.employment_status ?? "active";
+    const missingWorkforceData = !workforceRow?.workforce_role;
+    const reasons: ActionReason[] = [];
+
+    if (payrollExceptions.blocking > 0) {
+      reasons.push({
+        code: "payroll_blocking_exceptions",
+        severity: "blocking",
+        label: `${payrollExceptions.blocking} payroll blocking issue${payrollExceptions.blocking > 1 ? "s" : ""}`,
+        action_label: "Review payroll entries",
+        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+      });
+    }
+    if (!workforceRow?.payroll_ready) {
+      reasons.push({
+        code: "payroll_not_ready",
+        severity: "blocking",
+        label: "Payroll profile is not ready",
+        action_label: "Fix payroll data",
+        action_href: `/dashboard/admin/people/${profile.id}`,
+      });
+    }
+    if (missingWorkforceData) {
+      reasons.push({
+        code: "workforce_profile_missing",
+        severity: "blocking",
+        label: "Workforce role is missing",
+        action_label: "Complete workforce profile",
+        action_href: `/dashboard/admin/people/${profile.id}`,
+      });
+    }
+    if (cert.expired > 0) {
+      reasons.push({
+        code: "cert_expired",
+        severity: "blocking",
+        label: `${cert.expired} certification${cert.expired > 1 ? "s are" : " is"} expired`,
+        action_label: "Update certification",
+        action_href: `/dashboard/admin/people/${profile.id}#certifications`,
+      });
+    }
+    if (payrollExceptions.warning > 0) {
+      reasons.push({
+        code: "payroll_warning_exceptions",
+        severity: "warning",
+        label: `${payrollExceptions.warning} payroll warning${payrollExceptions.warning > 1 ? "s" : ""}`,
+        action_label: "Review payroll entries",
+        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+      });
+    }
+    if (cert.expiring30 > 0) {
+      reasons.push({
+        code: "cert_expiring_soon",
+        severity: "warning",
+        label: `${cert.expiring30} certification${cert.expiring30 > 1 ? "s" : ""} expiring in 30 days`,
+        action_label: "Renew certification",
+        action_href: `/dashboard/admin/people/${profile.id}#certifications`,
+      });
+    }
+    if (employmentStatus === "inactive" && openPeriodEntries > 0) {
+      reasons.push({
+        code: "inactive_in_payroll_scope",
+        severity: "informational",
+        label: "Inactive employee still has open payroll entries",
+        action_label: "Review payroll entries",
+        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+      });
+    }
+
+    const highestSeverity: ActionSeverity | null = reasons.length === 0
+      ? null
+      : reasons.some((reason) => reason.severity === "blocking")
+        ? "blocking"
+        : reasons.some((reason) => reason.severity === "warning")
+          ? "warning"
+          : "informational";
 
     return {
       ...profile,
       workforce_role: workforceRow?.workforce_role ?? null,
-      employment_status: workforceRow?.employment_status ?? "active",
+      employment_status: employmentStatus,
       payroll_ready: Boolean(workforceRow?.payroll_ready),
       payroll_blocking_exceptions: payrollExceptions.blocking,
       payroll_warning_exceptions: payrollExceptions.warning,
@@ -97,6 +188,14 @@ export async function GET() {
       cert_expiring_60: cert.expiring60,
       expired_certifications: cert.expired,
       revoked_certifications: cert.revoked,
+      needs_action: reasons.length > 0,
+      highest_action_severity: highestSeverity,
+      action_reasons: reasons,
+      action_counts: {
+        blocking: reasons.filter((reason) => reason.severity === "blocking").length,
+        warning: reasons.filter((reason) => reason.severity === "warning").length,
+        informational: reasons.filter((reason) => reason.severity === "informational").length,
+      },
     };
   });
 

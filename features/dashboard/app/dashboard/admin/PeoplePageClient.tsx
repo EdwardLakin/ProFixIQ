@@ -34,6 +34,16 @@ type PersonRow = {
   cert_expiring_60: number;
   expired_certifications: number;
   revoked_certifications: number;
+  needs_action: boolean;
+  highest_action_severity: "blocking" | "warning" | "informational" | null;
+  action_counts: { blocking: number; warning: number; informational: number };
+  action_reasons: Array<{
+    code: string;
+    severity: "blocking" | "warning" | "informational";
+    label: string;
+    action_label: string;
+    action_href: string;
+  }>;
 };
 
 function certificationPosture(row: PersonRow) {
@@ -49,6 +59,7 @@ export default function PeoplePageClient() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on_leave">("all");
+  const [actionFilter, setActionFilter] = useState<"all" | "needs_action" | "payroll_issues" | "cert_expiry">("all");
 
   useEffect(() => {
     (async () => {
@@ -65,12 +76,24 @@ export default function PeoplePageClient() {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (rows ?? []).filter((row) => {
+    return (rows ?? [])
+      .filter((row) => {
       const matchesStatus = statusFilter === "all" ? true : (row.employment_status ?? "active") === statusFilter;
+      const matchesActionFilter = actionFilter === "all"
+        ? true
+        : actionFilter === "needs_action"
+          ? row.needs_action
+          : actionFilter === "payroll_issues"
+            ? row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready
+            : row.expired_certifications > 0 || row.expiring_certifications > 0;
       const text = `${row.full_name ?? ""} ${row.email ?? ""} ${row.phone ?? ""} ${row.role ?? ""} ${row.workforce_role ?? ""}`.toLowerCase();
-      return matchesStatus && (!q || text.includes(q));
-    });
-  }, [rows, search, statusFilter]);
+      return matchesStatus && matchesActionFilter && (!q || text.includes(q));
+      })
+      .sort((a, b) => {
+        const score = (value: PersonRow["highest_action_severity"]) => (value === "blocking" ? 3 : value === "warning" ? 2 : value === "informational" ? 1 : 0);
+        return score(b.highest_action_severity) - score(a.highest_action_severity);
+      });
+  }, [rows, search, statusFilter, actionFilter]);
 
   const summary = useMemo(() => {
     const source = rows ?? [];
@@ -80,6 +103,7 @@ export default function PeoplePageClient() {
       payrollFollowUp: source.filter((row) => row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready).length,
       certFollowUp: source.filter((row) => row.expired_certifications > 0 || row.expiring_certifications > 0).length,
       inactive: source.filter((row) => row.employment_status === "inactive").length,
+      needsAction: source.filter((row) => row.needs_action).length,
     };
   }, [rows]);
 
@@ -101,6 +125,7 @@ export default function PeoplePageClient() {
           <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
           <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Exceptions or not payroll-ready" />
           <AdminStatCard label="Credential follow-up" value={summary.certFollowUp} hint="Expired or expiring in 30 days" />
+          <AdminStatCard label="Needs action now" value={summary.needsAction} hint="Blocking/warning/informational triage" />
           <AdminStatCard label="Inactive workforce" value={summary.inactive} />
         </AdminStatGrid>
       </AdminPanel>
@@ -137,6 +162,18 @@ export default function PeoplePageClient() {
               <option value="on_leave">On leave</option>
             </select>
           </AdminField>
+          <AdminField label="Triage filter" className="w-full md:w-56">
+            <select
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              value={actionFilter}
+              onChange={(event) => setActionFilter(event.target.value as "all" | "needs_action" | "payroll_issues" | "cert_expiry")}
+            >
+              <option value="all">All people</option>
+              <option value="needs_action">Needs action</option>
+              <option value="payroll_issues">Payroll issues</option>
+              <option value="cert_expiry">Cert expiry</option>
+            </select>
+          </AdminField>
         </AdminToolbar>
         {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
       </AdminPanel>
@@ -163,7 +200,12 @@ export default function PeoplePageClient() {
               <tbody className="divide-y divide-white/10">
                 {filteredRows.map((row) => {
                   const cert = certificationPosture(row);
-                  const needsFollowUp = row.payroll_blocking_exceptions > 0 || row.expired_certifications > 0 || !row.completed_onboarding;
+                  const topReason = row.action_reasons[0];
+                  const severityTone = row.highest_action_severity === "blocking"
+                    ? "text-red-300"
+                    : row.highest_action_severity === "warning"
+                      ? "text-amber-300"
+                      : "text-sky-300";
 
                   return (
                     <tr
@@ -176,6 +218,7 @@ export default function PeoplePageClient() {
                       <td className="px-4 py-2.5">
                         <p className="font-medium text-neutral-100">{row.full_name ?? "Unnamed"}</p>
                         <p className="text-xs text-neutral-500">{row.email ?? "No email"}</p>
+                        <p className="text-xs text-neutral-400">{row.action_counts.blocking} blocking • {row.action_counts.warning} warning</p>
                       </td>
                       <td className="px-4 py-2.5"><AdminBadge>{row.role ?? "Unassigned"}</AdminBadge></td>
                       <td className="px-4 py-2.5">
@@ -191,7 +234,10 @@ export default function PeoplePageClient() {
                         <p className="text-neutral-400">{row.payroll_open_period_entries} open entries</p>
                       </td>
                       <td className="px-4 py-2.5">
-                        <AdminBadge>{needsFollowUp ? "Needs action" : "Healthy"}</AdminBadge>
+                        <AdminBadge>{row.needs_action ? "Needs action" : "Healthy"}</AdminBadge>
+                        {row.needs_action ? (
+                          <p className={`mt-1 text-xs ${severityTone}`}>{topReason?.label ?? "Action required"}</p>
+                        ) : null}
                       </td>
                     </tr>
                   );

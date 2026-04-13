@@ -26,6 +26,8 @@ type Certification = {
   expiry_date: string | null;
   status: "active" | "expired" | "revoked" | "pending";
   notes: string | null;
+  days_remaining?: number | null;
+  lifecycle_group?: "expired" | "expiring_soon" | "active";
 };
 
 type PersonDetail = {
@@ -53,6 +55,15 @@ type PersonDetail = {
     in_current_period: boolean;
     missing_workforce_data: string[];
   };
+  needs_action: boolean;
+  action_reasons: Array<{
+    code: string;
+    severity: "blocking" | "warning" | "informational";
+    label: string;
+    action_label: string;
+    action_href: string;
+  }>;
+  action_counts: { blocking: number; warning: number; informational: number };
   audit_preview: Array<{ id: string; action: string | null; created_at: string | null; target: string | null; actor_id: string | null; metadata: unknown }>;
   certifications: Certification[];
 };
@@ -81,6 +92,12 @@ function certPosture(cert: Certification) {
   if (expiry && expiry <= in30) return "Expiring ≤30 days";
   if (expiry && expiry <= in60) return "Expiring 31-60 days";
   return cert.status === "expired" ? "Expired" : "Active";
+}
+
+function statusTone(status: "active" | "inactive" | "on_leave") {
+  if (status === "inactive") return "text-red-300";
+  if (status === "on_leave") return "text-amber-300";
+  return "text-emerald-300";
 }
 
 export default function PersonDetailClient({ personId }: { personId: string }) {
@@ -128,6 +145,17 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
       else base.active += 1;
     }
     return base;
+  }, [detail]);
+
+  const groupedCertifications = useMemo(() => {
+    if (!detail) return { expired: [] as Certification[], expiringSoon: [] as Certification[], active: [] as Certification[] };
+    const groups = { expired: [] as Certification[], expiringSoon: [] as Certification[], active: [] as Certification[] };
+    for (const cert of detail.certifications) {
+      if (cert.lifecycle_group === "expired") groups.expired.push(cert);
+      else if (cert.lifecycle_group === "expiring_soon") groups.expiringSoon.push(cert);
+      else groups.active.push(cert);
+    }
+    return groups;
   }, [detail]);
 
   async function saveIdentityAndWorkforce() {
@@ -223,11 +251,41 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
         subtitle="Manage identity/access, workforce profile, certifications/licensing, payroll posture, and activity from one canonical staff record."
       />
 
+      <div id="needs-action">
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Needs Action"
+          description={detail.needs_action ? "Prioritized follow-up for this person. Resolve blocking issues first." : "No follow-up issues are currently open."}
+        />
+        <div className="grid gap-3 p-4 md:grid-cols-3">
+          <AdminStatCard label="Blocking" value={detail.action_counts.blocking} />
+          <AdminStatCard label="Warning" value={detail.action_counts.warning} />
+          <AdminStatCard label="Informational" value={detail.action_counts.informational} />
+        </div>
+        {detail.needs_action ? (
+          <div className="space-y-2 px-4 pb-4">
+            {detail.action_reasons.map((reason, idx) => (
+              <div key={`${reason.code}-${idx}`} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className={`text-xs uppercase tracking-[0.16em] ${reason.severity === "blocking" ? "text-red-300" : reason.severity === "warning" ? "text-amber-300" : "text-sky-300"}`}>{reason.severity}</p>
+                  <p className="text-sm text-neutral-100">{reason.label}</p>
+                </div>
+                <Link href={reason.action_href} className="inline-flex rounded-lg border border-white/15 bg-black/30 px-3 py-1.5 text-xs font-medium text-orange-300 hover:text-orange-200">
+                  {reason.action_label} →
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </AdminPanel>
+      </div>
+
+      <div id="workforce">
       <AdminPanel>
         <AdminPanelTitle title="Overview" description="Use this to see readiness posture before editing deeper sections." />
         <AdminStatGrid>
           <AdminStatCard label="Role" value={detail.role ?? "Unassigned"} />
-          <AdminStatCard label="Employment" value={detail.workforce_profile.employment_status} />
+          <AdminStatCard label="Employment" value={detail.workforce_profile.employment_status} hint={detail.workforce_profile.employment_status} />
           <AdminStatCard label="Payroll blocking" value={detail.payroll_posture.blocking_exceptions} />
           <AdminStatCard label="Expiring certs (30d)" value={certSummary.expiring30} />
           <AdminStatCard label="Expired certs" value={certSummary.expired} />
@@ -237,9 +295,15 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
           {missingChecklist.length === 0 ? <p>Record is operationally complete.</p> : missingChecklist.map((item) => <p key={item}>• {item}</p>)}
         </div>
       </AdminPanel>
+      </div>
 
       <AdminPanel>
         <AdminPanelTitle title="Identity & Access" description="Account governance belongs here: identity fields, role, and account posture." />
+        <div className="px-4 pb-2">
+          <AdminBadge>
+            Employment status: <span className={statusTone(detail.workforce_profile.employment_status)}>{detail.workforce_profile.employment_status}</span>
+          </AdminBadge>
+        </div>
         <AdminToolbar>
           <AdminField label="Full name" className="flex-1">
             <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.full_name ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, full_name: e.target.value } : prev)} />
@@ -311,15 +375,18 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
         {detail.certifications.length === 0 ? (
           <AdminEmptyState title="No credentials yet" body="Add certifications/licenses so readiness and expiry posture are visible." />
         ) : (
-          <div className="overflow-x-auto">
+          <div id="certifications" className="overflow-x-auto">
+            <div className="px-4 pb-2 text-xs text-neutral-400">
+              <p>Expired: {groupedCertifications.expired.length} • Expiring soon: {groupedCertifications.expiringSoon.length} • Active: {groupedCertifications.active.length}</p>
+            </div>
             <table className="min-w-full text-sm">
               <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400"><tr><th className="px-4 py-2.5 text-left">Credential</th><th className="px-4 py-2.5 text-left">Issuer</th><th className="px-4 py-2.5 text-left">Dates</th><th className="px-4 py-2.5 text-left">Posture</th><th className="px-4 py-2.5 text-left">Actions</th></tr></thead>
               <tbody className="divide-y divide-white/10">
-                {detail.certifications.map((cert) => (
+                {[...groupedCertifications.expired, ...groupedCertifications.expiringSoon, ...groupedCertifications.active].map((cert) => (
                   <tr key={cert.id} className="text-neutral-200">
                     <td className="px-4 py-2.5"><p className="font-medium text-neutral-100">{cert.cert_name}</p><p className="text-xs text-neutral-500">{cert.cert_type} {cert.cert_number ? `• ${cert.cert_number}` : ""}</p></td>
                     <td className="px-4 py-2.5 text-xs">{cert.issuing_body ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-xs">Issued: {cert.issue_date ?? "—"}<br />Expires: {cert.expiry_date ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-xs">Issued: {cert.issue_date ?? "—"}<br />Expires: {cert.expiry_date ?? "—"}{typeof cert.days_remaining === "number" ? <><br />{cert.days_remaining >= 0 ? `${cert.days_remaining} days remaining` : `${Math.abs(cert.days_remaining)} days overdue`}</> : null}</td>
                     <td className="px-4 py-2.5"><AdminBadge>{certPosture(cert)}</AdminBadge></td>
                     <td className="px-4 py-2.5 text-xs">
                       <button
@@ -338,6 +405,24 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
                           });
                         }}
                       >Edit</button>
+                      {(cert.lifecycle_group === "expired" || cert.lifecycle_group === "expiring_soon") ? (
+                        <button
+                          className="mr-3 text-emerald-300 hover:text-emerald-200"
+                          onClick={() => {
+                            setEditingCertId(cert.id);
+                            setEditingCert({
+                              cert_type: cert.cert_type,
+                              cert_name: cert.cert_name,
+                              cert_number: cert.cert_number,
+                              issuing_body: cert.issuing_body,
+                              issue_date: cert.issue_date,
+                              expiry_date: cert.expiry_date,
+                              status: "active",
+                              notes: cert.notes,
+                            });
+                          }}
+                        >Mark renewed</button>
+                      ) : null}
                       <button className="text-red-300 hover:text-red-200" onClick={() => void deleteCertification(cert.id)}>Delete</button>
                     </td>
                   </tr>
@@ -367,12 +452,13 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
         ) : null}
       </AdminPanel>
 
+      <div id="payroll-posture">
       <AdminPanel>
         <AdminPanelTitle title="Payroll Time Posture" description="Review payroll-readiness context before jumping into period approval/export." />
         <div className="grid gap-3 p-4 text-xs md:grid-cols-2">
           <div className="rounded-lg border border-white/10 bg-black/25 p-3">
             <p className="font-medium text-neutral-100">Readiness posture</p>
-            <p className="mt-1">{detail.payroll_posture.is_payroll_ready ? "Marked payroll-ready" : "Not payroll-ready"}</p>
+            <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-emerald-300" : "text-red-300"}`}>{detail.payroll_posture.is_payroll_ready ? "Ready for payroll processing" : `Not payroll ready — ${Math.max(1, detail.payroll_posture.blocking_exceptions)} blocking issue${Math.max(1, detail.payroll_posture.blocking_exceptions) > 1 ? "s" : ""}`}</p>
             <p>{detail.payroll_posture.blocking_exceptions} blocking • {detail.payroll_posture.warning_exceptions} warning</p>
             <p>{detail.payroll_posture.in_current_period ? "Included in current open period" : "No open-period entries yet"}</p>
           </div>
@@ -383,10 +469,11 @@ export default function PersonDetailClient({ personId }: { personId: string }) {
             ) : (
               detail.payroll_posture.missing_workforce_data.map((item) => <p key={item}>• {item}</p>)
             )}
-            <Link href={`/dashboard/admin/payroll-time?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">Open Payroll Time →</Link>
+            <Link href={`/dashboard/admin/payroll-time?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">Fix payroll issues →</Link>
           </div>
         </div>
       </AdminPanel>
+      </div>
 
       <AdminPanel>
         <AdminPanelTitle title="Activity / Audit" description="Recent governance events linked to this person record." action={<Link href="/dashboard/admin/audit" className="text-xs font-medium text-orange-300 hover:text-orange-200">Open full audit →</Link>} />
