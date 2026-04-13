@@ -6,6 +6,12 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
+import {
+  buildPartTrustMeta,
+  trustBadgeTone,
+  trustLevelLabel,
+  type PartTrustMeta,
+} from "@/features/parts/lib/trust-signals";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -25,11 +31,7 @@ type StagingRow = {
   source_system: string | null;
   status: string | null;
 };
-type TrustLevel = "high" | "review" | "low";
-type TrustMeta = {
-  level: TrustLevel;
-  reasons: string[];
-};
+type TrustMeta = PartTrustMeta;
 
 // app-side view of the enum
 type StockMoveReason = "receive" | "adjust" | "consume" | "transfer";
@@ -430,35 +432,23 @@ export default function InventoryPage(): JSX.Element {
 
         const nextTrust: Record<string, TrustMeta> = {};
         partRows.forEach((p) => {
-          const reasons: string[] = [];
+          const extended = p as Part & { import_confidence?: number | null };
           const aliases = aliasByPart.get(p.id) ?? [];
           const stagingRows = stagingByPart.get(p.id) ?? [];
-
-          const hasSku = typeof p.sku === "string" && p.sku.trim().length > 0;
-          const hasPartNumber =
-            typeof p.part_number === "string" && p.part_number.trim().length > 0;
-          const hasIdentityKey =
-            typeof p.normalized_part_key === "string" && p.normalized_part_key.trim().length > 0;
-
-          if (!hasSku) reasons.push("Missing SKU");
-          if (!hasPartNumber) reasons.push("Missing part #");
-          if (!hasIdentityKey && !hasSku && !hasPartNumber) reasons.push("Weak identity");
-
-          if (aliases.length > 0) reasons.push("Alias-linked import");
-          if (stagingRows.length > 0) reasons.push("Imported lineage");
-          if (typeof p.source_intake_id === "string" && p.source_intake_id.trim()) {
-            reasons.push("Staged intake source");
-          }
-
-          const hasAmbiguousImport = stagingRows.some((s) => {
-            const status = String(s.status ?? "").toLowerCase();
-            return status === "pending" || status === "review";
+          nextTrust[p.id] = buildPartTrustMeta({
+            sku: p.sku,
+            partNumber: p.part_number,
+            normalizedPartKey: p.normalized_part_key,
+            sourceIntakeId: p.source_intake_id,
+            aliasCount: aliases.length,
+            pendingStagingCount: stagingRows.length,
+            ambiguousCandidateCount: stagingRows.some((s) =>
+              ["pending", "review", "ambiguous"].includes(String(s.status ?? "").toLowerCase()),
+            )
+              ? 1
+              : 0,
+            importConfidence: extended.import_confidence,
           });
-          if (hasAmbiguousImport) reasons.push("Ambiguous import");
-
-          const low = reasons.some((r) => r === "Weak identity" || r === "Ambiguous import");
-          const review = reasons.length > 0;
-          nextTrust[p.id] = { level: low ? "low" : review ? "review" : "high", reasons };
         });
 
         setTrustByPartId(nextTrust);
@@ -868,15 +858,6 @@ export default function InventoryPage(): JSX.Element {
                   const total = onHand[p.id] ?? 0;
                   const onHandPill = total > 0 ? pillOk : pillZero;
                   const trust = trustByPartId[p.id] ?? { level: "high", reasons: [] as string[] };
-                  const trustBadge =
-                    trust.level === "low"
-                      ? "border-red-500/30 bg-red-950/30 text-red-200"
-                      : trust.level === "review"
-                        ? "border-amber-500/35 bg-amber-950/30 text-amber-200"
-                        : "border-emerald-500/30 bg-emerald-950/25 text-emerald-200";
-                  const trustLabel =
-                    trust.level === "low" ? "Low trust" : trust.level === "review" ? "Review" : "High";
-
                   return (
                     <tr key={p.id} className="border-t border-white/10">
                       <td className="p-3">
@@ -888,8 +869,8 @@ export default function InventoryPage(): JSX.Element {
                       <td className="p-3">{p.sku ?? "—"}</td>
                       <td className="p-3">{p.category ?? "—"}</td>
                       <td className="p-3">
-                        <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadge}`}>
-                          {trustLabel}
+                        <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadgeTone(trust.level)}`}>
+                          {trustLevelLabel(trust.level)}
                         </div>
                         {trust.reasons.length > 0 ? (
                           <div className="mt-1 line-clamp-2 text-xs text-neutral-400">

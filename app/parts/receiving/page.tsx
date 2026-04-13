@@ -11,7 +11,13 @@ import {
   toItemFlowDisplay,
   toReceiveProgressDisplay,
 } from "@/features/parts/lib/status-display";
-import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
+import {
+  buildPartTrustMeta,
+  trustBadgeTone,
+  trustReasonTone,
+  type PartTrustMeta,
+} from "@/features/parts/lib/trust-signals";
+import type { ReceiveDrawerItem } from "@/features/parts/components/ReceiveDrawer";
 
 type DB = Database;
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
@@ -69,7 +75,7 @@ export default function ReceivingInboxPage(): JSX.Element {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTs, setNowTs] = useState<number>(Date.now());
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [drawerItem, setDrawerItem] = useState<any>(null);
+  const [drawerItem, setDrawerItem] = useState<ReceiveDrawerItem | null>(null);
 
   const load = async (pageToLoad = page) => {
     setLoading(true);
@@ -136,7 +142,7 @@ export default function ReceivingInboxPage(): JSX.Element {
     if (requestIds.length) {
       const { data: reqRows } = await supabase.from("part_requests").select("id, work_order_id").in("id", requestIds);
       const woByReq: Record<string, string | null> = {};
-      (reqRows ?? []).forEach((r: any) => (woByReq[r.id] = r.work_order_id));
+      (reqRows ?? []).forEach((r) => (woByReq[String(r.id)] = r.work_order_id ?? null));
       setItems((prev) => prev.map((it) => ({ ...it, work_order_id: woByReq[it.request_id] ?? null })));
     }
 
@@ -162,16 +168,16 @@ export default function ReceivingInboxPage(): JSX.Element {
       setPartsMap(pMap);
 
       const aliasCount: Record<string, number> = {};
-      (aliasRes.data ?? []).forEach((r: any) => (aliasCount[String(r.part_id)] = (aliasCount[String(r.part_id)] ?? 0) + 1));
+      (aliasRes.data ?? []).forEach((r) => (aliasCount[String(r.part_id)] = (aliasCount[String(r.part_id)] ?? 0) + 1));
       const pendingCount: Record<string, number> = {};
-      (stagingRes.data ?? []).forEach((r: any) => {
+      (stagingRes.data ?? []).forEach((r) => {
         const st = String(r.status ?? "").toLowerCase();
         if (st === "pending" || st === "review" || st === "ambiguous") {
           pendingCount[String(r.matched_part_id)] = (pendingCount[String(r.matched_part_id)] ?? 0) + 1;
         }
       });
       const candCount: Record<string, number> = {};
-      (candRes.data ?? []).forEach((r: any) => {
+      (candRes.data ?? []).forEach((r) => {
         const id = String(r.candidate_part_id);
         candCount[id] = (candCount[id] ?? 0) + 1;
       });
@@ -179,12 +185,13 @@ export default function ReceivingInboxPage(): JSX.Element {
       const tMap: Record<string, PartTrustMeta> = {};
       for (const pid of partIds) {
         const p = pMap[pid];
+        const extended = p as PartRow & { import_confidence?: number | null };
         tMap[pid] = buildPartTrustMeta({
           sku: p?.sku,
-          partNumber: (p as any)?.part_number ?? null,
-          normalizedPartKey: (p as any)?.normalized_part_key ?? null,
-          sourceIntakeId: (p as any)?.source_intake_id ?? null,
-          importConfidence: (p as any)?.import_confidence ?? null,
+          partNumber: p?.part_number ?? null,
+          normalizedPartKey: p?.normalized_part_key ?? null,
+          sourceIntakeId: p?.source_intake_id ?? null,
+          importConfidence: extended?.import_confidence ?? null,
           aliasCount: aliasCount[pid] ?? 0,
           ambiguousCandidateCount: (candCount[pid] ?? 0) > 1 ? candCount[pid] : 0,
           pendingStagingCount: pendingCount[pid] ?? 0,
@@ -264,7 +271,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                     <td className="p-3">
                       <div className="font-semibold">{p?.name ? String(p.name) : it.description}</div>
                       <div className="text-[11px] text-neutral-500">{p?.sku ? `${p.sku} • ` : ""}{itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}</div>
-                      {trust && trust.reasons.length > 0 ? <div className="mt-1 text-[11px] text-amber-200">{trust.reasons.slice(0,2).join(" · ")}</div> : null}
+                      {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}
                     </td>
                     <td className="p-3"><span className="inline-flex rounded-full border border-white/10 bg-black/40 px-2 py-1 text-xs">{receiveProgressLabel(recvState)}</span>{trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}</td>
                     <td className="p-3 tabular-nums">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>

@@ -1176,13 +1176,13 @@ if (!lineId || !isUuid(lineId)) {
                               Job:{" "}
                               <span className="text-neutral-300">{jobText}</span>
                               {isFallbackLinked ? (
-                                <span className="ml-2 text-amber-300">
+                                <span className="ml-2 text-sky-200">
                                   (using only work order line)
                                 </span>
                               ) : null}
                             </div>
                           ) : !hasValidLineId ? (
-                            <div className="mt-1 text-xs text-amber-300">
+                            <div className="mt-1 text-xs text-sky-200">
                               This request is not linked to a valid work order line yet.
                             </div>
                           ) : null}
@@ -1369,7 +1369,7 @@ if (!lineId || !isUuid(lineId)) {
                                           </div>
                                         ) : null}
                                         {trustMeta && trustMeta.reasons.length > 0 ? (
-                                          <div className="text-[11px] text-amber-200">
+                                          <div className="text-[11px] text-sky-200">
                                             {trustMeta.reasons.slice(0, 2).join(" · ")}
                                           </div>
                                         ) : null}

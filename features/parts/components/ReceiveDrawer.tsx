@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { itemFlowLabel, toItemFlowDisplay } from "@/features/parts/lib/status-display";
+import { trustBadgeTone } from "@/features/parts/lib/trust-signals";
 
 type Option = { value: string; label: string };
 
@@ -287,11 +289,13 @@ export default function ReceiveDrawer(props: {
                   </div>
                   <div>
                     <span className="text-neutral-500">Status:</span>{" "}
-                    <span className="text-neutral-200">{item.status ?? "—"}</span>
+                    <span className="text-neutral-200">
+                      {itemFlowLabel(toItemFlowDisplay({ rawStatus: item.status, qtyApproved: item.qty_approved, qtyReceived: item.qty_received }))}
+                    </span>
                   </div>
                 </div>
                 {Array.isArray(item.trust_reasons) && item.trust_reasons.length > 0 ? (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-2 py-1 text-[11px] text-amber-200">
+                  <div className={`rounded-lg border px-2 py-1 text-[11px] ${trustBadgeTone("review")}`}>
                     Trust review: {item.trust_reasons.slice(0, 2).join(" · ")}
                   </div>
                 ) : null}
