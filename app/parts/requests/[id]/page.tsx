@@ -20,6 +20,7 @@ import {
   toItemFlowDisplay,
   toRequestFlowDisplay,
 } from "@/features/parts/lib/status-display";
+import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
 
 type DB = Database;
 
@@ -72,6 +73,7 @@ type DrawerItem = {
   qty_remaining?: number | null;
   part_name?: string | null;
   sku?: string | null;
+  trust_reasons?: string[];
 };
 
 function isNonEmptyString(v: unknown): v is string {
@@ -168,6 +170,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   );
   const [requests, setRequests] = useState<RequestUi[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
+  const [trustByPartId, setTrustByPartId] = useState<Record<string, PartTrustMeta>>({});
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
 
@@ -422,7 +425,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             .limit(500),
         ]);
 
-      setParts((ps ?? []) as PartRow[]);
+      const partRows = (ps ?? []) as PartRow[];
+      setParts(partRows);
+      const trustMap: Record<string, PartTrustMeta> = {};
+      partRows.forEach((p: any) => {
+        trustMap[String(p.id)] = buildPartTrustMeta({
+          sku: p.sku ?? null,
+          partNumber: p.part_number ?? null,
+          normalizedPartKey: p.normalized_part_key ?? null,
+          sourceIntakeId: p.source_intake_id ?? null,
+          importConfidence: p.import_confidence ?? null,
+        });
+      });
+      setTrustByPartId(trustMap);
 
       const locList = (locs ?? []) as LocationRow[];
       setLocations(locList);
@@ -447,6 +462,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         setSelectedPo("");
     } else {
       setParts([]);
+      setTrustByPartId({});
       setLocations([]);
       setDefaultLocationId("");
       setPOs([]);
@@ -659,6 +675,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       qty_remaining: remaining,
       part_name: part?.name ? String(part.name) : null,
       sku: part?.sku ? String(part.sku) : null,
+      trust_reasons: partId ? (trustByPartId[partId]?.reasons ?? []) : [],
     });
     setRecvOpen(true);
   }
@@ -1245,6 +1262,7 @@ if (!lineId || !isUuid(lineId)) {
                                 const effectivePartId = (it.part_id ??
                                   it.ui_part_id ??
                                   null) as string | null;
+                                const trustMeta = effectivePartId ? trustByPartId[effectivePartId] : null;
                                 const canReceive =
                                   !!effectivePartId &&
                                   approved > 0 &&
@@ -1343,6 +1361,16 @@ if (!lineId || !isUuid(lineId)) {
                                             <span className="text-neutral-200">
                                               {remaining}
                                             </span>
+                                            {trustMeta ? (
+                                              <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 ${trustBadgeTone(trustMeta.level)}`}>
+                                                {trustMeta.level}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                        {trustMeta && trustMeta.reasons.length > 0 ? (
+                                          <div className="text-[11px] text-amber-200">
+                                            {trustMeta.reasons.slice(0, 2).join(" · ")}
                                           </div>
                                         ) : null}
                                       </div>

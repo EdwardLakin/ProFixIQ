@@ -6,6 +6,17 @@ export type ItemFlowDisplay =
   | "received"
   | "consumed";
 
+export type ReceiveProgressDisplay = "not_received" | "partial" | "received" | "allocated";
+
+export const REQUEST_STATUS_CANONICAL: RequestFlowDisplay[] = ["pending", "in_progress", "ready", "complete"];
+export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = [
+  "requested",
+  "ordered",
+  "partially_received",
+  "received",
+  "consumed",
+];
+
 function asNum(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -14,7 +25,7 @@ function asNum(v: unknown): number {
 export function requestFlowLabel(status: RequestFlowDisplay): string {
   if (status === "pending") return "Pending";
   if (status === "in_progress") return "In Progress";
-  if (status === "ready") return "Ready";
+  if (status === "ready") return "Ready to Allocate";
   return "Complete";
 }
 
@@ -22,6 +33,31 @@ export function itemFlowLabel(status: ItemFlowDisplay): string {
   if (status === "partially_received") return "Partially Received";
   if (status === "consumed") return "Allocated / Consumed";
   return status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ");
+}
+
+export function receiveProgressLabel(status: ReceiveProgressDisplay): string {
+  if (status === "not_received") return "Awaiting Receive";
+  if (status === "partial") return "Partially Received";
+  if (status === "allocated") return "Allocated";
+  return "Received";
+}
+
+export function toReceiveProgressDisplay(input: {
+  qty?: unknown;
+  qtyApproved?: unknown;
+  qtyReceived?: unknown;
+  qtyAllocated?: unknown;
+}): ReceiveProgressDisplay {
+  const qty = asNum(input.qty);
+  const approved = asNum(input.qtyApproved);
+  const received = asNum(input.qtyReceived);
+  const allocated = asNum(input.qtyAllocated);
+  const target = approved > 0 ? approved : qty;
+
+  if (target > 0 && allocated >= target) return "allocated";
+  if (target > 0 && received >= target) return "received";
+  if (received > 0) return "partial";
+  return "not_received";
 }
 
 export function toItemFlowDisplay(input: {
@@ -32,17 +68,23 @@ export function toItemFlowDisplay(input: {
   qtyAllocated?: unknown;
 }): ItemFlowDisplay {
   const status = String(input.rawStatus ?? "").toLowerCase();
-  const qty = asNum(input.qty);
-  const approved = asNum(input.qtyApproved);
-  const received = asNum(input.qtyReceived);
-  const allocated = asNum(input.qtyAllocated);
-  const target = approved > 0 ? approved : qty;
+  const receiveState = toReceiveProgressDisplay(input);
 
-  if (allocated > 0 && target > 0 && allocated >= target) return "consumed";
+  if (receiveState === "allocated") return "consumed";
   if (status === "fulfilled") return "consumed";
-  if (received > 0 && target > 0 && received >= target) return "received";
-  if (received > 0 && target > 0 && received < target) return "partially_received";
-  if (status.includes("ordered") || status === "approved" || status === "reserved") return "ordered";
+  if (receiveState === "received") return "received";
+  if (receiveState === "partial") return "partially_received";
+
+  if (
+    status.includes("ordered") ||
+    status === "approved" ||
+    status === "reserved" ||
+    status === "picking" ||
+    status === "picked"
+  ) {
+    return "ordered";
+  }
+
   return "requested";
 }
 

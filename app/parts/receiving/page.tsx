@@ -1,4 +1,3 @@
-// app/parts/receiving/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,10 +5,15 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { itemFlowLabel, toItemFlowDisplay } from "@/features/parts/lib/status-display";
+import {
+  itemFlowLabel,
+  receiveProgressLabel,
+  toItemFlowDisplay,
+  toReceiveProgressDisplay,
+} from "@/features/parts/lib/status-display";
+import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
 
 type DB = Database;
-
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrder = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type PartRequestItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
@@ -18,7 +22,6 @@ type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type InboxItem = {
   id: string;
   created_at: string | null;
-  shop_id: string | null;
   request_id: string;
   part_id: string | null;
   description: string;
@@ -26,6 +29,7 @@ type InboxItem = {
   qty_approved: number;
   qty_received: number;
   qty_remaining: number;
+  qty_allocated: number;
   po_id: string | null;
   work_order_id: string | null;
 };
@@ -39,139 +43,87 @@ async function resolveShopId(supabase: ReturnType<typeof createClientComponentCl
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
   if (!uid) return "";
-
-  const { data: profA } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("user_id", uid)
-    .maybeSingle();
+  const { data: profA } = await supabase.from("profiles").select("shop_id").eq("user_id", uid).maybeSingle();
   if (profA?.shop_id) return String(profA.shop_id);
-
-  const { data: profB } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", uid)
-    .maybeSingle();
-
+  const { data: profB } = await supabase.from("profiles").select("shop_id").eq("id", uid).maybeSingle();
   return String(profB?.shop_id ?? "");
 }
 
-const ReceiveDrawer = dynamic(() => import("@/features/parts/components/ReceiveDrawer"), {
-  ssr: false,
-});
-
-type DrawerItem = {
-  id: string;
-  created_at?: string | null;
-  request_id?: string | null;
-  part_id?: string | null;
-  description?: string | null;
-  status?: string | null;
-  qty_approved?: number | null;
-  qty_received?: number | null;
-  qty_remaining?: number | null;
-  part_name?: string | null;
-  sku?: string | null;
-};
+const ReceiveDrawer = dynamic(() => import("@/features/parts/components/ReceiveDrawer"), { ssr: false });
 
 export default function ReceivingInboxPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const [shopId, setShopId] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
-
   const [locs, setLocs] = useState<StockLoc[]>([]);
   const [selectedLoc, setSelectedLoc] = useState<string>("");
-
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
   const [selectedPo, setSelectedPo] = useState<string>("");
-
   const [items, setItems] = useState<InboxItem[]>([]);
   const [partsMap, setPartsMap] = useState<Record<string, PartRow>>({});
-  const [poMap, setPoMap] = useState<Record<string, PurchaseOrder>>({});
+  const [trustByPartId, setTrustByPartId] = useState<Record<string, PartTrustMeta>>({});
   const [page, setPage] = useState(1);
   const pageSize = 100;
   const [totalCount, setTotalCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTs, setNowTs] = useState<number>(Date.now());
-
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [drawerItem, setDrawerItem] = useState<DrawerItem | null>(null);
+  const [drawerItem, setDrawerItem] = useState<any>(null);
 
   const load = async (pageToLoad = page) => {
     setLoading(true);
     setErr(null);
-
     const sid = shopId || (await resolveShopId(supabase));
-    if (!sid) {
-      setLoading(false);
-      return;
-    }
+    if (!sid) return setLoading(false);
     if (!shopId) setShopId(sid);
 
     const [locRes, poRes] = await Promise.all([
       supabase.from("stock_locations").select("*").eq("shop_id", sid).order("code"),
-      supabase
-        .from("purchase_orders")
-        .select("*")
-        .eq("shop_id", sid)
-        .order("created_at", { ascending: false })
-        .limit(50),
+      supabase.from("purchase_orders").select("*").eq("shop_id", sid).order("created_at", { ascending: false }).limit(50),
     ]);
-
-    if (locRes.error) setErr(locRes.error.message);
-    if (poRes.error) setErr(poRes.error.message);
 
     const locRows = (locRes.data ?? []) as StockLoc[];
     setLocs(locRows);
-
     const main = locRows.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
     if (!selectedLoc && main?.id) setSelectedLoc(String(main.id));
-
     setPOs((poRes.data ?? []) as PurchaseOrder[]);
 
     const from = (pageToLoad - 1) * pageSize;
     const to = from + pageSize - 1;
-
-    const [{ data: priRows, error: priErr }, { count: rawCount, error: cntErr }] = await Promise.all([
+    const [{ data: priRows, error: priErr }, { count: rawCount }] = await Promise.all([
       supabase
-      .from("part_request_items")
-      .select("id, created_at, shop_id, request_id, part_id, description, status, qty_approved, qty_received, po_id")
-      .eq("shop_id", sid)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to),
+        .from("part_request_items")
+        .select("id, created_at, request_id, part_id, description, status, qty_approved, qty_received, qty_consumed, po_id")
+        .eq("shop_id", sid)
+        .order("created_at", { ascending: true })
+        .range(from, to),
       supabase.from("part_request_items").select("id", { count: "exact", head: true }).eq("shop_id", sid),
     ]);
 
     if (priErr) {
       setErr(priErr.message);
-      setItems([]);
-      setLoading(false);
-      return;
+      return setLoading(false);
     }
-    if (cntErr) setErr(cntErr.message);
     setTotalCount(rawCount ?? 0);
 
     const normalized: InboxItem[] = (priRows ?? [])
       .map((r) => {
-        const approved = n((r as PartRequestItemRow).qty_approved);
-        const received = n((r as PartRequestItemRow).qty_received);
-        const remaining = Math.max(0, approved - received);
-
+        const row = r as PartRequestItemRow;
+        const approved = n(row.qty_approved);
+        const received = n(row.qty_received);
         return {
-          id: String((r as PartRequestItemRow).id),
-          created_at: (r as PartRequestItemRow).created_at ?? null,
-          shop_id: (r as PartRequestItemRow).shop_id ?? null,
-          request_id: String((r as PartRequestItemRow).request_id),
-          part_id: ((r as PartRequestItemRow).part_id as string | null) ?? null,
-          description: String((r as PartRequestItemRow).description ?? ""),
-          status: String((r as PartRequestItemRow).status ?? ""),
+          id: String(row.id),
+          created_at: row.created_at ?? null,
+          request_id: String(row.request_id),
+          part_id: row.part_id ?? null,
+          description: String(row.description ?? ""),
+          status: String(row.status ?? ""),
           qty_approved: approved,
           qty_received: received,
-          qty_remaining: remaining,
-          po_id: ((r as PartRequestItemRow) as { po_id?: string | null }).po_id ?? null,
+          qty_remaining: Math.max(0, approved - received),
+          qty_allocated: n(row.qty_consumed),
+          po_id: row.po_id ?? null,
           work_order_id: null,
         };
       })
@@ -180,50 +132,68 @@ export default function ReceivingInboxPage(): JSX.Element {
     setItems(normalized);
     setLastUpdated(new Date());
 
-    const requestIds = Array.from(new Set(normalized.map((x) => x.request_id)));
+    const requestIds = [...new Set(normalized.map((x) => x.request_id))];
     if (requestIds.length) {
-      const { data: reqRows } = await supabase
-        .from("part_requests")
-        .select("id, work_order_id")
-        .in("id", requestIds);
-      const workOrderByRequest: Record<string, string | null> = {};
-      (reqRows ?? []).forEach((r) => {
-        const row = r as { id: string; work_order_id: string | null };
-        workOrderByRequest[row.id] = row.work_order_id;
-      });
-      setItems((prev) =>
-        prev.map((it) => ({
-          ...it,
-          work_order_id: workOrderByRequest[it.request_id] ?? null,
-        })),
-      );
+      const { data: reqRows } = await supabase.from("part_requests").select("id, work_order_id").in("id", requestIds);
+      const woByReq: Record<string, string | null> = {};
+      (reqRows ?? []).forEach((r: any) => (woByReq[r.id] = r.work_order_id));
+      setItems((prev) => prev.map((it) => ({ ...it, work_order_id: woByReq[it.request_id] ?? null })));
     }
 
-    const partIds = Array.from(new Set(normalized.map((x) => x.part_id).filter(Boolean))) as string[];
+    const partIds = [...new Set(normalized.map((x) => x.part_id).filter(Boolean))] as string[];
     if (partIds.length) {
-      const { data: partRows, error: pErr } = await supabase.from("parts").select("*").in("id", partIds);
-      if (pErr) setErr(pErr.message);
+      const [partRes, aliasRes, stagingRes, candRes] = await Promise.all([
+        supabase.from("parts").select("*").in("id", partIds),
+        supabase.from("shop_parts_source_aliases").select("part_id").in("part_id", partIds).eq("shop_id", sid),
+        supabase
+          .from("shop_parts_import_staging")
+          .select("matched_part_id, status")
+          .in("matched_part_id", partIds)
+          .eq("shop_id", sid),
+        supabase
+          .from("shop_parts_import_match_candidates")
+          .select("staging_id, candidate_part_id")
+          .in("candidate_part_id", partIds)
+          .eq("shop_id", sid),
+      ]);
 
-      const map: Record<string, PartRow> = {};
-      (partRows ?? []).forEach((p) => {
-        map[String((p as PartRow).id)] = p as PartRow;
+      const pMap: Record<string, PartRow> = {};
+      (partRes.data ?? []).forEach((p) => (pMap[String((p as PartRow).id)] = p as PartRow));
+      setPartsMap(pMap);
+
+      const aliasCount: Record<string, number> = {};
+      (aliasRes.data ?? []).forEach((r: any) => (aliasCount[String(r.part_id)] = (aliasCount[String(r.part_id)] ?? 0) + 1));
+      const pendingCount: Record<string, number> = {};
+      (stagingRes.data ?? []).forEach((r: any) => {
+        const st = String(r.status ?? "").toLowerCase();
+        if (st === "pending" || st === "review" || st === "ambiguous") {
+          pendingCount[String(r.matched_part_id)] = (pendingCount[String(r.matched_part_id)] ?? 0) + 1;
+        }
       });
-      setPartsMap(map);
+      const candCount: Record<string, number> = {};
+      (candRes.data ?? []).forEach((r: any) => {
+        const id = String(r.candidate_part_id);
+        candCount[id] = (candCount[id] ?? 0) + 1;
+      });
+
+      const tMap: Record<string, PartTrustMeta> = {};
+      for (const pid of partIds) {
+        const p = pMap[pid];
+        tMap[pid] = buildPartTrustMeta({
+          sku: p?.sku,
+          partNumber: (p as any)?.part_number ?? null,
+          normalizedPartKey: (p as any)?.normalized_part_key ?? null,
+          sourceIntakeId: (p as any)?.source_intake_id ?? null,
+          importConfidence: (p as any)?.import_confidence ?? null,
+          aliasCount: aliasCount[pid] ?? 0,
+          ambiguousCandidateCount: (candCount[pid] ?? 0) > 1 ? candCount[pid] : 0,
+          pendingStagingCount: pendingCount[pid] ?? 0,
+        });
+      }
+      setTrustByPartId(tMap);
     } else {
       setPartsMap({});
-    }
-
-    const poIds = Array.from(new Set(normalized.map((x) => x.po_id).filter(Boolean))) as string[];
-    if (poIds.length) {
-      const { data: poRows } = await supabase.from("purchase_orders").select("*").in("id", poIds);
-      const map: Record<string, PurchaseOrder> = {};
-      (poRows ?? []).forEach((row) => {
-        const po = row as PurchaseOrder;
-        map[String(po.id)] = po;
-      });
-      setPoMap(map);
-    } else {
-      setPoMap({});
+      setTrustByPartId({});
     }
 
     setLoading(false);
@@ -231,15 +201,12 @@ export default function ReceivingInboxPage(): JSX.Element {
 
   useEffect(() => {
     void load(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  // any drawer receive triggers refresh via event
   useEffect(() => {
     const handler = () => void load(page);
     window.addEventListener("parts:received", handler as EventListener);
     return () => window.removeEventListener("parts:received", handler as EventListener);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   useEffect(() => {
@@ -247,253 +214,73 @@ export default function ReceivingInboxPage(): JSX.Element {
     return () => window.clearInterval(t);
   }, []);
 
-  const openDrawerFor = (it: InboxItem) => {
-    const p = it.part_id ? partsMap[it.part_id] : null;
-
-    setDrawerItem({
-      id: it.id,
-      created_at: it.created_at,
-      request_id: it.request_id,
-      part_id: it.part_id,
-      description: it.description,
-      status: it.status,
-      qty_approved: it.qty_approved,
-      qty_received: it.qty_received,
-      qty_remaining: it.qty_remaining,
-      part_name: p?.name ? String(p.name) : null,
-      sku: p?.sku ? String(p.sku) : null,
-    });
-
-    setDrawerOpen(true);
-  };
-
-  const card =
-    "metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl";
-
-  const locOptions = locs.map((l) => ({
-    value: String(l.id),
-    label: `${String(l.code ?? "LOC")} — ${String(l.name ?? "")}`,
-  }));
-
-  const poOptions = pos.map((po) => ({
-    value: String(po.id),
-    label: `${String(po.id).slice(0, 8)} • ${String(po.status ?? "draft")}`,
-  }));
+  const locOptions = locs.map((l) => ({ value: String(l.id), label: `${l.code ?? "LOC"} — ${l.name ?? ""}` }));
+  const poOptions = pos.map((po) => ({ value: String(po.id), label: `${String(po.id).slice(0, 8)} • ${String(po.status ?? "draft")}` }));
 
   return (
     <div className="p-6 space-y-4 text-white">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
-            Receiving Inbox
-          </h1>
-          <div className="text-sm text-neutral-400">Receiving Inbox: all pending request items.</div>
-          <div className="mt-1 text-xs text-neutral-500">Use this queue for operational receiving across all work orders.</div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts · Receiving Lens</div>
+          <h1 className="text-2xl font-bold">Receiving Inbox</h1>
+          <div className="text-sm text-neutral-400">Shared receive flow for request items with consistent status and trust context.</div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/assistant?pageType=receiving_inbox&pageTitle=Receiving%20Inbox"
-            className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
-          >
-            Ask Assistant
-          </Link>
-          <button
-            onClick={() => void load(page)}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
-          >
-            Refresh
-          </button>
-        </div>
+        <button onClick={() => void load(page)} className="rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm hover:bg-white/5">Refresh</button>
       </div>
 
       <div className="text-xs text-neutral-500">
-        Last updated: <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span>
-        {" · "}
-        {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? (
-          <span className="text-amber-300">stale</span>
-        ) : (
-          <span className="text-emerald-300">fresh</span>
-        )}
+        Last updated <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-amber-300">stale</span> : <span className="text-emerald-300">fresh</span>}
       </div>
 
-      {/* Controls */}
-      <div className={`${card} p-4`}>
+      <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <div>
-            <div className="mb-1 text-xs text-neutral-400">Location</div>
-            <select
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-2 text-sm text-white"
-              value={selectedLoc}
-              onChange={(e) => setSelectedLoc(e.target.value)}
-            >
-              {locs.map((l) => (
-                <option key={String(l.id)} value={String(l.id)}>
-                  {String(l.code ?? "LOC")} — {String(l.name ?? "")}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div className="mb-1 text-xs text-neutral-400">PO (optional)</div>
-            <select
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-2 text-sm text-white"
-              value={selectedPo}
-              onChange={(e) => setSelectedPo(e.target.value)}
-            >
-              <option value="">— none —</option>
-              {pos.map((po) => (
-                <option key={String(po.id)} value={String(po.id)}>
-                  {String(po.id).slice(0, 8)} • {String(po.status ?? "draft")}
-                </option>
-              ))}
-            </select>
-            <div className="mt-1 text-[11px] text-neutral-500">
-              If selected, we attribute receiving to that PO via the RPC.
-            </div>
-          </div>
-
-          <div className="flex items-end">
-            <div className="text-[11px] text-neutral-500">
-              Showing items where <span className="text-neutral-200">qty_received &lt; qty_approved</span>.
-            </div>
-          </div>
+          <select className="rounded-lg border border-white/10 bg-neutral-950/40 p-2" value={selectedLoc} onChange={(e) => setSelectedLoc(e.target.value)}>
+            {locs.map((l) => <option key={String(l.id)} value={String(l.id)}>{l.code ?? "LOC"} — {l.name ?? ""}</option>)}
+          </select>
+          <select className="rounded-lg border border-white/10 bg-neutral-950/40 p-2" value={selectedPo} onChange={(e) => setSelectedPo(e.target.value)}>
+            <option value="">PO optional</option>
+            {pos.map((po) => <option key={String(po.id)} value={String(po.id)}>{String(po.id).slice(0, 8)} • {String(po.status ?? "draft")}</option>)}
+          </select>
+          <div className="text-xs text-neutral-500 flex items-center">Rows where remaining qty is greater than zero.</div>
         </div>
       </div>
 
-      {err ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div>
+      {err ? <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
+      {loading ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">Loading…</div> : null}
+
+      {!loading && items.length > 0 ? (
+        <div className="rounded-xl border border-white/10 bg-neutral-950/35 overflow-hidden">
+          <div className="border-b border-white/10 px-4 py-3 text-xs text-neutral-500">{items.length} of {totalCount} rows loaded · page {page}</div>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-neutral-400"><th className="p-3">Part / Context</th><th className="p-3">Receive state</th><th className="p-3">Qty</th><th className="p-3"/></tr></thead>
+            <tbody>
+              {items.map((it) => {
+                const p = it.part_id ? partsMap[it.part_id] : null;
+                const trust = it.part_id ? trustByPartId[it.part_id] : undefined;
+                const itemState = toItemFlowDisplay({ rawStatus: it.status, qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
+                const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
+                return (
+                  <tr key={it.id} className="border-t border-white/10">
+                    <td className="p-3">
+                      <div className="font-semibold">{p?.name ? String(p.name) : it.description}</div>
+                      <div className="text-[11px] text-neutral-500">{p?.sku ? `${p.sku} • ` : ""}{itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}</div>
+                      {trust && trust.reasons.length > 0 ? <div className="mt-1 text-[11px] text-amber-200">{trust.reasons.slice(0,2).join(" · ")}</div> : null}
+                    </td>
+                    <td className="p-3"><span className="inline-flex rounded-full border border-white/10 bg-black/40 px-2 py-1 text-xs">{receiveProgressLabel(recvState)}</span>{trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}</td>
+                    <td className="p-3 tabular-nums">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
+                    <td className="p-3"><button onClick={() => {setDrawerItem({ ...it, part_name: p?.name ?? null, sku: p?.sku ?? null, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="flex justify-between border-t border-white/10 p-3 text-xs"><button className="rounded border border-white/10 px-2 py-1" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button><button className="rounded border border-white/10 px-2 py-1" disabled={items.length < pageSize} onClick={() => setPage((p) => p + 1)}>Next</button></div>
+        </div>
       ) : null}
 
-      {loading ? (
-        <div className={`${card} p-4 text-sm text-neutral-400`}>Loading…</div>
-      ) : items.length === 0 ? (
-        <div className={`${card} p-4 text-sm text-neutral-400`}>No outstanding receive items.</div>
-      ) : (
-        <div className={`${card} overflow-hidden`}>
-          <div className="border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-3">
-            <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Outstanding items</div>
-            <div className="mt-1 text-[11px] text-neutral-500">
-              Showing {items.length} of {totalCount} loaded rows (page {page}).
-            </div>
-          </div>
+      {!loading && items.length === 0 ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">No outstanding receive items.</div> : null}
 
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-neutral-400">
-                  <th className="p-3">Part</th>
-                  <th className="p-3">Approved</th>
-                  <th className="p-3">Received</th>
-                  <th className="p-3">Remaining</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it) => {
-                  const p = it.part_id ? partsMap[it.part_id] : null;
-                  const sku = (p?.sku as string | null) ?? null;
-                  const po = it.po_id ? poMap[it.po_id] : null;
-                  const itemState = toItemFlowDisplay({
-                    rawStatus: it.status,
-                    qtyApproved: it.qty_approved,
-                    qtyReceived: it.qty_received,
-                  });
-
-                  return (
-                    <tr key={it.id} className="border-t border-white/10">
-                      <td className="p-3">
-                        <div className="font-semibold text-neutral-100">{p?.name ? String(p.name) : it.description}</div>
-                        <div className="text-[11px] text-neutral-500">
-                          {sku ? `${sku} • ` : ""}
-                          {it.part_id ? String(it.part_id).slice(0, 8) : "no part_id"} • {itemFlowLabel(itemState)}
-                          {" • "}
-                          WO:{" "}
-                          {it.work_order_id ? (
-                            <Link className="text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>
-                              → Open WO {it.work_order_id.slice(0, 8)}
-                            </Link>
-                          ) : (
-                            <span className="text-neutral-300">—</span>
-                          )}
-                          {" • "}
-                          {po ? (
-                            <Link className="text-neutral-200 hover:text-white" href={`/parts/po/${encodeURIComponent(String(po.id))}`}>
-                              → Open PO {String(po.id).slice(0, 8)}
-                            </Link>
-                          ) : (
-                            <span className="text-neutral-400">No PO</span>
-                          )}
-                        </div>
-                        {it.work_order_id ? (
-                          <div className="mt-1 text-[11px] text-neutral-500">
-                            <Link className="text-neutral-200 hover:text-white" href={`/parts/requests/${encodeURIComponent(it.work_order_id)}`}>
-                              → View Request Flow
-                            </Link>
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="p-3 tabular-nums">{it.qty_approved}</td>
-                      <td className="p-3 tabular-nums">{it.qty_received}</td>
-                      <td className="p-3 tabular-nums">{it.qty_remaining}</td>
-                      <td className="p-3">
-                        <button
-                          onClick={() => openDrawerFor(it)}
-                          className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
-                        >
-                          → Receive
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="border-t border-white/10 px-4 py-3 text-[11px] text-neutral-500">
-            Notes: This flow calls <span className="text-neutral-200">receive_part_request_item</span> RPC and refreshes automatically via{" "}
-            <span className="text-neutral-200">parts:received</span>.
-          </div>
-
-          <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-xs">
-            <button
-              type="button"
-              className="rounded border border-white/10 px-2 py-1 disabled:opacity-50"
-              disabled={page <= 1}
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              className="rounded border border-white/10 px-2 py-1 disabled:opacity-50"
-              disabled={items.length < pageSize}
-              onClick={() => setPage((prev) => prev + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
-      <ReceiveDrawer
-        open={drawerOpen}
-        item={drawerItem}
-        onClose={() => {
-          setDrawerOpen(false);
-          setDrawerItem(null);
-          void load();
-        }}
-        locations={locOptions}
-        defaultLocationId={selectedLoc || locOptions[0]?.value || ""}
-        purchaseOrders={poOptions}
-        defaultPoId={selectedPo ? selectedPo : ""}
-        lockLocation={false}
-        lockPo={false}
-      />
+      <ReceiveDrawer open={drawerOpen} item={drawerItem} onClose={() => { setDrawerOpen(false); setDrawerItem(null); void load(); }} locations={locOptions} defaultLocationId={selectedLoc || locOptions[0]?.value || ""} purchaseOrders={poOptions} defaultPoId={selectedPo || ""} />
     </div>
   );
 }
