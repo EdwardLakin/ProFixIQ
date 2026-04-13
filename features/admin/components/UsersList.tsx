@@ -1,10 +1,13 @@
-//features/admin/components/UsersList.tsx
-
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
+import {
+  AdminEmptyState,
+  AdminPanel,
+  AdminPanelTitle,
+} from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 type DB = Database;
 type UserRole = DB["public"]["Enums"]["user_role_enum"];
@@ -17,25 +20,6 @@ type UserRow = {
   role: UserRole | null;
   created_at: string | null;
   shop_id: string | null;
-};
-
-const T = {
-  border: "border-[color:var(--metal-border-soft,#1f2937)]",
-  borderStrong: "border-[color:var(--metal-border,#111827)]",
-  glass:
-    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-black/35 backdrop-blur-md",
-  glassStrong:
-    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.12),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.62),rgba(0,0,0,0.42))] backdrop-blur-md",
-  shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
-  panel: "rounded-2xl border",
-  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
-  input:
-    "w-full rounded-md border bg-black/50 px-3 py-2 text-sm text-neutral-100 outline-none transition " +
-    "placeholder:text-neutral-500 focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
-    "focus:border-[color:var(--accent-copper,#c56a2f)]",
-  chip:
-    "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] " +
-    "border-[color:var(--metal-border-soft,#1f2937)] bg-black/35 text-neutral-200",
 };
 
 function safeMsg(e: unknown, fallback: string): string {
@@ -79,12 +63,11 @@ export default function UsersList(): JSX.Element {
   async function saveEdit(): Promise<void> {
     if (!editId) return;
 
-    const body: { full_name: string; phone: string | null; role: UserRole | null } =
-      {
-        full_name: editFullName.trim(),
-        phone: editPhone.trim() || null,
-        role: (editRole as UserRole) || null,
-      };
+    const body: { full_name: string; phone: string | null; role: UserRole | null } = {
+      full_name: editFullName.trim(),
+      phone: editPhone.trim() || null,
+      role: (editRole as UserRole) || null,
+    };
 
     const res = await fetch(`/api/admin/users/${editId}`, {
       method: "PUT",
@@ -99,9 +82,7 @@ export default function UsersList(): JSX.Element {
 
     setRows((prev) =>
       prev.map((r) =>
-        r.id === editId
-          ? { ...r, full_name: body.full_name, phone: body.phone, role: body.role }
-          : r,
+        r.id === editId ? { ...r, full_name: body.full_name, phone: body.phone, role: body.role } : r,
       ),
     );
     setEditOpen(false);
@@ -120,150 +101,116 @@ export default function UsersList(): JSX.Element {
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  const card = useMemo(
-    () => [T.panel, T.border, T.glass, T.shadow, "p-4"].join(" "),
-    [],
-  );
-
   return (
     <div className="space-y-4">
-      {/* Search */}
-      <div className={card}>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[280px] flex-1">
-            <label className={T.label}>Search</label>
-            <input
-              className={[T.input, T.border].join(" ")}
-              placeholder="Search name, email, or phone…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Filter"
+          description="Query by name, email, or phone to quickly locate managed users."
+          action={
+            <Button type="button" variant="default" className="font-semibold" onClick={() => void load()} disabled={loading}>
+              {loading ? "Loading…" : "Search"}
+            </Button>
+          }
+        />
 
-          <Button
-            type="button"
-            variant="default"
-            className="font-semibold"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            {loading ? "Loading…" : "Search"}
-          </Button>
+        <div className="p-4">
+          <input
+            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+            placeholder="Search name, email, or phone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
         </div>
+      </AdminPanel>
 
-        {error && (
-          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/35 px-3 py-2 text-xs text-red-100">
-            {error}
-          </div>
-        )}
-      </div>
+      <AdminPanel>
+        <AdminPanelTitle title="Directory" description="Administrative user list with role and contact context." />
 
-      {/* List */}
-      <div className={[T.panel, T.border, T.glassStrong, T.shadow].join(" ")}>
-        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
-          <div className="col-span-3">Name</div>
-          <div className="col-span-3">Email</div>
-          <div className="col-span-2">Phone</div>
-          <div className="col-span-2">Role</div>
-          <div className="col-span-2 text-right">Actions</div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <tr>
+                <th className="px-4 py-2.5 text-left">Name</th>
+                <th className="px-4 py-2.5 text-left">Email</th>
+                <th className="px-4 py-2.5 text-left">Phone</th>
+                <th className="px-4 py-2.5 text-left">Role</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {rows.map((u) => (
+                <tr key={u.id} className="text-neutral-200">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-neutral-100">{u.full_name ?? "—"}</div>
+                    <div className="text-xs text-neutral-500">{u.id.slice(0, 8)}</div>
+                  </td>
+                  <td className="px-4 py-2.5">{u.email ?? "—"}</td>
+                  <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-xs">{u.role ?? "—"}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <div className="inline-flex gap-2">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => {
+                          setEditId(u.id);
+                          setEditFullName(u.full_name ?? "");
+                          setEditPhone(u.phone ?? "");
+                          setEditRole(u.role ?? "");
+                          setEditOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button type="button" size="xs" variant="ghost" className="text-red-300" onClick={() => void deleteUser(u.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {!loading && rows.length === 0 ? (
+            <AdminEmptyState title="No users found" body="Try expanding your search terms or add users from Owner onboarding tools." />
+          ) : null}
+
+          {loading ? <AdminEmptyState title="Loading users" body="Fetching the latest user directory." /> : null}
         </div>
+      </AdminPanel>
 
-        <ul className="divide-y divide-[color:var(--metal-border-soft,#1f2937)]">
-          {rows.map((u) => (
-            <li key={u.id} className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm text-neutral-200">
-              <div className="col-span-3 truncate">
-                <div className="font-semibold text-neutral-100">{u.full_name ?? "—"}</div>
-                <div className="mt-1 text-xs text-neutral-500 font-mono">{u.id.slice(0, 8)}</div>
-              </div>
-
-              <div className="col-span-3 truncate text-neutral-300">{u.email ?? "—"}</div>
-              <div className="col-span-2 truncate text-neutral-300">{u.phone ?? "—"}</div>
-
-              <div className="col-span-2">
-                <span className={T.chip}>{u.role ?? "—"}</span>
-              </div>
-
-              <div className="col-span-2 flex justify-end gap-2">
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  className="text-[0.7rem]"
-                  onClick={() => {
-                    setEditId(u.id);
-                    setEditFullName(u.full_name ?? "");
-                    setEditPhone(u.phone ?? "");
-                    setEditRole(u.role ?? "");
-                    setEditOpen(true);
-                  }}
-                >
-                  Edit
-                </Button>
-
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  className="text-[0.7rem] text-red-300 hover:bg-red-900/20"
-                  onClick={() => void deleteUser(u.id)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </li>
-          ))}
-
-          {!loading && rows.length === 0 && (
-            <li className="px-4 py-8 text-sm text-neutral-400">No users found.</li>
-          )}
-
-          {loading && (
-            <li className="px-4 py-8 text-sm text-neutral-400">Loading…</li>
-          )}
-        </ul>
-      </div>
-
-      {/* Edit Modal */}
-      {editOpen && (
+      {editOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div
-            className={[
-              "w-full max-w-md",
-              T.panel,
-              T.border,
-              T.glassStrong,
-              T.shadow,
-              "p-4",
-            ].join(" ")}
-          >
-            <div className="text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
-              User management
-            </div>
+          <AdminPanel className="w-full max-w-md p-4">
+            <p className="text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">User management</p>
             <h3 className="mt-1 text-lg font-semibold text-neutral-100">Edit User</h3>
-
             <div className="mt-4 space-y-3">
-              <div>
-                <label className={T.label}>Full name</label>
+              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+                Full name
                 <input
-                  className={[T.input, T.border].join(" ")}
+                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
                   value={editFullName}
                   onChange={(e) => setEditFullName(e.target.value)}
                 />
-              </div>
-
-              <div>
-                <label className={T.label}>Phone</label>
+              </label>
+              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+                Phone
                 <input
-                  className={[T.input, T.border].join(" ")}
+                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                 />
-              </div>
-
-              <div>
-                <label className={T.label}>Role</label>
+              </label>
+              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+                Role
                 <select
-                  className={[T.input, T.border].join(" ")}
+                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole | "")}
                 >
@@ -274,9 +221,9 @@ export default function UsersList(): JSX.Element {
                   <option value="advisor">Advisor</option>
                   <option value="mechanic">Mechanic</option>
                 </select>
-              </div>
+              </label>
 
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                   Cancel
                 </Button>
@@ -285,9 +232,9 @@ export default function UsersList(): JSX.Element {
                 </Button>
               </div>
             </div>
-          </div>
+          </AdminPanel>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
