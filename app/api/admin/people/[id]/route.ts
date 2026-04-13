@@ -20,35 +20,64 @@ export async function GET(_req: NextRequest, context: unknown) {
   const check = await assertTarget(admin, access.profile.shop_id!, params.id);
   if (!check.ok) return NextResponse.json({ error: check.message }, { status: 403 });
 
-  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { data: openEntries }, { data: openExceptions }, { data: audit }] = await Promise.all([
+  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { data: openEntries }, { data: openExceptions }] = await Promise.all([
     admin.from("profiles").select("id, full_name, email, phone, role, completed_onboarding, created_at, last_active_at").eq("id", params.id).maybeSingle(),
-    admin.from("people_workforce_profiles").select("workforce_role, workforce_category, employment_status, start_date, payroll_ready, notes").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).maybeSingle(),
-    admin.from("staff_certifications").select("id, cert_type, cert_name, cert_number, issuing_body, issue_date, expiry_date, status, notes").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).order("created_at", { ascending: false }),
-    admin.from("payroll_time_entries").select("id", { count: "exact", head: true }).eq("shop_id", access.profile.shop_id).eq("user_id", params.id).in("approval_state", ["draft", "reviewed"]),
+    admin
+      .from("people_workforce_profiles")
+      .select("workforce_role, workforce_category, employment_status, start_date, payroll_ready, notes")
+      .eq("shop_id", access.profile.shop_id)
+      .eq("user_id", params.id)
+      .maybeSingle(),
+    admin
+      .from("staff_certifications")
+      .select("id, cert_type, cert_name, cert_number, issuing_body, issue_date, expiry_date, status, notes")
+      .eq("shop_id", access.profile.shop_id)
+      .eq("user_id", params.id)
+      .order("created_at", { ascending: false }),
+    admin
+      .from("payroll_time_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", access.profile.shop_id)
+      .eq("user_id", params.id)
+      .in("approval_state", ["draft", "reviewed"]),
     admin.from("payroll_time_exceptions").select("severity, resolved").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).eq("resolved", false),
-    admin.from("audit_logs").select("id, action, created_at, target").eq("actor_id", params.id).order("created_at", { ascending: false }).limit(8),
   ]);
+
+  const { data: audit } = await admin
+    .from("audit_logs")
+    .select("id, action, created_at, target, metadata, actor_id")
+    .or(`actor_id.eq.${params.id},target.ilike.%${params.id}%`)
+    .order("created_at", { ascending: false })
+    .limit(12);
 
   if (pErr || !person) return NextResponse.json({ error: pErr?.message ?? "Person not found" }, { status: 404 });
 
   const blocking = (openExceptions ?? []).filter((row: any) => row.severity === "blocking").length;
   const warning = (openExceptions ?? []).filter((row: any) => row.severity === "warning").length;
+  const profile = workforce ?? {
+    workforce_role: null,
+    workforce_category: null,
+    employment_status: "active",
+    start_date: null,
+    payroll_ready: false,
+    notes: null,
+  };
 
   return NextResponse.json({
     ...person,
-    workforce_profile: workforce ?? {
-      workforce_role: null,
-      workforce_category: null,
-      employment_status: "active",
-      start_date: null,
-      payroll_ready: false,
-      notes: null,
-    },
+    workforce_profile: profile,
     certifications: certs ?? [],
     payroll_posture: {
+      is_payroll_ready: Boolean(profile.payroll_ready),
       open_period_entries: openEntries?.count ?? 0,
       blocking_exceptions: blocking,
       warning_exceptions: warning,
+      in_current_period: (openEntries?.count ?? 0) > 0,
+      missing_workforce_data: [
+        !profile.workforce_role ? "Workforce role" : null,
+        !profile.start_date ? "Start date" : null,
+        !person.phone ? "Phone number" : null,
+      ].filter(Boolean),
     },
     audit_preview: audit ?? [],
   });
@@ -92,6 +121,18 @@ export async function PUT(req: NextRequest, context: unknown) {
     );
     if (wErr) return NextResponse.json({ error: wErr.message }, { status: 500 });
   }
+
+  await admin.from("audit_logs").insert({
+    actor_id: access.profile.id,
+    action: "people.profile.updated",
+    target: params.id,
+    metadata: {
+      shop_id: access.profile.shop_id,
+      person_id: params.id,
+      updated_workforce: Boolean(workforce_profile),
+      employment_status: workforce_profile?.employment_status ?? null,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

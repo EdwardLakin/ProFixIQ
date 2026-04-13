@@ -25,11 +25,24 @@ type PersonRow = {
   last_active_at: string | null;
   workforce_role: string | null;
   employment_status: "active" | "inactive" | "on_leave" | null;
+  payroll_ready: boolean;
   payroll_blocking_exceptions: number;
   payroll_warning_exceptions: number;
+  payroll_open_period_entries: number;
   open_certifications: number;
   expiring_certifications: number;
+  cert_expiring_60: number;
+  expired_certifications: number;
+  revoked_certifications: number;
 };
+
+function certificationPosture(row: PersonRow) {
+  if (row.expired_certifications > 0) return { label: "Expired", tone: "text-red-300" };
+  if (row.expiring_certifications > 0) return { label: "Expiring ≤30d", tone: "text-amber-300" };
+  if (row.cert_expiring_60 > 0) return { label: "Expiring 31-60d", tone: "text-yellow-200" };
+  if (row.open_certifications > 0) return { label: "Active", tone: "text-emerald-300" };
+  return { label: "No certs", tone: "text-neutral-400" };
+}
 
 export default function PeoplePageClient() {
   const [rows, setRows] = useState<PersonRow[] | null>(null);
@@ -64,8 +77,8 @@ export default function PeoplePageClient() {
     return {
       total: source.length,
       onboardingMissing: source.filter((row) => !row.completed_onboarding).length,
-      payrollFollowUp: source.filter((row) => row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0).length,
-      expiringCerts: source.filter((row) => row.expiring_certifications > 0).length,
+      payrollFollowUp: source.filter((row) => row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready).length,
+      certFollowUp: source.filter((row) => row.expired_certifications > 0 || row.expiring_certifications > 0).length,
       inactive: source.filter((row) => row.employment_status === "inactive").length,
     };
   }, [rows]);
@@ -86,8 +99,8 @@ export default function PeoplePageClient() {
         <AdminStatGrid>
           <AdminStatCard label="People" value={summary.total} />
           <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
-          <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Open payroll exceptions" />
-          <AdminStatCard label="Expiring certs" value={summary.expiringCerts} hint="Within 30 days" />
+          <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Exceptions or not payroll-ready" />
+          <AdminStatCard label="Credential follow-up" value={summary.certFollowUp} hint="Expired or expiring in 30 days" />
           <AdminStatCard label="Inactive workforce" value={summary.inactive} />
         </AdminStatGrid>
       </AdminPanel>
@@ -142,41 +155,47 @@ export default function PeoplePageClient() {
                   <th className="px-4 py-2.5 text-left">Person</th>
                   <th className="px-4 py-2.5 text-left">Identity role</th>
                   <th className="px-4 py-2.5 text-left">Workforce</th>
-                  <th className="px-4 py-2.5 text-left">Onboarding</th>
                   <th className="px-4 py-2.5 text-left">Certifications</th>
                   <th className="px-4 py-2.5 text-left">Payroll posture</th>
-                  <th className="px-4 py-2.5 text-left">Recent activity</th>
+                  <th className="px-4 py-2.5 text-left">Follow-up</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {filteredRows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="cursor-pointer text-neutral-200 transition hover:bg-white/5"
-                    onClick={() => {
-                      window.location.href = `/dashboard/admin/people/${row.id}`;
-                    }}
-                  >
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-neutral-100">{row.full_name ?? "Unnamed"}</p>
-                      <p className="text-xs text-neutral-500">{row.email ?? "No email"}</p>
-                    </td>
-                    <td className="px-4 py-2.5"><AdminBadge>{row.role ?? "Unassigned"}</AdminBadge></td>
-                    <td className="px-4 py-2.5">
-                      <p>{row.workforce_role ?? "General"}</p>
-                      <p className="text-xs text-neutral-500">{row.employment_status ?? "active"}</p>
-                    </td>
-                    <td className="px-4 py-2.5"><AdminBadge>{row.completed_onboarding ? "Complete" : "Needs follow-up"}</AdminBadge></td>
-                    <td className="px-4 py-2.5 text-xs">
-                      {row.open_certifications} active
-                      {row.expiring_certifications > 0 ? ` • ${row.expiring_certifications} expiring` : ""}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs">
-                      {row.payroll_blocking_exceptions > 0 ? `${row.payroll_blocking_exceptions} blocking` : row.payroll_warning_exceptions > 0 ? `${row.payroll_warning_exceptions} warning` : "Clean"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-neutral-400">{row.last_active_at ? new Date(row.last_active_at).toLocaleDateString() : "No recent activity"}</td>
-                  </tr>
-                ))}
+                {filteredRows.map((row) => {
+                  const cert = certificationPosture(row);
+                  const needsFollowUp = row.payroll_blocking_exceptions > 0 || row.expired_certifications > 0 || !row.completed_onboarding;
+
+                  return (
+                    <tr
+                      key={row.id}
+                      className="cursor-pointer text-neutral-200 transition hover:bg-white/5"
+                      onClick={() => {
+                        window.location.href = `/dashboard/admin/people/${row.id}`;
+                      }}
+                    >
+                      <td className="px-4 py-2.5">
+                        <p className="font-medium text-neutral-100">{row.full_name ?? "Unnamed"}</p>
+                        <p className="text-xs text-neutral-500">{row.email ?? "No email"}</p>
+                      </td>
+                      <td className="px-4 py-2.5"><AdminBadge>{row.role ?? "Unassigned"}</AdminBadge></td>
+                      <td className="px-4 py-2.5">
+                        <p>{row.workforce_role ?? "General"}</p>
+                        <p className="text-xs text-neutral-500">{row.employment_status ?? "active"}</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <p className={cert.tone}>{cert.label}</p>
+                        <p className="text-neutral-400">{row.open_certifications} open • {row.expired_certifications} expired</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs">
+                        {row.payroll_blocking_exceptions > 0 ? `${row.payroll_blocking_exceptions} blocking` : row.payroll_warning_exceptions > 0 ? `${row.payroll_warning_exceptions} warning` : row.payroll_ready ? "Ready" : "Not ready"}
+                        <p className="text-neutral-400">{row.payroll_open_period_entries} open entries</p>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <AdminBadge>{needsFollowUp ? "Needs action" : "Healthy"}</AdminBadge>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
