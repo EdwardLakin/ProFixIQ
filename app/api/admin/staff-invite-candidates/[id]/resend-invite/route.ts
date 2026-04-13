@@ -3,12 +3,9 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { sendUserInviteEmail } from "@/features/email/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -29,9 +26,7 @@ function isValidEmail(v: string): boolean {
   return !!v && v.includes("@");
 }
 
-export async function POST(req: NextRequest, context: unknown) {
-  void req;
-
+export async function POST(_req: NextRequest, context: unknown) {
   try {
     const { params } = context as RouteContext;
     const candidateId = params?.id;
@@ -40,41 +35,29 @@ export async function POST(req: NextRequest, context: unknown) {
       return NextResponse.json({ error: "Missing candidate id" }, { status: 400 });
     }
 
-    const supabaseUser = createServerSupabaseRoute();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const { data: me, error: meErr } = await supabaseUser
-      .from("profiles")
-      .select("id, role, shop_id, full_name, first_name, last_name")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (meErr || !me || !me.shop_id) {
-      return NextResponse.json(
-        { error: "Profile for current user not found" },
-        { status: 403 },
-      );
-    }
-
-    const actor = getActorCapabilities({ role: me.role });
-    if (!actor.canManageUsers) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageUsers",
+      allowRoles: ["owner", "admin"],
+    });
+    if (!access.ok) return access.response;
 
     const admin = createAdminSupabase();
+    const shopId = access.profile.shop_id;
+    if (!shopId) {
+      return NextResponse.json({ error: "Profile for current user not found" }, { status: 403 });
+    }
+
+    const { data: me } = await access.supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name")
+      .eq("id", access.profile.id)
+      .maybeSingle();
 
     const { data: candidate, error: candErr } = await admin
       .from("staff_invite_candidates")
       .select("*")
       .eq("id", candidateId)
-      .eq("shop_id", me.shop_id)
+      .eq("shop_id", shopId)
       .maybeSingle();
 
     if (candErr) {
@@ -102,7 +85,7 @@ export async function POST(req: NextRequest, context: unknown) {
           status: INVITE_STATUS.error,
           error: "Missing/invalid email. Cannot resend invite.",
           updated_at: new Date().toISOString(),
-          created_by: user.id,
+          created_by: access.profile.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
@@ -119,7 +102,7 @@ export async function POST(req: NextRequest, context: unknown) {
           status: INVITE_STATUS.error,
           error: "Missing username. Cannot resend invite.",
           updated_at: new Date().toISOString(),
-          created_by: user.id,
+          created_by: access.profile.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
@@ -134,7 +117,7 @@ export async function POST(req: NextRequest, context: unknown) {
     const { data: shop } = await admin
       .from("shops")
       .select("shop_name, name")
-      .eq("id", me.shop_id)
+      .eq("id", shopId)
       .maybeSingle<{ shop_name: string | null; name: string | null }>();
 
     const shopName =
@@ -143,15 +126,15 @@ export async function POST(req: NextRequest, context: unknown) {
       "ProFixIQ";
 
     const inviterName =
-      String(me.full_name ?? "").trim() ||
-      [String(me.first_name ?? "").trim(), String(me.last_name ?? "").trim()]
+      String(me?.full_name ?? "").trim() ||
+      [String(me?.first_name ?? "").trim(), String(me?.last_name ?? "").trim()]
         .filter(Boolean)
         .join(" ")
         .trim() ||
       "ProFixIQ";
 
     await sendUserInviteEmail({
-      shopId: me.shop_id,
+      shopId,
       to: email,
       loginUrl: `${SITE_URL}/login`,
       username,
@@ -161,7 +144,7 @@ export async function POST(req: NextRequest, context: unknown) {
       inviterName,
       fullName: fullName ?? username,
       resend: true,
-      createdBy: user.id,
+      createdBy: access.profile.id,
     });
 
     await admin
@@ -170,7 +153,7 @@ export async function POST(req: NextRequest, context: unknown) {
         status: INVITE_STATUS.invited,
         error: null,
         updated_at: new Date().toISOString(),
-        created_by: user.id,
+        created_by: access.profile.id,
         email_lc: email,
         username_lc: username,
       } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])

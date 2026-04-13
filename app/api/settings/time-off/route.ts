@@ -1,60 +1,51 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
-
-type DB = Database;
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type TimeOffRow = {
   id?: string;
-  start_date: string;
-  end_date: string;
+  start_date?: string;
+  end_date?: string;
+  starts_at?: string;
+  ends_at?: string;
   label?: string | null;
+  reason?: string | null;
   notes?: string | null;
 };
 
 type Body = {
   shopId?: string | null;
   entry?: TimeOffRow | null;
+  range?: TimeOffRow | null;
   entries?: TimeOffRow[] | null;
   id?: string | null;
 };
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBranding",
+      allowRoles: ["owner", "admin"],
+    });
+    if (!access.ok) return access.response;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .single();
-
-    if (profileErr || !profile?.shop_id) {
-      return NextResponse.json({ error: "Shop not found" }, { status: 404 });
-    }
-
-    const { data, error } = await supabase
+    const { data, error } = await access.supabase
       .from("shop_time_off")
       .select("*")
-      .eq("shop_id", profile.shop_id)
+      .eq("shop_id", access.profile.shop_id)
       .order("start_date", { ascending: true });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ entries: data ?? [] });
+    const entries = (data ?? []).map((row) => ({
+      ...row,
+      starts_at: row.start_date,
+      ends_at: row.end_date,
+      reason: row.label,
+    }));
+
+    return NextResponse.json({ entries, items: entries });
   } catch (err) {
     console.error("settings/time-off GET error", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -63,59 +54,40 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBranding",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: req,
+    });
+    if (!access.ok) return access.response;
 
     const body = (await req.json().catch(() => ({}))) as Body;
-    const shopId = body.shopId?.trim() ?? "";
+    const shopId = body.shopId?.trim() ?? access.profile.shop_id;
 
-    if (!shopId) {
-      return NextResponse.json({ error: "shopId required" }, { status: 400 });
-    }
-
-    const pinCheck = await requireOwnerPinVerified(req, supabase as any, shopId);
-    if (!pinCheck.ok) {
-      return pinCheck.response;
-    }
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("shop_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileErr || !profile?.shop_id || profile.shop_id !== shopId) {
+    if (!shopId || shopId !== access.profile.shop_id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || (actor.canonicalRole !== "owner" && actor.canonicalRole !== "admin")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const entry = body.entry ?? body.range;
+    const startDate = entry?.start_date ?? entry?.starts_at;
+    const endDate = entry?.end_date ?? entry?.ends_at;
 
-    const entry = body.entry;
-    if (!entry?.start_date || !entry?.end_date) {
+    if (!startDate || !endDate) {
       return NextResponse.json(
         { error: "entry.start_date and entry.end_date required" },
         { status: 400 }
       );
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await access.supabase
       .from("shop_time_off")
       .insert({
         shop_id: shopId,
-        start_date: entry.start_date,
-        end_date: entry.end_date,
-        label: entry.label ?? null,
-        notes: entry.notes ?? null,
+        start_date: startDate,
+        end_date: endDate,
+        label: entry?.label ?? entry?.reason ?? null,
+        notes: entry?.notes ?? null,
       })
       .select("*")
       .single();
@@ -133,45 +105,23 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBranding",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: req,
+    });
+    if (!access.ok) return access.response;
 
     const body = (await req.json().catch(() => ({}))) as Body;
-    const shopId = body.shopId?.trim() ?? "";
+    const shopId = body.shopId?.trim() ?? access.profile.shop_id;
     const id = body.id?.trim() ?? "";
 
-    if (!shopId || !id) {
+    if (!shopId || shopId !== access.profile.shop_id || !id) {
       return NextResponse.json({ error: "shopId and id required" }, { status: 400 });
     }
 
-    const pinCheck = await requireOwnerPinVerified(req, supabase as any, shopId);
-    if (!pinCheck.ok) {
-      return pinCheck.response;
-    }
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("shop_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileErr || !profile?.shop_id || profile.shop_id !== shopId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || (actor.canonicalRole !== "owner" && actor.canonicalRole !== "admin")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { error } = await supabase
+    const { error } = await access.supabase
       .from("shop_time_off")
       .delete()
       .eq("id", id)

@@ -30,8 +30,28 @@ export async function GET(req: Request) {
     }
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const { data: shop } = await access.supabase
+      .from("shops")
+      .select("id, stripe_customer_id")
+      .eq("id", access.profile.shop_id)
+      .maybeSingle();
 
-    if (session.metadata?.shop_id !== access.profile.shop_id) {
+    if (!shop) {
+      return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+    }
+
+    const metadataShopId = String(session.metadata?.shop_id ?? "").trim();
+    const metadataPurpose = String(session.metadata?.purpose ?? "").trim();
+    const sessionCustomer = typeof session.customer === "string" ? session.customer : null;
+    const shopCustomer = String(shop.stripe_customer_id ?? "").trim() || null;
+
+    if (
+      metadataShopId !== access.profile.shop_id ||
+      metadataPurpose !== "profixiq_subscription" ||
+      !sessionCustomer ||
+      !shopCustomer ||
+      sessionCustomer !== shopCustomer
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
