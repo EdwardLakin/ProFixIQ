@@ -1,4 +1,5 @@
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -13,6 +14,8 @@ export default async function QuickBooksSettingsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireAdminPageAccess({ allow: ["owner", "admin"] });
+
   const params = await searchParams;
   const connected = pickFirst(params.connected);
   const error = pickFirst(params.error);

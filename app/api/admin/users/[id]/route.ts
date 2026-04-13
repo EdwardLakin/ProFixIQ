@@ -37,6 +37,7 @@ type PutBody = {
 };
 
 type RouteContext = { params: { id: string } };
+const ADMIN_LEVEL_ROLES = new Set<NonNullable<PutBody["role"]>>(["owner", "admin"]);
 
 export async function PUT(req: NextRequest, context: unknown) {
   const { params } = context as RouteContext;
@@ -74,6 +75,15 @@ export async function PUT(req: NextRequest, context: unknown) {
     ...(body.phone !== undefined ? { phone: body.phone } : {}),
     ...(body.role !== undefined ? { role: body.role } : {}),
   };
+
+  if (
+    body.role !== undefined &&
+    body.role !== null &&
+    ADMIN_LEVEL_ROLES.has(body.role) &&
+    access.canonicalRole !== "owner"
+  ) {
+    return NextResponse.json({ error: "Only owners can assign owner/admin roles" }, { status: 403 });
+  }
 
   const { error } = await admin.from("profiles").update(update).eq("id", id);
 

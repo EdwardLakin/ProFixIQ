@@ -1,11 +1,7 @@
 // app/api/settings/update/route.ts
 import { NextResponse } from "next/server";
-import { cookies as nextCookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
-
-const COOKIE_NAME = "pfq_owner_pin_shop";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 // Whitelist fields that can be updated from Settings
 const ALLOWED_FIELDS = new Set([
@@ -58,21 +54,15 @@ function isNaCountry(v: unknown): v is "US" | "CA" {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<Database>({
-      cookies: nextCookies,
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBranding",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: req,
     });
+    if (!access.ok) return access.response;
 
-    // 1) Auth required
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2) Parse body (UNCHANGED)
+    // 1) Parse body (UNCHANGED)
     const { shopId, update } = (await req.json().catch(() => ({}))) as Payload;
     if (!shopId || !update || typeof update !== "object") {
       return NextResponse.json(
@@ -81,34 +71,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Role + shop scope check
-    const { data: profile, error: profErr } = await supabase
-      .from("profiles")
-      .select("role, shop_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profErr) {
-      return NextResponse.json({ error: profErr.message }, { status: 500 });
-    }
-
-    if (!profile?.shop_id || profile.shop_id !== shopId) {
+    // 2) shop scope check
+    if (access.profile.shop_id !== shopId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || !actor.canManageBranding) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // 4) Require valid owner-PIN cookie for this shop
-    const cookieStore = await nextCookies();
-    const pinCookie = cookieStore.get(COOKIE_NAME)?.value;
-    if (!pinCookie || pinCookie !== shopId) {
-      return NextResponse.json({ error: "Owner PIN required" }, { status: 401 });
-    }
-
-    // 5) Filter payload to allowed fields only + normalize
+    // 3) Filter payload to allowed fields only + normalize
     const safeUpdate: Record<string, unknown> = {};
 
     const numericKeys = new Set([
@@ -163,7 +131,7 @@ export async function POST(req: Request) {
       safeUpdate[k] = typeof v === "string" ? v.trim() : v;
     }
 
-    // 5b) Keep legacy columns in sync (street/address, name/shop_name)
+    // 3b) Keep legacy columns in sync (street/address, name/shop_name)
     const incoming = safeUpdate;
 
     const street = typeof incoming.street === "string" ? incoming.street : null;
@@ -190,8 +158,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 6) Update shops
-    const { error: updErr } = await supabase
+    // 4) Update shops
+    const { error: updErr } = await access.supabase
       .from("shops")
       .update(incoming)
       .eq("id", shopId);
@@ -203,7 +171,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 7) Keep shop_profiles country/province in sync (best-effort)
+    // 5) Keep shop_profiles country/province in sync (best-effort)
     type ShopProfileInsert =
       Database["public"]["Tables"]["shop_profiles"]["Insert"];
 
@@ -217,7 +185,7 @@ if (typeof incoming.province === "string") {
   profilePatch.province = incoming.province;
 }
     if (Object.keys(profilePatch).length > 1) {
-      const { error: spErr } = await supabase
+      const { error: spErr } = await access.supabase
         .from("shop_profiles")
         .upsert(profilePatch, { onConflict: "shop_id" });
 
