@@ -2,81 +2,191 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
 import {
+  AdminBadge,
   AdminEmptyState,
+  AdminField,
   AdminPageHeader,
   AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
+  AdminStatCard,
+  AdminStatGrid,
+  AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 type AuditRow = Pick<
   Database["public"]["Tables"]["audit_logs"]["Row"],
-  "id" | "created_at" | "actor_id" | "action" | "target"
+  "id" | "created_at" | "actor_id" | "action" | "target" | "metadata"
 >;
+
+function classifySeverity(action: string | null): "high" | "normal" {
+  const value = (action ?? "").toLowerCase();
+  return value.includes("delete") || value.includes("remove") || value.includes("role") ? "high" : "normal";
+}
+
+function stringifyMetadata(metadata: Json | null): string {
+  if (!metadata) return "";
+  try {
+    return JSON.stringify(metadata);
+  } catch {
+    return "";
+  }
+}
 
 export default function AdminAuditClient() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [actionFilter, setActionFilter] = useState("");
+  const [actorFilter, setActorFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<"all" | "high" | "normal">("all");
 
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from("audit_logs")
-        .select("id, created_at, actor_id, action, target")
+        .select("id, created_at, actor_id, action, target, metadata")
         .order("created_at", { ascending: false })
-        .limit(75);
+        .limit(150);
 
       if (error) setErr(error.message);
       setRows((data as AuditRow[]) ?? []);
     })();
   }, [supabase]);
 
+  const filteredRows = useMemo(() => {
+    const actionQuery = actionFilter.trim().toLowerCase();
+    const actorQuery = actorFilter.trim().toLowerCase();
+
+    return (rows ?? []).filter((row) => {
+      const severity = classifySeverity(row.action);
+      const matchesSeverity = severityFilter === "all" ? true : severity === severityFilter;
+      const matchesAction = !actionQuery || (row.action ?? "").toLowerCase().includes(actionQuery);
+      const matchesActor = !actorQuery || (row.actor_id ?? "").toLowerCase().includes(actorQuery);
+      return Boolean(matchesSeverity && matchesAction && matchesActor);
+    });
+  }, [actionFilter, actorFilter, rows, severityFilter]);
+
+  const summary = useMemo(() => {
+    const allRows = rows ?? [];
+    const highSeverity = allRows.filter((row) => classifySeverity(row.action) === "high").length;
+    const last24h = allRows.filter((row) => {
+      const diff = Date.now() - new Date(row.created_at).getTime();
+      return diff <= 1000 * 60 * 60 * 24;
+    }).length;
+    return {
+      total: allRows.length,
+      highSeverity,
+      last24h,
+      visible: filteredRows.length,
+    };
+  }, [filteredRows.length, rows]);
+
   return (
     <AdminPageShell>
       <AdminPageHeader
         eyebrow="Governance Trail"
         title="Audit"
-        subtitle="Review recent privileged actions and impacted targets in a single timeline surface."
+        subtitle="Audit supports daily review of sensitive actions, with enough context to triage and follow up quickly."
       />
+
+      <AdminPanel>
+        <AdminPanelTitle title="Audit Review Summary" description="Use these counts to prioritize what needs review first." />
+        <AdminStatGrid>
+          <AdminStatCard label="Recent events" value={summary.total} hint="Current timeline window" />
+          <AdminStatCard label="High-severity" value={summary.highSeverity} hint="Delete/remove/role actions" />
+          <AdminStatCard label="Last 24 hours" value={summary.last24h} />
+          <AdminStatCard label="Visible rows" value={summary.visible} />
+        </AdminStatGrid>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Filter Timeline"
+          description="Narrow by action, actor, and severity to investigate events with less noise."
+        />
+        <AdminToolbar>
+          <AdminField label="Action contains" className="flex-1">
+            <input
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              placeholder="e.g. user.update, shop.delete"
+              value={actionFilter}
+              onChange={(event) => setActionFilter(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Actor ID contains" className="flex-1">
+            <input
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              placeholder="Filter by actor id"
+              value={actorFilter}
+              onChange={(event) => setActorFilter(event.target.value)}
+            />
+          </AdminField>
+          <AdminField label="Severity" className="w-full md:w-44">
+            <select
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              value={severityFilter}
+              onChange={(event) => setSeverityFilter(event.target.value as "all" | "high" | "normal")}
+            >
+              <option value="all">All</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+            </select>
+          </AdminField>
+        </AdminToolbar>
+
+        {err ? <p className="px-4 pb-3 text-xs text-red-300">Audit query failed: {err}</p> : null}
+      </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle
           title="Recent Audit Events"
-          description="Most recent entries first. Use this surface for governance validation and incident review."
+          description="Review time, actor, and target together so follow-up actions are immediately clear."
         />
-
-        {err ? <p className="px-4 py-3 text-xs text-red-300">Audit query failed: {err}</p> : null}
 
         {!rows ? (
           <AdminEmptyState title="Loading audit entries" body="Gathering latest governance events." />
-        ) : rows.length === 0 ? (
-          <AdminEmptyState title="No audit entries" body="No audit records were returned for this environment." />
+        ) : filteredRows.length === 0 ? (
+          <AdminEmptyState title="No audit entries" body="No entries match current filters." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Time</th>
-                  <th className="px-4 py-2.5 text-left">Actor</th>
                   <th className="px-4 py-2.5 text-left">Action</th>
+                  <th className="px-4 py-2.5 text-left">Actor</th>
                   <th className="px-4 py-2.5 text-left">Target</th>
+                  <th className="px-4 py-2.5 text-left">Context</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {rows.map((r) => (
-                  <tr key={r.id} className="text-neutral-200">
-                    <td className="whitespace-nowrap px-4 py-2.5 text-neutral-300">
-                      {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
-                    </td>
-                    <td className="px-4 py-2.5">{r.actor_id ?? "—"}</td>
-                    <td className="px-4 py-2.5 font-medium text-neutral-100">{r.action ?? "—"}</td>
-                    <td className="px-4 py-2.5">{r.target ?? "—"}</td>
-                  </tr>
-                ))}
+                {filteredRows.map((r) => {
+                  const severity = classifySeverity(r.action);
+                  const metadataPreview = stringifyMetadata(r.metadata);
+
+                  return (
+                    <tr key={r.id} className="text-neutral-200">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-neutral-300">
+                        {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 font-medium text-neutral-100">
+                        <div className="flex items-center gap-2">
+                          <span>{r.action ?? "—"}</span>
+                          <AdminBadge>{severity}</AdminBadge>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">{r.actor_id ?? "—"}</td>
+                      <td className="px-4 py-2.5">{r.target ?? "—"}</td>
+                      <td className="max-w-sm px-4 py-2.5 text-xs text-neutral-400">
+                        {metadataPreview ? metadataPreview.slice(0, 140) : "No metadata"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

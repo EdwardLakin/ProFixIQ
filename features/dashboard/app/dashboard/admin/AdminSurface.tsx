@@ -73,3 +73,50 @@ export function AdminEmptyState({ title, body }: { title: string; body: string }
     </div>
   );
 }
+
+export function AdminStatGrid({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div>;
+}
+
+export function AdminStatCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+}) {
+  return (
+    <article className="rounded-xl border border-white/10 bg-black/25 p-3">
+      <p className="text-[0.68rem] uppercase tracking-[0.12em] text-neutral-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-neutral-400">{hint}</p> : null}
+    </article>
+  );
+}
+
+export function AdminToolbar({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-3 p-4 md:flex-row md:items-end">{children}</div>;
+}
+
+export function AdminField({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block text-xs uppercase tracking-[0.12em] text-neutral-400 ${className}`.trim()}>
+      {label}
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
+
+export function AdminBadge({ children }: { children: ReactNode }) {
+  return <span className="rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-xs">{children}</span>;
+}
