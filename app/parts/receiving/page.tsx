@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { itemFlowLabel, toItemFlowDisplay } from "@/features/parts/lib/status-display";
 
 type DB = Database;
 
@@ -25,6 +26,8 @@ type InboxItem = {
   qty_approved: number;
   qty_received: number;
   qty_remaining: number;
+  po_id: string | null;
+  work_order_id: string | null;
 };
 
 function n(v: unknown): number {
@@ -86,11 +89,17 @@ export default function ReceivingInboxPage(): JSX.Element {
 
   const [items, setItems] = useState<InboxItem[]>([]);
   const [partsMap, setPartsMap] = useState<Record<string, PartRow>>({});
+  const [poMap, setPoMap] = useState<Record<string, PurchaseOrder>>({});
+  const [page, setPage] = useState(1);
+  const pageSize = 100;
+  const [totalCount, setTotalCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [nowTs, setNowTs] = useState<number>(Date.now());
 
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [drawerItem, setDrawerItem] = useState<DrawerItem | null>(null);
 
-  const load = async () => {
+  const load = async (pageToLoad = page) => {
     setLoading(true);
     setErr(null);
 
@@ -122,12 +131,19 @@ export default function ReceivingInboxPage(): JSX.Element {
 
     setPOs((poRes.data ?? []) as PurchaseOrder[]);
 
-    const { data: priRows, error: priErr } = await supabase
+    const from = (pageToLoad - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const [{ data: priRows, error: priErr }, { count: rawCount, error: cntErr }] = await Promise.all([
+      supabase
       .from("part_request_items")
-      .select("id, created_at, shop_id, request_id, part_id, description, status, qty_approved, qty_received")
+      .select("id, created_at, shop_id, request_id, part_id, description, status, qty_approved, qty_received, po_id")
       .eq("shop_id", sid)
       .order("created_at", { ascending: true })
-      .limit(200);
+      .order("id", { ascending: true })
+      .range(from, to),
+      supabase.from("part_request_items").select("id", { count: "exact", head: true }).eq("shop_id", sid),
+    ]);
 
     if (priErr) {
       setErr(priErr.message);
@@ -135,6 +151,8 @@ export default function ReceivingInboxPage(): JSX.Element {
       setLoading(false);
       return;
     }
+    if (cntErr) setErr(cntErr.message);
+    setTotalCount(rawCount ?? 0);
 
     const normalized: InboxItem[] = (priRows ?? [])
       .map((r) => {
@@ -153,11 +171,33 @@ export default function ReceivingInboxPage(): JSX.Element {
           qty_approved: approved,
           qty_received: received,
           qty_remaining: remaining,
+          po_id: ((r as PartRequestItemRow) as { po_id?: string | null }).po_id ?? null,
+          work_order_id: null,
         };
       })
       .filter((x) => x.qty_approved > 0 && x.qty_remaining > 0);
 
     setItems(normalized);
+    setLastUpdated(new Date());
+
+    const requestIds = Array.from(new Set(normalized.map((x) => x.request_id)));
+    if (requestIds.length) {
+      const { data: reqRows } = await supabase
+        .from("part_requests")
+        .select("id, work_order_id")
+        .in("id", requestIds);
+      const workOrderByRequest: Record<string, string | null> = {};
+      (reqRows ?? []).forEach((r) => {
+        const row = r as { id: string; work_order_id: string | null };
+        workOrderByRequest[row.id] = row.work_order_id;
+      });
+      setItems((prev) =>
+        prev.map((it) => ({
+          ...it,
+          work_order_id: workOrderByRequest[it.request_id] ?? null,
+        })),
+      );
+    }
 
     const partIds = Array.from(new Set(normalized.map((x) => x.part_id).filter(Boolean))) as string[];
     if (partIds.length) {
@@ -173,20 +213,38 @@ export default function ReceivingInboxPage(): JSX.Element {
       setPartsMap({});
     }
 
+    const poIds = Array.from(new Set(normalized.map((x) => x.po_id).filter(Boolean))) as string[];
+    if (poIds.length) {
+      const { data: poRows } = await supabase.from("purchase_orders").select("*").in("id", poIds);
+      const map: Record<string, PurchaseOrder> = {};
+      (poRows ?? []).forEach((row) => {
+        const po = row as PurchaseOrder;
+        map[String(po.id)] = po;
+      });
+      setPoMap(map);
+    } else {
+      setPoMap({});
+    }
+
     setLoading(false);
   };
 
   useEffect(() => {
-    void load();
+    void load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page]);
 
   // any drawer receive triggers refresh via event
   useEffect(() => {
-    const handler = () => void load();
+    const handler = () => void load(page);
     window.addEventListener("parts:received", handler as EventListener);
     return () => window.removeEventListener("parts:received", handler as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNowTs(Date.now()), 1000);
+    return () => window.clearInterval(t);
   }, []);
 
   const openDrawerFor = (it: InboxItem) => {
@@ -230,7 +288,8 @@ export default function ReceivingInboxPage(): JSX.Element {
           <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
             Receiving Inbox
           </h1>
-          <div className="text-sm text-neutral-400">Receive against a specific request item (supports partial receiving).</div>
+          <div className="text-sm text-neutral-400">Receiving Inbox: all pending request items.</div>
+          <div className="mt-1 text-xs text-neutral-500">Use this queue for operational receiving across all work orders.</div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -241,12 +300,22 @@ export default function ReceivingInboxPage(): JSX.Element {
             Ask Assistant
           </Link>
           <button
-            onClick={() => void load()}
+            onClick={() => void load(page)}
             className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
           >
             Refresh
           </button>
         </div>
+      </div>
+
+      <div className="text-xs text-neutral-500">
+        Last updated: <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span>
+        {" · "}
+        {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? (
+          <span className="text-amber-300">stale</span>
+        ) : (
+          <span className="text-emerald-300">fresh</span>
+        )}
       </div>
 
       {/* Controls */}
@@ -306,6 +375,9 @@ export default function ReceivingInboxPage(): JSX.Element {
         <div className={`${card} overflow-hidden`}>
           <div className="border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-3">
             <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Outstanding items</div>
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Showing {items.length} of {totalCount} loaded rows (page {page}).
+            </div>
           </div>
 
           <div className="overflow-auto">
@@ -323,6 +395,12 @@ export default function ReceivingInboxPage(): JSX.Element {
                 {items.map((it) => {
                   const p = it.part_id ? partsMap[it.part_id] : null;
                   const sku = (p?.sku as string | null) ?? null;
+                  const po = it.po_id ? poMap[it.po_id] : null;
+                  const itemState = toItemFlowDisplay({
+                    rawStatus: it.status,
+                    qtyApproved: it.qty_approved,
+                    qtyReceived: it.qty_received,
+                  });
 
                   return (
                     <tr key={it.id} className="border-t border-white/10">
@@ -330,10 +408,32 @@ export default function ReceivingInboxPage(): JSX.Element {
                         <div className="font-semibold text-neutral-100">{p?.name ? String(p.name) : it.description}</div>
                         <div className="text-[11px] text-neutral-500">
                           {sku ? `${sku} • ` : ""}
-                          {it.part_id ? String(it.part_id).slice(0, 8) : "no part_id"}
+                          {it.part_id ? String(it.part_id).slice(0, 8) : "no part_id"} • {itemFlowLabel(itemState)}
                           {" • "}
-                          status: <span className="text-neutral-300">{it.status}</span>
+                          WO:{" "}
+                          {it.work_order_id ? (
+                            <Link className="text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>
+                              → Open WO {it.work_order_id.slice(0, 8)}
+                            </Link>
+                          ) : (
+                            <span className="text-neutral-300">—</span>
+                          )}
+                          {" • "}
+                          {po ? (
+                            <Link className="text-neutral-200 hover:text-white" href={`/parts/po/${encodeURIComponent(String(po.id))}`}>
+                              → Open PO {String(po.id).slice(0, 8)}
+                            </Link>
+                          ) : (
+                            <span className="text-neutral-400">No PO</span>
+                          )}
                         </div>
+                        {it.work_order_id ? (
+                          <div className="mt-1 text-[11px] text-neutral-500">
+                            <Link className="text-neutral-200 hover:text-white" href={`/parts/requests/${encodeURIComponent(it.work_order_id)}`}>
+                              → View Request Flow
+                            </Link>
+                          </div>
+                        ) : null}
                       </td>
                       <td className="p-3 tabular-nums">{it.qty_approved}</td>
                       <td className="p-3 tabular-nums">{it.qty_received}</td>
@@ -343,7 +443,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                           onClick={() => openDrawerFor(it)}
                           className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
                         >
-                          Open receive →
+                          → Receive
                         </button>
                       </td>
                     </tr>
@@ -356,6 +456,25 @@ export default function ReceivingInboxPage(): JSX.Element {
           <div className="border-t border-white/10 px-4 py-3 text-[11px] text-neutral-500">
             Notes: This flow calls <span className="text-neutral-200">receive_part_request_item</span> RPC and refreshes automatically via{" "}
             <span className="text-neutral-200">parts:received</span>.
+          </div>
+
+          <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-xs">
+            <button
+              type="button"
+              className="rounded border border-white/10 px-2 py-1 disabled:opacity-50"
+              disabled={page <= 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="rounded border border-white/10 px-2 py-1 disabled:opacity-50"
+              disabled={items.length < pageSize}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Next
+            </button>
           </div>
         </div>
       )}

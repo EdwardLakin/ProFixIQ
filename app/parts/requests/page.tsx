@@ -5,18 +5,14 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+import { requestFlowLabel, toItemFlowDisplay, toRequestFlowDisplay } from "@/features/parts/lib/status-display";
 
 type DB = Database;
 
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
 
-type BucketStatus =
-  | "needs_quote"
-  | "quoted"
-  | "approved"
-  | "fulfilled"
-  | "mixed";
+type BucketStatus = "pending" | "in_progress" | "ready" | "complete";
 
 type WoBucket = {
   workOrderId: string;
@@ -105,7 +101,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "needs_quote" | "quoted" | "approved" | "fulfilled"
+    "all" | "pending" | "in_progress" | "ready" | "complete"
   >("all");
 
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
@@ -134,52 +130,18 @@ export default function PartsRequestsPage(): JSX.Element {
   const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-950/25 text-teal-200`;
   const PILL_APPROVED = `${PILL_BASE} border-sky-500/35 bg-sky-950/25 text-sky-200`;
   const PILL_FULFILLED = `${PILL_BASE} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
-  const PILL_MIXED = `${PILL_BASE} border-neutral-500/40 bg-neutral-900/50 text-neutral-200`;
 
   function pillFor(status: BucketStatus): string {
-    if (status === "needs_quote") return PILL_NEEDS;
-    if (status === "quoted") return PILL_QUOTED;
-    if (status === "approved") return PILL_APPROVED;
-    if (status === "fulfilled") return PILL_FULFILLED;
-    return PILL_MIXED;
+    if (status === "pending") return PILL_NEEDS;
+    if (status === "in_progress") return PILL_APPROVED;
+    if (status === "ready") return PILL_QUOTED;
+    return PILL_FULFILLED;
   }
 
   function labelFor(status: BucketStatus): string {
-    if (status === "needs_quote") return "Needs quote";
-    if (status === "quoted") return "Quoted";
-    if (status === "approved") return "Approved";
-    if (status === "fulfilled") return "Fulfilled";
-    return "Mixed";
+    return requestFlowLabel(status);
   }
 
-  function computeBucketStatus(reqs: PartRequest[]): BucketStatus {
-    const statuses = reqs.map((r) =>
-      String(r.status ?? "requested").toLowerCase(),
-    );
-    const uniq = Array.from(new Set(statuses));
-
-    const hasRequested = uniq.includes("requested");
-    const hasQuoted = uniq.includes("quoted");
-    const hasApproved = uniq.includes("approved");
-    const hasFulfilled = uniq.includes("fulfilled");
-
-    if (hasRequested) return "needs_quote";
-    if (hasFulfilled && !hasApproved && !hasQuoted) return "fulfilled";
-    if (hasFulfilled && hasApproved && !hasQuoted) return "mixed";
-    if (hasFulfilled && hasQuoted) return "mixed";
-    if (hasApproved && !hasQuoted) return "approved";
-    if (hasQuoted && !hasApproved && !hasFulfilled) return "quoted";
-
-    if (uniq.length === 1) {
-      const only = uniq[0];
-      if (only === "fulfilled") return "fulfilled";
-      if (only === "approved") return "approved";
-      if (only === "quoted") return "quoted";
-      return "needs_quote";
-    }
-
-    return "mixed";
-  }
 
   const reload = async (): Promise<void> => {
     setLoading(true);
@@ -203,6 +165,7 @@ export default function PartsRequestsPage(): JSX.Element {
     const itemsCountByRequest: Record<string, number> = {};
     const completeCountByRequest: Record<string, number> = {};
     const descByRequest: Record<string, string[]> = {};
+    const itemStatesByRequest: Record<string, ReturnType<typeof toItemFlowDisplay>[]> = {};
 
     if (requestIds.length) {
       const { data: items, error: itemsErr } = await supabase
@@ -232,6 +195,15 @@ export default function PartsRequestsPage(): JSX.Element {
 
           const d = (row.description ?? "").trim();
           if (d) (descByRequest[row.request_id] ||= []).push(d);
+
+          (itemStatesByRequest[row.request_id] ||= []).push(
+            toItemFlowDisplay({
+              rawStatus: null,
+              qty: row.qty,
+              qtyApproved: row.qty,
+              qtyReceived: 0,
+            }),
+          );
         });
       }
     }
@@ -302,7 +274,7 @@ export default function PartsRequestsPage(): JSX.Element {
           customId,
           customerName,
           vehicleLabel,
-          status: "needs_quote",
+          status: "pending",
           requests: [],
           itemsCount: 0,
           completeCount: 0,
@@ -334,7 +306,11 @@ export default function PartsRequestsPage(): JSX.Element {
     }
 
     Object.values(byWo).forEach((b) => {
-      b.status = computeBucketStatus(b.requests);
+      const combined = b.requests.flatMap((r) => itemStatesByRequest[r.id] ?? []);
+      b.status = toRequestFlowDisplay({
+        rawStatus: b.requests[0]?.status ?? "requested",
+        itemStates: combined,
+      });
 
       const pct =
         b.itemsCount > 0
@@ -506,10 +482,10 @@ export default function PartsRequestsPage(): JSX.Element {
               }
             >
               <option value="all">All</option>
-              <option value="needs_quote">Needs quote</option>
-              <option value="quoted">Quoted</option>
-              <option value="approved">Approved</option>
-              <option value="fulfilled">Fulfilled</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="ready">Ready</option>
+              <option value="complete">Complete</option>
             </select>
           </div>
 

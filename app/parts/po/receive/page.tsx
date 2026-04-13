@@ -76,7 +76,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
             Receive from PO
           </h1>
           <div className="text-sm text-neutral-400">
-            Choose a purchase order to receive inventory and update PO line received quantities.
+            Receive from PO: items tied to this purchase order.
           </div>
         </div>
 

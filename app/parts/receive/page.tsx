@@ -250,7 +250,10 @@ export default function ReceivePage(): JSX.Element {
   return (
     <div className="p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
+          <div className="text-sm text-neutral-400">Scan to Receive: fast intake via barcode/manual entry.</div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
