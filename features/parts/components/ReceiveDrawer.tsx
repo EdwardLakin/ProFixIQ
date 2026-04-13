@@ -220,14 +220,14 @@ export default function ReceiveDrawer(props: {
     "absolute bottom-0 left-0 right-0 border-t border-white/10 bg-neutral-950/70 px-5 py-4";
 
   const input =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35";
+    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35";
   const select =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35";
+    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/35";
 
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-[#8b5a2b]/60 text-[#c88a4d] bg-neutral-950/20 hover:bg-[#8b5a2b]/10`;
+  const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
 
   return (
     <>

@@ -102,7 +102,7 @@ function QuickButton({
       href={href}
       className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm text-white shadow-sm backdrop-blur-md transition ${
         accent
-          ? "border-orange-400/60 bg-white/[0.03] hover:bg-orange-500/10 hover:border-orange-400"
+          ? "border-sky-500/40 bg-white/[0.03] hover:bg-sky-900/20 hover:border-sky-400"
           : "border-neutral-700 bg-white/[0.02] hover:bg-neutral-800/80"
       }`}
     >
@@ -250,12 +250,12 @@ export default function PartsDashboardPage(): JSX.Element {
       {/* soft gradient background for this page */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.9),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_70%)]"
       />
 
       {/* welcome panel */}
       <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-5 shadow-card backdrop-blur-md">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(249,115,22,0.18),transparent_45%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(56,189,248,0.14),transparent_45%)]" />
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">Parts command center</div>
           <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">Parts dashboard</h1>
@@ -299,15 +299,15 @@ export default function PartsDashboardPage(): JSX.Element {
       </section>
 
       {hasOpenRequests && (
-        <section className="rounded-xl border border-orange-400/45 bg-orange-500/10 px-4 py-3 shadow-[0_0_24px_rgba(249,115,22,0.2)]">
+        <section className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3 shadow-[0_0_24px_rgba(14,116,144,0.22)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-orange-200/80">Bottleneck signal</div>
-              <p className="text-sm text-orange-100">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/80">Bottleneck signal</div>
+              <p className="text-sm text-sky-100">
                 You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} awaiting action.
               </p>
             </div>
-            <Link href="/parts/requests" className="rounded-full border border-orange-300/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-orange-100 hover:bg-orange-500/20">
+            <Link href="/parts/requests" className="rounded-full border border-sky-300/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-sky-100 hover:bg-sky-900/35">
               Open requests
             </Link>
           </div>

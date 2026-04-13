@@ -15,6 +15,21 @@ type PartInsert = DB["public"]["Tables"]["parts"]["Insert"];
 type PartUpdate = DB["public"]["Tables"]["parts"]["Update"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
+type AliasRow = {
+  part_id: string;
+  alias_type: string | null;
+  source_system: string | null;
+};
+type StagingRow = {
+  matched_part_id: string | null;
+  source_system: string | null;
+  status: string | null;
+};
+type TrustLevel = "high" | "review" | "low";
+type TrustMeta = {
+  level: TrustLevel;
+  reasons: string[];
+};
 
 // app-side view of the enum
 type StockMoveReason = "receive" | "adjust" | "consume" | "transfer";
@@ -32,9 +47,9 @@ function Modal(props: {
   const { open, title, onClose, children, footer, widthClass = "max-w-xl" } = props;
   if (!open) return null;
 
-  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
-  const COPPER_BORDER = "border-[#8b5a2b]/60";
-  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+  // ---- Theme (glass + neutral accent styling) ----
+  const ACCENT_BORDER = "border-sky-500/35";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
 
   const shell =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl " +
@@ -55,7 +70,7 @@ function Modal(props: {
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className={`rounded-lg border border-white/10 bg-neutral-950/20 px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${COPPER_FOCUS_RING}`}
+            className={`rounded-lg border border-white/10 bg-neutral-950/20 px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${ACCENT_FOCUS_RING}`}
             aria-label="Close"
           >
             ✕
@@ -65,7 +80,7 @@ function Modal(props: {
         <div>{children}</div>
 
         {footer ? (
-          <div className={`mt-4 border-t border-white/10 pt-3 ${COPPER_BORDER}`}>{footer}</div>
+          <div className={`mt-4 border-t border-white/10 pt-3 ${ACCENT_BORDER}`}>{footer}</div>
         ) : null}
       </div>
     </div>
@@ -83,7 +98,7 @@ function TextField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
-        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -105,7 +120,7 @@ function NumberField(props: {
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
         type="number"
-        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35"
         value={value === "" ? "" : value}
         min={min}
         step={step}
@@ -129,7 +144,7 @@ function SelectField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <select
-        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/35"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -261,7 +276,9 @@ export default function InventoryPage(): JSX.Element {
 
   const [search, setSearch] = useState<string>("");
   const [parts, setParts] = useState<Part[]>([]);
+  const [trustByPartId, setTrustByPartId] = useState<Record<string, TrustMeta>>({});
   const [loading, setLoading] = useState<boolean>(true);
+  const [trustFilter, setTrustFilter] = useState<"all" | "review" | "low">("all");
 
   // stock locations
   const [locs, setLocs] = useState<StockLoc[]>([]);
@@ -307,10 +324,10 @@ export default function InventoryPage(): JSX.Element {
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
 
-  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
-  const COPPER_TEXT = "text-[#c88a4d]";
-  const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
-  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+  // ---- Theme (glass + neutral accent styling) ----
+  const ACCENT_TEXT = "text-sky-200";
+  const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
 
   const pageWrap = "space-y-4 p-6 text-white";
   const glassCard =
@@ -319,12 +336,12 @@ export default function InventoryPage(): JSX.Element {
     "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
 
   const inputBase =
-    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-white/10 ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const btnCopper = `${btnBase} border-white/10 ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-sky-200 hover:bg-sky-900/25`;
 
   const pillBase =
@@ -379,6 +396,75 @@ export default function InventoryPage(): JSX.Element {
       const partRows = (!error && (data as Part[])) || [];
       setParts(partRows);
       setLoading(false);
+
+      if (partRows.length > 0) {
+        const partIds = partRows.map((p) => p.id);
+        const [aliasRes, stagingRes] = await Promise.all([
+          supabase
+            .from("shop_parts_source_aliases")
+            .select("part_id, alias_type, source_system")
+            .eq("shop_id", sid)
+            .in("part_id", partIds),
+          supabase
+            .from("shop_parts_import_staging")
+            .select("matched_part_id, source_system, status")
+            .eq("shop_id", sid)
+            .in("matched_part_id", partIds),
+        ]);
+
+        const aliasByPart = new Map<string, AliasRow[]>();
+        ((aliasRes.data ?? []) as AliasRow[]).forEach((row) => {
+          const key = String(row.part_id ?? "");
+          if (!key) return;
+          if (!aliasByPart.has(key)) aliasByPart.set(key, []);
+          aliasByPart.get(key)?.push(row);
+        });
+
+        const stagingByPart = new Map<string, StagingRow[]>();
+        ((stagingRes.data ?? []) as StagingRow[]).forEach((row) => {
+          const key = String(row.matched_part_id ?? "");
+          if (!key) return;
+          if (!stagingByPart.has(key)) stagingByPart.set(key, []);
+          stagingByPart.get(key)?.push(row);
+        });
+
+        const nextTrust: Record<string, TrustMeta> = {};
+        partRows.forEach((p) => {
+          const reasons: string[] = [];
+          const aliases = aliasByPart.get(p.id) ?? [];
+          const stagingRows = stagingByPart.get(p.id) ?? [];
+
+          const hasSku = typeof p.sku === "string" && p.sku.trim().length > 0;
+          const hasPartNumber =
+            typeof p.part_number === "string" && p.part_number.trim().length > 0;
+          const hasIdentityKey =
+            typeof p.normalized_part_key === "string" && p.normalized_part_key.trim().length > 0;
+
+          if (!hasSku) reasons.push("Missing SKU");
+          if (!hasPartNumber) reasons.push("Missing part #");
+          if (!hasIdentityKey && !hasSku && !hasPartNumber) reasons.push("Weak identity");
+
+          if (aliases.length > 0) reasons.push("Alias-linked import");
+          if (stagingRows.length > 0) reasons.push("Imported lineage");
+          if (typeof p.source_intake_id === "string" && p.source_intake_id.trim()) {
+            reasons.push("Staged intake source");
+          }
+
+          const hasAmbiguousImport = stagingRows.some((s) => {
+            const status = String(s.status ?? "").toLowerCase();
+            return status === "pending" || status === "review";
+          });
+          if (hasAmbiguousImport) reasons.push("Ambiguous import");
+
+          const low = reasons.some((r) => r === "Weak identity" || r === "Ambiguous import");
+          const review = reasons.length > 0;
+          nextTrust[p.id] = { level: low ? "low" : review ? "review" : "high", reasons };
+        });
+
+        setTrustByPartId(nextTrust);
+      } else {
+        setTrustByPartId({});
+      }
 
       void loadOnHand(sid, partRows.map((p) => p.id));
     },
@@ -694,6 +780,17 @@ export default function InventoryPage(): JSX.Element {
   };
 
   /* ----------------------------- UI ----------------------------- */
+  const visibleParts = parts.filter((p) => {
+    if (trustFilter === "all") return true;
+    const trust = trustByPartId[p.id];
+    if (trustFilter === "low") return trust?.level === "low";
+    return trust?.level === "review" || trust?.level === "low";
+  });
+
+  const suspectCount = parts.filter((p) => {
+    const level = trustByPartId[p.id]?.level;
+    return level === "review" || level === "low";
+  }).length;
 
   return (
     <div className={pageWrap}>
@@ -731,6 +828,15 @@ export default function InventoryPage(): JSX.Element {
               <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
                 CSV Import
               </button>
+              <select
+                className={inputBase}
+                value={trustFilter}
+                onChange={(e) => setTrustFilter(e.target.value as "all" | "review" | "low")}
+              >
+                <option value="all">Trust: All rows</option>
+                <option value="review">Trust: Review + low</option>
+                <option value="low">Trust: Low only</option>
+              </select>
             </div>
           </div>
         </div>
@@ -738,9 +844,9 @@ export default function InventoryPage(): JSX.Element {
 
       {loading ? (
         <div className={`${glassCard} p-4 text-sm text-neutral-300`}>Loading…</div>
-      ) : parts.length === 0 ? (
+      ) : visibleParts.length === 0 ? (
         <div className={`${glassCard} p-4 text-sm text-neutral-300`}>
-          No parts yet. Click “Add Part” to create your first item or use CSV Import.
+          No inventory rows match this filter.
         </div>
       ) : (
         <div className={`${glassCard} overflow-hidden`}>
@@ -751,15 +857,25 @@ export default function InventoryPage(): JSX.Element {
                   <th className="p-3">Name</th>
                   <th className="p-3">SKU</th>
                   <th className="p-3">Category</th>
+                  <th className="p-3">Trust</th>
                   <th className="p-3">Price</th>
                   <th className="p-3">On hand</th>
                   <th className="w-56 p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {parts.map((p) => {
+                {visibleParts.map((p) => {
                   const total = onHand[p.id] ?? 0;
                   const onHandPill = total > 0 ? pillOk : pillZero;
+                  const trust = trustByPartId[p.id] ?? { level: "high", reasons: [] as string[] };
+                  const trustBadge =
+                    trust.level === "low"
+                      ? "border-red-500/30 bg-red-950/30 text-red-200"
+                      : trust.level === "review"
+                        ? "border-amber-500/35 bg-amber-950/30 text-amber-200"
+                        : "border-emerald-500/30 bg-emerald-950/25 text-emerald-200";
+                  const trustLabel =
+                    trust.level === "low" ? "Low trust" : trust.level === "review" ? "Review" : "High";
 
                   return (
                     <tr key={p.id} className="border-t border-white/10">
@@ -771,6 +887,16 @@ export default function InventoryPage(): JSX.Element {
                       </td>
                       <td className="p-3">{p.sku ?? "—"}</td>
                       <td className="p-3">{p.category ?? "—"}</td>
+                      <td className="p-3">
+                        <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadge}`}>
+                          {trustLabel}
+                        </div>
+                        {trust.reasons.length > 0 ? (
+                          <div className="mt-1 line-clamp-2 text-xs text-neutral-400">
+                            {trust.reasons.slice(0, 2).join(" · ")}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="p-3 tabular-nums">
                         {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "—"}
                       </td>
@@ -801,7 +927,7 @@ export default function InventoryPage(): JSX.Element {
           </div>
 
           <div className="border-t border-white/10 px-5 py-3 text-xs text-neutral-500">
-            Tip: Click the on-hand number to see per-location balances.
+            Tip: Click on-hand to see locations. {suspectCount} row(s) currently flagged for trust review.
           </div>
         </div>
       )}
@@ -1004,7 +1130,7 @@ export default function InventoryPage(): JSX.Element {
       >
         <div className="grid gap-3">
           <div className="rounded-xl border border-white/10 bg-neutral-950/20 p-3 text-sm text-neutral-300">
-            Expected headers (case-insensitive): <code className={COPPER_TEXT}>name, sku, category, price, qty</code>.
+            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>name, sku, category, price, qty</code>.
             Extra columns are ignored.
           </div>
 
@@ -1077,7 +1203,7 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
               {csvDefaultLoc ? (
                 <>
                   {" "}
-                  · Default receive loc: <span className={COPPER_TEXT}>{csvDefaultLoc.slice(0, 8)}</span>
+                  · Default receive loc: <span className={ACCENT_TEXT}>{csvDefaultLoc.slice(0, 8)}</span>
                 </>
               ) : (
                 <>
