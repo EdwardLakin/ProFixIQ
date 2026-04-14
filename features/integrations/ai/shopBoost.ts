@@ -1698,33 +1698,51 @@ async function logTrainingEvents(
 ): Promise<void> {
   const content = ["Shop Health Snapshot:", JSON.stringify(snapshot, null, 2)].join("\n");
 
-  const { data: eventRows, error: eventErr } = await supabase.rpc("insert_ai_event", {
+  try {
+    const { data, error } = await supabase.rpc("insert_ai_event", {
       p_event_type: "training.shopboost",
       p_training_source: "shop_boost",
       p_shop_id: snapshot.shopId,
-      
       p_payload: snapshot,
-    })
-    .select("id")
-    .limit(1);
+    });
 
-  if (eventErr) {
-    console.error("Failed to insert ai_training_events", eventErr);
-    return;
-  }
+    if (error) {
+      console.error("[shopBoost] non-fatal insert_ai_event failure", error);
+      return;
+    }
 
-  const first = (eventRows ?? [])[0] as { id?: string } | undefined;
-  const sourceEventId = first?.id;
-  if (!sourceEventId) return;
+    let sourceEventId: string | null = null;
 
-  const { error: trainingErr } = await supabase.from("ai_training_data").insert({
-    p_shop_id: snapshot.shopId,
-    source_event_id: sourceEventId,
-    content,
-    embedding: null,
-  });
+    if (typeof data === "string") {
+      sourceEventId = data;
+    } else if (Array.isArray(data) && data[0] && typeof data[0] === "object") {
+      sourceEventId =
+        typeof (data[0] as { id?: unknown }).id === "string"
+          ? ((data[0] as { id?: string }).id ?? null)
+          : null;
+    } else if (data && typeof data === "object") {
+      sourceEventId =
+        typeof (data as { id?: unknown }).id === "string"
+          ? ((data as { id?: string }).id ?? null)
+          : null;
+    }
 
-  if (trainingErr) {
-    console.error("Failed to insert ai_training_data", trainingErr);
+    if (!sourceEventId) {
+      console.warn("[shopBoost] insert_ai_event returned no usable event id");
+      return;
+    }
+
+    const { error: trainingErr } = await supabase.from("ai_training_data").insert({
+      shop_id: snapshot.shopId,
+      source_event_id: sourceEventId,
+      content,
+      embedding: null,
+    });
+
+    if (trainingErr) {
+      console.error("[shopBoost] non-fatal ai_training_data insert failure", trainingErr);
+    }
+  } catch (err) {
+    console.error("[shopBoost] non-fatal training log failure", err);
   }
 }
