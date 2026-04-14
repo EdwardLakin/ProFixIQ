@@ -49,9 +49,8 @@ const btnNeutral =
   btnBase + " border-white/10 bg-black/35 text-neutral-100 hover:bg-white/5";
 const btnInfo =
   btnBase + " border-sky-500/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
-const btnPrimary =
-  btnBase +
-  " border-[var(--accent-copper-soft)] bg-[var(--accent-copper,#f97316)]/20 text-[var(--accent-copper-light)] shadow-[0_0_20px_rgba(249,115,22,0.2)] hover:bg-[var(--accent-copper,#f97316)]/30";
+const btnDanger =
+  btnBase + " border-red-500/45 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnSecondary = btnInfo;
 const btnTertiary =
   btnBase + " border-white/10 bg-black/25 text-neutral-200 hover:bg-white/5";
@@ -653,24 +652,10 @@ export default function FocusedJobModal(props: {
                     />
                   ) : null}
 
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-2 grid gap-2">
                     <button
                       type="button"
-                      className={btnPrimary}
-                      onClick={async () => {
-                        if (!line?.id || busy) return;
-                        closeAllSubModals();
-                        await runJobPunchTransition(line.id, "start");
-                        await refresh();
-                      }}
-                      disabled={busy || line?.status === "in_progress" || line?.status === "completed"}
-                    >
-                      Start Job
-                    </button>
-
-                    <button
-                      type="button"
-                      className={btnPrimary}
+                      className={btnDanger}
                       onClick={() => {
                         closeAllSubModals();
                         setPrefillCause(line?.cause ?? "");
@@ -682,6 +667,7 @@ export default function FocusedJobModal(props: {
                       Complete
                     </button>
 
+                    <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       className={btnSecondary}
@@ -755,6 +741,7 @@ export default function FocusedJobModal(props: {
                     >
                       Vehicle History
                     </button>
+                  </div>
                   </div>
 
                   {completionBlocked ? (
