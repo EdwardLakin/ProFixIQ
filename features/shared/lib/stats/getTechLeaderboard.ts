@@ -49,6 +49,8 @@ type WorkOrderLineSlim = {
   labor_time: number | null;
   assigned_tech_id: string | null;
   punchable: boolean | null;
+  status: string | null;
+  punched_out_at: string | null;
 };
 
 type LaborSegmentSlim = {
@@ -101,13 +103,6 @@ export function isTechRole(role: string | null): boolean {
 function safeNum(v: number | null | undefined): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  if (size <= 0) return [arr];
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
 }
 
 function getOverlapHours(
@@ -188,8 +183,8 @@ export async function getTechLeaderboard(
     return { shop_id: shopId, start: startIso, end: endIso, rows: [] };
   }
 
-  // 2) Invoices + labor segments in range (timecards kept as fallback)
-  const [invoicesRes, timecardsRes, segmentsRes] = await Promise.all([
+  // 2) Pull accounting + live labor/completion sources for this range
+  const [invoicesRes, timecardsRes, segmentsRes, completedLinesRes] = await Promise.all([
     supabase
       .from("invoices")
       .select("id, tech_id, shop_id, work_order_id, total, labor_cost, created_at")
@@ -205,6 +200,7 @@ export async function getTechLeaderboard(
       .in("user_id", techIds)
       .gte("clock_in", startIso)
       .lt("clock_in", endExclusiveIso),
+
     supabase
       .from("work_order_line_labor_segments")
       .select("technician_id, started_at, ended_at")
@@ -212,15 +208,26 @@ export async function getTechLeaderboard(
       .in("technician_id", techIds)
       .lt("started_at", endExclusiveIso)
       .or(`ended_at.gte.${startIso},ended_at.is.null`),
+
+    supabase
+      .from("work_order_lines")
+      .select("id, shop_id, work_order_id, labor_time, assigned_tech_id, punchable, status, punched_out_at")
+      .eq("shop_id", shopId)
+      .in("assigned_tech_id", techIds)
+      .in("status", ["completed", "ready_to_invoice", "invoiced"])
+      .gte("punched_out_at", startIso)
+      .lt("punched_out_at", endExclusiveIso),
   ]);
 
   if (invoicesRes.error) throw invoicesRes.error;
   if (timecardsRes.error) throw timecardsRes.error;
   if (segmentsRes.error) throw segmentsRes.error;
+  if (completedLinesRes.error) throw completedLinesRes.error;
 
   const invoices: InvoiceSlim[] = (invoicesRes.data as InvoiceSlim[]) ?? [];
   const timecards: TimecardSlim[] = (timecardsRes.data as TimecardSlim[]) ?? [];
   const segments: LaborSegmentSlim[] = (segmentsRes.data as LaborSegmentSlim[]) ?? [];
+  const completedLines: WorkOrderLineSlim[] = (completedLinesRes.data as WorkOrderLineSlim[]) ?? [];
 
   // 3) Seed rows so techs show even with 0 activity
   const byTech = new Map<string, TechLeaderboardRow>();
@@ -242,10 +249,7 @@ export async function getTechLeaderboard(
     });
   }
 
-  // 4) Aggregate revenue/labor/jobs from invoices + collect WO ids per tech
-  const workOrdersByTech = new Map<string, Set<string>>();
-  const allWorkOrderIds: string[] = [];
-
+  // 4) Aggregate accounting metrics from invoices only
   for (const inv of invoices) {
     const techId = inv.tech_id;
     if (!techId) continue;
@@ -253,16 +257,20 @@ export async function getTechLeaderboard(
     const row = byTech.get(techId);
     if (!row) continue;
 
-    row.jobs += 1;
     row.revenue += safeNum(inv.total);
     row.laborCost += safeNum(inv.labor_cost);
+  }
 
-    const woId = inv.work_order_id;
-    if (woId) {
-      if (!workOrdersByTech.has(techId)) workOrdersByTech.set(techId, new Set());
-      workOrdersByTech.get(techId)!.add(woId);
-      allWorkOrderIds.push(woId);
-    }
+  // 4b) Aggregate LIVE completed jobs + billed hours from completed lines in range
+  for (const line of completedLines) {
+    const techId = line.assigned_tech_id;
+    if (!techId) continue;
+
+    const row = byTech.get(techId);
+    if (!row) continue;
+
+    row.jobs += 1;
+    row.billedHours += safeNum(line.labor_time);
   }
 
   // 5) Aggregate clocked hours from labor segments (source of truth)
@@ -286,69 +294,7 @@ export async function getTechLeaderboard(
     }
   }
 
-  // 6) Billed hours = sum(work_order_lines.labor_time) for invoiced work orders
-  // Prefer lines assigned to the invoice tech; fallback to all lines on that WO if none match.
-  const uniqueWorkOrderIds = Array.from(new Set(allWorkOrderIds)).filter(Boolean);
-
-  if (uniqueWorkOrderIds.length > 0) {
-    const chunks = chunk(uniqueWorkOrderIds, 400);
-
-    // pull all lines for those WOs (chunked)
-    const allLines: WorkOrderLineSlim[] = [];
-
-    for (const ids of chunks) {
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .select("id, shop_id, work_order_id, labor_time, assigned_tech_id, assigned_tech_id, punchable")
-        .eq("shop_id", shopId)
-        .in("work_order_id", ids);
-
-      if (error) throw error;
-      const rows = (data as WorkOrderLineSlim[]) ?? [];
-      allLines.push(...rows);
-    }
-
-    // index lines by work_order_id for quick lookups
-    const linesByWo = new Map<string, WorkOrderLineSlim[]>();
-    for (const line of allLines) {
-      const wo = line.work_order_id;
-      if (!wo) continue;
-      if (!linesByWo.has(wo)) linesByWo.set(wo, []);
-      linesByWo.get(wo)!.push(line);
-    }
-
-    // compute billed hours per tech from the work orders attributed to that tech via invoice.tech_id
-    for (const [techId, woSet] of workOrdersByTech.entries()) {
-      const row = byTech.get(techId);
-      if (!row) continue;
-
-      let billed = 0;
-
-      for (const woId of woSet.values()) {
-        const lines = linesByWo.get(woId) ?? [];
-        if (lines.length === 0) continue;
-
-        // Prefer punchable lines if present, otherwise include all (shops vary)
-        const punchableLines = lines.filter((l) => l.punchable === true);
-        const candidateLines = punchableLines.length > 0 ? punchableLines : lines;
-
-        // Primary: lines assigned to this tech (either field)
-        const mine = candidateLines.filter(
-          (l) => l.assigned_tech_id === techId || l.assigned_tech_id === techId,
-        );
-        const mineSum = mine.reduce((acc, l) => acc + safeNum(l.labor_time), 0);
-
-        if (mineSum > 0) {
-          billed += mineSum;
-        } else {
-          // Fallback: sum all lines on the WO (useful if assignment fields weren’t set)
-          billed += candidateLines.reduce((acc, l) => acc + safeNum(l.labor_time), 0);
-        }
-      }
-
-      row.billedHours += billed;
-    }
-  }
+  // 6) billedHours already comes from live completed lines above
 
   // 7) Final derived metrics
   for (const row of byTech.values()) {
