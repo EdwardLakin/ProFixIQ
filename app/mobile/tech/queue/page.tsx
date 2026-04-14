@@ -47,9 +47,12 @@ const STATUS_STYLES: Record<RollupStatus, string> = {
     "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.20),rgba(15,23,42,0.98))] hover:border-emerald-400/70",
 };
 
-function toBucket(status: string | null | undefined): RollupStatus {
-  const s = (status ?? "").toLowerCase();
-  if (s === "in_progress") return "in_progress";
+function toBucket(line: Line): RollupStatus {
+  const punchedIn = !!line.punched_in_at && !line.punched_out_at;
+  if (punchedIn) return "in_progress";
+
+  const s = (line.status ?? "").toLowerCase().replaceAll(" ", "_");
+  if (s === "in_progress" || s === "in-progress" || s === "active") return "in_progress";
   if (s === "on_hold") return "on_hold";
   if (s === "completed") return "completed";
   return "awaiting";
@@ -295,7 +298,7 @@ export default function MobileTechQueuePage() {
       on_hold: 0,
       completed: 0,
     };
-    for (const line of lines) base[toBucket(line.status)] += 1;
+    for (const line of lines) base[toBucket(line)] += 1;
     return base;
   }, [lines]);
 
@@ -303,8 +306,8 @@ export default function MobileTechQueuePage() {
   const sortedLines = useMemo(() => {
     const copy = [...lines];
     copy.sort((a, b) => {
-      const ba = toBucket(a.status);
-      const bb = toBucket(b.status);
+      const ba = toBucket(a);
+      const bb = toBucket(b);
 
       const ra = STATUS_RANK[ba];
       const rb = STATUS_RANK[bb];
@@ -324,7 +327,7 @@ export default function MobileTechQueuePage() {
   // apply filter on top of that sort
   const filteredLines = useMemo(() => {
     if (activeFilter == null) return sortedLines;
-    return sortedLines.filter((l) => toBucket(l.status) === activeFilter);
+    return sortedLines.filter((l) => toBucket(l) === activeFilter);
   }, [sortedLines, activeFilter]);
 
   if (loading) {
@@ -424,7 +427,7 @@ export default function MobileTechQueuePage() {
         {/* JOB LIST (WO + line# + real title + vehicle) */}
         <section className="grid gap-2 md:grid-cols-2">
           {filteredLines.map((line) => {
-            const bucket = toBucket(line.status);
+            const bucket = toBucket(line);
 
             const wo = line.work_order_id ? workOrderMap[line.work_order_id] : null;
 

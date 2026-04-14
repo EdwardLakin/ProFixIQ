@@ -70,9 +70,12 @@ function isCompletedLike(status: string | null | undefined): boolean {
   return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
 }
 
-function toBucket(status: string | null | undefined): RollupStatus {
-  const s = (status ?? "").toLowerCase().replaceAll(" ", "_");
-  if (s === "in_progress") return "in_progress";
+function toBucket(line: Line): RollupStatus {
+  const punchedIn = !!line.punched_in_at && !line.punched_out_at;
+  if (punchedIn) return "in_progress";
+
+  const s = (line.status ?? "").toLowerCase().replaceAll(" ", "_");
+  if (s === "in_progress" || s === "in-progress" || s === "active") return "in_progress";
   if (s === "on_hold") return "on_hold";
   return "awaiting";
 }
@@ -307,7 +310,7 @@ export default function TechQueuePage() {
       on_hold: 0,
     };
     for (const line of lines) {
-      base[toBucket(line.status)] += 1;
+      base[toBucket(line)] += 1;
     }
     return base;
   }, [lines]);
@@ -315,7 +318,7 @@ export default function TechQueuePage() {
   // filtered list
   const filteredLines = useMemo(() => {
     if (activeFilter == null) return lines;
-    return lines.filter((l) => toBucket(l.status) === activeFilter);
+    return lines.filter((l) => toBucket(l) === activeFilter);
   }, [lines, activeFilter]);
 
   if (loading)
@@ -419,7 +422,7 @@ export default function TechQueuePage() {
       {/* LIST */}
       <div className="space-y-2">
         {filteredLines.map((line) => {
-          const bucket = toBucket(line.status);
+          const bucket = toBucket(line);
           const wo = line.work_order_id
             ? workOrderMap[line.work_order_id]
             : null;

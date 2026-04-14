@@ -271,9 +271,17 @@ export function JobCard({
   compact = false,
   selected = false,
 }: JobCardProps): JSX.Element {
-  const statusKey = (line.status ?? "awaiting")
+  const rawStatus = (line.status ?? "awaiting")
     .toLowerCase()
-    .replaceAll(" ", "_") as KnownStatus;
+    .replaceAll(" ", "_");
+
+  const statusKey = (
+    isPunchedIn
+      ? "in_progress"
+      : rawStatus === "in-progress"
+        ? "in_progress"
+        : rawStatus
+  ) as KnownStatus;
 
   const surfaceCfg = CARD_SURFACE[statusKey] ?? CARD_SURFACE.awaiting;
 
