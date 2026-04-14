@@ -43,14 +43,20 @@ export default async function RootLayout({
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
 
-  const useAppShell =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/work-orders") ||
-    pathname.startsWith("/inspections") ||
-    pathname.startsWith("/parts") ||
-    pathname.startsWith("/mobile") ||
-    pathname.startsWith("/tech") ||
-    pathname.startsWith("/portal");
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/auth/reset") ||
+    pathname.startsWith("/auth/set-password") ||
+    pathname.startsWith("/confirm") ||
+    pathname.startsWith("/compare-plans") ||
+    pathname.startsWith("/subscribe") ||
+    pathname.startsWith("/demo") ||
+    pathname.startsWith("/onboarding");
+
+  const useAppShell = !isPublicRoute;
 
   return (
     <html
