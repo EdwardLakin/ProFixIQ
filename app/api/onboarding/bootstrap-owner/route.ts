@@ -63,6 +63,7 @@ export async function POST(req: Request) {
     // Insert shop (seed both address+street for legacy consistency)
     const shopInsert: DB["public"]["Tables"]["shops"]["Insert"] = {
       owner_id: user.id,
+      created_by: user.id,
       business_name: businessName,
       shop_name: shopName,
       name: shopName, // keep your existing "name" column in sync
