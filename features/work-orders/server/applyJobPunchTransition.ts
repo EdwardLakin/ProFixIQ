@@ -157,28 +157,83 @@ export async function applyJobPunchTransition({
 
     const lineTechId = technicianId;
 
-    let openShiftQ = supabase
+    let openShiftQuery = supabase
       .from("tech_shifts")
-      .select("id")
+      .select("id, shop_id, status, start_time, end_time")
       .eq("user_id", lineTechId)
       .eq("status", "open")
       .order("start_time", { ascending: false })
       .limit(1);
 
     if (line.shop_id) {
-      openShiftQ = openShiftQ.eq("shop_id", line.shop_id);
+      openShiftQuery = openShiftQuery.eq("shop_id", line.shop_id);
     }
 
-    const { data: openShift, error: openShiftErr } = await openShiftQ.maybeSingle();
+    let openShift: {
+      id: string;
+      shop_id: string | null;
+      status: string | null;
+      start_time: string | null;
+      end_time: string | null;
+    } | null = null;
 
-    if (openShiftErr) return err(400, openShiftErr.message);
+    const { data: firstOpenShift, error: firstOpenShiftErr } = await openShiftQuery.maybeSingle();
+
+    if (firstOpenShiftErr) return err(400, firstOpenShiftErr.message);
+    openShift = firstOpenShift;
+
+    if (!openShift) {
+      let fallbackQuery = supabase
+        .from("tech_shifts")
+        .select("id, shop_id, status, start_time, end_time")
+        .eq("user_id", lineTechId)
+        .is("end_time", null)
+        .order("start_time", { ascending: false })
+        .limit(1);
+
+      if (line.shop_id) {
+        fallbackQuery = fallbackQuery.eq("shop_id", line.shop_id);
+      }
+
+      const { data: fallbackOpenShift, error: fallbackOpenShiftErr } = await fallbackQuery.maybeSingle();
+      if (fallbackOpenShiftErr) return err(400, fallbackOpenShiftErr.message);
+      openShift = fallbackOpenShift;
+    }
+
+    if (!openShift) {
+      const { data: anyShopOpenShift, error: anyShopOpenShiftErr } = await supabase
+        .from("tech_shifts")
+        .select("id, shop_id, status, start_time, end_time")
+        .eq("user_id", lineTechId)
+        .eq("status", "open")
+        .order("start_time", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyShopOpenShiftErr) return err(400, anyShopOpenShiftErr.message);
+      openShift = anyShopOpenShift;
+    }
+
+    if (!openShift) {
+      const { data: anyShopLegacyOpenShift, error: anyShopLegacyOpenShiftErr } = await supabase
+        .from("tech_shifts")
+        .select("id, shop_id, status, start_time, end_time")
+        .eq("user_id", lineTechId)
+        .is("end_time", null)
+        .order("start_time", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyShopLegacyOpenShiftErr) return err(400, anyShopLegacyOpenShiftErr.message);
+      openShift = anyShopLegacyOpenShift;
+    }
 
     if (!openShift) {
       return err(
         409,
         action === "start"
-          ? "Cannot start job without an active daily punch. Clock in first."
-          : "Cannot resume job without an active daily punch. Clock in first.",
+          ? "You need to clock in before starting this job."
+          : "You need to clock in before resuming this job.",
       );
     }
 
