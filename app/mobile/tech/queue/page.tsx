@@ -31,7 +31,7 @@ type RollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
 
 const STATUS_LABELS: Record<RollupStatus, string> = {
   awaiting: "Awaiting",
-  in_progress: "In progress",
+  in_progress: "Active Job",
   on_hold: "On hold",
   completed: "Completed",
 };
@@ -68,7 +68,7 @@ function cleanText(v: string | null | undefined): string {
 }
 
 function nextActionLabel(status: RollupStatus): string {
-  if (status === "in_progress") return "Resume focused job";
+  if (status === "in_progress") return "Return to active job";
   if (status === "on_hold") return "Review hold reason + resume";
   if (status === "awaiting") return "Start line when bay is free";
   return "Review completion notes";
@@ -371,7 +371,7 @@ export default function MobileTechQueuePage() {
 
           <div className="mt-3 grid grid-cols-3 gap-3">
             <MiniStat label="Total lines" value={lines.length} />
-            <MiniStat label="In progress" value={counts.in_progress} accent />
+            <MiniStat label="Active job" value={counts.in_progress} accent />
             <MiniStat label="On hold" value={counts.on_hold} />
           </div>
         </section>

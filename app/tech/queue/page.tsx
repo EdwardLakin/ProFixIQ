@@ -32,14 +32,14 @@ type RollupStatus = "awaiting" | "in_progress" | "on_hold";
 
 const STATUS_LABELS: Record<RollupStatus, string> = {
   awaiting: "Awaiting",
-  in_progress: "In progress",
+  in_progress: "Active Job",
   on_hold: "On hold",
 };
 
 /**
  * Match JobCard vibes:
  * - awaiting: slate
- * - in_progress: copper/orange
+ * - in_progress: copper/orange (active job)
  * - on_hold: amber
  */
 const STATUS_STYLES: Record<RollupStatus, string> = {
