@@ -1,4 +1,6 @@
+
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
+import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
 import { buildPlannerHref } from "../lib/buildPlannerHref";
 import type {
   SuggestedActionContext,
@@ -13,13 +15,19 @@ type Params = {
   context?: SuggestedActionContext;
 };
 
-function normalizeRole(role: string | null | undefined): string {
-  return (role ?? "owner").toLowerCase();
-}
+type AllowedEntityType =
+  | "work_order"
+  | "work_order_line"
+  | "booking"
+  | "customer"
+  | "vehicle"
+  | "invoice"
+  | "shop";
 
 function levelRank(level: string): number {
   switch (level) {
     case "urgent":
+    case "critical":
       return 3;
     case "warning":
       return 2;
@@ -49,19 +57,68 @@ function dedupe(items: SuggestedActionItem[]): SuggestedActionItem[] {
   return out;
 }
 
+function isTechScopedRole(role: string): boolean {
+  return role === "mechanic";
+}
+
+function normalizeEntityType(value: string | undefined): AllowedEntityType | undefined {
+  if (
+    value === "work_order" ||
+    value === "work_order_line" ||
+    value === "booking" ||
+    value === "customer" ||
+    value === "vehicle" ||
+    value === "invoice" ||
+    value === "shop"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function canSeeEntity(
+  caps: ReturnType<typeof getActorCapabilities>,
+  entityType: AllowedEntityType,
+): boolean {
+  switch (entityType) {
+    case "work_order":
+    case "work_order_line":
+      return caps.canManageWorkOrders || caps.canRunInspections;
+    case "customer":
+      return caps.canViewShopWideData || caps.canAuthorizeQuotes;
+    case "vehicle":
+      return caps.canRunInspections || caps.canViewShopWideData || caps.canViewFleetOnlyData;
+    case "booking":
+      return caps.canManageScheduling || caps.canAuthorizeQuotes || caps.canViewFleetOnlyData;
+    case "invoice":
+      return caps.canViewShopWideData || caps.canAuthorizeQuotes;
+    case "shop":
+      return caps.canViewShopWideData;
+    default:
+      return false;
+  }
+}
+
 function buildContextItems(
+  role: string | null,
   context?: SuggestedActionContext,
 ): SuggestedActionItem[] {
   if (!context) return [];
 
+  const caps = getActorCapabilities({ role });
+  const canonicalRole = canonicalizeRole(role);
+  const techScoped = isTechScopedRole(canonicalRole);
+
   const items: SuggestedActionItem[] = [];
 
-  if (context.workOrderId) {
+  if (context.workOrderId && canSeeEntity(caps, "work_order")) {
     items.push({
-      id: `context:wo:${context.workOrderId}:review`,
-      level: "warning",
-      title: "Review this work order",
-      description: "Open this work order in Planner with record context.",
+      id: `context:wo:${context.workOrderId}:primary`,
+      level: techScoped ? "warning" : "warning",
+      title: techScoped ? "Open this assigned job" : "Review this work order",
+      description: techScoped
+        ? "Open the current job and act on the next technician-facing step."
+        : "Open this work order in Planner with record context.",
       href: `/work-orders/${context.workOrderId}`,
       plannerHref: buildPlannerHref({
         planner: "ops",
@@ -70,7 +127,9 @@ function buildContextItems(
         workOrderId: context.workOrderId,
         customerId: context.customerId,
         vehicleId: context.vehicleId,
-        goal: "Review this work order and suggest next actions",
+        goal: techScoped
+          ? "Review this assigned work order and suggest the next technician action"
+          : "Review this work order and suggest next actions",
       }),
       sourceType: "context",
       entityType: "work_order",
@@ -78,11 +137,12 @@ function buildContextItems(
     });
 
     items.push({
-      id: `context:wo:${context.workOrderId}:approval`,
+      id: `context:wo:${context.workOrderId}:blockers`,
       level: "info",
-      title: "Check approval blockers",
-      description:
-        "Review whether this work order is blocked by approval, hold status, or parts.",
+      title: techScoped ? "Check blocker on this job" : "Check approval blockers",
+      description: techScoped
+        ? "Review whether this job is blocked by hold status, parts, or missing handoff."
+        : "Review whether this work order is blocked by approval, hold status, or parts.",
       href: `/work-orders/${context.workOrderId}`,
       plannerHref: buildPlannerHref({
         planner: "ops",
@@ -91,7 +151,9 @@ function buildContextItems(
         workOrderId: context.workOrderId,
         customerId: context.customerId,
         vehicleId: context.vehicleId,
-        goal: "Check why this work order is blocked and suggest the best next step",
+        goal: techScoped
+          ? "Check why this assigned job is blocked and suggest the best next technician step"
+          : "Check why this work order is blocked and suggest the best next step",
       }),
       sourceType: "context",
       entityType: "work_order",
@@ -99,7 +161,7 @@ function buildContextItems(
     });
   }
 
-  if (context.customerId) {
+  if (!techScoped && context.customerId && canSeeEntity(caps, "customer")) {
     items.push({
       id: `context:customer:${context.customerId}:history`,
       level: "info",
@@ -143,7 +205,7 @@ function buildContextItems(
     });
   }
 
-  if (context.vehicleId) {
+  if (context.vehicleId && canSeeEntity(caps, "vehicle")) {
     items.push({
       id: `context:vehicle:${context.vehicleId}:history`,
       level: "info",
@@ -165,7 +227,7 @@ function buildContextItems(
     });
   }
 
-  if (context.bookingId) {
+  if (!techScoped && context.bookingId && canSeeEntity(caps, "booking")) {
     items.push({
       id: `context:booking:${context.bookingId}:review`,
       level: "info",
@@ -191,10 +253,52 @@ function buildContextItems(
   return items;
 }
 
+function canIncludeNotification(args: {
+  role: string;
+  caps: ReturnType<typeof getActorCapabilities>;
+  entityType?: AllowedEntityType;
+  entityId?: string;
+  context?: SuggestedActionContext;
+}): boolean {
+  const { role, caps, entityType, entityId, context } = args;
+
+  if (!entityType) {
+    return caps.canViewShopWideData || !isTechScopedRole(role);
+  }
+
+  if (!canSeeEntity(caps, entityType)) return false;
+
+  if (isTechScopedRole(role)) {
+    if (entityType === "work_order" || entityType === "work_order_line") {
+      if (!context?.workOrderId) return true;
+      return entityId === context.workOrderId || entityType === "work_order_line";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+function canIncludeLink(args: {
+  role: string;
+  caps: ReturnType<typeof getActorCapabilities>;
+  href: string;
+}): boolean {
+  const { role, caps, href } = args;
+
+  if (isTechScopedRole(role)) {
+    return href.includes("/work-orders/") || href.includes("/focused-job/");
+  }
+
+  if (caps.canViewShopWideData) return true;
+  return href.includes("/work-orders/") || href.includes("/customers/") || href.includes("/dashboard/appointments");
+}
+
 export async function getSuggestedActions(
   params: Params,
 ): Promise<SuggestedActionsResponse> {
-  const role = normalizeRole(params.role);
+  const role = canonicalizeRole(params.role);
+  const caps = getActorCapabilities({ role: params.role });
 
   const summary = await getRoleDailySummary({
     shopId: params.shopId,
@@ -202,18 +306,23 @@ export async function getSuggestedActions(
     role,
   });
 
-  const items: SuggestedActionItem[] = [...buildContextItems(params.context)];
+  const items: SuggestedActionItem[] = [...buildContextItems(params.role, params.context)];
 
   for (const notification of summary.notifications) {
-    const entityType =
-      notification.entityType === "work_order" ||
-      notification.entityType === "booking" ||
-      notification.entityType === "customer" ||
-      notification.entityType === "vehicle"
-        ? notification.entityType
-        : undefined;
-
+    const entityType = normalizeEntityType(notification.entityType);
     const entityId = notification.entityId;
+
+    if (
+      !canIncludeNotification({
+        role,
+        caps,
+        entityType,
+        entityId,
+        context: params.context,
+      })
+    ) {
+      continue;
+    }
 
     const plannerHref = buildPlannerHref({
       planner: "ops",
@@ -221,8 +330,8 @@ export async function getSuggestedActions(
       autorun: true,
       goal: `Resolve this issue: ${notification.title}. ${notification.message}`,
       workOrderId:
-        entityType === "work_order"
-          ? entityId
+        entityType === "work_order" || entityType === "work_order_line"
+          ? (params.context?.workOrderId ?? entityId)
           : params.context?.workOrderId,
       bookingId:
         entityType === "booking"
@@ -255,6 +364,8 @@ export async function getSuggestedActions(
   }
 
   for (const link of summary.links.slice(0, 4)) {
+    if (!canIncludeLink({ role, caps, href: link.href })) continue;
+
     items.push({
       id: `link:${link.href}`,
       level: "info",

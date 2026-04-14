@@ -1,3 +1,4 @@
+
 //features/assistant/types/suggested-actions.ts
 
 export type SuggestedActionLevel = "info" | "warning" | "critical";
@@ -25,7 +26,14 @@ export type SuggestedActionItem = {
     | "booking"
     | "shop_status"
     | "context";
-  entityType?: "work_order" | "booking" | "customer" | "vehicle" | "shop";
+  entityType?:
+    | "work_order"
+    | "work_order_line"
+    | "booking"
+    | "customer"
+    | "vehicle"
+    | "invoice"
+    | "shop";
   entityId?: string;
 };
 

@@ -1,5 +1,7 @@
+
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { getServerSupabase } from "./supabase";
-import { getOpsNotifications } from "./getOpsNotifications";
+import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
 
 export type PersistedAssistantNotification = {
   id: string;
@@ -47,20 +49,99 @@ function normalizeAssistantNotificationStatus(
   return LEGACY_NOTIFICATION_STATUS_ALIASES[key] ?? "active";
 }
 
-function buildFingerprint(item: {
-  code: string;
-  entityType?: string;
-  entityId?: string;
-  href?: string;
-  title: string;
-}): string {
+function buildFingerprint(
+  item: {
+    code: string;
+    entityType?: string;
+    entityId?: string;
+    href?: string;
+    title: string;
+  },
+  scopeKey: string,
+): string {
   return [
+    scopeKey,
     item.code,
     item.entityType ?? "na",
     item.entityId ?? "na",
     item.href ?? "na",
     item.title.trim().toLowerCase(),
   ].join("::");
+}
+
+function isUserScopedRole(role: string | null | undefined): boolean {
+  const canonical = canonicalizeRole(role);
+  return canonical === "mechanic";
+}
+
+async function filterComputedNotificationsForUser(params: {
+  shopId: string;
+  userId: string;
+  computed: OpsNotification[];
+}): Promise<OpsNotification[]> {
+  const supabase = getServerSupabase();
+
+  const activeStatuses = ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"];
+
+  const [{ data: assignedLines, error: assignedError }, { data: activeSegments, error: segmentError }] =
+    await Promise.all([
+      supabase
+        .from("work_order_lines")
+        .select("id, work_order_id")
+        .eq("shop_id", params.shopId)
+        .eq("assigned_tech_id", params.userId)
+        .in("status", activeStatuses)
+        .limit(200),
+      supabase
+        .from("work_order_line_labor_segments")
+        .select("work_order_line_id")
+        .eq("shop_id", params.shopId)
+        .eq("technician_id", params.userId)
+        .is("ended_at", null)
+        .limit(50),
+    ]);
+
+  if (assignedError) throw new Error(assignedError.message);
+  if (segmentError) throw new Error(segmentError.message);
+
+  const lineIds = new Set<string>();
+  const workOrderIds = new Set<string>();
+
+  for (const row of assignedLines ?? []) {
+    if (row.id) lineIds.add(row.id);
+    if (row.work_order_id) workOrderIds.add(row.work_order_id);
+  }
+
+  const activeLineIds = (activeSegments ?? [])
+    .map((row) => row.work_order_line_id)
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+  if (activeLineIds.length > 0) {
+    const { data: activeLineRows, error: activeLineError } = await supabase
+      .from("work_order_lines")
+      .select("id, work_order_id")
+      .eq("shop_id", params.shopId)
+      .in("id", activeLineIds);
+
+    if (activeLineError) throw new Error(activeLineError.message);
+
+    for (const row of activeLineRows ?? []) {
+      if (row.id) lineIds.add(row.id);
+      if (row.work_order_id) workOrderIds.add(row.work_order_id);
+    }
+  }
+
+  return params.computed.filter((item) => {
+    if (item.entityType === "work_order") {
+      return !!item.entityId && workOrderIds.has(item.entityId);
+    }
+
+    if (item.entityType === "work_order_line") {
+      return !!item.entityId && lineIds.has(item.entityId);
+    }
+
+    return false;
+  });
 }
 
 export async function syncAssistantNotifications(params: {
@@ -72,23 +153,44 @@ export async function syncAssistantNotifications(params: {
   const supabase = getServerSupabase();
   const now = new Date().toISOString();
 
-  const computed = await getOpsNotifications(shopId);
+  const userScoped = !!userId && isUserScopedRole(role);
+  const source = userScoped ? "ops_user" : "ops";
+  const scopeKey = userScoped ? `user:${userId}` : "shop";
+
+  let computed = await getOpsNotifications(shopId);
+
+  if (userScoped && userId) {
+    computed = await filterComputedNotificationsForUser({
+      shopId,
+      userId,
+      computed,
+    });
+  }
 
   const fingerprints = computed.map((item) =>
-    buildFingerprint({
-      code: item.code,
-      entityType: item.entityType,
-      entityId: item.entityId,
-      href: item.href,
-      title: item.title,
-    }),
+    buildFingerprint(
+      {
+        code: item.code,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        href: item.href,
+        title: item.title,
+      },
+      scopeKey,
+    ),
   );
 
-  const { data: existingRows, error: existingError } = await supabase
+  let existingQuery = supabase
     .from("assistant_notifications")
     .select("id, fingerprint, first_seen_at, status")
     .eq("shop_id", shopId)
-    .eq("source", "ops");
+    .eq("source", source);
+
+  if (userScoped) {
+    existingQuery = existingQuery.eq("user_id", userId);
+  }
+
+  const { data: existingRows, error: existingError } = await existingQuery;
 
   if (existingError) {
     throw new Error(existingError.message);
@@ -108,21 +210,24 @@ export async function syncAssistantNotifications(params: {
   }
 
   const upsertRows = computed.map((item) => {
-    const fingerprint = buildFingerprint({
-      code: item.code,
-      entityType: item.entityType,
-      entityId: item.entityId,
-      href: item.href,
-      title: item.title,
-    });
+    const fingerprint = buildFingerprint(
+      {
+        code: item.code,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        href: item.href,
+        title: item.title,
+      },
+      scopeKey,
+    );
 
     const existing = existingByFingerprint.get(fingerprint);
 
     return {
       shop_id: shopId,
-      user_id: userId,
+      user_id: userScoped ? userId : null,
       role,
-      source: "ops",
+      source,
       fingerprint,
       code: item.code,
       level: item.level === "urgent" ? "critical" : item.level,
@@ -135,7 +240,9 @@ export async function syncAssistantNotifications(params: {
         existing?.status === "acknowledged"
           ? "acknowledged"
           : "active",
-      metadata: {},
+      metadata: {
+        scope: userScoped ? "user" : "shop",
+      },
       first_seen_at: existing?.first_seen_at ?? now,
       last_seen_at: now,
       resolved_at: null,
@@ -177,13 +284,19 @@ export async function syncAssistantNotifications(params: {
     }
   }
 
-  const { data: finalRows, error: finalError } = await supabase
+  let finalQuery = supabase
     .from("assistant_notifications")
     .select("*")
     .eq("shop_id", shopId)
-    .eq("source", "ops")
+    .eq("source", source)
     .in("status", ["active", "acknowledged", "open"])
     .order("last_seen_at", { ascending: false });
+
+  if (userScoped) {
+    finalQuery = finalQuery.eq("user_id", userId);
+  }
+
+  const { data: finalRows, error: finalError } = await finalQuery;
 
   if (finalError) {
     throw new Error(finalError.message);
