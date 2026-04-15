@@ -21,26 +21,37 @@ function getCountSeverity(count: number): "neutral" | "amber" | "red" {
   return "neutral";
 }
 
+function isOwnerAdminRole(role: string | null): boolean {
+  const normalizedRole = (role ?? "").toLowerCase();
+  return normalizedRole === "owner" || normalizedRole === "admin";
+}
+
 export default async function OperationsDashboardView() {
   const payload = await getOperationsDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
+  const isTechnicianView = payload.viewerScope === "technician";
   const hasTechnicianActivity = payload.technicianActivity.length > 0;
   const hasRightRailSignals = payload.blockerStack.length > 0 || payload.alerts.length > 0 || payload.suggestedActions.length > 0;
+  const canSeeShopBoostMissionControl = isOwnerAdminRole(payload.identity.role);
 
   return (
     <DashboardShell>
       <DashboardTopStrip
         view="operations"
-        title="Operations Dashboard"
+        title={isTechnicianView ? "Technician Dashboard" : "Operations Dashboard"}
         name={`Welcome back, ${displayName}`}
-        subtitle="Live command center for active jobs, bottlenecks, and immediate dispatch actions."
+        subtitle={
+          isTechnicianView
+            ? "Your personal workbench for assigned jobs, blockers, and immediate next actions."
+            : "Live command center for active jobs, bottlenecks, and immediate dispatch actions."
+        }
         actions={[
           { label: "Create work order", href: "/work-orders/create", tone: "primary" },
           { label: "Dispatch", href: "/dashboard/manager/dispatch", tone: "secondary" },
         ]}
       />
 
-      <ShopBoostActivationPanel />
+      {canSeeShopBoostMissionControl ? <ShopBoostActivationPanel eligible /> : null}
 
       <MetricStrip
         className="mb-0"
@@ -101,7 +112,7 @@ export default async function OperationsDashboardView() {
           >
             <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
             <DashboardPanel
-              title="Live Work Command Surface"
+              title={isTechnicianView ? "My active assigned jobs" : "Live Work Command Surface"}
               className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
               action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
@@ -161,7 +172,7 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title="Active Job Summary" className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            <DashboardPanel title={isTechnicianView ? "My workload snapshot" : "Active Job Summary"} className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
               <div className="space-y-2">
                 {payload.activeJobSummary.map((metric) => (
                   <div key={metric.label} className="rounded-lg border border-white/5 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
@@ -182,12 +193,12 @@ export default async function OperationsDashboardView() {
           </div>
 
             <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
-            <DashboardPanel title="Live Shop Load" className="min-h-[236px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            <DashboardPanel title={isTechnicianView ? "My queue mix" : "Live Shop Load"} className="min-h-[236px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
               <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
             </DashboardPanel>
 
             <DashboardPanel
-              title="Daily Summary"
+              title={isTechnicianView ? "My daily summary" : "Daily Summary"}
               className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]"
               action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
             >
@@ -223,7 +234,7 @@ export default async function OperationsDashboardView() {
           </div>
 
           {hasTechnicianActivity ? (
-            <DashboardPanel title="Technician Activity" className="min-h-[236px]">
+            <DashboardPanel title={isTechnicianView ? "My activity" : "Technician Activity"} className="min-h-[236px]">
               <div className="space-y-1.5">
                 {payload.technicianActivity.map((tech) => (
                   <Link

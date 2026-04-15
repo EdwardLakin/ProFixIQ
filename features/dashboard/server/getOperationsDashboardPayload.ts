@@ -4,6 +4,7 @@ import { createDashboardServerClient, getDashboardIdentity } from "@/features/da
 
 const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
+const TECH_ROLES = new Set(["tech", "technician", "mechanic"]);
 
 type OpSignal = {
   label: string;
@@ -21,6 +22,7 @@ type OpAction = {
 
 export type OperationsDashboardPayload = {
   identity: Awaited<ReturnType<typeof getDashboardIdentity>>;
+  viewerScope: "shop" | "technician";
   topSummary: {
     activeJobs: number;
     blockedJobs: number;
@@ -86,8 +88,11 @@ function elapsedLabel(updatedAt: string | null): string {
 
 export async function getOperationsDashboardPayload(): Promise<OperationsDashboardPayload> {
   const identity = await getDashboardIdentity();
+  const normalizedRole = (identity.role ?? "").toLowerCase();
+  const isTechnicianScoped = Boolean(identity.userId) && TECH_ROLES.has(normalizedRole);
   const payload: OperationsDashboardPayload = {
     identity,
+    viewerScope: isTechnicianScoped ? "technician" : "shop",
     topSummary: {
       activeJobs: 0,
       blockedJobs: 0,
@@ -123,6 +128,36 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   const todayEnd = endOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
 
+  const approvalsQuery = supabase
+    .from("work_order_lines")
+    .select("id,work_order_id,status,updated_at", { count: "exact" })
+    .eq("shop_id", identity.shopId)
+    .in("approval_state", ["requested", "pending", "awaiting_approval"]);
+  const scopedApprovalsQuery = isTechnicianScoped && identity.userId
+    ? approvalsQuery.eq("assigned_tech_id", identity.userId)
+    : approvalsQuery;
+
+  const partsQuery = supabase
+    .from("part_requests")
+    .select("id,status,work_order_id,job_id,created_at", { count: "exact" })
+    .eq("shop_id", identity.shopId)
+    .in("status", OPEN_PART_STATUSES as unknown as string[]);
+  const scopedPartsQuery = isTechnicianScoped && identity.userId
+    ? partsQuery.or(`requested_by.eq.${identity.userId},assigned_tech_id.eq.${identity.userId}`)
+    : partsQuery;
+
+  const activeLinesQuery = supabase
+    .from("work_order_lines")
+    .select("work_order_id,assigned_tech_id,status,updated_at")
+    .eq("shop_id", identity.shopId)
+    .not("status", "in", `(${CLOSED_LINE_STATUSES.map((status) => `'${status}'`).join(",")})`)
+    .not("assigned_tech_id", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(400);
+  const scopedActiveLinesQuery = isTechnicianScoped && identity.userId
+    ? activeLinesQuery.eq("assigned_tech_id", identity.userId)
+    : activeLinesQuery;
+
   const [
     boardResult,
     approvalsResult,
@@ -137,31 +172,15 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .select("work_order_id,custom_id,display_name,overall_stage,risk_level,priority")
       .eq("shop_id", identity.shopId)
       .order("activity_at", { ascending: false })
-      .limit(48),
-    supabase
-      .from("work_order_lines")
-      .select("id,work_order_id,status,updated_at", { count: "exact" })
-      .eq("shop_id", identity.shopId)
-      .in("approval_state", ["requested", "pending", "awaiting_approval"]),
-    supabase
-      .from("part_requests")
-      .select("id,status,work_order_id,job_id,created_at", { count: "exact" })
-      .eq("shop_id", identity.shopId)
-      .in("status", OPEN_PART_STATUSES as unknown as string[])
-      .limit(120),
+      .limit(isTechnicianScoped ? 200 : 48),
+    scopedApprovalsQuery,
+    scopedPartsQuery.limit(120),
     supabase
       .from("profiles")
       .select("id,full_name")
       .eq("shop_id", identity.shopId)
       .in("role", ["tech", "mechanic", "technician"]),
-    supabase
-      .from("work_order_lines")
-      .select("assigned_tech_id,status,updated_at")
-      .eq("shop_id", identity.shopId)
-      .not("status", "in", `(${CLOSED_LINE_STATUSES.map((status) => `'${status}'`).join(",")})`)
-      .not("assigned_tech_id", "is", null)
-      .order("updated_at", { ascending: false })
-      .limit(400),
+    scopedActiveLinesQuery,
     supabase
       .from("invoices")
       .select("total,labor_cost,created_at")
@@ -176,7 +195,29 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   ]);
 
   const boardRows = boardResult.error ? [] : boardResult.data ?? [];
-  const activeBoardRows = boardRows.filter((row) => row.overall_stage !== "completed");
+  const activeLines = activeLinesResult.error ? [] : activeLinesResult.data ?? [];
+  const scopedWorkOrderIds = new Set<string>();
+
+  if (isTechnicianScoped) {
+    const approvalRows = approvalsResult.error ? [] : approvalsResult.data ?? [];
+    const partRows = partsResult.error ? [] : partsResult.data ?? [];
+
+    for (const row of approvalRows) {
+      if (row.work_order_id) scopedWorkOrderIds.add(row.work_order_id);
+    }
+    for (const row of partRows) {
+      if (row.work_order_id) scopedWorkOrderIds.add(row.work_order_id);
+    }
+  }
+
+  for (const row of activeLines) {
+    if (row.work_order_id) scopedWorkOrderIds.add(row.work_order_id);
+  }
+
+  const boardRowsForViewer = isTechnicianScoped
+    ? boardRows.filter((row) => scopedWorkOrderIds.has(row.work_order_id))
+    : boardRows;
+  const activeBoardRows = boardRowsForViewer.filter((row) => row.overall_stage !== "completed");
   const mostRecentBlockedWorkOrderId =
     activeBoardRows.find(
       (row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold",
@@ -281,21 +322,21 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   payload.blockerStack = [
     {
-      label: "Approvals pending",
+      label: isTechnicianScoped ? "My approvals pending" : "Approvals pending",
       value: String(payload.topSummary.waitingApprovals),
       tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
       href: approvalTargetHref,
       targetKind: approvalTargetKind,
     },
     {
-      label: "Waiting parts",
+      label: isTechnicianScoped ? "My waiting parts" : "Waiting parts",
       value: String(payload.topSummary.waitingParts),
       tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
       href: waitingPartsTargetHref,
       targetKind: waitingPartsTargetKind,
     },
     {
-      label: "On hold / blocked",
+      label: isTechnicianScoped ? "My blocked jobs" : "On hold / blocked",
       value: String(payload.topSummary.blockedJobs),
       tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
       href: blockedTargetHref,
@@ -307,30 +348,48 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.sectionErrors.push(`Daily summary section: ${bookingsTodayResult.error.message}`);
   }
 
-  payload.dailySummary = [
-    { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
-    {
-      label: "Approval queue",
-      value: String(payload.topSummary.waitingApprovals),
-      tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
-      href: approvalTargetHref,
-      targetKind: approvalTargetKind,
-    },
-    {
-      label: "Parts waiting",
-      value: String(payload.topSummary.waitingParts),
-      tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
-      href: waitingPartsTargetHref,
-      targetKind: waitingPartsTargetKind,
-    },
-    { label: "Active board", value: String(payload.topSummary.activeJobs) },
-  ];
+  payload.dailySummary = isTechnicianScoped
+    ? [
+        { label: "My queue", value: String(payload.topSummary.activeJobs) },
+        {
+          label: "My approvals",
+          value: String(payload.topSummary.waitingApprovals),
+          tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
+          href: approvalTargetHref,
+          targetKind: approvalTargetKind,
+        },
+        {
+          label: "My parts delays",
+          value: String(payload.topSummary.waitingParts),
+          tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
+          href: waitingPartsTargetHref,
+          targetKind: waitingPartsTargetKind,
+        },
+        { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
+      ]
+    : [
+        { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
+        {
+          label: "Approval queue",
+          value: String(payload.topSummary.waitingApprovals),
+          tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
+          href: approvalTargetHref,
+          targetKind: approvalTargetKind,
+        },
+        {
+          label: "Parts waiting",
+          value: String(payload.topSummary.waitingParts),
+          tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
+          href: waitingPartsTargetHref,
+          targetKind: waitingPartsTargetKind,
+        },
+        { label: "Active board", value: String(payload.topSummary.activeJobs) },
+      ];
 
   if (techProfilesResult.error || activeLinesResult.error) {
     payload.sectionErrors.push("Technician activity section is degraded due to query failures.");
   } else {
     const techs = techProfilesResult.data ?? [];
-    const activeLines = activeLinesResult.data ?? [];
     const counts = new Map<string, { activeLines: number; latestStatus: string; lastUpdated: string | null }>();
 
     activeLines.forEach((line) => {
@@ -344,7 +403,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     });
 
     const maxLines = Math.max(1, ...[...counts.values()].map((entry) => entry.activeLines));
-    payload.technicianActivity = techs
+    const technicianRows = techs
       .map((tech) => {
         const activity = counts.get(tech.id);
         return {
@@ -355,93 +414,142 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           elapsed: elapsedLabel(activity?.lastUpdated ?? null),
           utilizationPct: asPct(activity?.activeLines ?? 0, maxLines),
         };
-      })
-      .sort((a, b) => b.activeLines - a.activeLines)
-      .slice(0, 6);
+      });
+
+    payload.technicianActivity = isTechnicianScoped
+      ? technicianRows.filter((tech) => tech.id === identity.userId)
+      : technicianRows.sort((a, b) => b.activeLines - a.activeLines).slice(0, 6);
   }
 
   payload.alerts = [
     payload.topSummary.blockedJobs > 0
       ? {
-          label: "Blocked jobs climbing",
-          detail: `${payload.topSummary.blockedJobs} jobs currently in blocked stages.`,
+          label: isTechnicianScoped ? "My blocked jobs need action" : "Blocked jobs climbing",
+          detail: isTechnicianScoped
+            ? `${payload.topSummary.blockedJobs} of your assigned jobs are currently blocked.`
+            : `${payload.topSummary.blockedJobs} jobs currently in blocked stages.`,
           tone: "critical",
           href: blockedTargetHref,
           targetKind: blockedTargetKind,
         }
       : {
-          label: "Blocker pressure stable",
-          detail: "No blocked stage spike detected.",
+          label: isTechnicianScoped ? "My blocker pressure stable" : "Blocker pressure stable",
+          detail: isTechnicianScoped
+            ? "None of your assigned jobs are currently blocked."
+            : "No blocked stage spike detected.",
           tone: "info",
           href: "/work-orders/board?stage=on_hold",
           targetKind: "filtered",
         },
     payload.topSummary.waitingApprovals > 3
       ? {
-          label: "Approval queue aging",
-          detail: `${payload.topSummary.waitingApprovals} approvals need advisor follow-up.`,
+          label: isTechnicianScoped ? "My approvals are aging" : "Approval queue aging",
+          detail: isTechnicianScoped
+            ? `${payload.topSummary.waitingApprovals} of your lines need approval follow-up.`
+            : `${payload.topSummary.waitingApprovals} approvals need advisor follow-up.`,
           tone: "warning",
           href: approvalTargetHref,
           targetKind: approvalTargetKind,
         }
       : {
-          label: "Approval queue healthy",
-          detail: "Approval queue is below action threshold.",
+          label: isTechnicianScoped ? "My approval queue healthy" : "Approval queue healthy",
+          detail: isTechnicianScoped
+            ? "Your approval-dependent lines are below action threshold."
+            : "Approval queue is below action threshold.",
           tone: "info",
           href: "/work-orders/board?stage=awaiting_approval",
           targetKind: "filtered",
         },
     payload.topSummary.waitingParts > 0
       ? {
-          label: "Parts constraints active",
-          detail: `${payload.topSummary.waitingParts} open part requests still unresolved.`,
+          label: isTechnicianScoped ? "My parts constraints active" : "Parts constraints active",
+          detail: isTechnicianScoped
+            ? `${payload.topSummary.waitingParts} of your part requests are still unresolved.`
+            : `${payload.topSummary.waitingParts} open part requests still unresolved.`,
           tone: "warning",
           href: waitingPartsTargetHref,
           targetKind: waitingPartsTargetKind,
         }
       : {
-          label: "No parts constraints",
-          detail: "Parts flow is currently clear.",
+          label: isTechnicianScoped ? "No parts constraints on my work" : "No parts constraints",
+          detail: isTechnicianScoped
+            ? "Your assigned jobs currently have no open parts blockers."
+            : "Parts flow is currently clear.",
           tone: "info",
           href: "/parts/requests?status=requested,quoted,approved",
           targetKind: "filtered",
         },
   ];
 
-  payload.suggestedActions = [
-    payload.topSummary.waitingApprovals > 0
-      ? {
-          label: "Clear approval queue",
-          href: approvalTargetHref,
-          tone: "primary",
-          detail: "Prioritize pending approvals to free advisor handoffs.",
-        }
-      : {
-          label: "Review active board",
-          href: "/work-orders/board",
+  payload.suggestedActions = isTechnicianScoped
+    ? [
+        payload.topSummary.waitingParts > 0
+          ? {
+              label: "Follow up on my parts",
+              href: waitingPartsTargetHref,
+              tone: "primary",
+              detail: "Parts delays are blocking your assigned work.",
+            }
+          : {
+              label: "Open my active board",
+              href: "/work-orders/board",
+              tone: "neutral",
+              detail: "Review your assigned jobs and move the next line forward.",
+            },
+        payload.topSummary.waitingApprovals > 0
+          ? {
+              label: "Nudge approvals",
+              href: approvalTargetHref,
+              tone: "primary",
+              detail: "Pending approvals are holding your active lines.",
+            }
+          : {
+              label: "Update next job status",
+              href: "/work-orders/board",
+              tone: "neutral",
+              detail: "Keep your queue moving with clear status updates.",
+            },
+        {
+          label: "Check dispatch notes",
+          href: "/dashboard/manager/dispatch",
           tone: "neutral",
-          detail: "No immediate queue pressure detected.",
+          detail: "Confirm assignment updates and immediate next actions.",
         },
-    payload.topSummary.waitingParts > 0
-      ? {
-          label: "Resolve waiting parts",
-          href: waitingPartsTargetHref,
-          tone: "primary",
-          detail: "Parts backlog is blocking active jobs.",
-        }
-      : {
-          label: "Create work order",
-          href: "/work-orders/create",
+      ]
+    : [
+        payload.topSummary.waitingApprovals > 0
+          ? {
+              label: "Clear approval queue",
+              href: approvalTargetHref,
+              tone: "primary",
+              detail: "Prioritize pending approvals to free advisor handoffs.",
+            }
+          : {
+              label: "Review active board",
+              href: "/work-orders/board",
+              tone: "neutral",
+              detail: "No immediate queue pressure detected.",
+            },
+        payload.topSummary.waitingParts > 0
+          ? {
+              label: "Resolve waiting parts",
+              href: waitingPartsTargetHref,
+              tone: "primary",
+              detail: "Parts backlog is blocking active jobs.",
+            }
+          : {
+              label: "Create work order",
+              href: "/work-orders/create",
+              tone: "neutral",
+              detail: "Keep bay utilization steady with next intake.",
+            },
+        {
+          label: "Open dispatch view",
+          href: "/dashboard/manager/dispatch",
           tone: "neutral",
-          detail: "Keep bay utilization steady with next intake.",
+          detail: "Review technician assignment and bay balancing.",
         },
-    {
-      label: "Open dispatch view",
-      href: "/dashboard/manager/dispatch",
-      tone: "neutral",
-      detail: "Review technician assignment and bay balancing.",
-    },
-  ];
+      ];
 
   if (invoicesMonthResult.error) {
     payload.sectionErrors.push(`Revenue snapshot section: ${invoicesMonthResult.error.message}`);
