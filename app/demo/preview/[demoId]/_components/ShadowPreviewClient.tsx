@@ -2,6 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  appendActivationContextToHref,
+  persistActivationContext,
+  type ActivationContext,
+  type ActivationReadiness,
+} from "@/features/integrations/shopBoost/activationContext";
+import { getActivationCTA } from "@/features/integrations/shopBoost/getActivationCTA";
+import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
 import type {
   ShadowPartSignal,
   ShadowPreviewContext,
@@ -48,16 +56,16 @@ const sections: Array<{ key: SectionKey; label: string }> = [
 
 const gateCopyByAction: Record<GateActionContext, GateCopy> = {
   "send-approval": {
-    title: "Activate to send real approvals",
-    detail: "Activation unlocks customer approval links, recommendation delivery, and response tracking.",
+    title: "Activate to send approval requests",
+    detail: "This will notify your customer and create a live approval request.",
   },
   "edit-customer": {
-    title: "Activate to manage your customer records",
-    detail: "Activation enables editing your live customer database and contact routing.",
+    title: "Activate to edit customer records",
+    detail: "This will update real customer records.",
   },
   "start-work-order": {
-    title: "Activate to run live work orders",
-    detail: "Activation starts real technician workflow states, labor tracking, and job progression.",
+    title: "Activate to start work orders",
+    detail: "This will create a real job in your system.",
   },
   inventory: {
     title: "Activate to track real inventory",
@@ -75,14 +83,58 @@ const gateCopyByAction: Record<GateActionContext, GateCopy> = {
 
 const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v1";
 
+function toActivationReadiness(readiness: string): ActivationReadiness {
+  if (readiness === "READY_FOR_GO_LIVE" || readiness === "COMPLETED_CLEAN") return "READY";
+  if (readiness === "FAILED" || readiness === "PARTIAL_FAILURE" || readiness === "NOT_READY") {
+    return "BLOCKED";
+  }
+  return "REVIEW_REQUIRED";
+}
+
 export default function ShadowPreviewClient({ context }: Props) {
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [gateAction, setGateAction] = useState<GateActionContext | null>(null);
 
-  const query = useMemo(
-    () => new URLSearchParams({ demoId: context.demoId, intakeId: context.intakeId }).toString(),
-    [context.demoId, context.intakeId],
+  const activationContext = useMemo<ActivationContext>(() => {
+    const blockers = context.snapshot.setupIssues
+      .filter((issue) => issue.severity === "blocker")
+      .map((issue) => issue.title);
+    const domains = context.snapshot.preflightReport.domains.map((domain) => domain.domain);
+
+    return {
+      demoId: context.demoId,
+      intakeId: context.intakeId,
+      confidence: context.snapshot.dashboard.trustScore,
+      readiness: toActivationReadiness(context.snapshot.dashboard.readinessLabel),
+      blockers,
+      domains,
+    };
+  }, [context]);
+
+  const query = useMemo(() => new URLSearchParams({
+    demoId: context.demoId,
+    intakeId: context.intakeId,
+  }).toString(), [context.demoId, context.intakeId]);
+  const activationCta = useMemo(
+    () =>
+      getActivationCTA({
+        readiness: activationContext.readiness,
+        blockers: activationContext.blockers,
+        confidence: activationContext.confidence,
+      }),
+    [activationContext],
   );
+  const comparePlansHref = useMemo(
+    () => appendActivationContextToHref(`/compare-plans?${query}`, activationContext),
+    [activationContext, query],
+  );
+  const signupHref = useMemo(() => {
+    const redirect = appendActivationContextToHref(`/compare-plans?${query}`, activationContext);
+    return appendActivationContextToHref(
+      `/signup?redirect=${encodeURIComponent(redirect)}&demoId=${encodeURIComponent(context.demoId)}&intakeId=${encodeURIComponent(context.intakeId)}`,
+      activationContext,
+    );
+  }, [activationContext, context.demoId, context.intakeId, query]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -97,6 +149,20 @@ export default function ShadowPreviewClient({ context }: Props) {
     );
   }, [context.demoId, context.intakeId, context.shopName]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nav = window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const eventName = nav?.type === "reload" ? "preview_resumed" : "preview_opened";
+    persistActivationContext(activationContext);
+    trackShopBoostEvent(eventName, {
+      demoId: context.demoId,
+      intakeId: context.intakeId,
+      readiness: activationContext.readiness,
+      confidence: activationContext.confidence,
+      source: "shadow_preview",
+    });
+  }, [activationContext, context.demoId, context.intakeId]);
+
   const gateCopy = gateAction ? gateCopyByAction[gateAction] : null;
 
   return (
@@ -109,8 +175,22 @@ export default function ShadowPreviewClient({ context }: Props) {
             <p className="text-[11px] text-neutral-400">This operational sandbox is generated from your uploaded analysis data. No tenant rows were created.</p>
           </div>
           <div className="flex gap-2">
-            <Link href={`/compare-plans?${query}`} className="rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]">See Plans</Link>
-            <Link href={`/signup?redirect=${encodeURIComponent(`/compare-plans?${query}`)}&demoId=${encodeURIComponent(context.demoId)}&intakeId=${encodeURIComponent(context.intakeId)}`} className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110">Activate Your Shop</Link>
+            <Link href={comparePlansHref} className="rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]">See Plans</Link>
+            <Link
+              href={signupHref}
+              onClick={() =>
+                trackShopBoostEvent("cta_clicked", {
+                  demoId: context.demoId,
+                  intakeId: context.intakeId,
+                  readiness: activationContext.readiness,
+                  confidence: activationContext.confidence,
+                  source: "preview_header",
+                })
+              }
+              className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
+            >
+              {activationCta.label}
+            </Link>
           </div>
         </div>
       </header>
@@ -132,6 +212,9 @@ export default function ShadowPreviewClient({ context }: Props) {
         </aside>
 
         <main className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
+            This is a preview based on your uploaded data. No changes have been made yet. Activation will begin real import.
+          </div>
           {active === "dashboard" ? <Dashboard context={context} onGate={setGateAction} /> : null}
           {active === "work-orders" ? <WorkflowPanel jobs={context.snapshot.workflowJobs} onGate={setGateAction} /> : null}
           {active === "approvals" ? <ApprovalPanel context={context} onGate={setGateAction} /> : null}
@@ -143,16 +226,24 @@ export default function ShadowPreviewClient({ context }: Props) {
 
         <aside className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Activation rail</p>
-          <p className="text-xs text-neutral-300">This preview will carry into compare-plans, signup, and onboarding. Activation starts real import and setup.</p>
-          <Link href={`/signup?redirect=${encodeURIComponent(`/compare-plans?${query}`)}&demoId=${encodeURIComponent(context.demoId)}&intakeId=${encodeURIComponent(context.intakeId)}`} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">Activate Your Shop</Link>
-          <Link href={`/compare-plans?${query}`} className="block rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]">See Plans</Link>
+          <p className="text-xs text-neutral-300">{activationCta.subtext}</p>
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-300">
+            <MiniPill label="Confidence" value={`${activationContext.confidence}%`} />
+            <MiniPill label="Readiness" value={activationContext.readiness.replace(/_/g, " ")} />
+            <MiniPill label="Blockers" value={String(activationContext.blockers.length)} />
+            <MiniPill label="Domains" value={String(activationContext.domains.length)} />
+          </div>
+          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{activationCta.label}</Link>
+          <Link href={comparePlansHref} className="block rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]">See Plans</Link>
           <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-200 hover:bg-white/[0.05]">Start real import (locked)</button>
           <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] text-cyan-100">
             <p className="font-semibold">What happens when you activate</p>
             <ul className="mt-2 list-disc space-y-1 pl-4 text-cyan-50/90">
-              <li>We use this exact preview context to begin your live import.</li>
-              <li>Flagged items are routed into guided review queues.</li>
-              <li>No data has been written yet in preview mode.</li>
+              <li>We will import your data into your real shop workspace.</li>
+              <li>We will create your shop setup baseline and migration queue.</li>
+              <li>Flagged items will be reviewable in guided setup.</li>
+              <li>Nothing has been written yet.</li>
+              <li>This preview is based on your uploaded data.</li>
             </ul>
           </div>
         </aside>
@@ -165,8 +256,8 @@ export default function ShadowPreviewClient({ context }: Props) {
             <p className="mt-2 text-sm text-neutral-300">{gateCopy.detail}</p>
             <p className="mt-2 text-xs text-neutral-500">Preview is read-only. Nothing has been written to a live tenant or shop yet.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href={`/signup?redirect=${encodeURIComponent(`/compare-plans?${query}`)}&demoId=${encodeURIComponent(context.demoId)}&intakeId=${encodeURIComponent(context.intakeId)}`} className="rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-black">Activate Your Shop</Link>
-              <Link href={`/compare-plans?${query}`} className="rounded-md border border-white/20 px-3 py-2 text-xs">See Plans</Link>
+              <Link href={signupHref} className="rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-black">{activationCta.label}</Link>
+              <Link href={comparePlansHref} className="rounded-md border border-white/20 px-3 py-2 text-xs">See Plans</Link>
               <button onClick={() => setGateAction(null)} className="rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-300">Stay in preview</button>
             </div>
           </div>

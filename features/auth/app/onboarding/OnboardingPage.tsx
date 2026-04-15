@@ -6,6 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  appendActivationContextToHref,
+  parseActivationContextFromSearchParams,
+  persistActivationContext,
+} from "@/features/integrations/shopBoost/activationContext";
+import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
 
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 
@@ -47,6 +53,7 @@ export default function OnboardingPage() {
   const searchParams = useSearchParams();
   const demoId = searchParams.get("demoId");
   const intakeId = searchParams.get("intakeId");
+  const activationContext = parseActivationContextFromSearchParams(searchParams);
 
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -74,6 +81,7 @@ export default function OnboardingPage() {
   const [asOwner, setAsOwner] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activationBusy, setActivationBusy] = useState(false);
 
   const fieldClassName =
     "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500";
@@ -89,15 +97,19 @@ export default function OnboardingPage() {
         await supabase.auth.exchangeCodeForSession(code);
       } finally {
         const keepSid = searchParams.get("session_id");
-        const clean = keepSid
-          ? `/onboarding?session_id=${encodeURIComponent(keepSid)}`
-          : "/onboarding";
+        const cleanParams = new URLSearchParams();
+        if (keepSid) cleanParams.set("session_id", keepSid);
+        if (demoId) cleanParams.set("demoId", demoId);
+        if (intakeId) cleanParams.set("intakeId", intakeId);
+        const activationContextParam = searchParams.get("activationContext");
+        if (activationContextParam) cleanParams.set("activationContext", activationContextParam);
+        const clean = `/onboarding${cleanParams.toString() ? `?${cleanParams.toString()}` : ""}`;
         router.replace(clean);
         setTimeout(() => router.refresh(), 0);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [demoId, intakeId, router, searchParams, supabase.auth]);
 
   useEffect(() => {
     (async () => {
@@ -149,6 +161,11 @@ export default function OnboardingPage() {
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
+
+  useEffect(() => {
+    if (!activationContext) return;
+    persistActivationContext(activationContext);
+  }, [activationContext]);
 
   const provinceLabel = country === "CA" ? "Province" : "State";
   const postalLabel = country === "CA" ? "Postal code" : "ZIP code";
@@ -229,10 +246,44 @@ export default function OnboardingPage() {
         return;
       }
 
+      if (demoId && intakeId) {
+        setActivationBusy(true);
+        trackShopBoostEvent("import_started", {
+          demoId,
+          intakeId,
+          source: "onboarding_owner_submit",
+        });
+        const activationRes = await fetch("/api/demo/shop-boost/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ demoId, intakeId }),
+        });
+        const activationJson = (await activationRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!activationRes.ok || !activationJson.ok) {
+          setError(activationJson.error || "Failed to start activation import. Please restart preview.");
+          setLoading(false);
+          setActivationBusy(false);
+          return;
+        }
+        trackShopBoostEvent("import_completed", {
+          demoId,
+          intakeId,
+          source: "onboarding_owner_submit",
+        });
+        const setupReviewHref = activationContext
+          ? appendActivationContextToHref("/dashboard/setup/review", activationContext)
+          : "/dashboard/setup/review";
+        router.replace(setupReviewHref);
+        setLoading(false);
+        setActivationBusy(false);
+        return;
+      }
+
       const next = new URLSearchParams();
       if (demoId) next.set("demoId", demoId);
       if (intakeId) next.set("intakeId", intakeId);
-      router.replace(`/onboarding/shop-boost${next.toString() ? `?${next.toString()}` : ""}`);
+      const baseHref = `/onboarding/shop-boost${next.toString() ? `?${next.toString()}` : ""}`;
+      router.replace(activationContext ? appendActivationContextToHref(baseHref, activationContext) : baseHref);
       setLoading(false);
       return;
     }
@@ -303,8 +354,13 @@ export default function OnboardingPage() {
         <div className="flex-1 space-y-6">
           {demoId ? (
             <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
-              Preview continuity active: when setup finishes, we’ll carry your analysis into Shop Boost activation.
+              Preview continuity active: setup will start your real import from preview context.
               {intakeId ? ` Intake: ${intakeId}` : ""}
+            </div>
+          ) : null}
+          {activationBusy ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+              Activation import is running. We&apos;ll take you to guided review as soon as it starts.
             </div>
           ) : null}
           <form onSubmit={handleSubmit} className="space-y-6">
