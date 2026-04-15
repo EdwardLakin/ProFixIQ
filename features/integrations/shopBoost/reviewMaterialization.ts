@@ -1,9 +1,14 @@
 import { createHash } from "crypto";
 
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  computeCompletionState,
+  runPostMigrationIntegrityValidation,
+  type IgnoreReasonCode,
+} from "@/features/integrations/shopBoost/migrationReliability";
 
 type ResolutionAction = "linked_to_existing" | "created_new" | "ignored";
-type ReviewStatus = "pending" | "resolved" | "materialized" | "failed_materialization";
+type ReviewStatus = "pending" | "resolved" | "materialized" | "failed_materialization" | "ignored";
 
 type ReviewItemRow = {
   id: string;
@@ -384,10 +389,11 @@ async function materializeByDomain(args: { supabase: any; item: ReviewItemRow; r
 }
 
 async function recomputeMigrationProgress(supabase: any, shopId: string, intakeId: string): Promise<void> {
-  const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { data: intake }] = await Promise.all([
+  const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { count: ignoredCount }, { data: intake }] = await Promise.all([
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "pending"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "failed_materialization"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "materialized"),
+    supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "ignored"),
     supabase.from("shop_boost_intakes").select("intake_basics").eq("id", intakeId).eq("shop_id", shopId).maybeSingle(),
   ]);
 
@@ -399,11 +405,13 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
     Number(materializedCount ?? 0),
   );
 
-  const completionState = reviewCount === 0 && (failedCount ?? 0) === 0
-    ? "COMPLETED_CLEAN"
-    : (failedCount ?? 0) > 0
-      ? "PARTIAL_FAILURE"
-      : "COMPLETED_WITH_REVIEW";
+  const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
+  const completionState = computeCompletionState({
+    failedCount: Number(migrationProgress.failed_count ?? 0),
+    pendingReviewCount: pendingCount ?? 0,
+    failedReviewCount: failedCount ?? 0,
+    integrityStatus: integrity.status,
+  });
 
   await supabase
     .from("shop_boost_intakes")
@@ -414,7 +422,9 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
           ...migrationProgress,
           review_count: reviewCount,
           success_count: successCount,
+          ignored_count: ignoredCount ?? 0,
           completionState,
+          integrity,
         },
       },
     })
@@ -427,6 +437,8 @@ export async function resolveAndMaterializeReviewItem(args: {
   shopId: string;
   userId: string;
   resolutionAction: ResolutionAction;
+  ignoreReasonCode?: IgnoreReasonCode;
+  ignoreNote?: string | null;
 }): Promise<{ ok: boolean; item: ReviewItemRow | null; materializedRecord: Record<string, unknown> | null; error?: string; }> {
   const supabase = createAdminSupabase() as any;
 
@@ -440,20 +452,25 @@ export async function resolveAndMaterializeReviewItem(args: {
   if (!item) return { ok: false, item: null, materializedRecord: null, error: "Review item not found." };
 
   const updateBase = {
-    status: "resolved",
+    status: args.resolutionAction === "ignored" ? "ignored" : "resolved",
     resolution_action: args.resolutionAction,
     resolved_by: args.userId,
     resolved_at: new Date().toISOString(),
+    ignored_at: args.resolutionAction === "ignored" ? new Date().toISOString() : null,
+    ignore_reason_code: args.resolutionAction === "ignored" ? args.ignoreReasonCode ?? "other" : null,
+    ignore_note: args.resolutionAction === "ignored" ? args.ignoreNote ?? null : null,
     materialization_error: null,
   };
 
   await supabase.from("shop_boost_review_items").update(updateBase).eq("id", item.id).eq("shop_id", args.shopId);
 
-  const materialized = await materializeByDomain({
-    supabase,
-    item: { ...item, resolution_action: args.resolutionAction, status: "resolved" } as ReviewItemRow,
-    resolutionAction: args.resolutionAction,
-  });
+  const materialized = args.resolutionAction === "ignored"
+    ? { status: "ignored" as ReviewStatus, materializedRecord: { ignored: true, reason: args.ignoreReasonCode ?? "other" }, error: null }
+    : await materializeByDomain({
+        supabase,
+        item: { ...item, resolution_action: args.resolutionAction, status: "resolved" } as ReviewItemRow,
+        resolutionAction: args.resolutionAction,
+      });
 
   await supabase
     .from("shop_boost_review_items")
@@ -481,7 +498,7 @@ export async function resolveAndMaterializeReviewItem(args: {
     .maybeSingle();
 
   return {
-    ok: materialized.status === "materialized",
+    ok: materialized.status === "materialized" || materialized.status === "ignored",
     item: updatedItem ?? null,
     materializedRecord: materialized.materializedRecord,
     ...(materialized.error ? { error: materialized.error } : {}),
@@ -500,9 +517,15 @@ async function replayDependentRows(args: { supabase: any; shopId: string; intake
     .order("created_at", { ascending: true })
     .limit(100);
 
+  let attempted = 0;
+  let succeeded = 0;
+  let failed = 0;
   for (const candidate of replayCandidates ?? []) {
+    attempted += 1;
     const action: ResolutionAction = candidate.resolution_action ?? "created_new";
     const result = await materializeByDomain({ supabase, item: candidate as ReviewItemRow, resolutionAction: action });
+    if (result.status === "materialized") succeeded += 1;
+    if (result.status === "failed_materialization") failed += 1;
 
     await supabase
       .from("shop_boost_review_items")
@@ -517,6 +540,34 @@ async function replayDependentRows(args: { supabase: any; shopId: string; intake
       .eq("shop_id", shopId)
       .eq("id", candidate.id);
   }
+
+  const { data: intake } = await supabase
+    .from("shop_boost_intakes")
+    .select("intake_basics")
+    .eq("id", intakeId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+  const basics = (intake?.intake_basics ?? {}) as Record<string, unknown>;
+  const migrationProgress = (basics.migrationProgress ?? {}) as Record<string, unknown>;
+
+  await supabase
+    .from("shop_boost_intakes")
+    .update({
+      intake_basics: {
+        ...basics,
+        migrationProgress: {
+          ...migrationProgress,
+          replay_stats: {
+            attempted,
+            succeeded,
+            failed,
+            replayedAt: new Date().toISOString(),
+          },
+        },
+      },
+    })
+    .eq("id", intakeId)
+    .eq("shop_id", shopId);
 }
 
 export async function bulkResolveReviewItems(args: {
@@ -524,6 +575,8 @@ export async function bulkResolveReviewItems(args: {
   userId: string;
   reviewItemIds: string[];
   resolutionAction: ResolutionAction;
+  ignoreReasonCode?: IgnoreReasonCode;
+  ignoreNote?: string | null;
 }): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
   for (const id of args.reviewItemIds) {
@@ -532,6 +585,8 @@ export async function bulkResolveReviewItems(args: {
       shopId: args.shopId,
       userId: args.userId,
       resolutionAction: args.resolutionAction,
+      ignoreReasonCode: args.ignoreReasonCode,
+      ignoreNote: args.ignoreNote,
     });
     results.push({ id, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
   }
