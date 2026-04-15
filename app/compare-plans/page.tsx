@@ -38,6 +38,14 @@ export default function ComparePlansPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          const next = `/compare-plans?${new URLSearchParams({
+            ...(demoId ? { demoId } : {}),
+            ...(intakeId ? { intakeId } : {}),
+          }).toString()}`;
+          window.location.href = `/signup?redirect=${encodeURIComponent(next)}${demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`;
+          return;
+        }
         toast.error(data?.details || data?.error || "Checkout failed");
         return;
       }
@@ -84,7 +92,7 @@ export default function ComparePlansPage() {
 
             {demoId ? (
               <p className="mt-2 text-[11px] text-neutral-500">
-                Analysis reference: <span className="text-neutral-300">{demoId}</span>
+                Your analysis is ready to carry forward. Reference: <span className="text-neutral-300">{demoId}</span>
                 {intakeId ? <span className="text-neutral-400"> • Intake: {intakeId}</span> : null}
               </p>
             ) : null}
@@ -99,6 +107,11 @@ export default function ComparePlansPage() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-black/35 p-4 backdrop-blur-xl md:p-6">
+          {demoId ? (
+            <div className="mb-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
+              Preview continuity: nothing has been imported yet. After activation, this analysis will seed your real Shop Boost onboarding.
+            </div>
+          ) : null}
           <PricingSection
             onCheckout={handleCheckout}
             onStartFree={() => {
@@ -107,6 +120,16 @@ export default function ComparePlansPage() {
               });
             }}
           />
+          {demoId ? (
+            <div className="mt-4">
+              <Link
+                href={`/signup?redirect=${encodeURIComponent(`/compare-plans?demoId=${encodeURIComponent(demoId)}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`)}&demoId=${encodeURIComponent(demoId)}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`}
+                className="inline-flex items-center rounded-lg border border-white/15 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-white/[0.08]"
+              >
+                Continue setup via signup
+              </Link>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-8 rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur-xl">

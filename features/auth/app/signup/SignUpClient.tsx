@@ -16,6 +16,8 @@ export default function SignUpClient() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const demoId = sp.get("demoId");
+  const intakeId = sp.get("intakeId");
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
@@ -32,12 +34,16 @@ export default function SignUpClient() {
     const interval = sp.get("interval");
     const trial = sp.get("trial");
     const founding = sp.get("founding");
+    const demoId = sp.get("demoId");
+    const intakeId = sp.get("intakeId");
 
     if (redirect) params.set("redirect", redirect);
     if (priceId) params.set("priceId", priceId);
     if (interval) params.set("interval", interval);
     if (trial) params.set("trial", trial);
     if (founding) params.set("founding", founding);
+    if (demoId) params.set("demoId", demoId);
+    if (intakeId) params.set("intakeId", intakeId);
 
     const tail = params.toString();
     return `${origin}/confirm${tail ? `?${tail}` : ""}`;
@@ -68,11 +74,15 @@ export default function SignUpClient() {
         const interval = sp.get("interval");
         const trial = sp.get("trial");
         const founding = sp.get("founding");
+        const demoId = sp.get("demoId");
+        const intakeId = sp.get("intakeId");
 
         if (priceId) params.set("priceId", priceId);
         if (interval) params.set("interval", interval);
         if (trial) params.set("trial", trial);
         if (founding) params.set("founding", founding);
+        if (demoId) params.set("demoId", demoId);
+        if (intakeId) params.set("intakeId", intakeId);
 
         const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
         router.replace(redirect || onboardingTarget);
@@ -128,11 +138,15 @@ export default function SignUpClient() {
     const interval = sp.get("interval");
     const trial = sp.get("trial");
     const founding = sp.get("founding");
+    const demoId = sp.get("demoId");
+    const intakeId = sp.get("intakeId");
 
     if (priceId) params.set("priceId", priceId);
     if (interval) params.set("interval", interval);
     if (trial) params.set("trial", trial);
     if (founding) params.set("founding", founding);
+    if (demoId) params.set("demoId", demoId);
+    if (intakeId) params.set("intakeId", intakeId);
 
     const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
 
@@ -146,6 +160,12 @@ export default function SignUpClient() {
         <h1 className="mb-6 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           Create Account
         </h1>
+        {demoId ? (
+          <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100">
+            Your preview analysis is ready to carry forward.
+            {intakeId ? ` Intake: ${intakeId}` : ""}
+          </div>
+        ) : null}
         <form onSubmit={handleSignUp} className="space-y-4">
           <input
             type="email"

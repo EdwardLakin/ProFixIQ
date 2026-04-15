@@ -3,35 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import {
-  buildShopBoostPreflightReport,
-  type ShopBoostPreflightReport,
-} from "@/features/integrations/shopBoost/preflightAnalysis";
+  buildShadowShopSnapshot,
+  type ShadowShopSnapshot,
+} from "@/features/integrations/shopBoost/shadowShop";
 import {
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
-  SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
 
-const SHOP_IMPORT_BUCKET = "shop-imports";
-
-// Seeded demo owner (profiles.id / auth.users.id)
-const DEMO_OWNER_ID = "22fab07e-3b6f-432b-9434-e5476a7ade28";
-
-// shops.plan CHECK allows only: free, diy, pro, pro_plus
-const DEMO_SHOP_PLAN: DB["public"]["Tables"]["shops"]["Insert"]["plan"] = "pro";
-
 type DemoRunSuccessResponse = {
   ok: true;
   demoId: string;
   intakeId: string;
-  analysis: {
-    snapshot: unknown;
-    preflightReport: ShopBoostPreflightReport;
-  };
+  analysis: ShadowShopSnapshot;
 };
 
 type DemoRunErrorResponse = {
@@ -45,38 +32,18 @@ function safeShopName(name: string): string {
   return name.trim().replace(/\s+/g, " ").slice(0, 80);
 }
 
-function makeUniqueName(base: string): string {
-  const suffix = randomUUID().slice(0, 8);
-  return `${base} (Demo ${suffix})`.slice(0, 80);
-}
-
-function safeFileName(name: string): string {
-  const base = (name || "upload.csv").trim();
-  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return cleaned.length ? cleaned : "upload.csv";
-}
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/**
- * Avoid `instanceof File` (unreliable across runtimes/bundlers).
- * Next route handlers provide a file-like object with name/type/arrayBuffer().
- */
 function asFile(v: FormDataEntryValue | null): File | null {
   if (!v || typeof v !== "object") return null;
-
   const rec = v as unknown;
   if (!isRecord(rec)) return null;
 
-  const ab = rec["arrayBuffer"];
-  const name = rec["name"];
-  const type = rec["type"];
-
-  if (typeof ab !== "function") return null;
-  if (typeof name !== "string") return null;
-  if (typeof type !== "string") return null;
+  const ab = rec.arrayBuffer;
+  const name = rec.name;
+  if (typeof ab !== "function" || typeof name !== "string") return null;
 
   return v as File;
 }
@@ -87,7 +54,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
 
     const rawShopName = formData.get("shopName");
     const rawCountry = formData.get("country");
-    const rawQuestionnaire = formData.get("questionnaire");
 
     const shopName =
       typeof rawShopName === "string" && rawShopName.trim().length > 0
@@ -103,15 +69,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         ? rawCountry
         : "US";
 
-    let questionnaire: unknown = {};
-    if (typeof rawQuestionnaire === "string" && rawQuestionnaire.trim().length > 0) {
-      try {
-        questionnaire = JSON.parse(rawQuestionnaire) as unknown;
-      } catch {
-        questionnaire = {};
-      }
-    }
-
     const filesByDataset: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
     for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
       const file = asFile(formData.get(`${key}File`));
@@ -120,173 +77,31 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
 
     if (Object.values(filesByDataset).length === 0) {
       return NextResponse.json(
-        { ok: false, error: "Please upload at least one CSV so we have some history to analyze." },
+        { ok: false, error: "Please upload at least one CSV so we have data to analyze." },
         { status: 400 },
       );
     }
 
-    const supabase = createAdminSupabase();
-
-    // 1) Create a demo shop row
-    const insertShop = async (nameValue: string) => {
-      return supabase
-        .from("shops")
-        .insert({
-          owner_id: DEMO_OWNER_ID,
-          business_name: nameValue,
-          name: nameValue,
-          country: countryValue,
-          plan: DEMO_SHOP_PLAN,
-        } as DB["public"]["Tables"]["shops"]["Insert"])
-        .select("id")
-        .single();
-    };
-
-    let { data: shopRow, error: shopErr } = await insertShop(shopName);
-
-    if (shopErr) {
-      const retryName = makeUniqueName(shopName);
-      const retry = await insertShop(retryName);
-      shopRow = retry.data ?? null;
-      shopErr = retry.error ?? null;
-    }
-
-    if (shopErr || !shopRow?.id) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to create demo shop", shopErr);
-      return NextResponse.json(
-        { ok: false, error: "We couldn't create a demo shop record. Please try again. (Shop insert failed)" },
-        { status: 500 },
-      );
-    }
-
-    const shopId = shopRow.id as string;
     const intakeId = randomUUID();
-
-    const uploadIfPresent = async (
-      file: File | undefined,
-      kind: ShopBoostUploadDatasetKey,
-    ): Promise<string | null> => {
-      if (!file) return null;
-
-      // ✅ Keep first segment == shopId (matches your Storage RLS convention)
-      const safeName = safeFileName(file.name || `${kind}.csv`);
-      const path = `shops/${shopId}/demo/${intakeId}/${kind}-${safeName}`;
-
-      const { error: uploadErr } = await supabase.storage.from(SHOP_IMPORT_BUCKET).upload(path, file, {
-        cacheControl: "3600",
-        upsert: true,
-        contentType: file.type || "text/csv",
-      });
-
-      if (uploadErr) throw new Error(`Failed to upload ${kind} file: ${uploadErr.message}`);
-
-      return path;
-    };
-
-    // 2) Upload CSVs
-    const uploadedPathEntries = await Promise.all(
-      SHOP_BOOST_UPLOAD_DATASET_KEYS.map(async (key) => [key, await uploadIfPresent(filesByDataset[key], key)] as const),
-    );
-    const uploadPaths = Object.fromEntries(uploadedPathEntries) as Record<
-      ShopBoostUploadDatasetKey,
-      string | null
-    >;
-    const uploadManifest = SHOP_BOOST_UPLOAD_DATASETS.reduce((acc, dataset) => {
-      const path = uploadPaths[dataset.key];
-      if (!path) return acc;
-      const file = filesByDataset[dataset.key];
-      acc[dataset.key] = {
-        dataset: dataset.key,
-        path,
-        fileName: file?.name ?? null,
-        contentType: file?.type ?? null,
-        sizeBytes: file?.size ?? null,
-        target: dataset.target,
-        importMode: dataset.importMode,
-      };
-      return acc;
-    }, {} as Record<string, unknown>);
-
-    // 3) Create intake row
-    const intakePayload: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
-      id: intakeId,
-      shop_id: shopId,
-      questionnaire:
-        questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
-      customers_file_path: uploadPaths.customers,
-      vehicles_file_path: uploadPaths.vehicles,
-      parts_file_path: uploadPaths.parts,
-      history_file_path: uploadPaths.history,
-      staff_file_path: uploadPaths.staff,
-      intake_basics: {
-        uploadManifest,
-      } as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["intake_basics"],
-      status: "pending",
-    };
-
-    const { error: intakeErr } = await supabase.from("shop_boost_intakes").insert(intakePayload);
-
-    if (intakeErr) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to insert shop_boost_intakes", intakeErr);
-      return NextResponse.json(
-        { ok: false, error: "We couldn't start the analysis. Please try again." },
-        { status: 500 },
-      );
-    }
-
-    // 4) Run pipeline
-    const snapshot = await buildShopBoostProfile({ shopId, intakeId });
-
-    if (!snapshot) {
-      return NextResponse.json(
-        { ok: false, error: "The AI analysis failed. Please try again with a different export." },
-        { status: 500 },
-      );
-    }
-
-    const { data: importRows } = await supabase
-      .from("shop_import_rows")
-      .select("entity_type,raw,normalized")
-      .eq("intake_id", intakeId)
-      .limit(20000);
-
-    const preflightReport = buildShopBoostPreflightReport({
-      rows: (importRows ?? []) as Array<{ entity_type: string | null; raw: unknown; normalized: unknown }>,
-      hasHistoryData: Boolean(uploadPaths.history),
-      hasVehicleData: Boolean(uploadPaths.vehicles),
-      hasCustomerData: Boolean(uploadPaths.customers),
-      menuSuggestionCount:
-        Array.isArray((snapshot as { menuSuggestions?: unknown[] }).menuSuggestions)
-          ? ((snapshot as { menuSuggestions?: unknown[] }).menuSuggestions?.length ?? 0)
-          : 0,
-      inspectionSuggestionCount:
-        Array.isArray((snapshot as { inspectionSuggestions?: unknown[] }).inspectionSuggestions)
-          ? ((snapshot as { inspectionSuggestions?: unknown[] }).inspectionSuggestions?.length ?? 0)
-          : 0,
+    const snapshot = await buildShadowShopSnapshot({
+      intakeId,
+      uploadedFiles: filesByDataset,
     });
 
-    const analysisPayload = {
-      snapshot,
-      preflightReport,
-    };
-
-    // 5) Store snapshot in demo_shop_boosts for later unlock + CRM usage
+    const supabase = createAdminSupabase();
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .insert({
-        shop_id: shopId,
-        intake_id: intakeId,
+        shop_id: null,
+        intake_id: null,
         shop_name: shopName,
         country: countryValue,
-        snapshot: analysisPayload,
+        snapshot,
       } as DB["public"]["Tables"]["demo_shop_boosts"]["Insert"])
       .select("id")
       .single();
 
     if (demoErr || !demoRow?.id) {
-      // eslint-disable-next-line no-console
       console.error("Failed to insert demo_shop_boosts", demoErr);
       return NextResponse.json(
         { ok: false, error: "We ran the analysis, but could not save the demo result." },
@@ -299,14 +114,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         ok: true,
         demoId: demoRow.id as string,
         intakeId,
-        analysis: analysisPayload,
+        analysis: snapshot,
       },
       { status: 200 },
     );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
-    // eslint-disable-next-line no-console
     console.error("Demo run error", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
