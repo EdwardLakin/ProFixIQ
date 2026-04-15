@@ -50,6 +50,9 @@ type ResumePreviewContext = {
   demoId: string;
   intakeId: string;
   shopName: string;
+  blockers: number;
+  reviewQueue: number;
+  recoverableValue: number;
 };
 
 const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v1";
@@ -126,6 +129,9 @@ export default function InstantShopAnalysisPage() {
         demoId: parsed.demoId,
         intakeId: parsed.intakeId,
         shopName: parsed.shopName,
+        blockers: Number(parsed.blockers) || 0,
+        reviewQueue: Number(parsed.reviewQueue) || 0,
+        recoverableValue: Number(parsed.recoverableValue) || 0,
       });
     } catch {
       // ignore parse failures from stale client state
@@ -323,15 +329,21 @@ export default function InstantShopAnalysisPage() {
               </p>
               <div className={THEME.badge}>No login required for the preview analysis.</div>
               {resumePreview ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    (window.location.href = `/demo/preview/${encodeURIComponent(resumePreview.demoId)}?intakeId=${encodeURIComponent(resumePreview.intakeId)}`)
-                  }
-                  className="inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-[11px] text-cyan-100 hover:bg-cyan-500/20"
-                >
-                  Resume preview for {resumePreview.shopName}
-                </button>
+                <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3">
+                  <p className="text-[11px] font-semibold text-cyan-100">Your analysis is still available for {resumePreview.shopName}</p>
+                  <p className="mt-1 text-[11px] text-cyan-50/90">
+                    Resume preview with {resumePreview.blockers} blocker{resumePreview.blockers === 1 ? "" : "s"}, {resumePreview.reviewQueue} review items, and estimated recoverable value of ${resumePreview.recoverableValue.toLocaleString()}/month.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      (window.location.href = `/demo/preview/${encodeURIComponent(resumePreview.demoId)}?intakeId=${encodeURIComponent(resumePreview.intakeId)}`)
+                    }
+                    className="mt-2 inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-500/20 px-4 py-2 text-[11px] text-cyan-100 hover:bg-cyan-500/30"
+                  >
+                    Continue activation preview
+                  </button>
+                </div>
               ) : null}
             </div>
           </div>
@@ -559,7 +571,7 @@ export default function InstantShopAnalysisPage() {
               <div className={[THEME.glassCard, "mt-4 flex flex-wrap items-center gap-3 px-4 py-3"].join(" ")}>
                 <div className="flex-1 text-[11px]">
                   <p className="font-semibold text-white">
-                    Start free trial and import this data
+                    Start your real import with this analysis context
                   </p>
                   <p className="mt-0.5 text-[11px] text-neutral-400">
                     Continue with signup, select a plan, and we&apos;ll run full Shop Boost migration
@@ -589,11 +601,11 @@ export default function InstantShopAnalysisPage() {
                     THEME.cta,
                     THEME.ctaHover,
                   ].join(" ")}>
-                    Continue with signup
+                    Activate your shop setup
                   </button>
 
                   <button type="button" onClick={goToSignup} className={THEME.subtleBtn}>
-                    Choose plan & activate
+                    Review and activate migration
                   </button>
                 </div>
               </div>
