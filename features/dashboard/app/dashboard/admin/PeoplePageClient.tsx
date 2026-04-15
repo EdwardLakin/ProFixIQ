@@ -34,6 +34,9 @@ type PersonRow = {
   cert_expiring_60: number;
   expired_certifications: number;
   revoked_certifications: number;
+  has_schedule_template: boolean;
+  pending_time_off_requests: number;
+  upcoming_approved_time_away: number;
   needs_action: boolean;
   highest_action_severity: "blocking" | "warning" | "informational" | null;
   action_counts: { blocking: number; warning: number; informational: number };
@@ -102,6 +105,7 @@ export default function PeoplePageClient() {
       onboardingMissing: source.filter((row) => !row.completed_onboarding).length,
       payrollFollowUp: source.filter((row) => row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready).length,
       certFollowUp: source.filter((row) => row.expired_certifications > 0 || row.expiring_certifications > 0).length,
+      pendingTimeOff: source.filter((row) => row.pending_time_off_requests > 0).length,
       inactive: source.filter((row) => row.employment_status === "inactive").length,
       needsAction: source.filter((row) => row.needs_action).length,
     };
@@ -125,6 +129,7 @@ export default function PeoplePageClient() {
           <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
           <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Exceptions or not payroll-ready" />
           <AdminStatCard label="Credential follow-up" value={summary.certFollowUp} hint="Expired or expiring in 30 days" />
+          <AdminStatCard label="Pending time off" value={summary.pendingTimeOff} />
           <AdminStatCard label="Needs action now" value={summary.needsAction} hint="Blocking/warning/informational triage" />
           <AdminStatCard label="Inactive workforce" value={summary.inactive} />
         </AdminStatGrid>
@@ -194,6 +199,7 @@ export default function PeoplePageClient() {
                   <th className="px-4 py-2.5 text-left">Workforce</th>
                   <th className="px-4 py-2.5 text-left">Certifications</th>
                   <th className="px-4 py-2.5 text-left">Payroll posture</th>
+                  <th className="px-4 py-2.5 text-left">Scheduling</th>
                   <th className="px-4 py-2.5 text-left">Follow-up</th>
                 </tr>
               </thead>
@@ -232,6 +238,14 @@ export default function PeoplePageClient() {
                       <td className="px-4 py-2.5 text-xs">
                         {row.payroll_blocking_exceptions > 0 ? `${row.payroll_blocking_exceptions} blocking` : row.payroll_warning_exceptions > 0 ? `${row.payroll_warning_exceptions} warning` : row.payroll_ready ? "Ready" : "Not ready"}
                         <p className="text-neutral-400">{row.payroll_open_period_entries} open entries</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <p className={row.has_schedule_template ? "text-emerald-300" : "text-amber-300"}>
+                          {row.has_schedule_template ? "Template set" : "No template"}
+                        </p>
+                        <p className="text-neutral-400">
+                          {row.pending_time_off_requests} pending · {row.upcoming_approved_time_away} upcoming away
+                        </p>
                       </td>
                       <td className="px-4 py-2.5">
                         <AdminBadge>{row.needs_action ? "Needs action" : "Healthy"}</AdminBadge>

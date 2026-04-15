@@ -11,6 +11,15 @@ import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard
 import ProfileContactCard from "@/features/users/components/ProfileContactCard";
 
 type StatusKind = "success" | "error" | "info";
+type TimeOffRequest = {
+  id: string;
+  request_type: string;
+  starts_at: string;
+  ends_at: string;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  reason: string | null;
+  created_at: string;
+};
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -30,6 +39,11 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<string>("");
   const [statusType, setStatusType] = useState<StatusKind>("info");
   const [busy, setBusy] = useState(false);
+  const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+  const [requestType, setRequestType] = useState("vacation");
+  const [requestStart, setRequestStart] = useState("");
+  const [requestEnd, setRequestEnd] = useState("");
+  const [requestReason, setRequestReason] = useState("");
 
   useEffect(() => {
     const loadUser = async () => {
@@ -54,6 +68,10 @@ export default function SettingsPage() {
       setPhone(profile?.phone ?? "");
       setAvatarUrl(profile?.avatar_url ?? null);
       if (profile?.email) setEmail(profile.email);
+
+      const reqRes = await fetch("/api/time-off/requests", { cache: "no-store" });
+      const reqBody = await reqRes.json().catch(() => null);
+      if (reqRes.ok) setRequests((reqBody?.requests ?? []) as TimeOffRequest[]);
     };
     void loadUser();
   }, [supabase]);
@@ -132,6 +150,58 @@ export default function SettingsPage() {
       showStatus("Verification email resent.", "success");
       router.refresh();
     }
+  };
+
+  const loadTimeOff = async () => {
+    const reqRes = await fetch("/api/time-off/requests", { cache: "no-store" });
+    const reqBody = await reqRes.json().catch(() => null);
+    if (reqRes.ok) setRequests((reqBody?.requests ?? []) as TimeOffRequest[]);
+  };
+
+  const submitTimeOff = async () => {
+    if (!requestStart || !requestEnd) {
+      showStatus("Choose a start and end date/time for your request.", "error");
+      return;
+    }
+    setBusy(true);
+    const res = await fetch("/api/time-off/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        request_type: requestType,
+        starts_at: new Date(requestStart).toISOString(),
+        ends_at: new Date(requestEnd).toISOString(),
+        reason: requestReason || null,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok) {
+      showStatus(body?.error ?? "Failed to submit time off request.", "error");
+      return;
+    }
+    setRequestReason("");
+    setRequestStart("");
+    setRequestEnd("");
+    await loadTimeOff();
+    showStatus("Time off request submitted.", "success");
+  };
+
+  const cancelPendingRequest = async (id: string) => {
+    setBusy(true);
+    const res = await fetch(`/api/time-off/requests/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    const body = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok) {
+      showStatus(body?.error ?? "Failed to cancel request.", "error");
+      return;
+    }
+    await loadTimeOff();
+    showStatus("Request cancelled.", "success");
   };
 
   const statusClass =
@@ -228,6 +298,50 @@ export default function SettingsPage() {
         </Button>
         {status ? <span className={`text-sm ${statusClass}`}>{status}</span> : null}
       </div>
+
+      <section className="space-y-3 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+        <h2 className="text-sm font-semibold text-neutral-50">Time Off</h2>
+        <p className="text-xs text-neutral-400">
+          Submit and track your own time away requests. Approved requests automatically block schedule availability.
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          <select className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
+            <option value="vacation">Vacation</option>
+            <option value="sick">Sick</option>
+            <option value="personal">Personal</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" type="datetime-local" value={requestStart} onChange={(e) => setRequestStart(e.target.value)} />
+          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" type="datetime-local" value={requestEnd} onChange={(e) => setRequestEnd(e.target.value)} />
+          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm md:col-span-2" placeholder="Reason (optional)" value={requestReason} onChange={(e) => setRequestReason(e.target.value)} />
+        </div>
+        <Button onClick={submitTimeOff} disabled={busy || !requestStart || !requestEnd}>
+          {busy ? "Submitting…" : "Request time off"}
+        </Button>
+
+        <div className="space-y-2">
+          {requests.length === 0 ? (
+            <p className="text-xs text-neutral-500">No time off requests yet.</p>
+          ) : (
+            requests.map((r) => (
+              <div key={r.id} className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-neutral-100">
+                    {r.request_type} · {new Date(r.starts_at).toLocaleString()} → {new Date(r.ends_at).toLocaleString()}
+                  </p>
+                  <span className="text-xs uppercase tracking-wide text-neutral-300">{r.status}</span>
+                </div>
+                <p className="mt-1 text-xs text-neutral-400">{r.reason ?? "No note"}</p>
+                {r.status === "pending" ? (
+                  <button className="mt-2 rounded border border-white/15 px-2 py-1 text-xs text-neutral-200" onClick={() => void cancelPendingRequest(r.id)} disabled={busy}>
+                    Cancel request
+                  </button>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </div>
   );
 }

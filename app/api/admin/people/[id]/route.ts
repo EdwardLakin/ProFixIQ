@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, context: unknown) {
   const check = await assertTarget(admin, access.profile.shop_id!, params.id);
   if (!check.ok) return NextResponse.json({ error: check.message }, { status: 403 });
 
-  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { data: openEntries }, { data: openExceptions }] = await Promise.all([
+  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { data: openEntries }, { data: openExceptions }, { data: scheduleTemplates }, { data: scheduleOverrides }, { data: upcomingAwayBlocks }, { data: timeOffRequests }] = await Promise.all([
     admin.from("profiles").select("id, full_name, email, phone, role, completed_onboarding, created_at, last_active_at").eq("id", params.id).maybeSingle(),
     admin
       .from("people_workforce_profiles")
@@ -43,6 +43,10 @@ export async function GET(_req: NextRequest, context: unknown) {
       .eq("user_id", params.id)
       .in("approval_state", ["draft", "reviewed"]),
     admin.from("payroll_time_exceptions").select("severity, resolved").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).eq("resolved", false),
+    admin.from("staff_schedule_templates").select("id, day_of_week, start_time, end_time, is_working_day").eq("shop_id", access.profile.shop_id).eq("user_id", params.id),
+    admin.from("staff_schedule_overrides").select("id, schedule_date, start_time, end_time, status").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).gte("schedule_date", new Date().toISOString().slice(0, 10)).order("schedule_date", { ascending: true }).limit(14),
+    admin.from("staff_availability_blocks").select("id, starts_at, ends_at, block_type, label").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).gte("ends_at", new Date().toISOString()).order("starts_at", { ascending: true }).limit(14),
+    admin.from("staff_time_off_requests").select("id, status, starts_at, ends_at, request_type, reason").eq("shop_id", access.profile.shop_id).eq("user_id", params.id).order("created_at", { ascending: false }).limit(14),
   ]);
 
   const { data: audit } = await admin
@@ -183,6 +187,16 @@ export async function GET(_req: NextRequest, context: unknown) {
       in_current_period: (openEntries?.count ?? 0) > 0,
       missing_workforce_data: missingWorkforceData,
     },
+    schedule_posture: {
+      has_recurring_schedule: (scheduleTemplates ?? []).length > 0,
+      recurring_rows: (scheduleTemplates ?? []).length,
+      upcoming_override_count: (scheduleOverrides ?? []).length,
+      upcoming_approved_away_count: (upcomingAwayBlocks ?? []).length,
+      next_override: (scheduleOverrides ?? [])[0] ?? null,
+      next_away_block: (upcomingAwayBlocks ?? [])[0] ?? null,
+    },
+    upcoming_time_off: upcomingAwayBlocks ?? [],
+    recent_time_off_requests: timeOffRequests ?? [],
     audit_preview: prioritizedAudit,
   });
 }

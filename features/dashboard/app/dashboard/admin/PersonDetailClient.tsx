@@ -55,6 +55,16 @@ type PersonDetail = {
     in_current_period: boolean;
     missing_workforce_data: string[];
   };
+  schedule_posture: {
+    has_recurring_schedule: boolean;
+    recurring_rows: number;
+    upcoming_override_count: number;
+    upcoming_approved_away_count: number;
+    next_override: { schedule_date?: string | null } | null;
+    next_away_block: { starts_at?: string | null; block_type?: string | null } | null;
+  };
+  upcoming_time_off: Array<{ id: string; starts_at: string; ends_at: string; block_type: string; label?: string | null }>;
+  recent_time_off_requests: Array<{ id: string; status: string; starts_at: string; ends_at: string; request_type: string; reason?: string | null }>;
   needs_action: boolean;
   action_reasons: Array<{
     code: string;
@@ -305,6 +315,8 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <AdminStatCard label="Payroll blocking" value={detail.payroll_posture.blocking_exceptions} />
           <AdminStatCard label="Expiring certs (30d)" value={certSummary.expiring30} />
           <AdminStatCard label="Expired certs" value={certSummary.expired} />
+          <AdminStatCard label="Schedule rows" value={detail.schedule_posture.recurring_rows} />
+          <AdminStatCard label="Upcoming time away" value={detail.schedule_posture.upcoming_approved_away_count} />
         </AdminStatGrid>
         <div className="p-4 text-xs text-neutral-300">
           <p className="mb-2 font-medium text-neutral-100">Top missing items</p>
@@ -312,6 +324,23 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         </div>
       </AdminPanel>
       </div>
+
+      <AdminPanel>
+        <AdminPanelTitle title="Schedule & Time Off Posture" description="Workforce scheduling posture tied to this canonical People record." />
+        <div className="grid gap-3 p-4 md:grid-cols-3">
+          <AdminStatCard label="Recurring schedule" value={detail.schedule_posture.has_recurring_schedule ? "Configured" : "Missing"} />
+          <AdminStatCard label="Overrides (next 2 weeks)" value={detail.schedule_posture.upcoming_override_count} />
+          <AdminStatCard label="Approved away blocks" value={detail.schedule_posture.upcoming_approved_away_count} />
+        </div>
+        <div className="px-4 pb-4 text-xs text-neutral-300">
+          <p className="mb-2">Next actions:</p>
+          <p>• <Link className="text-orange-300 hover:text-orange-200" href="/dashboard/admin/scheduling">Open scheduling board</Link></p>
+          <p>• <Link className="text-orange-300 hover:text-orange-200" href={`/dashboard/admin/payroll-time?person_id=${personId}`}>Open payroll-time review</Link></p>
+          {detail.recent_time_off_requests.slice(0, 3).map((request) => (
+            <p key={request.id}>• {request.request_type} ({request.status}) {new Date(request.starts_at).toLocaleDateString()} → {new Date(request.ends_at).toLocaleDateString()}</p>
+          ))}
+        </div>
+      </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle title="Identity & Access" description="Account governance belongs here: identity fields, role, and account posture." />
