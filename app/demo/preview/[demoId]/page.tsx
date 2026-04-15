@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
+import { verifyShopBoostShareToken } from "@/features/integrations/shopBoost/shareAccess";
 import ShadowPreviewClient from "./_components/ShadowPreviewClient";
 
 type PageProps = {
   params: Promise<{ demoId: string }>;
-  searchParams: Promise<{ intakeId?: string }>;
+  searchParams: Promise<{ intakeId?: string; mode?: string; share?: string; token?: string }>;
 };
 
 export default async function DemoPreviewPage({ params, searchParams }: PageProps) {
   const { demoId } = await params;
   const sp = await searchParams;
-  const intakeId = typeof sp.intakeId === "string" ? sp.intakeId : "";
+  const token = typeof sp.token === "string" ? sp.token : "";
+  const shared = sp.share === "1";
+  const validatedToken = token ? verifyShopBoostShareToken(token) : null;
+  const intakeId = typeof sp.intakeId === "string" ? sp.intakeId : validatedToken?.intakeId ?? "";
+  const mode = sp.mode === "sales" ? "sales" : "default";
   const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
@@ -50,5 +55,30 @@ export default async function DemoPreviewPage({ params, searchParams }: PageProp
     );
   }
 
-  return <ShadowPreviewClient context={context} />;
+  if (shared && token && (!validatedToken || validatedToken.demoId !== demoId || validatedToken.intakeId !== intakeId)) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-black px-4 text-white">
+        <div className="max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+          <p className="text-lg font-semibold">Share link expired</p>
+          <p className="mt-2 text-sm text-neutral-400">This shared link is no longer valid. Ask the sender for a fresh link.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ShadowPreviewClient
+      context={context}
+      mode={mode}
+      shareMeta={
+        shared
+          ? {
+              enabled: true,
+              senderName: validatedToken?.senderName ?? null,
+              token: token || null,
+            }
+          : { enabled: false, senderName: null, token: null }
+      }
+    />
+  );
 }

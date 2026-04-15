@@ -23,6 +23,60 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+async function renderPdf(report: Record<string, unknown>): Promise<Buffer> {
+  const pdfKitModule = await import("pdfkit");
+  const PDFDocument = pdfKitModule.default as unknown as new (options: { margin: number }) => {
+    on: (event: string, handler: (chunk?: Uint8Array) => void) => void;
+    fontSize: (size: number) => { text: (value: string) => void };
+    text: (value: string) => void;
+    moveDown: (value: number) => void;
+    end: () => void;
+  };
+
+  return await new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(Buffer.from(chunk ?? [])));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.fontSize(18).text("Shop Boost Analysis Report");
+    doc.moveDown(0.8);
+    doc.fontSize(11).text(`Generated: ${new Date().toISOString()}`);
+    doc.moveDown(1.2);
+
+    const roi = asRecord(report.roi_summary);
+    const impact = asRecord(report.impact_comparison);
+    const blockers = asRecord(report.blockers);
+    const trust = asRecord(report.trust_statement);
+
+    doc.fontSize(13).text("ROI summary");
+    doc.fontSize(10).text(`Estimated monthly impact: $${asNumber(roi.estimated_monthly_impact).toLocaleString()}`);
+    doc.text(`Approval speed gain: ${asNumber(roi.approval_speed_gain)}%`);
+    doc.text(`Labor recovery: ${asNumber(roi.labor_recovery_hours)} hrs/month`);
+    doc.moveDown(1);
+
+    doc.fontSize(13).text("Before vs after");
+    doc.fontSize(10).text(`Approval rate: ${asNumber(asRecord(impact.before).approval_rate)}% → ${asNumber(asRecord(impact.after).approval_rate)}%`);
+    doc.text(`Avg completion: ${asNumber(asRecord(impact.before).avg_job_completion_time)}d → ${asNumber(asRecord(impact.after).avg_job_completion_time)}d`);
+    doc.text(`Parts sync: ${asNumber(asRecord(impact.before).parts_sync_rate)}% → ${asNumber(asRecord(impact.after).parts_sync_rate)}%`);
+    doc.moveDown(1);
+
+    doc.fontSize(13).text("Blockers");
+    doc.fontSize(10).text(`Review queue: ${asNumber(blockers.review_queue)}`);
+    doc.text(`Likely blockers: ${asNumber(blockers.likely_blockers)}`);
+    doc.moveDown(1);
+
+    doc.fontSize(13).text("Trust statement");
+    doc.fontSize(10).text(String(trust.message ?? "Projection is based on uploaded data and conservative assumptions."));
+    doc.end();
+  });
+}
+
 export async function GET(req: Request, context: RouteContext) {
   const { id } = await context.params;
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
@@ -99,11 +153,33 @@ export async function GET(req: Request, context: RouteContext) {
       checks: asRecord(integrity.checks),
       integrity_errors: Array.isArray(integrity.integrity_errors) ? integrity.integrity_errors : [],
     },
+    roi_summary: asRecord(migrationProgress.roi ?? basics.roi_summary),
+    impact_comparison: asRecord(migrationProgress.impactComparison ?? basics.impact_comparison),
+    blockers: {
+      review_queue: asNumber(importSummary.reviewQueueCount ?? migrationProgress.reviewQueueCount),
+      likely_blockers: asNumber(importSummary.blockerCount ?? migrationProgress.blockerCount),
+    },
+    trust_statement: {
+      confidence_score: asNumber(migrationProgress.confidenceScore ?? basics.confidence_score),
+      message:
+        "Based on your uploaded data and conservative shop patterns. Actual value depends on activation, data cleanup, and team adoption.",
+    },
     review_outcomes: reviewOutcomes,
   };
 
   const url = new URL(req.url);
   const download = url.searchParams.get("download") === "1";
+  const pdf = url.searchParams.get("pdf") === "1";
+  if (pdf) {
+    const pdfBuffer = await renderPdf(report as Record<string, unknown>);
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename=\"shop-boost-report-${intake.id}.pdf\"`,
+      },
+    });
+  }
   if (download) {
     return new NextResponse(JSON.stringify(report, null, 2), {
       status: 200,
