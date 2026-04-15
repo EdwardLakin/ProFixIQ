@@ -12,7 +12,7 @@ type ClaimBody = {
 
 type ClaimSuccessResponse = {
   ok: true;
-  snapshot: unknown; // ShopHealthSnapshot, but API layer stays generic
+  analysis: unknown;
 };
 
 type ClaimErrorResponse = {
@@ -21,6 +21,12 @@ type ClaimErrorResponse = {
 };
 
 type ClaimResponse = ClaimSuccessResponse | ClaimErrorResponse;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 export async function POST(
   req: NextRequest,
@@ -59,7 +65,7 @@ export async function POST(
       );
     }
 
-    // 2) Load demo snapshot
+    // 2) Load demo analysis payload
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .select("id, snapshot")
@@ -74,12 +80,14 @@ export async function POST(
       );
     }
 
-    const snapshot = demoRow.snapshot as { narrativeSummary?: string | null } | null;
-
+    const rawPayload = asRecord(demoRow.snapshot);
+    const maybeSnapshot = asRecord(rawPayload.snapshot);
     const summary =
-      snapshot && typeof snapshot.narrativeSummary === "string"
-        ? snapshot.narrativeSummary
-        : null;
+      typeof maybeSnapshot.narrativeSummary === "string"
+        ? maybeSnapshot.narrativeSummary
+        : typeof rawPayload.narrativeSummary === "string"
+          ? rawPayload.narrativeSummary
+          : null;
 
     // 3) Insert lead row
     const { error: leadErr } = await supabase
@@ -109,7 +117,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { ok: true, snapshot: demoRow.snapshot },
+      { ok: true, analysis: demoRow.snapshot },
       { status: 200 },
     );
   } catch (err) {

@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState, type FormEvent } from "react";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
-import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
+import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
@@ -21,11 +21,17 @@ type QuestionnaireState = {
 
 type DemoStep = "form" | "analyzing" | "preview" | "unlocked";
 
+type InstantAnalysisPayload = {
+  snapshot: ShopHealthSnapshot;
+  preflightReport: ShopBoostPreflightReport;
+};
+
 type RunResponse =
   | {
       ok: true;
       demoId: string;
-      snapshot: ShopHealthSnapshot;
+      intakeId: string;
+      analysis: InstantAnalysisPayload;
     }
   | {
       ok: false;
@@ -35,29 +41,61 @@ type RunResponse =
 type ClaimResponse =
   | {
       ok: true;
-      snapshot: ShopHealthSnapshot;
+      analysis: InstantAnalysisPayload;
     }
   | {
       ok: false;
       error: string;
     };
 
-/**
- * Theme rules for this page:
- * - Light borders + glass cards
- * - Burnt copper accent ONLY for CTAs + small title accents
- * - No orange 400/500 classes
- */
+
+
+function buildFallbackPreflight(): ShopBoostPreflightReport {
+  return {
+    totals: {
+      detectedRecords: 0,
+      estimatedAutoImportCoverage: 0,
+      likelyAutoImportCount: 0,
+      likelyReviewNeededCount: 0,
+      likelyBlockerCount: 0,
+    },
+    confidence: {
+      score: 0,
+      label: "low",
+      readiness: "NOT_READY",
+      integrityStatus: "not_ready",
+    },
+    blockers: [],
+    domains: [],
+    projectedPreparation: ["Foundational import mapping and identifier checks"],
+    reviewNotes: ["Nothing has been imported yet — this is a preview only."],
+  };
+}
+
+function normalizeAnalysisPayload(payload: unknown): InstantAnalysisPayload | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const rec = payload as Record<string, unknown>;
+  const maybeSnapshot = rec.snapshot;
+  if (!maybeSnapshot || typeof maybeSnapshot !== "object" || Array.isArray(maybeSnapshot)) {
+    return null;
+  }
+  const preflight =
+    rec.preflightReport && typeof rec.preflightReport === "object" && !Array.isArray(rec.preflightReport)
+      ? (rec.preflightReport as ShopBoostPreflightReport)
+      : buildFallbackPreflight();
+
+  return {
+    snapshot: maybeSnapshot as ShopHealthSnapshot,
+    preflightReport: preflight,
+  };
+}
+
 const THEME = {
   page: "min-h-screen bg-black text-white",
   header: "border-b border-white/5 bg-black/60 px-4 py-5 sm:px-6",
   max: "mx-auto max-w-6xl",
   glassCard:
     "rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_18px_45px_rgba(0,0,0,0.75)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-  glassCardSoft:
-    "rounded-2xl border border-white/10 bg-black/35 backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-  glassRow:
-    "rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
   label: "text-[11px] font-medium text-neutral-300",
   help: "text-[11px] text-neutral-400",
   input:
@@ -66,23 +104,19 @@ const THEME = {
     "w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
   badge:
     "inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] text-neutral-300",
-  // Burnt copper CTA gradient (only place we use the accent heavily)
   cta:
     "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))] text-black",
   ctaHover: "hover:brightness-110",
   ctaDisabled: "disabled:cursor-not-allowed disabled:opacity-60",
   subtleBtn:
     "inline-flex items-center justify-center rounded-md border border-white/10 bg-black/40 px-4 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/[0.04] hover:border-white/20",
-  // Copper text accent (small usage: titles / emphasis)
   copperText: "text-[rgba(214,176,150,0.95)]",
-  copperSoft: "text-[rgba(214,176,150,0.75)]",
   copperMuted: "text-[rgba(210,210,210,0.75)]",
 };
 
 export default function InstantShopAnalysisPage() {
   const [shopName, setShopName] = useState("");
   const [country, setCountry] = useState<Country>("US");
-
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireState>({
     specialty: "general",
     hasFleets: false,
@@ -90,12 +124,12 @@ export default function InstantShopAnalysisPage() {
     bayCount: "",
     avgMonthlyRos: "",
   });
-
   const [uploadFiles, setUploadFiles] = useState<Partial<Record<ShopBoostUploadDatasetKey, File>>>({});
 
   const [step, setStep] = useState<DemoStep>("form");
   const [demoId, setDemoId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
+  const [intakeId, setIntakeId] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<InstantAnalysisPayload | null>(null);
 
   const [runError, setRunError] = useState<string | null>(null);
   const [runLoading, setRunLoading] = useState(false);
@@ -107,24 +141,25 @@ export default function InstantShopAnalysisPage() {
   const handleQuestionnaireChange =
     <K extends keyof QuestionnaireState>(key: K) =>
     (value: QuestionnaireState[K]) => {
-      setQuestionnaire((prev) => ({
-        ...prev,
-        [key]: value,
-      }));
+      setQuestionnaire((prev) => ({ ...prev, [key]: value }));
     };
 
-  const goToPlans = () => {
-    const base = "/compare-plans";
-    const url = demoId ? `${base}?demoId=${encodeURIComponent(demoId)}` : base;
-    window.location.href = url;
+  const goToSignup = () => {
+    const next = demoId
+      ? `/compare-plans?demoId=${encodeURIComponent(demoId)}${
+          intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""
+        }`
+      : "/compare-plans";
+    window.location.href = `/auth/signup?next=${encodeURIComponent(next)}`;
   };
 
   const handleRun = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setRunError(null);
     setClaimError(null);
-    setSnapshot(null);
+    setAnalysis(null);
     setDemoId(null);
+    setIntakeId(null);
 
     if (!shopName.trim()) {
       setRunError("Please enter your shop name.");
@@ -135,7 +170,7 @@ export default function InstantShopAnalysisPage() {
       (entry): entry is [ShopBoostUploadDatasetKey, File] => !!entry[1],
     );
     if (selectedEntries.length === 0) {
-      setRunError("Upload at least one CSV so we have some history to scan.");
+      setRunError("Upload at least one CSV so we can run an import analysis.");
       return;
     }
 
@@ -162,14 +197,22 @@ export default function InstantShopAnalysisPage() {
         const message =
           !json.ok && json.error
             ? json.error
-            : "We couldn't run the analysis. Please try again.";
+            : "We couldn't run the import analysis. Please try again.";
         setRunError(message);
         setStep("form");
         return;
       }
 
       setDemoId(json.demoId);
-      setSnapshot(json.snapshot);
+      setIntakeId(json.intakeId);
+      const normalized = normalizeAnalysisPayload(json.analysis);
+      if (!normalized) {
+        setRunError("Received an invalid analysis payload. Please retry with a CSV export.");
+        setStep("form");
+        return;
+      }
+
+      setAnalysis(normalized);
       setStep("preview");
     } catch (err) {
       const message =
@@ -186,13 +229,13 @@ export default function InstantShopAnalysisPage() {
   const handleClaim = async () => {
     setClaimError(null);
 
-    if (!demoId || !snapshot) {
+    if (!demoId || !analysis) {
       setClaimError("Run the analysis first.");
       return;
     }
 
     if (!email.trim()) {
-      setClaimError("Enter your email to unlock your full analysis.");
+      setClaimError("Enter your email to unlock the full import readiness report.");
       return;
     }
 
@@ -211,18 +254,24 @@ export default function InstantShopAnalysisPage() {
         const message =
           !json.ok && json.error
             ? json.error
-            : "We couldn't unlock your analysis. Please try again.";
+            : "We couldn't unlock your report. Please try again.";
         setClaimError(message);
         return;
       }
 
-      setSnapshot(json.snapshot);
+      const normalized = normalizeAnalysisPayload(json.analysis);
+      if (!normalized) {
+        setClaimError("The unlocked report payload was invalid. Please run analysis again.");
+        return;
+      }
+
+      setAnalysis(normalized);
       setStep("unlocked");
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : "Unexpected error while unlocking the analysis.";
+          : "Unexpected error while unlocking the report.";
       setClaimError(message);
     } finally {
       setClaimLoading(false);
@@ -243,53 +292,35 @@ export default function InstantShopAnalysisPage() {
 
   return (
     <div className={THEME.page}>
-      {/* Header / hero */}
       <header className={THEME.header}>
         <div className={THEME.max}>
           <div className={[THEME.glassCard, "px-5 py-5"].join(" ")}>
             <div className="flex flex-col items-center gap-2 text-center">
-              <p className="text-[11px] uppercase tracking-[0.25em] text-neutral-300">
-                ProFixIQ Demo
-              </p>
-
-              <h1
-                className="text-2xl sm:text-3xl text-white"
-                style={{ fontFamily: "var(--font-blackops)" }}
-              >
-                Instant <span className={THEME.copperText}>Shop Analysis</span>
+              <p className="text-[11px] uppercase tracking-[0.25em] text-neutral-300">ProFixIQ</p>
+              <h1 className="text-2xl sm:text-3xl text-white" style={{ fontFamily: "var(--font-blackops)" }}>
+                Instant <span className={THEME.copperText}>Import Analysis</span>
               </h1>
-
               <p className={`max-w-2xl text-xs sm:text-sm ${THEME.copperMuted}`}>
-                Drop in a couple of exports and let AI show you what your shop is already great
-                at — in one live snapshot.
+                This preview shows how ProFixIQ expects to interpret your data. Nothing has been
+                imported yet.
               </p>
-
-              <div className={THEME.badge}>No login. One free analysis per email.</div>
+              <div className={THEME.badge}>No login required for the preview analysis.</div>
             </div>
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
-        {/* Left column: form */}
         <div className="flex-1 space-y-6">
           <form onSubmit={handleRun} className="space-y-6">
-            {/* Shop basics */}
             <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-white">
-                    Tell us about your{" "}
-                    <span className={THEME.copperText}>shop</span>
+                    Shop profile <span className={THEME.copperText}>context</span>
                   </h2>
-                  <p className={THEME.help}>
-                    Just enough detail so the snapshot feels like it was built for you, not a
-                    template.
-                  </p>
+                  <p className={THEME.help}>We use this to tune interpretation and recommendations.</p>
                 </div>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-neutral-300">
-                  Step 1 — basics
-                </span>
               </div>
 
               <div className="space-y-3 text-xs">
@@ -317,7 +348,6 @@ export default function InstantShopAnalysisPage() {
                   </select>
                 </div>
 
-                {/* Specialty */}
                 <div className="space-y-1">
                   <label className={THEME.label}>What best describes your work?</label>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -333,9 +363,7 @@ export default function InstantShopAnalysisPage() {
                             )
                           }
                           className={[
-                            "rounded-md border px-3 py-2 text-left text-[11px] transition",
-                            "border-white/10",
-                            "bg-black/40",
+                            "rounded-md border px-3 py-2 text-left text-[11px] transition border-white/10 bg-black/40",
                             active
                               ? "border-[rgba(150,92,60,0.55)] bg-white/[0.05] text-white"
                               : "text-neutral-200 hover:border-white/20 hover:bg-white/[0.04]",
@@ -348,26 +376,12 @@ export default function InstantShopAnalysisPage() {
                   </div>
                 </div>
 
-                {/* Quick metrics */}
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <NumberInput
-                    label="How many techs?"
-                    value={questionnaire.techCount}
-                    onChange={handleQuestionnaireChange("techCount")}
-                  />
-                  <NumberInput
-                    label="How many bays?"
-                    value={questionnaire.bayCount}
-                    onChange={handleQuestionnaireChange("bayCount")}
-                  />
-                  <NumberInput
-                    label="Approx. repair orders per month?"
-                    value={questionnaire.avgMonthlyRos}
-                    onChange={handleQuestionnaireChange("avgMonthlyRos")}
-                  />
+                  <NumberInput label="How many techs?" value={questionnaire.techCount} onChange={handleQuestionnaireChange("techCount")} />
+                  <NumberInput label="How many bays?" value={questionnaire.bayCount} onChange={handleQuestionnaireChange("bayCount")} />
+                  <NumberInput label="Approx. repair orders per month?" value={questionnaire.avgMonthlyRos} onChange={handleQuestionnaireChange("avgMonthlyRos")} />
                 </div>
 
-                {/* Fleets toggle */}
                 <YesNoRow
                   label="Do you work with fleets today (company trucks, rentals, etc.)?"
                   value={questionnaire.hasFleets}
@@ -376,22 +390,14 @@ export default function InstantShopAnalysisPage() {
               </div>
             </section>
 
-            {/* File uploads */}
             <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold text-white">
-                    Upload what you already have{" "}
-                    <span className={THEME.copperText}>(CSV)</span>
-                  </h2>
-                  <p className={THEME.help}>
-                    Even one export is enough for a meaningful snapshot. More files = better
-                    insights.
-                  </p>
-                </div>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-neutral-300">
-                  Step 2 — history
-                </span>
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-white">
+                  Upload exports for <span className={THEME.copperText}>import analysis</span>
+                </h2>
+                <p className={THEME.help}>
+                  We estimate auto-import coverage, review queue load, and potential blockers.
+                </p>
               </div>
 
               <div className="space-y-3 text-xs">
@@ -415,13 +421,12 @@ export default function InstantShopAnalysisPage() {
                 ))}
 
                 <p className={THEME.help}>
-                  We use AI to interpret columns, so exports don&apos;t need to be perfect. Data
-                  stays private to your demo shop.
+                  This is a preflight preview. Full migration and materialization run only after signup,
+                  activation, and onboarding.
                 </p>
               </div>
             </section>
 
-            {/* Run button + status */}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
@@ -433,12 +438,12 @@ export default function InstantShopAnalysisPage() {
                   THEME.ctaDisabled,
                 ].join(" ")}
               >
-                {isAnalyzing ? "Analyzing your shop…" : "Run Instant Shop Analysis"}
+                {isAnalyzing ? "Analyzing importability…" : "Run Instant Shop Analysis"}
               </button>
 
               {step === "analyzing" && (
                 <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-neutral-300">
-                  Reading your files and building a live Shop Health Snapshot…
+                  Running parser + matching heuristics to build your import readiness report…
                 </span>
               )}
 
@@ -447,133 +452,104 @@ export default function InstantShopAnalysisPage() {
           </form>
         </div>
 
-        {/* Right column: explainer */}
         <aside className="w-full space-y-4 lg:w-72">
           <div className={[THEME.glassCard, "p-4"].join(" ")}>
-            <h3 className="mb-2 text-sm font-semibold text-white">
-              How this demo{" "}
-              <span className={THEME.copperText}>works</span>
-            </h3>
-            <ol className="space-y-1 text-[11px] text-neutral-400">
-              <li>1. You upload a couple of CSV exports (no login).</li>
-              <li>2. ProFixIQ analyzes your history with AI.</li>
-              <li>3. We build a Shop Health Snapshot just for your shop.</li>
-              <li>4. Enter email once to unlock the full report.</li>
-            </ol>
+            <h3 className="mb-2 text-sm font-semibold text-white">What this report includes</h3>
+            <ul className="space-y-1 text-[11px] text-neutral-400">
+              <li>• Estimated auto-import coverage</li>
+              <li>• Records likely needing review</li>
+              <li>• Potential blockers before safe materialization</li>
+              <li>• Confidence/readiness signal aligned to Shop Boost logic</li>
+            </ul>
           </div>
 
           <div className={[THEME.glassCard, "p-4"].join(" ")}>
-            <h3 className="mb-2 text-sm font-semibold text-white">
-              What you&apos;ll{" "}
-              <span className={THEME.copperText}>see</span>
-            </h3>
-            <ul className="space-y-1 text-[11px] text-neutral-400">
-              <li>• Top repairs by volume and revenue</li>
-              <li>• Potential comeback / warranty risks</li>
-              <li>• Fleet opportunities (if you work on fleets)</li>
-              <li>• AI-suggested menus and inspections</li>
-            </ul>
+            <h3 className="mb-2 text-sm font-semibold text-white">Flow after preview</h3>
+            <ol className="space-y-1 text-[11px] text-neutral-400">
+              <li>1. Review importability preview</li>
+              <li>2. Continue to signup + plan selection</li>
+              <li>3. Activate billing / trial</li>
+              <li>4. Run full Shop Boost migration + materialization</li>
+            </ol>
           </div>
         </aside>
       </main>
 
-      {/* Preview + unlock zone */}
-      {snapshot && (step === "preview" || step === "unlocked") && (
+      {analysis && (step === "preview" || step === "unlocked") && (
         <div className="mx-auto max-w-6xl px-4 pb-10 pt-2 sm:px-6">
           <section className="space-y-4">
-            <div className="relative">
-              {/* Snapshot itself */}
-              <div
-                className={
-                  step === "preview"
-                    ? "pointer-events-none select-none blur-sm opacity-60"
-                    : ""
-                }
-              >
-                <ShopHealthSnapshotView snapshot={snapshot} />
-              </div>
-
-              {/* Overlay for preview state */}
-              {step === "preview" && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <div
-                    className={[
-                      "pointer-events-auto max-w-md rounded-2xl border border-white/15 bg-black/70 px-5 py-4 text-center backdrop-blur-xl",
-                      "shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
-                      "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-                    ].join(" ")}
-                  >
-                    <p className="text-xs font-semibold text-white">
-                      See your strengths —{" "}
-                      <span className={THEME.copperText}>enter email</span> to reveal insights
-                    </p>
-                    <p className="mt-1 text-[11px] text-neutral-400">
-                      We&apos;ll show your full AI snapshot and send you a copy so you can revisit
-                      it later. One free analysis per email.
-                    </p>
-
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        placeholder="you@example.com"
-                        className={[
-                          "flex-1 rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
-                        ].join(" ")}
-                      />
-
-                      <button
-                        type="button"
-                        onClick={handleClaim}
-                        disabled={claimLoading}
-                        className={[
-                          "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
-                          THEME.cta,
-                          THEME.ctaHover,
-                          THEME.ctaDisabled,
-                        ].join(" ")}
-                      >
-                        {claimLoading ? "Unlocking…" : "Unlock my analysis"}
-                      </button>
-                    </div>
-
-                    {claimError ? (
-                      <p className="mt-2 text-[11px] text-red-400">{claimError}</p>
-                    ) : null}
-                  </div>
-                </div>
-              )}
+            <div className={step === "preview" ? "pointer-events-none select-none blur-[2px] opacity-60" : ""}>
+              <PreflightTrustReport report={analysis.preflightReport} />
             </div>
 
-            {/* Post-unlock CTAs (PLAN-GATED) */}
+            {step === "preview" && (
+              <div className="-mt-20 flex justify-center">
+                <div className="pointer-events-auto max-w-lg rounded-2xl border border-white/15 bg-black/75 px-5 py-4 text-center backdrop-blur-xl">
+                  <p className="text-xs font-semibold text-white">
+                    Unlock the full import readiness report
+                  </p>
+                  <p className="mt-1 text-[11px] text-neutral-400">
+                    We&apos;ll reveal full confidence details and save your analysis handoff for
+                    signup.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@example.com"
+                      className="flex-1 rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={handleClaim}
+                      disabled={claimLoading}
+                      className={[
+                        "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
+                        THEME.cta,
+                        THEME.ctaHover,
+                        THEME.ctaDisabled,
+                      ].join(" ")}
+                    >
+                      {claimLoading ? "Unlocking…" : "Unlock report"}
+                    </button>
+                  </div>
+
+                  {claimError ? <p className="mt-2 text-[11px] text-red-400">{claimError}</p> : null}
+                </div>
+              </div>
+            )}
+
             {step === "unlocked" && (
               <div className={[THEME.glassCard, "mt-4 flex flex-wrap items-center gap-3 px-4 py-3"].join(" ")}>
                 <div className="flex-1 text-[11px]">
                   <p className="font-semibold text-white">
-                    Want this live inside{" "}
-                    <span className={THEME.copperText}>ProFixIQ</span>?
+                    Start free trial and import this data
                   </p>
                   <p className="mt-0.5 text-[11px] text-neutral-400">
-                    Choose a plan to continue — we don&apos;t create accounts without a plan.
+                    Continue with signup, select a plan, and we&apos;ll run full Shop Boost migration
+                    using this analysis context.
                   </p>
+                  {demoId ? (
+                    <p className="mt-1 text-[10px] text-neutral-500">
+                      Analysis reference: {demoId}
+                      {intakeId ? ` • Intake: ${intakeId}` : ""}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={goToPlans}
-                    className={[
-                      "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
-                      THEME.cta,
-                      THEME.ctaHover,
-                    ].join(" ")}
-                  >
-                    Choose a plan to continue
+                  <button type="button" onClick={goToSignup} className={[
+                    "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
+                    THEME.cta,
+                    THEME.ctaHover,
+                  ].join(" ")}>
+                    Continue with signup
                   </button>
 
-                  <button type="button" onClick={goToPlans} className={THEME.subtleBtn}>
-                    View plans &amp; pricing
+                  <button type="button" onClick={goToSignup} className={THEME.subtleBtn}>
+                    Choose plan & activate
                   </button>
                 </div>
               </div>
@@ -581,6 +557,99 @@ export default function InstantShopAnalysisPage() {
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) {
+  const confidenceTone =
+    report.confidence.label === "high"
+      ? "text-emerald-300"
+      : report.confidence.label === "medium"
+        ? "text-amber-300"
+        : "text-rose-300";
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl sm:p-6">
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-[11px] text-cyan-100">
+        Nothing has been imported yet. This preview shows how ProFixIQ expects to interpret your
+        data before activation.
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Estimated records detected" value={report.totals.detectedRecords.toLocaleString()} />
+        <Metric label="Estimated auto-import coverage" value={`${report.totals.estimatedAutoImportCoverage}%`} />
+        <Metric label="Records likely needing review" value={report.totals.likelyReviewNeededCount.toLocaleString()} />
+        <Metric label="Potential blockers" value={report.totals.likelyBlockerCount.toLocaleString()} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Import confidence</p>
+          <p className={`mt-2 text-2xl font-semibold ${confidenceTone}`}>{report.confidence.score}%</p>
+          <p className="mt-1 text-[11px] text-neutral-300">Readiness: {report.confidence.readiness}</p>
+          <p className="text-[11px] text-neutral-400">Integrity expectation: {report.confidence.integrityStatus}</p>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Potential blockers</p>
+          {report.blockers.length > 0 ? (
+            <ul className="mt-2 space-y-2 text-[11px] text-neutral-200">
+              {report.blockers.map((blocker) => (
+                <li key={blocker.code} className="rounded-md border border-rose-500/20 bg-rose-500/10 px-3 py-2">
+                  <div className="font-semibold">{blocker.count.toLocaleString()} • {blocker.code.replace(/_/g, " ")}</div>
+                  <div className="text-neutral-300">{blocker.guidance}</div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[11px] text-emerald-300">No blocker patterns detected in this preview.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+        <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">By dataset domain</p>
+        <div className="mt-3 space-y-2">
+          {report.domains.map((domain) => (
+            <div key={domain.domain} className="grid grid-cols-5 gap-2 rounded-md border border-white/10 bg-black/40 px-3 py-2 text-[11px]">
+              <div className="col-span-2 text-white">{domain.domain}</div>
+              <div className="text-neutral-300">{domain.detected.toLocaleString()} detected</div>
+              <div className="text-emerald-300">{domain.likelyAutoImport.toLocaleString()} auto</div>
+              <div className="text-amber-300">{domain.likelyNeedsReview.toLocaleString()} review</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">What ProFixIQ can prepare</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-neutral-200">
+            {report.projectedPreparation.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Review notes</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-neutral-300">
+            {report.reviewNotes.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3">
+      <p className="text-[11px] text-neutral-400">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
     </div>
   );
 }
@@ -619,25 +688,25 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
       <div className="inline-flex gap-1 rounded-full border border-white/10 bg-black/40 p-1 text-[10px]">
         <button
           type="button"
-          onClick={() => onChange(true)}
           className={[
-            "rounded-full px-2 py-0.5 transition",
+            "rounded-full px-2 py-1 transition",
             value
-              ? "bg-[rgba(214,176,150,0.90)] text-black"
-              : "text-neutral-300 hover:text-white",
+              ? "bg-[rgba(150,92,60,0.9)] text-white"
+              : "text-neutral-300 hover:bg-white/[0.05]",
           ].join(" ")}
+          onClick={() => onChange(true)}
         >
           Yes
         </button>
         <button
           type="button"
-          onClick={() => onChange(false)}
           className={[
-            "rounded-full px-2 py-0.5 transition",
+            "rounded-full px-2 py-1 transition",
             !value
-              ? "bg-white/[0.08] text-white"
-              : "text-neutral-300 hover:text-white",
+              ? "bg-[rgba(150,92,60,0.9)] text-white"
+              : "text-neutral-300 hover:bg-white/[0.05]",
           ].join(" ")}
+          onClick={() => onChange(false)}
         >
           No
         </button>
@@ -651,61 +720,32 @@ type FileRowProps = {
   label: string;
   description: string;
   file: File | null;
-  accept: string;
+  accept?: string;
   onChange: (file: File | null) => void;
 };
 
 function FileRow({ id, label, description, file, accept, onChange }: FileRowProps) {
   return (
-    <div className="space-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] text-neutral-200">{label}</p>
-          <p className="text-[10px] text-neutral-400">{description}</p>
+    <label htmlFor={id} className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 hover:border-white/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[12px] font-medium text-white">{label}</p>
+          <p className="mt-0.5 text-[11px] text-neutral-400">{description}</p>
+          {file ? <p className="mt-1 text-[10px] text-emerald-300">Selected: {file.name}</p> : null}
         </div>
-        {file ? (
-          <span className="max-w-[160px] truncate text-[10px] text-[rgba(214,176,150,0.75)]">
-            {file.name}
-          </span>
-        ) : null}
+
+        <span className="rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] text-neutral-300">
+          {file ? "Replace" : "Upload"}
+        </span>
       </div>
 
-      <div className="flex items-center gap-3">
-        <label
-          htmlFor={id}
-          className={[
-            "inline-flex cursor-pointer items-center rounded-md border px-3 py-1.5 text-[11px] font-semibold transition",
-            "border-white/10 bg-black/40 text-[rgba(214,176,150,0.95)]",
-            "hover:border-white/20 hover:bg-white/[0.04]",
-          ].join(" ")}
-        >
-          Choose CSV
-        </label>
-        <input
-          id={id}
-          type="file"
-          accept={accept}
-          className="hidden"
-          onChange={(event) => {
-            const selectedFile = event.target.files?.[0] ?? null;
-            onChange(selectedFile);
-          }}
-        />
-        {file ? (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="inline-flex cursor-pointer items-center rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-white/[0.04]"
-          >
-            Remove
-          </button>
-        ) : null}
-        {!file ? (
-          <span className="text-[10px] text-neutral-500">
-            Optional, but highly recommended
-          </span>
-        ) : null}
-      </div>
-    </div>
+      <input
+        id={id}
+        type="file"
+        accept={accept}
+        className="sr-only"
+        onChange={(event) => onChange(event.target.files?.[0] ?? null)}
+      />
+    </label>
   );
 }
