@@ -23,6 +23,12 @@ type IntakeState = {
     lastError?: string | null;
     resultSummary?: Record<string, unknown>;
     domainSummaries?: Record<string, DomainSummary>;
+    total_rows?: number;
+    processed_rows?: number;
+    success_count?: number;
+    review_count?: number;
+    failed_count?: number;
+    completionState?: "COMPLETED_CLEAN" | "COMPLETED_WITH_REVIEW" | "PARTIAL_FAILURE";
   } | null;
 };
 
@@ -83,6 +89,15 @@ export default function ShopBoostActivationPanel() {
 
   const result = intake.progress?.resultSummary ?? {};
   const domains = intake.progress?.domainSummaries ?? {};
+  const reviewCount = Number(
+    intake.progress?.review_count ?? (result.rowResults as { reviewCount?: number } | undefined)?.reviewCount ?? 0,
+  );
+  const completionState =
+    intake.progress?.completionState ??
+    ((result.completionState as "COMPLETED_CLEAN" | "COMPLETED_WITH_REVIEW" | "PARTIAL_FAILURE" | undefined) ??
+      "COMPLETED_CLEAN");
+  const reviewByDomain =
+    ((result.rowResults as { byDomain?: Record<string, { review?: number }> } | undefined)?.byDomain ?? {}) || {};
 
   return (
     <section className="mb-2.5 rounded-xl border border-[var(--brand-accent,#E39A6E)]/30 bg-[linear-gradient(140deg,rgba(22,12,8,0.72),rgba(7,12,25,0.86))] p-3">
@@ -128,6 +143,26 @@ export default function ShopBoostActivationPanel() {
         <div className="rounded-md border border-white/10 bg-black/20 p-2">
           <div className="text-neutral-400">Work history imported</div>
           <div className="text-sm font-semibold text-white">{Number(result.workOrdersImported ?? 0).toLocaleString()}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
+        <div className="font-medium text-neutral-100">
+          {completionState === "COMPLETED_CLEAN" ? "Import fully complete" : "Import completed with issues"}
+        </div>
+        <div className="mt-1">{reviewCount.toLocaleString()} items need review</div>
+        {reviewCount > 0 ? (
+          <div className="mt-1 grid gap-1 md:grid-cols-2">
+            <div>Customers: {Number(reviewByDomain.customers?.review ?? 0).toLocaleString()}</div>
+            <div>Vehicles: {Number(reviewByDomain.vehicles?.review ?? 0).toLocaleString()}</div>
+            <div>Parts: {Number(reviewByDomain.parts?.review ?? 0).toLocaleString()}</div>
+            <div>History: {Number(reviewByDomain.history?.review ?? 0).toLocaleString()}</div>
+          </div>
+        ) : null}
+        <div className="mt-2">
+          <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">
+            Review Data Issues
+          </Link>
         </div>
       </div>
 

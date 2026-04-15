@@ -23,6 +23,13 @@ export type IntakeProgressState = {
   lastError?: string | null;
   domainSummaries?: Record<string, IntakeDomainSummary>;
   resultSummary?: Record<string, unknown>;
+  total_rows?: number;
+  processed_rows?: number;
+  success_count?: number;
+  review_count?: number;
+  failed_count?: number;
+  domains?: Record<string, { success: number; review: number; failed: number }>;
+  completionState?: "COMPLETED_CLEAN" | "COMPLETED_WITH_REVIEW" | "PARTIAL_FAILURE";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,6 +58,20 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
     resultSummary: isRecord(migration.resultSummary)
       ? (migration.resultSummary as Record<string, unknown>)
       : undefined,
+    total_rows: typeof migration.total_rows === "number" ? migration.total_rows : undefined,
+    processed_rows: typeof migration.processed_rows === "number" ? migration.processed_rows : undefined,
+    success_count: typeof migration.success_count === "number" ? migration.success_count : undefined,
+    review_count: typeof migration.review_count === "number" ? migration.review_count : undefined,
+    failed_count: typeof migration.failed_count === "number" ? migration.failed_count : undefined,
+    domains: isRecord(migration.domains)
+      ? (migration.domains as Record<string, { success: number; review: number; failed: number }>)
+      : undefined,
+    completionState:
+      migration.completionState === "COMPLETED_CLEAN" ||
+      migration.completionState === "COMPLETED_WITH_REVIEW" ||
+      migration.completionState === "PARTIAL_FAILURE"
+        ? migration.completionState
+        : undefined,
   };
 }
 

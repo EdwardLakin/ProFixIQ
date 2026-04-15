@@ -64,9 +64,21 @@ export type ShopBoostImportSummary = {
     inspectionSuggestions: number;
   };
   partsPipeline?: PartsPipelineSummary;
+  rowResults: {
+    totalRows: number;
+    processedRows: number;
+    successCount: number;
+    reviewCount: number;
+    failedCount: number;
+    byDomain: Record<string, { success: number; review: number; failed: number }>;
+  };
+  completionState: "COMPLETED_CLEAN" | "COMPLETED_WITH_REVIEW" | "PARTIAL_FAILURE";
 };
 
 type CsvRow = Record<string, string>;
+type RowDomain = "customer" | "vehicle" | "part" | "work_order" | "invoice" | "history";
+type MatchStatus = "matched_existing" | "created_new" | "partial_match" | "unmatched" | "invalid";
+type MatchConfidence = "high" | "medium" | "low";
 type UploadManifestRecord = Partial<
   Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
 >;
@@ -153,6 +165,28 @@ function sha1(text: string): string {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function confidenceScore(confidence: MatchConfidence): number {
+  if (confidence === "high") return 1;
+  if (confidence === "medium") return 0.65;
+  return 0.3;
+}
+
+function toTokens(value: string): Set<string> {
+  return new Set(
+    normalizeText(value)
+      .split(" ")
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2),
+  );
+}
+
+function nameSimilarity(a: string | null | undefined, b: string | null | undefined): number {
+  const ta = toTokens(a ?? "");
+  const tb = toTokens(b ?? "");
+  if (ta.size === 0 || tb.size === 0) return 0;
+  return jaccardSimilarity(ta, tb);
 }
 
 // ✅ ROLE PATCH (only change)
@@ -725,6 +759,59 @@ async function stageSupplementalUploads(args: {
   }
 }
 
+async function insertRowResult(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  sourceFile: string;
+  sourceRowIndex: number;
+  rawPayload: CsvRow;
+  normalizedPayload: Record<string, unknown>;
+  targetDomain: RowDomain;
+  matchStatus: MatchStatus;
+  matchConfidence: MatchConfidence;
+  matchDetails?: Record<string, unknown> | null;
+  errorReason?: string | null;
+  reviewRequired: boolean;
+}): Promise<void> {
+  await (args.supabase as any).from("shop_boost_row_results").insert({
+    shop_id: args.shopId,
+    intake_id: args.intakeId,
+    source_file: args.sourceFile,
+    source_row_index: args.sourceRowIndex,
+    raw_payload: args.rawPayload,
+    normalized_payload: args.normalizedPayload,
+    target_domain: args.targetDomain,
+    match_status: args.matchStatus,
+    match_confidence: confidenceScore(args.matchConfidence),
+    match_details: args.matchDetails ?? {},
+    error_reason: args.errorReason ?? null,
+    review_required: args.reviewRequired,
+  });
+}
+
+async function createReviewItem(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  domain: RowDomain;
+  issueType: "unmatched" | "conflict" | "invalid" | "missing_dependency";
+  summary: string;
+  rawPayload: Record<string, unknown>;
+  suggestedMatches?: unknown;
+}): Promise<void> {
+  await (args.supabase as any).from("shop_boost_review_items").insert({
+    shop_id: args.shopId,
+    intake_id: args.intakeId,
+    domain: args.domain,
+    issue_type: args.issueType,
+    summary: args.summary,
+    raw_payload: args.rawPayload,
+    suggested_matches: args.suggestedMatches ?? [],
+    status: "pending",
+  });
+}
+
 export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImportSummary> {
   const { shopId, intakeId } = args;
   const supabase = createAdminSupabase();
@@ -773,6 +860,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         },
       },
       shopBuildSummary: emptyShopBuildSummary,
+      rowResults: {
+        totalRows: 0,
+        processedRows: 0,
+        successCount: 0,
+        reviewCount: 0,
+        failedCount: 0,
+        byDomain: {},
+      },
+      completionState: "PARTIAL_FAILURE",
     };
   }
 
@@ -790,6 +886,31 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     downloadCsv(intakeRow.parts_file_path ?? null),
     downloadCsv(intakeRow.history_file_path ?? null),
     downloadCsv(intakeRow.staff_file_path ?? null),
+  ]);
+
+  const parsedCustomers = customersCsv ? parseCsv(customersCsv).rows : [];
+  const parsedVehicles = vehiclesCsv ? parseCsv(vehiclesCsv).rows : [];
+  const parsedParts = partsCsv ? parseCsv(partsCsv).rows : [];
+  const parsedHistory = historyCsv ? parseCsv(historyCsv).rows : [];
+  const totalRows = parsedCustomers.length + parsedVehicles.length + parsedParts.length + parsedHistory.length;
+
+  const rowOutcome = {
+    totalRows,
+    processedRows: 0,
+    successCount: 0,
+    reviewCount: 0,
+    failedCount: 0,
+    byDomain: {
+      customers: { success: 0, review: 0, failed: 0 },
+      vehicles: { success: 0, review: 0, failed: 0 },
+      parts: { success: 0, review: 0, failed: 0 },
+      history: { success: 0, review: 0, failed: 0 },
+    },
+  };
+
+  await Promise.all([
+    (supabase as any).from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
+    (supabase as any).from("shop_boost_review_items").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
   ]);
 
   await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
@@ -873,11 +994,24 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   let partsPipelineSummary: PartsPipelineSummary | undefined;
 
   // 1) Import customers
-  if (customersCsv) {
-    const { rows } = parseCsv(customersCsv);
+  if (parsedCustomers.length > 0) {
+    const customerNames: Array<{ id: string; name: string }> = [];
+    {
+      const { data } = await supabase
+        .from("customers")
+        .select("id,name,first_name,last_name")
+        .eq("shop_id", shopId)
+        .limit(5000);
+      for (const item of data ?? []) {
+        const candidateName =
+          String((item as Record<string, unknown>).name ?? "") ||
+          `${String((item as Record<string, unknown>).first_name ?? "")} ${String((item as Record<string, unknown>).last_name ?? "")}`.trim();
+        if (candidateName) customerNames.push({ id: String((item as Record<string, unknown>).id ?? ""), name: candidateName });
+      }
+    }
 
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
+    for (let i = 0; i < parsedCustomers.length; i += 1) {
+      const row = parsedCustomers[i];
 
       const email = lower(pick(row, [/^email$/, /e-mail/, /customer email/, /mail/]) ?? "");
       const phone = lower(pick(row, [/^phone$/, /phone number/, /mobile/, /cell/]) ?? "");
@@ -896,8 +1030,45 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         `${email}|${phone}|${name}|${business ?? ""}`,
       ).slice(0, 16)}`;
 
-      const existingId =
-        (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
+      const existingId = (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
+      const bestNameMatch = name
+        ? customerNames
+            .map((candidate) => ({ id: candidate.id, similarity: nameSimilarity(name, candidate.name) }))
+            .sort((a, b) => b.similarity - a.similarity)[0]
+        : null;
+
+      if (!existingId && bestNameMatch && bestNameMatch.similarity >= 0.85) {
+        await supabase
+          .from("customers")
+          .update({
+            first_name: first ?? null,
+            last_name: last ?? null,
+            name: name || null,
+            business_name: business ?? null,
+            source_intake_id: intakeId,
+            updated_at: new Date().toISOString(),
+          } as DB["public"]["Tables"]["customers"]["Update"])
+          .eq("id", bestNameMatch.id);
+
+        rowOutcome.processedRows += 1;
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.customers.success += 1;
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "customers",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { email, phone, name, business, isFleet },
+          targetDomain: "customer",
+          matchStatus: "matched_existing",
+          matchConfidence: "medium",
+          matchDetails: { customerId: bestNameMatch.id, strategy: "name_similarity", similarity: bestNameMatch.similarity },
+          reviewRequired: false,
+        });
+        continue;
+      }
 
       if (existingId) {
         await supabase
@@ -918,6 +1089,53 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           } as DB["public"]["Tables"]["customers"]["Update"])
           .eq("id", existingId);
 
+        rowOutcome.processedRows += 1;
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.customers.success += 1;
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "customers",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { email, phone, name, business, isFleet },
+          targetDomain: "customer",
+          matchStatus: "matched_existing",
+          matchConfidence: email || phone ? "high" : "medium",
+          matchDetails: { customerId: existingId, strategy: email ? "email" : "phone" },
+          reviewRequired: false,
+        });
+        continue;
+      }
+
+      if (!email && !phone && !name) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.reviewCount += 1;
+        rowOutcome.byDomain.customers.review += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "customer",
+          issueType: "invalid",
+          summary: "Customer row is missing identity fields (name/email/phone).",
+          rawPayload: row,
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "customers",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { email, phone, name, business, isFleet },
+          targetDomain: "customer",
+          matchStatus: "invalid",
+          matchConfidence: "low",
+          errorReason: "missing_identity_fields",
+          reviewRequired: true,
+        });
         continue;
       }
 
@@ -946,16 +1164,58 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           if (email) customersByEmail.set(email, id);
           if (phone) customersByPhone.set(phone, id);
         }
+        rowOutcome.processedRows += 1;
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.customers.success += 1;
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "customers",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { email, phone, name, business, isFleet },
+          targetDomain: "customer",
+          matchStatus: "created_new",
+          matchConfidence: email || phone ? "high" : "medium",
+          matchDetails: { customerId: id ?? null },
+          reviewRequired: false,
+        });
+      } else {
+        rowOutcome.processedRows += 1;
+        rowOutcome.failedCount += 1;
+        rowOutcome.byDomain.customers.failed += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "customer",
+          issueType: "conflict",
+          summary: `Customer materialization failed: ${error.message}`,
+          rawPayload: row,
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "customers",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { email, phone, name, business, isFleet },
+          targetDomain: "customer",
+          matchStatus: "unmatched",
+          matchConfidence: "low",
+          errorReason: error.message,
+          reviewRequired: true,
+        });
       }
     }
   }
 
   // 2) Import vehicles (link to customer if possible)
-  if (vehiclesCsv) {
-    const { rows } = parseCsv(vehiclesCsv);
-
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
+  if (parsedVehicles.length > 0) {
+    for (let i = 0; i < parsedVehicles.length; i += 1) {
+      const row = parsedVehicles[i];
 
       const vin = lower(pick(row, [/^vin$/, /vehicle vin/]) ?? "");
       const plate = lower(pick(row, [/plate/, /license/, /licence/]) ?? "");
@@ -972,6 +1232,37 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         (custEmail && customersByEmail.get(custEmail)) ||
         (custPhone && customersByPhone.get(custPhone)) ||
         null;
+
+      if (!customer_id) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.reviewCount += 1;
+        rowOutcome.byDomain.vehicles.review += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "vehicle",
+          issueType: "missing_dependency",
+          summary: "Vehicle could not be imported because customer was not confidently matched.",
+          rawPayload: row,
+          suggestedMatches: [{ customerEmail: custEmail || null, customerPhone: custPhone || null }],
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "vehicles",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { vin, plate, unit, year, make, model, custEmail, custPhone },
+          targetDomain: "vehicle",
+          matchStatus: "unmatched",
+          matchConfidence: "low",
+          errorReason: "missing_customer_match",
+          reviewRequired: true,
+        });
+        continue;
+      }
 
       const external_id = `import:${intakeId}:vehicles:${sha1(
         `${vin}|${plate}|${unit ?? ""}|${year ?? ""}`,
@@ -999,6 +1290,23 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           } as DB["public"]["Tables"]["vehicles"]["Update"])
           .eq("id", existingId);
 
+        rowOutcome.processedRows += 1;
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.vehicles.success += 1;
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "vehicles",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { vin, plate, unit, year, make, model, customer_id },
+          targetDomain: "vehicle",
+          matchStatus: "matched_existing",
+          matchConfidence: vin ? "high" : "medium",
+          matchDetails: { vehicleId: existingId, strategy: vin ? "vin" : "plate", customerId: customer_id },
+          reviewRequired: false,
+        });
         continue;
       }
 
@@ -1028,6 +1336,50 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           if (vin) vehiclesByVin.set(vin, id);
           if (plate) vehiclesByPlate.set(plate, id);
         }
+        rowOutcome.processedRows += 1;
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.vehicles.success += 1;
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "vehicles",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { vin, plate, unit, year, make, model, customer_id },
+          targetDomain: "vehicle",
+          matchStatus: "created_new",
+          matchConfidence: vin ? "high" : plate ? "medium" : "low",
+          matchDetails: { vehicleId: id ?? null, customerId: customer_id },
+          reviewRequired: false,
+        });
+      } else {
+        rowOutcome.processedRows += 1;
+        rowOutcome.failedCount += 1;
+        rowOutcome.byDomain.vehicles.failed += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "vehicle",
+          issueType: "conflict",
+          summary: `Vehicle materialization failed: ${error.message}`,
+          rawPayload: row,
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "vehicles",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { vin, plate, unit, year, make, model, customer_id },
+          targetDomain: "vehicle",
+          matchStatus: "unmatched",
+          matchConfidence: "low",
+          errorReason: error.message,
+          reviewRequired: true,
+        });
       }
     }
   }
@@ -1041,6 +1393,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       partsFilePath: intakeRow.parts_file_path ?? null,
       sourceSystem: typeof intakeRow.source === "string" ? intakeRow.source : null,
     });
+    if (partsPipelineSummary) {
+      rowOutcome.processedRows += partsPipelineSummary.rawRows;
+      rowOutcome.successCount += partsPipelineSummary.promotedRows;
+      rowOutcome.reviewCount += partsPipelineSummary.ambiguousRows;
+      rowOutcome.failedCount += partsPipelineSummary.rejectedRows;
+      rowOutcome.byDomain.parts.success += partsPipelineSummary.promotedRows;
+      rowOutcome.byDomain.parts.review += partsPipelineSummary.ambiguousRows;
+      rowOutcome.byDomain.parts.failed += partsPipelineSummary.rejectedRows;
+    }
   }
 
   // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
@@ -1099,11 +1460,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 5) Import history → completed work orders + lines (+ invoices if totals exist)
-  if (historyCsv) {
-    const { rows } = parseCsv(historyCsv);
-
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
+  if (parsedHistory.length > 0) {
+    for (let i = 0; i < parsedHistory.length; i += 1) {
+      const row = parsedHistory[i];
 
       const ro =
         pick(row, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
@@ -1134,6 +1493,39 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const vehicle_id =
         (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) || null;
+
+      if (!customer_id || !vehicle_id) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.reviewCount += 1;
+        rowOutcome.byDomain.history.review += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          issueType: "missing_dependency",
+          summary: !customer_id
+            ? "History row skipped because customer could not be matched."
+            : "History row skipped because vehicle could not be matched.",
+          rawPayload: row,
+          suggestedMatches: [{ customerEmail, customerPhone, vin, plate }],
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "history",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { ro, dateIso, customer_id, vehicle_id, vin, plate, total, labor, parts },
+          targetDomain: "work_order",
+          matchStatus: "unmatched",
+          matchConfidence: "low",
+          errorReason: !customer_id ? "missing_customer_match" : "missing_vehicle_match",
+          reviewRequired: true,
+        });
+        continue;
+      }
 
       const historyFingerprint = sha1(
         [
@@ -1203,6 +1595,32 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       }
 
       if (woErr) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.failedCount += 1;
+        rowOutcome.byDomain.history.failed += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          issueType: "conflict",
+          summary: `History work order materialization failed: ${woErr.message ?? "unknown error"}`,
+          rawPayload: row,
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "history",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { ro, dateIso, customer_id, vehicle_id, total, labor, parts },
+          targetDomain: "work_order",
+          matchStatus: "invalid",
+          matchConfidence: "low",
+          errorReason: woErr.message ?? "unknown_error",
+          reviewRequired: true,
+        });
         if (ro) {
           const { data: existingWo } = await supabase
             .from("work_orders")
@@ -1269,6 +1687,23 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         labor,
         parts,
         issuedAt: dateIso,
+      });
+      rowOutcome.processedRows += 1;
+      rowOutcome.successCount += 1;
+      rowOutcome.byDomain.history.success += 1;
+      await insertRowResult({
+        supabase,
+        shopId,
+        intakeId,
+        sourceFile: "history",
+        sourceRowIndex: i + 1,
+        rawPayload: row,
+        normalizedPayload: { ro, dateIso, customer_id, vehicle_id, total, labor, parts },
+        targetDomain: "work_order",
+        matchStatus: woByExternal?.id ? "matched_existing" : "created_new",
+        matchConfidence: "high",
+        matchDetails: { workOrderId, customerId: customer_id, vehicleId: vehicle_id },
+        reviewRequired: false,
       });
     }
   }
@@ -1436,6 +1871,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const prevBasics = isRecord((intakeRow as unknown as Record<string, unknown>).intake_basics)
     ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
     : {};
+  const completionState: ShopBoostImportSummary["completionState"] =
+    rowOutcome.failedCount > 0
+      ? "PARTIAL_FAILURE"
+      : rowOutcome.reviewCount > 0
+        ? "COMPLETED_WITH_REVIEW"
+        : "COMPLETED_CLEAN";
 
   const [
     customersCount,
@@ -1536,8 +1977,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             },
             partsPipeline: partsPipelineSummary ?? null,
             shopBuildSummary,
+            rowResults: rowOutcome,
+            completionState,
           },
           shopBuildSummary,
+          migrationProgress: {
+            ...(isRecord(prevBasics.migrationProgress) ? prevBasics.migrationProgress : {}),
+            total_rows: rowOutcome.totalRows,
+            processed_rows: rowOutcome.processedRows,
+            success_count: rowOutcome.successCount,
+            review_count: rowOutcome.reviewCount,
+            failed_count: rowOutcome.failedCount,
+            domains: rowOutcome.byDomain,
+            completionState,
+          },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],
     )
@@ -1566,6 +2019,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     },
     partsPipeline: partsPipelineSummary,
     shopBuildSummary,
+    rowResults: rowOutcome,
+    completionState,
   };
 }
 

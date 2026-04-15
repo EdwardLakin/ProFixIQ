@@ -396,6 +396,15 @@ export async function runShopBoostIntake(
           menuSuggestions: 0,
           inspectionSuggestions: 0,
         },
+        rowResults: {
+          totalRows: 0,
+          processedRows: 0,
+          successCount: 0,
+          reviewCount: 0,
+          failedCount: 0,
+          byDomain: {},
+        },
+        completionState: "COMPLETED_CLEAN",
       },
       shopBuildSummary: {
         menuItemsCreated: 0,
@@ -439,6 +448,15 @@ export async function runShopBoostIntake(
       menuSuggestions: 0,
       inspectionSuggestions: 0,
     },
+    rowResults: {
+      totalRows: 0,
+      processedRows: 0,
+      successCount: 0,
+      reviewCount: 0,
+      failedCount: 0,
+      byDomain: {},
+    },
+    completionState: "COMPLETED_CLEAN",
   };
 
   if (mode.runImport) {
