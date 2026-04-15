@@ -4,6 +4,7 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type Ctx = { params: Promise<{ id: string }> };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function POST(req: NextRequest, context: Ctx) {
   const { id } = await context.params;
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, context: Ctx) {
 
   if (!body?.schedule_date) return NextResponse.json({ error: "schedule_date required" }, { status: 400 });
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { error } = await admin.from("staff_schedule_overrides").insert({
     shop_id: access.profile.shop_id,
     user_id: id,

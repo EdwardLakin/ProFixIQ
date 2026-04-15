@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, context: Ctx) {
 
   if (!body?.status) return NextResponse.json({ error: "status required" }, { status: 400 });
 
-  const admin = access.supabase as any;
+  const admin = access.supabase;
   const actor = getActorCapabilities({ role: access.profile.role });
 
   const { data: existing, error: existingErr } = await admin

@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (!access.ok) return access.response;
 
   const actor = getActorCapabilities({ role: access.profile.role });
-  const admin = access.supabase as any;
+  const admin = access.supabase;
   const url = new URL(req.url);
   const status = url.searchParams.get("status")?.trim() || null;
   const userId = url.searchParams.get("user_id")?.trim() || null;
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   const targetUserId = actor.canManageScheduling ? (body.user_id ?? access.profile.id) : access.profile.id;
   if (!targetUserId) return NextResponse.json({ error: "Missing user context" }, { status: 400 });
 
-  const admin = access.supabase as any;
+  const admin = access.supabase;
   const insertPayload = {
     shop_id: access.profile.shop_id,
     user_id: targetUserId,

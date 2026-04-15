@@ -5,8 +5,26 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 type Ctx = { params: { id: string } };
 type ActionSeverity = "blocking" | "warning" | "informational";
 type ActionReason = { code: string; severity: ActionSeverity; label: string; action_label: string; action_href: string };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
-async function assertTarget(admin: any, shopId: string, userId: string) {
+type WorkforceProfilePayload = {
+  workforce_role?: string | null;
+  workforce_category?: string | null;
+  employment_status?: "active" | "inactive" | "on_leave" | null;
+  start_date?: string | null;
+  payroll_ready?: boolean | null;
+  notes?: string | null;
+};
+
+type PersonUpdatePayload = {
+  full_name?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  completed_onboarding?: boolean;
+  workforce_profile?: WorkforceProfilePayload;
+};
+
+async function assertTarget(admin: AdminClient, shopId: string, userId: string) {
   const { data, error } = await admin.from("profiles").select("id, shop_id").eq("id", userId).maybeSingle();
   if (error) return { ok: false, message: error.message } as const;
   if (!data || data.shop_id !== shopId) return { ok: false, message: "Person not found in this shop" } as const;
@@ -18,11 +36,11 @@ export async function GET(_req: NextRequest, context: unknown) {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin = createAdminSupabase();
   const check = await assertTarget(admin, access.profile.shop_id!, params.id);
   if (!check.ok) return NextResponse.json({ error: check.message }, { status: 403 });
 
-  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { data: openEntries }, { data: openExceptions }, { data: scheduleTemplates }, { data: scheduleOverrides }, { data: upcomingAwayBlocks }, { data: timeOffRequests }] = await Promise.all([
+  const [{ data: person, error: pErr }, { data: workforce }, { data: certs }, { count: openEntriesCount }, { data: openExceptions }, { data: scheduleTemplates }, { data: scheduleOverrides }, { data: upcomingAwayBlocks }, { data: timeOffRequests }] = await Promise.all([
     admin.from("profiles").select("id, full_name, email, phone, role, completed_onboarding, created_at, last_active_at").eq("id", params.id).maybeSingle(),
     admin
       .from("people_workforce_profiles")
@@ -58,8 +76,8 @@ export async function GET(_req: NextRequest, context: unknown) {
 
   if (pErr || !person) return NextResponse.json({ error: pErr?.message ?? "Person not found" }, { status: 404 });
 
-  const blocking = (openExceptions ?? []).filter((row: any) => row.severity === "blocking").length;
-  const warning = (openExceptions ?? []).filter((row: any) => row.severity === "warning").length;
+  const blocking = (openExceptions ?? []).filter((row) => row.severity === "blocking").length;
+  const warning = (openExceptions ?? []).filter((row) => row.severity === "warning").length;
   const profile = workforce ?? {
     workforce_role: null,
     workforce_category: null,
@@ -71,7 +89,7 @@ export async function GET(_req: NextRequest, context: unknown) {
 
   const now = Date.now();
   const in30 = now + 1000 * 60 * 60 * 24 * 30;
-  const certifications = (certs ?? []).map((cert: any) => {
+  const certifications = (certs ?? []).map((cert) => {
     const expiryTs = cert.expiry_date ? new Date(cert.expiry_date).getTime() : null;
     const isExpired = cert.status === "expired" || (expiryTs ? expiryTs < now : false);
     const daysRemaining = expiryTs ? Math.ceil((expiryTs - now) / (1000 * 60 * 60 * 24)) : null;
@@ -115,7 +133,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       action_href: `/dashboard/admin/people/${params.id}#workforce`,
     });
   }
-  const expiredCount = certifications.filter((cert: any) => cert.lifecycle_group === "expired").length;
+  const expiredCount = certifications.filter((cert) => cert.lifecycle_group === "expired").length;
   if (expiredCount > 0) {
     reasons.push({
       code: "cert_expired",
@@ -125,7 +143,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       action_href: `/dashboard/admin/people/${params.id}#certifications`,
     });
   }
-  const expiringSoonCount = certifications.filter((cert: any) => cert.lifecycle_group === "expiring_soon").length;
+  const expiringSoonCount = certifications.filter((cert) => cert.lifecycle_group === "expiring_soon").length;
   if (expiringSoonCount > 0) {
     reasons.push({
       code: "cert_expiring_soon",
@@ -144,7 +162,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
     });
   }
-  if (profile.employment_status === "inactive" && (openEntries?.count ?? 0) > 0) {
+  if (profile.employment_status === "inactive" && (openEntriesCount ?? 0) > 0) {
     reasons.push({
       code: "inactive_in_payroll_scope",
       severity: "informational",
@@ -155,7 +173,7 @@ export async function GET(_req: NextRequest, context: unknown) {
   }
 
   const prioritizedAudit = (audit ?? [])
-    .map((row: any) => {
+    .map((row) => {
       const action = (row.action ?? "").toLowerCase();
       const priority = action.includes("employment") || action.includes("role")
         ? 3
@@ -166,7 +184,7 @@ export async function GET(_req: NextRequest, context: unknown) {
             : 1;
       return { ...row, priority };
     })
-    .sort((a: any, b: any) => (b.priority - a.priority) || ((new Date(b.created_at ?? 0).getTime()) - (new Date(a.created_at ?? 0).getTime())));
+    .sort((a, b) => (b.priority - a.priority) || ((new Date(b.created_at ?? 0).getTime()) - (new Date(a.created_at ?? 0).getTime())));
 
   return NextResponse.json({
     ...person,
@@ -181,10 +199,10 @@ export async function GET(_req: NextRequest, context: unknown) {
     },
     payroll_posture: {
       is_payroll_ready: Boolean(profile.payroll_ready),
-      open_period_entries: openEntries?.count ?? 0,
+      open_period_entries: openEntriesCount ?? 0,
       blocking_exceptions: blocking,
       warning_exceptions: warning,
-      in_current_period: (openEntries?.count ?? 0) > 0,
+      in_current_period: (openEntriesCount ?? 0) > 0,
       missing_workforce_data: missingWorkforceData,
     },
     schedule_posture: {
@@ -206,14 +224,14 @@ export async function PUT(req: NextRequest, context: unknown) {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin = createAdminSupabase();
   const check = await assertTarget(admin, access.profile.shop_id!, params.id);
   if (!check.ok) return NextResponse.json({ error: check.message }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
-  const { full_name, phone, role, completed_onboarding, workforce_profile } = body as any;
+  const { full_name, phone, role, completed_onboarding, workforce_profile } = body as PersonUpdatePayload;
 
   const { error: pErr } = await admin
     .from("profiles")

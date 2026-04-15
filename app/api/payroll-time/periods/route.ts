@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getOrCreateCurrentPeriod } from "@/features/payroll-time/server/payrollTime";
 import { requirePayrollReviewer } from "../_lib/auth";
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function GET(req: NextRequest) {
   const auth = await requirePayrollReviewer();
   if (!auth.ok) return auth.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { me } = auth;
   const url = new URL(req.url);
   const periodId = url.searchParams.get("period_id");
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   if (entriesErr) return NextResponse.json({ error: entriesErr.message }, { status: 500 });
   if (exErr) return NextResponse.json({ error: exErr.message }, { status: 500 });
 
-  const selectedPeriod = (periods ?? []).find((period: any) => period.id === activePeriodId);
+  const selectedPeriod = (periods ?? []).find((period) => period.id === activePeriodId);
   const periodStartIso = selectedPeriod ? `${selectedPeriod.period_start}T00:00:00.000Z` : null;
   const periodEndIso = selectedPeriod ? `${selectedPeriod.period_end}T23:59:59.999Z` : null;
 
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
     awayMap.set(row.user_id, (awayMap.get(row.user_id) ?? 0) + minutes);
   }
 
-  const enrichedEntries = (entries ?? []).map((entry: any) => ({
+  const enrichedEntries = (entries ?? []).map((entry) => ({
     ...entry,
     scheduled_minutes: scheduleMap.get(`${entry.user_id}|${entry.work_date}`) ?? 0,
     approved_time_away_minutes_in_period: awayMap.get(entry.user_id) ?? 0,

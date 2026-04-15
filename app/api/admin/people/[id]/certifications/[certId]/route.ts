@@ -3,6 +3,17 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Ctx = { params: { id: string; certId: string } };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
+type CertificationPayload = {
+  cert_type?: string;
+  cert_name: string;
+  cert_number?: string | null;
+  issuing_body?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  status?: string;
+  notes?: string | null;
+};
 
 function normalizeDate(value: unknown) {
   if (!value) return null;
@@ -11,7 +22,7 @@ function normalizeDate(value: unknown) {
   return parsed.toISOString().slice(0, 10);
 }
 
-async function findCertification(admin: any, shopId: string, userId: string, certId: string) {
+async function findCertification(admin: AdminClient, shopId: string, userId: string, certId: string) {
   return admin
     .from("staff_certifications")
     .select("id, cert_type, cert_name, cert_number, issuing_body, issue_date, expiry_date, status, notes")
@@ -26,7 +37,7 @@ export async function PATCH(req: NextRequest, context: unknown) {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, params.id, params.certId);
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Certification not found" }, { status: 404 });
@@ -39,15 +50,16 @@ export async function PATCH(req: NextRequest, context: unknown) {
   if (body.issue_date && !issueDate) return NextResponse.json({ error: "issue_date must be a valid date" }, { status: 400 });
   if (body.expiry_date && !expiryDate) return NextResponse.json({ error: "expiry_date must be a valid date" }, { status: 400 });
 
+  const payload = body as CertificationPayload;
   const updatePayload = {
-    cert_type: body.cert_type ?? "certification",
-    cert_name: body.cert_name.trim(),
-    cert_number: body.cert_number?.trim() || null,
-    issuing_body: body.issuing_body?.trim() || null,
+    cert_type: payload.cert_type ?? "certification",
+    cert_name: payload.cert_name.trim(),
+    cert_number: payload.cert_number?.trim() || null,
+    issuing_body: payload.issuing_body?.trim() || null,
     issue_date: issueDate,
     expiry_date: expiryDate,
-    status: body.status ?? "active",
-    notes: body.notes?.trim() || null,
+    status: payload.status ?? "active",
+    notes: payload.notes?.trim() || null,
   };
 
   const { data, error } = await admin
@@ -83,7 +95,7 @@ export async function DELETE(_req: NextRequest, context: unknown) {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, params.id, params.certId);
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Certification not found" }, { status: 404 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 function toDayBounds(date: Date) {
   const start = new Date(date);
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   const actor = getActorCapabilities({ role: access.profile.role });
   if (!actor.canManageScheduling) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const url = new URL(req.url);
   const from = url.searchParams.get("from") ?? new Date().toISOString();
   const to = url.searchParams.get("to") ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
@@ -40,10 +41,10 @@ export async function GET(req: NextRequest) {
   const overrides = overridesRes.data ?? [];
   const blocks = blocksRes.data ?? [];
 
-  const staff = (profilesRes.data ?? []).map((p: any) => {
-    const personTemplates = templates.filter((t: any) => t.user_id === p.id);
-    const personOverrides = overrides.filter((o: any) => o.user_id === p.id && o.status !== "cancelled");
-    const personBlocks = blocks.filter((b: any) => b.user_id === p.id);
+  const staff = (profilesRes.data ?? []).map((p) => {
+    const personTemplates = templates.filter((t) => t.user_id === p.id);
+    const personOverrides = overrides.filter((o) => o.user_id === p.id && o.status !== "cancelled");
+    const personBlocks = blocks.filter((b) => b.user_id === p.id);
 
     let recurringMinutes = 0;
     for (const row of personTemplates) {
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
     }
 
     const todayBounds = toDayBounds(new Date());
-    const isAwayToday = personBlocks.some((b: any) => b.starts_at < todayBounds.end && b.ends_at > todayBounds.start);
+    const isAwayToday = personBlocks.some((b) => b.starts_at < todayBounds.end && b.ends_at > todayBounds.start);
 
     return {
       ...p,
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
       is_away_today: isAwayToday,
       next_override: personOverrides
         .slice()
-        .sort((a: any, b: any) => String(a.schedule_date).localeCompare(String(b.schedule_date)))[0] ?? null,
+        .sort((a, b) => String(a.schedule_date).localeCompare(String(b.schedule_date)))[0] ?? null,
     };
   });
 
