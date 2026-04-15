@@ -6,6 +6,7 @@ import {
   runPostMigrationIntegrityValidation,
   type IgnoreReasonCode,
 } from "@/features/integrations/shopBoost/migrationReliability";
+import { buildMigrationStory } from "@/features/integrations/shopBoost/migrationStory";
 import { toResolutionAction } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type ResolutionAction = "linked_to_existing" | "created_new" | "ignored";
@@ -462,12 +463,21 @@ async function materializeByDomain(args: { supabase: any; item: ReviewItemRow; r
 }
 
 async function recomputeMigrationProgress(supabase: any, shopId: string, intakeId: string): Promise<void> {
-  const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { count: ignoredCount }, { data: intake }] = await Promise.all([
+  const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { count: ignoredCount }, { data: intake }, { count: duplicateMergedCount }] = await Promise.all([
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "pending"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "failed_materialization"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "materialized"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "ignored"),
     supabase.from("shop_boost_intakes").select("intake_basics").eq("id", intakeId).eq("shop_id", shopId).maybeSingle(),
+    supabase
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .eq("domain", "customer")
+      .in("issue_type", ["duplicate_candidate", "conflict"])
+      .eq("resolution_action", "linked_to_existing")
+      .in("status", ["resolved", "materialized"]),
   ]);
 
   const basics = (intake?.intake_basics ?? {}) as Record<string, unknown>;
@@ -480,6 +490,31 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
 
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
   const integrityErrors = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
+  const importSummary = (basics.importSummary ?? {}) as Record<string, unknown>;
+  const linkageSummary = (importSummary.linkageSummary ?? {}) as Record<string, unknown>;
+  const linked = (linkageSummary.linked ?? {}) as Record<string, unknown>;
+  const existingOutcomeBuckets = (migrationProgress.row_outcome_buckets ?? {}) as Record<string, unknown>;
+  const migrationStory = buildMigrationStory({
+    totalRows: Number(migrationProgress.total_rows ?? 0),
+    outcomeBuckets: {
+      materialized: Number(existingOutcomeBuckets.materialized ?? 0),
+      linked: Number(existingOutcomeBuckets.linked ?? 0),
+      ignored: Number(ignoredCount ?? 0),
+      failed: Number(existingOutcomeBuckets.failed ?? 0),
+    },
+    reviewResolvedCount: Number(materializedCount ?? 0),
+    pendingReviewCount: Number(pendingCount ?? 0),
+    failedReviewCount: Number(failedCount ?? 0),
+    failedCount: Number(migrationProgress.failed_count ?? 0),
+    integrityErrorsCount: integrityErrors.length,
+    confidenceScore: Number(migrationProgress.confidence_score ?? 0.5),
+    integrityChecks: integrity.checks as Record<string, unknown>,
+    keyFixCounts: {
+      duplicateCustomersMerged: Number(duplicateMergedCount ?? 0),
+      vehiclesLinkedToCustomers: Number(linked.vehiclesCustomerId ?? 0),
+      workOrdersRecoveredVehicleLinks: Number(linked.workOrdersVehicleId ?? 0),
+    },
+  });
   const completionState = computeCompletionState({
     failedCount: Number(migrationProgress.failed_count ?? 0),
     pendingReviewCount: pendingCount ?? 0,
@@ -500,7 +535,9 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
           ignored_count: ignoredCount ?? 0,
           completionState,
           integrity,
+          migration_story: migrationStory,
         },
+        migration_story: migrationStory,
       },
     })
     .eq("id", intakeId)

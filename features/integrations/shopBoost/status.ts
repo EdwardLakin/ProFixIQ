@@ -1,5 +1,6 @@
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { MigrationStory } from "@/features/integrations/shopBoost/migrationStory";
 
 type DB = Database;
 
@@ -39,6 +40,7 @@ export type IntakeProgressState = {
     | "FAILED"
     | "READY_FOR_GO_LIVE"
     | "NOT_READY";
+  migration_story?: MigrationStory;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,6 +88,11 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
       migration.completionState === "READY_FOR_GO_LIVE" ||
       migration.completionState === "NOT_READY"
         ? migration.completionState
+        : undefined,
+    migration_story: isRecord((basics as any).migration_story)
+      ? ((basics as any).migration_story as MigrationStory)
+      : isRecord(migration.migration_story)
+        ? (migration.migration_story as MigrationStory)
         : undefined,
   };
 }

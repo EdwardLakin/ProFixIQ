@@ -15,6 +15,7 @@ import {
   type CompletionState,
   type ReviewIssueType,
 } from "@/features/integrations/shopBoost/migrationReliability";
+import { buildMigrationStory } from "@/features/integrations/shopBoost/migrationStory";
 import { deriveReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type DB = Database;
@@ -1960,11 +1961,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       .eq("shop_id", shopId)
       .eq("intake_id", intakeId)
       .eq("status", "ignored"),
+    supabase
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .in("status", ["resolved", "materialized"]),
   ]);
 
   const pendingReviewCount = reviewCounts[0].count ?? 0;
   const failedReviewCount = reviewCounts[1].count ?? 0;
   const ignoredCount = reviewCounts[2].count ?? 0;
+  const reviewResolvedCount = reviewCounts[3].count ?? 0;
   rowOutcome.ignoredCount = ignoredCount;
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
   const integrityErrors: string[] = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
@@ -2009,6 +2017,21 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
   rowOutcome.integrityErrors = integrityErrors;
   rowOutcome.outcomeBuckets = outcomeBuckets;
+
+  const { data: keyFixRows } = await (supabase as any)
+    .from("shop_boost_review_items")
+    .select("domain,issue_type,status,resolution_action")
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .limit(100000);
+
+  const duplicateCustomersMerged = (keyFixRows ?? []).filter(
+    (row: any) =>
+      row.domain === "customer" &&
+      (row.issue_type === "duplicate_candidate" || row.issue_type === "conflict") &&
+      row.resolution_action === "linked_to_existing" &&
+      (row.status === "resolved" || row.status === "materialized"),
+  ).length;
 
   const autoMatchRatio = rowOutcome.totalRows > 0 ? (outcomeBuckets.materialized + outcomeBuckets.linked) / rowOutcome.totalRows : 0;
   const manualInterventionRatio = rowOutcome.totalRows > 0 ? (pendingReviewCount + ignoredCount) / rowOutcome.totalRows : 0;
@@ -2097,6 +2120,28 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         .is("customer_id", null),
     ]);
 
+  const migrationStory = buildMigrationStory({
+    totalRows: rowOutcome.totalRows,
+    outcomeBuckets: {
+      materialized: outcomeBuckets.materialized,
+      linked: outcomeBuckets.linked,
+      ignored: ignoredCount,
+      failed: outcomeBuckets.failed,
+    },
+    reviewResolvedCount,
+    pendingReviewCount,
+    failedReviewCount,
+    failedCount: rowOutcome.failedCount,
+    integrityErrorsCount: integrityErrors.length,
+    confidenceScore: trustScore,
+    integrityChecks: integrity.checks as Record<string, unknown>,
+    keyFixCounts: {
+      duplicateCustomersMerged,
+      vehiclesLinkedToCustomers: linkageCounters.vehiclesCustomerId,
+      workOrdersRecoveredVehicleLinks: linkageCounters.workOrdersVehicleId,
+    },
+  });
+
   await supabase
     .from("shop_boost_intakes")
     .update(
@@ -2133,7 +2178,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             integrity: { ...integrity, integrity_errors: integrityErrors },
             ignoredCount,
             confidence_score: trustScore,
+            migration_story: migrationStory,
           },
+          migration_story: migrationStory,
           shopBuildSummary,
           migrationProgress: {
             ...(isRecord(prevBasics.migrationProgress) ? prevBasics.migrationProgress : {}),
@@ -2150,6 +2197,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             row_outcome_buckets: outcomeBuckets,
             confidence_score: trustScore,
             confidence_tier: trustScore >= 0.85 ? "HIGH" : trustScore >= 0.6 ? "MEDIUM" : "LOW",
+            migration_story: migrationStory,
             ready_for_go_live_gate:
               integrityErrors.length === 0 &&
               pendingReviewCount === 0 &&
