@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const admin = createAdminSupabase() as any;
   let query = admin
     .from("shop_boost_review_items")
-    .select("id,domain,issue_type,summary,raw_payload,suggested_matches,status,resolution_action,resolved_at,materialized_at,materialization_error,materialized_record,created_at")
+    .select("id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at")
     .eq("shop_id", profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(250);

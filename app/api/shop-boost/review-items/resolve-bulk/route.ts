@@ -26,6 +26,15 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     review_item_ids?: string[];
     resolution_action?: "linked_to_existing" | "created_new" | "ignored";
+    ignore_reason_code?:
+      | "duplicate"
+      | "obsolete"
+      | "invalid"
+      | "test_data"
+      | "intentionally_skipped"
+      | "unsupported_format"
+      | "other";
+    ignore_note?: string | null;
   };
 
   const ids = Array.isArray(body.review_item_ids) ? body.review_item_ids.filter(Boolean) : [];
@@ -36,6 +45,8 @@ export async function POST(req: Request) {
     userId: user.id,
     reviewItemIds: ids,
     resolutionAction: body.resolution_action ?? "ignored",
+    ignoreReasonCode: body.ignore_reason_code,
+    ignoreNote: body.ignore_note,
   });
 
   return NextResponse.json({

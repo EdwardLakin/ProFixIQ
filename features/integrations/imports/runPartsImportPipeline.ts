@@ -19,6 +19,8 @@ export type PartsPipelineSummary = {
   ambiguousRows: number;
   promotedRows: number;
   rejectedRows: number;
+  inventorySeedMode: "snapshot_with_seed_moves";
+  inventorySeededLocations: number;
 };
 
 type ParsedPart = {
@@ -196,6 +198,8 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
       ambiguousRows: 0,
       promotedRows: 0,
       rejectedRows: 0,
+      inventorySeedMode: "snapshot_with_seed_moves",
+      inventorySeededLocations: 0,
     };
   }
 
@@ -420,6 +424,48 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
       })
       .eq("id", staged.matched_part_id);
 
+    const { data: defaultLocation } = await supabase
+      .from("stock_locations")
+      .select("id")
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (defaultLocation?.id) {
+      inventorySeededLocations += 1;
+      const { data: existingStock } = await supabase
+        .from("part_stock")
+        .select("id,qty_on_hand")
+        .eq("part_id", staged.matched_part_id)
+        .eq("location_id", defaultLocation.id)
+        .maybeSingle();
+
+      const seededQty = Number((staged as any).quantity_on_hand ?? 0);
+      if (existingStock?.id) {
+        await supabase
+          .from("part_stock")
+          .update({ qty_on_hand: Math.max(0, seededQty) })
+          .eq("id", existingStock.id);
+      } else {
+        await supabase.from("part_stock").insert({
+          part_id: staged.matched_part_id,
+          location_id: defaultLocation.id,
+          qty_on_hand: Math.max(0, seededQty),
+          qty_reserved: 0,
+        });
+      }
+
+      await supabase.from("stock_moves").insert({
+        shop_id: shopId,
+        part_id: staged.matched_part_id,
+        location_id: defaultLocation.id,
+        qty_delta: Math.max(0, seededQty),
+        reason: "shop_boost_snapshot_seed",
+        metadata: { intake_id: intakeId, staging_row_id: staged.id, source: "shop_boost" },
+      });
+    }
+
     await supabase.from("shop_parts_source_aliases").upsert(
       {
         shop_id: shopId,
@@ -443,10 +489,19 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
       .eq("id", staged.id);
   }
 
+  const { data: intake } = await supabase
+    .from("shop_boost_intakes")
+    .select("intake_basics")
+    .eq("id", intakeId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+  const existingBasics = (intake?.intake_basics ?? {}) as Record<string, unknown>;
+
   await supabase
     .from("shop_boost_intakes")
     .update({
       intake_basics: {
+        ...existingBasics,
         partsImportPipeline: {
           rawRows: rows.length,
           normalizedRows: stagingRowsPayload.length,
@@ -454,6 +509,8 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
           ambiguousRows,
           promotedRows,
           rejectedRows: 0,
+          inventorySeedMode: "snapshot_with_seed_moves",
+          inventorySeededLocations,
         },
       },
     })
@@ -467,5 +524,8 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
     ambiguousRows,
     promotedRows,
     rejectedRows: 0,
+    inventorySeedMode: "snapshot_with_seed_moves",
+    inventorySeededLocations,
   };
 }
+  let inventorySeededLocations = 0;

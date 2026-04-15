@@ -8,6 +8,13 @@ import {
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 import { runPartsImportPipeline, type PartsPipelineSummary } from "@/features/integrations/imports/runPartsImportPipeline";
+import {
+  buildClusterDescriptor,
+  computeCompletionState,
+  runPostMigrationIntegrityValidation,
+  type CompletionState,
+  type ReviewIssueType,
+} from "@/features/integrations/shopBoost/migrationReliability";
 
 type DB = Database;
 
@@ -72,7 +79,7 @@ export type ShopBoostImportSummary = {
     failedCount: number;
     byDomain: Record<string, { success: number; review: number; failed: number }>;
   };
-  completionState: "COMPLETED_CLEAN" | "COMPLETED_WITH_REVIEW" | "PARTIAL_FAILURE";
+  completionState: CompletionState;
 };
 
 type CsvRow = Record<string, string>;
@@ -774,6 +781,11 @@ async function insertRowResult(args: {
   errorReason?: string | null;
   reviewRequired: boolean;
 }): Promise<void> {
+  const cluster = buildClusterDescriptor({
+    domain: args.targetDomain,
+    rawPayload: args.rawPayload,
+    normalizedPayload: args.normalizedPayload,
+  });
   await (args.supabase as any).from("shop_boost_row_results").insert({
     shop_id: args.shopId,
     intake_id: args.intakeId,
@@ -785,6 +797,8 @@ async function insertRowResult(args: {
     match_status: args.matchStatus,
     match_confidence: confidenceScore(args.matchConfidence),
     match_details: args.matchDetails ?? {},
+    cluster_key: cluster.clusterKey,
+    cluster_confidence: cluster.confidence,
     error_reason: args.errorReason ?? null,
     review_required: args.reviewRequired,
   });
@@ -795,11 +809,21 @@ async function createReviewItem(args: {
   shopId: string;
   intakeId: string;
   domain: RowDomain;
-  issueType: "unmatched" | "conflict" | "invalid" | "missing_dependency";
+  issueType: ReviewIssueType;
   summary: string;
   rawPayload: Record<string, unknown>;
+  normalizedPayload?: Record<string, unknown>;
+  targetDomain?: string;
+  blockingReason?: string;
+  dependencyRefs?: Record<string, unknown>;
+  downstreamImpactCount?: number;
   suggestedMatches?: unknown;
 }): Promise<void> {
+  const cluster = buildClusterDescriptor({
+    domain: args.domain,
+    rawPayload: args.rawPayload,
+    normalizedPayload: args.normalizedPayload ?? {},
+  });
   await (args.supabase as any).from("shop_boost_review_items").insert({
     shop_id: args.shopId,
     intake_id: args.intakeId,
@@ -807,6 +831,13 @@ async function createReviewItem(args: {
     issue_type: args.issueType,
     summary: args.summary,
     raw_payload: args.rawPayload,
+    normalized_payload: args.normalizedPayload ?? {},
+    target_domain: args.targetDomain ?? args.domain,
+    blocking_reason: args.blockingReason ?? null,
+    dependency_refs: args.dependencyRefs ?? {},
+    downstream_impact_count: args.downstreamImpactCount ?? 0,
+    cluster_key: cluster.clusterKey,
+    cluster_confidence: cluster.confidence,
     suggested_matches: args.suggestedMatches ?? [],
     status: "pending",
   });
@@ -1871,12 +1902,37 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const prevBasics = isRecord((intakeRow as unknown as Record<string, unknown>).intake_basics)
     ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
     : {};
-  const completionState: ShopBoostImportSummary["completionState"] =
-    rowOutcome.failedCount > 0
-      ? "PARTIAL_FAILURE"
-      : rowOutcome.reviewCount > 0
-        ? "COMPLETED_WITH_REVIEW"
-        : "COMPLETED_CLEAN";
+  const reviewCounts = await Promise.all([
+    supabase
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .eq("status", "pending"),
+    supabase
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .eq("status", "failed_materialization"),
+    supabase
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .eq("status", "ignored"),
+  ]);
+
+  const pendingReviewCount = reviewCounts[0].count ?? 0;
+  const failedReviewCount = reviewCounts[1].count ?? 0;
+  const ignoredCount = reviewCounts[2].count ?? 0;
+  const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
+  const completionState: ShopBoostImportSummary["completionState"] = computeCompletionState({
+    failedCount: rowOutcome.failedCount,
+    pendingReviewCount,
+    failedReviewCount,
+    integrityStatus: integrity.status,
+  });
 
   const [
     customersCount,
@@ -1979,6 +2035,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             shopBuildSummary,
             rowResults: rowOutcome,
             completionState,
+            integrity,
+            ignoredCount,
           },
           shopBuildSummary,
           migrationProgress: {
@@ -1988,8 +2046,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             success_count: rowOutcome.successCount,
             review_count: rowOutcome.reviewCount,
             failed_count: rowOutcome.failedCount,
+            ignored_count: ignoredCount,
             domains: rowOutcome.byDomain,
             completionState,
+            integrity,
           },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],

@@ -24,6 +24,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const body = (await req.json().catch(() => ({}))) as {
     resolution_action?: "linked_to_existing" | "created_new" | "ignored";
+    ignore_reason_code?:
+      | "duplicate"
+      | "obsolete"
+      | "invalid"
+      | "test_data"
+      | "intentionally_skipped"
+      | "unsupported_format"
+      | "other";
+    ignore_note?: string | null;
   };
 
   const result = await resolveAndMaterializeReviewItem({
@@ -31,6 +40,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     shopId: profile.shop_id,
     userId: user.id,
     resolutionAction: body.resolution_action ?? "ignored",
+    ignoreReasonCode: body.ignore_reason_code,
+    ignoreNote: body.ignore_note,
   });
 
   if (!result.ok) {

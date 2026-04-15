@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
     const importSummary = await runShopBoostImport({ shopId, intakeId: intake.id, options: { createStaffUsers: false } });
 
     const completedStatus =
-      importSummary.completionState === "PARTIAL_FAILURE" || errors.length > 0
+      importSummary.completionState === "PARTIAL_FAILURE" ||
+      importSummary.completionState === "FAILED" ||
+      importSummary.completionState === "NOT_READY" ||
+      errors.length > 0
         ? "completed_with_errors"
         : "completed";
 
