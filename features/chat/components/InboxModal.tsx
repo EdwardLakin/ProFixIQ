@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import UserAvatar from "@/features/chat/components/UserAvatar";
+import ModalShell from "@/features/shared/components/ModalShell";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
@@ -17,6 +18,7 @@ type Participant = {
   avatar_url?: string | null;
   role?: string | null;
 };
+
 type ConversationPayload = {
   conversation: ConversationRow;
   latest_message: MessageRow | null;
@@ -39,46 +41,57 @@ type ComposeContext = {
 
 function inferContext(pathname: string): ComposeContext {
   const match = (re: RegExp) => pathname.match(re)?.[1] ?? null;
+
   const workOrderId = match(/^\/work-orders\/([^/]+)/);
-  if (workOrderId)
+  if (workOrderId) {
     return {
       context_type: "work_order",
       context_id: workOrderId,
       deep_link: `/work-orders/${workOrderId}`,
       context_label: `Work Order ${workOrderId.slice(0, 8)}`,
     };
+  }
+
   const inspectionId = match(/^\/inspections\/([^/]+)/);
-  if (inspectionId)
+  if (inspectionId) {
     return {
       context_type: "inspection",
       context_id: inspectionId,
       deep_link: `/inspections/${inspectionId}`,
       context_label: `Inspection ${inspectionId.slice(0, 8)}`,
     };
+  }
+
   const bookingId = match(/^\/dashboard\/(?:advisor\/)?bookings\/([^/]+)/);
-  if (bookingId)
+  if (bookingId) {
     return {
       context_type: "booking",
       context_id: bookingId,
       deep_link: `/dashboard/bookings/${bookingId}`,
       context_label: `Booking ${bookingId.slice(0, 8)}`,
     };
+  }
+
   const customerId = match(/^\/customers\/([^/]+)/);
-  if (customerId)
+  if (customerId) {
     return {
       context_type: "customer",
       context_id: customerId,
       deep_link: `/customers/${customerId}`,
       context_label: `Customer ${customerId.slice(0, 8)}`,
     };
+  }
+
   const vehicleId = match(/^\/vehicles\/([^/]+)/);
-  if (vehicleId)
+  if (vehicleId) {
     return {
       context_type: "vehicle",
       context_id: vehicleId,
       deep_link: `/vehicles/${vehicleId}`,
       context_label: `Vehicle ${vehicleId.slice(0, 8)}`,
     };
+  }
+
   return {
     context_type: null,
     context_id: null,
@@ -89,13 +102,16 @@ function inferContext(pathname: string): ComposeContext {
 
 function contextHref(conversation: ConversationRow): string | null {
   if (!conversation.context_type || !conversation.context_id) return null;
+
   const id = conversation.context_id;
+
   if (conversation.context_type === "work_order") return `/work-orders/${id}`;
   if (conversation.context_type === "inspection") return `/inspections/${id}`;
   if (conversation.context_type === "customer") return `/customers/${id}`;
   if (conversation.context_type === "vehicle") return `/vehicles/${id}`;
   if (conversation.context_type === "fleet") return `/fleet/units/${id}`;
   if (conversation.context_type === "booking") return `/dashboard/bookings`;
+
   return null;
 }
 
@@ -106,6 +122,7 @@ export default function InboxModal({
 }: Props): JSX.Element | null {
   const pathname = usePathname() ?? "/dashboard";
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [me, setMe] = useState<string | null>(null);
   const [rows, setRows] = useState<ConversationPayload[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -125,6 +142,7 @@ export default function InboxModal({
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/chat/my-conversations", { credentials: "include" });
     if (!res.ok) return;
+
     const data = (await res.json()) as ConversationPayload[];
     setRows(data);
     setActiveConversationId(
@@ -134,13 +152,15 @@ export default function InboxModal({
 
   useEffect(() => {
     if (!open) return;
+
     void supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     void loadConversations();
+
     void fetch("/api/chat/users", { credentials: "include" })
       .then((r) => r.json())
-      .then((json) =>
+      .then((json: { users?: Participant[] }) =>
         setUsers(
-          (Array.isArray(json?.users) ? json.users : []).map((u: any) => ({
+          (Array.isArray(json?.users) ? json.users : []).map((u) => ({
             ...u,
             avatar_url: u.avatar_url ?? null,
           })),
@@ -150,6 +170,7 @@ export default function InboxModal({
 
   useEffect(() => {
     if (!open || !activeConversationId) return;
+
     void fetch("/api/chat/get-messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -168,6 +189,7 @@ export default function InboxModal({
 
   useEffect(() => {
     if (!open || !activeConversationId) return;
+
     const ch = supabase
       .channel(`inbox-${activeConversationId}`)
       .on(
@@ -187,6 +209,7 @@ export default function InboxModal({
         },
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(ch);
     };
@@ -194,8 +217,10 @@ export default function InboxModal({
 
   useEffect(() => {
     if (!open) return;
+
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+
     return () => {
       document.body.style.overflow = prevOverflow;
     };
@@ -207,11 +232,14 @@ export default function InboxModal({
   const visibleRows = rows.filter((row) => {
     const term = search.toLowerCase().trim();
     if (!term) return true;
+
     const participantNames = row.participants
       .map((p) => p.full_name ?? "")
       .join(" ")
       .toLowerCase();
+
     const preview = (row.latest_message?.content ?? "").toLowerCase();
+
     return participantNames.includes(term) || preview.includes(term);
   });
 
@@ -224,9 +252,12 @@ export default function InboxModal({
   const sendMessage = useCallback(async () => {
     const content = compose.trim();
     if (!content || sending || !me) return;
+
     setSending(true);
+
     try {
       let conversationId = activeConversationId;
+
       if (!conversationId) {
         const res = await fetch("/api/chat/start-conversation", {
           method: "POST",
@@ -242,12 +273,15 @@ export default function InboxModal({
             is_broadcast: selectedRecipients.length > 3,
           }),
         });
+
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error ?? "Could not start inbox thread");
+
         conversationId = data.id;
         setActiveConversationId(conversationId);
         await loadConversations();
       }
+
       const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -262,6 +296,7 @@ export default function InboxModal({
           },
         }),
       });
+
       if (res.ok) setCompose("");
     } finally {
       setSending(false);
@@ -280,238 +315,231 @@ export default function InboxModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[220] bg-black/82 backdrop-blur-md"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Inbox"
+    <ModalShell
+      isOpen={open}
+      onClose={onClose}
+      title="Inbox"
+      size="xl"
+      hideFooter
+      bodyScrollable={false}
     >
-      <div
-        className="absolute inset-2 right-2 h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-app-bg,#070b12)]/95 p-2.5 shadow-[0_30px_100px_rgba(0,0,0,0.82)] md:inset-4 md:right-4 md:h-[calc(100vh-2rem)] md:w-[min(1320px,calc(100vw-2rem))] md:p-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-2.5 flex items-center justify-between border-b border-[var(--metal-border-soft)]/80 px-1 pb-2">
-          <div>
-            <p className="font-blackops text-sm uppercase tracking-[0.2em] text-[var(--accent-copper-soft)]">
-              Inbox
-            </p>
-            <p className="text-[11px] text-neutral-500">Shop communication center</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-[var(--metal-border-soft)] bg-black/40 px-2 py-1 text-[11px] text-neutral-200 transition hover:bg-white/10"
-          >
-            Close
-          </button>
-        </div>
+      <div className="mb-2.5">
+        <p className="text-[11px] text-neutral-500">Shop communication center</p>
+      </div>
 
-        <div className="grid h-[calc(100%-3.25rem)] grid-cols-1 gap-2.5 md:grid-cols-[290px_1fr] xl:grid-cols-[280px_1fr_230px]">
-          <aside className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35">
-            <div className="border-b border-[var(--metal-border-soft)]/70 p-2">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search inbox"
-                className="h-8 w-full rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 text-xs"
-              />
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              {visibleRows.map((row) => {
-                const mineExcluded = row.participants.filter((p) => p.id !== me);
-                const primary = mineExcluded[0] ?? row.participants[0];
-                const title =
-                  row.conversation.title ??
-                  (mineExcluded.map((p) => p.full_name).filter(Boolean).join(", ") ||
-                    `Thread ${row.conversation.id.slice(0, 6)}`);
-                return (
-                  <button
-                    key={row.conversation.id}
-                    type="button"
-                    onClick={() => setActiveConversationId(row.conversation.id)}
-                    className={`flex w-full items-start gap-2 border-b border-[var(--metal-border-soft)]/35 px-2 py-1.5 text-left transition hover:bg-white/5 ${
-                      activeConversationId === row.conversation.id
-                        ? "bg-white/10 ring-1 ring-[var(--accent-copper-soft)]/35"
-                        : ""
-                    }`}
-                  >
+      <div className="grid h-[min(72vh,760px)] grid-cols-1 gap-2.5 md:grid-cols-[290px_1fr] xl:grid-cols-[280px_1fr_230px]">
+        <aside className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35">
+          <div className="border-b border-[var(--metal-border-soft)]/70 p-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search inbox"
+              className="h-8 w-full rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 text-xs"
+            />
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto">
+            {visibleRows.map((row) => {
+              const mineExcluded = row.participants.filter((p) => p.id !== me);
+              const primary = mineExcluded[0] ?? row.participants[0];
+              const title =
+                row.conversation.title ??
+                (mineExcluded.map((p) => p.full_name).filter(Boolean).join(", ") ||
+                  `Thread ${row.conversation.id.slice(0, 6)}`);
+
+              return (
+                <button
+                  key={row.conversation.id}
+                  type="button"
+                  onClick={() => setActiveConversationId(row.conversation.id)}
+                  className={`flex w-full items-start gap-2 border-b border-[var(--metal-border-soft)]/35 px-2 py-1.5 text-left transition hover:bg-white/5 ${
+                    activeConversationId === row.conversation.id
+                      ? "bg-white/10 ring-1 ring-[var(--accent-copper-soft)]/35"
+                      : ""
+                  }`}
+                >
+                  <UserAvatar
+                    name={primary?.full_name}
+                    avatarUrl={primary?.avatar_url}
+                    size="sm"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-semibold text-neutral-100">
+                      {title}
+                    </p>
+                    <p className="truncate text-[10px] text-neutral-400">
+                      {row.latest_message?.content ?? "No messages"}
+                    </p>
+                  </div>
+                  {row.unread_count > 0 ? (
+                    <span className="rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[9px] font-bold text-black">
+                      {row.unread_count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/30">
+          <div className="border-b border-[var(--metal-border-soft)]/70 px-3 py-1.5 text-xs font-medium text-neutral-200">
+            {activeConversation
+              ? activeConversation.conversation.title ?? "Thread"
+              : "New message"}
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-2.5">
+            {messages.map((m) => {
+              const mine = m.sender_id === me;
+              const sender = users.find((u) => u.id === m.sender_id);
+
+              return (
+                <div
+                  key={m.id}
+                  className={`flex gap-1.5 ${mine ? "justify-end" : "justify-start"}`}
+                >
+                  {!mine ? (
                     <UserAvatar
-                      name={primary?.full_name}
-                      avatarUrl={primary?.avatar_url}
+                      name={sender?.full_name}
+                      avatarUrl={sender?.avatar_url}
                       size="sm"
                     />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-semibold text-neutral-100">
-                        {title}
-                      </p>
-                      <p className="truncate text-[10px] text-neutral-400">
-                        {row.latest_message?.content ?? "No messages"}
-                      </p>
-                    </div>
-                    {row.unread_count > 0 ? (
-                      <span className="rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[9px] font-bold text-black">
-                        {row.unread_count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-
-          <section className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/30">
-            <div className="border-b border-[var(--metal-border-soft)]/70 px-3 py-1.5 text-xs font-medium text-neutral-200">
-              {activeConversation
-                ? activeConversation.conversation.title ?? "Thread"
-                : "New message"}
-            </div>
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-2.5">
-              {messages.map((m) => {
-                const mine = m.sender_id === me;
-                const sender = users.find((u) => u.id === m.sender_id);
-                return (
+                  ) : null}
                   <div
-                    key={m.id}
-                    className={`flex gap-1.5 ${mine ? "justify-end" : "justify-start"}`}
+                    className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
+                      mine
+                        ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
+                        : "border-[var(--metal-border-soft)] bg-black/55 text-neutral-100"
+                    }`}
                   >
-                    {!mine ? (
-                      <UserAvatar
-                        name={sender?.full_name}
-                        avatarUrl={sender?.avatar_url}
-                        size="sm"
-                      />
-                    ) : null}
-                    <div
-                      className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
-                        mine
-                          ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
-                          : "border-[var(--metal-border-soft)] bg-black/55 text-neutral-100"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
+                    {m.content}
                   </div>
-                );
-              })}
-            </div>
-            {!activeConversationId ? (
-              <div className="space-y-2 border-t border-[var(--metal-border-soft)]/70 p-2.5 text-xs">
-                <div className="flex gap-2">
-                  <select
-                    value={roleFilter}
-                    onChange={(e) => setRoleFilter(e.target.value)}
-                    className="h-8 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1"
-                  >
-                    <option value="all">All roles</option>
-                    <option value="tech">Tech</option>
-                    <option value="advisor">Advisor</option>
-                    <option value="parts">Parts</option>
-                    <option value="manager">Manager</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="h-8 rounded border border-[var(--metal-border-soft)] px-2"
-                    onClick={() =>
-                      setSelectedRecipients(recipientOptions.map((u) => u.id))
-                    }
-                  >
-                    Select all
-                  </button>
                 </div>
-                <div className="max-h-20 overflow-auto rounded border border-[var(--metal-border-soft)] p-2">
-                  {recipientOptions.map((u) => (
-                    <label key={u.id} className="mb-1 flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedRecipients.includes(u.id)}
-                        onChange={(e) =>
-                          setSelectedRecipients((prev) =>
-                            e.target.checked
-                              ? [...prev, u.id]
-                              : prev.filter((id) => id !== u.id),
-                          )
-                        }
-                      />
-                      <UserAvatar
-                        name={u.full_name}
-                        avatarUrl={u.avatar_url}
-                        size="sm"
-                      />
-                      <span>{u.full_name ?? u.id.slice(0, 6)}</span>
-                    </label>
-                  ))}
-                </div>
-                {context.context_type ? (
-                  <label className="flex items-center gap-2">
+              );
+            })}
+          </div>
+
+          {!activeConversationId ? (
+            <div className="space-y-2 border-t border-[var(--metal-border-soft)]/70 p-2.5 text-xs">
+              <div className="flex gap-2">
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="h-8 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1"
+                >
+                  <option value="all">All roles</option>
+                  <option value="tech">Tech</option>
+                  <option value="advisor">Advisor</option>
+                  <option value="parts">Parts</option>
+                  <option value="manager">Manager</option>
+                </select>
+                <button
+                  type="button"
+                  className="h-8 rounded border border-[var(--metal-border-soft)] px-2"
+                  onClick={() => setSelectedRecipients(recipientOptions.map((u) => u.id))}
+                >
+                  Select all
+                </button>
+              </div>
+
+              <div className="max-h-20 overflow-auto rounded border border-[var(--metal-border-soft)] p-2">
+                {recipientOptions.map((u) => (
+                  <label key={u.id} className="mb-1 flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={useContext}
-                      onChange={(e) => setUseContext(e.target.checked)}
+                      checked={selectedRecipients.includes(u.id)}
+                      onChange={(e) =>
+                        setSelectedRecipients((prev) =>
+                          e.target.checked
+                            ? [...prev, u.id]
+                            : prev.filter((id) => id !== u.id),
+                        )
+                      }
                     />
-                    Attach {context.context_label}
+                    <UserAvatar
+                      name={u.full_name}
+                      avatarUrl={u.avatar_url}
+                      size="sm"
+                    />
+                    <span>{u.full_name ?? u.id.slice(0, 6)}</span>
                   </label>
-                ) : null}
+                ))}
               </div>
-            ) : null}
-            <div className="flex gap-2 border-t border-[var(--metal-border-soft)]/70 p-2.5">
-              <textarea
-                value={compose}
-                onChange={(e) => setCompose(e.target.value)}
-                placeholder={activeConversationId ? "Reply…" : "Compose…"}
-                className="h-14 flex-1 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1.5 text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => void sendMessage()}
-                disabled={sending || (!activeConversationId && selectedRecipients.length === 0)}
-                className="h-14 rounded bg-[var(--accent-copper-soft)] px-3 py-2 text-xs font-semibold text-black disabled:opacity-60"
-              >
-                {sending ? "Sending" : "Send"}
-              </button>
-            </div>
-          </section>
 
-          <aside className="hidden rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35 p-2.5 text-xs text-neutral-300 xl:block">
-            <h3 className="mb-2 text-[10px] uppercase tracking-[0.14em] text-neutral-400">
-              Context
-            </h3>
-            {activeConversation ? (
-              <>
-                <p className="mb-1 text-neutral-100">
-                  Type: {activeConversation.conversation.context_type ?? "general"}
+              {context.context_type ? (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={useContext}
+                    onChange={(e) => setUseContext(e.target.checked)}
+                  />
+                  Attach {context.context_label}
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex gap-2 border-t border-[var(--metal-border-soft)]/70 p-2.5">
+            <textarea
+              value={compose}
+              onChange={(e) => setCompose(e.target.value)}
+              placeholder={activeConversationId ? "Reply…" : "Compose…"}
+              className="h-14 flex-1 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => void sendMessage()}
+              disabled={sending || (!activeConversationId && selectedRecipients.length === 0)}
+              className="h-14 rounded bg-[var(--accent-copper-soft)] px-3 py-2 text-xs font-semibold text-black disabled:opacity-60"
+            >
+              {sending ? "Sending" : "Send"}
+            </button>
+          </div>
+        </section>
+
+        <aside className="hidden rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35 p-2.5 text-xs text-neutral-300 xl:block">
+          <h3 className="mb-2 text-[10px] uppercase tracking-[0.14em] text-neutral-400">
+            Context
+          </h3>
+
+          {activeConversation ? (
+            <>
+              <p className="mb-1 text-neutral-100">
+                Type: {activeConversation.conversation.context_type ?? "general"}
+              </p>
+
+              {activeConversation.conversation.context_id ? (
+                <p className="mb-3 text-neutral-400">
+                  ID: {activeConversation.conversation.context_id}
                 </p>
-                {activeConversation.conversation.context_id ? (
-                  <p className="mb-3 text-neutral-400">
-                    ID: {activeConversation.conversation.context_id}
-                  </p>
-                ) : (
-                  <div className="mb-3 rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
-                    General thread with no linked record.
-                  </div>
-                )}
-                {contextHref(activeConversation.conversation) ? (
-                  <Link
-                    href={contextHref(activeConversation.conversation) ?? "#"}
-                    className="inline-flex rounded border border-[var(--accent-copper-soft)] px-2 py-1 text-[11px] text-[var(--accent-copper-soft)] hover:bg-orange-500/10"
-                  >
-                    Open linked record
-                  </Link>
-                ) : (
-                  <p className="text-[11px] text-neutral-500">
-                    No direct deep-link route available.
-                  </p>
-                )}
-              </>
-            ) : (
-              <div className="rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
-                <p className="mb-1 text-neutral-200">No thread selected.</p>
-                <p>Compose mode uses current page context when available.</p>
-              </div>
-            )}
-          </aside>
-        </div>
+              ) : (
+                <div className="mb-3 rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
+                  General thread with no linked record.
+                </div>
+              )}
+
+              {contextHref(activeConversation.conversation) ? (
+                <Link
+                  href={contextHref(activeConversation.conversation) ?? "#"}
+                  className="inline-flex rounded border border-[var(--accent-copper-soft)] px-2 py-1 text-[11px] text-[var(--accent-copper-soft)] hover:bg-orange-500/10"
+                >
+                  Open linked record
+                </Link>
+              ) : (
+                <p className="text-[11px] text-neutral-500">
+                  No direct deep-link route available.
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
+              <p className="mb-1 text-neutral-200">No thread selected.</p>
+              <p>Compose mode uses current page context when available.</p>
+            </div>
+          )}
+        </aside>
       </div>
-    </div>
+    </ModalShell>
   );
 }
