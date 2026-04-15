@@ -1,7 +1,7 @@
 // app/demo/instant-shop-analysis/page.tsx
 "use client";
 
-import React, { useMemo, useState, type FormEvent } from "react";
+import React, { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 import type { ShadowShopSnapshot } from "@/features/integrations/shopBoost/shadowShop";
 import {
@@ -44,6 +44,14 @@ type ClaimResponse =
       ok: false;
       error: string;
     };
+
+type ResumePreviewContext = {
+  demoId: string;
+  intakeId: string;
+  shopName: string;
+};
+
+const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v1";
 
 
 
@@ -104,6 +112,24 @@ export default function InstantShopAnalysisPage() {
   const [email, setEmail] = useState("");
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimLoading, setClaimLoading] = useState(false);
+  const [resumePreview, setResumePreview] = useState<ResumePreviewContext | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(PREVIEW_RESUME_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as Partial<ResumePreviewContext>;
+      if (!parsed.demoId || !parsed.intakeId || !parsed.shopName) return;
+      setResumePreview({
+        demoId: parsed.demoId,
+        intakeId: parsed.intakeId,
+        shopName: parsed.shopName,
+      });
+    } catch {
+      // ignore parse failures from stale client state
+    }
+  }, []);
 
   const handleQuestionnaireChange =
     <K extends keyof QuestionnaireState>(key: K) =>
@@ -274,6 +300,17 @@ export default function InstantShopAnalysisPage() {
                 imported yet.
               </p>
               <div className={THEME.badge}>No login required for the preview analysis.</div>
+              {resumePreview ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    (window.location.href = `/demo/preview/${encodeURIComponent(resumePreview.demoId)}?intakeId=${encodeURIComponent(resumePreview.intakeId)}`)
+                  }
+                  className="inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-[11px] text-cyan-100 hover:bg-cyan-500/20"
+                >
+                  Resume preview for {resumePreview.shopName}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
