@@ -36,6 +36,15 @@ type ReviewItem = {
   created_at: string;
   affected_domains?: string[];
   recommendation: Recommendation;
+  review_explanation: string;
+  recommendation_explanation: string;
+  decision_transparency: {
+    confidence_score: number;
+    reasoning: string;
+    candidates: Array<{ id: string; label: string; score: number }>;
+    raw_data: Record<string, unknown>;
+    normalized_data: Record<string, unknown>;
+  };
 };
 
 type Guidance = {
@@ -72,7 +81,6 @@ export default function ShopBoostReviewPage() {
   const [guidance, setGuidance] = useState<Guidance | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reprocessBusy, setReprocessBusy] = useState<null | "failed" | "unresolved" | "updated_matches">(null);
-  const [debugView, setDebugView] = useState(false);
   const [confirmRiskById, setConfirmRiskById] = useState<Record<string, boolean>>({});
 
   const load = async () => {
@@ -103,6 +111,17 @@ export default function ShopBoostReviewPage() {
 
   const isHighRiskItem = (item: ReviewItem, action: "linked_to_existing" | "created_new" | "ignored") =>
     action === "linked_to_existing" && item.recommendation.recommendedAction === "merge_candidate";
+
+  const stepCounts = useMemo(() => {
+    const critical = items.filter((item) => Boolean(item.blocking_reason));
+    const suggested = items.filter((item) => !item.blocking_reason && item.recommendation.confidenceLabel !== "LOW");
+    const cleanup = items.filter((item) => !critical.includes(item) && !suggested.includes(item));
+    return {
+      critical,
+      suggested,
+      cleanup,
+    };
+  }, [items]);
 
   const applySuggested = async (item: ReviewItem) => {
     const resolution_action = toResolutionAction(item.recommendation.recommendedAction);
@@ -204,7 +223,7 @@ export default function ShopBoostReviewPage() {
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
-        <p className="mt-1 text-sm text-neutral-300">Resolve migration issues safely with recommendations, confidence signals, and downstream impact visibility.</p>
+        <p className="mt-1 text-sm text-neutral-300">Resolve migration issues in guided steps with transparent reasoning and confidence-backed actions.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
           {Object.entries(grouped).map(([key, count]) => (
             <span key={key} className="rounded-full border border-white/15 px-2 py-1">{key}: {count}</span>
@@ -238,7 +257,6 @@ export default function ShopBoostReviewPage() {
             </select>
           </div>
         </div>
-        <label className="inline-flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={debugView} onChange={(e) => setDebugView(e.target.checked)} /> Advanced debug view</label>
 
         <div className="grid gap-2 md:grid-cols-3 text-xs">
           <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply HIGH confidence only (≥85%)</button>
@@ -246,23 +264,37 @@ export default function ShopBoostReviewPage() {
           <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void runReprocess("unresolved")} disabled={reprocessBusy !== null}>{reprocessBusy === "unresolved" ? "Re-running…" : "Re-run unresolved items"}</button>
           <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
         </div>
-
-        <div>
-          <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Ignore reason</label>
-          <select value={ignoreReason} onChange={(e) => setIgnoreReason(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
-            {["duplicate", "obsolete", "invalid", "test_data", "intentionally_skipped", "unsupported_format", "other"].map((reason) => <option key={reason} value={reason}>{reason}</option>)}
-          </select>
-          <input value={ignoreNote} onChange={(e) => setIgnoreNote(e.target.value)} placeholder="Optional ignore note" className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white" />
-        </div>
-
-        {selectedIds.length > 0 ? (
-          <div className="flex flex-wrap gap-2 text-xs">
-            <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveBulk("linked_to_existing")}>Bulk link to existing</button>
-            <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void resolveBulk("created_new")}>Bulk create new</button>
-            <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveBulk("ignored")}>Bulk ignore</button>
-          </div>
-        ) : null}
       </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          { key: "critical", title: "Step 1: Resolve critical blockers", rows: stepCounts.critical, cta: "Resolve blocker" },
+          { key: "suggested", title: "Step 2: Review suggested fixes", rows: stepCounts.suggested, cta: "Apply suggested" },
+          { key: "cleanup", title: "Step 3: Optional clean-up", rows: stepCounts.cleanup, cta: "Clean up" },
+        ].map((step) => (
+          <details key={step.key} className="rounded-xl border border-white/10 bg-black/20 p-3" open={step.rows.length > 0}>
+            <summary className="cursor-pointer text-sm font-semibold text-white">{step.title}</summary>
+            <div className="mt-2 text-xs text-neutral-300">{step.rows.length} item(s) in this step.</div>
+            {step.rows.length === 0 ? <div className="mt-2 text-xs text-emerald-200">Complete ✅</div> : <div className="mt-2 text-xs text-neutral-400">Use item actions below to {step.cta.toLowerCase()}.</div>}
+          </details>
+        ))}
+      </div>
+
+      <div>
+        <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Ignore reason</label>
+        <select value={ignoreReason} onChange={(e) => setIgnoreReason(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+          {["duplicate", "obsolete", "invalid", "test_data", "intentionally_skipped", "unsupported_format", "other"].map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+        </select>
+        <input value={ignoreNote} onChange={(e) => setIgnoreNote(e.target.value)} placeholder="Optional ignore note" className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white" />
+      </div>
+
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap gap-2 text-xs">
+          <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveBulk("linked_to_existing")}>Bulk link to existing</button>
+          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void resolveBulk("created_new")}>Bulk create new</button>
+          <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveBulk("ignored")}>Bulk ignore</button>
+        </div>
+      ) : null}
 
       {loading ? <div className="text-sm text-neutral-400">Loading review queue…</div> : items.length === 0 ? (
         <div className="rounded-xl border border-emerald-300/20 bg-emerald-950/20 p-3 text-sm text-emerald-100">No items for this filter.</div>
@@ -276,11 +308,10 @@ export default function ShopBoostReviewPage() {
                   <div>
                     <div className="text-sm font-semibold text-white">{item.summary}</div>
                     <div className="text-xs text-neutral-400">{item.domain} • {item.issue_type} • {item.status}</div>
-                    <div className="mt-1 text-xs text-neutral-500">target: {item.target_domain ?? item.domain} • cluster: {item.cluster_key ?? "n/a"} ({item.cluster_confidence?.toFixed(2) ?? "0.00"})</div>
                     {item.blocking_reason ? <div className="text-xs text-amber-200">Blocker: {item.blocking_reason}</div> : null}
-                    <div className="text-xs text-neutral-300">What is wrong: {item.summary}</div>
-                    <div className="text-xs text-neutral-300">Why it happened: {item.recommendation.recommendationReason}</div>
-                    {(item.downstream_impact_count ?? 0) > 0 ? <div className="text-xs text-sky-200">This will unblock {item.downstream_impact_count} downstream records in {(item.affected_domains ?? []).join(", ") || "related domains"}.</div> : null}
+                    <div className="mt-1 text-xs text-neutral-200">Why this needs review: {item.review_explanation}</div>
+                    <div className="text-xs text-sky-200">Suggested reasoning: {item.recommendation_explanation}</div>
+                    {(item.downstream_impact_count ?? 0) > 0 ? <div className="text-xs text-emerald-200">This can unblock {item.downstream_impact_count} downstream records in {(item.affected_domains ?? []).join(", ") || "related domains"}.</div> : null}
                   </div>
                 </div>
 
@@ -308,24 +339,29 @@ export default function ShopBoostReviewPage() {
                 </div>
               </div>
 
+              <details className="mt-3 rounded-lg border border-white/10 bg-black/30 p-2">
+                <summary className="cursor-pointer text-xs font-medium text-neutral-100">Decision transparency panel</summary>
+                <div className="mt-2 grid gap-3 md:grid-cols-3">
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Raw data</div>
+                    <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.decision_transparency.raw_data ?? {}, null, 2)}</pre>
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Normalized data</div>
+                    <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.decision_transparency.normalized_data ?? {}, null, 2)}</pre>
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Candidates + confidence</div>
+                    <div className="mb-2 text-xs text-neutral-300">Confidence score: {(item.decision_transparency.confidence_score * 100).toFixed(0)}%</div>
+                    <div className="mb-2 text-xs text-neutral-300">Reasoning: {item.decision_transparency.reasoning}</div>
+                    <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.decision_transparency.candidates ?? [], null, 2)}</pre>
+                  </div>
+                </div>
+              </details>
+
               {item.materialized_record ? <div className="mt-2 text-xs text-emerald-200">Resolved + Applied → {JSON.stringify(item.materialized_record)}</div> : null}
               {item.status === "ignored" ? <div className="mt-1 text-xs text-neutral-300">Ignored ({item.ignore_reason_code ?? "other"}) {item.ignore_note ? `• ${item.ignore_note}` : ""}</div> : null}
               {item.materialization_error ? <div className="mt-1 text-xs text-rose-300">Materialization error: {item.materialization_error}</div> : null}
-
-              {debugView ? <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <div>
-                  <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Raw imported data</div>
-                  <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.raw_payload ?? {}, null, 2)}</pre>
-                </div>
-                <div>
-                  <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Normalized / target payload</div>
-                  <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.normalized_payload ?? {}, null, 2)}</pre>
-                </div>
-                <div>
-                  <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Suggested matches / system data</div>
-                  <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.suggested_matches ?? {}, null, 2)}</pre>
-                </div>
-              </div> : null}
             </div>
           ))}
         </div>

@@ -24,6 +24,42 @@ function deriveAffectedDomains(dependencyRefs: unknown, domain: string): string[
   return Array.from(domains);
 }
 
+function deriveReviewExplanation(item: Record<string, unknown>): string {
+  const domain = String(item.domain ?? "record");
+  const issueType = String(item.issue_type ?? "ambiguous_match");
+  if (issueType === "missing_dependency") {
+    return `This ${domain} could not be linked because a required dependency was missing from imported data.`;
+  }
+  if (issueType === "invalid") {
+    return `This ${domain} is missing required identifiers, so it cannot be safely materialized yet.`;
+  }
+  if (issueType === "duplicate_candidate" || issueType === "conflict") {
+    return `This ${domain} matches multiple existing records with conflicting similarity signals.`;
+  }
+  return `This ${domain} needs review because matching confidence did not clear the auto-apply threshold.`;
+}
+
+function deriveRecommendationExplanation(
+  recommendation: {
+    recommendedAction: string;
+    recommendationReason: string;
+    recommendationConfidence: number;
+    candidateTargets: Array<{ id: string; label: string; score: number }>;
+  },
+): string {
+  const topCandidate = recommendation.candidateTargets[0];
+  if (recommendation.recommendedAction === "link_existing" && topCandidate) {
+    return `We suggest linking to ${topCandidate.label} based on deterministic identity and similarity scoring (${Math.round(topCandidate.score * 100)}%).`;
+  }
+  if (recommendation.recommendedAction === "merge_candidate") {
+    return "We suggest a merge workflow because duplicate indicators exceeded the merge threshold, but manual confirmation is required.";
+  }
+  if (recommendation.recommendedAction === "ignore") {
+    return "We suggest ignoring this row because data confidence is too low for safe linking or creation.";
+  }
+  return `${recommendation.recommendationReason} Confidence ${Math.round(recommendation.recommendationConfidence * 100)}%.`;
+}
+
 export async function GET(req: Request) {
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
   const {
@@ -87,6 +123,15 @@ export async function GET(req: Request) {
       ...item,
       recommendation,
       affected_domains: deriveAffectedDomains(item.dependency_refs, String(item.domain ?? "")),
+      review_explanation: deriveReviewExplanation(item),
+      recommendation_explanation: deriveRecommendationExplanation(recommendation as any),
+      decision_transparency: {
+        confidence_score: Number((recommendation as any).recommendationConfidence ?? 0),
+        reasoning: String((recommendation as any).recommendationReason ?? ""),
+        candidates: Array.isArray((recommendation as any).candidateTargets) ? (recommendation as any).candidateTargets : [],
+        raw_data: asRecord(item.raw_payload),
+        normalized_data: asRecord(item.normalized_payload),
+      },
     };
   });
 
