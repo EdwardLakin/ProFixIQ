@@ -328,13 +328,13 @@ export default function InboxModal({
       </div>
 
       <div className="grid h-[min(72vh,760px)] grid-cols-1 gap-2.5 md:grid-cols-[290px_1fr] xl:grid-cols-[280px_1fr_230px]">
-        <aside className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35">
-          <div className="border-b border-[var(--metal-border-soft)]/70 p-2">
+        <aside className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/35">
+          <div className="border-b border-white/5 p-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search inbox"
-              className="h-8 w-full rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 text-xs"
+              className="h-8 w-full rounded border border-white/10 bg-black/60 px-2 text-xs"
             />
           </div>
 
@@ -352,9 +352,9 @@ export default function InboxModal({
                   key={row.conversation.id}
                   type="button"
                   onClick={() => setActiveConversationId(row.conversation.id)}
-                  className={`flex w-full items-start gap-2 border-b border-[var(--metal-border-soft)]/35 px-2 py-1.5 text-left transition hover:bg-white/5 ${
+                  className={`flex w-full items-start gap-2 border-b border-white/5 px-2 py-1.5 text-left transition hover:bg-white/5 ${
                     activeConversationId === row.conversation.id
-                      ? "bg-white/10 ring-1 ring-[var(--accent-copper-soft)]/35"
+                      ? "bg-white/5 ring-1 ring-[var(--accent-copper-soft)]/35"
                       : ""
                   }`}
                 >
@@ -382,8 +382,8 @@ export default function InboxModal({
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/30">
-          <div className="border-b border-[var(--metal-border-soft)]/70 px-3 py-1.5 text-xs font-medium text-neutral-200">
+        <section className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/30">
+          <div className="border-b border-white/5 px-3 py-1.5 text-xs font-medium text-neutral-200">
             {activeConversation
               ? activeConversation.conversation.title ?? "Thread"
               : "New message"}
@@ -410,7 +410,7 @@ export default function InboxModal({
                     className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
                       mine
                         ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
-                        : "border-[var(--metal-border-soft)] bg-black/55 text-neutral-100"
+                        : "border-white/10 bg-black/55 text-neutral-100"
                     }`}
                   >
                     {m.content}
@@ -421,12 +421,12 @@ export default function InboxModal({
           </div>
 
           {!activeConversationId ? (
-            <div className="space-y-2 border-t border-[var(--metal-border-soft)]/70 p-2.5 text-xs">
+            <div className="space-y-2 border-t border-white/5 p-2.5 text-xs">
               <div className="flex gap-2">
                 <select
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-8 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1"
+                  className="h-8 rounded border border-white/10 bg-black/60 px-2 py-1"
                 >
                   <option value="all">All roles</option>
                   <option value="tech">Tech</option>
@@ -436,14 +436,14 @@ export default function InboxModal({
                 </select>
                 <button
                   type="button"
-                  className="h-8 rounded border border-[var(--metal-border-soft)] px-2"
+                  className="h-8 rounded border border-white/10 px-2"
                   onClick={() => setSelectedRecipients(recipientOptions.map((u) => u.id))}
                 >
                   Select all
                 </button>
               </div>
 
-              <div className="max-h-20 overflow-auto rounded border border-[var(--metal-border-soft)] p-2">
+              <div className="max-h-20 overflow-auto rounded border border-white/10 p-2">
                 {recipientOptions.map((u) => (
                   <label key={u.id} className="mb-1 flex items-center gap-2">
                     <input
@@ -480,12 +480,12 @@ export default function InboxModal({
             </div>
           ) : null}
 
-          <div className="flex gap-2 border-t border-[var(--metal-border-soft)]/70 p-2.5">
+          <div className="flex gap-2 border-t border-white/5 p-2.5">
             <textarea
               value={compose}
               onChange={(e) => setCompose(e.target.value)}
               placeholder={activeConversationId ? "Reply…" : "Compose…"}
-              className="h-14 flex-1 rounded border border-[var(--metal-border-soft)] bg-black/60 px-2 py-1.5 text-xs"
+              className="h-14 flex-1 rounded border border-white/10 bg-black/60 px-2 py-1.5 text-xs"
             />
             <button
               type="button"
@@ -498,7 +498,7 @@ export default function InboxModal({
           </div>
         </section>
 
-        <aside className="hidden rounded-xl border border-[var(--metal-border-soft)]/80 bg-black/35 p-2.5 text-xs text-neutral-300 xl:block">
+        <aside className="hidden rounded-xl border border-white/10 bg-black/35 p-2.5 text-xs text-neutral-300 xl:block">
           <h3 className="mb-2 text-[10px] uppercase tracking-[0.14em] text-neutral-400">
             Context
           </h3>
@@ -514,7 +514,7 @@ export default function InboxModal({
                   ID: {activeConversation.conversation.context_id}
                 </p>
               ) : (
-                <div className="mb-3 rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
+                <div className="mb-3 rounded border border-white/5 bg-black/40 p-2 text-[11px] text-neutral-400">
                   General thread with no linked record.
                 </div>
               )}
@@ -533,7 +533,7 @@ export default function InboxModal({
               )}
             </>
           ) : (
-            <div className="rounded border border-[var(--metal-border-soft)]/70 bg-black/40 p-2 text-[11px] text-neutral-400">
+            <div className="rounded border border-white/5 bg-black/40 p-2 text-[11px] text-neutral-400">
               <p className="mb-1 text-neutral-200">No thread selected.</p>
               <p>Compose mode uses current page context when available.</p>
             </div>
