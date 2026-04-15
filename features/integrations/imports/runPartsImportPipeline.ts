@@ -1,8 +1,17 @@
 import { createHash } from "crypto";
 
+import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type CsvRow = Record<string, string>;
+type ExistingPartRow = Pick<
+  Database["public"]["Tables"]["parts"]["Row"],
+  "id" | "name" | "part_number" | "sku" | "supplier" | "category" | "shop_id"
+>;
+type StagingInsertResultRow = Pick<
+  Database["public"]["Tables"]["shop_parts_import_staging"]["Row"],
+  "id" | "raw_row_id" | "normalized_name" | "normalized_part_number" | "normalized_sku" | "status" | "matched_part_id" | "match_reason" | "quantity_on_hand"
+>;
 
 type PartsPipelineArgs = {
   shopId: string;
@@ -186,8 +195,9 @@ function normalizePartRow(row: CsvRow, rowNumber: number): ParsedPart {
 }
 
 export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<PartsPipelineSummary> {
-  const supabase = createAdminSupabase() as any;
+  const supabase = createAdminSupabase();
   const { shopId, intakeId, partsCsv, partsFilePath, sourceSystem } = args;
+  let inventorySeededLocations = 0;
 
   const { header, rows } = parseCsv(partsCsv);
   if (rows.length === 0) {
@@ -203,7 +213,7 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
     };
   }
 
-  const existingPartsRows =
+  const existingPartsRows: ExistingPartRow[] =
     (
       await supabase
         .from("parts")
@@ -212,9 +222,9 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
         .limit(5000)
     ).data ?? [];
 
-  const partsByPartNo = new Map<string, { id: string; row: any }>();
-  const partsBySku = new Map<string, { id: string; row: any }>();
-  const partsByName = new Map<string, Array<{ id: string; row: any }>>();
+  const partsByPartNo = new Map<string, { id: string; row: ExistingPartRow }>();
+  const partsBySku = new Map<string, { id: string; row: ExistingPartRow }>();
+  const partsByName = new Map<string, Array<{ id: string; row: ExistingPartRow }>>();
 
   for (const p of existingPartsRows) {
     const partNo = normalizeToken(p.part_number);
@@ -370,13 +380,13 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
   const { data: insertedStagingRows } = await supabase
     .from("shop_parts_import_staging")
     .insert(stagingRowsPayload)
-    .select("id,raw_row_id,normalized_name,normalized_part_number,normalized_sku,status,matched_part_id,match_reason");
+    .select("id,raw_row_id,normalized_name,normalized_part_number,normalized_sku,status,matched_part_id,match_reason,quantity_on_hand");
 
   let promotedRows = 0;
   let matchedRows = 0;
   let ambiguousRows = 0;
 
-  for (const staged of insertedStagingRows ?? []) {
+  for (const staged of ((insertedStagingRows ?? []) as StagingInsertResultRow[])) {
     const shouldAutoPromote = staged.status === "approved" && staged.matched_part_id;
 
     if (staged.status === "matched" || staged.status === "approved") matchedRows += 1;
@@ -441,7 +451,7 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
         .eq("location_id", defaultLocation.id)
         .maybeSingle();
 
-      const seededQty = Number((staged as any).quantity_on_hand ?? 0);
+      const seededQty = Number(staged.quantity_on_hand ?? 0);
       if (existingStock?.id) {
         await supabase
           .from("part_stock")
@@ -528,4 +538,3 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
     inventorySeededLocations,
   };
 }
-  let inventorySeededLocations = 0;

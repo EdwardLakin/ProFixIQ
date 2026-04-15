@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type DomainSummary = {
@@ -68,22 +68,22 @@ export default function ShopBoostActivationPanel() {
   const [intake, setIntake] = useState<IntakeState | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     const res = await fetch("/api/shop-boost/intakes/latest", { cache: "no-store" });
     const json = (await res.json().catch(() => ({}))) as { ok?: boolean; intake?: IntakeState | null };
     if (json.ok) setIntake(json.intake ?? null);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     void loadStatus();
-  }, []);
+  }, [loadStatus]);
 
   useEffect(() => {
     if (!intake || !ACTIVE_STATUSES.has(intake.status)) return;
     const interval = window.setInterval(() => void loadStatus(), 5000);
     return () => window.clearInterval(interval);
-  }, [intake?.id, intake?.status]);
+  }, [intake, loadStatus]);
 
   const percent = useMemo(() => Math.max(0, Math.min(100, intake?.progress?.progressPercent ?? 0)), [intake?.progress?.progressPercent]);
 

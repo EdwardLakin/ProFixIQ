@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Recommendation = {
   recommendedAction: "link_existing" | "create_new" | "merge_candidate" | "ignore";
@@ -83,7 +83,7 @@ export default function ShopBoostReviewPage() {
   const [reprocessBusy, setReprocessBusy] = useState<null | "failed" | "unresolved" | "updated_matches">(null);
   const [confirmRiskById, setConfirmRiskById] = useState<Record<string, boolean>>({});
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (domain) params.set("domain", domain);
@@ -94,11 +94,11 @@ export default function ShopBoostReviewPage() {
     setGuidance(json.guidance ?? null);
     setSelectedIds([]);
     setLoading(false);
-  };
+  }, [domain, statusFilter]);
 
   useEffect(() => {
     void load();
-  }, [domain, statusFilter]);
+  }, [load]);
 
   const grouped = useMemo(
     () =>

@@ -5,8 +5,10 @@ import type { Database } from "@shared/types/types/supabase";
 import { resolveAndMaterializeReviewItem } from "@/features/integrations/shopBoost/reviewMaterialization";
 
 type DB = Database;
+type RouteContext = { params: Promise<{ id: string }> };
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: RouteContext) {
+  const { id } = await context.params;
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
   const {
     data: { user },
@@ -37,7 +39,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   };
 
   const result = await resolveAndMaterializeReviewItem({
-    reviewItemId: params.id,
+    reviewItemId: id,
     shopId: profile.shop_id,
     userId: user.id,
     resolutionAction: body.resolution_action ?? "ignored",

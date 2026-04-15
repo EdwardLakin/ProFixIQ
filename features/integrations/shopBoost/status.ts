@@ -47,6 +47,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isMigrationStory(value: unknown): value is MigrationStory {
+  return isRecord(value);
+}
+
 function readIntakeBasics(row: IntakeRow | null): Record<string, unknown> {
   if (!row || !isRecord(row.intake_basics)) return {};
   return row.intake_basics;
@@ -89,10 +93,10 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
       migration.completionState === "NOT_READY"
         ? migration.completionState
         : undefined,
-    migration_story: isRecord((basics as any).migration_story)
-      ? ((basics as any).migration_story as MigrationStory)
-      : isRecord(migration.migration_story)
-        ? (migration.migration_story as MigrationStory)
+    migration_story: isMigrationStory(basics.migration_story)
+      ? basics.migration_story
+      : isMigrationStory(migration.migration_story)
+        ? migration.migration_story
         : undefined,
   };
 }

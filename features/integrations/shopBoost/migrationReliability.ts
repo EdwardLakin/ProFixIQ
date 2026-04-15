@@ -1,4 +1,5 @@
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
 
 export type ReviewIssueType =
   | "unmatched"
@@ -28,6 +29,10 @@ export type IgnoreReasonCode =
   | "intentionally_skipped"
   | "unsupported_format"
   | "other";
+type StockRow = Pick<Database["public"]["Tables"]["part_stock"]["Row"], "part_id">;
+type CustomerKeyRow = Pick<Database["public"]["Tables"]["customers"]["Row"], "email" | "phone" | "phone_number" | "name">;
+type VehicleKeyRow = Pick<Database["public"]["Tables"]["vehicles"]["Row"], "vin" | "license_plate" | "year" | "make" | "model" | "customer_id">;
+type PartKeyRow = Pick<Database["public"]["Tables"]["parts"]["Row"], "part_number" | "sku" | "name">;
 
 function normalizeText(value: unknown): string {
   return String(value ?? "")
@@ -176,28 +181,28 @@ export async function runPostMigrationIntegrityValidation(args: {
     supabase.from("invoices").select("id", { count: "exact", head: true }).eq("shop_id", args.shopId).contains("metadata", { source_intake_id: args.intakeId }).is("work_order_id", null),
   ]);
 
-  const stockRows = stockWithoutPart.data ?? [];
-  const stockMissingPart = stockRows.filter((row: any) => !row.part_id).length;
+  const stockRows = (stockWithoutPart.data ?? []) as StockRow[];
+  const stockMissingPart = stockRows.filter((row) => !row.part_id).length;
 
   const dupCustomers = new Map<string, number>();
-  for (const c of duplicateCustomers.data ?? []) {
-    const key = [normalizeToken((c as any).email), normalizePhone((c as any).phone ?? (c as any).phone_number), normalizeText((c as any).name)].filter(Boolean).join("|");
+  for (const c of (duplicateCustomers.data ?? []) as CustomerKeyRow[]) {
+    const key = [normalizeToken(c.email), normalizePhone(c.phone ?? c.phone_number), normalizeText(c.name)].filter(Boolean).join("|");
     if (!key) continue;
     dupCustomers.set(key, (dupCustomers.get(key) ?? 0) + 1);
   }
   const customerDuplicateRisk = Array.from(dupCustomers.values()).filter((n) => n > 1).length;
 
   const dupVehicles = new Map<string, number>();
-  for (const v of duplicateVehicles.data ?? []) {
-    const key = normalizeToken((v as any).vin) || normalizeToken((v as any).license_plate) || [normalizeToken((v as any).year), normalizeText((v as any).make), normalizeText((v as any).model), normalizeToken((v as any).customer_id)].join("|");
+  for (const v of (duplicateVehicles.data ?? []) as VehicleKeyRow[]) {
+    const key = normalizeToken(v.vin) || normalizeToken(v.license_plate) || [normalizeToken(v.year), normalizeText(v.make), normalizeText(v.model), normalizeToken(v.customer_id)].join("|");
     if (!key) continue;
     dupVehicles.set(key, (dupVehicles.get(key) ?? 0) + 1);
   }
   const vehicleDuplicateRisk = Array.from(dupVehicles.values()).filter((n) => n > 1).length;
 
   const dupParts = new Map<string, number>();
-  for (const p of duplicateParts.data ?? []) {
-    const key = normalizeToken((p as any).part_number) || normalizeToken((p as any).sku) || normalizeText((p as any).name);
+  for (const p of (duplicateParts.data ?? []) as PartKeyRow[]) {
+    const key = normalizeToken(p.part_number) || normalizeToken(p.sku) || normalizeText(p.name);
     if (!key) continue;
     dupParts.set(key, (dupParts.get(key) ?? 0) + 1);
   }
@@ -253,7 +258,7 @@ export async function runPostMigrationIntegrityValidation(args: {
     blocking_issues_count: blockingIssuesCount,
     warnings_count: warningsCount,
     checks,
-  } as any);
+  });
 
   return {
     status,

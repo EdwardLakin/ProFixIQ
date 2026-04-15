@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 
+import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   computeCompletionState,
@@ -7,8 +8,10 @@ import {
   type IgnoreReasonCode,
 } from "@/features/integrations/shopBoost/migrationReliability";
 import { buildMigrationStory } from "@/features/integrations/shopBoost/migrationStory";
-import { toResolutionAction } from "@/features/integrations/shopBoost/reviewGuidance";
+import { toResolutionAction, type RecommendedAction } from "@/features/integrations/shopBoost/reviewGuidance";
 
+type DB = Database;
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 type ResolutionAction = "linked_to_existing" | "created_new" | "ignored";
 type ReviewStatus = "pending" | "resolved" | "materialized" | "failed_materialization" | "ignored";
 
@@ -40,6 +43,14 @@ type HighRiskCheckResult = {
   highRiskAction: boolean;
   riskReasons: string[];
 };
+type CustomerPhoneLookupRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "phone" | "phone_number">;
+type ReviewItemActionRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "id" | "recommended_action" | "recommendation_confidence">;
+type ReviewItemCandidateRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "id" | "recommended_action">;
+
+function toRecommendedAction(value: unknown): RecommendedAction {
+  if (value === "link_existing" || value === "merge_candidate" || value === "ignore") return value;
+  return "create_new";
+}
 
 function norm(value: unknown): string {
   return String(value ?? "").trim();
@@ -83,7 +94,7 @@ function parseMoney(value: string | null): number | null {
 
 
 async function logReviewAuditEvent(args: {
-  supabase: any;
+  supabase: AdminClient;
   item: ReviewItemRow;
   userId: string;
   actionTaken: ResolutionAction | null;
@@ -117,7 +128,7 @@ async function logReviewAuditEvent(args: {
   });
 }
 
-async function findCustomerId(args: { supabase: any; shopId: string; raw: Record<string, unknown>; suggested: unknown; }): Promise<string | null> {
+async function findCustomerId(args: { supabase: AdminClient; shopId: string; raw: Record<string, unknown>; suggested: unknown; }): Promise<string | null> {
   const { supabase, shopId, raw, suggested } = args;
   const suggestedCustomerId = typeof suggested === "object" && suggested && "customerId" in (suggested as Record<string, unknown>)
     ? String((suggested as Record<string, unknown>).customerId ?? "")
@@ -134,14 +145,14 @@ async function findCustomerId(args: { supabase: any; shopId: string; raw: Record
   const phone = normalizePhone(pick(raw, [/customer phone/, /^phone$/]));
   if (phone) {
     const { data } = await supabase.from("customers").select("id,phone,phone_number").eq("shop_id", shopId).limit(3000);
-    const matched = (data ?? []).find((item: any) => normalizePhone(item.phone ?? item.phone_number) === phone);
+    const matched = ((data ?? []) as CustomerPhoneLookupRow[]).find((item) => normalizePhone(item.phone ?? item.phone_number) === phone);
     if (matched?.id) return String(matched.id);
   }
 
   return null;
 }
 
-async function materializeCustomer(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+async function materializeCustomer(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const { supabase, item, resolutionAction } = args;
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
@@ -185,7 +196,7 @@ async function materializeCustomer(args: { supabase: any; item: ReviewItemRow; r
   return { status: "materialized", materializedRecord: { domain: "customer", customerId }, error: null };
 }
 
-async function materializeVehicle(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+async function materializeVehicle(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const { supabase, item, resolutionAction } = args;
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
@@ -254,7 +265,7 @@ async function materializeVehicle(args: { supabase: any; item: ReviewItemRow; re
   return { status: "materialized", materializedRecord: { domain: "vehicle", vehicleId, customerId }, error: null };
 }
 
-async function materializeWorkOrder(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+async function materializeWorkOrder(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const { supabase, item, resolutionAction } = args;
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
@@ -365,7 +376,7 @@ async function materializeWorkOrder(args: { supabase: any; item: ReviewItemRow; 
   return { status: "materialized", materializedRecord: { domain: "work_order", workOrderId, customerId, vehicleId }, error: null };
 }
 
-async function materializePart(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+async function materializePart(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const { supabase, item, resolutionAction } = args;
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
@@ -453,7 +464,7 @@ async function materializePart(args: { supabase: any; item: ReviewItemRow; resol
   return { status: "materialized", materializedRecord: { domain: "part", partId }, error: null };
 }
 
-async function materializeByDomain(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+async function materializeByDomain(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const domain = args.item.domain;
   if (domain === "customer") return materializeCustomer(args);
   if (domain === "vehicle") return materializeVehicle(args);
@@ -462,7 +473,7 @@ async function materializeByDomain(args: { supabase: any; item: ReviewItemRow; r
   return { status: "materialized", materializedRecord: { skipped: true, domain }, error: null };
 }
 
-async function recomputeMigrationProgress(supabase: any, shopId: string, intakeId: string): Promise<void> {
+async function recomputeMigrationProgress(supabase: AdminClient, shopId: string, intakeId: string): Promise<void> {
   const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { count: ignoredCount }, { data: intake }, { count: duplicateMergedCount }] = await Promise.all([
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "pending"),
     supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "failed_materialization"),
@@ -489,7 +500,7 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
   );
 
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
-  const integrityErrors = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
+  const integrityErrors = integrity.integrityErrors;
   const importSummary = (basics.importSummary ?? {}) as Record<string, unknown>;
   const linkageSummary = (importSummary.linkageSummary ?? {}) as Record<string, unknown>;
   const linked = (linkageSummary.linked ?? {}) as Record<string, unknown>;
@@ -553,7 +564,7 @@ export async function resolveAndMaterializeReviewItem(args: {
   ignoreReasonCode?: IgnoreReasonCode;
   ignoreNote?: string | null;
 }): Promise<{ ok: boolean; item: ReviewItemRow | null; materializedRecord: Record<string, unknown> | null; error?: string; }> {
-  const supabase = createAdminSupabase() as any;
+  const supabase = createAdminSupabase();
 
   const { data: item } = await supabase
     .from("shop_boost_review_items")
@@ -659,7 +670,7 @@ export async function resolveAndMaterializeReviewItem(args: {
   };
 }
 
-async function replayDependentRows(args: { supabase: any; shopId: string; intakeId: string; }): Promise<void> {
+async function replayDependentRows(args: { supabase: AdminClient; shopId: string; intakeId: string; }): Promise<void> {
   const { supabase, shopId, intakeId } = args;
   const { data: replayCandidates } = await supabase
     .from("shop_boost_review_items")
@@ -731,7 +742,7 @@ export async function applyHighConfidenceRecommendations(args: {
   intakeId?: string;
   threshold?: number;
 }): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
-  const supabase = createAdminSupabase() as any;
+  const supabase = createAdminSupabase();
   const threshold = Math.max(0, Math.min(0.99, args.threshold ?? 0.85));
 
   let query = supabase
@@ -748,10 +759,10 @@ export async function applyHighConfidenceRecommendations(args: {
   const { data } = await query;
 
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-  for (const row of data ?? []) {
+  for (const row of (data ?? []) as ReviewItemActionRow[]) {
     const confidence = Number(row.recommendation_confidence ?? 0);
     if (confidence < 0.85) continue;
-    const action = toResolutionAction(String(row.recommended_action) as any);
+    const action = toResolutionAction(toRecommendedAction(row.recommended_action));
     if (action === "linked_to_existing" && String(row.recommended_action) === "merge_candidate") {
       results.push({ id: String(row.id), ok: false, error: "High-risk merge candidates are never auto-applied." });
       continue;
@@ -776,7 +787,7 @@ export async function reprocessReviewItems(args: {
   mode: "failed" | "unresolved" | "updated_matches";
   reprocessReason?: string;
 }): Promise<{ resetCount: number; results: Array<{ id: string; ok: boolean; error?: string }> }> {
-  const supabase = createAdminSupabase() as any;
+  const supabase = createAdminSupabase();
   let statuses: string[] = [];
   if (args.mode === "failed") statuses = ["failed_materialization"];
   if (args.mode === "unresolved") statuses = ["pending", "failed_materialization"];
@@ -792,7 +803,7 @@ export async function reprocessReviewItems(args: {
   if (args.intakeId) base = base.eq("intake_id", args.intakeId);
   const { data: candidates } = await base;
 
-  const ids = (candidates ?? []).map((row: any) => String(row.id));
+  const ids = ((candidates ?? []) as ReviewItemCandidateRow[]).map((row) => String(row.id));
   if (ids.length === 0) return { resetCount: 0, results: [] };
 
   await supabase
@@ -816,8 +827,8 @@ export async function reprocessReviewItems(args: {
   }
 
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-  for (const row of candidates ?? []) {
-    const recommended = String(row.recommended_action ?? "create_new") as any;
+  for (const row of (candidates ?? []) as ReviewItemCandidateRow[]) {
+    const recommended = toRecommendedAction(row.recommended_action);
     const action = toResolutionAction(recommended);
     const result = await resolveAndMaterializeReviewItem({
       reviewItemId: String(row.id),

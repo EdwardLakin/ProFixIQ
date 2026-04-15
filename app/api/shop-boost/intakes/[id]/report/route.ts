@@ -5,12 +5,26 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
+type RouteContext = { params: Promise<{ id: string }> };
+type ReviewOutcomeRow = Pick<
+  DB["public"]["Tables"]["shop_boost_review_items"]["Row"],
+  "status" | "resolution_action"
+>;
+type DomainAggregationRow = Pick<
+  DB["public"]["Tables"]["shop_boost_row_results"]["Row"],
+  "target_domain" | "review_required" | "error_reason"
+>;
+type IntakeReportRow = Pick<
+  DB["public"]["Tables"]["shop_boost_intakes"]["Row"],
+  "id" | "shop_id" | "status" | "created_at" | "processed_at" | "intake_basics"
+>;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, context: RouteContext) {
+  const { id } = await context.params;
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
   const {
     data: { user },
@@ -26,13 +40,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   if (!profile?.shop_id) return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
 
-  const admin = createAdminSupabase() as any;
+  const admin = createAdminSupabase();
   const { data: intake, error } = await admin
     .from("shop_boost_intakes")
     .select("id,shop_id,status,created_at,processed_at,intake_basics")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("shop_id", profile.shop_id)
-    .maybeSingle();
+    .maybeSingle<IntakeReportRow>();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   if (!intake) return NextResponse.json({ ok: false, error: "Intake not found." }, { status: 404 });
@@ -47,15 +61,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       .from("shop_boost_review_items")
       .select("status,resolution_action")
       .eq("shop_id", profile.shop_id)
-      .eq("intake_id", params.id),
+      .eq("intake_id", id),
     admin
       .from("shop_boost_row_results")
-      .select("domain,review_required,error_reason")
+      .select("target_domain,review_required,error_reason")
       .eq("shop_id", profile.shop_id)
-      .eq("intake_id", params.id),
+      .eq("intake_id", id),
   ]);
 
-  const reviewOutcomes = (reviewRows ?? []).reduce((acc: Record<string, number>, row: Record<string, unknown>) => {
+  const reviewOutcomes = (reviewRows ?? []).reduce((acc: Record<string, number>, row: ReviewOutcomeRow) => {
     const status = String(row.status ?? "unknown");
     acc[`status:${status}`] = (acc[`status:${status}`] ?? 0) + 1;
     const action = String(row.resolution_action ?? "none");
@@ -63,8 +77,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return acc;
   }, {});
 
-  const domainSummaries = (byDomainRows ?? []).reduce((acc: Record<string, { review: number; failed: number; processed: number }>, row: Record<string, unknown>) => {
-    const key = String(row.domain ?? "unknown");
+  const domainSummaries = (byDomainRows ?? []).reduce((acc: Record<string, { review: number; failed: number; processed: number }>, row: DomainAggregationRow) => {
+    const key = String(row.target_domain ?? "unknown");
     const next = acc[key] ?? { review: 0, failed: 0, processed: 0 };
     next.processed += 1;
     if (row.review_required) next.review += 1;
@@ -83,7 +97,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     integrity_results: {
       status: integrity.status ?? null,
       checks: asRecord(integrity.checks),
-      integrity_errors: Array.isArray((integrity as any).integrity_errors) ? (integrity as any).integrity_errors : [],
+      integrity_errors: Array.isArray(integrity.integrity_errors) ? integrity.integrity_errors : [],
     },
     review_outcomes: reviewOutcomes,
   };
