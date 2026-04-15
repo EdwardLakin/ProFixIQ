@@ -196,6 +196,7 @@ export default function TechQueuePage() {
       const baseQuery = supabase
         .from("work_order_lines")
         .select("*")
+        .or("line_type.eq.job,line_type.is.null")
         .order("created_at", { ascending: false });
 
       const { data: techLines, error: linesErr } = prefs.showUnassigned

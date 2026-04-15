@@ -32,6 +32,7 @@ export default function TechJobScreen() {
       .from("work_order_lines")
       .select("*")
       .or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
+      .or("line_type.eq.job,line_type.is.null")
       .in("status", ["awaiting", "in_progress", "on_hold"])
       .order("created_at", { ascending: true });
 

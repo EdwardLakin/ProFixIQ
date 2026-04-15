@@ -63,6 +63,7 @@ type LineRow = Pick<
   | "cause"
   | "correction"
   | "labor_time"
+  | "line_type"
 >;
 
 function cleanString(value: unknown): string | null {
@@ -87,7 +88,7 @@ export async function applyJobPunchTransition({
   const { data: line, error: lineErr } = await supabase
     .from("work_order_lines")
     .select(
-      "id, work_order_id, status, approval_state, punchable, assigned_tech_id, shop_id, punched_in_at, punched_out_at, hold_reason, cause, correction, labor_time",
+      "id, work_order_id, status, approval_state, punchable, assigned_tech_id, shop_id, punched_in_at, punched_out_at, hold_reason, cause, correction, labor_time, line_type",
     )
     .eq("id", lineId)
     .maybeSingle<LineRow>();
@@ -97,6 +98,7 @@ export async function applyJobPunchTransition({
   }
 
   if (!line) return err(404, "Line not found");
+  if ((line.line_type ?? "job") === "info") return err(409, "Info lines are non-actionable.");
 
   const status = normalizeWorkOrderLineStatus(line.status);
 

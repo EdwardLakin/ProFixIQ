@@ -219,14 +219,14 @@ export function MobileTechHome({
           const { data: activeLine, error } = await supabase
             .from("work_order_lines")
             .select(
-              "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
+              "id, work_order_id, description, complaint, job_type, line_type, punched_in_at, punched_out_at, assigned_tech_id",
             )
             .eq("id", activeLineId)
             .maybeSingle();
 
           if (error) {
             console.error("[MobileTechHome] current job active-line load error:", error);
-          } else if (activeLine) {
+          } else if (activeLine && (activeLine.line_type ?? "job") !== "info") {
             line = {
               ...(activeLine as WorkOrderLine),
               active_segment_started_at: activeSegments?.[0]?.started_at ?? null,
@@ -238,9 +238,10 @@ export function MobileTechHome({
           const { data, error } = await supabase
             .from("work_order_lines")
             .select(
-              "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
+              "id, work_order_id, description, complaint, job_type, line_type, punched_in_at, punched_out_at, assigned_tech_id",
             )
             .eq("assigned_tech_id", uid)
+            .or("line_type.eq.job,line_type.is.null")
             .not("punched_in_at", "is", null)
             .is("punched_out_at", null)
             .order("punched_in_at", { ascending: false })

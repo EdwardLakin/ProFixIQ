@@ -73,7 +73,7 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
         const { data: wol, error: wolErr } = await supabase
           .from("work_order_lines")
           .select(
-            "id, line_no, description, complaint, cause, correction, status, labor_time",
+            "id, line_no, description, complaint, cause, correction, status, labor_time, line_type",
           )
           .eq("work_order_id", woRow.id)
           .order("line_no", { ascending: true });
@@ -139,6 +139,9 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
     : "Customer";
 
   const updatedAt = wo?.updated_at ? format(new Date(wo.updated_at), "PPpp") : "—";
+  const expectedCompletionAt = wo?.expected_completion_at
+    ? format(new Date(wo.expected_completion_at), "PPpp")
+    : "—";
 
   const goBack = () => {
     const r = safeTrim(returnUrl);
@@ -195,6 +198,9 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                   <div className="mt-1 text-[11px] text-neutral-500">
                     Updated: <span className="text-neutral-300">{updatedAt}</span>
                   </div>
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    Expected completion: <span className="text-neutral-300">{expectedCompletionAt}</span>
+                  </div>
                 </div>
 
                 <div className="inline-flex items-center gap-2">
@@ -213,16 +219,17 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/10 bg-black/35 p-4">
-                {/* ✅ Changed: heading + removed the "Complaint • Cause • Correction" strip */}
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                  Line Details
+                  Jobs (Punchable)
                 </div>
 
-                {lines.length === 0 ? (
-                  <div className="text-sm text-neutral-300">No line items.</div>
+                {lines.filter((line) => (line.line_type ?? "job") !== "info").length === 0 ? (
+                  <div className="text-sm text-neutral-300">No jobs added yet.</div>
                 ) : (
                   <div className="space-y-2">
-                    {lines.map((l) => {
+                    {lines
+                      .filter((line) => (line.line_type ?? "job") !== "info")
+                      .map((l) => {
                       const label =
                         safeTrim(l.description) ||
                         safeTrim(l.complaint) ||
@@ -271,7 +278,26 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                           </div>
                         </div>
                       );
-                    })}
+                      })}
+                  </div>
+                )}
+
+                <div className="mb-2 mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                  Info / Context
+                </div>
+                {lines.filter((line) => (line.line_type ?? "job") === "info").length === 0 ? (
+                  <div className="text-sm text-neutral-500">No info/context lines.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {lines
+                      .filter((line) => (line.line_type ?? "job") === "info")
+                      .map((line) => (
+                        <div key={line.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                          <div className="text-sm text-neutral-100">
+                            {safeTrim(line.description) || safeTrim(line.complaint) || "Context line"}
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>

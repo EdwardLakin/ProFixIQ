@@ -16712,6 +16712,7 @@ export type Database = {
           job_type: string | null
           labor_time: number | null
           line_no: number | null
+          line_type: string
           line_status: string | null
           menu_item_id: string | null
           notes: string | null
@@ -16770,6 +16771,7 @@ export type Database = {
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
+          line_type?: string
           line_status?: string | null
           menu_item_id?: string | null
           notes?: string | null
@@ -16828,6 +16830,7 @@ export type Database = {
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
+          line_type?: string
           line_status?: string | null
           menu_item_id?: string | null
           notes?: string | null
@@ -17485,6 +17488,7 @@ export type Database = {
           labor_total: number | null
           notes: string | null
           odometer_km: number | null
+          expected_completion_at: string | null
           parts_total: number | null
           portal_submitted_at: string | null
           priority: number | null
@@ -17552,6 +17556,7 @@ export type Database = {
           labor_total?: number | null
           notes?: string | null
           odometer_km?: number | null
+          expected_completion_at?: string | null
           parts_total?: number | null
           portal_submitted_at?: string | null
           priority?: number | null
@@ -17619,6 +17624,7 @@ export type Database = {
           labor_total?: number | null
           notes?: string | null
           odometer_km?: number | null
+          expected_completion_at?: string | null
           parts_total?: number | null
           portal_submitted_at?: string | null
           priority?: number | null

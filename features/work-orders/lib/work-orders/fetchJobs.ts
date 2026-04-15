@@ -37,6 +37,7 @@ export async function fetchAllJobLines(): Promise<JobLine[]> {
       vehicles:vehicle_id ( year, make, model ),
       profiles:assigned_tech_id ( full_name )
     `)
+    .or("line_type.eq.job,line_type.is.null")
     .order("created_at", { ascending: true });
 
   if (error || !data) {

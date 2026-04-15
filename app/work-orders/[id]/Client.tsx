@@ -86,6 +86,22 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
+function toDatetimeLocalInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 /** Normalize “where is the inspection template id stored for this line?” */
 function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): string | null {
   return (
@@ -232,6 +248,8 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // per-line technicians
   const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
+  const [expectedCompletionInput, setExpectedCompletionInput] = useState<string>("");
+  const [savingExpectedCompletion, setSavingExpectedCompletion] = useState(false);
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
@@ -799,11 +817,20 @@ export default function WorkOrderIdClient(): JSX.Element {
     return a === "pending" || s === "waiting_for_approval" || s === "awaiting_approval";
   };
 
-  const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [lines]);
+  const jobLines = useMemo(
+    () => lines.filter((line) => (line.line_type ?? "job") !== "info"),
+    [lines],
+  );
+  const infoLines = useMemo(
+    () => lines.filter((line) => (line.line_type ?? "job") === "info"),
+    [lines],
+  );
+
+  const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
 
   const linesNeedingQuote = useMemo(
     () =>
-      lines.filter((l) => {
+      jobLines.filter((l) => {
         const approval = l.approval_state ?? null;
         const status = l.status ?? "awaiting";
 
@@ -822,12 +849,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         return true;
       }),
-    [lines],
+    [jobLines],
   );
 
   const activeJobLines = useMemo(
-    () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
-    [lines],
+    () => jobLines.filter((l) => (l.approval_state ?? null) !== "pending"),
+    [jobLines],
   );
 
   const approvalPendingQuotes = useMemo(
@@ -846,22 +873,22 @@ export default function WorkOrderIdClient(): JSX.Element {
     [approvalPendingQuotes],
   );
   const decisionTimelineStages = useMemo<DecisionTimelineStage[]>(() => {
-    const hasRecommendedLines = lines.length > 0;
-    const hasAwaitingApproval = lines.some(
+    const hasRecommendedLines = jobLines.length > 0;
+    const hasAwaitingApproval = jobLines.some(
       (line) =>
         resolveDecisionStatus({
           approvalState: line.approval_state,
           workStatus: line.status,
         }) === "awaiting_approval",
     );
-    const hasDeclined = lines.some(
+    const hasDeclined = jobLines.some(
       (line) =>
         resolveDecisionStatus({
           approvalState: line.approval_state,
           workStatus: line.status,
         }) === "declined",
     );
-    const hasInProgress = lines.some(
+    const hasInProgress = jobLines.some(
       (line) =>
         resolveDecisionStatus({
           approvalState: line.approval_state,
@@ -894,15 +921,15 @@ export default function WorkOrderIdClient(): JSX.Element {
         state: isCompleted ? "current" : "future",
       },
     ];
-  }, [lines, wo?.status]);
+  }, [jobLines, wo?.status]);
   const decisionEvents = useMemo(
     () =>
       deriveEventsFromWorkOrder({
         workOrder: wo,
-        lines,
+        lines: jobLines,
         actorLabel: "Service team",
       }),
-    [wo, lines],
+    [wo, jobLines],
   );
 
   const sortedLines = useMemo(() => {
@@ -934,11 +961,42 @@ export default function WorkOrderIdClient(): JSX.Element {
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
     createdAt && !Number.isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
+  const expectedCompletionText = wo?.expected_completion_at
+    ? format(new Date(wo.expected_completion_at), "PPpp")
+    : "—";
+
+  useEffect(() => {
+    setExpectedCompletionInput(toDatetimeLocalInput(wo?.expected_completion_at));
+  }, [wo?.expected_completion_at]);
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
   const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+
+  const saveExpectedCompletion = useCallback(async () => {
+    if (!wo?.id) return;
+    setSavingExpectedCompletion(true);
+    try {
+      const payload = {
+        expected_completion_at: fromDatetimeLocalInput(expectedCompletionInput),
+      } as DB["public"]["Tables"]["work_orders"]["Update"];
+      const { data, error } = await supabase
+        .from("work_orders")
+        .update(payload)
+        .eq("id", wo.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      setWo(data as WorkOrder);
+      toast.success("Expected completion updated.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to update expected completion.";
+      toast.error(msg);
+    } finally {
+      setSavingExpectedCompletion(false);
+    }
+  }, [expectedCompletionInput, wo?.id, setWo]);
 
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
@@ -1311,6 +1369,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </span>
                   </h1>
                   <p className="text-xs text-muted-foreground">Created {createdAtText}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Expected completion: {expectedCompletionText}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1340,6 +1401,30 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </div>
               </div>
+          </section>
+
+          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[220px] flex-1">
+                <label className="mb-1 block text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Expected completion
+                </label>
+                <input
+                  type="datetime-local"
+                  value={expectedCompletionInput}
+                  onChange={(e) => setExpectedCompletionInput(e.target.value)}
+                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveExpectedCompletion()}
+                disabled={savingExpectedCompletion}
+                className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
+              >
+                {savingExpectedCompletion ? "Saving…" : "Save target"}
+              </button>
+            </div>
           </section>
 
           <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}> 
@@ -1779,6 +1864,24 @@ export default function WorkOrderIdClient(): JSX.Element {
                     );
                   })}
                 </div>
+              )}
+
+              {infoLines.length > 0 && (
+                <section className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Info / Context (non-actionable)
+                  </div>
+                  <div className="space-y-2">
+                    {infoLines.map((line) => (
+                      <div key={line.id} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+                        <div className="text-sm text-foreground">
+                          {line.description || line.complaint || "Context line"}
+                        </div>
+                        {line.notes && <div className="mt-1 text-xs text-muted-foreground">{line.notes}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
 
