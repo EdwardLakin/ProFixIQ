@@ -51,6 +51,8 @@ type IntakeState = {
 };
 
 const ACTIVE_STATUSES = new Set(["queued", "pending", "processing"]);
+const ACTIONABLE_STATUSES = new Set(["failed", "blocked", "requires_review", "review_needed"]);
+const RECENT_COMPLETED_DAYS = 14;
 
 function fmtStep(step: string | undefined): string {
   if (!step) return "Queued";
@@ -64,7 +66,31 @@ const statusTone: Record<MigrationStory["trust_status"], string> = {
   BLOCKED: "border-rose-400/35 bg-rose-950/25 text-rose-100",
 };
 
-export default function ShopBoostActivationPanel() {
+function isRecentlyProcessed(intake: IntakeState): boolean {
+  const ts = intake.processedAt ?? intake.createdAt;
+  if (!ts) return false;
+  const ageMs = Date.now() - new Date(ts).getTime();
+  return Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= RECENT_COMPLETED_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function getPanelMode(intake: IntakeState | null): "hidden" | "full" | "summary" {
+  if (!intake) return "hidden";
+  if (ACTIVE_STATUSES.has(intake.status) || ACTIONABLE_STATUSES.has(intake.status)) return "full";
+
+  const completionState = intake.progress?.completionState;
+  const trustStatus = intake.progress?.migration_story?.trust_status;
+  if (trustStatus && trustStatus !== "READY" && isRecentlyProcessed(intake)) return "full";
+  const isCompletedLike =
+    completionState === "READY_FOR_GO_LIVE" ||
+    completionState === "COMPLETED_CLEAN" ||
+    completionState === "COMPLETED_WITH_REVIEW" ||
+    completionState === "COMPLETED_WITH_WARNINGS" ||
+    trustStatus === "READY";
+
+  return isCompletedLike && isRecentlyProcessed(intake) ? "summary" : "hidden";
+}
+
+export default function ShopBoostActivationPanel({ eligible = false }: { eligible?: boolean }) {
   const [intake, setIntake] = useState<IntakeState | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -76,8 +102,12 @@ export default function ShopBoostActivationPanel() {
   }, []);
 
   useEffect(() => {
+    if (!eligible) {
+      setLoading(false);
+      return;
+    }
     void loadStatus();
-  }, [loadStatus]);
+  }, [eligible, loadStatus]);
 
   useEffect(() => {
     if (!intake || !ACTIVE_STATUSES.has(intake.status)) return;
@@ -86,12 +116,33 @@ export default function ShopBoostActivationPanel() {
   }, [intake, loadStatus]);
 
   const percent = useMemo(() => Math.max(0, Math.min(100, intake?.progress?.progressPercent ?? 0)), [intake?.progress?.progressPercent]);
+  const mode = useMemo(() => getPanelMode(intake), [intake]);
 
-  if (loading || !intake) return null;
+  if (!eligible || loading || !intake || mode === "hidden") return null;
 
   const domains = intake.progress?.domainSummaries ?? {};
   const story = intake.progress?.migration_story;
   const fallbackConfidence = story ? Math.round(story.confidence_score * 100) : 0;
+
+  if (mode === "summary") {
+    return (
+      <section className="mb-2.5 rounded-xl border border-emerald-300/30 bg-[linear-gradient(140deg,rgba(10,26,18,0.65),rgba(7,12,25,0.84))] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-emerald-200/75">Shop Boost Summary</p>
+            <h3 className="text-sm font-semibold text-emerald-100">Recent migration completion</h3>
+            <p className="mt-1 text-xs text-emerald-100/80">
+              Completed {fmtStep(intake.progress?.completionState ?? intake.status)} with confidence {fallbackConfidence}%.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Link href="/dashboard" className="rounded-md border border-emerald-300/45 px-2.5 py-1 text-emerald-100 hover:bg-white/5">Open dashboard</Link>
+            <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">Download report</Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mb-2.5 rounded-xl border border-[var(--brand-accent,#E39A6E)]/30 bg-[linear-gradient(140deg,rgba(22,12,8,0.72),rgba(7,12,25,0.86))] p-3">
