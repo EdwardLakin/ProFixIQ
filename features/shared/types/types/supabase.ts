@@ -10294,6 +10294,395 @@ export type Database = {
           },
         ]
       }
+      shop_boost_integrity_reports: {
+        Row: {
+          blocking_issues_count: number
+          checks: Json
+          created_at: string
+          graph_ready: boolean
+          id: string
+          intake_id: string
+          shop_id: string
+          status: string
+          warnings_count: number
+        }
+        Insert: {
+          blocking_issues_count?: number
+          checks?: Json
+          created_at?: string
+          graph_ready?: boolean
+          id?: string
+          intake_id: string
+          shop_id: string
+          status: string
+          warnings_count?: number
+        }
+        Update: {
+          blocking_issues_count?: number
+          checks?: Json
+          created_at?: string
+          graph_ready?: boolean
+          id?: string
+          intake_id?: string
+          shop_id?: string
+          status?: string
+          warnings_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_integrity_reports_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_integrity_reports_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_integrity_reports_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_integrity_reports_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_boost_review_audit_events: {
+        Row: {
+          action_taken: string | null
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          followed_recommendation: boolean | null
+          id: string
+          intake_id: string
+          materialization_status: string | null
+          metadata: Json
+          recommendation: Json
+          review_item_id: string
+          shop_id: string
+        }
+        Insert: {
+          action_taken?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          followed_recommendation?: boolean | null
+          id?: string
+          intake_id: string
+          materialization_status?: string | null
+          metadata?: Json
+          recommendation?: Json
+          review_item_id: string
+          shop_id: string
+        }
+        Update: {
+          action_taken?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          followed_recommendation?: boolean | null
+          id?: string
+          intake_id?: string
+          materialization_status?: string | null
+          metadata?: Json
+          recommendation?: Json
+          review_item_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_review_audit_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_audit_events_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_audit_events_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_audit_events_review_item_id_fkey"
+            columns: ["review_item_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_review_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_audit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_audit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_boost_review_items: {
+        Row: {
+          blocking_reason: string | null
+          candidate_targets: Json
+          cluster_confidence: number | null
+          cluster_key: string | null
+          created_at: string
+          dependency_refs: Json
+          domain: string
+          downstream_impact_count: number
+          id: string
+          ignore_note: string | null
+          ignore_reason_code: string | null
+          ignored_at: string | null
+          intake_id: string
+          issue_type: string
+          materialization_error: string | null
+          materialized_at: string | null
+          materialized_record: Json
+          normalized_payload: Json
+          raw_payload: Json
+          recommendation_confidence: number | null
+          recommendation_followed: boolean | null
+          recommendation_generated_at: string | null
+          recommendation_reason: string | null
+          recommendation_seen_at: string | null
+          recommended_action: string | null
+          resolution_action: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          shop_id: string
+          status: string
+          suggested_matches: Json
+          summary: string
+          target_domain: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocking_reason?: string | null
+          candidate_targets?: Json
+          cluster_confidence?: number | null
+          cluster_key?: string | null
+          created_at?: string
+          dependency_refs?: Json
+          domain: string
+          downstream_impact_count?: number
+          id?: string
+          ignore_note?: string | null
+          ignore_reason_code?: string | null
+          ignored_at?: string | null
+          intake_id: string
+          issue_type: string
+          materialization_error?: string | null
+          materialized_at?: string | null
+          materialized_record?: Json
+          normalized_payload?: Json
+          raw_payload?: Json
+          recommendation_confidence?: number | null
+          recommendation_followed?: boolean | null
+          recommendation_generated_at?: string | null
+          recommendation_reason?: string | null
+          recommendation_seen_at?: string | null
+          recommended_action?: string | null
+          resolution_action?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shop_id: string
+          status?: string
+          suggested_matches?: Json
+          summary: string
+          target_domain?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocking_reason?: string | null
+          candidate_targets?: Json
+          cluster_confidence?: number | null
+          cluster_key?: string | null
+          created_at?: string
+          dependency_refs?: Json
+          domain?: string
+          downstream_impact_count?: number
+          id?: string
+          ignore_note?: string | null
+          ignore_reason_code?: string | null
+          ignored_at?: string | null
+          intake_id?: string
+          issue_type?: string
+          materialization_error?: string | null
+          materialized_at?: string | null
+          materialized_record?: Json
+          normalized_payload?: Json
+          raw_payload?: Json
+          recommendation_confidence?: number | null
+          recommendation_followed?: boolean | null
+          recommendation_generated_at?: string | null
+          recommendation_reason?: string | null
+          recommendation_seen_at?: string | null
+          recommended_action?: string | null
+          resolution_action?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shop_id?: string
+          status?: string
+          suggested_matches?: Json
+          summary?: string
+          target_domain?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_review_items_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_items_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_items_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_review_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_boost_row_results: {
+        Row: {
+          cluster_confidence: number | null
+          cluster_key: string | null
+          created_at: string
+          error_reason: string | null
+          id: string
+          intake_id: string
+          match_confidence: number
+          match_details: Json
+          match_status: string
+          normalized_payload: Json
+          raw_payload: Json
+          review_required: boolean
+          shop_id: string
+          source_file: string
+          source_row_index: number
+          target_domain: string
+          updated_at: string
+        }
+        Insert: {
+          cluster_confidence?: number | null
+          cluster_key?: string | null
+          created_at?: string
+          error_reason?: string | null
+          id?: string
+          intake_id: string
+          match_confidence?: number
+          match_details?: Json
+          match_status: string
+          normalized_payload?: Json
+          raw_payload?: Json
+          review_required?: boolean
+          shop_id: string
+          source_file: string
+          source_row_index: number
+          target_domain: string
+          updated_at?: string
+        }
+        Update: {
+          cluster_confidence?: number | null
+          cluster_key?: string | null
+          created_at?: string
+          error_reason?: string | null
+          id?: string
+          intake_id?: string
+          match_confidence?: number
+          match_details?: Json
+          match_status?: string
+          normalized_payload?: Json
+          raw_payload?: Json
+          review_required?: boolean
+          shop_id?: string
+          source_file?: string
+          source_row_index?: number
+          target_domain?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_row_results_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_row_results_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_row_results_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_row_results_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_brand_assets: {
         Row: {
           archived_at: string | null
@@ -12748,6 +13137,70 @@ export type Database = {
           },
         ]
       }
+      staff_availability_blocks: {
+        Row: {
+          block_type: string
+          created_at: string
+          ends_at: string
+          id: string
+          label: string | null
+          shop_id: string
+          source_id: string | null
+          source_type: string
+          starts_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          block_type: string
+          created_at?: string
+          ends_at: string
+          id?: string
+          label?: string | null
+          shop_id: string
+          source_id?: string | null
+          source_type: string
+          starts_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          block_type?: string
+          created_at?: string
+          ends_at?: string
+          id?: string
+          label?: string | null
+          shop_id?: string
+          source_id?: string | null
+          source_type?: string
+          starts_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_availability_blocks_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_availability_blocks_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_availability_blocks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_certifications: {
         Row: {
           cert_name: string
@@ -12987,6 +13440,243 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_schedule_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          end_time: string | null
+          id: string
+          notes: string | null
+          schedule_date: string
+          shop_id: string
+          source_type: string
+          start_time: string | null
+          status: string
+          unpaid_break_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          notes?: string | null
+          schedule_date: string
+          shop_id: string
+          source_type?: string
+          start_time?: string | null
+          status?: string
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          notes?: string | null
+          schedule_date?: string
+          shop_id?: string
+          source_type?: string
+          start_time?: string | null
+          status?: string
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedule_overrides_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_overrides_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_schedule_templates: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          effective_from: string | null
+          effective_to: string | null
+          end_time: string | null
+          id: string
+          is_working_day: boolean
+          shop_id: string
+          start_time: string | null
+          unpaid_break_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          effective_from?: string | null
+          effective_to?: string | null
+          end_time?: string | null
+          id?: string
+          is_working_day?: boolean
+          shop_id: string
+          start_time?: string | null
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          effective_from?: string | null
+          effective_to?: string | null
+          end_time?: string | null
+          id?: string
+          is_working_day?: boolean
+          shop_id?: string
+          start_time?: string | null
+          unpaid_break_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedule_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_schedule_templates_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_time_off_requests: {
+        Row: {
+          created_at: string
+          ends_at: string
+          id: string
+          is_partial_day: boolean
+          reason: string | null
+          request_type: string
+          requested_at: string
+          requested_by: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          shop_id: string
+          starts_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          id?: string
+          is_partial_day?: boolean
+          reason?: string | null
+          request_type: string
+          requested_at?: string
+          requested_by: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id: string
+          starts_at: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          id?: string
+          is_partial_day?: boolean
+          reason?: string | null
+          request_type?: string
+          requested_at?: string
+          requested_by?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_time_off_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
