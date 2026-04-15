@@ -5,6 +5,10 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import {
+  buildShopBoostPreflightReport,
+  type ShopBoostPreflightReport,
+} from "@/features/integrations/shopBoost/preflightAnalysis";
+import {
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
@@ -23,7 +27,11 @@ const DEMO_SHOP_PLAN: DB["public"]["Tables"]["shops"]["Insert"]["plan"] = "pro";
 type DemoRunSuccessResponse = {
   ok: true;
   demoId: string;
-  snapshot: unknown;
+  intakeId: string;
+  analysis: {
+    snapshot: unknown;
+    preflightReport: ShopBoostPreflightReport;
+  };
 };
 
 type DemoRunErrorResponse = {
@@ -238,6 +246,32 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       );
     }
 
+    const { data: importRows } = await supabase
+      .from("shop_import_rows")
+      .select("entity_type,raw,normalized")
+      .eq("intake_id", intakeId)
+      .limit(20000);
+
+    const preflightReport = buildShopBoostPreflightReport({
+      rows: (importRows ?? []) as Array<{ entity_type: string | null; raw: unknown; normalized: unknown }>,
+      hasHistoryData: Boolean(uploadPaths.history),
+      hasVehicleData: Boolean(uploadPaths.vehicles),
+      hasCustomerData: Boolean(uploadPaths.customers),
+      menuSuggestionCount:
+        Array.isArray((snapshot as { menuSuggestions?: unknown[] }).menuSuggestions)
+          ? ((snapshot as { menuSuggestions?: unknown[] }).menuSuggestions?.length ?? 0)
+          : 0,
+      inspectionSuggestionCount:
+        Array.isArray((snapshot as { inspectionSuggestions?: unknown[] }).inspectionSuggestions)
+          ? ((snapshot as { inspectionSuggestions?: unknown[] }).inspectionSuggestions?.length ?? 0)
+          : 0,
+    });
+
+    const analysisPayload = {
+      snapshot,
+      preflightReport,
+    };
+
     // 5) Store snapshot in demo_shop_boosts for later unlock + CRM usage
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
@@ -246,7 +280,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         intake_id: intakeId,
         shop_name: shopName,
         country: countryValue,
-        snapshot,
+        snapshot: analysisPayload,
       } as DB["public"]["Tables"]["demo_shop_boosts"]["Insert"])
       .select("id")
       .single();
@@ -260,7 +294,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       );
     }
 
-    return NextResponse.json({ ok: true, demoId: demoRow.id as string, snapshot }, { status: 200 });
+    return NextResponse.json(
+      {
+        ok: true,
+        demoId: demoRow.id as string,
+        intakeId,
+        analysis: analysisPayload,
+      },
+      { status: 200 },
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while running demo analysis.";

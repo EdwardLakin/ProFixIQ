@@ -13,6 +13,7 @@ type Interval = "monthly" | "yearly";
 export default function ComparePlansPage() {
   const searchParams = useSearchParams();
   const demoId = searchParams.get("demoId");
+  const intakeId = searchParams.get("intakeId");
 
   const handleCheckout = async ({
     priceId,
@@ -26,13 +27,11 @@ export default function ComparePlansPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // IMPORTANT: this matches your landing page contract
           planKey: priceId,
-          shopId: demoId ? `demo:${demoId}` : "public_compare_plans",
-          userId: null,
           interval,
-          // Optional attribution (safe if API ignores it)
+          // Optional attribution for pre-signup Shop Boost analysis.
           demoId: demoId ?? null,
+          intakeId: intakeId ?? null,
         }),
       });
 
@@ -67,7 +66,6 @@ export default function ComparePlansPage() {
       <Toaster position="top-center" />
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
-        {/* Header */}
         <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">
@@ -86,7 +84,8 @@ export default function ComparePlansPage() {
 
             {demoId ? (
               <p className="mt-2 text-[11px] text-neutral-500">
-                Demo reference: <span className="text-neutral-300">{demoId}</span>
+                Analysis reference: <span className="text-neutral-300">{demoId}</span>
+                {intakeId ? <span className="text-neutral-400"> • Intake: {intakeId}</span> : null}
               </p>
             ) : null}
           </div>
@@ -99,7 +98,6 @@ export default function ComparePlansPage() {
           </Link>
         </div>
 
-        {/* Pricing cards (same component as landing) */}
         <div className="rounded-3xl border border-white/10 bg-black/35 p-4 backdrop-blur-xl md:p-6">
           <PricingSection
             onCheckout={handleCheckout}
@@ -111,7 +109,6 @@ export default function ComparePlansPage() {
           />
         </div>
 
-        {/* Footer note */}
         <div className="mt-8 rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur-xl">
           <div className="text-sm font-semibold text-neutral-100">
             What happens after checkout?
