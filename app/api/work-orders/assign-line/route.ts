@@ -35,6 +35,22 @@ export async function POST(req: Request) {
     const service = must("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient<DB>(url, service);
 
+    const { data: line, error: lineReadErr } = await supabase
+      .from("work_order_lines")
+      .select("id, line_type")
+      .eq("id", lineId)
+      .maybeSingle();
+
+    if (lineReadErr) {
+      return NextResponse.json({ error: lineReadErr.message }, { status: 400 });
+    }
+    if (!line) {
+      return NextResponse.json({ error: "Line not found" }, { status: 404 });
+    }
+    if ((line.line_type ?? "job") === "info") {
+      return NextResponse.json({ error: "Info lines cannot be technician-assigned." }, { status: 409 });
+    }
+
     // 1) keep the simple column up to date
     const { error: lineErr } = await supabase
       .from("work_order_lines")

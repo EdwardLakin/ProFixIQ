@@ -165,7 +165,8 @@ export default function MobileTechQueuePage() {
       const { data: techLines, error: linesErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("assigned_tech_id", user.id);
+        .eq("assigned_tech_id", user.id)
+        .or("line_type.eq.job,line_type.is.null");
 
       if (linesErr) {
         setErr(linesErr.message);
@@ -193,7 +194,8 @@ export default function MobileTechQueuePage() {
             .in("id", woIds),
           supabase
             .from("work_order_lines")
-            .select("id, work_order_id, created_at, job_type, approval_state")
+            .select("id, work_order_id, created_at, job_type, approval_state, line_type")
+            .or("line_type.eq.job,line_type.is.null")
             .in("work_order_id", woIds),
         ]);
 

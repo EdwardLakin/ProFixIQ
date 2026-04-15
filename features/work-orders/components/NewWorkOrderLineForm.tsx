@@ -11,6 +11,7 @@ type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 
 // Keep in sync with your DB check constraint
 type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
+type WOLineType = "job" | "info";
 
 const ALLOWED_STATUS = [
   "awaiting",
@@ -78,6 +79,7 @@ export function NewWorkOrderLineForm(props: {
   const [jobType, setJobType] = useState<WOJobType | null>(
     defaultJobType ?? null,
   );
+  const [lineType, setLineType] = useState<WOLineType>("job");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -316,7 +318,10 @@ export function NewWorkOrderLineForm(props: {
         correction: correction.trim() || null,
         labor_time: labor ? Number(labor) : null,
         status: normalizeStatus(status),
-        job_type: normalizeJobType(jobType),
+        job_type: lineType === "info" ? null : normalizeJobType(jobType),
+        line_type: lineType,
+        punchable: lineType === "info" ? false : null,
+        assigned_tech_id: lineType === "info" ? null : undefined,
 
         // IMPORTANT: keep shop_id explicit so all RLS/shop triggers stay deterministic
         shop_id: shopId,
@@ -356,6 +361,7 @@ export function NewWorkOrderLineForm(props: {
       setLabor("");
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
+      setLineType("job");
       setSmartMatch(null);
 
       onCreated?.();
@@ -372,7 +378,7 @@ export function NewWorkOrderLineForm(props: {
     <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 text-sm text-white space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-100">Add job line</h3>
+          <h3 className="text-sm font-semibold text-neutral-100">Add work order line</h3>
           <p className="text-[11px] text-neutral-400">
             Complaint is required. Cause / correction can be filled in later.
           </p>
@@ -384,6 +390,23 @@ export function NewWorkOrderLineForm(props: {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Line type</label>
+          <select
+            value={lineType}
+            onChange={(e) => setLineType(e.target.value as WOLineType)}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+          >
+            <option value="job">Job line (punchable)</option>
+            <option value="info">Info line (context only)</option>
+          </select>
+          <p className="text-[10px] text-neutral-500">
+            Info lines are non-actionable and excluded from technician punch queues.
+          </p>
+        </div>
+
+        <div className="space-y-1" />
+
         <div className="sm:col-span-2 space-y-1">
           <label className="mb-0.5 block text-xs text-neutral-300">
             Complaint <span className="text-red-400">*</span>

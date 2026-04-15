@@ -206,6 +206,22 @@ const yearToStrOrNull = (
   return s ? s : null;
 };
 
+function toDatetimeLocalInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 /** Normalize “where is the inspection template id stored for this line?” */
 function extractInspectionTemplateId(
   ln: WorkOrderLineWithInspectionMeta,
@@ -441,6 +457,10 @@ export default function CreateWorkOrderPage() {
   const [priority, setPriority] = useTabState<number>("priority", 3);
   // 👇 waiter flag (customer waiting on-site)
   const [isWaiter, setIsWaiter] = useTabState<boolean>("is_waiter", false);
+  const [expectedCompletionInput, setExpectedCompletionInput] = useTabState<string>(
+    "expected_completion_input",
+    "",
+  );
 
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
@@ -569,6 +589,7 @@ useEffect(() => {
     if (!wo) return;
     const flag = (wo as WorkOrderWaiterRow).is_waiter ?? false;
     setIsWaiter(Boolean(flag));
+    setExpectedCompletionInput(toDatetimeLocalInput(wo.expected_completion_at));
   }, [wo, setIsWaiter]);
 
   // get current user id + current profile id
@@ -1036,6 +1057,7 @@ useEffect(() => {
             .update({
               customer_id: cust.id,
               vehicle_id: veh.id,
+              expected_completion_at: fromDatetimeLocalInput(expectedCompletionInput),
               ...(waiter !== undefined ? { is_waiter: waiter } : {}),
             })
             .eq("id", wo.id)
@@ -1079,6 +1101,18 @@ useEffect(() => {
       }
 
       setWo(createdRow as unknown as WorkOrderRow);
+      const expectedCompletionAt = fromDatetimeLocalInput(expectedCompletionInput);
+      if (expectedCompletionAt) {
+        const { data: woWithExpected } = await supabase
+          .from("work_orders")
+          .update({ expected_completion_at: expectedCompletionAt })
+          .eq("id", createdRow.id)
+          .select("*")
+          .single();
+        if (woWithExpected) {
+          setWo(woWithExpected as WorkOrderRow);
+        }
+      }
       await fetchLines();
 
       return String(createdRow.id);
@@ -1743,6 +1777,22 @@ useEffect(() => {
                     Sets the default for new lines you add on this work order.
                   </p>
                 </div>
+
+                <div>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                    Expected completion
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={expectedCompletionInput}
+                    onChange={(e) => setExpectedCompletionInput(e.target.value)}
+                    className="input"
+                    disabled={loading}
+                  />
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Internal target time for advisor/front-of-house coordination.
+                  </p>
+                </div>
               </div>
             </section>
 
@@ -1959,7 +2009,7 @@ useEffect(() => {
               <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
-                    Add job line
+                    Add work order line
                   </h2>
                   <span className="text-[11px] text-neutral-500">Manual entry</span>
                 </div>
@@ -1998,8 +2048,15 @@ useEffect(() => {
               {!wo?.id || lines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
-                <div className="space-y-2">
-                  {lines.map((ln) => (
+                <div className="space-y-4">
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      Jobs (Punchable)
+                    </div>
+                    <div className="space-y-2">
+                      {lines
+                        .filter((ln) => (ln.line_type ?? "job") !== "info")
+                        .map((ln) => (
                     <div
                       key={ln.id}
                       className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/50 p-3 sm:flex-row sm:items-start sm:justify-between"
@@ -2051,6 +2108,36 @@ useEffect(() => {
                       </div>
                     </div>
                   ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      Info / Context
+                    </div>
+                    <div className="space-y-2">
+                      {lines
+                        .filter((ln) => (ln.line_type ?? "job") === "info")
+                        .map((ln) => (
+                          <div
+                            key={ln.id}
+                            className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300"
+                          >
+                            <div className="font-medium text-neutral-200">
+                              {ln.description || ln.complaint || "Context line"}
+                            </div>
+                            {(ln.complaint || ln.notes) && (
+                              <div className="mt-1 text-xs text-neutral-500">
+                                {ln.complaint ?? ln.notes}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      {lines.every((ln) => (ln.line_type ?? "job") !== "info") && (
+                        <p className="text-xs text-neutral-500">No info/context lines.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </section>

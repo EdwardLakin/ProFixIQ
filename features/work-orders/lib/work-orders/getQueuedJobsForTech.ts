@@ -30,6 +30,7 @@ export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> 
         )
       `
     )
+    .or("line_type.eq.job,line_type.is.null")
     .in("status", getWorkOrderLineStatusDbFilter(queueStatuses))
     // highest priority WOs first (1 = highest)
     .order("work_orders(priority)", { ascending: true, nullsFirst: false })

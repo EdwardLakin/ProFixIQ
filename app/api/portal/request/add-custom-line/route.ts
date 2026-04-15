@@ -12,6 +12,7 @@ type Body = {
   workOrderId: string;
   description: string; // customer complaint / request
   notes?: string;
+  lineType?: "job" | "info";
 };
 
 function bad(msg: string, status = 400) {
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     const workOrderId = (body?.workOrderId ?? "").trim();
     const description = (body?.description ?? "").trim();
     const notes = (body?.notes ?? "").trim();
+    const lineType = body?.lineType === "info" ? "info" : "job";
 
     if (!workOrderId || !description) return bad("Missing workOrderId or description");
 
@@ -68,6 +70,8 @@ export async function POST(req: Request) {
       notes: notes || null,
       status: "awaiting_approval",
       approval_state: "pending",
+      line_type: lineType,
+      punchable: lineType === "info" ? false : null,
       // labor_time intentionally null — customer can't set it
       labor_time: null,
       price_estimate: null,
