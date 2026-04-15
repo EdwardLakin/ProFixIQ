@@ -40,7 +40,7 @@ export default function SignUpClient() {
     if (founding) params.set("founding", founding);
 
     const tail = params.toString();
-    return `${origin}/auth/callback${tail ? `?${tail}` : ""}`;
+    return `${origin}/confirm${tail ? `?${tail}` : ""}`;
   }, [origin, sp]);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ export default function SignUpClient() {
 
     if (!data.session) {
       setNotice(
-        "Check your email to confirm your account. After confirming, we’ll take you to onboarding."
+        "Check your email to confirm your account. After confirmation, we’ll continue your selected plan and bring you straight into setup."
       );
       setLoading(false);
       return;

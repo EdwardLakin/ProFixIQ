@@ -47,7 +47,15 @@ export default function ConfirmContent() {
       }
 
       // ✅ Route depending on onboarding status
-      const dest = completed ? (redirect ?? "/dashboard") : "/onboarding";
+
+      const params = new URLSearchParams();
+      const passthroughKeys = ["priceId", "interval", "trial", "founding", "session_id"];
+      for (const key of passthroughKeys) {
+        const value = sp.get(key);
+        if (value) params.set(key, value);
+      }
+      const onboardingDest = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
+      const dest = completed ? (redirect ?? "/dashboard/operations") : onboardingDest;
       router.replace(dest);
 
       // ✅ Hard fallback for Safari / mobile cache
