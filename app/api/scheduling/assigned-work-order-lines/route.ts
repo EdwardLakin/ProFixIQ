@@ -70,10 +70,11 @@ export async function GET(req: NextRequest) {
   // 1) Lines directly assigned via assigned_tech_id
   const { data: directLines, error: dErr } = await admin
     .from("work_order_lines")
-    .select("id, work_order_id, description, complaint, job_type, created_at")
+    .select("id, work_order_id, description, complaint, job_type, created_at, job_priority")
     .eq("shop_id", shopId)
     .eq("work_order_id", workOrderId)
     .eq("assigned_tech_id", effectiveUserId)
+    .eq("line_type", "job")
     .order("created_at", { ascending: true });
 
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
@@ -96,16 +97,18 @@ export async function GET(req: NextRequest) {
     description: string | null;
     complaint: string | null;
     job_type: string | null;
+    job_priority: string | null;
     created_at: string | null;
   }> = [];
 
   if (joinLineIds.length > 0) {
     const { data: jl, error: jlErr } = await admin
       .from("work_order_lines")
-      .select("id, work_order_id, description, complaint, job_type, created_at")
+      .select("id, work_order_id, description, complaint, job_type, created_at, job_priority")
       .eq("shop_id", shopId)
       .eq("work_order_id", workOrderId)
       .in("id", joinLineIds)
+      .eq("line_type", "job")
       .order("created_at", { ascending: true });
 
     if (jlErr) return NextResponse.json({ error: jlErr.message }, { status: 500 });

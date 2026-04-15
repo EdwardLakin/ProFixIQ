@@ -174,6 +174,7 @@ export default function CuratedDashboardPage({ view }: Props) {
             .select("id", { count: "exact", head: true })
             .eq("shop_id", nextShopId)
             .eq("assigned_tech_id", uid)
+            .eq("line_type", "job")
             .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
           supabase
             .from("part_requests")

@@ -52,6 +52,7 @@ type JobCardProps = {
   isPunchedIn: boolean;
   onOpen: () => void;
   onAssign?: (techId: string) => void;
+  onPriorityChange?: (priority: JobLinePriority) => void;
   onOpenInspection?: () => void;
   onAddPart?: () => void;
   onDelete?: () => void;
@@ -60,6 +61,17 @@ type JobCardProps = {
   reviewOk?: boolean;
   compact?: boolean;
   selected?: boolean;
+};
+
+type JobLinePriority = "low" | "normal" | "high" | "urgent";
+
+const PRIORITY_OPTIONS: JobLinePriority[] = ["urgent", "high", "normal", "low"];
+
+const PRIORITY_CHIP_STYLES: Record<JobLinePriority, string> = {
+  urgent: "border-red-400/60 bg-red-900/30 text-red-100",
+  high: "border-orange-400/60 bg-orange-900/30 text-orange-100",
+  normal: "border-white/15 bg-black/35 text-neutral-200",
+  low: "border-slate-400/60 bg-slate-900/30 text-slate-200",
 };
 
 const CARD_SURFACE: Record<
@@ -143,6 +155,12 @@ function statusRailTone(args: {
 
 function norm(s: unknown): string {
   return String(s ?? "").trim().toLowerCase();
+}
+
+function toLinePriority(line: WorkOrderLine): JobLinePriority {
+  const raw = norm((line as WorkOrderLine & { job_priority?: string | null }).job_priority);
+  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
+  return "normal";
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -262,6 +280,7 @@ export function JobCard({
   isPunchedIn,
   onOpen,
   onAssign,
+  onPriorityChange,
   onOpenInspection,
   onAddPart,
   onDelete,
@@ -302,6 +321,7 @@ export function JobCard({
     const techId = line.assigned_tech_id;
     return technicians.find((tech) => tech.id === techId)?.full_name || "Unassigned";
   }, [line.assigned_tech_id, technicians]);
+  const linePriority = toLinePriority(line);
 
   const reviewFlags = computeReviewFlags({
     line,
@@ -373,6 +393,14 @@ export function JobCard({
                 <StatusBadge variant={isPunchedIn ? "active" : "neutral"}>
                   {isPunchedIn ? "Punched In" : "Not Punched In"}
                 </StatusBadge>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
+                    PRIORITY_CHIP_STYLES[linePriority],
+                  )}
+                >
+                  {linePriority}
+                </span>
                 {reviewOk ? (
                   <StatusBadge variant="success">Review Ready</StatusBadge>
                 ) : null}
@@ -514,6 +542,24 @@ export function JobCard({
                       })
                     )}
                   </div>
+                </div>
+              ) : null}
+              {onPriorityChange ? (
+                <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    Job priority
+                  </div>
+                  <select
+                    className="mt-2 w-full rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-sm text-neutral-100"
+                    value={linePriority}
+                    onChange={(event) => onPriorityChange(event.target.value as JobLinePriority)}
+                  >
+                    {PRIORITY_OPTIONS.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priority[0].toUpperCase() + priority.slice(1)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ) : null}
             </>

@@ -225,6 +225,7 @@ export default function MobileWorkOrdersViewPage() {
         .from("work_order_lines")
         .select("id, work_order_id, created_at")
         .in("work_order_id", ids)
+        .eq("line_type", "job")
         .order("created_at", { ascending: true });
 
       if (!lineErr && lines) {

@@ -29,11 +29,37 @@ type TechPrefs = {
 };
 
 type RollupStatus = "awaiting" | "in_progress" | "on_hold";
+type JobPriority = "low" | "normal" | "high" | "urgent";
 
 const STATUS_LABELS: Record<RollupStatus, string> = {
   awaiting: "Awaiting",
   in_progress: "Active Job",
   on_hold: "On hold",
+};
+
+const PRIORITY_RANK: Record<JobPriority, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+const PRIORITY_LABELS: Record<JobPriority, string> = {
+  urgent: "Urgent",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
+const PRIORITY_BADGE: Record<JobPriority, string> = {
+  urgent:
+    "inline-flex items-center whitespace-nowrap rounded-full border border-red-400/60 bg-red-900/30 px-2 py-0.5 text-[10px] font-semibold text-red-100",
+  high:
+    "inline-flex items-center whitespace-nowrap rounded-full border border-orange-400/60 bg-orange-900/25 px-2 py-0.5 text-[10px] font-semibold text-orange-100",
+  normal:
+    "inline-flex items-center whitespace-nowrap rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold text-neutral-200",
+  low:
+    "inline-flex items-center whitespace-nowrap rounded-full border border-slate-400/45 bg-slate-900/30 px-2 py-0.5 text-[10px] font-semibold text-slate-200",
 };
 
 /**
@@ -78,6 +104,14 @@ function toBucket(line: Line): RollupStatus {
   if (s === "in_progress" || s === "in-progress" || s === "active") return "in_progress";
   if (s === "on_hold") return "on_hold";
   return "awaiting";
+}
+
+function toPriority(line: Line): JobPriority {
+  const raw = String((line as Line & { job_priority?: string | null }).job_priority ?? "normal")
+    .toLowerCase()
+    .trim();
+  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
+  return "normal";
 }
 
 function readPrefs(): TechPrefs {
@@ -196,7 +230,7 @@ export default function TechQueuePage() {
       const baseQuery = supabase
         .from("work_order_lines")
         .select("*")
-        .or("line_type.eq.job,line_type.is.null")
+        .eq("line_type", "job")
         .order("created_at", { ascending: false });
 
       const { data: techLines, error: linesErr } = prefs.showUnassigned
@@ -316,11 +350,36 @@ export default function TechQueuePage() {
     return base;
   }, [lines]);
 
+  const sortedLines = useMemo(() => {
+    const copy = [...lines];
+    copy.sort((a, b) => {
+      const aActive = Boolean(a.punched_in_at && !a.punched_out_at);
+      const bActive = Boolean(b.punched_in_at && !b.punched_out_at);
+      if (aActive !== bActive) return aActive ? -1 : 1;
+
+      const aPriority = PRIORITY_RANK[toPriority(a)];
+      const bPriority = PRIORITY_RANK[toPriority(b)];
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      const aBucket = toBucket(a);
+      const bBucket = toBucket(b);
+      if (aBucket !== bBucket) {
+        if (aBucket === "on_hold") return 1;
+        if (bBucket === "on_hold") return -1;
+      }
+
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+    return copy;
+  }, [lines]);
+
   // filtered list
   const filteredLines = useMemo(() => {
-    if (activeFilter == null) return lines;
-    return lines.filter((l) => toBucket(l) === activeFilter);
-  }, [lines, activeFilter]);
+    if (activeFilter == null) return sortedLines;
+    return sortedLines.filter((l) => toBucket(l) === activeFilter);
+  }, [sortedLines, activeFilter]);
 
   if (loading)
     return <div className="p-6 text-white">Loading assigned jobs…</div>;
@@ -424,6 +483,7 @@ export default function TechQueuePage() {
       <div className="space-y-2">
         {filteredLines.map((line) => {
           const bucket = toBucket(line);
+          const priority = toPriority(line);
           const wo = line.work_order_id
             ? workOrderMap[line.work_order_id]
             : null;
@@ -499,6 +559,9 @@ export default function TechQueuePage() {
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center whitespace-nowrap rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
                       {STATUS_LABELS[bucket]}
+                    </span>
+                    <span className={PRIORITY_BADGE[priority]}>
+                      {PRIORITY_LABELS[priority]}
                     </span>
 
                     {partsCount > 0 ? (

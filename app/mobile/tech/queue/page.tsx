@@ -28,6 +28,7 @@ type VehiclePick = Pick<
 >;
 
 type RollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
+type JobPriority = "low" | "normal" | "high" | "urgent";
 
 const STATUS_LABELS: Record<RollupStatus, string> = {
   awaiting: "Awaiting",
@@ -47,6 +48,20 @@ const STATUS_STYLES: Record<RollupStatus, string> = {
     "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.20),rgba(15,23,42,0.98))] hover:border-emerald-400/70",
 };
 
+const PRIORITY_RANK: Record<JobPriority, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+const PRIORITY_LABELS: Record<JobPriority, string> = {
+  urgent: "Urgent",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
 function toBucket(line: Line): RollupStatus {
   const punchedIn = !!line.punched_in_at && !line.punched_out_at;
   if (punchedIn) return "in_progress";
@@ -61,10 +76,18 @@ function toBucket(line: Line): RollupStatus {
 // queue sort priority: in-progress first, then on-hold, awaiting, completed
 const STATUS_RANK: Record<RollupStatus, number> = {
   in_progress: 0,
-  on_hold: 1,
-  awaiting: 2,
+  awaiting: 1,
+  on_hold: 2,
   completed: 3,
 };
+
+function toPriority(line: Line): JobPriority {
+  const raw = String((line as Line & { job_priority?: string | null }).job_priority ?? "normal")
+    .toLowerCase()
+    .trim();
+  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
+  return "normal";
+}
 
 function cleanText(v: string | null | undefined): string {
   return String(v ?? "").trim().replace(/\s+/g, " ");
@@ -166,7 +189,7 @@ export default function MobileTechQueuePage() {
         .from("work_order_lines")
         .select("*")
         .eq("assigned_tech_id", user.id)
-        .or("line_type.eq.job,line_type.is.null");
+        .eq("line_type", "job");
 
       if (linesErr) {
         setErr(linesErr.message);
@@ -195,7 +218,7 @@ export default function MobileTechQueuePage() {
           supabase
             .from("work_order_lines")
             .select("id, work_order_id, created_at, job_type, approval_state, line_type")
-            .or("line_type.eq.job,line_type.is.null")
+            .eq("line_type", "job")
             .in("work_order_id", woIds),
         ]);
 
@@ -304,10 +327,18 @@ export default function MobileTechQueuePage() {
     return base;
   }, [lines]);
 
-  // sort queue: in-progress first, then by line number, then newest
+  // sort queue: active first, then priority, then readiness bucket + line number + newest
   const sortedLines = useMemo(() => {
     const copy = [...lines];
     copy.sort((a, b) => {
+      const aActive = !!a.punched_in_at && !a.punched_out_at;
+      const bActive = !!b.punched_in_at && !b.punched_out_at;
+      if (aActive !== bActive) return aActive ? -1 : 1;
+
+      const pa = PRIORITY_RANK[toPriority(a)];
+      const pb = PRIORITY_RANK[toPriority(b)];
+      if (pa !== pb) return pa - pb;
+
       const ba = toBucket(a);
       const bb = toBucket(b);
 
@@ -452,6 +483,7 @@ export default function MobileTechQueuePage() {
             const approvalState = (line.approval_state ?? "approved").replaceAll("_", " ");
             const isAwaitingApproval = (line.approval_state ?? "").toLowerCase() === "pending";
             const isPunchedIn = !!line.punched_in_at && !line.punched_out_at;
+            const priority = toPriority(line);
 
             // ✅ always use UUID route (mobile expects UUID)
             const woId = wo?.id ?? line.work_order_id ?? "";
@@ -500,6 +532,9 @@ export default function MobileTechQueuePage() {
                     </div>
 
                     <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                        Priority: {PRIORITY_LABELS[priority]}
+                      </span>
                       <span className="rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
                         Approval: {approvalState}
                       </span>
