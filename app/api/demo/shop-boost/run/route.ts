@@ -28,6 +28,8 @@ type DemoRunErrorResponse = {
 
 type DemoRunResponse = DemoRunSuccessResponse | DemoRunErrorResponse;
 
+const SHOP_IMPORT_BUCKET = "shop-imports";
+
 function safeShopName(name: string): string {
   return name.trim().replace(/\s+/g, " ").slice(0, 80);
 }
@@ -89,14 +91,38 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     });
 
     const supabase = createAdminSupabase();
+    const demoId = randomUUID();
+
+    const uploadedPathEntries = await Promise.all(
+      Object.entries(filesByDataset).map(async ([dataset, file]) => {
+        const path = `demos/${demoId}/${intakeId}/${dataset}-${safeShopName(file.name || `${dataset}.csv`)}`;
+        const { error: uploadErr } = await supabase.storage
+          .from(SHOP_IMPORT_BUCKET)
+          .upload(path, file, { upsert: true, contentType: file.type || "text/csv" });
+
+        if (uploadErr) {
+          throw new Error(`Failed to stage ${dataset} demo file: ${uploadErr.message}`);
+        }
+
+        return [dataset, path] as const;
+      }),
+    );
+
+    const activationUploadPaths = Object.fromEntries(uploadedPathEntries);
+    const snapshotWithActivation = {
+      ...snapshot,
+      activationUploadPaths,
+    };
+
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .insert({
+        id: demoId,
         shop_id: null,
         intake_id: null,
         shop_name: shopName,
         country: countryValue,
-        snapshot,
+        snapshot: snapshotWithActivation,
       } as DB["public"]["Tables"]["demo_shop_boosts"]["Insert"])
       .select("id")
       .single();
@@ -114,7 +140,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         ok: true,
         demoId: demoRow.id as string,
         intakeId,
-        analysis: snapshot,
+        analysis: snapshotWithActivation,
       },
       { status: 200 },
     );

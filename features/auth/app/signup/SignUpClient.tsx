@@ -5,6 +5,12 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  appendActivationContextToHref,
+  parseActivationContextFromSearchParams,
+  persistActivationContext,
+} from "@/features/integrations/shopBoost/activationContext";
+import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
 
 export default function SignUpClient() {
   const supabase = createClientComponentClient<Database>();
@@ -18,6 +24,7 @@ export default function SignUpClient() {
   const [loading, setLoading] = useState(false);
   const demoId = sp.get("demoId");
   const intakeId = sp.get("intakeId");
+  const activationContext = parseActivationContextFromSearchParams(sp);
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
@@ -36,6 +43,7 @@ export default function SignUpClient() {
     const founding = sp.get("founding");
     const demoId = sp.get("demoId");
     const intakeId = sp.get("intakeId");
+    const activationContextRaw = sp.get("activationContext");
 
     if (redirect) params.set("redirect", redirect);
     if (priceId) params.set("priceId", priceId);
@@ -44,10 +52,16 @@ export default function SignUpClient() {
     if (founding) params.set("founding", founding);
     if (demoId) params.set("demoId", demoId);
     if (intakeId) params.set("intakeId", intakeId);
+    if (activationContextRaw) params.set("activationContext", activationContextRaw);
 
     const tail = params.toString();
     return `${origin}/confirm${tail ? `?${tail}` : ""}`;
   }, [origin, sp]);
+
+  useEffect(() => {
+    if (!activationContext) return;
+    persistActivationContext(activationContext);
+  }, [activationContext]);
 
   useEffect(() => {
     const sid = sp.get("session_id");
@@ -84,11 +98,17 @@ export default function SignUpClient() {
         if (demoId) params.set("demoId", demoId);
         if (intakeId) params.set("intakeId", intakeId);
 
-        const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
-        router.replace(redirect || onboardingTarget);
+        let onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
+        if (activationContext) onboardingTarget = appendActivationContextToHref(onboardingTarget, activationContext);
+        const destination = redirect
+          ? activationContext
+            ? appendActivationContextToHref(redirect, activationContext)
+            : redirect
+          : onboardingTarget;
+        router.replace(destination);
       }
     })();
-  }, [router, sp, supabase]);
+  }, [activationContext, router, sp, supabase]);
 
   const go = async (href: string) => {
     await supabase.auth.getSession();
@@ -149,8 +169,15 @@ export default function SignUpClient() {
     if (intakeId) params.set("intakeId", intakeId);
 
     const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
-
-    await go(redirect || onboardingTarget);
+    const destination = activationContext
+      ? appendActivationContextToHref(redirect || onboardingTarget, activationContext)
+      : redirect || onboardingTarget;
+    trackShopBoostEvent("signup_completed", {
+      demoId: demoId ?? "unknown",
+      intakeId: intakeId ?? undefined,
+      source: "signup_form",
+    });
+    await go(destination);
     setLoading(false);
   };
 

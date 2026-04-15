@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, type FormEvent } from "react";
+import { appendActivationContextToHref, type ActivationContext } from "@/features/integrations/shopBoost/activationContext";
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 import type { ShadowShopSnapshot } from "@/features/integrations/shopBoost/shadowShop";
 import {
@@ -138,14 +139,35 @@ export default function InstantShopAnalysisPage() {
     };
 
   const goToSignup = () => {
+    const activationContext: ActivationContext | null =
+      demoId && intakeId && analysis
+        ? {
+            demoId,
+            intakeId,
+            confidence: analysis.dashboard.trustScore,
+            readiness:
+              analysis.dashboard.readinessLabel === "READY_FOR_GO_LIVE" || analysis.dashboard.readinessLabel === "COMPLETED_CLEAN"
+                ? "READY"
+                : analysis.dashboard.readinessLabel === "FAILED" ||
+                    analysis.dashboard.readinessLabel === "PARTIAL_FAILURE" ||
+                    analysis.dashboard.readinessLabel === "NOT_READY"
+                  ? "BLOCKED"
+                  : "REVIEW_REQUIRED",
+            blockers: analysis.setupIssues.filter((issue) => issue.severity === "blocker").map((issue) => issue.title),
+            domains: analysis.preflightReport.domains.map((domainSummary) => domainSummary.domain),
+          }
+        : null;
     const next = demoId
       ? `/compare-plans?demoId=${encodeURIComponent(demoId)}${
           intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""
         }`
       : "/compare-plans";
-    window.location.href = `/signup?redirect=${encodeURIComponent(next)}${
+    const signupHref = `/signup?redirect=${encodeURIComponent(next)}${
       demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""
     }${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`;
+    window.location.href = activationContext
+      ? appendActivationContextToHref(signupHref, activationContext)
+      : signupHref;
   };
 
   const handleRun = async (event: FormEvent<HTMLFormElement>) => {
