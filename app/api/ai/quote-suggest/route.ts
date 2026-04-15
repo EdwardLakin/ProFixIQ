@@ -96,23 +96,26 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // Resolve shopId (best-effort)
-    let shopId: string | null = null;
-    if (user?.id) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle<{ shop_id: string | null }>();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-      shopId = profile?.shop_id ?? null;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    const shopId = profile?.shop_id ?? null;
+    if (!shopId) {
+      return NextResponse.json({ error: "Missing shop scope" }, { status: 400 });
     }
 
     const complaint = buildComplaint(body);
     const vehicleYmm = buildVehicleYmm(vehicle);
 
     const aiResult = await ProFixAI.suggestQuote({
-      shopId: shopId ?? "unknown_shop",
+      shopId,
       vehicleYmm,
       complaint,
     });
@@ -140,7 +143,7 @@ export async function POST(req: Request) {
         };
 
     // ✅ Log using a VALID event_type to avoid 400s (your enum/check constraint)
-    if (shopId && user?.id) {
+    if (user.id) {
       try {
         const payload: Json = {
           kind: "quote_suggest",

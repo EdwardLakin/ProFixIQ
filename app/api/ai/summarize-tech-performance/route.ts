@@ -1,6 +1,7 @@
 // app/api/ai/summarize-tech-performance/route.ts
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type Range = "weekly" | "monthly" | "quarterly" | "yearly";
 
@@ -24,6 +25,15 @@ type Payload = {
 
 export async function POST(req: Request) {
   try {
+    const supabase = createServerSupabaseRoute();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as Payload;
     const { timeRange, tech, peers } = body;
 
