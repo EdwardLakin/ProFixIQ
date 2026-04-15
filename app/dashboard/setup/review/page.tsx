@@ -2,8 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type Recommendation = {
+  recommendedAction: "link_existing" | "create_new" | "merge_candidate" | "ignore";
+  recommendationReason: string;
+  recommendationConfidence: number;
+  candidateTargets: Array<{ id: string; label: string; score: number }>;
+  confidenceLabel: "HIGH" | "MEDIUM" | "LOW";
+};
+
 type ReviewItem = {
   id: string;
+  intake_id: string;
   domain: string;
   issue_type: string;
   summary: string;
@@ -20,15 +29,33 @@ type ReviewItem = {
   resolution_action: "linked_to_existing" | "created_new" | "ignored" | null;
   ignore_reason_code: string | null;
   ignore_note: string | null;
-  ignored_at: string | null;
-  resolved_at: string | null;
-  materialized_at: string | null;
   materialization_error: string | null;
   materialized_record: Record<string, unknown> | null;
   created_at: string;
+  affected_domains?: string[];
+  recommendation: Recommendation;
+};
+
+type Guidance = {
+  is_operational_ready: boolean;
+  operational_blockers_count: number;
+  non_blocking_issues_count: number;
 };
 
 const domains = ["", "customer", "vehicle", "part", "work_order", "invoice", "history"];
+
+function actionLabel(action: Recommendation["recommendedAction"]): string {
+  if (action === "link_existing") return "Link to existing";
+  if (action === "merge_candidate") return "Merge candidate";
+  if (action === "ignore") return "Ignore";
+  return "Create new";
+}
+
+function toResolutionAction(action: Recommendation["recommendedAction"]): "linked_to_existing" | "created_new" | "ignored" {
+  if (action === "link_existing" || action === "merge_candidate") return "linked_to_existing";
+  if (action === "ignore") return "ignored";
+  return "created_new";
+}
 
 export default function ShopBoostReviewPage() {
   const [domain, setDomain] = useState("");
@@ -38,7 +65,9 @@ export default function ShopBoostReviewPage() {
   const [ignoreReason, setIgnoreReason] = useState("duplicate");
   const [ignoreNote, setIgnoreNote] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [guidance, setGuidance] = useState<Guidance | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [reprocessBusy, setReprocessBusy] = useState<null | "failed" | "unresolved" | "updated_matches">(null);
 
   const load = async () => {
     setLoading(true);
@@ -46,8 +75,9 @@ export default function ShopBoostReviewPage() {
     if (domain) params.set("domain", domain);
     if (statusFilter) params.set("status", statusFilter);
     const res = await fetch(`/api/shop-boost/review-items?${params.toString()}`, { cache: "no-store" });
-    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: ReviewItem[] };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: ReviewItem[]; guidance?: Guidance };
     setItems(json.ok ? json.items ?? [] : []);
+    setGuidance(json.guidance ?? null);
     setSelectedIds([]);
     setLoading(false);
   };
@@ -56,21 +86,57 @@ export default function ShopBoostReviewPage() {
     void load();
   }, [domain, statusFilter]);
 
-  const grouped = useMemo(() => {
-    return items.reduce<Record<string, number>>((acc, item) => {
-      acc[item.domain] = (acc[item.domain] ?? 0) + 1;
-      return acc;
-    }, {});
-  }, [items]);
+  const grouped = useMemo(
+    () =>
+      items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.domain] = (acc[item.domain] ?? 0) + 1;
+        return acc;
+      }, {}),
+    [items],
+  );
 
-  const resolve = async (id: string, resolution_action: "linked_to_existing" | "created_new" | "ignored") => {
+  const applySuggested = async (item: ReviewItem) => {
+    const resolution_action = toResolutionAction(item.recommendation.recommendedAction);
+    const res = await fetch(`/api/shop-boost/review-items/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resolution_action,
+        ignore_reason_code: resolution_action === "ignored" ? ignoreReason : undefined,
+        ignore_note: resolution_action === "ignored" ? ignoreNote || null : undefined,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setFeedback(json.ok ? "Suggested fix applied." : `Suggested fix failed: ${json.error ?? "unknown error"}`);
+    await load();
+  };
+
+  const applyAllHighConfidence = async () => {
+    const intakeId = items[0]?.intake_id;
+    const res = await fetch("/api/shop-boost/review-items/resolve-bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apply_suggested_high_confidence: true, confidence_threshold: 0.85, intake_id: intakeId }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; results?: Array<{ ok: boolean }> };
+    const okCount = (json.results ?? []).filter((r) => r.ok).length;
+    setFeedback(`Applied high-confidence suggestions (${okCount}/${json.results?.length ?? 0}).`);
+    await load();
+  };
+
+
+  const resolveSingle = async (id: string, resolution_action: "linked_to_existing" | "created_new" | "ignored") => {
     const res = await fetch(`/api/shop-boost/review-items/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resolution_action }),
+      body: JSON.stringify({
+        resolution_action,
+        ignore_reason_code: resolution_action === "ignored" ? ignoreReason : undefined,
+        ignore_note: resolution_action === "ignored" ? ignoreNote || null : undefined,
+      }),
     });
     const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-    setFeedback(json.ok ? "Resolved + Applied" : `Materialization failed: ${json.error ?? "unknown error"}`);
+    setFeedback(json.ok ? "Item resolved." : `Resolve failed: ${json.error ?? "unknown error"}`);
     await load();
   };
 
@@ -79,12 +145,34 @@ export default function ShopBoostReviewPage() {
     const res = await fetch("/api/shop-boost/review-items/resolve-bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ review_item_ids: selectedIds, resolution_action }),
+      body: JSON.stringify({
+        review_item_ids: selectedIds,
+        resolution_action,
+        ignore_reason_code: resolution_action === "ignored" ? ignoreReason : undefined,
+        ignore_note: resolution_action === "ignored" ? ignoreNote || null : undefined,
+      }),
     });
-    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; results?: Array<{ ok: boolean }> };
+    const json = (await res.json().catch(() => ({}))) as { results?: Array<{ ok: boolean }> };
     const okCount = (json.results ?? []).filter((item) => item.ok).length;
-    setFeedback(json.ok ? `Resolved + Applied (${okCount}/${selectedIds.length})` : `Bulk materialization completed with failures (${okCount}/${selectedIds.length}).`);
+    setFeedback(`Bulk action complete (${okCount}/${selectedIds.length}).`);
     await load();
+  };
+
+  const runReprocess = async (mode: "failed" | "unresolved" | "updated_matches") => {
+    setReprocessBusy(mode);
+    try {
+      const res = await fetch("/api/shop-boost/review-items/reprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, intake_id: items[0]?.intake_id }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { message?: string; results?: Array<{ ok: boolean }> };
+      const okCount = (json.results ?? []).filter((row) => row.ok).length;
+      setFeedback(`${json.message ?? "Reprocess completed."} (${okCount}/${json.results?.length ?? 0})`);
+      await load();
+    } finally {
+      setReprocessBusy(null);
+    }
   };
 
   const toggleSelected = (id: string) => {
@@ -94,54 +182,52 @@ export default function ShopBoostReviewPage() {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <h1 className="text-xl font-semibold text-white">Shop Boost Data Review</h1>
-        <p className="mt-1 text-sm text-neutral-300">Resolve review items and immediately apply results into customers, vehicles, work orders, invoices, and parts.</p>
+        <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
+        <p className="mt-1 text-sm text-neutral-300">Resolve migration issues safely with recommendations, confidence signals, and downstream impact visibility.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
           {Object.entries(grouped).map(([key, count]) => (
             <span key={key} className="rounded-full border border-white/15 px-2 py-1">{key}: {count}</span>
           ))}
         </div>
-        {feedback ? (
-          <div className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-100">{feedback}</div>
+        {guidance ? (
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-amber-400/35 bg-amber-950/20 text-amber-100"}`}>
+            {guidance.is_operational_ready ? "You can start using ProFixIQ now." : "Complete these items before your data is ready."}
+            <div className="mt-1 text-xs text-neutral-200">Blockers: {guidance.operational_blockers_count} • Non-blocking issues: {guidance.non_blocking_issues_count}</div>
+          </div>
         ) : null}
+        {feedback ? <div className="mt-3 rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">{feedback}</div> : null}
       </div>
 
       <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
-        <div>
-          <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by domain</label>
-          <select
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
-          >
-            {domains.map((d) => (
-              <option key={d || "all"} value={d}>
-                {d || "all domains"}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by domain</label>
+            <select value={domain} onChange={(e) => setDomain(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+              {domains.map((d) => <option key={d || "all"} value={d}>{d || "all domains"}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+              <option value="pending">pending</option>
+              <option value="failed_materialization">failed materialization</option>
+              <option value="materialized">materialized</option>
+              <option value="ignored">ignored</option>
+            </select>
+          </div>
         </div>
 
-        <div>
-          <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by status</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
-          >
-            <option value="pending">pending</option>
-            <option value="failed_materialization">failed materialization</option>
-            <option value="materialized">materialized</option>
-            <option value="ignored">ignored</option>
-          </select>
+        <div className="grid gap-2 md:grid-cols-3 text-xs">
+          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply all high-confidence fixes</button>
+          <button className="rounded border border-amber-300/40 px-2 py-1 text-amber-100" onClick={() => void runReprocess("failed")} disabled={reprocessBusy !== null}>{reprocessBusy === "failed" ? "Re-running…" : "Re-run failed items"}</button>
+          <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void runReprocess("unresolved")} disabled={reprocessBusy !== null}>{reprocessBusy === "unresolved" ? "Re-running…" : "Re-run unresolved items"}</button>
+          <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
         </div>
 
         <div>
           <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Ignore reason</label>
           <select value={ignoreReason} onChange={(e) => setIgnoreReason(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
-            {["duplicate", "obsolete", "invalid", "test_data", "intentionally_skipped", "unsupported_format", "other"].map((reason) => (
-              <option key={reason} value={reason}>{reason}</option>
-            ))}
+            {["duplicate", "obsolete", "invalid", "test_data", "intentionally_skipped", "unsupported_format", "other"].map((reason) => <option key={reason} value={reason}>{reason}</option>)}
           </select>
           <input value={ignoreNote} onChange={(e) => setIgnoreNote(e.target.value)} placeholder="Optional ignore note" className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white" />
         </div>
@@ -150,70 +236,53 @@ export default function ShopBoostReviewPage() {
           <div className="flex flex-wrap gap-2 text-xs">
             <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveBulk("linked_to_existing")}>Bulk link to existing</button>
             <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void resolveBulk("created_new")}>Bulk create new</button>
-            <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={async () => {
-              if (selectedIds.length === 0) return;
-              const res = await fetch("/api/shop-boost/review-items/resolve-bulk", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ review_item_ids: selectedIds, resolution_action: "ignored", ignore_reason_code: ignoreReason, ignore_note: ignoreNote || null }),
-              });
-              const json = (await res.json().catch(() => ({}))) as { ok?: boolean; results?: Array<{ ok: boolean }> };
-              const okCount = (json.results ?? []).filter((item) => item.ok).length;
-              setFeedback(json.ok ? `Ignored (${okCount}/${selectedIds.length})` : `Bulk ignore completed with failures (${okCount}/${selectedIds.length}).`);
-              await load();
-            }}>Bulk ignore</button>
+            <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveBulk("ignored")}>Bulk ignore</button>
           </div>
         ) : null}
       </div>
 
-      {loading ? (
-        <div className="text-sm text-neutral-400">Loading review queue…</div>
-      ) : items.length === 0 ? (
+      {loading ? <div className="text-sm text-neutral-400">Loading review queue…</div> : items.length === 0 ? (
         <div className="rounded-xl border border-emerald-300/20 bg-emerald-950/20 p-3 text-sm text-emerald-100">No items for this filter.</div>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
             <div key={item.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-start gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex gap-2">
                   <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelected(item.id)} className="mt-1" />
                   <div>
                     <div className="text-sm font-semibold text-white">{item.summary}</div>
                     <div className="text-xs text-neutral-400">{item.domain} • {item.issue_type} • {item.status}</div>
-                    <div className="text-xs text-neutral-500">target: {item.target_domain ?? item.domain} • cluster: {item.cluster_key ?? "n/a"} ({item.cluster_confidence?.toFixed(2) ?? "0.00"})</div>
-                    {item.blocking_reason ? <div className="text-xs text-amber-200">blocked: {item.blocking_reason}</div> : null}
-                    {(item.downstream_impact_count ?? 0) > 0 ? <div className="text-xs text-sky-200">downstream impact: {item.downstream_impact_count}</div> : null}
-                    {item.materialized_record ? (
-                      <div className="mt-1 text-xs text-emerald-200">Resolved + Applied → {JSON.stringify(item.materialized_record)}</div>
-                    ) : null}
-                    {item.status === "ignored" ? (
-                      <div className="mt-1 text-xs text-neutral-300">Ignored ({item.ignore_reason_code ?? "other"}) {item.ignore_note ? `• ${item.ignore_note}` : ""}</div>
-                    ) : null}
-                    {item.materialization_error ? (
-                      <div className="mt-1 text-xs text-rose-300">Materialization error: {item.materialization_error}</div>
-                    ) : null}
+                    <div className="mt-1 text-xs text-neutral-500">target: {item.target_domain ?? item.domain} • cluster: {item.cluster_key ?? "n/a"} ({item.cluster_confidence?.toFixed(2) ?? "0.00"})</div>
+                    {item.blocking_reason ? <div className="text-xs text-amber-200">Blocker: {item.blocking_reason}</div> : null}
+                    {(item.downstream_impact_count ?? 0) > 0 ? <div className="text-xs text-sky-200">This will unblock {item.downstream_impact_count} downstream records in {(item.affected_domains ?? []).join(", ") || "related domains"}.</div> : null}
                   </div>
                 </div>
-                <div className="flex gap-2 text-xs">
-                  <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolve(item.id, "linked_to_existing")}>Link to existing</button>
-                  <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void resolve(item.id, "created_new")}>Create new</button>
-                  <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={async () => {
-                    const res = await fetch(`/api/shop-boost/review-items/${item.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ resolution_action: "ignored", ignore_reason_code: ignoreReason, ignore_note: ignoreNote || null }),
-                    });
-                    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-                    setFeedback(json.ok ? "Ignored" : `Ignore failed: ${json.error ?? "unknown error"}`);
-                    await load();
-                  }}>Ignore</button>
-                  {item.status === "failed_materialization" ? (
-                    <button className="rounded border border-amber-300/40 px-2 py-1 text-amber-100" onClick={() => void resolve(item.id, item.resolution_action ?? "created_new")}>Retry</button>
+
+                <div className="w-full max-w-sm rounded-lg border border-white/15 bg-black/30 p-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium text-neutral-100">Suggested: {actionLabel(item.recommendation.recommendedAction)}</div>
+                    <span className={`rounded-full px-2 py-0.5 ${item.recommendation.confidenceLabel === "HIGH" ? "bg-emerald-400/20 text-emerald-100" : item.recommendation.confidenceLabel === "MEDIUM" ? "bg-amber-400/20 text-amber-100" : "bg-rose-400/20 text-rose-100"}`}>
+                      {item.recommendation.confidenceLabel} {(item.recommendation.recommendationConfidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="mt-1 text-neutral-300">{item.recommendation.recommendationReason}</div>
+                  {item.recommendation.candidateTargets.length > 0 ? (
+                    <div className="mt-1 text-neutral-400">Candidates: {item.recommendation.candidateTargets.map((t) => `${t.label} (${Math.round(t.score * 100)}%)`).join(" • ")}</div>
                   ) : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applySuggested(item)}>Apply suggested fix</button>
+                    <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveSingle(item.id, "linked_to_existing")}>Manual link</button>
+                    <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveSingle(item.id, "created_new")}>Manual create</button>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {item.materialized_record ? <div className="mt-2 text-xs text-emerald-200">Resolved + Applied → {JSON.stringify(item.materialized_record)}</div> : null}
+              {item.status === "ignored" ? <div className="mt-1 text-xs text-neutral-300">Ignored ({item.ignore_reason_code ?? "other"}) {item.ignore_note ? `• ${item.ignore_note}` : ""}</div> : null}
+              {item.materialization_error ? <div className="mt-1 text-xs text-rose-300">Materialization error: {item.materialization_error}</div> : null}
+
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <div>
                   <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Raw imported data</div>
                   <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.raw_payload ?? {}, null, 2)}</pre>

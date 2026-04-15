@@ -6,6 +6,7 @@ import {
   runPostMigrationIntegrityValidation,
   type IgnoreReasonCode,
 } from "@/features/integrations/shopBoost/migrationReliability";
+import { toResolutionAction } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type ResolutionAction = "linked_to_existing" | "created_new" | "ignored";
 type ReviewStatus = "pending" | "resolved" | "materialized" | "failed_materialization" | "ignored";
@@ -23,6 +24,9 @@ type ReviewItemRow = {
   resolution_action: ResolutionAction | null;
   materialized_at: string | null;
   materialization_error: string | null;
+  recommended_action?: "link_existing" | "create_new" | "merge_candidate" | "ignore" | null;
+  recommendation_reason?: string | null;
+  recommendation_confidence?: number | null;
 };
 
 type MaterializeResult = {
@@ -69,6 +73,42 @@ function parseMoney(value: string | null): number | null {
   const standardized = cleaned.includes(",") && !cleaned.includes(".") ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
   const n = Number(standardized);
   return Number.isFinite(n) ? n : null;
+}
+
+
+async function logReviewAuditEvent(args: {
+  supabase: any;
+  item: ReviewItemRow;
+  userId: string;
+  actionTaken: ResolutionAction | null;
+  materializationStatus?: string;
+  materializationError?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  const recommendedAction = args.item.recommended_action ?? null;
+  const followedRecommendation = recommendedAction
+    ? toResolutionAction(recommendedAction) === args.actionTaken
+    : null;
+
+  await args.supabase.from("shop_boost_review_audit_events").insert({
+    shop_id: args.item.shop_id,
+    intake_id: args.item.intake_id,
+    review_item_id: args.item.id,
+    actor_user_id: args.userId,
+    event_type: args.materializationStatus ? "resolution_applied" : "recommendation_viewed",
+    recommendation: {
+      recommended_action: recommendedAction,
+      recommendation_reason: args.item.recommendation_reason ?? null,
+      recommendation_confidence: args.item.recommendation_confidence ?? null,
+    },
+    action_taken: args.actionTaken,
+    followed_recommendation: followedRecommendation,
+    materialization_status: args.materializationStatus ?? null,
+    metadata: {
+      ...(args.metadata ?? {}),
+      materialization_error: args.materializationError ?? null,
+    },
+  });
 }
 
 async function findCustomerId(args: { supabase: any; shopId: string; raw: Record<string, unknown>; suggested: unknown; }): Promise<string | null> {
@@ -444,7 +484,7 @@ export async function resolveAndMaterializeReviewItem(args: {
 
   const { data: item } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("shop_id", args.shopId)
     .eq("id", args.reviewItemId)
     .maybeSingle();
@@ -472,6 +512,10 @@ export async function resolveAndMaterializeReviewItem(args: {
         resolutionAction: args.resolutionAction,
       });
 
+  const followedRecommendation = item.recommended_action
+    ? toResolutionAction(item.recommended_action) === args.resolutionAction
+    : null;
+
   await supabase
     .from("shop_boost_review_items")
     .update({
@@ -479,10 +523,21 @@ export async function resolveAndMaterializeReviewItem(args: {
       materialized_at: materialized.status === "materialized" ? new Date().toISOString() : null,
       materialization_error: materialized.error,
       materialized_record: materialized.materializedRecord ?? {},
+      recommendation_followed: followedRecommendation,
       updated_at: new Date().toISOString(),
     })
     .eq("id", item.id)
     .eq("shop_id", args.shopId);
+
+  await logReviewAuditEvent({
+    supabase,
+    item: item as ReviewItemRow,
+    userId: args.userId,
+    actionTaken: args.resolutionAction,
+    materializationStatus: materialized.status,
+    materializationError: materialized.error,
+    metadata: { review_item_status_before: item.status },
+  });
 
   if (materialized.status === "materialized") {
     await replayDependentRows({ supabase, shopId: args.shopId, intakeId: item.intake_id });
@@ -492,7 +547,7 @@ export async function resolveAndMaterializeReviewItem(args: {
 
   const { data: updatedItem } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("id", item.id)
     .eq("shop_id", args.shopId)
     .maybeSingle();
@@ -509,7 +564,7 @@ async function replayDependentRows(args: { supabase: any; shopId: string; intake
   const { supabase, shopId, intakeId } = args;
   const { data: replayCandidates } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("shop_id", shopId)
     .eq("intake_id", intakeId)
     .eq("issue_type", "missing_dependency")
@@ -568,6 +623,93 @@ async function replayDependentRows(args: { supabase: any; shopId: string; intake
     })
     .eq("id", intakeId)
     .eq("shop_id", shopId);
+}
+
+
+export async function applyHighConfidenceRecommendations(args: {
+  shopId: string;
+  userId: string;
+  intakeId?: string;
+  threshold?: number;
+}): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
+  const supabase = createAdminSupabase() as any;
+  const threshold = Math.max(0, Math.min(0.99, args.threshold ?? 0.85));
+
+  let query = supabase
+    .from("shop_boost_review_items")
+    .select("id,recommended_action,recommendation_confidence")
+    .eq("shop_id", args.shopId)
+    .eq("status", "pending")
+    .gte("recommendation_confidence", threshold)
+    .not("recommended_action", "is", null)
+    .order("recommendation_confidence", { ascending: false })
+    .limit(200);
+
+  if (args.intakeId) query = query.eq("intake_id", args.intakeId);
+  const { data } = await query;
+
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  for (const row of data ?? []) {
+    const action = toResolutionAction(String(row.recommended_action) as any);
+    const result = await resolveAndMaterializeReviewItem({
+      reviewItemId: String(row.id),
+      shopId: args.shopId,
+      userId: args.userId,
+      resolutionAction: action,
+      ignoreReasonCode: action === "ignored" ? "other" : undefined,
+    });
+    results.push({ id: String(row.id), ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+  }
+
+  return results;
+}
+
+export async function reprocessReviewItems(args: {
+  shopId: string;
+  userId: string;
+  intakeId?: string;
+  mode: "failed" | "unresolved" | "updated_matches";
+}): Promise<{ resetCount: number; results: Array<{ id: string; ok: boolean; error?: string }> }> {
+  const supabase = createAdminSupabase() as any;
+  let statuses: string[] = [];
+  if (args.mode === "failed") statuses = ["failed_materialization"];
+  if (args.mode === "unresolved") statuses = ["pending", "failed_materialization"];
+  if (args.mode === "updated_matches") statuses = ["pending", "failed_materialization", "resolved"];
+
+  let base = supabase
+    .from("shop_boost_review_items")
+    .select("id,recommended_action")
+    .eq("shop_id", args.shopId)
+    .in("status", statuses)
+    .order("created_at", { ascending: true })
+    .limit(250);
+  if (args.intakeId) base = base.eq("intake_id", args.intakeId);
+  const { data: candidates } = await base;
+
+  const ids = (candidates ?? []).map((row: any) => String(row.id));
+  if (ids.length === 0) return { resetCount: 0, results: [] };
+
+  await supabase
+    .from("shop_boost_review_items")
+    .update({ status: "pending", materialization_error: null, updated_at: new Date().toISOString() })
+    .in("id", ids)
+    .eq("shop_id", args.shopId);
+
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  for (const row of candidates ?? []) {
+    const recommended = String(row.recommended_action ?? "create_new") as any;
+    const action = toResolutionAction(recommended);
+    const result = await resolveAndMaterializeReviewItem({
+      reviewItemId: String(row.id),
+      shopId: args.shopId,
+      userId: args.userId,
+      resolutionAction: action,
+      ignoreReasonCode: action === "ignored" ? "other" : undefined,
+    });
+    results.push({ id: String(row.id), ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+  }
+
+  return { resetCount: ids.length, results };
 }
 
 export async function bulkResolveReviewItems(args: {
