@@ -78,6 +78,18 @@ export type ShopBoostImportSummary = {
     successCount: number;
     reviewCount: number;
     failedCount: number;
+    ignoredCount?: number;
+    integrityErrors?: string[];
+    outcomeBuckets?: {
+      materialized: number;
+      linked: number;
+      ignored: number;
+      review_required: number;
+      failed: number;
+      total_counted: number;
+      total_input: number;
+      mismatch: number;
+    };
     byDomain: Record<string, { success: number; review: number; failed: number }>;
   };
   completionState: CompletionState;
@@ -946,6 +958,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     successCount: 0,
     reviewCount: 0,
     failedCount: 0,
+    ignoredCount: 0,
+    integrityErrors: [] as string[],
+    outcomeBuckets: {
+      materialized: 0,
+      linked: 0,
+      ignored: 0,
+      review_required: 0,
+      failed: 0,
+      total_counted: 0,
+      total_input: totalRows,
+      mismatch: 0,
+    },
     byDomain: {
       customers: { success: 0, review: 0, failed: 0 },
       vehicles: { success: 0, review: 0, failed: 0 },
@@ -1941,12 +1965,68 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const pendingReviewCount = reviewCounts[0].count ?? 0;
   const failedReviewCount = reviewCounts[1].count ?? 0;
   const ignoredCount = reviewCounts[2].count ?? 0;
+  rowOutcome.ignoredCount = ignoredCount;
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
+  const integrityErrors: string[] = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
+
+  const { data: rowBucketRows } = await (supabase as any)
+    .from("shop_boost_row_results")
+    .select("match_status,review_required,error_reason")
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .limit(100000);
+
+  const outcomeBuckets = {
+    materialized: 0,
+    linked: 0,
+    ignored: ignoredCount,
+    review_required: 0,
+    failed: 0,
+    total_counted: 0,
+    total_input: totalRows,
+    mismatch: 0,
+  };
+  for (const row of rowBucketRows ?? []) {
+    const status = String((row as any).match_status ?? "");
+    const reviewRequired = Boolean((row as any).review_required);
+    const hasError = Boolean((row as any).error_reason);
+    if (reviewRequired) outcomeBuckets.review_required += 1;
+    else if (hasError || status === "invalid") outcomeBuckets.failed += 1;
+    else if (status === "matched_existing" || status === "partial_match") outcomeBuckets.linked += 1;
+    else outcomeBuckets.materialized += 1;
+  }
+  outcomeBuckets.total_counted =
+    outcomeBuckets.materialized +
+    outcomeBuckets.linked +
+    outcomeBuckets.ignored +
+    outcomeBuckets.review_required +
+    outcomeBuckets.failed;
+  outcomeBuckets.mismatch = Math.max(0, outcomeBuckets.total_input - outcomeBuckets.total_counted);
+  if (outcomeBuckets.mismatch !== 0) {
+    integrityErrors.push(
+      `Row outcome mismatch detected: input=${outcomeBuckets.total_input}, bucketed=${outcomeBuckets.total_counted}, mismatch=${outcomeBuckets.mismatch}.`,
+    );
+  }
+  rowOutcome.integrityErrors = integrityErrors;
+  rowOutcome.outcomeBuckets = outcomeBuckets;
+
+  const autoMatchRatio = rowOutcome.totalRows > 0 ? (outcomeBuckets.materialized + outcomeBuckets.linked) / rowOutcome.totalRows : 0;
+  const manualInterventionRatio = rowOutcome.totalRows > 0 ? (pendingReviewCount + ignoredCount) / rowOutcome.totalRows : 0;
+  let trustScore = 0.5;
+  trustScore += Math.min(0.35, autoMatchRatio * 0.35);
+  trustScore += Math.min(0.15, (1 - manualInterventionRatio) * 0.15);
+  trustScore -= Math.min(0.25, (rowOutcome.failedCount / Math.max(1, rowOutcome.totalRows)) * 0.25);
+  trustScore -= Math.min(0.2, (pendingReviewCount / Math.max(1, rowOutcome.totalRows)) * 0.2);
+  trustScore -= Math.min(0.2, integrityErrors.length * 0.05);
+  if (integrityErrors.length > 0) trustScore = Math.min(trustScore, 0.84);
+  trustScore = Math.max(0, Math.min(0.99, Number(trustScore.toFixed(2))));
+
   const completionState: ShopBoostImportSummary["completionState"] = computeCompletionState({
     failedCount: rowOutcome.failedCount,
     pendingReviewCount,
     failedReviewCount,
     integrityStatus: integrity.status,
+    integrityErrorsCount: integrityErrors.length,
   });
 
   const [
@@ -2050,8 +2130,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             shopBuildSummary,
             rowResults: rowOutcome,
             completionState,
-            integrity,
+            integrity: { ...integrity, integrity_errors: integrityErrors },
             ignoredCount,
+            confidence_score: trustScore,
           },
           shopBuildSummary,
           migrationProgress: {
@@ -2064,7 +2145,17 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             ignored_count: ignoredCount,
             domains: rowOutcome.byDomain,
             completionState,
-            integrity,
+            integrity: { ...integrity, integrity_errors: integrityErrors },
+            integrity_errors: integrityErrors,
+            row_outcome_buckets: outcomeBuckets,
+            confidence_score: trustScore,
+            confidence_tier: trustScore >= 0.85 ? "HIGH" : trustScore >= 0.6 ? "MEDIUM" : "LOW",
+            ready_for_go_live_gate:
+              integrityErrors.length === 0 &&
+              pendingReviewCount === 0 &&
+              failedReviewCount === 0 &&
+              rowOutcome.failedCount === 0 &&
+              outcomeBuckets.mismatch === 0,
           },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],

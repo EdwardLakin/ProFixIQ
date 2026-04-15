@@ -65,6 +65,14 @@ export async function GET(req: Request) {
           recommendationReason: String(item.recommendation_reason ?? ""),
           recommendationConfidence: Number(item.recommendation_confidence ?? 0),
           candidateTargets: Array.isArray(item.candidate_targets) ? item.candidate_targets : [],
+          confidenceLabel:
+            Number(item.recommendation_confidence ?? 0) >= 0.85
+              ? "HIGH"
+              : Number(item.recommendation_confidence ?? 0) >= 0.6
+                ? "MEDIUM"
+                : "LOW",
+          requiresManualReview: Number(item.recommendation_confidence ?? 0) < 0.85,
+          blockedAutoApply: Number(item.recommendation_confidence ?? 0) < 0.85,
         }
       : deriveReviewRecommendation({
           domain: String(item.domain ?? ""),
@@ -77,21 +85,26 @@ export async function GET(req: Request) {
 
     return {
       ...item,
-      recommendation: {
-        ...recommendation,
-        confidenceLabel:
-          recommendation.recommendationConfidence >= 0.85
-            ? "HIGH"
-            : recommendation.recommendationConfidence >= 0.65
-              ? "MEDIUM"
-              : "LOW",
-      },
+      recommendation,
       affected_domains: deriveAffectedDomains(item.dependency_refs, String(item.domain ?? "")),
     };
   });
 
   const unresolved = items.filter((item: any) => item.status === "pending" || item.status === "failed_materialization");
   const blockers = unresolved.filter((item: any) => Boolean(item.blocking_reason)).length;
+  const highRiskActions = items.filter((item: any) => Boolean(item.materialized_record?.high_risk_action)).length;
+
+  const { data: intake } = await admin
+    .from("shop_boost_intakes")
+    .select("intake_basics")
+    .eq("shop_id", profile.shop_id)
+    .eq("id", String(items[0]?.intake_id ?? ""))
+    .maybeSingle();
+  const migration = asRecord(asRecord(intake?.intake_basics).migrationProgress);
+  const integrity = asRecord(migration.integrity);
+  const integrityErrors = Array.isArray(integrity.integrity_errors)
+    ? integrity.integrity_errors
+    : [];
 
   if (unresolved.length > 0) {
     await admin
@@ -108,9 +121,11 @@ export async function GET(req: Request) {
     ok: true,
     items,
     guidance: {
-      is_operational_ready: blockers === 0,
+      is_operational_ready: blockers === 0 && integrityErrors.length === 0,
       operational_blockers_count: blockers,
       non_blocking_issues_count: Math.max(0, unresolved.length - blockers),
+      high_risk_actions_count: highRiskActions,
+      integrity_errors: integrityErrors,
     },
   });
 }

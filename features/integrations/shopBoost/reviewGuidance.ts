@@ -11,6 +11,9 @@ export type ReviewRecommendation = {
   recommendationReason: string;
   recommendationConfidence: number;
   candidateTargets: RecommendationTarget[];
+  confidenceLabel: "HIGH" | "MEDIUM" | "LOW";
+  requiresManualReview: boolean;
+  blockedAutoApply: boolean;
 };
 
 type ReviewCandidate = {
@@ -50,6 +53,25 @@ function clampConfidence(value: number): number {
   return Math.max(0, Math.min(0.99, Number(n.toFixed(2))));
 }
 
+export function confidenceLabelFromScore(score: number): "HIGH" | "MEDIUM" | "LOW" {
+  if (score >= 0.85) return "HIGH";
+  if (score >= 0.6) return "MEDIUM";
+  return "LOW";
+}
+
+function buildRecommendation(
+  recommendation: Omit<ReviewRecommendation, "confidenceLabel" | "requiresManualReview" | "blockedAutoApply">,
+): ReviewRecommendation {
+  const label = confidenceLabelFromScore(recommendation.recommendationConfidence);
+  const blockedAutoApply = label !== "HIGH" || recommendation.recommendedAction === "merge_candidate";
+  return {
+    ...recommendation,
+    confidenceLabel: label,
+    requiresManualReview: blockedAutoApply,
+    blockedAutoApply,
+  };
+}
+
 function parseTargets(input: unknown): RecommendationTarget[] {
   if (!Array.isArray(input)) return [];
   return input
@@ -83,33 +105,44 @@ export function deriveReviewRecommendation(args: ReviewCandidate): ReviewRecomme
 
   const strongIdentityCount = [email, phone, vin, plate, partNumber, sku].filter(Boolean).length;
   const topTargetScore = clampConfidence(targets[0]?.score ?? 0);
+  const nextTargetScore = clampConfidence(targets[1]?.score ?? 0);
+  const conflictingCandidates = targets.length >= 2 && Math.abs(topTargetScore - nextTargetScore) <= 0.03;
   const issueType = args.issueType;
 
+  if (conflictingCandidates) {
+    return buildRecommendation({
+      recommendedAction: "ignore",
+      recommendationReason: "Conflicting candidates were detected with near-identical scores. Manual review is required before any link/merge action.",
+      recommendationConfidence: clampConfidence(0.2),
+      candidateTargets: targets,
+    });
+  }
+
   if (issueType === "invalid") {
-    return {
+    return buildRecommendation({
       recommendedAction: "ignore",
       recommendationReason: "Record is missing required identity fields and should be skipped until corrected.",
       recommendationConfidence: clampConfidence(Math.max(0.85, clusterConfidence || 0.85)),
       candidateTargets: [],
-    };
+    });
   }
 
   if (issueType === "missing_dependency") {
-    return {
+    return buildRecommendation({
       recommendedAction: "create_new",
       recommendationReason: "A required dependency is missing; creating a new record will unblock dependent records.",
       recommendationConfidence: clampConfidence(Math.max(0.7, clusterConfidence + 0.2)),
       candidateTargets: targets,
-    };
+    });
   }
 
   if (issueType === "duplicate_candidate" || issueType === "conflict") {
-    return {
+    return buildRecommendation({
       recommendedAction: "merge_candidate",
       recommendationReason: "Potential duplicate detected from clustering and matching signals.",
       recommendationConfidence: clampConfidence(Math.max(0.72, topTargetScore || clusterConfidence)),
       candidateTargets: targets,
-    };
+    });
   }
 
   if (targets.length > 0 && (topTargetScore >= 0.86 || (strongIdentityCount >= 2 && topTargetScore >= 0.75))) {
@@ -122,29 +155,29 @@ export function deriveReviewRecommendation(args: ReviewCandidate): ReviewRecomme
     const reason = reasonBits.length > 0
       ? `Strong identifier match (${reasonBits.slice(0, 2).join(" + ")}) against an existing record.`
       : "High match score against an existing record.";
-    return {
+    return buildRecommendation({
       recommendedAction: "link_existing",
       recommendationReason: reason,
       recommendationConfidence: clampConfidence(Math.max(topTargetScore, clusterConfidence)),
       candidateTargets: targets,
-    };
+    });
   }
 
   if (strongIdentityCount === 0 && issueType === "ambiguous_match") {
-    return {
+    return buildRecommendation({
       recommendedAction: "create_new",
       recommendationReason: "No strong identifier match found in existing records.",
       recommendationConfidence: clampConfidence(Math.max(0.6, clusterConfidence)),
       candidateTargets: targets,
-    };
+    });
   }
 
-  return {
+  return buildRecommendation({
     recommendedAction: "create_new",
     recommendationReason: "No reliable existing match was found, so creating a new record is safest.",
     recommendationConfidence: clampConfidence(Math.max(0.55, clusterConfidence)),
     candidateTargets: targets,
-  };
+  });
 }
 
 export function toResolutionAction(recommendedAction: RecommendedAction): "linked_to_existing" | "created_new" | "ignored" {

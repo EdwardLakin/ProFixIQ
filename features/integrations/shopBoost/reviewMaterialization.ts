@@ -35,6 +35,11 @@ type MaterializeResult = {
   error: string | null;
 };
 
+type HighRiskCheckResult = {
+  highRiskAction: boolean;
+  riskReasons: string[];
+};
+
 function norm(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -229,6 +234,15 @@ async function materializeVehicle(args: { supabase: any; item: ReviewItemRow; re
   };
 
   if (vehicleId) {
+    const { data: existingVehicle } = await supabase.from("vehicles").select("customer_id").eq("id", vehicleId).eq("shop_id", item.shop_id).maybeSingle();
+    const existingOwner = String(existingVehicle?.customer_id ?? "");
+    if (existingOwner && existingOwner !== customerId) {
+      return {
+        status: "failed_materialization",
+        materializedRecord: null,
+        error: "Unsafe owner relink blocked. Vehicle owner differs from matched customer; manual high-risk review required.",
+      };
+    }
     await supabase.from("vehicles").update(payload).eq("id", vehicleId).eq("shop_id", item.shop_id);
   } else {
     const { data: inserted, error } = await supabase.from("vehicles").insert(payload).select("id").limit(1).maybeSingle();
@@ -262,6 +276,13 @@ async function materializeWorkOrder(args: { supabase: any; item: ReviewItemRow; 
 
   const vehicleId = vehicle?.id ? String(vehicle.id) : null;
   if (!vehicleId) return { status: "failed_materialization", materializedRecord: null, error: "Missing vehicle dependency for work order." };
+  if (!customerId || !vehicleId) {
+    return {
+      status: "failed_materialization",
+      materializedRecord: null,
+      error: "Hard block: work order cannot materialize without both customer and vehicle dependencies.",
+    };
+  }
 
   const ro = pick(raw, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
   const total = parseMoney(pick(raw, [/total/, /grand total/, /invoice total/]));
@@ -368,6 +389,18 @@ async function materializePart(args: { supabase: any; item: ReviewItemRow; resol
       .maybeSingle();
     partId = existing?.id ?? null;
     if (!partId) return { status: "failed_materialization", materializedRecord: null, error: "Unable to locate existing part to link." };
+    const incomingSku = lower(sku);
+    const incomingPartNumber = lower(partNumber);
+    const { data: currentPart } = await supabase.from("parts").select("sku,part_number").eq("id", partId).eq("shop_id", item.shop_id).maybeSingle();
+    const currentSku = lower(currentPart?.sku);
+    const currentPartNumber = lower(currentPart?.part_number);
+    if ((incomingSku && currentSku && incomingSku !== currentSku) || (incomingPartNumber && currentPartNumber && incomingPartNumber !== currentPartNumber)) {
+      return {
+        status: "failed_materialization",
+        materializedRecord: null,
+        error: "Unsafe part overwrite blocked. Incoming SKU/part number conflicts with existing record.",
+      };
+    }
     await supabase.from("parts").update({ source_intake_id: item.intake_id }).eq("id", partId);
   } else {
     const { data: existingByExternal } = await supabase.from("parts").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
@@ -446,11 +479,13 @@ async function recomputeMigrationProgress(supabase: any, shopId: string, intakeI
   );
 
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
+  const integrityErrors = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
   const completionState = computeCompletionState({
     failedCount: Number(migrationProgress.failed_count ?? 0),
     pendingReviewCount: pendingCount ?? 0,
     failedReviewCount: failedCount ?? 0,
     integrityStatus: integrity.status,
+    integrityErrorsCount: integrityErrors.length,
   });
 
   await supabase
@@ -477,6 +512,7 @@ export async function resolveAndMaterializeReviewItem(args: {
   shopId: string;
   userId: string;
   resolutionAction: ResolutionAction;
+  confirmHighRiskAction?: boolean;
   ignoreReasonCode?: IgnoreReasonCode;
   ignoreNote?: string | null;
 }): Promise<{ ok: boolean; item: ReviewItemRow | null; materializedRecord: Record<string, unknown> | null; error?: string; }> {
@@ -490,6 +526,24 @@ export async function resolveAndMaterializeReviewItem(args: {
     .maybeSingle();
 
   if (!item) return { ok: false, item: null, materializedRecord: null, error: "Review item not found." };
+
+  const riskCheck: HighRiskCheckResult = {
+    highRiskAction:
+      args.resolutionAction === "linked_to_existing" &&
+      (item.recommended_action === "merge_candidate" || item.issue_type === "conflict" || item.issue_type === "duplicate_candidate"),
+    riskReasons: [],
+  };
+  if (riskCheck.highRiskAction) {
+    riskCheck.riskReasons.push("Potential merge/duplicate conflict action.");
+  }
+  if (riskCheck.highRiskAction && !args.confirmHighRiskAction) {
+    return {
+      ok: false,
+      item: item as ReviewItemRow,
+      materializedRecord: null,
+      error: "High-risk action requires explicit confirmation before applying.",
+    };
+  }
 
   const updateBase = {
     status: args.resolutionAction === "ignored" ? "ignored" : "resolved",
@@ -522,7 +576,11 @@ export async function resolveAndMaterializeReviewItem(args: {
       status: materialized.status,
       materialized_at: materialized.status === "materialized" ? new Date().toISOString() : null,
       materialization_error: materialized.error,
-      materialized_record: materialized.materializedRecord ?? {},
+      materialized_record: {
+        ...(materialized.materializedRecord ?? {}),
+        high_risk_action: riskCheck.highRiskAction,
+        high_risk_reasons: riskCheck.riskReasons,
+      },
       recommendation_followed: followedRecommendation,
       updated_at: new Date().toISOString(),
     })
@@ -536,7 +594,11 @@ export async function resolveAndMaterializeReviewItem(args: {
     actionTaken: args.resolutionAction,
     materializationStatus: materialized.status,
     materializationError: materialized.error,
-    metadata: { review_item_status_before: item.status },
+    metadata: {
+      review_item_status_before: item.status,
+      high_risk_action: riskCheck.highRiskAction,
+      high_risk_reasons: riskCheck.riskReasons,
+    },
   });
 
   if (materialized.status === "materialized") {
@@ -650,7 +712,13 @@ export async function applyHighConfidenceRecommendations(args: {
 
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
   for (const row of data ?? []) {
+    const confidence = Number(row.recommendation_confidence ?? 0);
+    if (confidence < 0.85) continue;
     const action = toResolutionAction(String(row.recommended_action) as any);
+    if (action === "linked_to_existing" && String(row.recommended_action) === "merge_candidate") {
+      results.push({ id: String(row.id), ok: false, error: "High-risk merge candidates are never auto-applied." });
+      continue;
+    }
     const result = await resolveAndMaterializeReviewItem({
       reviewItemId: String(row.id),
       shopId: args.shopId,
@@ -669,6 +737,7 @@ export async function reprocessReviewItems(args: {
   userId: string;
   intakeId?: string;
   mode: "failed" | "unresolved" | "updated_matches";
+  reprocessReason?: string;
 }): Promise<{ resetCount: number; results: Array<{ id: string; ok: boolean; error?: string }> }> {
   const supabase = createAdminSupabase() as any;
   let statuses: string[] = [];
@@ -691,9 +760,23 @@ export async function reprocessReviewItems(args: {
 
   await supabase
     .from("shop_boost_review_items")
-    .update({ status: "pending", materialization_error: null, updated_at: new Date().toISOString() })
+    .update({ status: "pending", materialization_error: null, materialized_record: null, updated_at: new Date().toISOString() })
     .in("id", ids)
     .eq("shop_id", args.shopId);
+
+  if (ids.length > 0) {
+    await supabase.from("shop_boost_review_audit_events").insert({
+      shop_id: args.shopId,
+      intake_id: args.intakeId ?? null,
+      actor_user_id: args.userId,
+      event_type: "reprocess_requested",
+      metadata: {
+        mode: args.mode,
+        reset_count: ids.length,
+        reprocess_reason: args.reprocessReason ?? "operator_requested",
+      },
+    });
+  }
 
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
   for (const row of candidates ?? []) {
