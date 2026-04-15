@@ -492,9 +492,19 @@ export async function getOpsNotifications(
   }
 
   notifications.sort((a, b) => {
+    const levelRank = (level: OpsNotificationLevel): number =>
+      level === "urgent" ? 3 : level === "warning" ? 2 : 1;
+
+    const levelDelta = levelRank(b.level) - levelRank(a.level);
+    if (levelDelta !== 0) return levelDelta;
+
+    const actionableDelta =
+      Number(Boolean(b.href || b.entityId)) - Number(Boolean(a.href || a.entityId));
+    if (actionableDelta !== 0) return actionableDelta;
+
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return aTime - bTime;
+    return bTime - aTime;
   });
 
   return notifications;

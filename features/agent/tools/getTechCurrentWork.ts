@@ -69,6 +69,10 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
     techId = profile?.id ?? null;
   }
 
+  if (!techId && !input.techName && ctx.userId) {
+    techId = ctx.userId;
+  }
+
   let query = supabase
     .from("work_order_lines")
     .select(

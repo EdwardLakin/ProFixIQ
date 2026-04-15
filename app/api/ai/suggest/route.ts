@@ -1,7 +1,7 @@
 // app/api/ai/parts/suggest/route.ts
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 
 type VehicleContext = {
@@ -52,9 +52,38 @@ function formatVehicle(v: VehicleContext | null | undefined): string {
  * to ask the LLM for part suggestions.
  */
 export async function POST(req: Request) {
-  const supabase = createAdminSupabase();
+  const supabase = createServerSupabaseRoute();
 
   try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+        { items: [], error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    if (profileError) {
+      console.warn("[ai/parts/suggest] profile fetch error", profileError.message);
+    }
+
+    const callerShopId = profile?.shop_id ?? null;
+    if (!callerShopId) {
+      return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+        { items: [], error: "Missing shop scope" },
+        { status: 400 },
+      );
+    }
+
     const body = (await req.json().catch(() => ({}))) as SuggestRequestBody;
 
     const {
@@ -77,32 +106,54 @@ export async function POST(req: Request) {
     let complaintText = (description ?? "").trim();
     let lineNotes = (notes ?? "").trim();
     let resolvedWorkOrderId: string | null = workOrderId ?? null;
-    let shopId: string | null = null;
+    let shopId: string | null = callerShopId;
 
     if (workOrderLineId) {
       const { data: line, error: lineErr } = await supabase
         .from("work_order_lines")
-        .select("id, work_order_id, description, complaint, notes")
+        .select("id, shop_id, work_order_id, description, complaint, notes")
         .eq("id", workOrderLineId)
+        .eq("shop_id", callerShopId)
         .maybeSingle();
 
       if (lineErr) {
         console.warn("[ai/parts/suggest] line fetch error", lineErr.message);
       }
 
-      if (line) {
-        if (!complaintText) {
-          complaintText =
-            (line.description ?? "").trim() ||
-            (line.complaint ?? "").trim() ||
-            complaintText;
-        }
-        if (!lineNotes) {
-          lineNotes = (line.notes ?? "").trim() || lineNotes;
-        }
-        if (!resolvedWorkOrderId && line.work_order_id) {
-          resolvedWorkOrderId = line.work_order_id;
-        }
+      if (!line) {
+        return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+          { items: [], error: "Work order line not found" },
+          { status: 404 },
+        );
+      }
+
+      if (line.shop_id && line.shop_id !== callerShopId) {
+        return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+          { items: [], error: "Forbidden" },
+          { status: 403 },
+        );
+      }
+
+      if (!complaintText) {
+        complaintText =
+          (line.description ?? "").trim() ||
+          (line.complaint ?? "").trim() ||
+          complaintText;
+      }
+      if (!lineNotes) {
+        lineNotes = (line.notes ?? "").trim() || lineNotes;
+      }
+      if (!resolvedWorkOrderId && line.work_order_id) {
+        resolvedWorkOrderId = line.work_order_id;
+      } else if (
+        resolvedWorkOrderId &&
+        line.work_order_id &&
+        resolvedWorkOrderId !== line.work_order_id
+      ) {
+        return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+          { items: [], error: "Mismatched work order scope" },
+          { status: 403 },
+        );
       }
     }
 
@@ -119,12 +170,28 @@ export async function POST(req: Request) {
         .from("work_orders")
         .select("id, shop_id")
         .eq("id", resolvedWorkOrderId)
+        .eq("shop_id", callerShopId)
         .maybeSingle();
 
       if (woErr) {
         console.warn("[ai/parts/suggest] work_order fetch error", woErr.message);
       }
-      shopId = (wo?.shop_id as string | null) ?? null;
+
+      if (!wo) {
+        return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+          { items: [], error: "Work order not found" },
+          { status: 404 },
+        );
+      }
+
+      if (wo.shop_id !== callerShopId) {
+        return NextResponse.json<{ items: AiPartSuggestion[]; error: string }>(
+          { items: [], error: "Forbidden" },
+          { status: 403 },
+        );
+      }
+
+      shopId = wo.shop_id ?? callerShopId;
     }
 
     let inventory: { id: string; name: string | null; sku: string | null; category: string | null }[] =

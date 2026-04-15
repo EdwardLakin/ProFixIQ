@@ -1,6 +1,7 @@
 // features/agent/server/getRoleDailySummary.ts
 
 import type { ToolContext } from "../lib/toolTypes";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";
 import { runGetShopCurrentStatus } from "../tools/getShopCurrentStatus";
@@ -37,7 +38,25 @@ type StalledCitation = {
 };
 
 function normalizeRole(role: string | null | undefined): string {
-  return (role ?? "owner").toLowerCase();
+  const canonical = canonicalizeRole(role);
+  return canonical === "unknown" ? "owner" : canonical;
+}
+
+function isFleetRole(role: string): boolean {
+  return role === "fleet_manager" || role === "dispatcher" || role === "driver";
+}
+
+function filterTechNotifications(
+  notifications: DailySummaryNotification[],
+): DailySummaryNotification[] {
+  return notifications.filter(
+    (item) =>
+      item.code !== "optimization_review_queued_suggestions" &&
+      item.code !== "optimization_pricing_normalization" &&
+      item.code !== "optimization_inspection_coverage_gap" &&
+      item.code !== "optimization_missed_revenue" &&
+      item.code !== "invoice_unsent_too_long",
+  );
 }
 
 function dedupeStrings(values: string[], limit: number): string[] {
@@ -423,10 +442,6 @@ function buildTechSummary(params: {
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
     items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
   }
-  if ((counts.optimization_review_queued_suggestions ?? 0) > 0) {
-    items.push(`${counts.optimization_review_queued_suggestions} queued suggestions pending advisor review`);
-  }
-
   if (items.length > 0) {
     lines.push("");
     for (const item of items.slice(0, 3)) {
@@ -489,7 +504,7 @@ export async function getRoleDailySummary(params: {
     role,
   });
 
-  const notifications: DailySummaryNotification[] = persistedNotifications.map(
+  const rawNotifications: DailySummaryNotification[] = persistedNotifications.map(
     (item) => ({
       level: item.level,
       code: item.code,
@@ -501,13 +516,30 @@ export async function getRoleDailySummary(params: {
     }),
   );
 
-  const bookings = await runGetBookings({ limit: 10 }, ctx);
-  const stalled = await runGetStalledWorkOrders({}, ctx);
-  const shopStatus = await runGetShopCurrentStatus({}, ctx);
-  const techWork =
-    role === "tech" || role === "technician" || role === "mechanic"
-      ? await runGetTechCurrentWork({ techId: params.userId }, ctx)
-      : null;
+  const notifications =
+    role === "mechanic"
+      ? filterTechNotifications(rawNotifications)
+      : rawNotifications;
+
+  const shouldFetchBookings = role === "advisor";
+  const shouldFetchStalled =
+    role === "owner" || role === "admin" || role === "manager" || role === "advisor";
+  const shouldFetchShopStatus =
+    role === "owner" || role === "admin" || role === "manager";
+  const shouldFetchTechWork = role === "mechanic";
+
+  const bookings = shouldFetchBookings
+    ? await runGetBookings({ limit: 10 }, ctx)
+    : null;
+  const stalled = shouldFetchStalled
+    ? await runGetStalledWorkOrders({}, ctx)
+    : null;
+  const shopStatus = shouldFetchShopStatus
+    ? await runGetShopCurrentStatus({}, ctx)
+    : null;
+  const techWork = shouldFetchTechWork
+    ? await runGetTechCurrentWork({ techId: params.userId }, ctx)
+    : null;
 
   const actionItems = dedupeStrings(
     notifications.map((item) => item.title),
@@ -524,7 +556,7 @@ export async function getRoleDailySummary(params: {
             : item.title,
           href: item.href as string,
         })),
-      ...((Array.isArray(stalled.citations)
+      ...((Array.isArray(stalled?.citations)
         ? stalled.citations
         : []) as StalledCitation[]).map((citation) => ({
         label: citation.label,
@@ -540,20 +572,20 @@ export async function getRoleDailySummary(params: {
     summaryText = buildOwnerSummary({ notifications });
   } else if (role === "advisor") {
     summaryText = buildAdvisorSummary({
-      bookingsSummary: bookings.summary,
+      bookingsSummary: bookings?.summary ?? "",
       notifications,
     });
   } else if (role === "manager") {
     summaryText = buildManagerSummary({
-      shopStatusSummary: shopStatus.summary,
+      shopStatusSummary: shopStatus?.summary ?? "",
       notifications,
     });
-  } else if (role === "tech" || role === "technician" || role === "mechanic") {
+  } else if (role === "mechanic") {
     summaryText = buildTechSummary({
       techWorkSummary: techWork?.summary ?? null,
       notifications,
     });
-  } else if (role === "fleet") {
+  } else if (isFleetRole(role)) {
     summaryText = buildFleetSummary({ notifications });
   } else {
     summaryText = buildOwnerSummary({ notifications });
@@ -579,11 +611,14 @@ export async function getRoleDailySummary(params: {
         pricing: notificationCounts.optimization_pricing_normalization ?? 0,
         inspectionCoverage: notificationCounts.optimization_inspection_coverage_gap ?? 0,
         missedRevenue: notificationCounts.optimization_missed_revenue ?? 0,
-        queuedSuggestions: notificationCounts.optimization_review_queued_suggestions ?? 0,
+        queuedSuggestions:
+          role === "mechanic"
+            ? 0
+            : notificationCounts.optimization_review_queued_suggestions ?? 0,
       },
-      bookingsSummary: bookings.summary,
-      stalledSummary: stalled.summary,
-      shopStatusSummary: shopStatus.summary,
+      bookingsSummary: bookings?.summary ?? null,
+      stalledSummary: stalled?.summary ?? null,
+      shopStatusSummary: shopStatus?.summary ?? null,
       techWorkSummary: techWork?.summary ?? null,
     },
   };

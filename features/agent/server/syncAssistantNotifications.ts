@@ -55,7 +55,6 @@ function buildFingerprint(
     entityType?: string;
     entityId?: string;
     href?: string;
-    title: string;
   },
   scopeKey: string,
 ): string {
@@ -65,7 +64,6 @@ function buildFingerprint(
     item.entityType ?? "na",
     item.entityId ?? "na",
     item.href ?? "na",
-    item.title.trim().toLowerCase(),
   ].join("::");
 }
 
@@ -174,7 +172,6 @@ export async function syncAssistantNotifications(params: {
         entityType: item.entityType,
         entityId: item.entityId,
         href: item.href,
-        title: item.title,
       },
       scopeKey,
     ),
@@ -216,7 +213,6 @@ export async function syncAssistantNotifications(params: {
         entityType: item.entityType,
         entityId: item.entityId,
         href: item.href,
-        title: item.title,
       },
       scopeKey,
     );
