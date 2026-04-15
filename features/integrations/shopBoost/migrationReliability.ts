@@ -133,6 +133,7 @@ export async function runPostMigrationIntegrityValidation(args: {
   blockingIssuesCount: number;
   warningsCount: number;
   checks: Record<string, number>;
+  integrityErrors: string[];
 }> {
   const supabase = createAdminSupabase();
 
@@ -147,6 +148,7 @@ export async function runPostMigrationIntegrityValidation(args: {
     duplicateCustomers,
     duplicateVehicles,
     duplicateParts,
+    invoicesMissingWorkOrder,
   ] = await Promise.all([
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", args.shopId).eq("source_intake_id", args.intakeId).is("customer_id", null),
     supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", args.shopId).eq("source_intake_id", args.intakeId).is("customer_id", null),
@@ -171,6 +173,7 @@ export async function runPostMigrationIntegrityValidation(args: {
     supabase.from("customers").select("id,name,email,phone,phone_number").eq("shop_id", args.shopId).eq("source_intake_id", args.intakeId).limit(5000),
     supabase.from("vehicles").select("id,vin,license_plate,year,make,model,customer_id").eq("shop_id", args.shopId).eq("source_intake_id", args.intakeId).limit(5000),
     supabase.from("parts").select("id,part_number,sku,name").eq("shop_id", args.shopId).eq("source_intake_id", args.intakeId).limit(5000),
+    supabase.from("invoices").select("id", { count: "exact", head: true }).eq("shop_id", args.shopId).contains("metadata", { source_intake_id: args.intakeId }).is("work_order_id", null),
   ]);
 
   const stockRows = stockWithoutPart.data ?? [];
@@ -211,6 +214,7 @@ export async function runPostMigrationIntegrityValidation(args: {
     duplicate_part_risk: partDuplicateRisk,
     unresolved_review_items: intakeReviewPending.count ?? 0,
     failed_review_materialization: intakeReviewFailed.count ?? 0,
+    invoices_missing_work_order_linkage: invoicesMissingWorkOrder.count ?? 0,
   };
 
   const blockingIssuesCount =
@@ -218,7 +222,8 @@ export async function runPostMigrationIntegrityValidation(args: {
     checks.work_orders_missing_customer_linkage +
     checks.work_orders_missing_vehicle_linkage +
     checks.orphan_work_order_lines +
-    checks.inventory_without_part_linkage;
+    checks.inventory_without_part_linkage +
+    checks.invoices_missing_work_order_linkage;
 
   const warningsCount = checks.duplicate_customer_risk + checks.duplicate_vehicle_risk + checks.duplicate_part_risk;
 
@@ -230,6 +235,15 @@ export async function runPostMigrationIntegrityValidation(args: {
         : "ready";
 
   const graphReady = status !== "not_ready";
+  const integrityErrors: string[] = [];
+  if (checks.vehicles_missing_customer_linkage > 0) integrityErrors.push(`Vehicles without customer: ${checks.vehicles_missing_customer_linkage}`);
+  if (checks.work_orders_missing_customer_linkage > 0) integrityErrors.push(`Work orders without customer: ${checks.work_orders_missing_customer_linkage}`);
+  if (checks.work_orders_missing_vehicle_linkage > 0) integrityErrors.push(`Work orders without vehicle: ${checks.work_orders_missing_vehicle_linkage}`);
+  if (checks.invoices_missing_work_order_linkage > 0) integrityErrors.push(`Invoices without work order: ${checks.invoices_missing_work_order_linkage}`);
+  if (checks.inventory_without_part_linkage > 0) integrityErrors.push(`Inventory rows without part: ${checks.inventory_without_part_linkage}`);
+  if (checks.orphan_work_order_lines > 0) integrityErrors.push(`Orphan work-order lines: ${checks.orphan_work_order_lines}`);
+  if (checks.unresolved_review_items > 0) integrityErrors.push(`Unresolved review items: ${checks.unresolved_review_items}`);
+  if (checks.failed_review_materialization > 0) integrityErrors.push(`Failed review materializations: ${checks.failed_review_materialization}`);
 
   await supabase.from("shop_boost_integrity_reports").insert({
     shop_id: args.shopId,
@@ -247,6 +261,7 @@ export async function runPostMigrationIntegrityValidation(args: {
     blockingIssuesCount,
     warningsCount,
     checks,
+    integrityErrors,
   };
 }
 
@@ -255,7 +270,9 @@ export function computeCompletionState(args: {
   pendingReviewCount: number;
   failedReviewCount: number;
   integrityStatus: IntegrityStatus;
+  integrityErrorsCount?: number;
 }): CompletionState {
+  if ((args.integrityErrorsCount ?? 0) > 0) return "NOT_READY";
   if (args.failedCount > 0) return "PARTIAL_FAILURE";
   if (args.integrityStatus === "not_ready") return "NOT_READY";
   if (args.pendingReviewCount > 0 || args.failedReviewCount > 0) return "COMPLETED_WITH_REVIEW";

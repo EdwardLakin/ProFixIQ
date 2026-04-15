@@ -26,6 +26,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     mode?: "failed" | "unresolved" | "updated_matches";
     intake_id?: string;
+    reprocess_reason?: string;
   };
 
   const mode = body.mode ?? "unresolved";
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     userId: user.id,
     intakeId: body.intake_id,
     mode,
+    reprocessReason: body.reprocess_reason,
   });
 
   return NextResponse.json({

@@ -24,6 +24,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const body = (await req.json().catch(() => ({}))) as {
     resolution_action?: "linked_to_existing" | "created_new" | "ignored";
+    confirm_high_risk_action?: boolean;
     ignore_reason_code?:
       | "duplicate"
       | "obsolete"
@@ -40,6 +41,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     shopId: profile.shop_id,
     userId: user.id,
     resolutionAction: body.resolution_action ?? "ignored",
+    confirmHighRiskAction: body.confirm_high_risk_action === true,
     ignoreReasonCode: body.ignore_reason_code,
     ignoreNote: body.ignore_note,
   });

@@ -8,6 +8,8 @@ type Recommendation = {
   recommendationConfidence: number;
   candidateTargets: Array<{ id: string; label: string; score: number }>;
   confidenceLabel: "HIGH" | "MEDIUM" | "LOW";
+  requiresManualReview?: boolean;
+  blockedAutoApply?: boolean;
 };
 
 type ReviewItem = {
@@ -40,6 +42,8 @@ type Guidance = {
   is_operational_ready: boolean;
   operational_blockers_count: number;
   non_blocking_issues_count: number;
+  integrity_errors?: string[];
+  high_risk_actions_count?: number;
 };
 
 const domains = ["", "customer", "vehicle", "part", "work_order", "invoice", "history"];
@@ -68,6 +72,8 @@ export default function ShopBoostReviewPage() {
   const [guidance, setGuidance] = useState<Guidance | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reprocessBusy, setReprocessBusy] = useState<null | "failed" | "unresolved" | "updated_matches">(null);
+  const [debugView, setDebugView] = useState(false);
+  const [confirmRiskById, setConfirmRiskById] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -95,13 +101,23 @@ export default function ShopBoostReviewPage() {
     [items],
   );
 
+  const isHighRiskItem = (item: ReviewItem, action: "linked_to_existing" | "created_new" | "ignored") =>
+    action === "linked_to_existing" && item.recommendation.recommendedAction === "merge_candidate";
+
   const applySuggested = async (item: ReviewItem) => {
     const resolution_action = toResolutionAction(item.recommendation.recommendedAction);
+    const highRisk = isHighRiskItem(item, resolution_action);
+    if (highRisk && !confirmRiskById[item.id]) {
+      setFeedback("High-risk action requires explicit confirmation first.");
+      return;
+    }
+
     const res = await fetch(`/api/shop-boost/review-items/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         resolution_action,
+        confirm_high_risk_action: highRisk ? true : undefined,
         ignore_reason_code: resolution_action === "ignored" ? ignoreReason : undefined,
         ignore_note: resolution_action === "ignored" ? ignoreNote || null : undefined,
       }),
@@ -124,13 +140,18 @@ export default function ShopBoostReviewPage() {
     await load();
   };
 
-
-  const resolveSingle = async (id: string, resolution_action: "linked_to_existing" | "created_new" | "ignored") => {
-    const res = await fetch(`/api/shop-boost/review-items/${id}`, {
+  const resolveSingle = async (item: ReviewItem, resolution_action: "linked_to_existing" | "created_new" | "ignored") => {
+    const highRisk = isHighRiskItem(item, resolution_action);
+    if (highRisk && !confirmRiskById[item.id]) {
+      setFeedback("High-risk action requires explicit confirmation first.");
+      return;
+    }
+    const res = await fetch(`/api/shop-boost/review-items/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         resolution_action,
+        confirm_high_risk_action: highRisk ? true : undefined,
         ignore_reason_code: resolution_action === "ignored" ? ignoreReason : undefined,
         ignore_note: resolution_action === "ignored" ? ignoreNote || null : undefined,
       }),
@@ -164,7 +185,7 @@ export default function ShopBoostReviewPage() {
       const res = await fetch("/api/shop-boost/review-items/reprocess", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, intake_id: items[0]?.intake_id }),
+        body: JSON.stringify({ mode, intake_id: items[0]?.intake_id, reprocess_reason: `operator_requested_${mode}` }),
       });
       const json = (await res.json().catch(() => ({}))) as { message?: string; results?: Array<{ ok: boolean }> };
       const okCount = (json.results ?? []).filter((row) => row.ok).length;
@@ -191,8 +212,9 @@ export default function ShopBoostReviewPage() {
         </div>
         {guidance ? (
           <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-amber-400/35 bg-amber-950/20 text-amber-100"}`}>
-            {guidance.is_operational_ready ? "You can start using ProFixIQ now." : "Complete these items before your data is ready."}
-            <div className="mt-1 text-xs text-neutral-200">Blockers: {guidance.operational_blockers_count} • Non-blocking issues: {guidance.non_blocking_issues_count}</div>
+            {guidance.is_operational_ready ? "READY_FOR_GO_LIVE: You can start using ProFixIQ now." : "NOT_READY: Complete required actions before go-live."}
+            <div className="mt-1 text-xs text-neutral-200">Blockers: {guidance.operational_blockers_count} • Non-blocking issues: {guidance.non_blocking_issues_count} • High-risk actions: {guidance.high_risk_actions_count ?? 0}</div>
+            {(guidance.integrity_errors ?? []).length > 0 ? <div className="mt-1 text-xs text-rose-200">Integrity issues: {(guidance.integrity_errors ?? []).join(" • ")}</div> : null}
           </div>
         ) : null}
         {feedback ? <div className="mt-3 rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">{feedback}</div> : null}
@@ -216,9 +238,10 @@ export default function ShopBoostReviewPage() {
             </select>
           </div>
         </div>
+        <label className="inline-flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={debugView} onChange={(e) => setDebugView(e.target.checked)} /> Advanced debug view</label>
 
         <div className="grid gap-2 md:grid-cols-3 text-xs">
-          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply all high-confidence fixes</button>
+          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply HIGH confidence only (≥85%)</button>
           <button className="rounded border border-amber-300/40 px-2 py-1 text-amber-100" onClick={() => void runReprocess("failed")} disabled={reprocessBusy !== null}>{reprocessBusy === "failed" ? "Re-running…" : "Re-run failed items"}</button>
           <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void runReprocess("unresolved")} disabled={reprocessBusy !== null}>{reprocessBusy === "unresolved" ? "Re-running…" : "Re-run unresolved items"}</button>
           <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
@@ -255,6 +278,8 @@ export default function ShopBoostReviewPage() {
                     <div className="text-xs text-neutral-400">{item.domain} • {item.issue_type} • {item.status}</div>
                     <div className="mt-1 text-xs text-neutral-500">target: {item.target_domain ?? item.domain} • cluster: {item.cluster_key ?? "n/a"} ({item.cluster_confidence?.toFixed(2) ?? "0.00"})</div>
                     {item.blocking_reason ? <div className="text-xs text-amber-200">Blocker: {item.blocking_reason}</div> : null}
+                    <div className="text-xs text-neutral-300">What is wrong: {item.summary}</div>
+                    <div className="text-xs text-neutral-300">Why it happened: {item.recommendation.recommendationReason}</div>
                     {(item.downstream_impact_count ?? 0) > 0 ? <div className="text-xs text-sky-200">This will unblock {item.downstream_impact_count} downstream records in {(item.affected_domains ?? []).join(", ") || "related domains"}.</div> : null}
                   </div>
                 </div>
@@ -266,15 +291,20 @@ export default function ShopBoostReviewPage() {
                       {item.recommendation.confidenceLabel} {(item.recommendation.recommendationConfidence * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <div className="mt-1 text-neutral-300">{item.recommendation.recommendationReason}</div>
                   {item.recommendation.candidateTargets.length > 0 ? (
                     <div className="mt-1 text-neutral-400">Candidates: {item.recommendation.candidateTargets.map((t) => `${t.label} (${Math.round(t.score * 100)}%)`).join(" • ")}</div>
                   ) : null}
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applySuggested(item)}>Apply suggested fix</button>
-                    <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveSingle(item.id, "linked_to_existing")}>Manual link</button>
-                    <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveSingle(item.id, "created_new")}>Manual create</button>
+                    <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100 disabled:opacity-50" disabled={item.recommendation.blockedAutoApply} onClick={() => void applySuggested(item)}>Apply suggested fix</button>
+                    <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100" onClick={() => void resolveSingle(item, "linked_to_existing")}>Manual link</button>
+                    <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void resolveSingle(item, "created_new")}>Manual create</button>
                   </div>
+                  {isHighRiskItem(item, "linked_to_existing") ? (
+                    <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-amber-200">
+                      <input type="checkbox" checked={Boolean(confirmRiskById[item.id])} onChange={(e) => setConfirmRiskById((prev) => ({ ...prev, [item.id]: e.target.checked }))} />
+                      High-risk action confirmation required.
+                    </label>
+                  ) : null}
                 </div>
               </div>
 
@@ -282,7 +312,7 @@ export default function ShopBoostReviewPage() {
               {item.status === "ignored" ? <div className="mt-1 text-xs text-neutral-300">Ignored ({item.ignore_reason_code ?? "other"}) {item.ignore_note ? `• ${item.ignore_note}` : ""}</div> : null}
               {item.materialization_error ? <div className="mt-1 text-xs text-rose-300">Materialization error: {item.materialization_error}</div> : null}
 
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {debugView ? <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <div>
                   <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Raw imported data</div>
                   <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.raw_payload ?? {}, null, 2)}</pre>
@@ -295,7 +325,7 @@ export default function ShopBoostReviewPage() {
                   <div className="mb-1 text-xs uppercase tracking-[0.14em] text-neutral-500">Suggested matches / system data</div>
                   <pre className="max-h-64 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-xs text-neutral-200">{JSON.stringify(item.suggested_matches ?? {}, null, 2)}</pre>
                 </div>
-              </div>
+              </div> : null}
             </div>
           ))}
         </div>
