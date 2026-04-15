@@ -3,9 +3,28 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { deriveReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
+import { confidenceLabelFromScore, deriveReviewRecommendation, type RecommendedAction, type ReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type DB = Database;
+type RecommendationDto = ReviewRecommendation;
+type ReviewItemRow = Pick<
+  DB["public"]["Tables"]["shop_boost_review_items"]["Row"],
+  "id" | "intake_id" | "domain" | "issue_type" | "summary" | "raw_payload" | "normalized_payload" | "target_domain" | "blocking_reason" | "dependency_refs" | "downstream_impact_count" | "cluster_key" | "cluster_confidence" | "suggested_matches" | "status" | "resolution_action" | "ignore_reason_code" | "ignore_note" | "ignored_at" | "resolved_at" | "materialized_at" | "materialization_error" | "materialized_record" | "created_at" | "recommended_action" | "recommendation_reason" | "recommendation_confidence" | "candidate_targets" | "recommendation_seen_at" | "recommendation_followed"
+>;
+type ReviewDecisionTransparency = {
+  confidence_score: number;
+  reasoning: string;
+  candidates: RecommendationDto["candidateTargets"];
+  raw_data: Record<string, unknown>;
+  normalized_data: Record<string, unknown>;
+};
+type ReviewListItem = ReviewItemRow & {
+  recommendation: RecommendationDto;
+  affected_domains: string[];
+  review_explanation: string;
+  recommendation_explanation: string;
+  decision_transparency: ReviewDecisionTransparency;
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -24,6 +43,13 @@ function deriveAffectedDomains(dependencyRefs: unknown, domain: string): string[
   return Array.from(domains);
 }
 
+function toRecommendedAction(value: unknown): RecommendedAction {
+  if (value === "link_existing" || value === "create_new" || value === "merge_candidate" || value === "ignore") {
+    return value;
+  }
+  return "create_new";
+}
+
 function deriveReviewExplanation(item: Record<string, unknown>): string {
   const domain = String(item.domain ?? "record");
   const issueType = String(item.issue_type ?? "ambiguous_match");
@@ -39,14 +65,7 @@ function deriveReviewExplanation(item: Record<string, unknown>): string {
   return `This ${domain} needs review because matching confidence did not clear the auto-apply threshold.`;
 }
 
-function deriveRecommendationExplanation(
-  recommendation: {
-    recommendedAction: string;
-    recommendationReason: string;
-    recommendationConfidence: number;
-    candidateTargets: Array<{ id: string; label: string; score: number }>;
-  },
-): string {
+function deriveRecommendationExplanation(recommendation: RecommendationDto): string {
   const topCandidate = recommendation.candidateTargets[0];
   if (recommendation.recommendedAction === "link_existing" && topCandidate) {
     return `We suggest linking to ${topCandidate.label} based on deterministic identity and similarity scoring (${Math.round(topCandidate.score * 100)}%).`;
@@ -80,7 +99,7 @@ export async function GET(req: Request) {
   const domain = url.searchParams.get("domain");
   const status = url.searchParams.get("status") ?? "pending";
 
-  const admin = createAdminSupabase() as any;
+  const admin = createAdminSupabase();
   let query = admin
     .from("shop_boost_review_items")
     .select("id,intake_id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at,recommended_action,recommendation_reason,recommendation_confidence,candidate_targets,recommendation_seen_at,recommendation_followed")
@@ -94,22 +113,17 @@ export async function GET(req: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const items = (data ?? []).map((item: Record<string, unknown>) => {
+  const items: ReviewListItem[] = (data ?? []).map((item: ReviewItemRow) => {
     const recommendation = item.recommended_action
       ? {
-          recommendedAction: String(item.recommended_action),
+          recommendedAction: toRecommendedAction(item.recommended_action),
           recommendationReason: String(item.recommendation_reason ?? ""),
           recommendationConfidence: Number(item.recommendation_confidence ?? 0),
-          candidateTargets: Array.isArray(item.candidate_targets) ? item.candidate_targets : [],
-          confidenceLabel:
-            Number(item.recommendation_confidence ?? 0) >= 0.85
-              ? "HIGH"
-              : Number(item.recommendation_confidence ?? 0) >= 0.6
-                ? "MEDIUM"
-                : "LOW",
+          candidateTargets: Array.isArray(item.candidate_targets) ? item.candidate_targets as RecommendationDto["candidateTargets"] : [],
+          confidenceLabel: confidenceLabelFromScore(Number(item.recommendation_confidence ?? 0)),
           requiresManualReview: Number(item.recommendation_confidence ?? 0) < 0.85,
           blockedAutoApply: Number(item.recommendation_confidence ?? 0) < 0.85,
-        }
+        } satisfies RecommendationDto
       : deriveReviewRecommendation({
           domain: String(item.domain ?? ""),
           issueType: String(item.issue_type ?? "ambiguous_match"),
@@ -124,20 +138,20 @@ export async function GET(req: Request) {
       recommendation,
       affected_domains: deriveAffectedDomains(item.dependency_refs, String(item.domain ?? "")),
       review_explanation: deriveReviewExplanation(item),
-      recommendation_explanation: deriveRecommendationExplanation(recommendation as any),
+      recommendation_explanation: deriveRecommendationExplanation(recommendation),
       decision_transparency: {
-        confidence_score: Number((recommendation as any).recommendationConfidence ?? 0),
-        reasoning: String((recommendation as any).recommendationReason ?? ""),
-        candidates: Array.isArray((recommendation as any).candidateTargets) ? (recommendation as any).candidateTargets : [],
+        confidence_score: Number(recommendation.recommendationConfidence ?? 0),
+        reasoning: String(recommendation.recommendationReason ?? ""),
+        candidates: recommendation.candidateTargets,
         raw_data: asRecord(item.raw_payload),
         normalized_data: asRecord(item.normalized_payload),
       },
     };
   });
 
-  const unresolved = items.filter((item: any) => item.status === "pending" || item.status === "failed_materialization");
-  const blockers = unresolved.filter((item: any) => Boolean(item.blocking_reason)).length;
-  const highRiskActions = items.filter((item: any) => Boolean(item.materialized_record?.high_risk_action)).length;
+  const unresolved = items.filter((item) => item.status === "pending" || item.status === "failed_materialization");
+  const blockers = unresolved.filter((item) => Boolean(item.blocking_reason)).length;
+  const highRiskActions = items.filter((item) => Boolean(asRecord(item.materialized_record).high_risk_action)).length;
 
   const { data: intake } = await admin
     .from("shop_boost_intakes")
@@ -157,7 +171,7 @@ export async function GET(req: Request) {
       .update({ recommendation_seen_at: new Date().toISOString() })
       .in(
         "id",
-        unresolved.map((item: any) => item.id),
+        unresolved.map((item) => item.id),
       )
       .is("recommendation_seen_at", null);
   }

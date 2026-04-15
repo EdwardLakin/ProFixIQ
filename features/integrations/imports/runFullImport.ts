@@ -133,6 +133,12 @@ type InspectionTemplateSuggestionBridgeRef = {
   normalizedName: string;
   confidence: number;
 };
+type IntakeBasics = Record<string, unknown>;
+type CacheCustomerRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "email" | "phone" | "phone_number">;
+type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "vin" | "license_plate">;
+type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "email" | "full_name">;
+type RowBucketRow = Pick<DB["public"]["Tables"]["shop_boost_row_results"]["Row"], "match_status" | "review_required" | "error_reason">;
+type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
 
 function norm(s: string): string {
   return (s ?? "").trim();
@@ -800,7 +806,7 @@ async function insertRowResult(args: {
     rawPayload: args.rawPayload,
     normalizedPayload: args.normalizedPayload,
   });
-  await (args.supabase as any).from("shop_boost_row_results").insert({
+  await args.supabase.from("shop_boost_row_results").insert({
     shop_id: args.shopId,
     intake_id: args.intakeId,
     source_file: args.sourceFile,
@@ -847,7 +853,7 @@ async function createReviewItem(args: {
     clusterConfidence: cluster.confidence,
   });
 
-  await (args.supabase as any).from("shop_boost_review_items").insert({
+  await args.supabase.from("shop_boost_review_items").insert({
     shop_id: args.shopId,
     intake_id: args.intakeId,
     domain: args.domain,
@@ -932,8 +938,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   const intakeRow = intake as IntakeRow;
-  const intakeBasics = isRecord((intakeRow as unknown as Record<string, unknown>).intake_basics)
-    ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
+  const intakeBasics = isRecord(intakeRow.intake_basics)
+    ? (intakeRow.intake_basics as IntakeBasics)
     : {};
   const uploadManifest = isRecord(intakeBasics.uploadManifest)
     ? (intakeBasics.uploadManifest as UploadManifestRecord)
@@ -980,8 +986,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   };
 
   await Promise.all([
-    (supabase as any).from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
-    (supabase as any).from("shop_boost_review_items").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
+    supabase.from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
+    supabase.from("shop_boost_review_items").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
   ]);
 
   await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
@@ -1015,7 +1021,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       .limit(5000);
 
     for (const r of data ?? []) {
-      const rec = r as unknown as Record<string, unknown>;
+      const rec = r as CacheCustomerRow;
       const email = normalizeEmail(String(rec.email ?? ""));
       const phone = normalizePhone(String(rec.phone ?? rec.phone_number ?? ""));
       const id = String(rec.id ?? "");
@@ -1035,7 +1041,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       .limit(5000);
 
     for (const r of data ?? []) {
-      const rec = r as unknown as Record<string, unknown>;
+      const rec = r as CacheVehicleRow;
       const vin = lower(String(rec.vin ?? ""));
       const plate = lower(String(rec.license_plate ?? ""));
       const id = String(rec.id ?? "");
@@ -1053,7 +1059,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       .limit(5000);
 
     for (const r of data ?? []) {
-      const rec = r as unknown as Record<string, unknown>;
+      const rec = r as CacheProfileRow;
       const email = lower(String(rec.email ?? ""));
       const name = lower(String(rec.full_name ?? ""));
       const id = String(rec.id ?? "");
@@ -1939,8 +1945,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
-  const prevBasics = isRecord((intakeRow as unknown as Record<string, unknown>).intake_basics)
-    ? ((intakeRow as unknown as Record<string, unknown>).intake_basics as Record<string, unknown>)
+  const prevBasics = isRecord(intakeRow.intake_basics)
+    ? (intakeRow.intake_basics as IntakeBasics)
     : {};
   const reviewCounts = await Promise.all([
     supabase
@@ -1975,9 +1981,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const reviewResolvedCount = reviewCounts[3].count ?? 0;
   rowOutcome.ignoredCount = ignoredCount;
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
-  const integrityErrors: string[] = Array.isArray((integrity as any).integrityErrors) ? (integrity as any).integrityErrors : [];
+  const integrityErrors: string[] = integrity.integrityErrors;
 
-  const { data: rowBucketRows } = await (supabase as any)
+  const { data: rowBucketRows } = await supabase
     .from("shop_boost_row_results")
     .select("match_status,review_required,error_reason")
     .eq("shop_id", shopId)
@@ -1994,10 +2000,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     total_input: totalRows,
     mismatch: 0,
   };
-  for (const row of rowBucketRows ?? []) {
-    const status = String((row as any).match_status ?? "");
-    const reviewRequired = Boolean((row as any).review_required);
-    const hasError = Boolean((row as any).error_reason);
+  for (const row of (rowBucketRows ?? []) as RowBucketRow[]) {
+    const status = String(row.match_status ?? "");
+    const reviewRequired = Boolean(row.review_required);
+    const hasError = Boolean(row.error_reason);
     if (reviewRequired) outcomeBuckets.review_required += 1;
     else if (hasError || status === "invalid") outcomeBuckets.failed += 1;
     else if (status === "matched_existing" || status === "partial_match") outcomeBuckets.linked += 1;
@@ -2018,7 +2024,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   rowOutcome.integrityErrors = integrityErrors;
   rowOutcome.outcomeBuckets = outcomeBuckets;
 
-  const { data: keyFixRows } = await (supabase as any)
+  const { data: keyFixRows } = await supabase
     .from("shop_boost_review_items")
     .select("domain,issue_type,status,resolution_action")
     .eq("shop_id", shopId)
@@ -2026,7 +2032,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     .limit(100000);
 
   const duplicateCustomersMerged = (keyFixRows ?? []).filter(
-    (row: any) =>
+    (row: KeyFixRow) =>
       row.domain === "customer" &&
       (row.issue_type === "duplicate_candidate" || row.issue_type === "conflict") &&
       row.resolution_action === "linked_to_existing" &&
