@@ -19,6 +19,8 @@ import {
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
+import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
+
 type DB = Database;
 
 const BUCKET = "shop-imports";
@@ -26,9 +28,10 @@ const BUCKET = "shop-imports";
 export type ShopBoostRunResp =
   | {
       ok: true;
+      queued?: boolean;
       shopId: string;
       intakeId: string;
-      snapshot: unknown;
+      snapshot?: unknown | null;
       importSummary: ShopBoostImportSummary;
       shopBuildSummary: {
         menuItemsCreated: number;
@@ -54,6 +57,7 @@ export type ShopBoostRunResp =
 type RunMode = {
   allowHistoryAndStaff: boolean;
   runImport: boolean;
+  deferProcessing?: boolean;
   // If true, allow JSON body to provide file paths (must be shop-scoped).
   allowProvidedPaths: boolean;
 };
@@ -357,6 +361,51 @@ export async function runShopBoostIntake(
 
   if (intakeErr) {
     return { ok: false, error: `Failed to create intake: ${intakeErr.message}` };
+  }
+
+  await updateIntakeProgress({
+    intakeId,
+    status: "queued",
+    currentStep: "upload_received",
+    progressPercent: 5,
+    patch: { startedAt: new Date().toISOString(), lastError: null },
+  });
+
+  if (mode.deferProcessing) {
+    return {
+      ok: true,
+      queued: true,
+      shopId,
+      intakeId,
+      snapshot: null,
+      importSummary: {
+        customersImported: 0,
+        vehiclesImported: 0,
+        workOrdersImported: 0,
+        workOrderLinesImported: 0,
+        invoicesImported: 0,
+        partsImported: 0,
+        linkageSummary: {
+          linked: { vehiclesCustomerId: 0, workOrdersCustomerId: 0, workOrdersVehicleId: 0, invoicesCustomerId: 0 },
+          unresolved: { vehiclesCustomerId: 0, workOrdersCustomerId: 0, workOrdersVehicleId: 0, invoicesCustomerId: 0 },
+        },
+        shopBuildSummary: {
+          menuItemsCreated: 0,
+          inspectionTemplatesCreated: 0,
+          linkedMenuToInspection: 0,
+          menuSuggestions: 0,
+          inspectionSuggestions: 0,
+        },
+      },
+      shopBuildSummary: {
+        menuItemsCreated: 0,
+        inspectionTemplatesCreated: 0,
+        linkedMenuToInspection: 0,
+        menuSuggestions: 0,
+        inspectionSuggestions: 0,
+      },
+      onboardingOptimization: { summary: null, nextActions: [] },
+    };
   }
 
   const snapshot = await buildShopBoostProfile({ shopId, intakeId });

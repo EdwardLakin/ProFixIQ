@@ -6,12 +6,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ShopBoostRunR
   try {
     const result = await runShopBoostIntake(req, {
       allowHistoryAndStaff: true,
-      runImport: true,        // ✅ canonical “engine” runs import
-      allowProvidedPaths: true, // ✅ supports report-panel reruns with stored paths
+      runImport: false,
+      deferProcessing: true,
+      allowProvidedPaths: true,
     });
 
-    const status =
-      result.ok ? 200 : result.error === "Unauthorized" ? 401 : result.error.includes("Invalid") ? 400 : 500;
+    const status = result.ok ? 202 : result.error === "Unauthorized" ? 401 : result.error.includes("Invalid") ? 400 : 500;
 
     return NextResponse.json(result, { status });
   } catch (err) {

@@ -4,6 +4,7 @@ import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
 import { ActionRow, CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
+import ShopBoostActivationPanel from "@/features/dashboard/components/ShopBoostActivationPanel";
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
   return (
@@ -38,6 +39,8 @@ export default async function OperationsDashboardView() {
           { label: "Dispatch", href: "/dashboard/manager/dispatch", tone: "secondary" },
         ]}
       />
+
+      <ShopBoostActivationPanel />
 
       <MetricStrip
         className="mb-0"

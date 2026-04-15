@@ -6,13 +6,10 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
-import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
-import type { OnboardingOptimizationAction } from "@/features/optimization/server/selectOnboardingRecommendedActions";
 
 type DB = Database;
 
@@ -28,36 +25,7 @@ type QuestionnaireState = {
   wantsPowerAddOns: boolean;
 };
 
-type StepStatus = "idle" | "uploading" | "processing" | "done" | "error";
-type LinkageSummary = {
-  linked: {
-    vehiclesCustomerId: number;
-    workOrdersCustomerId: number;
-    workOrdersVehicleId: number;
-    invoicesCustomerId: number;
-  };
-  unresolved: {
-    vehiclesCustomerId: number;
-    workOrdersCustomerId: number;
-    workOrdersVehicleId: number;
-    invoicesCustomerId: number;
-  };
-};
-type ShopBuildSummary = {
-  menuItemsCreated: number;
-  inspectionTemplatesCreated: number;
-  linkedMenuToInspection: number;
-  menuSuggestions: number;
-  inspectionSuggestions: number;
-};
-type OnboardingOptimizationSummary = {
-  totalOpportunities: number;
-  criticalCount: number;
-  highCount: number;
-  potentialMonthlyValue: number;
-  dataFreshness: "fresh" | "stale";
-  lastAnalyzedAt: string;
-};
+type StepStatus = "idle" | "uploading" | "queuing" | "error";
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 const UPLOAD_SESSION_STORAGE_KEY = "shop-boost-upload-session-v1";
@@ -123,11 +91,6 @@ export default function ShopBoostOnboardingPage() {
   const [uploadFiles, setUploadFiles] = useState<Partial<Record<ShopBoostUploadDatasetKey, File>>>({});
 
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
-  const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
-  const [linkageSummary, setLinkageSummary] = useState<LinkageSummary | null>(null);
-  const [shopBuildSummary, setShopBuildSummary] = useState<ShopBuildSummary | null>(null);
-  const [optimizationSummary, setOptimizationSummary] = useState<OnboardingOptimizationSummary | null>(null);
-  const [optimizationNextActions, setOptimizationNextActions] = useState<OnboardingOptimizationAction[]>([]);
 
   // Load profile → shop_id + shop name
   useEffect(() => {
@@ -214,11 +177,6 @@ export default function ShopBoostOnboardingPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    setSnapshot(null);
-    setLinkageSummary(null);
-    setShopBuildSummary(null);
-    setOptimizationSummary(null);
-    setOptimizationNextActions([]);
 
     if (!shopId) {
       setError("Shop not loaded yet.");
@@ -267,7 +225,7 @@ export default function ShopBoostOnboardingPage() {
       );
       const uploadPaths = Object.fromEntries(uploadedPathEntries);
 
-      setStepStatus("processing");
+      setStepStatus("queuing");
 
       // ✅ IMPORTANT: send the exact intakeId + file paths you just uploaded
       const response = await fetch("/api/shop-boost/intakes/run", {
@@ -280,33 +238,29 @@ export default function ShopBoostOnboardingPage() {
         }),
       });
 
-      const json = (await response.json()) as {
-        ok?: boolean;
-        snapshot?: ShopHealthSnapshot | null;
-        importSummary?: {
-          linkageSummary?: LinkageSummary;
-          shopBuildSummary?: ShopBuildSummary;
-        };
-        shopBuildSummary?: ShopBuildSummary;
-        onboardingOptimization?: {
-          summary?: OnboardingOptimizationSummary | null;
-          nextActions?: OnboardingOptimizationAction[];
-        };
-        error?: string;
-      };
+      const json = (await response.json()) as { ok?: boolean; intakeId?: string; error?: string };
 
-      if (!response.ok || !json.ok || !json.snapshot) {
+      if (!response.ok || !json.ok || !json.intakeId) {
         setStepStatus("error");
-        setError(json.error || "Failed to analyze shop data.");
+        setError(json.error || "Failed to queue Shop Boost migration.");
         return;
       }
 
-      setSnapshot(json.snapshot);
-      setLinkageSummary(json.importSummary?.linkageSummary ?? null);
-      setShopBuildSummary(json.shopBuildSummary ?? json.importSummary?.shopBuildSummary ?? null);
-      setOptimizationSummary(json.onboardingOptimization?.summary ?? null);
-      setOptimizationNextActions(json.onboardingOptimization?.nextActions ?? []);
-      setStepStatus("done");
+      try {
+        await fetch("/api/shop-boost/intakes/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ intakeId: json.intakeId }),
+        });
+      } catch {
+        // best-effort kickoff; cron/owner retry will continue
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(UPLOAD_SESSION_STORAGE_KEY);
+      }
+
+      router.replace("/dashboard/operations?setup=shop-boost");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
       setError(message);
@@ -346,22 +300,7 @@ export default function ShopBoostOnboardingPage() {
     );
   }
 
-  const isBusy = stepStatus === "uploading" || stepStatus === "processing";
-  const linkedVehicles = linkageSummary?.linked.vehiclesCustomerId ?? 0;
-  const fullyConnectedWorkOrders = Math.min(
-    linkageSummary?.linked.workOrdersCustomerId ?? 0,
-    linkageSummary?.linked.workOrdersVehicleId ?? 0,
-  );
-  const itemsNeedingReview =
-    (linkageSummary?.unresolved.vehiclesCustomerId ?? 0) +
-    (linkageSummary?.unresolved.workOrdersCustomerId ?? 0) +
-    (linkageSummary?.unresolved.workOrdersVehicleId ?? 0) +
-    (linkageSummary?.unresolved.invoicesCustomerId ?? 0);
-  const unresolvedCounts = linkageSummary?.unresolved;
-  const hasUnresolvedItems = itemsNeedingReview > 0;
-  const reviewItemsCount =
-    (shopBuildSummary?.menuSuggestions ?? 0) + (shopBuildSummary?.inspectionSuggestions ?? 0);
-  const topNextActions = optimizationNextActions.slice(0, 5);
+  const isBusy = stepStatus === "uploading" || stepStatus === "queuing";
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -545,196 +484,13 @@ export default function ShopBoostOnboardingPage() {
                 className="inline-flex items-center justify-center rounded-md bg-[color:var(--accent-copper,#f97316)] px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {stepStatus === "uploading" && "Uploading files…"}
-                {stepStatus === "processing" && "Analyzing + importing…"}
+                {stepStatus === "queuing" && "Queuing migration…"}
                 {stepStatus === "idle" && "Start AI Shop Boost"}
                 {stepStatus === "error" && "Try again"}
-                {stepStatus === "done" && "Re-run with new files"}
               </button>
 
               {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
-
-            {stepStatus === "done" && (linkageSummary || shopBuildSummary) && (
-              <section className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4 sm:p-5">
-                <h2 className="text-base font-semibold text-neutral-100">Your shop is ready</h2>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
-                      What we built
-                    </h3>
-                    <div className="mt-2 space-y-1 text-xs text-emerald-100/90">
-                      <p>✔ {(shopBuildSummary?.menuItemsCreated ?? 0).toLocaleString()} services created</p>
-                      <p>
-                        ✔ {(shopBuildSummary?.inspectionTemplatesCreated ?? 0).toLocaleString()} inspections created
-                      </p>
-                      <p>
-                        ✔ {(shopBuildSummary?.linkedMenuToInspection ?? 0).toLocaleString()} services linked
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-200">
-                      What still needs review
-                    </h3>
-                    <div className="mt-2 space-y-1 text-xs text-amber-100/90">
-                      <p>⚠ {reviewItemsCount.toLocaleString()} suggestion items pending review</p>
-                      <p>⚠ {itemsNeedingReview.toLocaleString()} linkage issues need attention</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 p-3">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-200">
-                      What we recommend next
-                    </h3>
-                    <div className="mt-2 space-y-1 text-xs text-sky-100/90">
-                      <p>{(optimizationSummary?.totalOpportunities ?? 0).toLocaleString()} optimization opportunities found</p>
-                      <p>
-                        {(optimizationSummary?.criticalCount ?? 0).toLocaleString()} critical,{" "}
-                        {(optimizationSummary?.highCount ?? 0).toLocaleString()} high-priority
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => router.push("/menu_item_suggestions")}
-                    className="rounded-md border border-neutral-600 px-2.5 py-1 text-neutral-100 hover:bg-white/5"
-                  >
-                    Review services
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/inspection_template_suggestions")}
-                    className="rounded-md border border-neutral-600 px-2.5 py-1 text-neutral-100 hover:bg-white/5"
-                  >
-                    Review inspections
-                  </button>
-                </div>
-
-                {hasUnresolvedItems && unresolvedCounts ? (
-                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-amber-200">
-                      Needs review
-                    </h3>
-                    <div className="mt-2 space-y-1 text-xs text-amber-100/90">
-                      {unresolvedCounts.vehiclesCustomerId > 0 && (
-                        <p>
-                          {unresolvedCounts.vehiclesCustomerId} vehicles missing customer
-                          link
-                        </p>
-                      )}
-                      {unresolvedCounts.workOrdersCustomerId > 0 && (
-                        <p>
-                          {unresolvedCounts.workOrdersCustomerId} work orders missing
-                          customer link
-                        </p>
-                      )}
-                      {unresolvedCounts.workOrdersVehicleId > 0 && (
-                        <p>
-                          {unresolvedCounts.workOrdersVehicleId} work orders missing vehicle
-                          link
-                        </p>
-                      )}
-                      {unresolvedCounts.invoicesCustomerId > 0 && (
-                        <p>
-                          {unresolvedCounts.invoicesCustomerId} invoices missing customer
-                          link
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => router.push("/customers")}
-                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
-                      >
-                        Review customers
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/work-orders")}
-                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
-                      >
-                        Review work orders
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/invoices")}
-                        className="rounded-md border border-amber-300/40 px-2.5 py-1 text-amber-100 hover:bg-white/5"
-                      >
-                        Review invoices
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-
-                {linkageSummary ? (
-                  <div className="mt-4 rounded-lg border border-neutral-700 bg-black/30 p-3 text-xs text-neutral-400">
-                    <p>{linkedVehicles} vehicles linked</p>
-                    <p>{fullyConnectedWorkOrders} work orders fully connected</p>
-                    <p>{itemsNeedingReview} operational linkage items need review</p>
-                  </div>
-                ) : null}
-
-                {topNextActions.length > 0 ? (
-                  <div className="mt-4 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-sky-200">
-                      Next recommended actions
-                    </h3>
-                    <p className="mt-1 text-[11px] text-sky-100/85">
-                      These recommendations also appear in your AI operations workflow.
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {topNextActions.map((action) => (
-                        <div
-                          key={action.id}
-                          className="rounded-md border border-sky-300/20 bg-black/25 p-2 text-xs"
-                        >
-                          <p className="font-medium text-sky-100">{action.title}</p>
-                          <p className="mt-0.5 text-sky-100/80">{action.explanationSummary ?? action.summary}</p>
-                          {action.expectedOutcome ? (
-                            <p className="mt-1 text-[11px] text-sky-100/70">Expected outcome: {action.expectedOutcome}</p>
-                          ) : null}
-                          {action.riskIfIgnored ? (
-                            <p className="mt-1 text-[11px] text-sky-100/65">If deferred: {action.riskIfIgnored}</p>
-                          ) : null}
-                          {action.isStoryWorthy ? (
-                            <span className="mt-1 inline-flex rounded-full border border-sky-300/35 bg-sky-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-100">
-                              Story-worthy ops signal
-                            </span>
-                          ) : null}
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => router.push(action.href)}
-                              className="rounded-md border border-sky-300/35 px-2 py-1 text-sky-100 hover:bg-white/5"
-                            >
-                              Open
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                router.push(
-                                  `/agent/planner?planner=ops&allowCreate=0&goal=${encodeURIComponent(action.plannerGoal)}`,
-                                )
-                              }
-                              className="rounded-md border border-sky-300/35 px-2 py-1 text-sky-100 hover:bg-white/5"
-                            >
-                              Send to planner
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </section>
-            )}
           </form>
         </div>
 
@@ -750,12 +506,6 @@ export default function ShopBoostOnboardingPage() {
         </aside>
       </main>
 
-      {/* Snapshot */}
-      {snapshot && (
-        <div className="mx-auto max-w-6xl px-4 pb-10 pt-2 sm:px-6">
-          <ShopHealthSnapshotView snapshot={snapshot} />
-        </div>
-      )}
     </div>
   );
 }
