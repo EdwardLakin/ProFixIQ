@@ -15,6 +15,7 @@ import {
   type CompletionState,
   type ReviewIssueType,
 } from "@/features/integrations/shopBoost/migrationReliability";
+import { deriveReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type DB = Database;
 
@@ -824,6 +825,15 @@ async function createReviewItem(args: {
     rawPayload: args.rawPayload,
     normalizedPayload: args.normalizedPayload ?? {},
   });
+  const recommendation = deriveReviewRecommendation({
+    domain: args.domain,
+    issueType: args.issueType,
+    rawPayload: args.rawPayload,
+    normalizedPayload: args.normalizedPayload ?? {},
+    suggestedMatches: args.suggestedMatches,
+    clusterConfidence: cluster.confidence,
+  });
+
   await (args.supabase as any).from("shop_boost_review_items").insert({
     shop_id: args.shopId,
     intake_id: args.intakeId,
@@ -839,6 +849,11 @@ async function createReviewItem(args: {
     cluster_key: cluster.clusterKey,
     cluster_confidence: cluster.confidence,
     suggested_matches: args.suggestedMatches ?? [],
+    recommended_action: recommendation.recommendedAction,
+    recommendation_reason: recommendation.recommendationReason,
+    recommendation_confidence: recommendation.recommendationConfidence,
+    candidate_targets: recommendation.candidateTargets,
+    recommendation_generated_at: new Date().toISOString(),
     status: "pending",
   });
 }

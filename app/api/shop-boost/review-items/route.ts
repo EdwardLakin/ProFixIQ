@@ -3,8 +3,26 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { deriveReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type DB = Database;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function deriveAffectedDomains(dependencyRefs: unknown, domain: string): string[] {
+  const refs = asRecord(dependencyRefs);
+  const domains = new Set<string>([domain]);
+  const tokens = JSON.stringify(refs).toLowerCase();
+  if (tokens.includes("work_order")) domains.add("work_order");
+  if (tokens.includes("invoice")) domains.add("invoice");
+  if (tokens.includes("vehicle")) domains.add("vehicle");
+  if (tokens.includes("customer")) domains.add("customer");
+  if (tokens.includes("part")) domains.add("part");
+  if (tokens.includes("history")) domains.add("history");
+  return Array.from(domains);
+}
 
 export async function GET(req: Request) {
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
@@ -29,7 +47,7 @@ export async function GET(req: Request) {
   const admin = createAdminSupabase() as any;
   let query = admin
     .from("shop_boost_review_items")
-    .select("id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at")
+    .select("id,intake_id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at,recommended_action,recommendation_reason,recommendation_confidence,candidate_targets,recommendation_seen_at,recommendation_followed")
     .eq("shop_id", profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(250);
@@ -40,5 +58,59 @@ export async function GET(req: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, items: data ?? [] });
+  const items = (data ?? []).map((item: Record<string, unknown>) => {
+    const recommendation = item.recommended_action
+      ? {
+          recommendedAction: String(item.recommended_action),
+          recommendationReason: String(item.recommendation_reason ?? ""),
+          recommendationConfidence: Number(item.recommendation_confidence ?? 0),
+          candidateTargets: Array.isArray(item.candidate_targets) ? item.candidate_targets : [],
+        }
+      : deriveReviewRecommendation({
+          domain: String(item.domain ?? ""),
+          issueType: String(item.issue_type ?? "ambiguous_match"),
+          rawPayload: asRecord(item.raw_payload),
+          normalizedPayload: asRecord(item.normalized_payload),
+          suggestedMatches: item.suggested_matches,
+          clusterConfidence: Number(item.cluster_confidence ?? 0),
+        });
+
+    return {
+      ...item,
+      recommendation: {
+        ...recommendation,
+        confidenceLabel:
+          recommendation.recommendationConfidence >= 0.85
+            ? "HIGH"
+            : recommendation.recommendationConfidence >= 0.65
+              ? "MEDIUM"
+              : "LOW",
+      },
+      affected_domains: deriveAffectedDomains(item.dependency_refs, String(item.domain ?? "")),
+    };
+  });
+
+  const unresolved = items.filter((item: any) => item.status === "pending" || item.status === "failed_materialization");
+  const blockers = unresolved.filter((item: any) => Boolean(item.blocking_reason)).length;
+
+  if (unresolved.length > 0) {
+    await admin
+      .from("shop_boost_review_items")
+      .update({ recommendation_seen_at: new Date().toISOString() })
+      .in(
+        "id",
+        unresolved.map((item: any) => item.id),
+      )
+      .is("recommendation_seen_at", null);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    items,
+    guidance: {
+      is_operational_ready: blockers === 0,
+      operational_blockers_count: blockers,
+      non_blocking_issues_count: Math.max(0, unresolved.length - blockers),
+    },
+  });
 }
