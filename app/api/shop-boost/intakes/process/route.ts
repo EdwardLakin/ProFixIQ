@@ -71,9 +71,14 @@ export async function POST(req: NextRequest) {
     await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
     const importSummary = await runShopBoostImport({ shopId, intakeId: intake.id, options: { createStaffUsers: false } });
 
+    const completedStatus =
+      importSummary.completionState === "PARTIAL_FAILURE" || errors.length > 0
+        ? "completed_with_errors"
+        : "completed";
+
     await updateIntakeProgress({
       intakeId: intake.id,
-      status: errors.length > 0 ? "completed_with_errors" : "completed",
+      status: completedStatus,
       currentStep: "completed",
       progressPercent: 100,
       patch: {
@@ -89,11 +94,13 @@ export async function POST(req: NextRequest) {
           linkageSummary: importSummary.linkageSummary,
           shopBuildSummary: importSummary.shopBuildSummary,
           partsPipeline: importSummary.partsPipeline ?? null,
+          rowResults: importSummary.rowResults,
+          completionState: importSummary.completionState,
         },
       },
     });
 
-    return NextResponse.json({ ok: true, intakeId: intake.id, status: errors.length > 0 ? "completed_with_errors" : "completed" });
+    return NextResponse.json({ ok: true, intakeId: intake.id, status: completedStatus });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to process intake";
     await updateIntakeProgress({
