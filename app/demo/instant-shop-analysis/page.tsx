@@ -2,8 +2,8 @@
 "use client";
 
 import React, { useMemo, useState, type FormEvent } from "react";
-import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
+import type { ShadowShopSnapshot } from "@/features/integrations/shopBoost/shadowShop";
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
@@ -21,10 +21,7 @@ type QuestionnaireState = {
 
 type DemoStep = "form" | "analyzing" | "preview" | "unlocked";
 
-type InstantAnalysisPayload = {
-  snapshot: ShopHealthSnapshot;
-  preflightReport: ShopBoostPreflightReport;
-};
+type InstantAnalysisPayload = ShadowShopSnapshot;
 
 type RunResponse =
   | {
@@ -50,44 +47,14 @@ type ClaimResponse =
 
 
 
-function buildFallbackPreflight(): ShopBoostPreflightReport {
-  return {
-    totals: {
-      detectedRecords: 0,
-      estimatedAutoImportCoverage: 0,
-      likelyAutoImportCount: 0,
-      likelyReviewNeededCount: 0,
-      likelyBlockerCount: 0,
-    },
-    confidence: {
-      score: 0,
-      label: "low",
-      readiness: "NOT_READY",
-      integrityStatus: "not_ready",
-    },
-    blockers: [],
-    domains: [],
-    projectedPreparation: ["Foundational import mapping and identifier checks"],
-    reviewNotes: ["Nothing has been imported yet — this is a preview only."],
-  };
-}
-
 function normalizeAnalysisPayload(payload: unknown): InstantAnalysisPayload | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const rec = payload as Record<string, unknown>;
-  const maybeSnapshot = rec.snapshot;
-  if (!maybeSnapshot || typeof maybeSnapshot !== "object" || Array.isArray(maybeSnapshot)) {
+  const intakeId = rec.intakeId;
+  if (typeof intakeId !== "string" || intakeId.length === 0) {
     return null;
   }
-  const preflight =
-    rec.preflightReport && typeof rec.preflightReport === "object" && !Array.isArray(rec.preflightReport)
-      ? (rec.preflightReport as ShopBoostPreflightReport)
-      : buildFallbackPreflight();
-
-  return {
-    snapshot: maybeSnapshot as ShopHealthSnapshot,
-    preflightReport: preflight,
-  };
+  return rec as ShadowShopSnapshot;
 }
 
 const THEME = {
@@ -150,7 +117,9 @@ export default function InstantShopAnalysisPage() {
           intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""
         }`
       : "/compare-plans";
-    window.location.href = `/auth/signup?next=${encodeURIComponent(next)}`;
+    window.location.href = `/signup?redirect=${encodeURIComponent(next)}${
+      demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""
+    }${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`;
   };
 
   const handleRun = async (event: FormEvent<HTMLFormElement>) => {
@@ -245,7 +214,7 @@ export default function InstantShopAnalysisPage() {
       const res = await fetch("/api/demo/shop-boost/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ demoId, email: email.trim() }),
+        body: JSON.stringify({ demoId, intakeId, email: email.trim() }),
       });
 
       const json = (await res.json()) as ClaimResponse;
@@ -503,7 +472,7 @@ export default function InstantShopAnalysisPage() {
 
                     <button
                       type="button"
-                      onClick={handleClaim}
+                    onClick={handleClaim}
                       disabled={claimLoading}
                       className={[
                         "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
@@ -517,6 +486,12 @@ export default function InstantShopAnalysisPage() {
                   </div>
 
                   {claimError ? <p className="mt-2 text-[11px] text-red-400">{claimError}</p> : null}
+                  <a
+                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?intakeId=${encodeURIComponent(intakeId ?? analysis.intakeId ?? "")}`}
+                    className="mt-3 inline-flex items-center justify-center rounded-md border border-white/15 px-3 py-1.5 text-[11px] text-neutral-200 transition hover:bg-white/[0.04]"
+                  >
+                    Enter your system preview
+                  </a>
                 </div>
               </div>
             )}
@@ -540,6 +515,16 @@ export default function InstantShopAnalysisPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?intakeId=${encodeURIComponent(intakeId ?? analysis.intakeId)}`}
+                    className={[
+                      "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
+                      THEME.cta,
+                      THEME.ctaHover,
+                    ].join(" ")}
+                  >
+                    Enter your system preview
+                  </a>
                   <button type="button" onClick={goToSignup} className={[
                     "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
                     THEME.cta,

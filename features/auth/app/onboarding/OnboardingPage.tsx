@@ -45,6 +45,8 @@ export default function OnboardingPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const demoId = searchParams.get("demoId");
+  const intakeId = searchParams.get("intakeId");
 
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -227,7 +229,10 @@ export default function OnboardingPage() {
         return;
       }
 
-      router.replace("/onboarding/shop-boost");
+      const next = new URLSearchParams();
+      if (demoId) next.set("demoId", demoId);
+      if (intakeId) next.set("intakeId", intakeId);
+      router.replace(`/onboarding/shop-boost${next.toString() ? `?${next.toString()}` : ""}`);
       setLoading(false);
       return;
     }
@@ -296,6 +301,12 @@ export default function OnboardingPage() {
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
         <div className="flex-1 space-y-6">
+          {demoId ? (
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
+              Preview continuity active: when setup finishes, we’ll carry your analysis into Shop Boost activation.
+              {intakeId ? ` Intake: ${intakeId}` : ""}
+            </div>
+          ) : null}
           <form onSubmit={handleSubmit} className="space-y-6">
             <section className={sectionClassName}>
               <div className="mb-4">

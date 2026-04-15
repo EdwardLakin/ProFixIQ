@@ -7,6 +7,7 @@ type DB = Database;
 
 type ClaimBody = {
   demoId?: string;
+  intakeId?: string;
   email?: string;
 };
 
@@ -35,6 +36,7 @@ export async function POST(
     const body = (await req.json().catch(() => null)) as ClaimBody | null;
 
     const demoId = body?.demoId?.trim();
+    const intakeId = body?.intakeId?.trim() ?? null;
     const emailRaw = body?.email?.trim();
 
     if (!demoId || !emailRaw) {
@@ -47,7 +49,6 @@ export async function POST(
     const emailNormalized = emailRaw.toLowerCase();
     const supabase = createAdminSupabase();
 
-    // 1) Enforce one free run per email
     const { data: existingLead, error: existingErr } = await supabase
       .from("demo_shop_boost_leads")
       .select("id")
@@ -65,7 +66,6 @@ export async function POST(
       );
     }
 
-    // 2) Load demo analysis payload
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .select("id, snapshot")
@@ -81,15 +81,21 @@ export async function POST(
     }
 
     const rawPayload = asRecord(demoRow.snapshot);
-    const maybeSnapshot = asRecord(rawPayload.snapshot);
-    const summary =
-      typeof maybeSnapshot.narrativeSummary === "string"
-        ? maybeSnapshot.narrativeSummary
-        : typeof rawPayload.narrativeSummary === "string"
-          ? rawPayload.narrativeSummary
-          : null;
+    if (intakeId) {
+      const snapshotIntakeId = typeof rawPayload.intakeId === "string" ? rawPayload.intakeId : null;
+      if (!snapshotIntakeId || snapshotIntakeId !== intakeId) {
+        return NextResponse.json(
+          { ok: false, error: "This preview link does not match the analysis intake." },
+          { status: 403 },
+        );
+      }
+    }
 
-    // 3) Insert lead row
+    const summary =
+      typeof rawPayload.preflightSummary === "string"
+        ? rawPayload.preflightSummary
+        : "Shop Boost preview unlocked";
+
     const { error: leadErr } = await supabase
       .from("demo_shop_boost_leads")
       .insert({
@@ -106,7 +112,6 @@ export async function POST(
       );
     }
 
-    // 4) Mark demo as unlocked
     const { error: updateErr } = await supabase
       .from("demo_shop_boosts")
       .update({ has_unlocked: true })
