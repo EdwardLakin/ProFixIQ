@@ -4,8 +4,9 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type Ctx = { params: Promise<{ id: string }> };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
-async function checkStaffInShop(admin: any, shopId: string, userId: string) {
+async function checkStaffInShop(admin: AdminClient, shopId: string, userId: string) {
   const { data, error } = await admin.from("profiles").select("id, shop_id, full_name, email, role").eq("id", userId).maybeSingle();
   if (error) return { ok: false, error: error.message } as const;
   if (!data || data.shop_id !== shopId) return { ok: false, error: "Staff not found" } as const;
@@ -19,7 +20,7 @@ export async function GET(_req: NextRequest, context: Ctx) {
   const actor = getActorCapabilities({ role: access.profile.role });
   if (!actor.canManageScheduling) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const check = await checkStaffInShop(admin, access.profile.shop_id!, id);
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 404 });
 
@@ -56,7 +57,7 @@ export async function PUT(req: NextRequest, context: Ctx) {
     return NextResponse.json({ error: "templates[] required" }, { status: 400 });
   }
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const check = await checkStaffInShop(admin, access.profile.shop_id!, id);
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 404 });
 

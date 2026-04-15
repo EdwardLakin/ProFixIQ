@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -35,7 +36,7 @@ function getShopDisplayName(shop: { shop_name?: string | null; name?: string | n
 
 async function createCustomerIfMissing(
   stripe: Stripe,
-  supabase: any,
+  supabase: SupabaseClient<DB>,
   shop: ShopScope,
 ): Promise<string> {
   const existingCustomerId = (shop.stripe_customer_id ?? "").trim();

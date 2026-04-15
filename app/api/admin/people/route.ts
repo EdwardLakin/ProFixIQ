@@ -21,12 +21,13 @@ type ActionReason = {
   action_label: string;
   action_href: string;
 };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const shopId = access.profile.shop_id;
 
   const [
@@ -81,7 +82,7 @@ export async function GET() {
   for (const row of periodEntries ?? []) {
     openEntriesByUser.set(row.user_id, (openEntriesByUser.get(row.user_id) ?? 0) + 1);
   }
-  const hasTemplate = new Set<string>((scheduleTemplates ?? []).map((row: any) => row.user_id));
+  const hasTemplate = new Set<string>((scheduleTemplates ?? []).map((row) => row.user_id));
   const pendingTimeOffByUser = new Map<string, number>();
   for (const row of pendingTimeOff ?? []) {
     pendingTimeOffByUser.set(row.user_id, (pendingTimeOffByUser.get(row.user_id) ?? 0) + 1);
@@ -111,7 +112,7 @@ export async function GET() {
     certByUser.set(cert.user_id, current);
   }
 
-  const people = (profiles ?? []).map((profile: any) => {
+  const people = (profiles ?? []).map((profile) => {
     const workforceRow = workforceByUser.get(profile.id);
     const payrollExceptions = exceptionByUser.get(profile.id) ?? { blocking: 0, warning: 0 };
     const cert = certByUser.get(profile.id) ?? { open: 0, expiring30: 0, expiring60: 0, expired: 0, revoked: 0 };

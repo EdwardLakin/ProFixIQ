@@ -4,6 +4,7 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type Ctx = { params: Promise<{ overrideId: string }> };
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function PATCH(req: NextRequest, context: Ctx) {
   const { overrideId } = await context.params;
@@ -24,7 +25,7 @@ export async function PATCH(req: NextRequest, context: Ctx) {
     updated_at: new Date().toISOString(),
   };
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { data, error } = await admin
     .from("staff_schedule_overrides")
     .update(update)
@@ -53,7 +54,7 @@ export async function DELETE(_req: NextRequest, context: Ctx) {
   const actor = getActorCapabilities({ role: access.profile.role });
   if (!actor.canManageScheduling) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const admin = createAdminSupabase() as any;
+  const admin: AdminClient = createAdminSupabase();
   const { data, error } = await admin
     .from("staff_schedule_overrides")
     .delete()
