@@ -1,0 +1,539 @@
+import { createHash } from "crypto";
+
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+type ResolutionAction = "linked_to_existing" | "created_new" | "ignored";
+type ReviewStatus = "pending" | "resolved" | "materialized" | "failed_materialization";
+
+type ReviewItemRow = {
+  id: string;
+  shop_id: string;
+  intake_id: string;
+  domain: string;
+  issue_type: string;
+  status: string;
+  summary: string;
+  raw_payload: Record<string, unknown>;
+  suggested_matches: unknown;
+  resolution_action: ResolutionAction | null;
+  materialized_at: string | null;
+  materialization_error: string | null;
+};
+
+type MaterializeResult = {
+  status: ReviewStatus;
+  materializedRecord: Record<string, unknown> | null;
+  error: string | null;
+};
+
+function norm(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function lower(value: unknown): string {
+  return norm(value).toLowerCase();
+}
+
+function normalizeEmail(value: unknown): string {
+  return lower(value);
+}
+
+function normalizePhone(value: unknown): string {
+  return norm(value).replace(/[^0-9]/g, "");
+}
+
+function sha1(value: string): string {
+  return createHash("sha1").update(value).digest("hex");
+}
+
+function pick(raw: Record<string, unknown>, patterns: RegExp[]): string | null {
+  for (const [k, v] of Object.entries(raw)) {
+    const key = lower(k);
+    if (patterns.some((pattern) => pattern.test(key))) {
+      const n = norm(v);
+      if (n) return n;
+    }
+  }
+  return null;
+}
+
+function parseMoney(value: string | null): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/[^0-9,.-]/g, "");
+  if (!cleaned) return null;
+  const standardized = cleaned.includes(",") && !cleaned.includes(".") ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  const n = Number(standardized);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function findCustomerId(args: { supabase: any; shopId: string; raw: Record<string, unknown>; suggested: unknown; }): Promise<string | null> {
+  const { supabase, shopId, raw, suggested } = args;
+  const suggestedCustomerId = typeof suggested === "object" && suggested && "customerId" in (suggested as Record<string, unknown>)
+    ? String((suggested as Record<string, unknown>).customerId ?? "")
+    : "";
+
+  if (suggestedCustomerId) return suggestedCustomerId;
+
+  const email = normalizeEmail(pick(raw, [/customer email/, /^email$/]));
+  if (email) {
+    const { data } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("email", email).limit(1).maybeSingle();
+    if (data?.id) return String(data.id);
+  }
+
+  const phone = normalizePhone(pick(raw, [/customer phone/, /^phone$/]));
+  if (phone) {
+    const { data } = await supabase.from("customers").select("id,phone,phone_number").eq("shop_id", shopId).limit(3000);
+    const matched = (data ?? []).find((item: any) => normalizePhone(item.phone ?? item.phone_number) === phone);
+    if (matched?.id) return String(matched.id);
+  }
+
+  return null;
+}
+
+async function materializeCustomer(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+  const { supabase, item, resolutionAction } = args;
+  if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
+
+  const raw = item.raw_payload ?? {};
+  const email = normalizeEmail(pick(raw, [/^email$/, /customer email/]));
+  const phone = normalizePhone(pick(raw, [/^phone$/, /customer phone/, /mobile/]));
+  const first = pick(raw, [/^first/, /first name/]);
+  const last = pick(raw, [/^last/, /last name/]);
+  const name = pick(raw, [/^name$/, /customer name/]) ?? [first ?? "", last ?? ""].filter(Boolean).join(" ");
+  const business = pick(raw, [/business/, /company/, /fleet/]);
+
+  const externalId = `import:${item.intake_id}:customers:${sha1(`${email}|${phone}|${name}|${business ?? ""}`).slice(0, 16)}`;
+
+  let customerId: string | null = null;
+  if (resolutionAction === "linked_to_existing") {
+    customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+    if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Unable to locate selected existing customer." };
+
+    await supabase.from("customers").update({ source_intake_id: item.intake_id, external_id: externalId }).eq("id", customerId).eq("shop_id", item.shop_id);
+  } else {
+    const { data: existing } = await supabase.from("customers").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
+    customerId = existing?.id ?? null;
+    if (!customerId) {
+      const { data: inserted, error } = await supabase.from("customers").insert({
+        shop_id: item.shop_id,
+        first_name: first ?? null,
+        last_name: last ?? null,
+        name: name || null,
+        email: email || null,
+        phone: phone || null,
+        phone_number: phone || null,
+        business_name: business ?? null,
+        source_intake_id: item.intake_id,
+        external_id: externalId,
+      }).select("id").limit(1).maybeSingle();
+      if (error || !inserted?.id) return { status: "failed_materialization", materializedRecord: null, error: error?.message ?? "Failed to create customer." };
+      customerId = String(inserted.id);
+    }
+  }
+
+  return { status: "materialized", materializedRecord: { domain: "customer", customerId }, error: null };
+}
+
+async function materializeVehicle(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+  const { supabase, item, resolutionAction } = args;
+  if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
+
+  const raw = item.raw_payload ?? {};
+  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+  if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Customer dependency is still unresolved for this vehicle." };
+
+  const vin = lower(pick(raw, [/^vin$/, /vehicle vin/]));
+  const plate = lower(pick(raw, [/plate/, /license/]));
+  const unit = pick(raw, [/unit/, /truck number/]);
+  const yearRaw = pick(raw, [/^year$/, /model year/]);
+  const year = yearRaw ? Number(yearRaw.replace(/[^0-9]/g, "")) : null;
+  const make = pick(raw, [/^make$/]);
+  const model = pick(raw, [/^model$/]);
+
+  const externalId = `import:${item.intake_id}:vehicles:${sha1(`${vin}|${plate}|${unit ?? ""}|${year ?? ""}`).slice(0, 16)}`;
+
+  let vehicleId: string | null = null;
+  const { data: existingByExternal } = await supabase.from("vehicles").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
+  vehicleId = existingByExternal?.id ?? null;
+
+  if (!vehicleId && resolutionAction === "linked_to_existing") {
+    const vehicleLookupFilter = [vin ? `vin.eq.${vin}` : null, plate ? `license_plate.eq.${plate}` : null].filter(Boolean).join(",");
+    if (vehicleLookupFilter) {
+      const { data: existingByIdentity } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("shop_id", item.shop_id)
+        .or(vehicleLookupFilter)
+        .limit(1)
+        .maybeSingle();
+      vehicleId = existingByIdentity?.id ?? null;
+    }
+  }
+
+  const payload = {
+    shop_id: item.shop_id,
+    customer_id: customerId,
+    vin: vin || null,
+    license_plate: plate || null,
+    unit_number: unit ?? null,
+    year: Number.isFinite(year) ? year : null,
+    make: make ?? null,
+    model: model ?? null,
+    source_intake_id: item.intake_id,
+    external_id: externalId,
+  };
+
+  if (vehicleId) {
+    await supabase.from("vehicles").update(payload).eq("id", vehicleId).eq("shop_id", item.shop_id);
+  } else {
+    const { data: inserted, error } = await supabase.from("vehicles").insert(payload).select("id").limit(1).maybeSingle();
+    if (error || !inserted?.id) return { status: "failed_materialization", materializedRecord: null, error: error?.message ?? "Failed to materialize vehicle." };
+    vehicleId = String(inserted.id);
+  }
+
+  return { status: "materialized", materializedRecord: { domain: "vehicle", vehicleId, customerId }, error: null };
+}
+
+async function materializeWorkOrder(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+  const { supabase, item, resolutionAction } = args;
+  if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
+
+  const raw = item.raw_payload ?? {};
+  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+  if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Missing customer dependency for work order." };
+
+  const vin = lower(pick(raw, [/vin/]));
+  const plate = lower(pick(raw, [/plate/, /license/]));
+  const vehicleLookup = [vin ? `vin.eq.${vin}` : null, plate ? `license_plate.eq.${plate}` : null].filter(Boolean).join(",");
+  const vehicle = vehicleLookup
+    ? (await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("shop_id", item.shop_id)
+        .or(vehicleLookup)
+        .limit(1)
+        .maybeSingle()).data
+    : null;
+
+  const vehicleId = vehicle?.id ? String(vehicle.id) : null;
+  if (!vehicleId) return { status: "failed_materialization", materializedRecord: null, error: "Missing vehicle dependency for work order." };
+
+  const ro = pick(raw, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
+  const total = parseMoney(pick(raw, [/total/, /grand total/, /invoice total/]));
+  const labor = parseMoney(pick(raw, [/labor/, /labour/]));
+  const parts = parseMoney(pick(raw, [/parts/]));
+  const complaint = pick(raw, [/complaint/, /concern/]);
+  const correction = pick(raw, [/correction/, /work performed/, /description/]);
+
+  const fingerprint = sha1([ro ?? "", customerId, vehicleId, String(total ?? ""), lower(correction ?? complaint ?? "")].join("|")).slice(0, 20);
+  const externalId = `import:${item.intake_id}:history:${fingerprint}`;
+
+  let workOrderId: string;
+  const woPayload = {
+    shop_id: item.shop_id,
+    customer_id: customerId,
+    vehicle_id: vehicleId,
+    status: "completed",
+    type: "repair",
+    custom_id: ro,
+    customer_name: pick(raw, [/customer name/, /^name$/]) ?? null,
+    labor_total: labor ?? null,
+    parts_total: parts ?? null,
+    invoice_total: total ?? null,
+    source_intake_id: item.intake_id,
+    external_id: externalId,
+  };
+
+  const { data: existingWo } = await supabase.from("work_orders").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
+  if (existingWo?.id) {
+    workOrderId = String(existingWo.id);
+    await supabase.from("work_orders").update(woPayload).eq("id", workOrderId).eq("shop_id", item.shop_id);
+  } else {
+    const { data: insertedWo, error: woErr } = await supabase.from("work_orders").insert(woPayload).select("id").limit(1).maybeSingle();
+    if (woErr || !insertedWo?.id) return { status: "failed_materialization", materializedRecord: null, error: woErr?.message ?? "Failed to create work order." };
+    workOrderId = String(insertedWo.id);
+  }
+
+  const lineExternal = `import:${item.intake_id}:wol:${workOrderId}:1`;
+  const linePayload = {
+    shop_id: item.shop_id,
+    work_order_id: workOrderId,
+    vehicle_id: vehicleId,
+    complaint: complaint ?? null,
+    correction: correction ?? null,
+    description: correction ?? complaint ?? "Imported history line",
+    status: "completed",
+    job_type: "repair",
+    line_no: 1,
+    source_intake_id: item.intake_id,
+    external_id: lineExternal,
+  };
+
+  const { data: existingLine } = await supabase.from("work_order_lines").select("id").eq("shop_id", item.shop_id).eq("external_id", lineExternal).maybeSingle();
+  if (existingLine?.id) {
+    await supabase.from("work_order_lines").update(linePayload).eq("id", existingLine.id);
+  } else {
+    await supabase.from("work_order_lines").insert(linePayload);
+  }
+
+  if ((total ?? 0) > 0 || (labor ?? 0) > 0 || (parts ?? 0) > 0) {
+    const { data: existingInvoice } = await supabase.from("invoices").select("id").eq("shop_id", item.shop_id).eq("work_order_id", workOrderId).maybeSingle();
+    if (!existingInvoice?.id) {
+      await supabase.from("invoices").insert({
+        shop_id: item.shop_id,
+        work_order_id: workOrderId,
+        customer_id: customerId,
+        status: "paid",
+        subtotal: Math.max(0, (labor ?? 0) + (parts ?? 0)),
+        labor_cost: labor ?? 0,
+        parts_cost: parts ?? 0,
+        total: total ?? Math.max(0, (labor ?? 0) + (parts ?? 0)),
+        invoice_number: `IMP-${workOrderId.slice(0, 8)}`,
+        currency: "USD",
+        metadata: { imported: true, source_intake_id: item.intake_id },
+      });
+    }
+  }
+
+  return { status: "materialized", materializedRecord: { domain: "work_order", workOrderId, customerId, vehicleId }, error: null };
+}
+
+async function materializePart(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+  const { supabase, item, resolutionAction } = args;
+  if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
+
+  const raw = item.raw_payload ?? {};
+  const name = pick(raw, [/^name$/, /part name/, /description/, /item name/]) ?? "Imported Part";
+  const partNumber = pick(raw, [/part number/, /^pn$/, /p\/n/, /part_no/, /part #/]);
+  const sku = pick(raw, [/^sku$/, /item sku/, /stock code/]);
+  const qtyRaw = pick(raw, [/qty/, /quantity/, /on hand/, /stock/]);
+  const quantityOnHand = qtyRaw ? Number(qtyRaw.replace(/[^0-9.-]/g, "")) : null;
+
+  const externalId = `import:${item.intake_id}:parts:${sha1(`${lower(partNumber)}|${lower(sku)}|${lower(name)}`).slice(0, 16)}`;
+
+  let partId: string | null = null;
+  if (resolutionAction === "linked_to_existing") {
+    const partLookup = [partNumber ? `part_number.eq.${partNumber}` : null, sku ? `sku.eq.${sku}` : null, `name.eq.${name}`].filter(Boolean).join(",");
+    const { data: existing } = await supabase
+      .from("parts")
+      .select("id")
+      .eq("shop_id", item.shop_id)
+      .or(partLookup)
+      .limit(1)
+      .maybeSingle();
+    partId = existing?.id ?? null;
+    if (!partId) return { status: "failed_materialization", materializedRecord: null, error: "Unable to locate existing part to link." };
+    await supabase.from("parts").update({ source_intake_id: item.intake_id }).eq("id", partId);
+  } else {
+    const { data: existingByExternal } = await supabase.from("parts").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
+    partId = existingByExternal?.id ?? null;
+    if (!partId) {
+      const { data: inserted, error } = await supabase.from("parts").insert({
+        shop_id: item.shop_id,
+        name,
+        part_number: partNumber,
+        sku,
+        source_intake_id: item.intake_id,
+        external_id: externalId,
+      }).select("id").limit(1).maybeSingle();
+      if (error || !inserted?.id) return { status: "failed_materialization", materializedRecord: null, error: error?.message ?? "Failed to create part." };
+      partId = String(inserted.id);
+    }
+  }
+
+  const { data: defaultLocation } = await supabase
+    .from("stock_locations")
+    .select("id")
+    .eq("shop_id", item.shop_id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (defaultLocation?.id) {
+    const { data: existingStock } = await supabase
+      .from("part_stock")
+      .select("id,qty_on_hand")
+      .eq("part_id", partId)
+      .eq("location_id", defaultLocation.id)
+      .maybeSingle();
+
+    if (existingStock?.id) {
+      if (Number.isFinite(quantityOnHand)) {
+        await supabase.from("part_stock").update({ qty_on_hand: Math.max(0, quantityOnHand ?? 0) }).eq("id", existingStock.id);
+      }
+    } else {
+      await supabase.from("part_stock").insert({
+        part_id: partId,
+        location_id: defaultLocation.id,
+        qty_on_hand: Math.max(0, quantityOnHand ?? 0),
+        qty_reserved: 0,
+      });
+    }
+  }
+
+  return { status: "materialized", materializedRecord: { domain: "part", partId }, error: null };
+}
+
+async function materializeByDomain(args: { supabase: any; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
+  const domain = args.item.domain;
+  if (domain === "customer") return materializeCustomer(args);
+  if (domain === "vehicle") return materializeVehicle(args);
+  if (domain === "work_order" || domain === "history" || domain === "invoice") return materializeWorkOrder(args);
+  if (domain === "part") return materializePart(args);
+  return { status: "materialized", materializedRecord: { skipped: true, domain }, error: null };
+}
+
+async function recomputeMigrationProgress(supabase: any, shopId: string, intakeId: string): Promise<void> {
+  const [{ count: pendingCount }, { count: failedCount }, { count: materializedCount }, { data: intake }] = await Promise.all([
+    supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "pending"),
+    supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "failed_materialization"),
+    supabase.from("shop_boost_review_items").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("status", "materialized"),
+    supabase.from("shop_boost_intakes").select("intake_basics").eq("id", intakeId).eq("shop_id", shopId).maybeSingle(),
+  ]);
+
+  const basics = (intake?.intake_basics ?? {}) as Record<string, unknown>;
+  const migrationProgress = (basics.migrationProgress ?? {}) as Record<string, unknown>;
+  const reviewCount = (pendingCount ?? 0) + (failedCount ?? 0);
+  const successCount = Math.max(
+    Number(migrationProgress.success_count ?? 0),
+    Number(materializedCount ?? 0),
+  );
+
+  const completionState = reviewCount === 0 && (failedCount ?? 0) === 0
+    ? "COMPLETED_CLEAN"
+    : (failedCount ?? 0) > 0
+      ? "PARTIAL_FAILURE"
+      : "COMPLETED_WITH_REVIEW";
+
+  await supabase
+    .from("shop_boost_intakes")
+    .update({
+      intake_basics: {
+        ...basics,
+        migrationProgress: {
+          ...migrationProgress,
+          review_count: reviewCount,
+          success_count: successCount,
+          completionState,
+        },
+      },
+    })
+    .eq("id", intakeId)
+    .eq("shop_id", shopId);
+}
+
+export async function resolveAndMaterializeReviewItem(args: {
+  reviewItemId: string;
+  shopId: string;
+  userId: string;
+  resolutionAction: ResolutionAction;
+}): Promise<{ ok: boolean; item: ReviewItemRow | null; materializedRecord: Record<string, unknown> | null; error?: string; }> {
+  const supabase = createAdminSupabase() as any;
+
+  const { data: item } = await supabase
+    .from("shop_boost_review_items")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .eq("shop_id", args.shopId)
+    .eq("id", args.reviewItemId)
+    .maybeSingle();
+
+  if (!item) return { ok: false, item: null, materializedRecord: null, error: "Review item not found." };
+
+  const updateBase = {
+    status: "resolved",
+    resolution_action: args.resolutionAction,
+    resolved_by: args.userId,
+    resolved_at: new Date().toISOString(),
+    materialization_error: null,
+  };
+
+  await supabase.from("shop_boost_review_items").update(updateBase).eq("id", item.id).eq("shop_id", args.shopId);
+
+  const materialized = await materializeByDomain({
+    supabase,
+    item: { ...item, resolution_action: args.resolutionAction, status: "resolved" } as ReviewItemRow,
+    resolutionAction: args.resolutionAction,
+  });
+
+  await supabase
+    .from("shop_boost_review_items")
+    .update({
+      status: materialized.status,
+      materialized_at: materialized.status === "materialized" ? new Date().toISOString() : null,
+      materialization_error: materialized.error,
+      materialized_record: materialized.materializedRecord ?? {},
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", item.id)
+    .eq("shop_id", args.shopId);
+
+  if (materialized.status === "materialized") {
+    await replayDependentRows({ supabase, shopId: args.shopId, intakeId: item.intake_id });
+  }
+
+  await recomputeMigrationProgress(supabase, args.shopId, item.intake_id);
+
+  const { data: updatedItem } = await supabase
+    .from("shop_boost_review_items")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .eq("id", item.id)
+    .eq("shop_id", args.shopId)
+    .maybeSingle();
+
+  return {
+    ok: materialized.status === "materialized",
+    item: updatedItem ?? null,
+    materializedRecord: materialized.materializedRecord,
+    ...(materialized.error ? { error: materialized.error } : {}),
+  };
+}
+
+async function replayDependentRows(args: { supabase: any; shopId: string; intakeId: string; }): Promise<void> {
+  const { supabase, shopId, intakeId } = args;
+  const { data: replayCandidates } = await supabase
+    .from("shop_boost_review_items")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error")
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .eq("issue_type", "missing_dependency")
+    .in("status", ["pending", "resolved", "failed_materialization"])
+    .order("created_at", { ascending: true })
+    .limit(100);
+
+  for (const candidate of replayCandidates ?? []) {
+    const action: ResolutionAction = candidate.resolution_action ?? "created_new";
+    const result = await materializeByDomain({ supabase, item: candidate as ReviewItemRow, resolutionAction: action });
+
+    await supabase
+      .from("shop_boost_review_items")
+      .update({
+        status: result.status,
+        resolution_action: action,
+        resolved_at: result.status === "materialized" ? new Date().toISOString() : null,
+        materialized_at: result.status === "materialized" ? new Date().toISOString() : null,
+        materialization_error: result.error,
+        materialized_record: result.materializedRecord ?? {},
+      })
+      .eq("shop_id", shopId)
+      .eq("id", candidate.id);
+  }
+}
+
+export async function bulkResolveReviewItems(args: {
+  shopId: string;
+  userId: string;
+  reviewItemIds: string[];
+  resolutionAction: ResolutionAction;
+}): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  for (const id of args.reviewItemIds) {
+    const result = await resolveAndMaterializeReviewItem({
+      reviewItemId: id,
+      shopId: args.shopId,
+      userId: args.userId,
+      resolutionAction: args.resolutionAction,
+    });
+    results.push({ id, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+  }
+  return results;
+}

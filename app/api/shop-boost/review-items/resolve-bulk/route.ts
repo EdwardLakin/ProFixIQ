@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
-import { resolveAndMaterializeReviewItem } from "@/features/integrations/shopBoost/reviewMaterialization";
+import { bulkResolveReviewItems } from "@/features/integrations/shopBoost/reviewMaterialization";
 
 type DB = Database;
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request) {
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
   const {
     data: { user },
@@ -23,19 +24,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!profile?.shop_id) return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
 
   const body = (await req.json().catch(() => ({}))) as {
+    review_item_ids?: string[];
     resolution_action?: "linked_to_existing" | "created_new" | "ignored";
   };
 
-  const result = await resolveAndMaterializeReviewItem({
-    reviewItemId: params.id,
+  const ids = Array.isArray(body.review_item_ids) ? body.review_item_ids.filter(Boolean) : [];
+  if (ids.length === 0) return NextResponse.json({ ok: false, error: "No review items selected." }, { status: 400 });
+
+  const results = await bulkResolveReviewItems({
     shopId: profile.shop_id,
     userId: user.id,
+    reviewItemIds: ids,
     resolutionAction: body.resolution_action ?? "ignored",
   });
 
-  if (!result.ok) {
-    return NextResponse.json({ ok: false, error: result.error ?? "Materialization failed.", item: result.item }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, item: result.item, materializedRecord: result.materializedRecord });
+  return NextResponse.json({
+    ok: results.every((result) => result.ok),
+    results,
+  });
 }
