@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { itemFlowLabel, toItemFlowDisplay } from "@/features/parts/lib/status-display";
-import { trustBadgeTone } from "@/features/parts/lib/trust-signals";
+import { trustBadgeTone, trustLevelLabel, type PartTrustLevel } from "@/features/parts/lib/trust-signals";
 
 type Option = { value: string; label: string };
 
@@ -21,6 +21,7 @@ export type ReceiveDrawerItem = {
 
   part_name?: string | null;
   sku?: string | null;
+  trust_level?: PartTrustLevel;
   trust_reasons?: string[];
 };
 
@@ -230,7 +231,7 @@ export default function ReceiveDrawer(props: {
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
+  const btnPrimary = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
 
   return (
     <>
@@ -295,8 +296,10 @@ export default function ReceiveDrawer(props: {
                   </div>
                 </div>
                 {Array.isArray(item.trust_reasons) && item.trust_reasons.length > 0 ? (
-                  <div className={`rounded-lg border px-2 py-1 text-[11px] ${trustBadgeTone("review")}`}>
-                    Trust review: {item.trust_reasons.slice(0, 2).join(" · ")}
+                  <div
+                    className={`rounded-lg border px-2 py-1 text-[11px] ${trustBadgeTone(item.trust_level ?? "review")}`}
+                  >
+                    {trustLevelLabel(item.trust_level ?? "review")}: {item.trust_reasons.slice(0, 2).join(" · ")}
                   </div>
                 ) : null}
               </div>
@@ -410,7 +413,7 @@ export default function ReceiveDrawer(props: {
             <button type="button" className={btnGhost} onClick={close}>
               Cancel
             </button>
-            <button type="button" className={btnCopper} onClick={() => void submit()} disabled={!canSubmit}>
+            <button type="button" className={btnPrimary} onClick={() => void submit()} disabled={!canSubmit}>
               {submitting ? "Receiving…" : "Receive"}
             </button>
           </div>

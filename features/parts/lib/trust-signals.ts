@@ -5,6 +5,17 @@ export type PartTrustMeta = {
   reasons: string[];
 };
 
+const TRUST_REASON = {
+  missingSku: "Missing SKU",
+  missingPartNumber: "Missing part number",
+  weakIdentity: "Weak identity key",
+  aliasBackedImport: "Alias-backed import",
+  stagingNotFinalized: "Staging not finalized",
+  ambiguousLineage: "Ambiguous import lineage",
+  lowImportConfidence: "Low import confidence",
+  importedRecord: "Imported record",
+} as const;
+
 export function buildPartTrustMeta(input: {
   sku?: string | null;
   partNumber?: string | null;
@@ -17,19 +28,22 @@ export function buildPartTrustMeta(input: {
 }): PartTrustMeta {
   const reasons: string[] = [];
 
-  if (!input.sku?.trim()) reasons.push("Missing SKU");
-  if (!input.partNumber?.trim()) reasons.push("Missing part number");
-  if (!input.normalizedPartKey?.trim()) reasons.push("Weak identity");
-  if ((input.aliasCount ?? 0) > 0) reasons.push("Alias-backed import");
-  if ((input.pendingStagingCount ?? 0) > 0) reasons.push("Staging not finalized");
-  if ((input.ambiguousCandidateCount ?? 0) > 0) reasons.push("Ambiguous import lineage");
+  if (!input.sku?.trim()) reasons.push(TRUST_REASON.missingSku);
+  if (!input.partNumber?.trim()) reasons.push(TRUST_REASON.missingPartNumber);
+  if (!input.normalizedPartKey?.trim()) reasons.push(TRUST_REASON.weakIdentity);
+  if ((input.aliasCount ?? 0) > 0) reasons.push(TRUST_REASON.aliasBackedImport);
+  if ((input.pendingStagingCount ?? 0) > 0) reasons.push(TRUST_REASON.stagingNotFinalized);
+  if ((input.ambiguousCandidateCount ?? 0) > 0) reasons.push(TRUST_REASON.ambiguousLineage);
   if (typeof input.importConfidence === "number" && input.importConfidence < 0.75) {
-    reasons.push("Low import confidence");
+    reasons.push(TRUST_REASON.lowImportConfidence);
   }
-  if (input.sourceIntakeId?.trim() && reasons.length === 0) reasons.push("Imported record");
+  if (input.sourceIntakeId?.trim() && reasons.length === 0) reasons.push(TRUST_REASON.importedRecord);
 
-  const low = reasons.some((r) =>
-    ["Weak identity", "Ambiguous import lineage", "Low import confidence"].includes(r),
+  const low = reasons.some(
+    (r) =>
+      r === TRUST_REASON.weakIdentity ||
+      r === TRUST_REASON.ambiguousLineage ||
+      r === TRUST_REASON.lowImportConfidence,
   );
 
   return {

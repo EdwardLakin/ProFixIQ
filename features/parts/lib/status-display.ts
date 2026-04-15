@@ -42,6 +42,22 @@ export function receiveProgressLabel(status: ReceiveProgressDisplay): string {
   return "Received";
 }
 
+export function canonicalStatusLabel(rawStatus?: string | null): string {
+  const status = String(rawStatus ?? "").trim().toLowerCase();
+  if (!status) return "Pending";
+  if (status === "requested") return "Requested";
+  if (status === "quoted") return "Quoted";
+  if (status === "approved") return "Approved";
+  if (status === "ordered") return "Ordered";
+  if (status === "partially_received") return "Partially Received";
+  if (status === "received") return "Received";
+  if (status === "fulfilled") return "Allocated / Consumed";
+  if (status === "consumed") return "Allocated / Consumed";
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 export function toReceiveProgressDisplay(input: {
   qty?: unknown;
   qtyApproved?: unknown;

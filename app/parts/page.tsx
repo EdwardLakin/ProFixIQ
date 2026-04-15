@@ -158,11 +158,11 @@ export default function PartsDashboardPage(): JSX.Element {
   const hasOpenRequests = (openRequestsCount ?? 0) > 0;
 
   return (
-    <div className="relative space-y-5 p-5 text-white fade-in md:space-y-6 md:p-6">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.09),transparent_54%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.9),#020617_72%)]" />
+    <div className="relative space-y-4 p-5 text-white fade-in md:space-y-5 md:p-6">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.09),transparent_56%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_72%)]" />
 
-      <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-5 shadow-card backdrop-blur-md">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(130deg,rgba(56,189,248,0.13),rgba(15,23,42,0.02)_45%,transparent_70%)]" />
+      <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(130deg,rgba(148,163,184,0.1),rgba(15,23,42,0.03)_45%,transparent_70%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">Parts command center</div>
@@ -184,11 +184,11 @@ export default function PartsDashboardPage(): JSX.Element {
       </section>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3 shadow-[0_0_24px_rgba(14,116,144,0.18)]">
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 shadow-[0_0_24px_rgba(15,23,42,0.24)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/80">Operational bottleneck</div>
-              <p className="text-sm text-sky-100">{hasOpenRequests ? <>You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} pending fulfillment flow.</> : "No open parts request bottlenecks right now."}</p>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-300">Operational bottleneck</div>
+              <p className="text-sm text-neutral-200">{hasOpenRequests ? <>You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} pending fulfillment flow.</> : "No open parts request bottlenecks right now."}</p>
             </div>
             <ActionButton href="/parts/requests" emphasis>{hasOpenRequests ? "Resolve request queue" : "Review requests"}</ActionButton>
           </div>

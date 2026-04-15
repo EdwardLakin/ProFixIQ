@@ -7,7 +7,12 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
 import Link from "next/link";
-import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
+import {
+  buildPartTrustMeta,
+  trustBadgeTone,
+  trustLevelLabel,
+  type PartTrustMeta,
+} from "@/features/parts/lib/trust-signals";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -43,6 +48,10 @@ if (typeof window !== "undefined") {
 type DB = Database;
 type PurchaseOrder = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
+type PartTrustFields = Pick<
+  DB["public"]["Tables"]["parts"]["Row"],
+  "id" | "sku" | "part_number" | "normalized_part_key" | "source_intake_id"
+> & { import_confidence?: number | null };
 
 type ReceiveResult =
   | {
@@ -193,13 +202,14 @@ export default function ReceivePage(): JSX.Element {
         .select("id, sku, part_number, normalized_part_key, source_intake_id, import_confidence")
         .eq("id", part_id)
         .maybeSingle();
+      const trustPart = (partRow ?? null) as PartTrustFields | null;
       setLastTrust(
         buildPartTrustMeta({
-          sku: (partRow as any)?.sku ?? null,
-          partNumber: (partRow as any)?.part_number ?? null,
-          normalizedPartKey: (partRow as any)?.normalized_part_key ?? null,
-          sourceIntakeId: (partRow as any)?.source_intake_id ?? null,
-          importConfidence: (partRow as any)?.import_confidence ?? null,
+          sku: trustPart?.sku ?? null,
+          partNumber: trustPart?.part_number ?? null,
+          normalizedPartKey: trustPart?.normalized_part_key ?? null,
+          sourceIntakeId: trustPart?.source_intake_id ?? null,
+          importConfidence: trustPart?.import_confidence ?? null,
         }),
       );
 
@@ -274,13 +284,13 @@ export default function ReceivePage(): JSX.Element {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/assistant?pageType=scan_receive&pageTitle=Scan%20to%20Receive"
-            className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-sm text-orange-200 hover:bg-orange-500/15"
+            className="rounded border border-sky-500/35 bg-sky-950/20 px-3 py-2 text-sm text-sky-200 hover:bg-sky-900/25"
           >
             Ask Assistant
           </Link>
           <Link
             href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20scan-to-receive%20workflow%20and%20suggest%20the%20best%20next%20actions"
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400 hover:text-orange-300"
+            className="rounded border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-neutral-200 hover:border-sky-500/30 hover:text-sky-200"
           >
             Open Planner
           </Link>
@@ -361,7 +371,7 @@ export default function ReceivePage(): JSX.Element {
             ) : null}
             {lastTrust ? (
               <div className="mt-1 text-xs">
-                <span className={`inline-flex rounded-full border px-2 py-1 ${trustBadgeTone(lastTrust.level)}`}>Trust: {lastTrust.level}</span>
+                <span className={`inline-flex rounded-full border px-2 py-1 ${trustBadgeTone(lastTrust.level)}`}>Trust: {trustLevelLabel(lastTrust.level)}</span>
                 {lastTrust.reasons.length > 0 ? <span className="ml-2 text-sky-200">{lastTrust.reasons.slice(0, 2).join(" · ")}</span> : null}
               </div>
             ) : null}
@@ -375,7 +385,7 @@ export default function ReceivePage(): JSX.Element {
             <button
               onClick={startScan}
               disabled={busy}
-              className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-900/20 disabled:opacity-60"
+              className="rounded border border-sky-500/35 px-3 py-1.5 text-sm text-sky-200 hover:bg-sky-900/20 disabled:opacity-60"
             >
               Start Scanner
             </button>

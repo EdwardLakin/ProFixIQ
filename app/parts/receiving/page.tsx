@@ -14,6 +14,7 @@ import {
 import {
   buildPartTrustMeta,
   trustBadgeTone,
+  trustLevelLabel,
   trustReasonTone,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
@@ -236,7 +237,7 @@ export default function ReceivingInboxPage(): JSX.Element {
       </div>
 
       <div className="text-xs text-neutral-500">
-        Last updated <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-amber-300">stale</span> : <span className="text-emerald-300">fresh</span>}
+        Last updated <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-neutral-300">stale</span> : <span className="text-emerald-300">fresh</span>}
       </div>
 
       <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4">
@@ -267,15 +268,18 @@ export default function ReceivingInboxPage(): JSX.Element {
                 const itemState = toItemFlowDisplay({ rawStatus: it.status, qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 return (
-                  <tr key={it.id} className="border-t border-white/10">
-                    <td className="p-3">
-                      <div className="font-semibold">{p?.name ? String(p.name) : it.description}</div>
-                      <div className="text-[11px] text-neutral-500">{p?.sku ? `${p.sku} • ` : ""}{itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}</div>
+                  <tr key={it.id} className="border-t border-white/10 align-top">
+                    <td className="p-3.5">
+                      <div className="font-semibold text-neutral-100">{p?.name ? String(p.name) : it.description}</div>
+                      <div className="mt-1 text-[11px] text-neutral-500">{p?.sku ? `${p.sku} • ` : ""}{itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}</div>
                       {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}
                     </td>
-                    <td className="p-3"><span className="inline-flex rounded-full border border-white/10 bg-black/40 px-2 py-1 text-xs">{receiveProgressLabel(recvState)}</span>{trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}</td>
-                    <td className="p-3 tabular-nums">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
-                    <td className="p-3"><button onClick={() => {setDrawerItem({ ...it, part_name: p?.name ?? null, sku: p?.sku ?? null, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
+                    <td className="p-3.5">
+                      <span className="inline-flex rounded-full border border-white/10 bg-black/40 px-2 py-1 text-xs">{receiveProgressLabel(recvState)}</span>
+                      {trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
+                    </td>
+                    <td className="p-3.5 tabular-nums text-neutral-200">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
+                    <td className="p-3.5"><button onClick={() => {setDrawerItem({ ...it, part_name: p?.name ?? null, sku: p?.sku ?? null, trust_level: trust?.level, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
                   </tr>
                 );
               })}

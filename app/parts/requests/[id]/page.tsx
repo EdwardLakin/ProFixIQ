@@ -20,7 +20,13 @@ import {
   toItemFlowDisplay,
   toRequestFlowDisplay,
 } from "@/features/parts/lib/status-display";
-import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
+import {
+  buildPartTrustMeta,
+  trustBadgeTone,
+  trustLevelLabel,
+  type PartTrustLevel,
+  type PartTrustMeta,
+} from "@/features/parts/lib/trust-signals";
 
 type DB = Database;
 
@@ -28,6 +34,10 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type PartTrustFields = Pick<
+  DB["public"]["Tables"]["parts"]["Row"],
+  "id" | "sku" | "part_number" | "normalized_part_key" | "source_intake_id"
+> & { import_confidence?: number | null };
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
@@ -73,6 +83,7 @@ type DrawerItem = {
   qty_remaining?: number | null;
   part_name?: string | null;
   sku?: string | null;
+  trust_level?: PartTrustLevel;
   trust_reasons?: string[];
 };
 
@@ -428,7 +439,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       const partRows = (ps ?? []) as PartRow[];
       setParts(partRows);
       const trustMap: Record<string, PartTrustMeta> = {};
-      partRows.forEach((p: any) => {
+      partRows.forEach((part) => {
+        const p = part as PartTrustFields;
         trustMap[String(p.id)] = buildPartTrustMeta({
           sku: p.sku ?? null,
           partNumber: p.part_number ?? null,
@@ -675,6 +687,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       qty_remaining: remaining,
       part_name: part?.name ? String(part.name) : null,
       sku: part?.sku ? String(part.sku) : null,
+      trust_level: partId ? trustByPartId[partId]?.level : undefined,
       trust_reasons: partId ? (trustByPartId[partId]?.reasons ?? []) : [],
     });
     setRecvOpen(true);
@@ -1363,7 +1376,7 @@ if (!lineId || !isUuid(lineId)) {
                                             </span>
                                             {trustMeta ? (
                                               <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 ${trustBadgeTone(trustMeta.level)}`}>
-                                                {trustMeta.level}
+                                                {trustLevelLabel(trustMeta.level)}
                                               </span>
                                             ) : null}
                                           </div>

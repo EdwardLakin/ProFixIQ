@@ -8,8 +8,18 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
-import { receiveProgressLabel, toReceiveProgressDisplay } from "@/features/parts/lib/status-display";
-import { buildPartTrustMeta, trustBadgeTone, type PartTrustMeta } from "@/features/parts/lib/trust-signals";
+import {
+  canonicalStatusLabel,
+  receiveProgressLabel,
+  toReceiveProgressDisplay,
+} from "@/features/parts/lib/status-display";
+import {
+  buildPartTrustMeta,
+  trustBadgeTone,
+  trustLevelLabel,
+  trustReasonTone,
+  type PartTrustMeta,
+} from "@/features/parts/lib/trust-signals";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -48,6 +58,13 @@ type PurchaseOrderLine = DB["public"]["Tables"]["purchase_order_lines"]["Row"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
+type PartTrustFields = Pick<
+  DB["public"]["Tables"]["parts"]["Row"],
+  "id" | "sku" | "part_number" | "normalized_part_key" | "source_intake_id"
+> & { import_confidence?: number | null };
+type AliasLookupRow = { part_id: string | null };
+type StagingLookupRow = { matched_part_id: string | null; status: string | null };
+type CandidateLookupRow = { candidate_part_id: string | null };
 
 function n(v: unknown): number {
   const num = typeof v === "number" ? v : Number(v);
@@ -214,18 +231,29 @@ export default function PoReceivePage(): JSX.Element {
             supabase.from("shop_parts_import_match_candidates").select("candidate_part_id").in("candidate_part_id", partIds).eq("shop_id", sid),
           ]);
           const aliasCount: Record<string, number> = {};
-          (aliasRes.data ?? []).forEach((r: any) => (aliasCount[String(r.part_id)] = (aliasCount[String(r.part_id)] ?? 0) + 1));
+          ((aliasRes.data ?? []) as AliasLookupRow[]).forEach((r) => {
+            const id = String(r.part_id ?? "");
+            if (!id) return;
+            aliasCount[id] = (aliasCount[id] ?? 0) + 1;
+          });
           const stagingCount: Record<string, number> = {};
-          (stagingRes.data ?? []).forEach((r: any) => {
+          ((stagingRes.data ?? []) as StagingLookupRow[]).forEach((r) => {
             const st = String(r.status ?? "").toLowerCase();
             if (st === "pending" || st === "review" || st === "ambiguous") {
-              stagingCount[String(r.matched_part_id)] = (stagingCount[String(r.matched_part_id)] ?? 0) + 1;
+              const id = String(r.matched_part_id ?? "");
+              if (!id) return;
+              stagingCount[id] = (stagingCount[id] ?? 0) + 1;
             }
           });
           const candCount: Record<string, number> = {};
-          (candRes.data ?? []).forEach((r: any) => (candCount[String(r.candidate_part_id)] = (candCount[String(r.candidate_part_id)] ?? 0) + 1));
+          ((candRes.data ?? []) as CandidateLookupRow[]).forEach((r) => {
+            const id = String(r.candidate_part_id ?? "");
+            if (!id) return;
+            candCount[id] = (candCount[id] ?? 0) + 1;
+          });
           const trustMap: Record<string, PartTrustMeta> = {};
-          partList.forEach((p: any) => {
+          partList.forEach((part) => {
+            const p = part as PartTrustFields;
             const id = String(p.id);
             trustMap[id] = buildPartTrustMeta({
               sku: p.sku,
@@ -438,13 +466,13 @@ export default function PoReceivePage(): JSX.Element {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/parts/po"
-            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-orange-500/60"
+            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-sky-500/40"
           >
             ← POs
           </Link>
           <button
             onClick={() => router.push("/parts/receive")}
-            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-orange-500/60"
+            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-sky-500/40"
             type="button"
           >
             Generic Receive
@@ -471,7 +499,7 @@ export default function PoReceivePage(): JSX.Element {
               </div>
               <div className="rounded-xl border border-white/10 bg-black/50 p-3">
                 <div className="text-xs text-neutral-400">Remaining</div>
-                <div className="mt-1 text-lg font-semibold text-orange-200">{remaining}</div>
+                <div className="mt-1 text-lg font-semibold text-sky-200">{remaining}</div>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/50 p-3">
                 <div className="text-xs text-neutral-400">Receiving Location</div>
@@ -496,7 +524,7 @@ export default function PoReceivePage(): JSX.Element {
                 {!scanning ? (
                   <button
                     onClick={startScan}
-                    className="rounded-full border border-orange-500/70 bg-orange-500/10 px-4 py-2 text-sm text-orange-200 hover:bg-orange-500/20"
+                    className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-sky-200 hover:bg-sky-900/25"
                     type="button"
                   >
                     Start Scanner
@@ -612,7 +640,7 @@ export default function PoReceivePage(): JSX.Element {
                 <button
                   onClick={() => void doReceive(manualPartId, qty)}
                   disabled={!manualPartId || !selectedLoc || qty <= 0}
-                  className="rounded-full border border-orange-500/70 bg-orange-500/10 px-4 py-2 text-sm text-orange-200 hover:bg-orange-500/20 disabled:opacity-50"
+                  className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-sky-200 hover:bg-sky-900/25 disabled:opacity-50"
                   type="button"
                 >
                   Receive & Allocate →
@@ -666,15 +694,15 @@ export default function PoReceivePage(): JSX.Element {
                           <div className="text-xs text-neutral-500">{ln.description ?? "—"}</div>
                           <div className="mt-1 flex items-center gap-2">
                             <span className="text-[11px] text-neutral-400">{receiveProgressLabel(recvState)}</span>
-                            {trust ? <span className={`rounded-full border px-2 py-0.5 text-[10px] ${trustBadgeTone(trust.level)}`}>{trust.level}</span> : null}
+                            {trust ? <span className={`rounded-full border px-2 py-0.5 text-[10px] ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                           </div>
-                          {trust && trust.reasons.length > 0 ? <div className="text-[11px] text-sky-200">{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
+                          {trust && trust.reasons.length > 0 ? <div className={`text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
                         </td>
                         <td className="p-3 font-mono">{ordered}</td>
                         <td className="p-3 font-mono">{received}</td>
                         <td className="p-3 font-mono">
                           {rem > 0 ? (
-                            <span className="text-orange-200">{rem}</span>
+                            <span className="text-sky-200">{rem}</span>
                           ) : (
                             <span className="text-neutral-500">0</span>
                           )}
@@ -730,7 +758,7 @@ export default function PoReceivePage(): JSX.Element {
                               {a.request_item_id ? String(a.request_item_id).slice(0, 8) : "—"}
                             </td>
                             <td className="p-2 font-mono text-neutral-200">{n(a.qty_allocated)}</td>
-                            <td className="p-2 text-neutral-300">{a.status ?? "—"}</td>
+                            <td className="p-2 text-neutral-300">{canonicalStatusLabel(a.status)}</td>
                           </tr>
                         ))}
                       </tbody>

@@ -30,10 +30,19 @@ function sourceLabel(kind: string | null, reason: string | null): string {
   if (k === "purchase_order") return "PO receive";
   if (k === "manual_receive") return "Manual receive";
   if (k === "request_receive") return "Request receive";
-  if (k === "work_order") return "WO allocation";
+  if (k === "work_order") return "Work order allocation";
   if (k === "csv_import") return "CSV import";
-  if (reason === "consume" || reason === "wo_allocate") return "Allocation / consumption";
+  if (reason === "consume" || reason === "wo_allocate") return "Work order consumption";
   return k || String(reason ?? "movement");
+}
+
+function reasonLabel(reason: string | null): string {
+  const key = String(reason ?? "").toLowerCase();
+  if (key === "wo_allocate" || key === "consume") return "Allocated to work order";
+  if (key === "po_receive") return "Received from purchase order";
+  if (key === "request_receive") return "Received for request item";
+  if (key === "manual_receive") return "Manual receive adjustment";
+  return key ? key.replaceAll("_", " ") : "Movement update";
 }
 
 export default function StockMovementsPage(): JSX.Element {
@@ -131,12 +140,12 @@ export default function StockMovementsPage(): JSX.Element {
                 const ctx = ctxMap[refId] ?? ctxMap[String(m.id)] ?? null;
                 return (
                   <tr key={String(m.id)} className="border-t border-white/10 align-top">
-                    <td className="p-3 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
-                    <td className="p-3"><div>{part?.name ?? String(m.part_id).slice(0, 8)}</div><div className="text-xs text-neutral-500">{part?.sku ?? ""}</div></td>
-                    <td className="p-3">{loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{loc?.name ?? ""}</span></td>
-                    <td className="p-3"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${qty >= 0 ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200" : "border-rose-500/30 bg-rose-950/20 text-rose-200"}`}>{qty >= 0 ? "+" : ""}{qty}</span></td>
-                    <td className="p-3"><div>{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-neutral-500">{String(m.reason ?? "—").replaceAll("_", " ")}</div></td>
-                    <td className="p-3 text-xs">
+                    <td className="p-3.5 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
+                    <td className="p-3.5"><div className="font-medium text-neutral-100">{part?.name ?? String(m.part_id).slice(0, 8)}</div><div className="text-xs text-neutral-500">{part?.sku ?? ""}</div></td>
+                    <td className="p-3.5 text-neutral-300">{loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{loc?.name ?? ""}</span></td>
+                    <td className="p-3.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${qty >= 0 ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200" : "border-rose-500/30 bg-rose-950/20 text-rose-200"}`}>{qty >= 0 ? "+" : ""}{qty}</span></td>
+                    <td className="p-3.5"><div className="text-neutral-200">{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-neutral-500">{reasonLabel(m.reason)}</div></td>
+                    <td className="p-3.5 text-xs">
                       <div className="flex flex-wrap gap-2">
                         {ctx?.workOrderId ? <Link className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(ctx.workOrderId)}`}>WO {ctx.workOrderId.slice(0, 8)}</Link> : <span className="text-neutral-500">No WO</span>}
                         {ctx?.requestItemId ? <span className="rounded border border-white/10 px-2 py-0.5 text-neutral-300">Req item {ctx.requestItemId.slice(0, 8)}</span> : null}
