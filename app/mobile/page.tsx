@@ -176,6 +176,7 @@ export default function MobileHome() {
             .or(
               `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
+            .eq("line_type", "job")
             .eq("status", "completed")
             .gte("punched_out_at", dayStartIso)
             .lte("punched_out_at", dayEndIso),
@@ -187,6 +188,7 @@ export default function MobileHome() {
             .or(
               `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
+            .eq("line_type", "job")
             .eq("status", "completed")
             .gte("punched_out_at", weekStartIso)
             .lte("punched_out_at", weekEndIso),
@@ -198,6 +200,7 @@ export default function MobileHome() {
             .or(
               `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
+            .eq("line_type", "job")
             .in("status", [
               "awaiting",
               "active",
@@ -211,6 +214,7 @@ export default function MobileHome() {
             .or(
               `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
+            .eq("line_type", "job")
             .gte("created_at", dayStartIso)
             .lte("created_at", dayEndIso)
             .order("created_at", { ascending: false }),

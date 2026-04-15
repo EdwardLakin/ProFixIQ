@@ -76,6 +76,7 @@ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
     template?: string | null;
   } | null;
 };
+type JobLinePriority = "low" | "normal" | "high" | "urgent";
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
@@ -974,6 +975,20 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
+  const updateLinePriority = useCallback(
+    async (lineId: string, priority: JobLinePriority) => {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ job_priority: priority } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", lineId)
+        .eq("work_order_id", routeId)
+        .eq("line_type", "job");
+
+      if (error) throw error;
+    },
+    [routeId],
+  );
+
   const saveExpectedCompletion = useCallback(async () => {
     if (!wo?.id) return;
     setSavingExpectedCompletion(true);
@@ -1843,6 +1858,21 @@ export default function WorkOrderIdClient(): JSX.Element {
                                   await fetchAll();
                                 } catch (e) {
                                   const msg = e instanceof Error ? e.message : "Failed to assign technician.";
+                                  toast.error(msg);
+                                }
+                              }
+                            : undefined
+                        }
+                        onPriorityChange={
+                          canAssign
+                            ? async (priority: JobLinePriority) => {
+                                try {
+                                  await updateLinePriority(ln.id, priority);
+                                  toast.success("Job priority updated.");
+                                  await fetchAll();
+                                } catch (e) {
+                                  const msg =
+                                    e instanceof Error ? e.message : "Failed to update priority.";
                                   toast.error(msg);
                                 }
                               }

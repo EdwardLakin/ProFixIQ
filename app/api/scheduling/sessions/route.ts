@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
     const { data: l, error: lErr } = await admin
       .from("work_order_lines")
       .select("*")
+      .eq("line_type", "job")
       .in("work_order_id", woIds);
 
     if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });

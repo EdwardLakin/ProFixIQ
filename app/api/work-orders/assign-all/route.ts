@@ -169,7 +169,8 @@ export async function POST(req: Request) {
     let updateQuery = admin
       .from("work_order_lines")
       .update({ assigned_tech_id: tech_id })
-      .eq("work_order_id", work_order_id);
+      .eq("work_order_id", work_order_id)
+      .eq("line_type", "job");
 
     if (only_unassigned) {
       updateQuery = updateQuery.is("assigned_tech_id", null);
