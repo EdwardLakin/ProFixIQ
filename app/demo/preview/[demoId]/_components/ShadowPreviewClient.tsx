@@ -20,6 +20,12 @@ import type {
 
 type Props = {
   context: ShadowPreviewContext;
+  mode: "default" | "sales";
+  shareMeta: {
+    enabled: boolean;
+    senderName: string | null;
+    token: string | null;
+  };
 };
 
 type SectionKey =
@@ -91,9 +97,15 @@ function toActivationReadiness(readiness: string): ActivationReadiness {
   return "REVIEW_REQUIRED";
 }
 
-export default function ShadowPreviewClient({ context }: Props) {
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+}
+
+export default function ShadowPreviewClient({ context, mode, shareMeta }: Props) {
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [gateAction, setGateAction] = useState<GateActionContext | null>(null);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   const activationContext = useMemo<ActivationContext>(() => {
     const blockers = context.snapshot.setupIssues
@@ -135,6 +147,16 @@ export default function ShadowPreviewClient({ context }: Props) {
       activationContext,
     );
   }, [activationContext, context.demoId, context.intakeId, query]);
+  const shareLink = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    url.searchParams.set("share", "1");
+    url.searchParams.set("mode", mode);
+    if (shareMeta.token) {
+      url.searchParams.set("token", shareMeta.token);
+    }
+    return url.toString();
+  }, [mode, shareMeta.token]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -173,6 +195,7 @@ export default function ShadowPreviewClient({ context }: Props) {
             <p className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">Preview mode • read only • no writes</p>
             <h1 className="text-xl font-semibold">{context.shopName} • Shadow Workspace</h1>
             <p className="text-[11px] text-neutral-400">This operational sandbox is generated from your uploaded analysis data. No tenant rows were created.</p>
+            {shareMeta.enabled ? <p className="text-[11px] text-cyan-300/90">Shared analysis view{shareMeta.senderName ? ` • Sent by ${shareMeta.senderName}` : ""}</p> : null}
           </div>
           <div className="flex gap-2">
             <Link href={comparePlansHref} className="rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]">See Plans</Link>
@@ -189,7 +212,7 @@ export default function ShadowPreviewClient({ context }: Props) {
               }
               className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
             >
-              {activationCta.label}
+              {mode === "sales" ? `Activate and recover ${formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month` : activationCta.label}
             </Link>
           </div>
         </div>
@@ -227,14 +250,68 @@ export default function ShadowPreviewClient({ context }: Props) {
         <aside className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Activation rail</p>
           <p className="text-xs text-neutral-300">{activationCta.subtext}</p>
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+            <p className="font-semibold">Activate your shop and recover {formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-50/90">
+              <li>Import your data</li>
+              <li>Fix flagged issues</li>
+              <li>Start approvals immediately</li>
+            </ul>
+          </div>
           <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-300">
             <MiniPill label="Confidence" value={`${activationContext.confidence}%`} />
             <MiniPill label="Readiness" value={activationContext.readiness.replace(/_/g, " ")} />
             <MiniPill label="Blockers" value={String(activationContext.blockers.length)} />
             <MiniPill label="Domains" value={String(activationContext.domains.length)} />
           </div>
-          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{activationCta.label}</Link>
+          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{mode === "sales" ? `Activate and recover ${formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month` : activationCta.label}</Link>
           <Link href={comparePlansHref} className="block rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]">See Plans</Link>
+          <button
+            onClick={async () => {
+              if (!shareLink) return;
+              await navigator.clipboard.writeText(shareLink);
+              setShareStatus("Share link copied.");
+            }}
+            className="block w-full rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]"
+          >
+            Copy share link
+          </button>
+          <div className="space-y-2 rounded-md border border-white/15 p-2">
+            <p className="text-[11px] text-neutral-400">Share this analysis</p>
+            <input
+              type="email"
+              value={recipientEmail}
+              onChange={(event) => setRecipientEmail(event.target.value)}
+              placeholder="owner@shop.com"
+              className="w-full rounded border border-white/20 bg-black/30 px-2 py-1 text-xs outline-none"
+            />
+            <button
+              onClick={async () => {
+                if (!recipientEmail.trim()) return;
+                const response = await fetch("/api/demo/shop-boost/share", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    demoId: context.demoId,
+                    intakeId: context.intakeId,
+                    recipientEmail: recipientEmail.trim(),
+                    senderName: shareMeta.senderName ?? "Shop Boost user",
+                  }),
+                });
+                setShareStatus(response.ok ? "Share email sent." : "Unable to send share email.");
+              }}
+              className="w-full rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]"
+            >
+              Send via email
+            </button>
+            <Link
+              href={`/api/shop-boost/intakes/${context.intakeId}/report?download=1`}
+              className="block w-full rounded-md border border-white/20 px-3 py-1.5 text-center text-xs hover:bg-white/[0.05]"
+            >
+              Download report
+            </Link>
+            {shareStatus ? <p className="text-[11px] text-cyan-200">{shareStatus}</p> : null}
+          </div>
           <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-200 hover:bg-white/[0.05]">Start real import (locked)</button>
           <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] text-cyan-100">
             <p className="font-semibold">What happens when you activate</p>
@@ -287,6 +364,25 @@ function Dashboard({
         <Metric label="Needs review" value={String(snapshot.operationalNarrative.reviewNeededCount)} />
       </div>
 
+      <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm">
+        <p className="font-semibold text-white">Your shop impact with ProFixIQ</p>
+        <div className="mt-2 grid gap-2 text-xs text-emerald-100 sm:grid-cols-2">
+          <p>+{formatMoney(snapshot.roi.estimated_monthly_impact)}/month recovered revenue</p>
+          <p>+{snapshot.roi.approval_speed_gain}% faster approvals</p>
+          <p>-{snapshot.roi.labor_recovery_hours} hrs wasted labor</p>
+          <p>+{snapshot.roi.parts_leakage_reduction}% parts accuracy</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-100">
+        <p className="font-semibold">Urgency signals</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>{snapshot.urgencySignals.stalledJobs} jobs currently stalled.</li>
+          <li>{formatMoney(snapshot.urgencySignals.revenueAtRiskNow)} at risk right now.</li>
+          <li>{snapshot.urgencySignals.customersWaiting} customers waiting on next-step communication.</li>
+        </ul>
+      </div>
+
       <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-200">
         <p className="font-semibold text-white">Operational narrative</p>
         <ul className="mt-2 space-y-1 text-xs text-neutral-300">
@@ -295,6 +391,36 @@ function Dashboard({
           <li>{snapshot.operationalNarrative.partsInventoryConflicts} parts signals need inventory reconciliation.</li>
           <li>{snapshot.operationalNarrative.unresolvedCustomerVehicleLinks} records need customer/vehicle link review before full history cleanup.</li>
         </ul>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
+        <p className="font-semibold text-white">Why this is happening (based on your data)</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-neutral-300">
+          {snapshot.roi.assumptions.map((assumption) => (
+            <li key={assumption}>{assumption}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
+          <p className="font-semibold text-white">Before vs after</p>
+          <p className="mt-2">Approval rate: {snapshot.impactComparison.before.approval_rate}% → {snapshot.impactComparison.after.approval_rate}%</p>
+          <p>Avg job completion time: {snapshot.impactComparison.before.avg_job_completion_time}d → {snapshot.impactComparison.after.avg_job_completion_time}d</p>
+          <p>Parts sync rate: {snapshot.impactComparison.before.parts_sync_rate}% → {snapshot.impactComparison.after.parts_sync_rate}%</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
+          <p className="font-semibold text-white">Projection confidence</p>
+          <p className="mt-1">Confidence in this projection: <span className="font-semibold text-cyan-200">{snapshot.projectionConfidence.label}</span> ({snapshot.projectionConfidence.score}%)</p>
+          <p className="mt-1">Data completeness: {snapshot.projectionConfidence.factors.dataCompleteness}%</p>
+          <p>Matching accuracy: {snapshot.projectionConfidence.factors.matchingAccuracy}%</p>
+          <p>Domain coverage: {snapshot.projectionConfidence.factors.domainCoverage}%</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
+        <p className="font-semibold text-white">Plan alignment</p>
+        <p className="mt-1">Starter unlocks {snapshot.planAlignment.starterImpactUnlockPct}% of this impact. Pro unlocks {snapshot.planAlignment.proImpactUnlockPct}% with workflow automation + approvals + parts sync.</p>
       </div>
 
       <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">

@@ -8,6 +8,14 @@ import {
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
+import {
+  buildShopBoostImpactComparison,
+  type ImpactComparison,
+} from "@/features/integrations/shopBoost/impactModel";
+import {
+  buildShopBoostROI,
+  type ShopBoostROI,
+} from "@/features/integrations/shopBoost/roiEngine";
 
 type CsvRow = Record<string, string>;
 
@@ -109,6 +117,30 @@ export type ShadowActivationConfidence = {
   confidenceCopy: string;
 };
 
+export type ShadowUrgencySignals = {
+  stalledJobs: number;
+  customersWaiting: number;
+  revenueAtRiskNow: number;
+  explainer: string[];
+};
+
+export type ShadowProjectionConfidence = {
+  score: number;
+  label: "HIGH" | "MEDIUM" | "LOW";
+  factors: {
+    dataCompleteness: number;
+    matchingAccuracy: number;
+    domainCoverage: number;
+    anomalyPenalty: number;
+  };
+};
+
+export type ShadowPlanAlignment = {
+  starterImpactUnlockPct: number;
+  proImpactUnlockPct: number;
+  summary: string;
+};
+
 export type ShadowShopSnapshot = {
   intakeId: string;
   generatedAt: string;
@@ -127,6 +159,11 @@ export type ShadowShopSnapshot = {
   partsSignals: ShadowPartSignal[];
   operationalSignals: ShadowDashboardSignals;
   migrationStory: ShadowMigrationStory;
+  roi: ShopBoostROI;
+  impactComparison: ImpactComparison;
+  urgencySignals: ShadowUrgencySignals;
+  projectionConfidence: ShadowProjectionConfidence;
+  planAlignment: ShadowPlanAlignment;
   activationConfidence: ShadowActivationConfidence;
   customers: ShadowPreviewItem[];
   vehicles: ShadowPreviewItem[];
@@ -434,6 +471,11 @@ function deriveOperationalPayload(args: {
   | "partsSignals"
   | "operationalSignals"
   | "migrationStory"
+  | "roi"
+  | "impactComparison"
+  | "urgencySignals"
+  | "projectionConfidence"
+  | "planAlignment"
   | "activationConfidence"
 > {
   const historyRows = args.rowsByDomain.history;
@@ -503,6 +545,64 @@ function deriveOperationalPayload(args: {
         )
       : 0;
 
+  const impactComparison = buildShopBoostImpactComparison({
+    preflightReport: args.preflightReport,
+    migrationStory: {
+      autoMatchedCustomersPct,
+      linkedVehicleProfiles: vehiclesRows.length - vehiclesRows.filter((row) => row.blocked).length,
+      preparedWorkflowJobs: workflowJobs.length,
+      recordsNeedingReview: args.preflightReport.totals.likelyReviewNeededCount,
+      recurringPatternsDetected: recurringPatterns,
+      highlights: [],
+    },
+    workflowJobs,
+    approvalFlow,
+    partsSignals,
+    domainSummaries: args.preflightReport.domains.map((domain) => ({
+      domain: domain.domain,
+      total: domain.detected,
+      reviewRequired: domain.likelyNeedsReview,
+      failed: domain.potentialBlockers,
+    })),
+  });
+
+  const roi = buildShopBoostROI({
+    snapshotLike: {
+      preflightReport: args.preflightReport,
+      migrationStory: {
+        autoMatchedCustomersPct,
+        linkedVehicleProfiles: vehiclesRows.length - vehiclesRows.filter((row) => row.blocked).length,
+        preparedWorkflowJobs: workflowJobs.length,
+        recordsNeedingReview: args.preflightReport.totals.likelyReviewNeededCount,
+        recurringPatternsDetected: recurringPatterns,
+        highlights: [],
+      },
+      workflowJobs,
+      approvalFlow,
+      partsSignals,
+      operationalNarrative,
+    },
+    domainSummaries: args.preflightReport.domains.map((domain) => ({
+      domain: domain.domain,
+      total: domain.detected,
+      reviewRequired: domain.likelyNeedsReview,
+      failed: domain.potentialBlockers,
+    })),
+  });
+
+  const stalledJobs = workflowJobs.filter((job) => job.status === "blocked" || job.status === "awaiting_approval").length;
+  const customersWaiting = workflowJobs.filter((job) => job.status === "awaiting_approval").length;
+  const urgencySignals: ShadowUrgencySignals = {
+    stalledJobs,
+    customersWaiting,
+    revenueAtRiskNow: Math.round(roi.revenue_opportunity * 0.75),
+    explainer: [
+      `Based on your data, ${customersWaiting} jobs are waiting for approval routing right now.`,
+      `We detected ${partsConflicts} parts linkage issues, which creates downstream estimate and invoice delays.`,
+      `${stalledJobs} jobs are currently stalled by blockers or approval lag, putting near-term revenue at risk.`,
+    ],
+  };
+
   const migrationStory: ShadowMigrationStory = {
     autoMatchedCustomersPct,
     linkedVehicleProfiles: vehiclesRows.length - vehiclesRows.filter((row) => row.blocked).length,
@@ -515,6 +615,41 @@ function deriveOperationalPayload(args: {
       `${args.preflightReport.totals.likelyReviewNeededCount} records are flagged for guided review before full cutover.`,
       `${Math.max(recurringPatterns, 1)} recurring service patterns can seed menu and inspection setup.`,
     ],
+  };
+
+  const domainCoverageScore = Math.round(
+    (([customersRows, vehiclesRows, historyRows, partsRows].filter((rows) => rows.length > 0).length + (args.rowsByDomain.staff.length > 0 ? 1 : 0)) / 5) *
+      100,
+  );
+  const anomalyPenalty = Math.min(35, Math.round((jobsBlocked + partsConflicts + unresolvedLinks) * 1.8));
+  const projectionScore = Math.max(
+    35,
+    Math.min(
+      98,
+      Math.round(
+        autoMatchedCustomersPct * 0.35 +
+          Math.max(0, 100 - args.preflightReport.totals.likelyReviewNeededCount * 1.4) * 0.25 +
+          domainCoverageScore * 0.25 +
+          Math.max(0, 100 - anomalyPenalty) * 0.15,
+      ),
+    ),
+  );
+
+  const projectionConfidence: ShadowProjectionConfidence = {
+    score: projectionScore,
+    label: projectionScore >= 78 ? "HIGH" : projectionScore >= 58 ? "MEDIUM" : "LOW",
+    factors: {
+      dataCompleteness: Math.max(0, Math.round(100 - args.preflightReport.totals.likelyReviewNeededCount * 1.3)),
+      matchingAccuracy: autoMatchedCustomersPct,
+      domainCoverage: domainCoverageScore,
+      anomalyPenalty,
+    },
+  };
+
+  const planAlignment: ShadowPlanAlignment = {
+    starterImpactUnlockPct: 42,
+    proImpactUnlockPct: 100,
+    summary: `Starter unlocks core import + baseline cleanup. Pro unlocks approvals, workflow automation, and parts sync to capture up to ${Math.round((roi.estimated_monthly_impact * 12) / 1000)}k/year impact potential.`,
   };
 
   const activationConfidence: ShadowActivationConfidence = {
@@ -534,6 +669,11 @@ function deriveOperationalPayload(args: {
     partsSignals,
     operationalSignals,
     migrationStory,
+    roi,
+    impactComparison,
+    urgencySignals,
+    projectionConfidence,
+    planAlignment,
     activationConfidence,
   };
 }
@@ -638,6 +778,11 @@ export async function buildShadowShopSnapshot(args: {
     partsSignals: operationalPayload.partsSignals,
     operationalSignals: operationalPayload.operationalSignals,
     migrationStory: operationalPayload.migrationStory,
+    roi: operationalPayload.roi,
+    impactComparison: operationalPayload.impactComparison,
+    urgencySignals: operationalPayload.urgencySignals,
+    projectionConfidence: operationalPayload.projectionConfidence,
+    planAlignment: operationalPayload.planAlignment,
     activationConfidence: operationalPayload.activationConfidence,
     customers: buildItems(stagedRowsByDomain.customers, "customers"),
     vehicles: buildItems(stagedRowsByDomain.vehicles, "vehicles"),
