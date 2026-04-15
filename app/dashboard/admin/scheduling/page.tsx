@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import WorkforceSchedulingClient from "@/features/dashboard/app/dashboard/admin/scheduling/WorkforceSchedulingClient";
 
 export default async function Page() {
-  await requireAdminPageAccess({ allow: ["owner", "admin", "manager", "advisor"] });
-  redirect("/dashboard/appointments");
+  await requireAdminPageAccess({ allow: ["owner", "admin", "manager"] });
+  return <WorkforceSchedulingClient />;
 }

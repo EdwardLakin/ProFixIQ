@@ -36,6 +36,8 @@ type Entry = {
   has_exceptions: boolean;
   blocking_exception_count: number;
   warning_exception_count: number;
+  scheduled_minutes?: number;
+  approved_time_away_minutes_in_period?: number;
   profiles?: { full_name?: string | null; email?: string | null } | null;
 };
 
@@ -199,6 +201,9 @@ export default function PayrollTimeClient() {
           <Link href="/dashboard/admin/people" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
             Open People Directory
           </Link>
+          <Link href="/dashboard/admin/scheduling" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+            Open Scheduling Board
+          </Link>
           <span className="text-neutral-400">Use People for all person-level governance, certifications, onboarding, and workforce updates.</span>
         </div>
       </AdminPanel>
@@ -282,6 +287,8 @@ export default function PayrollTimeClient() {
                   <th className="px-4 py-2.5 text-right">OT-ready</th>
                   <th className="px-4 py-2.5 text-right">Unpaid break</th>
                   <th className="px-4 py-2.5 text-right">Job context</th>
+                  <th className="px-4 py-2.5 text-right">Scheduled</th>
+                  <th className="px-4 py-2.5 text-right">Approved away</th>
                   <th className="px-4 py-2.5 text-left">Exceptions</th>
                 </tr>
               </thead>
@@ -298,6 +305,8 @@ export default function PayrollTimeClient() {
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.overtime_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.job_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.scheduled_minutes ?? 0)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.approved_time_away_minutes_in_period ?? 0)}h</td>
                     <td className="px-4 py-2.5">
                       {entry.blocking_exception_count > 0 ? (
                         <AdminBadge>{entry.blocking_exception_count} blocking</AdminBadge>

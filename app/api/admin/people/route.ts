@@ -13,7 +13,9 @@ type ActionReason = {
     | "payroll_not_ready"
     | "payroll_blocking_exceptions"
     | "payroll_warning_exceptions"
-    | "inactive_in_payroll_scope";
+    | "inactive_in_payroll_scope"
+    | "schedule_missing_for_active_staff"
+    | "pending_time_off_requests";
   severity: ActionSeverity;
   label: string;
   action_label: string;
@@ -33,6 +35,9 @@ export async function GET() {
     { data: exceptions },
     { data: certs },
     { data: periodEntries },
+    { data: scheduleTemplates },
+    { data: pendingTimeOff },
+    { data: upcomingTimeAway },
   ] = await Promise.all([
     admin
       .from("profiles")
@@ -47,6 +52,9 @@ export async function GET() {
       .select("user_id")
       .eq("shop_id", shopId)
       .in("approval_state", ["draft", "reviewed"]),
+    admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
+    admin.from("staff_time_off_requests").select("user_id, status").eq("shop_id", shopId).eq("status", "pending"),
+    admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).gte("ends_at", new Date().toISOString()),
   ]);
 
   if (profilesErr) return NextResponse.json({ error: profilesErr.message }, { status: 500 });
@@ -72,6 +80,15 @@ export async function GET() {
   const openEntriesByUser = new Map<string, number>();
   for (const row of periodEntries ?? []) {
     openEntriesByUser.set(row.user_id, (openEntriesByUser.get(row.user_id) ?? 0) + 1);
+  }
+  const hasTemplate = new Set<string>((scheduleTemplates ?? []).map((row: any) => row.user_id));
+  const pendingTimeOffByUser = new Map<string, number>();
+  for (const row of pendingTimeOff ?? []) {
+    pendingTimeOffByUser.set(row.user_id, (pendingTimeOffByUser.get(row.user_id) ?? 0) + 1);
+  }
+  const upcomingAwayByUser = new Map<string, number>();
+  for (const row of upcomingTimeAway ?? []) {
+    upcomingAwayByUser.set(row.user_id, (upcomingAwayByUser.get(row.user_id) ?? 0) + 1);
   }
 
   const certByUser = new Map<string, { open: number; expiring30: number; expiring60: number; expired: number; revoked: number }>();
@@ -99,6 +116,8 @@ export async function GET() {
     const payrollExceptions = exceptionByUser.get(profile.id) ?? { blocking: 0, warning: 0 };
     const cert = certByUser.get(profile.id) ?? { open: 0, expiring30: 0, expiring60: 0, expired: 0, revoked: 0 };
     const openPeriodEntries = openEntriesByUser.get(profile.id) ?? 0;
+    const pendingTimeOffCount = pendingTimeOffByUser.get(profile.id) ?? 0;
+    const upcomingAwayCount = upcomingAwayByUser.get(profile.id) ?? 0;
     const employmentStatus = workforceRow?.employment_status ?? "active";
     const missingWorkforceData = !workforceRow?.workforce_role;
     const reasons: ActionReason[] = [];
@@ -166,6 +185,24 @@ export async function GET() {
         action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
       });
     }
+    if (employmentStatus === "active" && !hasTemplate.has(profile.id)) {
+      reasons.push({
+        code: "schedule_missing_for_active_staff",
+        severity: "warning",
+        label: "No recurring schedule configured",
+        action_label: "Configure schedule",
+        action_href: `/dashboard/admin/scheduling`,
+      });
+    }
+    if (pendingTimeOffCount > 0) {
+      reasons.push({
+        code: "pending_time_off_requests",
+        severity: "informational",
+        label: `${pendingTimeOffCount} pending time-off request${pendingTimeOffCount > 1 ? "s" : ""}`,
+        action_label: "Review in scheduling",
+        action_href: `/dashboard/admin/scheduling`,
+      });
+    }
 
     const highestSeverity: ActionSeverity | null = reasons.length === 0
       ? null
@@ -188,6 +225,9 @@ export async function GET() {
       cert_expiring_60: cert.expiring60,
       expired_certifications: cert.expired,
       revoked_certifications: cert.revoked,
+      has_schedule_template: hasTemplate.has(profile.id),
+      pending_time_off_requests: pendingTimeOffCount,
+      upcoming_approved_time_away: upcomingAwayCount,
       needs_action: reasons.length > 0,
       highest_action_severity: highestSeverity,
       action_reasons: reasons,
