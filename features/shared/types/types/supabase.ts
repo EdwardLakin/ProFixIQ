@@ -16709,6 +16709,7 @@ export type Database = {
           intake_status: string | null
           intake_submitted_at: string | null
           intake_submitted_by: string | null
+          job_priority: string | null
           job_type: string | null
           job_priority: string | null
           labor_time: number | null
@@ -16769,6 +16770,7 @@ export type Database = {
           intake_status?: string | null
           intake_submitted_at?: string | null
           intake_submitted_by?: string | null
+          job_priority?: string | null
           job_type?: string | null
           job_priority?: string | null
           labor_time?: number | null
@@ -16829,6 +16831,7 @@ export type Database = {
           intake_status?: string | null
           intake_submitted_at?: string | null
           intake_submitted_by?: string | null
+          job_priority?: string | null
           job_type?: string | null
           job_priority?: string | null
           labor_time?: number | null
