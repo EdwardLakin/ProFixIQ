@@ -10,6 +10,13 @@ import {
 } from "@/features/integrations/shopBoost/activationContext";
 import { getActivationCTA } from "@/features/integrations/shopBoost/getActivationCTA";
 import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
+import {
+  buildConsequenceItems,
+  buildDecisionSummary,
+  buildObjectionHandlingContent,
+  buildStakeholderTakeaways,
+  formatUsd,
+} from "@/features/integrations/shopBoost/conversionPolish";
 import type {
   ShadowPartSignal,
   ShadowPreviewContext,
@@ -97,10 +104,6 @@ function toActivationReadiness(readiness: string): ActivationReadiness {
   return "REVIEW_REQUIRED";
 }
 
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
-}
-
 export default function ShadowPreviewClient({ context, mode, shareMeta }: Props) {
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [gateAction, setGateAction] = useState<GateActionContext | null>(null);
@@ -133,9 +136,15 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
         readiness: activationContext.readiness,
         blockers: activationContext.blockers,
         confidence: activationContext.confidence,
+        monthlyImpact: context.snapshot.roi.estimated_monthly_impact,
+        reviewQueue: context.snapshot.dashboard.reviewQueueCount,
       }),
-    [activationContext],
+    [activationContext, context.snapshot.dashboard.reviewQueueCount, context.snapshot.roi.estimated_monthly_impact],
   );
+  const decisionSummary = useMemo(() => buildDecisionSummary(context), [context]);
+  const consequenceItems = useMemo(() => buildConsequenceItems(context.snapshot), [context.snapshot]);
+  const objectionContent = useMemo(() => buildObjectionHandlingContent(context.snapshot), [context.snapshot]);
+  const stakeholderTakeaways = useMemo(() => buildStakeholderTakeaways(context.snapshot), [context.snapshot]);
   const comparePlansHref = useMemo(
     () => appendActivationContextToHref(`/compare-plans?${query}`, activationContext),
     [activationContext, query],
@@ -166,10 +175,13 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
         demoId: context.demoId,
         intakeId: context.intakeId,
         shopName: context.shopName,
+        blockers: context.snapshot.dashboard.blockerCount,
+        reviewQueue: context.snapshot.dashboard.reviewQueueCount,
+        recoverableValue: context.snapshot.roi.estimated_monthly_impact,
         updatedAt: new Date().toISOString(),
       }),
     );
-  }, [context.demoId, context.intakeId, context.shopName]);
+  }, [context.demoId, context.intakeId, context.shopName, context.snapshot.dashboard.blockerCount, context.snapshot.dashboard.reviewQueueCount, context.snapshot.roi.estimated_monthly_impact]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -212,7 +224,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
               }
               className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
             >
-              {mode === "sales" ? `Activate and recover ${formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month` : activationCta.label}
+              {mode === "sales" ? `Recover ${formatUsd(context.snapshot.roi.estimated_monthly_impact)}/month with activation` : activationCta.label}
             </Link>
           </div>
         </div>
@@ -238,7 +250,15 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
           <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
             This is a preview based on your uploaded data. No changes have been made yet. Activation will begin real import.
           </div>
-          {active === "dashboard" ? <Dashboard context={context} onGate={setGateAction} /> : null}
+          {active === "dashboard" ? (
+            <Dashboard
+              context={context}
+              decisionSummary={decisionSummary}
+              consequenceItems={consequenceItems}
+              stakeholderTakeaways={stakeholderTakeaways}
+              onGate={setGateAction}
+            />
+          ) : null}
           {active === "work-orders" ? <WorkflowPanel jobs={context.snapshot.workflowJobs} onGate={setGateAction} /> : null}
           {active === "approvals" ? <ApprovalPanel context={context} onGate={setGateAction} /> : null}
           {active === "parts" ? <PartsPanel signals={context.snapshot.partsSignals} onGate={setGateAction} /> : null}
@@ -250,12 +270,13 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
         <aside className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Activation rail</p>
           <p className="text-xs text-neutral-300">{activationCta.subtext}</p>
+          <p className="text-[11px] text-neutral-500">{activationCta.helper}</p>
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-            <p className="font-semibold">Activate your shop and recover {formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month</p>
+            <p className="font-semibold">{decisionSummary.heading}</p>
             <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-50/90">
-              <li>Import your data</li>
-              <li>Fix flagged issues</li>
-              <li>Start approvals immediately</li>
+              <li>Value at risk now: {formatUsd(decisionSummary.monthlyValueAtRisk)}/month</li>
+              <li>Recoverable after activation: {formatUsd(decisionSummary.recoverableValue)}/month</li>
+              <li>{decisionSummary.blockerSummary}</li>
             </ul>
           </div>
           <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-300">
@@ -264,7 +285,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
             <MiniPill label="Blockers" value={String(activationContext.blockers.length)} />
             <MiniPill label="Domains" value={String(activationContext.domains.length)} />
           </div>
-          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{mode === "sales" ? `Activate and recover ${formatMoney(context.snapshot.roi.estimated_monthly_impact)}/month` : activationCta.label}</Link>
+          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{mode === "sales" ? `Recover ${formatUsd(context.snapshot.roi.estimated_monthly_impact)}/month with activation` : activationCta.label}</Link>
           <Link href={comparePlansHref} className="block rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]">See Plans</Link>
           <button
             onClick={async () => {
@@ -312,16 +333,15 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
             </Link>
             {shareStatus ? <p className="text-[11px] text-cyan-200">{shareStatus}</p> : null}
           </div>
-          <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-200 hover:bg-white/[0.05]">Start real import (locked)</button>
+          <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-200 hover:bg-white/[0.05]">Start your real import (locked)</button>
           <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] text-cyan-100">
-            <p className="font-semibold">What happens when you activate</p>
+            <p className="font-semibold">{objectionContent.title}</p>
             <ul className="mt-2 list-disc space-y-1 pl-4 text-cyan-50/90">
-              <li>We will import your data into your real shop workspace.</li>
-              <li>We will create your shop setup baseline and migration queue.</li>
-              <li>Flagged items will be reviewable in guided setup.</li>
-              <li>Nothing has been written yet.</li>
-              <li>This preview is based on your uploaded data.</li>
+              {objectionContent.bullets.map((bullet) => (
+                <li key={bullet}>{bullet}</li>
+              ))}
             </ul>
+            <p className="mt-2 text-[11px] text-cyan-100/90">{objectionContent.whyReviewExists}</p>
           </div>
         </aside>
       </div>
@@ -346,15 +366,33 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
 
 function Dashboard({
   context,
+  decisionSummary,
+  consequenceItems,
+  stakeholderTakeaways,
   onGate,
 }: {
   context: ShadowPreviewContext;
+  decisionSummary: ReturnType<typeof buildDecisionSummary>;
+  consequenceItems: ReturnType<typeof buildConsequenceItems>;
+  stakeholderTakeaways: ReturnType<typeof buildStakeholderTakeaways>;
   onGate: (action: GateActionContext) => void;
 }) {
   const { snapshot } = context;
 
   return (
     <section className="space-y-4">
+      <div className="rounded-xl border border-[rgba(214,176,150,0.35)] bg-[rgba(145,90,60,0.14)] p-4">
+        <p className="text-[11px] uppercase tracking-[0.15em] text-[rgba(240,205,178,0.95)]">{decisionSummary.heading}</p>
+        <p className="mt-2 text-sm text-white">{decisionSummary.summary}</p>
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+          <p className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-neutral-200">Monthly value at risk: <span className="font-semibold text-white">{formatUsd(decisionSummary.monthlyValueAtRisk)}</span></p>
+          <p className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-neutral-200">Recoverable value: <span className="font-semibold text-emerald-300">{formatUsd(decisionSummary.recoverableValue)}</span></p>
+        </div>
+        <div className="mt-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-neutral-300">
+          <p>{decisionSummary.readinessSummary}</p>
+          <p className="mt-1 text-neutral-400">{decisionSummary.blockerSummary}</p>
+        </div>
+      </div>
       <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3 text-xs text-cyan-100">Operational preview: ProFixIQ inferred workflow states from your CSVs and preflight trust logic.</div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -367,7 +405,7 @@ function Dashboard({
       <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm">
         <p className="font-semibold text-white">Your shop impact with ProFixIQ</p>
         <div className="mt-2 grid gap-2 text-xs text-emerald-100 sm:grid-cols-2">
-          <p>+{formatMoney(snapshot.roi.estimated_monthly_impact)}/month recovered revenue</p>
+          <p>+{formatUsd(snapshot.roi.estimated_monthly_impact)}/month recovered revenue</p>
           <p>+{snapshot.roi.approval_speed_gain}% faster approvals</p>
           <p>-{snapshot.roi.labor_recovery_hours} hrs wasted labor</p>
           <p>+{snapshot.roi.parts_leakage_reduction}% parts accuracy</p>
@@ -378,9 +416,21 @@ function Dashboard({
         <p className="font-semibold">Urgency signals</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>{snapshot.urgencySignals.stalledJobs} jobs currently stalled.</li>
-          <li>{formatMoney(snapshot.urgencySignals.revenueAtRiskNow)} at risk right now.</li>
+          <li>{formatUsd(snapshot.urgencySignals.revenueAtRiskNow)} at risk right now.</li>
           <li>{snapshot.urgencySignals.customersWaiting} customers waiting on next-step communication.</li>
         </ul>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
+        <p className="font-semibold text-white">Operational consequences from current state</p>
+        <div className="mt-2 space-y-2">
+          {consequenceItems.slice(0, 5).map((item) => (
+            <div key={item.key} className={`rounded-md border px-3 py-2 ${item.severity === "critical" ? "border-rose-500/35 bg-rose-500/10" : item.severity === "warning" ? "border-amber-500/35 bg-amber-500/10" : "border-emerald-500/35 bg-emerald-500/10"}`}>
+              <p className="font-semibold text-white">{item.title}</p>
+              <p className="mt-0.5 text-neutral-300">{item.detail}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-200">
@@ -410,11 +460,14 @@ function Dashboard({
           <p>Parts sync rate: {snapshot.impactComparison.before.parts_sync_rate}% → {snapshot.impactComparison.after.parts_sync_rate}%</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-          <p className="font-semibold text-white">Projection confidence</p>
-          <p className="mt-1">Confidence in this projection: <span className="font-semibold text-cyan-200">{snapshot.projectionConfidence.label}</span> ({snapshot.projectionConfidence.score}%)</p>
+          <p className="font-semibold text-white">{decisionSummary.confidence.title}</p>
+          <p className="mt-1">{decisionSummary.confidence.explanation}</p>
+          <p className="mt-1">Confidence score: <span className="font-semibold text-cyan-200">{snapshot.projectionConfidence.score}%</span></p>
           <p className="mt-1">Data completeness: {snapshot.projectionConfidence.factors.dataCompleteness}%</p>
           <p>Matching accuracy: {snapshot.projectionConfidence.factors.matchingAccuracy}%</p>
           <p>Domain coverage: {snapshot.projectionConfidence.factors.domainCoverage}%</p>
+          <p className="mt-1 text-neutral-400">Increases confidence: {decisionSummary.confidence.increasesConfidence}</p>
+          <p className="text-neutral-500">Lowers confidence: {decisionSummary.confidence.lowersConfidence}</p>
         </div>
       </div>
 
@@ -436,6 +489,18 @@ function Dashboard({
         <p className="font-semibold">Go-live confidence</p>
         <p className="mt-1">{snapshot.operationalSignals.goLiveMomentumLabel}</p>
         <p className="mt-1 text-emerald-50/80">{snapshot.activationConfidence.confidenceCopy}</p>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
+        <p className="font-semibold text-white">Stakeholder framing</p>
+        <div className="mt-2 space-y-2">
+          {stakeholderTakeaways.map((takeaway) => (
+            <div key={takeaway.role} className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
+              <p className="font-semibold text-white">{takeaway.label}</p>
+              <p className="mt-1 text-neutral-300">{takeaway.message}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

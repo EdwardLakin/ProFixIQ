@@ -124,7 +124,7 @@ export default function ComparePlansPage() {
 
             {demoId ? (
               <p className="mt-2 text-[11px] text-neutral-500">
-                Your analysis is ready to carry forward. Reference: <span className="text-neutral-300">{demoId}</span>
+                Resume activation context is saved. Reference: <span className="text-neutral-300">{demoId}</span>
                 {intakeId ? <span className="text-neutral-400"> • Intake: {intakeId}</span> : null}
               </p>
             ) : null}
@@ -141,7 +141,7 @@ export default function ComparePlansPage() {
         <div className="rounded-3xl border border-white/10 bg-black/35 p-4 backdrop-blur-xl md:p-6">
           {demoId ? (
             <div className="mb-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
-              Preview continuity: nothing has been imported yet. After activation, this analysis will seed your real Shop Boost onboarding.
+              Your shop preview is ready to resume. Nothing has been written yet, and activation will carry this analysis into guided import onboarding.
             </div>
           ) : null}
           <PricingSection
@@ -172,7 +172,7 @@ export default function ComparePlansPage() {
                 }
                 className="inline-flex items-center rounded-lg border border-white/15 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-white/[0.08]"
               >
-                Continue setup via signup
+                Continue activation via signup
               </Link>
             </div>
           ) : null}
