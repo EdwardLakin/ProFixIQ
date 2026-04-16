@@ -24,9 +24,9 @@ type ApprovalItem = {
   qty: number | null;
   vendor: string | null;
   quoted_price: number | null;
-  markup_pct: number | null;
   approved: boolean | null;
   request_id: string | null;
+  work_order_line_id: string | null;
 };
 
 type ApprovalLine = {
@@ -54,7 +54,6 @@ type ApprovalLine = {
 type PartRequestHeader = {
   id: string;
   status: string | null;
-  notes: string | null;
   created_at: string | null;
 };
 
@@ -167,16 +166,21 @@ export default function PortalApprovalsPage() {
     return n;
   }, [lines]);
 
-  const approveItem = async (itemId: string) => {
-    if (!itemId || busyItemId) return;
+  const runLineDecision = async (
+    itemId: string,
+    lineId: string | null | undefined,
+    workOrderId: string,
+    decision: "approve" | "decline",
+  ) => {
+    if (!itemId || !lineId || !workOrderId || busyItemId) return;
     setBusyItemId(itemId);
 
     try {
-      const res = await fetch("/api/portal/approvals/item/approve", {
+      const res = await fetch(`/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ decision, workOrderId }),
       });
 
       const parsed = await readJson(res);
@@ -184,48 +188,22 @@ export default function PortalApprovalsPage() {
         const msg =
           (isRecord(parsed) && typeof parsed.error === "string" && parsed.error) ||
           (typeof parsed === "string" ? parsed : null) ||
-          `Approve failed (${res.status})`;
+          `${decision === "approve" ? "Approve" : "Decline"} failed (${res.status})`;
 
         toast.error(msg);
         return;
       }
 
-      toast.success("Approved");
+      toast.success(decision === "approve" ? "Approved" : "Declined");
       await fetchApprovals({ silent: true });
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Approve failed");
-    } finally {
-      setBusyItemId(null);
-    }
-  };
-
-  const declineItem = async (itemId: string) => {
-    if (!itemId || busyItemId) return;
-    setBusyItemId(itemId);
-
-    try {
-      const res = await fetch("/api/portal/approvals/item/decline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ itemId }),
-      });
-
-      const parsed = await readJson(res);
-      if (!res.ok) {
-        const msg =
-          (isRecord(parsed) && typeof parsed.error === "string" && parsed.error) ||
-          (typeof parsed === "string" ? parsed : null) ||
-          `Decline failed (${res.status})`;
-
-        toast.error(msg);
-        return;
-      }
-
-      toast.success("Declined");
-      await fetchApprovals({ silent: true });
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Decline failed");
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : decision === "approve"
+            ? "Approve failed"
+            : "Decline failed",
+      );
     } finally {
       setBusyItemId(null);
     }
@@ -487,10 +465,6 @@ export default function PortalApprovalsPage() {
                                       {it.description ?? "—"}
                                     </div>
                                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-neutral-400">
-                                      <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5">
-                                        Markup:{" "}
-                                        {typeof it.markup_pct === "number" ? `${it.markup_pct}%` : "—"}
-                                      </span>
                                       <span
                                         className={cx(
                                           "rounded-full border px-2 py-0.5",
@@ -520,7 +494,14 @@ export default function PortalApprovalsPage() {
                                     {!approved ? (
                                       <button
                                         type="button"
-                                        onClick={() => void approveItem(it.id)}
+                                        onClick={() =>
+                                          void runLineDecision(
+                                            it.id,
+                                            it.work_order_line_id ?? ln.id,
+                                            ln.work_order_id,
+                                            "approve",
+                                          )
+                                        }
                                         disabled={isBusy}
                                         className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-emerald-100 transition hover:bg-emerald-500/20 active:scale-95 disabled:opacity-60"
                                         title="Approve item"
@@ -530,7 +511,14 @@ export default function PortalApprovalsPage() {
                                     ) : (
                                       <button
                                         type="button"
-                                        onClick={() => void declineItem(it.id)}
+                                        onClick={() =>
+                                          void runLineDecision(
+                                            it.id,
+                                            it.work_order_line_id ?? ln.id,
+                                            ln.work_order_id,
+                                            "decline",
+                                          )
+                                        }
                                         disabled={isBusy}
                                         className="inline-flex items-center rounded-full border border-red-400/40 bg-red-500/10 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-red-100 transition hover:bg-red-500/20 active:scale-95 disabled:opacity-60"
                                         title="Undo approval"

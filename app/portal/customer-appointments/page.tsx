@@ -12,20 +12,11 @@ import { Button } from "@shared/components/ui/Button";
 type DB = Database;
 
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type ShopRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "id" | "slug">;
 
 type PortalBooking = {
   id: string;
-  shop_slug?: string | null;
-
   starts_at: string; // ISO
   ends_at: string; // ISO
-
-  customer_id?: string | null;
-  customer_name?: string | null;
-  customer_email?: string | null;
-  customer_phone?: string | null;
-
   notes?: string | null;
   status?: string | null;
 };
@@ -67,16 +58,6 @@ function fmtRange(startsAtIso: string, endsAtIso: string) {
   return { date, time: `${startTime} – ${endTime}` };
 }
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(base: Date, days: number) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 export default function PortalCustomerAppointmentsPage() {
   const supabase = createClientComponentClient<DB>();
   const router = useRouter();
@@ -84,7 +65,6 @@ export default function PortalCustomerAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
 
-  const [shopSlug, setShopSlug] = useState<string>("");
   const [bookings, setBookings] = useState<PortalBooking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
@@ -130,62 +110,17 @@ export default function PortalCustomerAppointmentsPage() {
   }, [supabase, router]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      if (!customer?.shop_id) {
-        setShopSlug("");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("shops")
-        .select("id,slug")
-        .eq("id", customer.shop_id)
-        .maybeSingle<ShopRow>();
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error(error);
-        toast.error("Unable to load your shop.");
-        setShopSlug("");
-        return;
-      }
-
-      setShopSlug((data?.slug as string) || "");
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, customer?.shop_id]);
-
-  useEffect(() => {
     if (!customer?.id) return;
-    if (!shopSlug) return;
 
     (async () => {
       setLoadingBookings(true);
       try {
-        const now = new Date();
-        const start = isoDate(addDays(now, -180));
-        const end = isoDate(addDays(now, 365));
-
-        const res = await fetch(
-          `/api/portal/bookings?shop=${encodeURIComponent(shopSlug)}&start=${encodeURIComponent(
-            start,
-          )}&end=${encodeURIComponent(end)}`,
-          { cache: "no-store" },
-        );
+        const res = await fetch("/api/portal/customer-bookings", { cache: "no-store" });
 
         if (!res.ok) throw new Error("Failed to load your appointments.");
 
         const j = (await res.json().catch(() => [])) as PortalBooking[];
-        const all = Array.isArray(j) ? j : [];
-        const mine = all.filter((b) => (b.customer_id ?? null) === customer.id);
-
-        setBookings(mine);
+        setBookings(Array.isArray(j) ? j : []);
       } catch (e) {
         console.error(e);
         toast.error("Failed to load appointments.");
@@ -194,7 +129,7 @@ export default function PortalCustomerAppointmentsPage() {
         setLoadingBookings(false);
       }
     })();
-  }, [customer?.id, shopSlug]);
+  }, [customer?.id]);
 
   const upcoming = useMemo(() => {
     const now = Date.now();
@@ -222,7 +157,7 @@ export default function PortalCustomerAppointmentsPage() {
     if (!confirm("Cancel this appointment?")) return;
 
     try {
-      const res = await fetch(`/api/portal/bookings/${id}`, {
+      const res = await fetch(`/api/portal/customer-bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled" }),
@@ -267,26 +202,6 @@ export default function PortalCustomerAppointmentsPage() {
             </LinkButton>
             <LinkButton href="/portal/request/when" size="sm">
               Request service
-            </LinkButton>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!shopSlug) {
-    return (
-      <div className="mx-auto max-w-xl space-y-3">
-        <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
-            My appointments
-          </h1>
-          <p className="mt-2 text-sm text-neutral-400">
-            Your portal account isn’t linked to a shop yet.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <LinkButton href="/portal/profile" variant="outline" size="sm">
-              Go to profile
             </LinkButton>
           </div>
         </div>

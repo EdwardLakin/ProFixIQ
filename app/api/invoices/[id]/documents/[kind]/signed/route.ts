@@ -18,6 +18,37 @@ export async function GET(req: NextRequest) {
   if (!invoiceId || !kind) return NextResponse.json({ ok: false, error: "Missing params" }, { status: 400 });
 
   const supabase = createRouteHandlerClient<DB>({ cookies });
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: invoice, error: invErr } = await supabase
+    .from("invoices")
+    .select("id, customer_id")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
+  if (invErr) return NextResponse.json({ ok: false, error: invErr.message }, { status: 400 });
+  if (!invoice?.id || !invoice.customer_id) {
+    return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
+  }
+
+  const { data: customer, error: customerErr } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("id", invoice.customer_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (customerErr) return NextResponse.json({ ok: false, error: customerErr.message }, { status: 400 });
+  if (!customer?.id) {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const { data: doc, error } = await supabase
     .from("invoice_documents")
