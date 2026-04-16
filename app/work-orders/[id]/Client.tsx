@@ -103,6 +103,11 @@ function fromDatetimeLocalInput(value: string): string | null {
   return d.toISOString();
 }
 
+function isCompletedLineStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced";
+}
+
 /** Normalize “where is the inspection template id stored for this line?” */
 function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): string | null {
   return (
@@ -940,7 +945,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       maintenance: 3,
       repair: 4,
     };
-    return [...activeJobLines].sort((a, b) => {
+    const baseSorted = [...activeJobLines].sort((a, b) => {
       const pa = pr[String(a.job_type ?? "repair")] ?? 999;
       const pb = pr[String(b.job_type ?? "repair")] ?? 999;
       if (pa !== pb) return pa - pb;
@@ -948,7 +953,34 @@ export default function WorkOrderIdClient(): JSX.Element {
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       return ta - tb;
     });
-  }, [activeJobLines]);
+
+    const activeForCurrentTech = baseSorted.find((line) => {
+      const punchedIn = Boolean(line.punched_in_at) && !line.punched_out_at;
+      if (!punchedIn || isCompletedLineStatus(line.status)) return false;
+
+      if (!currentUserId) return true;
+
+      const assignedTechId =
+        typeof (line as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
+          ? (line as { assigned_tech_id?: string | null }).assigned_tech_id
+          : null;
+      const linkedTechIds = lineTechsByLine[line.id] ?? [];
+      return assignedTechId === currentUserId || linkedTechIds.includes(currentUserId);
+    });
+
+    const pinnedActiveId = activeForCurrentTech?.id ?? null;
+    const nonCompleted = baseSorted.filter(
+      (line) => !isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
+    );
+    const completed = baseSorted.filter(
+      (line) => isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
+    );
+
+    if (activeForCurrentTech) {
+      return [activeForCurrentTech, ...nonCompleted, ...completed];
+    }
+    return [...nonCompleted, ...completed];
+  }, [activeJobLines, currentUserId, lineTechsByLine]);
 
   useEffect(() => {
     if (!prefersPanel) return;
@@ -1332,7 +1364,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const showPanel = prefersPanel && !!panelLineId;
 
   return (
-    <div className="w-full bg-background px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
+    <div className="w-full bg-[var(--theme-surface-2,#0B1220)] px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -1890,6 +1922,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onDelete={() => openDeleteForLine(ln.id)}
                         compact={showPanel}
                         selected={panelLineId === ln.id}
+                        hideExecutionStageCompletenessPills
                       />
                     );
                   })}

@@ -52,6 +52,7 @@ type JobCardProps = {
   reviewOk?: boolean;
   compact?: boolean;
   selected?: boolean;
+  hideExecutionStageCompletenessPills?: boolean;
 };
 
 type JobLinePriority = "low" | "normal" | "high" | "urgent";
@@ -316,6 +317,7 @@ export function JobCard({
   reviewOk,
   compact = false,
   selected = false,
+  hideExecutionStageCompletenessPills = false,
 }: JobCardProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
@@ -325,6 +327,7 @@ export function JobCard({
   );
 
   const isCompletedLike = statusVisual.muted;
+  const isActiveLine = statusVisual.label === "Active";
 
   useEffect(() => {
     setCollapsed(isCompletedLike);
@@ -383,13 +386,13 @@ export function JobCard({
           METALLIC_CARD_SURFACE,
           statusVisual.borderClass,
           statusVisual.glowClass,
-          statusVisual.muted && "opacity-[0.84] saturate-[0.7]",
+          statusVisual.muted && "border-slate-600/35 opacity-[0.74] saturate-[0.56] contrast-[0.9]",
           "hover:-translate-y-[1px] hover:border-white/25",
           "focus-within:border-white/35",
           selected && "border-white/35 shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
         )}
       >
-        <div className={cn("absolute inset-y-0 left-0 w-1", statusVisual.railClass)} />
+        <div className={cn("absolute inset-y-0 left-0 w-1.5", statusVisual.railClass, statusVisual.muted && "opacity-75")} />
 
         <div className={cn("relative pl-5", compact ? "p-3" : "p-4")}>
           <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
@@ -406,6 +409,9 @@ export function JobCard({
                     className={cn(
                       "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
                       statusVisual.chipClass,
+                      isActiveLine &&
+                        "shadow-[0_0_18px_rgba(103,232,249,0.28)] [animation:pulse_2.6s_ease-in-out_infinite]",
+                      statusVisual.muted && "text-slate-300",
                     )}
                   >
                     {statusVisual.label}
@@ -436,7 +442,7 @@ export function JobCard({
                 </p>
               </div>
 
-              <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5")}>
+              <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
                 <Button type="button" variant={selected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
                   Open
                 </Button>
@@ -473,12 +479,16 @@ export function JobCard({
               </div>
             </div>
 
-            <div className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5")}>
-              {reviewFlags.missingCause ? <ReviewPill tone="warn" label="Cause Missing" title="Cause completeness" /> : null}
-              {reviewFlags.missingCorrection ? (
+            <div className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-85")}>
+              {!hideExecutionStageCompletenessPills && reviewFlags.missingCause ? (
+                <ReviewPill tone="warn" label="Cause Missing" title="Cause completeness" />
+              ) : null}
+              {!hideExecutionStageCompletenessPills && reviewFlags.missingCorrection ? (
                 <ReviewPill tone="warn" label="Correction Missing" title="Correction completeness" />
               ) : null}
-              {reviewFlags.noParts ? <ReviewPill tone="warn" label="No Parts" title="Parts completeness" /> : null}
+              {!hideExecutionStageCompletenessPills && reviewFlags.noParts ? (
+                <ReviewPill tone="warn" label="No Parts" title="Parts completeness" />
+              ) : null}
               {isBlocked ? <ReviewPill tone="warn" label="Blocked" title="Line currently blocked or on hold" /> : null}
               {waitingApproval ? (
                 <ReviewPill tone="info" label="Awaiting Approval" title="Waiting for approval decision" />
