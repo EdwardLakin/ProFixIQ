@@ -137,18 +137,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     ? approvalsQuery.eq("assigned_tech_id", identity.userId)
     : approvalsQuery;
 
-  const partsQuery = supabase
-    .from("part_requests")
-    .select("id,status,work_order_id,job_id,created_at", { count: "exact" })
-    .eq("shop_id", identity.shopId)
-    .in("status", OPEN_PART_STATUSES as unknown as string[]);
-  const scopedPartsQuery = isTechnicianScoped && identity.userId
-    ? partsQuery.or(`requested_by.eq.${identity.userId},assigned_tech_id.eq.${identity.userId}`)
-    : partsQuery;
-
   const activeLinesQuery = supabase
     .from("work_order_lines")
-    .select("work_order_id,assigned_tech_id,status,updated_at")
+    .select("id,work_order_id,assigned_tech_id,status,updated_at")
     .eq("shop_id", identity.shopId)
     .not("status", "in", `(${CLOSED_LINE_STATUSES.map((status) => `'${status}'`).join(",")})`)
     .not("assigned_tech_id", "is", null)
@@ -161,7 +152,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   const [
     boardResult,
     approvalsResult,
-    partsResult,
     techProfilesResult,
     activeLinesResult,
     invoicesMonthResult,
@@ -174,7 +164,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .order("activity_at", { ascending: false })
       .limit(isTechnicianScoped ? 200 : 48),
     scopedApprovalsQuery,
-    scopedPartsQuery.limit(120),
     supabase
       .from("profiles")
       .select("id,full_name")
@@ -196,16 +185,85 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   const boardRows = boardResult.error ? [] : boardResult.data ?? [];
   const activeLines = activeLinesResult.error ? [] : activeLinesResult.data ?? [];
+  const buildOpenPartsQuery = () =>
+    supabase
+      .from("part_requests")
+      .select("id,status,work_order_id,job_id,created_at,requested_by,assigned_to")
+      .eq("shop_id", identity.shopId)
+      .in("status", OPEN_PART_STATUSES as unknown as string[]);
+
+  let partsRows: Array<{
+    id: string;
+    status: string;
+    work_order_id: string | null;
+    job_id: string | null;
+    created_at: string;
+    requested_by: string | null;
+    assigned_to: string | null;
+  }> = [];
+  let partsQueryFailed = false;
+
+  if (isTechnicianScoped && identity.userId) {
+    const assignedLineIds = [...new Set(activeLines.map((line) => line.id).filter(Boolean))];
+    const assignedWorkOrderIds = [
+      ...new Set(activeLines.map((line) => line.work_order_id).filter((id): id is string => Boolean(id))),
+    ];
+    const partRowsById = new Map<string, (typeof partsRows)[number]>();
+
+    const [partsByJobResult, partsByWorkOrderResult, partsByOwnerResult] = await Promise.all([
+      assignedLineIds.length > 0
+        ? buildOpenPartsQuery().in("job_id", assignedLineIds).limit(200)
+        : Promise.resolve({ data: [], error: null }),
+      assignedWorkOrderIds.length > 0
+        ? buildOpenPartsQuery().in("work_order_id", assignedWorkOrderIds).limit(200)
+        : Promise.resolve({ data: [], error: null }),
+      buildOpenPartsQuery()
+        .or(`requested_by.eq.${identity.userId},assigned_to.eq.${identity.userId}`)
+        .limit(120),
+    ]);
+
+    if (partsByJobResult.error || partsByWorkOrderResult.error || partsByOwnerResult.error) {
+      partsQueryFailed = true;
+      console.error("[Dashboard][Operations] parts query failed", {
+        shopId: identity.shopId,
+        userId: identity.userId,
+        partsByJobError: partsByJobResult.error?.message,
+        partsByWorkOrderError: partsByWorkOrderResult.error?.message,
+        partsByOwnerError: partsByOwnerResult.error?.message,
+      });
+    }
+
+    [partsByJobResult.data ?? [], partsByWorkOrderResult.data ?? [], partsByOwnerResult.data ?? []]
+      .flat()
+      .forEach((row) => {
+        partRowsById.set(row.id, row);
+      });
+
+    partsRows = [...partRowsById.values()];
+  } else {
+    const shopPartsResult = await buildOpenPartsQuery().limit(240);
+    if (shopPartsResult.error) {
+      partsQueryFailed = true;
+      console.error("[Dashboard][Operations] parts query failed", {
+        shopId: identity.shopId,
+        userId: identity.userId,
+        error: shopPartsResult.error.message,
+      });
+    } else {
+      partsRows = shopPartsResult.data ?? [];
+    }
+  }
+
   const scopedWorkOrderIds = new Set<string>();
 
   if (isTechnicianScoped) {
     const approvalRows = approvalsResult.error ? [] : approvalsResult.data ?? [];
-    const partRows = partsResult.error ? [] : partsResult.data ?? [];
+    const scopedPartRows = partsRows;
 
     for (const row of approvalRows) {
       if (row.work_order_id) scopedWorkOrderIds.add(row.work_order_id);
     }
-    for (const row of partRows) {
+    for (const row of scopedPartRows) {
       if (row.work_order_id) scopedWorkOrderIds.add(row.work_order_id);
     }
   }
@@ -224,7 +282,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     )?.work_order_id ?? null;
 
   if (boardResult.error) {
-    payload.sectionErrors.push(`Live work section: ${boardResult.error.message}`);
+    console.error("[Dashboard][Operations] live work query failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      error: boardResult.error.message,
+    });
+    payload.sectionErrors.push("Live work signal is temporarily unavailable.");
   } else {
     payload.topSummary.activeJobs = activeBoardRows.length;
     payload.topSummary.blockedJobs = activeBoardRows.filter(
@@ -272,15 +335,20 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   }
 
   if (approvalsResult.error) {
-    payload.sectionErrors.push(`Approvals section: ${approvalsResult.error.message}`);
+    console.error("[Dashboard][Operations] approvals query failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      error: approvalsResult.error.message,
+    });
+    payload.sectionErrors.push("Approvals signal is temporarily unavailable.");
   } else {
     payload.topSummary.waitingApprovals = approvalsResult.count ?? 0;
   }
 
-  if (partsResult.error) {
-    payload.sectionErrors.push(`Parts blocker section: ${partsResult.error.message}`);
+  if (partsQueryFailed) {
+    payload.sectionErrors.push("Parts blocker signal is temporarily unavailable.");
   } else {
-    payload.topSummary.waitingParts = partsResult.count ?? (partsResult.data ?? []).length;
+    payload.topSummary.waitingParts = partsRows.length;
   }
 
   const recentApprovalLine = approvalsResult.error
@@ -298,9 +366,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     ? "item"
     : "filtered";
 
-  const recentPartsRequest = partsResult.error
+  const recentPartsRequest = partsQueryFailed
     ? null
-    : (partsResult.data ?? [])
+    : partsRows
         .filter((row) => !!row.work_order_id)
         .sort(
           (a, b) =>
@@ -345,7 +413,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   ];
 
   if (bookingsTodayResult.error) {
-    payload.sectionErrors.push(`Daily summary section: ${bookingsTodayResult.error.message}`);
+    console.error("[Dashboard][Operations] daily summary query failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      error: bookingsTodayResult.error.message,
+    });
+    payload.sectionErrors.push("Daily summary signal is temporarily unavailable.");
   }
 
   payload.dailySummary = isTechnicianScoped
@@ -552,7 +625,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       ];
 
   if (invoicesMonthResult.error) {
-    payload.sectionErrors.push(`Revenue snapshot section: ${invoicesMonthResult.error.message}`);
+    console.error("[Dashboard][Operations] revenue snapshot query failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      error: invoicesMonthResult.error.message,
+    });
+    payload.sectionErrors.push("Revenue snapshot is temporarily unavailable.");
   } else {
     const invoices = invoicesMonthResult.data ?? [];
     const revenue = invoices.reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
