@@ -1783,7 +1783,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   actions in the focused panel to start building this work order.
                 </p>
               ) : (
-                <div className="max-h-[72vh] space-y-1.5 overflow-auto pr-1">
+                <div className="space-y-3">
                   {sortedLines.map((ln, idx) => {
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
