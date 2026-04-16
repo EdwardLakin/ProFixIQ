@@ -832,12 +832,14 @@ export default function MobileWorkOrderClient({
   const declineQuote = useCallback(
     async (quoteId: string) => {
       if (!quoteId) return;
-      const { error } = await supabase
-        .from("work_order_quote_lines")
-        .update({ status: "declined" })
-        .eq("id", quoteId);
-      if (error) {
-        toast.error(error.message);
+      const res = await fetch(`/api/work-orders/quotes/${quoteId}/decline`, {
+        method: "POST",
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!res.ok || !json?.ok) {
+        toast.error(json?.error ?? "Failed to decline quote");
         return;
       }
       toast.success("Quote declined");

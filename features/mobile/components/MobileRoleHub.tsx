@@ -4,7 +4,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import {
-  MOBILE_TILES,
+  getMobileTilesForRole,
   type MobileRole,
   type MobileScope,
 } from "@/features/mobile/config/mobile-tiles";
@@ -23,12 +23,7 @@ export function MobileRoleHub({
   subtitle,
 }: Props) {
   const tiles = useMemo(
-    () =>
-      MOBILE_TILES.filter(
-        (tile) =>
-          tile.roles.includes(role) &&
-          tile.scopes.some((s) => scopes.includes(s)),
-      ),
+    () => getMobileTilesForRole(role, scopes),
     [role, scopes],
   );
 
