@@ -25,6 +25,7 @@ type UnitsBody = {
 type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type FleetMemberRow = DB["public"]["Tables"]["fleet_members"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
 type FleetInspectionScheduleRow =
@@ -40,12 +41,15 @@ type InspectionScheduleSelect = Pick<
   "vehicle_id" | "next_inspection_date"
 >;
 
-async function resolveShopId(
+type UnitsScope = {
+  shopId: string;
+  fleetIds: string[] | null;
+};
+
+async function resolveUnitsScope(
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
   explicitShopId: string | null,
-): Promise<string | null> {
-  if (explicitShopId) return explicitShopId;
-
+): Promise<UnitsScope | null> {
   const {
     data: { user },
     error: userError,
@@ -53,15 +57,54 @@ async function resolveShopId(
 
   if (userError || !user) return null;
 
+  const { data: memberships, error: membershipsError } = await supabase
+    .from("fleet_members")
+    .select("fleet_id, shop_id")
+    .eq("user_id", user.id);
+
+  if (!membershipsError && memberships && memberships.length > 0) {
+    const membershipRows = memberships as Pick<
+      FleetMemberRow,
+      "fleet_id" | "shop_id"
+    >[];
+
+    const membershipShopId = membershipRows[0]?.shop_id ?? null;
+    if (!membershipShopId) return null;
+
+    if (explicitShopId && explicitShopId !== membershipShopId) return null;
+
+    return {
+      shopId: membershipShopId,
+      fleetIds: Array.from(
+        new Set(
+          membershipRows.map((row) => row.fleet_id).filter(Boolean),
+        ),
+      ),
+    };
+  }
+
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("shop_id")
+    .select("shop_id, role")
     .eq("id", user.id)
     .single();
 
   if (profileError || !profile?.shop_id) return null;
 
-  return profile.shop_id;
+  const canOverrideShop =
+    profile.role === "owner" || profile.role === "admin" || profile.role === "manager";
+
+  if (explicitShopId) {
+    if (explicitShopId === profile.shop_id) {
+      return { shopId: explicitShopId, fleetIds: null };
+    }
+    if (canOverrideShop) {
+      return { shopId: explicitShopId, fleetIds: null };
+    }
+    return null;
+  }
+
+  return { shopId: profile.shop_id, fleetIds: null };
 }
 
 /**
@@ -101,20 +144,27 @@ export async function POST(req: NextRequest) {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
     const body = (await req.json().catch(() => ({}))) as UnitsBody;
-    const shopId = await resolveShopId(supabase, body.shopId ?? null);
+    const scope = await resolveUnitsScope(supabase, body.shopId ?? null);
 
-    if (!shopId) {
+    if (!scope?.shopId) {
       return NextResponse.json(
         { error: "Unable to resolve shop for fleet units." },
         { status: 400 },
       );
     }
+    const shopId = scope.shopId;
 
     // 1) Find fleets for this shop (authoritative scoping)
-    const { data: fleets, error: fleetsError } = await supabase
+    let fleetsQuery = supabase
       .from("fleets")
       .select("id, shop_id, name")
       .eq("shop_id", shopId);
+
+    if (scope.fleetIds && scope.fleetIds.length > 0) {
+      fleetsQuery = fleetsQuery.in("id", scope.fleetIds);
+    }
+
+    const { data: fleets, error: fleetsError } = await fleetsQuery;
 
     if (fleetsError) {
       // eslint-disable-next-line no-console

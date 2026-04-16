@@ -41,11 +41,57 @@ type ListPretripBody = {
   shopId?: string | null;
 };
 
+type FleetContext = {
+  userId: string;
+  fleetId: string;
+  shopId: string;
+};
+
+async function resolveFleetContextForUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  requestedFleetId?: string | null,
+): Promise<FleetContext | null> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) return null;
+
+  const membershipsQuery = supabase
+    .from("fleet_members")
+    .select("fleet_id, shop_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  const { data: membership, error: membershipError } = requestedFleetId
+    ? await membershipsQuery.eq("fleet_id", requestedFleetId).maybeSingle()
+    : await membershipsQuery.maybeSingle();
+
+  if (membershipError || !membership?.fleet_id || !membership.shop_id) {
+    return null;
+  }
+
+  return {
+    userId: user.id,
+    fleetId: membership.fleet_id,
+    shopId: membership.shop_id,
+  };
+}
+
 async function resolveShopIdForListing(
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
   explicitShopId: string | null,
 ) {
-  if (explicitShopId) return explicitShopId;
+  const fleetContext = await resolveFleetContextForUser(supabase);
+  if (fleetContext) {
+    return {
+      shopId: fleetContext.shopId,
+      fleetId: fleetContext.fleetId,
+      source: "fleet_membership" as const,
+    };
+  }
 
   const {
     data: { user },
@@ -66,7 +112,15 @@ async function resolveShopIdForListing(
     return null;
   }
 
-  return profile.shop_id;
+  if (explicitShopId && explicitShopId !== profile.shop_id) {
+    return null;
+  }
+
+  return {
+    shopId: profile.shop_id,
+    fleetId: null,
+    source: "profile_shop" as const,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -88,10 +142,31 @@ export async function POST(req: NextRequest) {
     };
 
     try {
-      // Look up vehicle to get shop_id
+      const fleetContext = await resolveFleetContextForUser(supabase);
+      if (!fleetContext) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      // Look up vehicle from fleet enrollment context (no raw vehicle lookup trust)
+      const { data: vehicleMembership, error: vehicleMembershipError } =
+        await supabase
+          .from("fleet_vehicles")
+          .select("vehicle_id, fleet_id")
+          .eq("fleet_id", fleetContext.fleetId)
+          .eq("vehicle_id", body.unitId)
+          .or("active.is.null,active.eq.true")
+          .maybeSingle();
+
+      if (vehicleMembershipError || !vehicleMembership?.vehicle_id) {
+        return NextResponse.json(
+          { error: "Vehicle is not available in your fleet." },
+          { status: 403 },
+        );
+      }
+
       const { data: vehicle, error: vehicleError } = await supabase
         .from("vehicles")
-        .select("id, shop_id")
+        .select("id")
         .eq("id", body.unitId)
         .single();
 
@@ -119,9 +194,10 @@ export async function POST(req: NextRequest) {
       const { data: inserted, error: insertError } = await supabase
         .from("fleet_pretrip_reports")
         .insert({
-          shop_id: vehicle.shop_id,
+          fleet_id: fleetContext.fleetId,
+          shop_id: fleetContext.shopId,
           vehicle_id: vehicle.id,
-          driver_profile_id: null, // can be wired to auth profile later
+          driver_profile_id: fleetContext.userId,
           driver_name: body.driverName,
           odometer_km: body.odometer ? Number(body.odometer) : null,
           checklist,
@@ -162,19 +238,19 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const shopId = await resolveShopIdForListing(
+    const scope = await resolveShopIdForListing(
       supabase,
       body.shopId ?? null,
     );
 
-    if (!shopId) {
+    if (!scope?.shopId) {
       return NextResponse.json(
         { error: "Unable to resolve shop for pre-trip reports." },
         { status: 400 },
       );
     }
 
-    const { data: rows, error } = await supabase
+    let query = supabase
       .from("fleet_pretrip_reports")
       .select(
         `
@@ -193,9 +269,16 @@ export async function POST(req: NextRequest) {
         )
       `,
       )
-      .eq("shop_id", shopId)
       .order("inspection_date", { ascending: false })
       .limit(250);
+
+    if (scope.fleetId) {
+      query = query.eq("fleet_id", scope.fleetId);
+    } else {
+      query = query.eq("shop_id", scope.shopId);
+    }
+
+    const { data: rows, error } = await query;
 
     if (error) {
       // eslint-disable-next-line no-console

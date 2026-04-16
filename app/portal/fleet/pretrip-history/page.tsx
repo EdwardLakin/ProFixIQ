@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 
-export default function PortalFleetPretripHistoryRedirectPage() {
+export default async function PortalFleetPretripHistoryRedirectPage() {
+  await requireFleetPortalActor();
   redirect("/fleet/pretrip");
 }

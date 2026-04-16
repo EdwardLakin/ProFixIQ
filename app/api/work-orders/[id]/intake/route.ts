@@ -33,22 +33,87 @@ function getMode(url: string): IntakeMode {
   return "portal";
 }
 
+function isInternalShopRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin" || role === "manager" || role === "advisor";
+}
+
+async function requireFleetIntakeAccess(params: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  userId: string;
+  workOrder: Pick<
+    DB["public"]["Tables"]["work_orders"]["Row"],
+    "id" | "shop_id" | "vehicle_id"
+  >;
+}): Promise<boolean> {
+  const { supabase, userId, workOrder } = params;
+
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profileErr && profile?.id && isInternalShopRole(profile.role)) {
+    return profile.shop_id === workOrder.shop_id;
+  }
+
+  if (!workOrder.vehicle_id) return false;
+
+  const { data: fleetVehicles, error: fleetVehicleErr } = await supabase
+    .from("fleet_vehicles")
+    .select("fleet_id")
+    .eq("vehicle_id", workOrder.vehicle_id);
+
+  if (fleetVehicleErr || !fleetVehicles?.length) return false;
+
+  const fleetIds = Array.from(
+    new Set((fleetVehicles ?? []).map((row) => row.fleet_id).filter(Boolean)),
+  );
+  if (!fleetIds.length) return false;
+
+  const { data: membership, error: membershipErr } = await supabase
+    .from("fleet_members")
+    .select("fleet_id")
+    .eq("user_id", userId)
+    .in("fleet_id", fleetIds)
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipErr || !membership?.fleet_id) return false;
+  return true;
+}
+
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const mode = getMode(req.url);
 
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  await supabase.auth.getUser();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return text("Not authenticated.", 401);
 
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
-    .select("id, customer_id, vehicle_id, intake_json")
+    .select("id, shop_id, customer_id, vehicle_id, intake_json")
     .eq("id", id)
     .maybeSingle();
 
   if (woErr) return text(woErr.message, 500);
   if (!wo) return text("Work order not found.", 404);
+  if (!wo.shop_id) return text("Work order missing shop_id.", 400);
+
+  if (mode === "fleet") {
+    const canAccess = await requireFleetIntakeAccess({
+      supabase,
+      userId: auth.user.id,
+      workOrder: {
+        id: wo.id,
+        shop_id: wo.shop_id,
+        vehicle_id: wo.vehicle_id,
+      },
+    });
+    if (!canAccess) return text("Forbidden.", 403);
+  }
 
   let displayName: string | null = null;
   if (wo.customer_id) {
@@ -148,6 +213,28 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!body?.intake) return text("Missing intake.");
   const parsed = IntakeV1Schema.parse(body.intake);
 
+  if (body.mode === "fleet") {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return text("Not authenticated.", 401);
+
+    const { data: workOrder, error: workOrderErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, vehicle_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (workOrderErr) return text(workOrderErr.message, 500);
+    if (!workOrder) return text("Work order not found.", 404);
+    if (!workOrder.shop_id) return text("Work order missing shop_id.", 400);
+
+    const canAccess = await requireFleetIntakeAccess({
+      supabase,
+      userId: auth.user.id,
+      workOrder,
+    });
+    if (!canAccess) return text("Forbidden.", 403);
+  }
+
   const { error } = await supabase
     .from("work_orders")
     .update({
@@ -175,6 +262,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   if (!body?.intake) return text("Missing intake.");
   const parsed = IntakeV1Schema.parse(body.intake);
+  const mode = body.mode ?? "portal";
 
   const { data: auth, error: authErr } = await supabase.auth.getUser();
   if (authErr) return text(authErr.message, 401);
@@ -189,6 +277,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (workOrderErr) return text(workOrderErr.message, 500);
   if (!workOrder) return text("Work order not found.", 404);
   if (!workOrder.shop_id) return text("Work order missing shop_id.", 400);
+
+  if (mode === "fleet") {
+    const canAccess = await requireFleetIntakeAccess({
+      supabase,
+      userId: auth.user.id,
+      workOrder,
+    });
+    if (!canAccess) return text("Forbidden.", 403);
+  }
 
   const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
     p_shop_id: workOrder.shop_id,
