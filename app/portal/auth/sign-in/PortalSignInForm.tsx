@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-
+import AuthShell from "@/features/auth/components/AuthShell";
 
 const COPPER = "#C57A4A";
 const SHOP_USER_DOMAIN = "local.profix-internal";
@@ -105,30 +105,14 @@ export default function PortalSignInPage() {
       : "Use the email and password you created when you signed up.";
 
   return (
-    <div
-      className="
-        min-h-screen px-4 text-foreground
-        bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      "
-    >
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
-        <div
+    <AuthShell>
+      {/* Back to landing */}
+      <div className="mb-4 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={goLanding}
+          disabled={loading}
           className="
-            w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
-            px-6 py-7 sm:px-8 sm:py-9
-          "
-        >
-          {/* Back to landing */}
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={goLanding}
-              disabled={loading}
-              className="
                 inline-flex items-center gap-2 rounded-full border
                 border-[color:var(--metal-border-soft,#1f2937)]
                 bg-black/60 px-3 py-1.5 text-[11px]
@@ -136,46 +120,48 @@ export default function PortalSignInPage() {
                 hover:bg-black/70 hover:text-white
                 disabled:cursor-not-allowed disabled:opacity-60
               "
-            >
-              <span aria-hidden className="text-base leading-none">←</span>
-              Back
-            </button>
+        >
+          <span aria-hidden className="text-base leading-none">
+            ←
+          </span>
+          Back
+        </button>
 
-            <div className="text-[10px] text-neutral-500">
-              {portalType === "fleet" ? "Fleet access" : "Customer access"}
-            </div>
-          </div>
+        <div className="text-[10px] text-neutral-500">
+          {portalType === "fleet" ? "Fleet access" : "Customer access"}
+        </div>
+      </div>
 
-          {/* Portal switcher */}
-          <div className="mb-4 flex items-center justify-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-1 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setPortalType("customer")}
-              className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-                portalType === "customer"
-                  ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
-                  : "text-neutral-300 hover:bg-black/60"
-              }`}
-            >
-              Customer
-            </button>
-            <button
-              type="button"
-              onClick={() => setPortalType("fleet")}
-              className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-                portalType === "fleet"
-                  ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
-                  : "text-neutral-300 hover:bg-black/60"
-              }`}
-            >
-              Fleet
-            </button>
-          </div>
+      {/* Portal switcher */}
+      <div className="mb-4 flex items-center justify-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-1 text-[11px]">
+        <button
+          type="button"
+          onClick={() => setPortalType("customer")}
+          className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
+            portalType === "customer"
+              ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
+              : "text-neutral-300 hover:bg-black/60"
+          }`}
+        >
+          Customer
+        </button>
+        <button
+          type="button"
+          onClick={() => setPortalType("fleet")}
+          className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
+            portalType === "fleet"
+              ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
+              : "text-neutral-300 hover:bg-black/60"
+          }`}
+        >
+          Fleet
+        </button>
+      </div>
 
-          {/* Brand / title */}
-          <div className="mb-6 space-y-2 text-center">
-            <div
-              className="
+      {/* Brand / title */}
+      <div className="mb-6 space-y-2 text-center">
+        <div
+          className="
                 inline-flex items-center gap-1 rounded-full border
                 border-[color:var(--metal-border-soft,#1f2937)]
                 bg-black/70
@@ -183,47 +169,74 @@ export default function PortalSignInPage() {
                 uppercase tracking-[0.22em]
                 text-neutral-300
               "
-              style={{ color: COPPER }}
-            >
-              {portalLabel}
-            </div>
+          style={{ color: COPPER }}
+        >
+          {portalLabel}
+        </div>
 
-            <h1
-              className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              Sign in
-            </h1>
+        <h1
+          className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+        >
+          Sign in
+        </h1>
 
-            <p className="text-xs text-muted-foreground sm:text-sm">
-              {helperCopy}
+        <p className="text-xs text-muted-foreground sm:text-sm">{helperCopy}</p>
+      </div>
+
+      {/* Error */}
+      {error ? (
+        <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
+          {error}
+        </div>
+      ) : null}
+
+      {/* Form */}
+      <form onSubmit={handleSignIn} className="space-y-4">
+        <div className="space-y-1 text-sm">
+          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            {portalType === "fleet" ? "Email or username" : "Email"}
+          </label>
+          <input
+            type={portalType === "fleet" ? "text" : "email"}
+            autoComplete={portalType === "fleet" ? "username" : "email"}
+            placeholder={
+              portalType === "fleet"
+                ? "dispatch@fleet.com or fleet username"
+                : "you@example.com"
+            }
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            className="
+                  w-full rounded-lg border
+                  border-[color:var(--metal-border-soft,#1f2937)]
+                  bg-black/70 px-3 py-2 text-sm text-white
+                  placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2
+                  focus:ring-[var(--accent-copper-soft)]
+                  focus:border-[var(--accent-copper-soft)]
+                "
+            required
+          />
+          {portalType === "fleet" ? (
+            <p className="text-[11px] text-muted-foreground">
+              Fleet accounts can sign in using the username provided by your
+              shop/dispatch.
             </p>
-          </div>
-
-          {/* Error */}
-          {error ? (
-            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
-              {error}
-            </div>
           ) : null}
+        </div>
 
-          {/* Form */}
-          <form onSubmit={handleSignIn} className="space-y-4">
-            <div className="space-y-1 text-sm">
-              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                {portalType === "fleet" ? "Email or username" : "Email"}
-              </label>
-              <input
-                type={portalType === "fleet" ? "text" : "email"}
-                autoComplete={portalType === "fleet" ? "username" : "email"}
-                placeholder={
-                  portalType === "fleet"
-                    ? "dispatch@fleet.com or fleet username"
-                    : "you@example.com"
-                }
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className="
+        <div className="space-y-1 text-sm">
+          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            Password
+          </label>
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="
                   w-full rounded-lg border
                   border-[color:var(--metal-border-soft,#1f2937)]
                   bg-black/70 px-3 py-2 text-sm text-white
@@ -232,44 +245,15 @@ export default function PortalSignInPage() {
                   focus:ring-[var(--accent-copper-soft)]
                   focus:border-[var(--accent-copper-soft)]
                 "
-                required
-              />
-              {portalType === "fleet" ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Fleet accounts can sign in using the username provided by your
-                  shop/dispatch.
-                </p>
-              ) : null}
-            </div>
+            required
+            minLength={6}
+          />
+        </div>
 
-            <div className="space-y-1 text-sm">
-              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Password
-              </label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,#1f2937)]
-                  bg-black/70 px-3 py-2 text-sm text-white
-                  placeholder:text-neutral-500
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
-                required
-                minLength={6}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="
+        <button
+          type="submit"
+          disabled={loading}
+          className="
                 mt-3 w-full rounded-full
                 bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
                 py-2.5 text-center text-sm
@@ -278,33 +262,31 @@ export default function PortalSignInPage() {
                 hover:brightness-110
                 disabled:cursor-not-allowed disabled:opacity-60
               "
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+        >
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
 
-          {/* Footer copy differs by portal type */}
-          <div className="mt-5 flex items-center justify-between text-sm text-neutral-400">
-            {portalType === "customer" ? (
-              <>
-                <span>Need an account?</span>
-                <Link
-                  href="/portal/auth/sign-up"
-                  className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
-                >
-                  Sign up
-                </Link>
-              </>
-            ) : (
-              <p className="text-[11px] text-neutral-400">
-                Fleet logins are created by your shop or dispatch. If you need
-                access, contact your shop administrator.
-              </p>
-            )}
-          </div>
-        </div>
+      {/* Footer copy differs by portal type */}
+      <div className="mt-5 flex items-center justify-between text-sm text-neutral-400">
+        {portalType === "customer" ? (
+          <>
+            <span>Need an account?</span>
+            <Link
+              href="/portal/auth/sign-up"
+              className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
+            >
+              Sign up
+            </Link>
+          </>
+        ) : (
+          <p className="text-[11px] text-neutral-400">
+            Fleet logins are created by your shop or dispatch. If you need
+            access, contact your shop administrator.
+          </p>
+        )}
       </div>
-    </div>
+    </AuthShell>
   );
 }
