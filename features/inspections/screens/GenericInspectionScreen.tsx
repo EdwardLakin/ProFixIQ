@@ -2491,9 +2491,9 @@ type SmartMatchRow = {
     ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
 
-  const headerCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
+  const headerCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-4 mb-3 md:mb-4`;
   const sectionCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
-  const supportCard = `${PANEL_VARIANTS.secondary} px-3 py-2.5 md:px-4 md:py-3`;
+  const supportCard = `${PANEL_VARIANTS.secondary} px-3 py-2 md:px-4 md:py-2.5`;
   const passiveCard = `${PANEL_VARIANTS.passive} px-3 py-2.5 md:px-4 md:py-3`;
 
   const sectionTitle =
@@ -2515,24 +2515,37 @@ type SmartMatchRow = {
   }, [inspectionId, workOrderId, workOrderLineId, templateName]);
 
 
+  const allItems = (session.sections ?? []).flatMap((s) => s.items ?? []);
+  const failed = allItems.filter(
+    (it) => String(it.status ?? "").toLowerCase() === "fail",
+  );
+  const recommended = allItems.filter(
+    (it) => String(it.status ?? "").toLowerCase() === "recommend",
+  );
+  const otherOkNa = allItems.filter((it) => {
+    const st = String(it.status ?? "").toLowerCase();
+    return st === "ok" || st === "na" || st === "" || st === "pass";
+  });
+  const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
+
   const actions = (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
-        onClick={() => router.push(findingsHref)}
-        disabled={isLocked}
-      >
-        Review findings
-      </Button>
-
       <SaveInspectionButton
         session={session}
         workOrderLineId={workOrderLineId}
         disabled={isLocked}
       />
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="font-medium border-white/20 text-[11px] tracking-[0.16em] uppercase text-neutral-200"
+        onClick={() => router.push(findingsHref)}
+        disabled={isLocked}
+      >
+        Open findings list
+      </Button>
 
       {workOrderLineId && (
         <FinishInspectionButton
@@ -2582,15 +2595,23 @@ type SmartMatchRow = {
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_color-mix(in_srgb,var(--brand-accent,#E39A6E)_18%,transparent),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
-      <div className="relative space-y-4">
+      <div className="relative space-y-3">
         <div className={headerCard}>
-          <div className="mb-3 border-b border-[var(--theme-card-border,#334155)] pb-3 text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--theme-text-muted,#64748B)]">
-              Inspection
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,#334155)] pb-2">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--theme-text-muted,#64748B)]">
+                Inspection
+              </div>
+              <div className="mt-0.5 text-base md:text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)]">
+                {session?.templateitem || templateName || "Inspection"}
+              </div>
             </div>
-            <div className="mt-1 text-lg md:text-xl font-semibold text-[var(--theme-text-primary,#E2E8F0)]">
-              {session?.templateitem || templateName || "Inspection"}
-            </div>
+            <ProgressTracker
+              currentItem={session.currentItemIndex}
+              currentSection={session.currentSectionIndex}
+              totalSections={session.sections.length}
+              totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
+            />
           </div>
 
           <CustomerVehicleHeader
@@ -2600,256 +2621,133 @@ type SmartMatchRow = {
           />
         </div>
 
-        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {!isLocked && (
-            <StartListeningButton
-              isListening={isListening}
-              onStart={startListening}
-            />
-          )}
-
-          {!isLocked && (isListening || isPaused) && (
-            <PauseResumeButton
-              isPaused={isPaused}
-              onPause={() => {
-                setIsPaused(true);
-                pauseSession();
-                stopListening();
-              }}
-              onResume={() => {
-                setIsPaused(false);
-                resumeSession();
-                void startListening();
-              }}
-            />
-          )}
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
-            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
-          >
-            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
-          </Button>
-        </div>
-
-        <div className="mt-1 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.85fr)] lg:items-start">
-          <section className="space-y-2">
-            <div className="flex items-center justify-center gap-2 lg:justify-start">
-          <div className={voicePulse ? "rounded-full shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : ""}>
-            <StatusBadge
-              variant={
-                voiceState === "listening"
-                  ? "success"
+        <div className={supportCard}>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={voicePulse ? "rounded-full shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : ""}>
+              <StatusBadge
+                variant={
+                  voiceState === "listening"
+                    ? "success"
+                    : voiceState === "connecting"
+                      ? "warning"
+                      : voiceState === "error"
+                        ? "danger"
+                        : "neutral"
+                }
+                size="md"
+                className="inline-flex items-center gap-2 px-3 py-1"
+              >
+                <span
+                  className={[
+                    "h-2 w-2 rounded-full",
+                    voiceState === "listening"
+                      ? "bg-emerald-400"
+                      : voiceState === "connecting"
+                        ? "bg-amber-400"
+                        : voiceState === "error"
+                          ? "bg-red-400"
+                          : "bg-neutral-500",
+                    voiceState === "listening" ? "animate-pulse" : "",
+                  ].join(" ")}
+                />
+                {voiceState === "listening"
+                  ? "Listening…"
                   : voiceState === "connecting"
-                    ? "warning"
+                    ? "Connecting…"
                     : voiceState === "error"
-                      ? "danger"
-                      : "neutral"
-              }
-              size="md"
-              className="inline-flex items-center gap-2 px-3 py-1"
+                      ? "Voice error"
+                      : "Voice idle"}
+                {voicePulse && <span className="text-emerald-200/80">• audio</span>}
+              </StatusBadge>
+            </div>
+
+            {wakeActive && (
+              <div className="rounded-full border border-orange-400/60 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
+                Ready
+              </div>
+            )}
+
+            {!isLocked && (
+              <StartListeningButton isListening={isListening} onStart={startListening} />
+            )}
+
+            {!isLocked && (isListening || isPaused) && (
+              <PauseResumeButton
+                isPaused={isPaused}
+                onPause={() => {
+                  setIsPaused(true);
+                  pauseSession();
+                  stopListening();
+                }}
+                onResume={() => {
+                  setIsPaused(false);
+                  resumeSession();
+                  void startListening();
+                }}
+              />
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80 sm:w-auto"
+              onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
             >
-            <span
-              className={[
-                "h-2 w-2 rounded-full",
-                voiceState === "listening"
-                  ? "bg-emerald-400"
-                  : voiceState === "connecting"
-                    ? "bg-amber-400"
-                    : voiceState === "error"
-                      ? "bg-red-400"
-                      : "bg-neutral-500",
-                voiceState === "listening" ? "animate-pulse" : "",
-              ].join(" ")}
-            />
-            {voiceState === "listening"
-              ? "Listening…"
-              : voiceState === "connecting"
-                ? "Connecting…"
-                : voiceState === "error"
-                ? "Voice error"
-                  : "Voice idle"}
-            {voicePulse && <span className="text-emerald-200/80">• audio</span>}
-            </StatusBadge>
+              Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+            </Button>
+
+            <div className="ml-auto flex items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-red-500/35 bg-red-500/10 px-2 py-0.5 text-red-100">
+                Fail {failed.length}
+              </span>
+              <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-amber-100">
+                Rec {recommended.length}
+              </span>
+              <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">
+                OK/NA {otherOkNa.length}
+              </span>
+              <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 text-sky-100">
+                WO lines {linesAdded}
+              </span>
+            </div>
           </div>
 
-          {/* ✅ visible wake indicator so you’re not relying on toast/beep */}
-          {wakeActive && (
-            <div className="rounded-full border border-orange-400/60 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
-              Ready
-            </div>
+          {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 && (
+            <details className={`${passiveCard} mt-2`}>
+              <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+                Voice log ({session.voiceTrace.length})
+              </summary>
+              <div className="mt-2 space-y-2">
+                {session.voiceTrace
+                  .slice(-6)
+                  .reverse()
+                  .map((e) => {
+                    const okCount = (e.applied ?? []).filter((a) => a.ok).length;
+                    const failCount = (e.applied ?? []).filter((a) => !a.ok).length;
+
+                    return (
+                      <div
+                        key={e.id}
+                        className="rounded-xl border border-white/10 bg-black/50 px-3 py-2"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-neutral-200">{e.rawFinal}</div>
+                          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                            {new Date(e.ts).toLocaleTimeString()}
+                          </div>
+                        </div>
+
+                        <div className="mt-1 flex items-center gap-2 text-[11px]">
+                          <span className="text-emerald-200">✓ {okCount}</span>
+                          <span className="text-red-200">✕ {failCount}</span>
+                          <span className="text-neutral-500">parsed: {(e.parsed ?? []).length}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </details>
           )}
-        </div>
-
-
-            {/* ✅ UI ADDITION: Summary + Voice Log */}
-            {(() => {
-          const sections = session.sections ?? [];
-          const allItems = sections.flatMap((s) => s.items ?? []);
-
-          const failed = allItems.filter(
-            (it) => String(it.status ?? "").toLowerCase() === "fail",
-          );
-          const rec = allItems.filter(
-            (it) => String(it.status ?? "").toLowerCase() === "recommend",
-          );
-
-          const otherOkNa = allItems.filter((it) => {
-            const st = String(it.status ?? "").toLowerCase();
-            return st === "ok" || st === "na" || st === "" || st === "pass";
-          });
-
-          const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
-
-          return (
-            <div className={supportCard}>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
-                Inspection Summary
-              </div>
-
-              <ul className="mt-2 space-y-1 text-xs text-neutral-300">
-                <li className="text-neutral-200">
-                  • current{" "}
-                  <span className="font-semibold">
-                    {session.templateitem || templateName || "inspection"}
-                  </span>
-                  .
-                </li>
-
-                <li>
-                  • Failed items:{" "}
-                  <span
-                    className={
-                      failed.length
-                        ? "text-red-200 font-semibold"
-                        : "text-neutral-200"
-                    }
-                  >
-                    {failed.length}
-                  </span>
-                </li>
-                {failed.slice(0, 6).map((it, idx) => (
-                  <li key={`fail-${idx}`} className="ml-3 text-red-200/90">
-                    - {String(it.item ?? "Item")}
-                    {String(it.notes ?? "").trim()
-                      ? ` — ${String(it.notes).trim()}`
-                      : ""}
-                  </li>
-                ))}
-
-                <li className="mt-1">
-                  • Recommended items:{" "}
-                  <span
-                    className={
-                      rec.length
-                        ? "text-amber-200 font-semibold"
-                        : "text-neutral-200"
-                    }
-                  >
-                    {rec.length}
-                  </span>
-                </li>
-                {rec.slice(0, 6).map((it, idx) => (
-                  <li key={`rec-${idx}`} className="ml-3 text-amber-200/90">
-                    - {String(it.item ?? "Item")}
-                    {String(it.notes ?? "").trim()
-                      ? ` — ${String(it.notes).trim()}`
-                      : ""}
-                  </li>
-                ))}
-
-                <li className="mt-1 text-neutral-200">
-                  • All other inspection items OK/NA:{" "}
-                  <span className="font-semibold">{otherOkNa.length}</span>
-                </li>
-
-                <li className="text-neutral-200">
-                  • Lines added and sent for quote:{" "}
-                  <span
-                    className={
-                      linesAdded
-                        ? "font-semibold text-emerald-200"
-                        : "font-semibold text-neutral-200"
-                    }
-                  >
-                    {linesAdded}
-                  </span>
-                </li>
-              </ul>
-            </div>
-          );
-        })()}
-          </section>
-
-          <aside className="space-y-2 lg:sticky lg:top-4">
-        {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 ? (
-          <div className={passiveCard}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
-                Voice Log
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                {session.voiceTrace.length} events
-              </div>
-            </div>
-
-            <div className="mt-2 space-y-2">
-              {session.voiceTrace
-                .slice(-8)
-                .reverse()
-                .map((e) => {
-                  const okCount = (e.applied ?? []).filter((a) => a.ok).length;
-                  const failCount = (e.applied ?? []).filter((a) => !a.ok).length;
-
-                  return (
-                    <div
-                      key={e.id}
-                      className="rounded-xl border border-white/10 bg-black/50 px-3 py-2"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs text-neutral-200">
-                          <span className="font-semibold">Heard:</span>{" "}
-                          <span className="text-neutral-300">{e.rawFinal}</span>
-                        </div>
-                        <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                          {new Date(e.ts).toLocaleTimeString()}
-                        </div>
-                      </div>
-
-                      <div className="mt-1 text-xs text-neutral-300">
-                        <span className="font-semibold">Command:</span>{" "}
-                        {e.wakeCommand ?? "(wake only)"}
-                      </div>
-
-                      <div className="mt-1 flex items-center gap-2 text-[11px]">
-                        <span className="text-emerald-200">✓ {okCount}</span>
-                        <span className="text-red-200">✕ {failCount}</span>
-                        <span className="text-neutral-500">
-                          parsed: {(e.parsed ?? []).length}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-2 text-center text-[11px] text-neutral-500">
-            No voice commands captured yet.
-          </div>
-        )}
-
-        <div className={supportCard + " mb-4"}>
-          <ProgressTracker
-            currentItem={session.currentItemIndex}
-            currentSection={session.currentSectionIndex}
-            totalSections={session.sections.length}
-            totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
-          />
-        </div>
-          </aside>
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>
@@ -3163,9 +3061,14 @@ type SmartMatchRow = {
                             onDismissSmartMatch={dismissSmartMatch}
                           />
 
-                          <div className="mt-4 border-t border-[var(--theme-card-border,#334155)] pt-3">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
-                              Add custom item
+                          <div className="mt-3 rounded-xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_65%,transparent)] px-3 py-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
+                                Section authoring
+                              </div>
+                              <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                                Add custom item
+                              </div>
                             </div>
                             <div className="flex flex-col gap-2 md:flex-row md:items-center">
                               <input

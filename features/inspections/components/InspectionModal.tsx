@@ -252,14 +252,14 @@ export default function InspectionModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-slate-700/80 bg-slate-950/95 px-4 py-3">
+        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-slate-700/80 bg-slate-950/95 px-4 py-2.5">
           <div className="space-y-1">
             <Dialog.Title className="text-base font-semibold tracking-wide text-foreground sm:text-lg">
               {title}
             </Dialog.Title>
 
             {derived.displayTemplate && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[10px] text-muted-foreground">
                 Template:{" "}
                 <span className="font-mono text-[rgba(184,115,51,0.95)]">
                   {derived.displayTemplate}
@@ -315,7 +315,7 @@ export default function InspectionModal({
           )}
 
           {/* Footer actions */}
-          <div className="mt-4 flex flex-col gap-2 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 mt-4 flex flex-col gap-2 border-t border-slate-800 bg-slate-950/95 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
@@ -327,16 +327,9 @@ export default function InspectionModal({
               <button
                 type="button"
                 onClick={close}
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-1.5 text-xs text-muted-foreground hover:bg-slate-800 sm:text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={close}
                 className="rounded-full border border-[rgba(184,115,51,0.9)] bg-[rgba(184,115,51,0.12)] px-4 py-1.5 text-xs font-medium text-[rgba(252,211,77,0.98)] hover:bg-[rgba(184,115,51,0.22)] sm:text-sm"
               >
-                Close
+                Close inspection
               </button>
             </div>
           </div>
