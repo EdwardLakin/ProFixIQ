@@ -3631,6 +3631,7 @@ export type Database = {
           fleet_id: string
           role: string
           shop_id: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -3639,6 +3640,7 @@ export type Database = {
           fleet_id: string
           role: string
           shop_id: string
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -3647,6 +3649,7 @@ export type Database = {
           fleet_id?: string
           role?: string
           shop_id?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -4048,6 +4051,7 @@ export type Database = {
           name: string
           notes: string | null
           shop_id: string
+          updated_at: string
         }
         Insert: {
           contact_email?: string | null
@@ -4057,6 +4061,7 @@ export type Database = {
           name: string
           notes?: string | null
           shop_id: string
+          updated_at?: string
         }
         Update: {
           contact_email?: string | null
@@ -4066,6 +4071,7 @@ export type Database = {
           name?: string
           notes?: string | null
           shop_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
