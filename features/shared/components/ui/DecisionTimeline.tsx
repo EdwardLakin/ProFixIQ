@@ -46,7 +46,9 @@ export default function DecisionTimeline({
       </div>
       <ol
         className={cn(
-          vertical ? "space-y-2" : "grid gap-2 md:grid-cols-4",
+          vertical
+            ? "space-y-2"
+            : "grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2",
         )}
       >
         {stages.map((stage) => (
@@ -58,12 +60,14 @@ export default function DecisionTimeline({
               stageTone(stage.state),
             )}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className={cn("font-semibold", compact ? "text-[11px]" : "text-xs")}>{stage.label}</div>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className={cn("min-w-0 break-words font-semibold", compact ? "text-[11px]" : "text-xs")}>
+                {stage.label}
+              </div>
               <StatusBadge
                 size="sm"
                 variant={stage.state === "current" ? "active" : stage.state === "past" ? "success" : "neutral"}
-                className="px-2 py-0.5 text-[9px]"
+                className="shrink-0 px-2 py-0.5 text-[9px]"
               >
                 {stage.state}
               </StatusBadge>

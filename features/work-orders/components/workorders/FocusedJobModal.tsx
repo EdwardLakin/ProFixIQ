@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { cn } from "@shared/lib/utils";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
@@ -158,6 +159,7 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(false);
 
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -207,7 +209,10 @@ export default function FocusedJobModal(props: {
       return;
     }
     closeAllSubModals();
-  }, [isOpen, workOrderLineId, closeAllSubModals]);
+    if (variant !== "panel") {
+      setPanelExpanded(false);
+    }
+  }, [isOpen, workOrderLineId, closeAllSubModals, variant]);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -525,6 +530,7 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
   const isPanelVariant = variant === "panel";
+  const isExpandedPanel = isPanelVariant && panelExpanded;
   const partsCount = allocs.length;
   const laborDisplay =
     typeof line?.labor_time === "number" ? `${line.labor_time.toFixed(1)} h` : "—";
@@ -555,7 +561,7 @@ export default function FocusedJobModal(props: {
         >
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-base font-semibold tracking-tight text-white sm:text-lg">
+              <div className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {titleText}
               </div>
               {workOrder ? (
@@ -568,7 +574,17 @@ export default function FocusedJobModal(props: {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
+              {isPanelVariant ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/12 bg-black/35 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-200 transition hover:border-[var(--accent-copper-soft)] hover:text-white"
+                  onClick={() => setPanelExpanded((prev) => !prev)}
+                  title={isExpandedPanel ? "Use compact panel layout" : "Use expanded panel layout"}
+                >
+                  {isExpandedPanel ? "Compact" : "Expand"}
+                </button>
+              ) : null}
               {workOrder?.id ? (
                 <button
                   type="button"
@@ -622,7 +638,7 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
 
-        <div className={`${isPanelVariant ? "" : "min-h-0 flex-1 overflow-y-auto"} px-3 py-3 sm:px-4`}>
+        <div className={`${isPanelVariant ? "px-3 py-3 sm:px-4" : "min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"}`}>
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
@@ -631,7 +647,15 @@ export default function FocusedJobModal(props: {
           ) : !line ? (
             <div className="text-sm text-neutral-300">No job found.</div>
           ) : (
-            <div className={isPanelVariant ? "grid gap-3 xl:grid-cols-[1.05fr_1fr]" : "space-y-4"}>
+            <div
+              className={
+                isPanelVariant
+                  ? isExpandedPanel
+                    ? "grid gap-3"
+                    : "grid gap-3 xl:grid-cols-[1.05fr_1fr]"
+                  : "space-y-4"
+              }
+            >
               <div className="space-y-3">
               {mode === "tech" ? (
                 <SectionCard title="Operational actions">
@@ -667,7 +691,7 @@ export default function FocusedJobModal(props: {
                       Complete
                     </button>
 
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className={cn("grid gap-2", isExpandedPanel ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}>
                     <button
                       type="button"
                       className={btnSecondary}
@@ -759,7 +783,7 @@ export default function FocusedJobModal(props: {
               ) : null}
 
               <SectionCard title="Quick status">
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className={cn("grid gap-2.5 sm:grid-cols-2", isExpandedPanel && "xl:grid-cols-3")}>
                   <MetaStat
                     label="Start"
                     value={createdStart}
@@ -875,7 +899,7 @@ export default function FocusedJobModal(props: {
               <div className="space-y-3">
               <SectionCard title="Tech notes">
                 <textarea
-                  rows={3}
+                  rows={isExpandedPanel ? 5 : 3}
                   value={techNotes}
                   onChange={(e) => setTechNotes(e.target.value)}
                   onBlur={saveNotes}
@@ -905,8 +929,8 @@ export default function FocusedJobModal(props: {
                           0;
 
                         return (
-                          <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
-                            <div className="col-span-7 truncate text-neutral-100">
+                          <li key={a.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
+                            <div className="col-span-7 min-w-0 break-words text-neutral-100">
                               {a.parts?.name ?? "Part"}
                             </div>
                             <div className="col-span-3 truncate text-neutral-400">
