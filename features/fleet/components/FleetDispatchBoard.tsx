@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { DispatchAssignment, FleetUnit } from "./FleetControlTower";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type TowerPayload = {
   units?: FleetUnit[];
@@ -15,7 +16,13 @@ const card =
   "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
   "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
-export default function FleetDispatchBoard() {
+export default function FleetDispatchBoard({
+  uiContext,
+  routePrefix = "/fleet",
+}: {
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
+}) {
   const [data, setData] = useState<TowerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +78,7 @@ export default function FleetDispatchBoard() {
     };
   }, []);
 
-  const assignments = data?.assignments ?? [];
+  const assignments = useMemo(() => data?.assignments ?? [], [data?.assignments]);
 
   const filteredAssignments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -118,6 +125,9 @@ export default function FleetDispatchBoard() {
               <p className="mt-1 text-xs text-neutral-300">
                 Assign units, drivers and routes. Dispatch, shop and drivers
                 stay in sync from one screen.
+              </p>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Actor surface: {uiContext.actorLabel}
               </p>
             </div>
 
@@ -241,11 +251,19 @@ export default function FleetDispatchBoard() {
                         >
                           Open unit
                         </Link>
+                        {uiContext.capabilities.canCreateFleetWorkOrders && (
+                          <Link
+                            href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                          >
+                            New WO
+                          </Link>
+                        )}
                         <Link
-                          href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
+                          href={`${routePrefix}/units/${encodeURIComponent(a.unitId)}`}
                           className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
                         >
-                          New WO
+                          Open unit
                         </Link>
                       </td>
                     </tr>

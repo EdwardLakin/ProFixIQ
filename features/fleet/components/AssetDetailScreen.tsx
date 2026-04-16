@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { FleetUnit, FleetIssue } from "./FleetControlTower";
 import { formatCurrency } from "@shared/lib/formatters";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type AssetDetailScreenProps = {
   unitId: string;
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
 };
 
 type UnitStats = {
@@ -22,7 +25,11 @@ type ApiResponse = {
   stats: UnitStats;
 };
 
-export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
+export default function AssetDetailScreen({
+  unitId,
+  uiContext,
+  routePrefix = "/fleet",
+}: AssetDetailScreenProps) {
   const [unit, setUnit] = useState<FleetUnit | null>(null);
   const [issues, setIssues] = useState<FleetIssue[]>([]);
   const [stats, setStats] = useState<UnitStats | null>(null);
@@ -157,17 +164,23 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
 
             <div className="flex flex-wrap justify-end gap-2 text-xs">
               <Link
-                href={`/mobile/fleet/pretrip/${unit.id}`}
+                href={
+                  routePrefix === "/portal/fleet"
+                    ? `/portal/fleet/pretrip/${unit.id}`
+                    : `/mobile/fleet/pretrip/${unit.id}`
+                }
                 className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1.5 font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
               >
                 Start pre-trip
               </Link>
-              <Link
-                href={`/portal/fleet/units/${unit.id}`}
-                className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1.5 font-semibold text-neutral-200 hover:bg-neutral-900/50"
-              >
-                Open in fleet portal
-              </Link>
+              {routePrefix !== "/portal/fleet" && (
+                <Link
+                  href={`/portal/fleet/units/${unit.id}`}
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1.5 font-semibold text-neutral-200 hover:bg-neutral-900/50"
+                >
+                  Open in fleet portal
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -214,16 +227,18 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
                   {i.summary}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {uiContext.capabilities.canCreateFleetWorkOrders && (
+                    <Link
+                      href={`/work-orders/create?unitId=${encodeURIComponent(
+                        unitId,
+                      )}`}
+                      className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                    >
+                      Create work order
+                    </Link>
+                  )}
                   <Link
-                    href={`/work-orders/create?unitId=${encodeURIComponent(
-                      unitId,
-                    )}`}
-                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
-                  >
-                    Create work order
-                  </Link>
-                  <Link
-                    href="/fleet"
+                    href={`${routePrefix}/board`}
                     className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
                   >
                     Send to dispatch

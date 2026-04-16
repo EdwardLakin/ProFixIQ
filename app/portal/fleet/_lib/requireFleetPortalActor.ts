@@ -3,10 +3,14 @@ import { redirect } from "next/navigation";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  getFleetUiContext,
+  type FleetUiContext,
+} from "@/features/fleet/lib/fleetUiCapabilities";
 
 type DB = Database;
 
-export async function requireFleetPortalActor() {
+export async function requireFleetPortalActor(): Promise<FleetUiContext> {
   const supabase = createServerComponentClient<DB>({ cookies });
   const {
     data: { user },
@@ -20,4 +24,6 @@ export async function requireFleetPortalActor() {
   if (!actor.capabilities.canAccessPortalFleetWrappers) {
     redirect("/portal");
   }
+
+  return getFleetUiContext(actor);
 }

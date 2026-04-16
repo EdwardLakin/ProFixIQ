@@ -1,7 +1,14 @@
-import { redirect } from "next/navigation";
-import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import FleetDispatchBoard from "@/features/fleet/components/FleetDispatchBoard";
+import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
-export default async function PortalFleetBoardRedirectPage() {
-  await requireFleetPortalActor();
-  redirect("/fleet/dispatch");
+type DB = Database;
+
+export default async function PortalFleetBoardPage() {
+  const supabase = createServerComponentClient<DB>({ cookies });
+  const uiContext = await resolveFleetUiContext(supabase);
+
+  return <FleetDispatchBoard uiContext={uiContext} routePrefix="/portal/fleet" />;
 }

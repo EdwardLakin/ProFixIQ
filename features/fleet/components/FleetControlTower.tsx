@@ -6,6 +6,7 @@ import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 import Link from "next/link";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -44,6 +45,8 @@ export type DispatchAssignment = {
 type Props = {
   shopName: string;
   shopId?: string | null;
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
 };
 
 type TowerPayload = {
@@ -73,7 +76,12 @@ function isDueInNextDays(nextInspectionDate?: string | null, days = 30) {
   return diffDays >= 0 && diffDays <= days;
 }
 
-export default function FleetControlTower({ shopName, shopId }: Props) {
+export default function FleetControlTower({
+  shopName,
+  shopId,
+  uiContext,
+  routePrefix = "/fleet",
+}: Props) {
   const [data, setData] = useState<TowerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +132,10 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
     };
   }, [shopId]);
 
-  const units = data?.units ?? [];
-  const issues = data?.issues ?? [];
-  const assignments = data?.assignments ?? [];
+  const units = useMemo(() => data?.units ?? [], [data?.units]);
+  const issues = useMemo(() => data?.issues ?? [], [data?.issues]);
+  const assignments = useMemo(() => data?.assignments ?? [], [data?.assignments]);
+  const isExternal = !uiContext.isInternal;
 
   const regions = useMemo(() => {
     const set = new Set<string>();
@@ -172,9 +181,13 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             {shopName} – Fleet Tower
           </h1>
           <p className="mt-2 max-w-xl text-sm text-neutral-400">
-            See out-of-service units, upcoming inspections, pre-trips, and open
-            service requests across the fleet. Dispatch, portal, and drivers
-            stay in sync from one screen.
+            {isExternal
+              ? "Track unit readiness, open requests, and pre-trip outcomes for your fleet scope."
+              : "See out-of-service units, upcoming inspections, pre-trips, and open service requests across the fleet."}{" "}
+            Dispatch, portal, and drivers stay in sync from one screen.
+          </p>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            Actor surface: {uiContext.actorLabel}
           </p>
 
           {focusFilter === "inspection_due_30" && (
@@ -216,8 +229,9 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
         </div>
       </header>
 
-      <div className="metal-card rounded-3xl p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        {uiContext.capabilities.canViewDispatch && (
+          <div className="metal-card rounded-3xl p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
               Work board
@@ -228,15 +242,16 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
           </div>
 
           <Link
-            href="/portal/fleet/board"
+            href={`${routePrefix}/board`}
             className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
           >
             Open full board →
           </Link>
         </div>
 
-        <WorkOrderBoardWidget variant="fleet" href="/portal/fleet/board" />
+        <WorkOrderBoardWidget variant="fleet" href={`${routePrefix}/board`} />
       </div>
+        )}
 
       {error && (
         <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
@@ -268,6 +283,8 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             units={filteredUnits}
             issues={issues}
             assignments={assignments}
+            uiContext={uiContext}
+            routePrefix={routePrefix}
           />
         </>
       )}

@@ -3,7 +3,8 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Container from "@shared/components/ui/Container";
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
-import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type DB = Database;
 
@@ -16,16 +17,17 @@ type ProfileWithShop = {
 
 export default async function FleetTowerPage() {
   const supabase = createServerComponentClient<DB>({ cookies });
-  const actor = await resolveCurrentActor(supabase);
+  const actor = await resolveFleetActorContext(supabase);
+  const uiContext = getFleetUiContext(actor);
 
   let shopName = "Fleet";
   let shopId: string | null = actor.shopId ?? null;
 
-  if (actor.user) {
+  if (actor.userId) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, shop_id, shops(name), shop_name")
-      .or(`id.eq.${actor.user.id},user_id.eq.${actor.user.id}`)
+      .or(`id.eq.${actor.userId},user_id.eq.${actor.userId}`)
       .maybeSingle<ProfileWithShop>();
 
     if (profile?.shop_id) {
@@ -45,7 +47,7 @@ export default async function FleetTowerPage() {
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
       <Container className="py-6">
-        <FleetControlTower shopName={shopName} shopId={shopId} />
+        <FleetControlTower shopName={shopName} shopId={shopId} uiContext={uiContext} />
       </Container>
     </main>
   );

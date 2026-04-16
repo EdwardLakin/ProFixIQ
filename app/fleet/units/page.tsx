@@ -3,13 +3,15 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Container from "@shared/components/ui/Container";
 import FleetUnitsPage from "@/features/fleet/components/FleetUnitsPage";
-import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 
 export default async function FleetUnitsRoutePage() {
   const supabase = createServerComponentClient<DB>({ cookies });
-  const actor = await resolveCurrentActor(supabase);
+  const actor = await resolveFleetActorContext(supabase);
+  const uiContext = await resolveFleetUiContext(supabase);
 
   return (
     <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
@@ -18,7 +20,7 @@ export default async function FleetUnitsRoutePage() {
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
       <Container className="py-6">
-        <FleetUnitsPage shopId={actor.shopId} />
+        <FleetUnitsPage shopId={actor.shopId} uiContext={uiContext} />
       </Container>
     </main>
   );
