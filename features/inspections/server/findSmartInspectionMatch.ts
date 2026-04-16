@@ -202,6 +202,9 @@ export async function findSmartInspectionMatch(args: {
   shopId: string;
   body: MatchBody;
 }): Promise<SmartInspectionMatch | null> {
+  // NOTE: This matcher powers manual line-entry suggestions only.
+  // It intentionally ranks menu_repair_items + shop match feedback and does not
+  // feed the "From My Menu" catalog lane (menu_items).
   const { supabase, shopId, body } = args;
 
   const noteText = [txt(body?.item), txt(body?.notes), txt(body?.section)]

@@ -14,20 +14,23 @@ type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
 type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
 
-type PackageItem = {
+type QuickPresetItem = {
   description: string;
   jobType?: JobType;
   laborHours?: number | null;
   notes?: string | null;
 };
 
-type PackageDef = {
+// Static UI-only starters shown in create flow quick add.
+// These are intentionally NOT persisted catalog records and are separate from
+// menu_items, inspection_templates, and maintenance bundle logic.
+type QuickPresetDef = {
   id: string;
   name: string;
   summary: string;
   jobType: "inspection" | "maintenance";
   estLaborHours: number | null;
-  items: PackageItem[];
+  items: QuickPresetItem[];
 };
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
@@ -303,7 +306,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  const packages: PackageDef[] = [
+  const quickPresets: QuickPresetDef[] = [
     {
       id: "oil-gas",
       name: "Oil Change – Gasoline",
@@ -460,6 +463,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     try {
       await ensureShopContext(shopId);
 
+      // Canonical "From My Menu" source: menu_items only.
       const { data, error } = await supabase
         .from("menu_items")
         .select("*")
@@ -489,6 +493,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       const [{ data: auth }, { data, error }] = await Promise.all([
         supabase.auth.getUser(),
+        // Inspection template lane source: inspection_templates (separate domain from menu_items).
         supabase.from("inspection_templates").select("*").order("created_at", { ascending: false }),
       ]);
 
@@ -593,13 +598,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  async function addPackage(pkg: PackageDef) {
+  async function addQuickPreset(preset: QuickPresetDef) {
     await addMenuItem({
       kind: "normal",
-      name: pkg.name,
-      jobType: pkg.jobType === "inspection" ? "inspection" : "maintenance",
-      laborHours: pkg.estLaborHours ?? null,
-      notes: pkg.summary,
+      name: preset.name,
+      jobType: preset.jobType === "inspection" ? "inspection" : "maintenance",
+      laborHours: preset.estLaborHours ?? null,
+      notes: preset.summary,
       source: "package",
     });
   }
@@ -711,18 +716,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* packages */}
+      {/* quick presets (static create-flow shortcuts, not catalog records) */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Packages</h4>
-          <p className="text-[10px] text-neutral-500">Common services with pre-set labor & notes.</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Quick Presets</h4>
+          <p className="text-[10px] text-neutral-500">Static shortcuts for common starting lines.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {packages.map((p) => (
+          {quickPresets.map((p) => (
             <button
               type="button"
               key={p.id}
-              onClick={() => void addPackage(p)}
+              onClick={() => void addQuickPreset(p)}
               disabled={addingId === p.id || !shopReady}
               className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
               title={p.summary}
@@ -746,7 +751,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
-          <p className="text-[10px] text-neutral-500">Saved/standard inspections you can attach as jobs.</p>
+          <p className="text-[10px] text-neutral-500">Reusable inspection templates you can attach as jobs.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templatesLoading ? (
@@ -779,7 +784,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           <div className="space-y-1">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">From My Menu</h4>
             <p className="text-[10px] text-neutral-500">
-              Matches for this vehicle are shown first. Totals use shop labor + tax rules (province engine for CA).
+              Authored menu items for this shop and matching global entries. Matches for this vehicle are shown first.
             </p>
           </div>
 
@@ -825,6 +830,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   title={mi.description ?? undefined}
                 >
                   <span className="font-medium text-neutral-50">{mi.name}</span>
+                  <div className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+                    Source: menu_items
+                  </div>
 
                   <div className="mt-1 text-xs text-neutral-400">
                     {laborLabel} • {partsLabel} • <span className="text-neutral-100">{totalLabel}</span>
