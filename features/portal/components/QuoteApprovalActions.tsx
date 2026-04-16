@@ -30,10 +30,10 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
     setError(null);
 
     try {
-      const res = await fetch(`/api/portal/work-orders/${workOrderId}/line-decision`, {
+      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lineId, decision }),
+        body: JSON.stringify({ decision, workOrderId }),
         cache: "no-store",
       });
 

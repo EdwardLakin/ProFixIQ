@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  createPortalBooking,
+  type CreatePortalBookingInput,
+} from "@/features/portal/server/createPortalBooking";
 
 export const runtime = "nodejs";
 
@@ -149,4 +153,38 @@ export async function GET(req: Request): Promise<Response> {
   });
 
   return NextResponse.json(payload);
+}
+
+export async function POST(req: Request): Promise<Response> {
+  const supabase = createRouteHandlerClient<Db>({ cookies });
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) return bad("Not authenticated", 401);
+
+  const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
+  if (!body) return bad("Invalid JSON body", 400);
+
+  const result = await createPortalBooking({
+    supabase,
+    userId: user.id,
+    input: body,
+    actorMode: "customer-only",
+  });
+
+  if (!result.ok) return bad(result.error, result.status);
+
+  return NextResponse.json(
+    {
+      booking: {
+        id: result.booking.id,
+        starts_at: result.booking.starts_at,
+        ends_at: result.booking.ends_at,
+        status: result.booking.status,
+      },
+    },
+    { status: 201 },
+  );
 }

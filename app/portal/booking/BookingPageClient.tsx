@@ -193,7 +193,7 @@ export default function PortalBookingPage() {
 
   async function book(startIso: string, endIso: string) {
     try {
-      const res = await fetch("/api/portal/book", {
+      const res = await fetch("/api/portal/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

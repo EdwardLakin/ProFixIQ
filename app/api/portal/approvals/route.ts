@@ -10,7 +10,7 @@ type CustomerPick = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "sho
 
 type PartRequestHeaderPick = Pick<
   DB["public"]["Tables"]["part_requests"]["Row"],
-  "id" | "status" | "notes" | "created_at"
+  "id" | "status" | "created_at"
 >;
 
 type ApprovalLine = {
@@ -36,7 +36,6 @@ type ApprovalLine = {
     quoted_price: number | null;
     vendor: string | null;
     approved: boolean | null;
-    markup_pct: number | null;
     work_order_line_id: string | null;
   }>;
 };
@@ -100,7 +99,6 @@ function pickItems(v: unknown): ApprovalLine["part_request_items"] {
       quoted_price: asNumber(it.quoted_price),
       vendor: asString(it.vendor),
       approved: asBoolean(it.approved),
-      markup_pct: asNumber(it.markup_pct),
       work_order_line_id: asString(it.work_order_line_id),
     });
   }
@@ -190,7 +188,6 @@ export async function GET() {
         quoted_price,
         vendor,
         approved,
-        markup_pct,
         work_order_line_id
       )
     `,
@@ -212,7 +209,7 @@ export async function GET() {
   if (requestIds.length) {
     const h = await supabase
       .from("part_requests")
-      .select("id, status, notes, created_at")
+      .select("id, status, created_at")
       .in("id", requestIds);
 
     partRequestHeaders = Array.isArray(h.data) ? (h.data as PartRequestHeaderPick[]) : [];
