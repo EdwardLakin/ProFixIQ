@@ -134,17 +134,17 @@ export default function CreateFlowMaintenanceSelector({
   if (!enabled) return null;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+    <section className="rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5">
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
-            Scheduled maintenance due
+            Scheduled maintenance suggestions
           </h2>
           <p className="mt-1 text-[11px] text-neutral-500">
             History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
-            Separate from quick presets and menu quick-add
+            Separate lane from menu-items catalog and inspection-template quick add
           </p>
         </div>
 

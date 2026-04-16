@@ -386,7 +386,7 @@ export function NewWorkOrderLineForm(props: {
             Complaint is required. Cause / correction can be filled in later.
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
-            Manual entry with optional repair suggestions from vehicle/history matching
+            Direct custom line entry with optional smart repair suggestions from complaint + history matching
           </p>
         </div>
         <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">

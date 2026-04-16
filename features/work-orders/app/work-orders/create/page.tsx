@@ -1787,7 +1787,7 @@ useEffect(() => {
                     disabled={loading}
                   />
                   <p className="mt-1 text-[11px] text-neutral-500">
-                    Internal planning target for advisor/front-of-house coordination.
+                    Internal advisor planning target in create flow (read-only on technician work-order surfaces).
                   </p>
                 </div>
               </div>
@@ -1992,10 +1992,12 @@ useEffect(() => {
             {wo?.id && (
               <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--copper)]">
-                    Quick add: presets, templates, and menu
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                    Reusable adds: menu items & inspection templates
                   </h2>
-                  <span className="text-[11px] text-neutral-500">Static presets + inspection templates + menu_items</span>
+                  <span className="text-[11px] text-neutral-500">
+                    Catalog lane: menu_items • Template lane: inspection_templates
+                  </span>
                 </div>
                 <MenuQuickAdd workOrderId={wo.id} />
               </section>
@@ -2006,9 +2008,11 @@ useEffect(() => {
               <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
-                    Add work order line
+                    Manual entry line
                   </h2>
-                  <span className="text-[11px] text-neutral-500">Manual entry</span>
+                  <span className="text-[11px] text-neutral-500">
+                    Direct custom line with optional smart repair suggestion
+                  </span>
                 </div>
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
