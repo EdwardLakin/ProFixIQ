@@ -91,6 +91,12 @@ export function NewWorkOrderLineForm(props: {
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
   const topRepairDefault = isTopRepairDefault(smartMatch);
+  const formShellClass =
+    "rounded-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] p-4 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
+  const controlClass =
+    "w-full rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[color:var(--accent-copper,#C57A4A)] focus:outline-none";
+  const mutedPillClass =
+    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1 text-[10px] text-neutral-300";
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = [
@@ -378,7 +384,7 @@ export function NewWorkOrderLineForm(props: {
   }
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 text-sm text-white space-y-4">
+    <div className={`${formShellClass} space-y-4`}>
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-neutral-100">Add work order line</h3>
@@ -389,7 +395,7 @@ export function NewWorkOrderLineForm(props: {
             Direct custom line entry with optional smart repair suggestions from complaint + history matching
           </p>
         </div>
-        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">
+        <div className={mutedPillClass}>
           Linked to WO:{" "}
           <span className="font-mono">{workOrderId.slice(0, 8)}…</span>
         </div>
@@ -401,7 +407,7 @@ export function NewWorkOrderLineForm(props: {
           <select
             value={lineType}
             onChange={(e) => setLineType(e.target.value as WOLineType)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className={controlClass}
           >
             <option value="job">Job line (punchable)</option>
             <option value="info">Info line (context only)</option>
@@ -420,7 +426,7 @@ export function NewWorkOrderLineForm(props: {
           <textarea
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
-            className="w-full min-h-[60px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className={`${controlClass} min-h-[60px]`}
             placeholder="Describe the issue / customer concern"
           />
         </div>
@@ -517,7 +523,7 @@ export function NewWorkOrderLineForm(props: {
           <textarea
             value={cause}
             onChange={(e) => setCause(e.target.value)}
-            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className={`${controlClass} min-h-[48px]`}
             placeholder="Root cause (optional)"
           />
         </div>
@@ -527,7 +533,7 @@ export function NewWorkOrderLineForm(props: {
           <textarea
             value={correction}
             onChange={(e) => setCorrection(e.target.value)}
-            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className={`${controlClass} min-h-[48px]`}
             placeholder="What to do / repair plan (optional)"
           />
         </div>
@@ -538,7 +544,7 @@ export function NewWorkOrderLineForm(props: {
             inputMode="decimal"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className={controlClass}
             placeholder="0.0"
           />
           <p className="text-[10px] text-neutral-500">
@@ -551,7 +557,7 @@ export function NewWorkOrderLineForm(props: {
           <select
             value={normalizeStatus(status)}
             onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className={controlClass}
           >
             <option value="awaiting">Awaiting</option>
             <option value="in_progress">In progress</option>
@@ -566,7 +572,7 @@ export function NewWorkOrderLineForm(props: {
           <select
             value={jobType ?? ""}
             onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            className={controlClass}
           >
             <option value="">Unspecified</option>
             <option value="diagnosis">Diagnosis</option>

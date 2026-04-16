@@ -602,20 +602,28 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }, [menuItemsAll, menuQuery, includeGlobal, vehicle]);
 
   const currency: "CAD" | "USD" = shopDefaults?.country === "CA" ? "CAD" : "USD";
+  const panelClass =
+    "rounded-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+  const chipClass =
+    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_68%,transparent)] px-2 py-0.5 text-[10px] text-neutral-300";
+  const itemCardClass =
+    "flex flex-col rounded-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] p-3 text-left text-sm hover:border-[color:var(--accent-copper,#C57A4A)]/50 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_63%,transparent)] disabled:opacity-60";
+  const softActionClass =
+    "rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#C57A4A)]/55 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)]";
 
   return (
     <div className="space-y-5 text-white">
       {/* header */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 sm:px-4 sm:py-3">
+      <div className={`${panelClass} px-3 py-3 sm:px-4 sm:py-3`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-neutral-100">Quick Add Lines</h3>
-              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
+              <span className={`${chipClass} font-mono`}>
                 WO {workOrderId.slice(0, 8)}…
               </span>
               {shopDefaults?.labor_rate != null ? (
-                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                <span className={chipClass}>
                   Labor {shopDefaults.labor_rate.toFixed(0)}/{currency}/hr
                 </span>
               ) : null}
@@ -637,7 +645,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <button
               type="button"
               onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
-              className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
+              className={softActionClass}
             >
               Review quote
               {typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
@@ -655,7 +663,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       </div>
 
       {/* templates */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+      <div className={`${panelClass} p-3 sm:p-4`}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
           <p className="text-[10px] text-neutral-500">Reusable inspection templates you can attach as jobs.</p>
@@ -670,7 +678,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 type="button"
                 onClick={() => void addTemplateAsLine(t)}
                 disabled={addingId === t.id || !shopReady}
-                className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                className={itemCardClass}
                 title={t.description ?? undefined}
               >
                 <span className="font-medium text-neutral-50">{t.template_name ?? "Inspection"}</span>
@@ -686,7 +694,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       </div>
 
       {/* menu items */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+      <div className={`${panelClass} p-3 sm:p-4`}>
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Menu Items</h4>
@@ -700,14 +708,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               value={menuQuery}
               onChange={(e) => setMenuQuery(e.target.value)}
               placeholder="Search menu items (e.g. brakes, alignment, oil)…"
-              className="w-full sm:w-[320px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+              className="w-full sm:w-[320px] rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-[color:var(--accent-copper,#C57A4A)] focus:outline-none"
             />
             <label className="flex items-center gap-2 text-[11px] text-neutral-300">
               <input
                 type="checkbox"
                 checked={includeGlobal}
                 onChange={(e) => setIncludeGlobal(e.target.checked)}
-                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+                className="h-4 w-4 rounded border-white/20 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_64%,transparent)]"
               />
               Include global services
             </label>
@@ -733,7 +741,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   key={mi.id}
                   onClick={() => void addSavedMenuItem(mi)}
                   disabled={addingId === (mi.name ?? "") || !shopReady}
-                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                  className={itemCardClass}
                   title={mi.description ?? undefined}
                 >
                   <span className="font-medium text-neutral-50">{mi.name}</span>
@@ -746,7 +754,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                     {taxLabel ? <span className="ml-1 text-neutral-500">• {taxLabel}</span> : null}
 
                     {isGlobalMenuItem(mi) ? (
-                      <span className="ml-2 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                      <span className={`ml-2 ${chipClass}`}>
                         GLOBAL
                       </span>
                     ) : (
