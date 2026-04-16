@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import {
   MobileTechHome,
@@ -68,11 +69,6 @@ function calcEfficiencyPct(worked: number, billed: number): number | null {
   return (billed / worked) * 100;
 }
 
-function isTechRole(role: string | null): boolean {
-  const r = (role ?? "").trim().toLowerCase();
-  return r === "mechanic" || r === "tech" || r === "technician";
-}
-
 export default function MobileHome() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -83,6 +79,11 @@ export default function MobileHome() {
   const [stats, setStats] = useState<MobileTechStats | null>(null);
   const [jobs, setJobs] = useState<MobileTechJob[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [homePayload, setHomePayload] = useState<{
+    advisor: { awaitingApprovals: number; waiters: number; callbacks: number };
+    manager: { activeWos: number; waiters: number; techniciansOnShift: number };
+    leadhand: { techsOnShift: number; jobsInProgress: number; jobsBlocked: number };
+  } | null>(null);
 
   // Load profile + shop
   useEffect(() => {
@@ -127,7 +128,8 @@ export default function MobileHome() {
   useEffect(() => {
     const loadStats = async () => {
       if (!profile?.id) return;
-      if (!isTechRole(profile.role)) return;
+      const actor = getActorCapabilities({ role: profile.role });
+      if (actor.canonicalRole !== "mechanic") return;
 
       setStatsLoading(true);
       try {
@@ -283,7 +285,7 @@ export default function MobileHome() {
               id: String(l.id),
               label: base,
               status: String(l.status ?? "in_progress"),
-              href: `/mobile/work-orders?focus=${l.id}`,
+              href: "/mobile/tech/queue",
             };
           }) ?? [];
 
@@ -313,7 +315,30 @@ export default function MobileHome() {
     void loadStats();
   }, [profile, supabase]);
 
-  const role = (profile?.role ?? null) as MobileRole | null;
+  useEffect(() => {
+    const loadPayload = async () => {
+      const res = await fetch("/api/mobile/home-payload", { method: "GET" });
+      const json = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            payload?: {
+              advisor: { awaitingApprovals: number; waiters: number; callbacks: number };
+              manager: { activeWos: number; waiters: number; techniciansOnShift: number };
+              leadhand: { techsOnShift: number; jobsInProgress: number; jobsBlocked: number };
+            };
+          }
+        | null;
+      if (res.ok && json?.ok && json.payload) {
+        setHomePayload(json.payload);
+      }
+    };
+
+    if (!profile?.id) return;
+    void loadPayload();
+  }, [profile?.id]);
+
+  const canonicalRole = canonicalizeRole(profile?.role);
+  const role = (canonicalRole === "unknown" ? null : canonicalRole) as MobileRole | null;
   const userName = profile?.full_name ?? null;
   const shopName = shop?.name ?? null;
 
@@ -339,7 +364,7 @@ export default function MobileHome() {
   /* Role-specific mobile home pages                                    */
   /* ------------------------------------------------------------------ */
 
-  if (profile && isTechRole(role)) {
+  if (profile && canonicalRole === "mechanic") {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
@@ -362,36 +387,35 @@ export default function MobileHome() {
           <MobileAdvisorHome
             advisorName={profile.full_name || "Advisor"}
             role="advisor"
+            stats={homePayload?.advisor}
           />
         </div>
       </main>
     );
   }
 
-  if (
-    profile &&
-    (role === "manager" || role === "owner" || role === "admin")
-  ) {
+  if (profile && (role === "manager" || role === "owner" || role === "admin")) {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileManagerHome
             managerName={profile.full_name || "Manager"}
             role={role}
+            stats={homePayload?.manager}
           />
         </div>
       </main>
     );
   }
 
-  // optional: if you’re using a separate "lead hand" MobileRole mapped from profiles
-  if (profile && (role as string) === "lead_hand") {
+  if (profile && role === "lead_hand") {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileLeadHome
             leadName={profile.full_name || "Lead"}
-            role={role as MobileRole}
+            role={role}
+            stats={homePayload?.leadhand}
           />
         </div>
       </main>

@@ -5,7 +5,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { formatDistanceToNow } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
 import {
-  runMutationWithOfflineQueue,
   getOfflineSyncSummary,
   replayQueuedMutations,
   subscribeOfflineMutations,
@@ -51,48 +50,6 @@ export default function MobileShiftTracker({ userId }: Props) {
     return subscribeOfflineMutations(refreshOfflineSummary);
   }, [refreshOfflineSummary]);
 
-  const insertPunch = useCallback(
-    async (sid: string, event: PunchEventType) => {
-      const timestamp = new Date().toISOString();
-      const mutationId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${sid}:${event}:${Date.now()}`;
-
-      try {
-        const result = await runMutationWithOfflineQueue({
-          clientMutationId: mutationId,
-          actionType: "shift:punch-event",
-          payload: {
-            shift_id: sid,
-            user_id: userId,
-            profile_id: userId,
-            event_type: event,
-            timestamp,
-          },
-          runner: async () => {
-            const { error } = await supabase.from("punch_events").insert({
-              shift_id: sid,
-              user_id: userId,
-              profile_id: userId,
-              event_type: event,
-              timestamp,
-            });
-            if (error) throw error;
-          },
-        });
-        if (result.queued) {
-          setErr("Punch event queued for sync once connection is restored.");
-        }
-      } catch (error) {
-        const e = error as { code?: string; message?: string };
-        console.error("[MobileShiftTracker] insertPunch failed:", error);
-        setErr(`${e.code ?? "punch_error"}: ${e.message ?? "Failed to record punch event"}`);
-      }
-    },
-    [supabase, userId],
-  );
-
   const replayOfflineMutations = useCallback(async () => {
     const result = await replayQueuedMutations({
       handlers: {
@@ -109,14 +66,19 @@ export default function MobileShiftTracker({ userId }: Props) {
           if (!payload?.shift_id || !payload?.user_id || !payload?.event_type || !payload?.timestamp) {
             return { conflicted: "Queued shift punch payload is incomplete." };
           }
-          const { error } = await supabase.from("punch_events").insert({
-            shift_id: payload.shift_id,
-            user_id: payload.user_id,
-            profile_id: payload.profile_id ?? payload.user_id,
-            event_type: payload.event_type,
-            timestamp: payload.timestamp,
+          const res = await fetch("/api/scheduling/punches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              shift_id: payload.shift_id,
+              event_type: payload.event_type,
+              timestamp: payload.timestamp,
+            }),
           });
-          if (error) throw error;
+          if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as { error?: string } | null;
+            throw new Error(body?.error ?? "Failed to replay punch event");
+          }
         },
       },
     });
@@ -125,23 +87,6 @@ export default function MobileShiftTracker({ userId }: Props) {
       setErr(`${result.failed} queued punch event(s) still failing to sync.`);
     }
   }, [supabase]);
-
-  const punchOutActiveJobsForShiftEnd = useCallback(async () => {
-    if (!userId) return;
-
-    const nowIso = new Date().toISOString();
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_out_at: nowIso })
-      .eq("assigned_tech_id", userId)
-      .not("punched_in_at", "is", null)
-      .is("punched_out_at", null)
-      .neq("status", "completed");
-
-    if (error) {
-      console.warn("[MobileShiftTracker] failed to close active job punches on shift end:", error);
-    }
-  }, [supabase, userId]);
 
   const loadOpenShift = useCallback(async () => {
     if (!userId) return;
@@ -241,51 +186,25 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const { data: existing, error: exErr } = await supabase
-        .from("tech_shifts")
-        .select("id, start_time")
-        .eq("user_id", userId)
-        .eq("status", "open")
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const res = await fetch("/api/mobile/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start_shift" }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
+        | null;
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to start shift");
 
-      if (exErr) throw exErr;
-
-      if (existing) {
-        setShiftId(existing.id);
-        setStartTime(existing.start_time ?? null);
-        setMode("shift");
-        return;
-      }
-
-      const now = new Date().toISOString();
-
-      const { data, error } = await supabase
-        .from("tech_shifts")
-        .insert({
-          user_id: userId,
-          start_time: now,
-          type: "shift",
-          status: "open",
-          end_time: null,
-        })
-        .select("id, start_time")
-        .single();
-
-      if (error) throw error;
-
-      setShiftId(data.id);
-      setStartTime(data.start_time ?? now);
-      setMode("shift");
-
-      await insertPunch(data.id, "start_shift");
+      setShiftId(body.shiftId ?? null);
+      setStartTime(body.startTime ?? null);
+      setMode(body.mode ?? "shift");
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, userId, insertPunch]);
+  }, [busy, userId]);
 
   const endShift = useCallback(async () => {
     if (busy || !shiftId) return;
@@ -293,29 +212,26 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const now = new Date().toISOString();
-
-      await punchOutActiveJobsForShiftEnd();
-
-      const { error } = await supabase
-        .from("tech_shifts")
-        .update({ end_time: now, status: "closed", type: "shift" })
-        .eq("id", shiftId);
-
-      if (error) throw error;
-
-      await insertPunch(shiftId, "end_shift");
+      const res = await fetch("/api/mobile/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end_shift" }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
+        | null;
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to end shift");
       window.dispatchEvent(new CustomEvent("wol:refresh"));
 
-      setShiftId(null);
-      setStartTime(null);
-      setMode("ended");
+      setShiftId(body.shiftId ?? null);
+      setStartTime(body.startTime ?? null);
+      setMode(body.mode ?? "ended");
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to end shift"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, insertPunch, punchOutActiveJobsForShiftEnd]);
+  }, [busy, shiftId]);
 
   const toggleBreak = useCallback(async () => {
     if (busy || !shiftId) return;
@@ -323,24 +239,22 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const isEnding = mode === "break";
-      const nextType: ShiftType = isEnding ? "shift" : "break";
-
-      const { error } = await supabase
-        .from("tech_shifts")
-        .update({ type: nextType, status: "open" })
-        .eq("id", shiftId);
-
-      if (error) throw error;
-
-      await insertPunch(shiftId, isEnding ? "break_end" : "break_start");
-      setMode(nextType);
+      const res = await fetch("/api/mobile/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_break" }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; mode?: Mode }
+        | null;
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to toggle break");
+      setMode(body.mode ?? "shift");
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, mode, insertPunch]);
+  }, [busy, shiftId]);
 
   const toggleLunch = useCallback(async () => {
     if (busy || !shiftId) return;
@@ -348,24 +262,22 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const isEnding = mode === "lunch";
-      const nextType: ShiftType = isEnding ? "shift" : "lunch";
-
-      const { error } = await supabase
-        .from("tech_shifts")
-        .update({ type: nextType, status: "open" })
-        .eq("id", shiftId);
-
-      if (error) throw error;
-
-      await insertPunch(shiftId, isEnding ? "lunch_end" : "lunch_start");
-      setMode(nextType);
+      const res = await fetch("/api/mobile/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_lunch" }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; mode?: Mode }
+        | null;
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to toggle lunch");
+      setMode(body.mode ?? "shift");
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, mode, insertPunch]);
+  }, [busy, shiftId]);
 
   const niceStatus =
     mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;

@@ -5,6 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  getMobileTilesForRole,
+  type MobileRole,
+} from "@/features/mobile/config/mobile-tiles";
 
 import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
 
@@ -14,13 +19,6 @@ type NavItem = {
   href: string;
   label: string;
 };
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/mobile", label: "Home" },
-  { href: "/mobile/work-orders", label: "Jobs" },
-  { href: "/mobile/messages", label: "Inbox" },
-  { href: "/mobile/settings", label: "Me" },
-];
 
 type Props = {
   open: boolean;
@@ -79,6 +77,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [role, setRole] = useState<MobileRole | null>(null);
 
   /* ---------------------------------------------------------------------- */
   /* Load current user – shift logic is handled inside MobileShiftTracker   */
@@ -91,10 +90,43 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
       const id = session?.user?.id ?? null;
       setUserId(id);
+      if (!id) {
+        setRole(null);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", id)
+        .maybeSingle();
+
+      const actor = getActorCapabilities({ role: profile?.role ?? null });
+      const canonicalRole = canonicalizeRole(profile?.role ?? null);
+      const allowedRole = actor.isKnownRole ? canonicalRole : null;
+      setRole((allowedRole === "unknown" ? null : allowedRole) as MobileRole | null);
     };
 
     void load();
   }, [supabase]);
+
+  const navItems = useMemo<NavItem[]>(() => {
+    if (!role) {
+      return [
+        { href: "/mobile", label: "Home" },
+        { href: "/mobile/settings", label: "Me" },
+      ];
+    }
+
+    const primary = getMobileTilesForRole(role, ["home"]).slice(0, 2);
+    const dynamic = primary.map((tile) => ({
+      href: tile.href,
+      label: tile.title,
+    }));
+
+    const items = [{ href: "/mobile", label: "Home" }, ...dynamic, { href: "/mobile/settings", label: "Me" }];
+    return items.filter((item, index) => items.findIndex((x) => x.href === item.href) === index);
+  }, [role]);
 
   /* ---------------------------------------------------------------------- */
   /* UI – Slide-in drawer                                                    */
@@ -152,7 +184,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
         <nav className="flex-1 overflow-y-auto px-2 py-3">
           <NavSection
             title="Mobile"
-            items={NAV_ITEMS}
+            items={navItems}
             pathname={pathname}
             onClose={onClose}
           />
