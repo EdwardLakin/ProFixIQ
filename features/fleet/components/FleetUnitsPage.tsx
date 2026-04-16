@@ -2,13 +2,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type Props = {
   shopId?: string | null;
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
 };
 
-export default function FleetUnitsPage({ shopId }: Props) {
+export default function FleetUnitsPage({
+  shopId,
+  uiContext,
+  routePrefix = "/fleet",
+}: Props) {
   const [units, setUnits] = useState<FleetUnitListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +133,9 @@ export default function FleetUnitsPage({ shopId }: Props) {
                 Master list of tractors, trailers, buses and other HD assets
                 enrolled in fleet programs.
               </p>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Actor surface: {uiContext.actorLabel}
+              </p>
             </div>
 
             <div className="flex flex-col gap-2 md:items-end">
@@ -200,6 +211,7 @@ export default function FleetUnitsPage({ shopId }: Props) {
                     <th className="px-3 py-1 text-left">Status</th>
                     <th className="px-3 py-1 text-left">Next Inspection</th>
                     <th className="px-3 py-1 text-left">Location</th>
+                    <th className="px-3 py-1 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -227,6 +239,22 @@ export default function FleetUnitsPage({ shopId }: Props) {
                       </td>
                       <td className="px-3 py-1.5 text-[11px] text-neutral-300">
                         {u.location ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-[11px]">
+                        <Link
+                          href={`${routePrefix}/units/${encodeURIComponent(u.id)}`}
+                          className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
+                        >
+                          Unit detail
+                        </Link>
+                        {uiContext.capabilities.canCreateFleetWorkOrders && (
+                          <Link
+                            href={`/work-orders/create?unitId=${encodeURIComponent(u.id)}`}
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                          >
+                            New WO
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   ))}

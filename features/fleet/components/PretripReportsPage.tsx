@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 const card =
   "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -26,7 +27,13 @@ type PretripReport = {
   status: string | null;
 };
 
-export default function PretripReportsPage() {
+export default function PretripReportsPage({
+  uiContext,
+  routePrefix = "/fleet",
+}: {
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
+}) {
   const [reports, setReports] = useState<PretripReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +133,9 @@ export default function PretripReportsPage() {
               </h1>
               <p className="mt-1 text-xs text-neutral-300">
                 View and audit daily DVIR / pre-trip reports coming in from drivers.
+              </p>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Actor surface: {uiContext.actorLabel}
               </p>
             </div>
 
@@ -297,19 +307,21 @@ export default function PretripReportsPage() {
                       <td className="px-3 py-1.5 text-right text-[11px]">
                         {r.unit_id && (
                           <Link
-                            href={`/fleet/assets/${encodeURIComponent(r.unit_id)}`}
+                            href={`${routePrefix}/units/${encodeURIComponent(r.unit_id)}`}
                             className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
                           >
                             Open unit
                           </Link>
                         )}
 
-                        <Link
-                          href={`/fleet/service-requests?pretripId=${encodeURIComponent(r.id)}`}
-                          className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
-                        >
-                          New request
-                        </Link>
+                        {uiContext.capabilities.canConvertRequests && (
+                          <Link
+                            href={`${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`}
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                          >
+                            New request
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   ))}

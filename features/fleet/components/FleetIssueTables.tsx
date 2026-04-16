@@ -3,17 +3,22 @@
 
 import { FleetUnit, FleetIssue, DispatchAssignment } from "./FleetControlTower";
 import Link from "next/link";
+import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type Props = {
   units: FleetUnit[];
   issues: FleetIssue[];
   assignments: DispatchAssignment[];
+  uiContext: FleetUiContext;
+  routePrefix?: "/fleet" | "/portal/fleet";
 };
 
 export default function FleetIssueTables({
   units: _units, // reserved for future use; avoids unused-param error
   issues,
   assignments,
+  uiContext,
+  routePrefix = "/fleet",
 }: Props) {
   const openIssues = issues.filter((i) => i.status !== "completed");
 
@@ -31,12 +36,14 @@ export default function FleetIssueTables({
               still need a plan.
             </p>
           </div>
-          <Link
-            href="/work-orders/create"
-            className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
-          >
-            New service request
-          </Link>
+          {uiContext.capabilities.canCreateFleetWorkOrders && (
+            <Link
+              href="/work-orders/create"
+              className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
+            >
+              New service request
+            </Link>
+          )}
         </header>
 
         <div className="mt-3 overflow-x-auto">
@@ -144,17 +151,19 @@ export default function FleetIssueTables({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
+                {uiContext.capabilities.canSubmitPretrip && (
+                  <Link
+                    href={`/mobile/fleet/pretrip/${a.unitId}`}
+                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                  >
+                    Send pre-trip link
+                  </Link>
+                )}
                 <Link
-                  href={`/mobile/fleet/pretrip/${a.unitId}`}
-                  className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
-                >
-                  Send pre-trip link
-                </Link>
-                <Link
-                  href={`/portal/fleet/units/${a.unitId}`}
+                  href={`${routePrefix}/units/${a.unitId}`}
                   className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
                 >
-                  Open in fleet portal
+                  Open unit view
                 </Link>
               </div>
             </div>
