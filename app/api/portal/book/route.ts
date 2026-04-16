@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   createPortalBooking,
   type CreatePortalBookingInput,
@@ -22,6 +23,19 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (authErr || !user) return bad("Not authenticated", 401);
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle<{ role: string | null }>();
+
+    if (profileErr) return bad(profileErr.message, 403);
+
+    const actor = getActorCapabilities({ role: profile?.role ?? null });
+    if (!actor.isKnownRole || (!actor.canManageScheduling && !actor.canViewShopWideData)) {
+      return bad("This legacy endpoint is staff-only", 403);
+    }
 
     const body = (await req.json()) as CreatePortalBookingInput;
     const result = await createPortalBooking({
