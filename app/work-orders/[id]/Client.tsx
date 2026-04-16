@@ -1314,6 +1314,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   const cardInner = cn(PANEL_VARIANTS.passive, "p-3");
+  const supportFullyCollapsed = !showDetails && !showApprovalSummary && !showTimeline;
 
   // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
@@ -1360,23 +1361,11 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : !wo ? (
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
-          <div className="space-y-2.5">
-            <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
-              <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:items-end">
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  <div className={cn(cardInner, "p-2.5")}>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Created
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-foreground">{createdAtText}</div>
-                  </div>
-                  <div className={cn(cardInner, "p-2.5 sm:col-span-2 xl:col-span-1")}>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Expected completion
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-foreground">{expectedCompletionText}</div>
-                  </div>
-                  <div className={cn(cardInner, "p-2.5")}>
+          <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
+            <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+              <div className="grid gap-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)] xl:items-stretch">
+                <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className={cn(cardInner, "p-2")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Order state
                     </div>
@@ -1394,30 +1383,42 @@ export default function WorkOrderIdClient(): JSX.Element {
                       )}
                     </div>
                   </div>
+                  <div className={cn(cardInner, "p-2")}>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Target completion
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-foreground">{expectedCompletionText}</div>
+                  </div>
+                  <div className={cn(cardInner, "p-2 sm:col-span-2 xl:col-span-1")}>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Created
+                    </div>
+                    <div className="mt-1 text-xs font-medium text-muted-foreground">{createdAtText}</div>
+                  </div>
                 </div>
 
-                <div className={cn(cardInner, "p-2.5")}>
+                <div className={cn(cardInner, "p-2")}>
                   <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Target completion
                   </div>
-                  <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-wrap items-end gap-1.5">
                     <input
                       type="datetime-local"
                       value={expectedCompletionInput}
                       onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                      className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
+                      className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs sm:text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => void saveExpectedCompletion()}
                       disabled={savingExpectedCompletion}
-                      className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
+                      className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-2.5 py-1.5 text-[11px] font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
                     >
                       {savingExpectedCompletion ? "Saving…" : "Save target"}
                     </button>
                     <button
                       type="button"
-                      className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-[rgba(184,115,51,0.45)] hover:text-amber-100"
+                      className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:border-[rgba(184,115,51,0.45)] hover:text-amber-100"
                       onClick={() => {
                         if (!wo?.id) return;
                         router.push(`/work-orders/${wo.id}/intake`);
@@ -1431,8 +1432,8 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
             </section>
 
-            <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)] xl:items-start">
-              <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+            <section className={cn("grid gap-2 xl:items-start", supportFullyCollapsed ? "xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.95fr)_minmax(0,1.1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]")}>
+              <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Vehicle &amp; Customer
@@ -1447,8 +1448,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </button>
                 </div>
 
-                {showDetails && (
-                  <div className="mt-2 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
+                {showDetails ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 {/* Vehicle */}
                 <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1517,13 +1518,23 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </div>
                   </div>
+                ) : (
+                  <div className={cn(cardInner, "mt-2 flex items-center justify-between gap-2 p-2")}>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}
+                      {" • "}
+                      {customer
+                        ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer linked"
+                        : "No customer linked"}
+                    </p>
+                  </div>
                 )}
               </section>
 
               <section
                 className={cn(
                   PANEL_VARIANTS.secondary,
-                  "p-2.5",
+                  "p-2",
                   hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
                 )}
                 onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
@@ -1699,13 +1710,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </>
               ) : (
-                <div className="text-[11px] text-muted-foreground">
+                <div className={cn(cardInner, "p-2 text-[11px] text-muted-foreground")}>
                   {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
                 </div>
               )}
               </section>
 
-              <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+              <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-2 text-left"
@@ -1722,7 +1733,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
                 {showTimeline ? (
                   <div className="mt-2 grid gap-2.5">
-                    <DecisionTimeline stages={decisionTimelineStages} compact />
+                    <DecisionTimeline stages={decisionTimelineStages} compact orientation="vertical" />
                     <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
                       <DecisionEventFeed
                         events={decisionEvents}
@@ -1742,7 +1753,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
                     Recent decision history is available when needed.
                   </p>
                 )}
@@ -1750,7 +1761,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </section>
 
           {/* Workspace */}
-          <section className="grid gap-3 lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)] lg:items-start lg:gap-4">
+          <section className={cn("grid lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)] lg:items-start", supportFullyCollapsed ? "gap-2.5 lg:gap-3" : "gap-3 lg:gap-4")}>
             {/* Left: jobs list/cards */}
             <div className="space-y-2">
               {sortedLines.length === 0 ? (
@@ -1762,7 +1773,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   actions in the focused panel to start building this work order.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {sortedLines.map((ln, idx) => {
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
