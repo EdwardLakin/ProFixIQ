@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import AuthShell from "@/features/auth/components/AuthShell";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -201,30 +202,17 @@ export default function AuthPage() {
   };
 
   return (
-    <div
-      className="
-        min-h-screen px-4 text-foreground
-        bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      "
+    <AuthShell
+      viewportClassName="bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+      cardClassName="bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]"
     >
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
-        <div
+      {/* Back to landing */}
+      <div className="mb-4 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={goLanding}
+          disabled={loading}
           className="
-            w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
-            px-6 py-7 sm:px-8 sm:py-9
-          "
-        >
-          {/* Back to landing */}
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={goLanding}
-              disabled={loading}
-              className="
                 inline-flex items-center gap-2 rounded-full border
                 border-[color:var(--metal-border-soft,#1f2937)]
                 bg-black/60 px-3 py-1.5 text-[11px]
@@ -232,20 +220,22 @@ export default function AuthPage() {
                 hover:bg-black/70 hover:text-white
                 disabled:cursor-not-allowed disabled:opacity-60
               "
-            >
-              <span aria-hidden className="text-base leading-none">←</span>
-              Back
-            </button>
+        >
+          <span aria-hidden className="text-base leading-none">
+            ←
+          </span>
+          Back
+        </button>
 
-            <div className="text-[10px] text-neutral-500">
-              {isMobileMode ? "Mobile companion" : "Shop access"}
-            </div>
-          </div>
+        <div className="text-[10px] text-neutral-500">
+          {isMobileMode ? "Mobile companion" : "Shop access"}
+        </div>
+      </div>
 
-          {/* Brand / title */}
-          <div className="mb-6 space-y-2 text-center">
-            <div
-              className="
+      {/* Brand / title */}
+      <div className="mb-6 space-y-2 text-center">
+        <div
+          className="
                 inline-flex items-center gap-1 rounded-full border
                 border-[color:var(--metal-border-soft,#1f2937)]
                 bg-black/70
@@ -253,102 +243,98 @@ export default function AuthPage() {
                 uppercase tracking-[0.22em]
                 text-neutral-300
               "
-            >
-              <span
-                className="text-[10px] font-semibold text-[var(--accent-copper-light)]"
-                style={{ fontFamily: "var(--font-blackops), system-ui" }}
-              >
-                ProFixIQ
-              </span>
-              <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
-              <span>
-                {isMobileMode ? "Shop • Mobile" : "Shop Dashboard"}
-              </span>
-            </div>
+        >
+          <span
+            className="text-[10px] font-semibold text-[var(--accent-copper-light)]"
+            style={{ fontFamily: "var(--font-blackops), system-ui" }}
+          >
+            ProFixIQ
+          </span>
+          <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
+          <span>{isMobileMode ? "Shop • Mobile" : "Shop Dashboard"}</span>
+        </div>
 
-            <h1
-              className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              {isSignIn ? "Sign in" : "Create your account"}
-            </h1>
+        <h1
+          className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+        >
+          {isSignIn ? "Sign in" : "Create your account"}
+        </h1>
 
-            <p className="text-xs text-muted-foreground sm:text-sm">
-              {isSignIn
-                ? "Use your shop username or email to access the ProFixIQ dashboard."
-                : "Create a shop account with your email to get started."}
-            </p>
-          </div>
+        <p className="text-xs text-muted-foreground sm:text-sm">
+          {isSignIn
+            ? "Use your shop username or email to access the ProFixIQ dashboard."
+            : "Create a shop account with your email to get started."}
+        </p>
+      </div>
 
-          {/* Mode switch */}
-          <div className="mb-5 flex items-center justify-center">
-            <div
-              className="
+      {/* Mode switch */}
+      <div className="mb-5 flex items-center justify-center">
+        <div
+          className="
                 inline-flex rounded-full border
                 border-[color:var(--metal-border-soft,#1f2937)]
                 bg-black/70 p-1 text-xs
                 shadow-[0_0_18px_rgba(15,23,42,0.8)]
               "
-            >
-              <button
-                type="button"
-                className={`px-3 py-1 rounded-full transition-all ${
-                  isSignIn
-                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
-                    : "text-neutral-300 hover:text-white"
-                }`}
-                onClick={() => setMode("sign-in")}
-                disabled={loading}
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1 rounded-full transition-all ${
-                  !isSignIn
-                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
-                    : "text-neutral-300 hover:text-white"
-                }`}
-                onClick={() => setMode("sign-up")}
-                disabled={loading}
-              >
-                Sign up
-              </button>
-            </div>
-          </div>
-
-          {/* Error / notice */}
-          {error && (
-            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
-              {error}
-            </div>
-          )}
-          {notice && (
-            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.5)]">
-              {notice}
-            </div>
-          )}
-
-          {/* Form */}
-          <form
-            onSubmit={isSignIn ? handleSignIn : handleSignUp}
-            className="space-y-4"
+        >
+          <button
+            type="button"
+            className={`px-3 py-1 rounded-full transition-all ${
+              isSignIn
+                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
+                : "text-neutral-300 hover:text-white"
+            }`}
+            onClick={() => setMode("sign-in")}
+            disabled={loading}
           >
-            <div className="space-y-1 text-sm">
-              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                {isSignIn ? "Email or username" : "Email"}
-              </label>
-              <input
-                type={isSignIn ? "text" : "email"}
-                placeholder={
-                  isSignIn
-                    ? "jane@shop.com or shop username"
-                    : "you@example.com"
-                }
-                autoComplete={isSignIn ? "username" : "email"}
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className="
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 rounded-full transition-all ${
+              !isSignIn
+                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
+                : "text-neutral-300 hover:text-white"
+            }`}
+            onClick={() => setMode("sign-up")}
+            disabled={loading}
+          >
+            Sign up
+          </button>
+        </div>
+      </div>
+
+      {/* Error / notice */}
+      {error && (
+        <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.5)]">
+          {notice}
+        </div>
+      )}
+
+      {/* Form */}
+      <form
+        onSubmit={isSignIn ? handleSignIn : handleSignUp}
+        className="space-y-4"
+      >
+        <div className="space-y-1 text-sm">
+          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            {isSignIn ? "Email or username" : "Email"}
+          </label>
+          <input
+            type={isSignIn ? "text" : "email"}
+            placeholder={
+              isSignIn ? "jane@shop.com or shop username" : "you@example.com"
+            }
+            autoComplete={isSignIn ? "username" : "email"}
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            className="
                   w-full rounded-lg border
                   border-[color:var(--metal-border-soft,#1f2937)]
                   bg-black/70 px-3 py-2 text-sm text-white
@@ -357,27 +343,27 @@ export default function AuthPage() {
                   focus:ring-[var(--accent-copper-soft)]
                   focus:border-[var(--accent-copper-soft)]
                 "
-                required
-              />
-              {isSignIn && (
-                <p className="text-[11px] text-muted-foreground">
-                  Shop accounts can sign in using the username provided by your
-                  admin.
-                </p>
-              )}
-            </div>
+            required
+          />
+          {isSignIn && (
+            <p className="text-[11px] text-muted-foreground">
+              Shop accounts can sign in using the username provided by your
+              admin.
+            </p>
+          )}
+        </div>
 
-            <div className="space-y-1 text-sm">
-              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Password
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                autoComplete={isSignIn ? "current-password" : "new-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="
+        <div className="space-y-1 text-sm">
+          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            Password
+          </label>
+          <input
+            type="password"
+            placeholder="••••••••"
+            autoComplete={isSignIn ? "current-password" : "new-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="
                   w-full rounded-lg border
                   border-[color:var(--metal-border-soft,#1f2937)]
                   bg-black/70 px-3 py-2 text-sm text-white
@@ -386,34 +372,34 @@ export default function AuthPage() {
                   focus:ring-[var(--accent-copper-soft)]
                   focus:border-[var(--accent-copper-soft)]
                 "
-                required
-                minLength={6}
-              />
-            </div>
+            required
+            minLength={6}
+          />
+        </div>
 
-            {/* Forgot password */}
-            {isSignIn && (
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={goForgotPassword}
-                  disabled={loading}
-                  className="
+        {/* Forgot password */}
+        {isSignIn && (
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={goForgotPassword}
+              disabled={loading}
+              className="
                     text-[11px] font-medium
                     text-[var(--accent-copper-light)]
                     hover:text-[var(--accent-copper)]
                     hover:underline underline-offset-2
                     disabled:cursor-not-allowed disabled:opacity-60
                   "
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
 
-            <button
-              type="submit"
-              className="
+        <button
+          type="submit"
+          className="
                 mt-3 w-full rounded-full
                 bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
                 py-2.5 text-center text-sm
@@ -422,62 +408,60 @@ export default function AuthPage() {
                 hover:brightness-110
                 disabled:cursor-not-allowed disabled:opacity-60
               "
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-              disabled={loading}
-            >
-              {loading
-                ? isSignIn
-                  ? "Signing in…"
-                  : "Creating account…"
-                : isSignIn
-                ? "Sign in"
-                : "Sign up"}
-            </button>
-          </form>
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+          disabled={loading}
+        >
+          {loading
+            ? isSignIn
+              ? "Signing in…"
+              : "Creating account…"
+            : isSignIn
+              ? "Sign in"
+              : "Sign up"}
+        </button>
+      </form>
 
-          {/* Mobile companion deep link */}
-          {isSignIn && !isMobileMode && (
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={() => router.push("/sign-in?mode=mobile")}
-                className="
+      {/* Mobile companion deep link */}
+      {isSignIn && !isMobileMode && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => router.push("/sign-in?mode=mobile")}
+            className="
                   text-[11px] font-medium
                   text-[var(--accent-copper-light)]
                   hover:text-[var(--accent-copper)]
                   hover:underline underline-offset-2
                 "
-                disabled={loading}
-              >
-                Sign in to mobile companion
-              </button>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                Opens the tech-friendly mobile layout for phones and tablets.
-              </p>
-            </div>
-          )}
-
-          <div className="mt-6 text-center text-[11px] text-muted-foreground">
-            <p>
-              By continuing you agree to our{" "}
-              <a
-                href="/terms"
-                className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
-              >
-                Terms
-              </a>{" "}
-              and{" "}
-              <a
-                href="/privacy"
-                className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
-              >
-                Privacy Policy
-              </a>
-              .
-            </p>
-          </div>
+            disabled={loading}
+          >
+            Sign in to mobile companion
+          </button>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Opens the tech-friendly mobile layout for phones and tablets.
+          </p>
         </div>
+      )}
+
+      <div className="mt-6 text-center text-[11px] text-muted-foreground">
+        <p>
+          By continuing you agree to our{" "}
+          <a
+            href="/terms"
+            className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
+          >
+            Terms
+          </a>{" "}
+          and{" "}
+          <a
+            href="/privacy"
+            className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
+          >
+            Privacy Policy
+          </a>
+          .
+        </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }

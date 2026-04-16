@@ -3,13 +3,14 @@
 
 import { Suspense } from "react";
 import PortalSignInForm from "./PortalSignInForm";
+import AuthShell from "@/features/auth/components/AuthShell";
 
 const COPPER = "#C57A4A";
 
 function LoadingCard({ label }: { label: string }) {
   return (
-    <div className="mx-auto max-w-lg">
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur-md sm:p-6">
+    <AuthShell cardClassName="rounded-2xl border-white/10 bg-black/25 p-5 backdrop-blur-md sm:p-6">
+      <div>
         <div
           className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
           style={{ color: COPPER }}
@@ -24,7 +25,7 @@ function LoadingCard({ label }: { label: string }) {
           />
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
