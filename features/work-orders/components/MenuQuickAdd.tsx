@@ -14,25 +14,6 @@ type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
 type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
 
-type QuickPresetItem = {
-  description: string;
-  jobType?: JobType;
-  laborHours?: number | null;
-  notes?: string | null;
-};
-
-// Static UI-only starters shown in create flow quick add.
-// These are intentionally NOT persisted catalog records and are separate from
-// menu_items, inspection_templates, and maintenance bundle logic.
-type QuickPresetDef = {
-  id: string;
-  name: string;
-  summary: string;
-  jobType: "inspection" | "maintenance";
-  estLaborHours: number | null;
-  items: QuickPresetItem[];
-};
-
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
@@ -67,7 +48,7 @@ type AddMenuParams =
       jobType: JobType;
       laborHours?: number | null;
       notes?: string | null;
-      source?: "single" | "package" | "menu_item" | "ai" | "inspection";
+      source?: "single" | "menu_item" | "ai" | "inspection";
       returnLineId?: boolean;
 
       // ✅ persist linkage
@@ -306,41 +287,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  const quickPresets: QuickPresetDef[] = [
-    {
-      id: "oil-gas",
-      name: "Oil Change – Gasoline",
-      jobType: "maintenance",
-      estLaborHours: 0.8,
-      summary: "Oil & filter, fluids, tire pressures, quick leak check.",
-      items: [],
-    },
-    {
-      id: "insp-gas",
-      name: "Multi-Point Inspection – Gas",
-      jobType: "inspection",
-      estLaborHours: 1.0,
-      summary: "Brakes, tires, suspension, battery, lights, codes scan.",
-      items: [],
-    },
-    {
-      id: "maintenance-50",
-      name: "Maintenance 50",
-      jobType: "inspection",
-      estLaborHours: 1.0,
-      summary: "50-point inspection checklist.",
-      items: [],
-    },
-    {
-      id: "maintenance-50-air",
-      name: "Maintenance 50 – Air",
-      jobType: "inspection",
-      estLaborHours: 1.0,
-      summary: "50-point inspection checklist (air systems focus).",
-      items: [],
-    },
-  ];
-
   const [addingId, setAddingId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
   const [, setCustomer] = useState<CustomerLite | null>(null);
@@ -463,7 +409,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     try {
       await ensureShopContext(shopId);
 
-      // Canonical "From My Menu" source: menu_items only.
+      // Canonical menu catalog source: menu_items only.
       const { data, error } = await supabase
         .from("menu_items")
         .select("*")
@@ -598,17 +544,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  async function addQuickPreset(preset: QuickPresetDef) {
-    await addMenuItem({
-      kind: "normal",
-      name: preset.name,
-      jobType: preset.jobType === "inspection" ? "inspection" : "maintenance",
-      laborHours: preset.estLaborHours ?? null,
-      notes: preset.summary,
-      source: "package",
-    });
-  }
-
   async function addSavedMenuItem(mi: MenuItemRow) {
     const templateId = extractInspectionTemplateIdFromMenuItem(mi);
 
@@ -675,7 +610,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-orange-400">Quick Add Jobs</h3>
+              <h3 className="text-sm font-semibold text-neutral-100">Quick Add Lines</h3>
               <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
                 WO {workOrderId.slice(0, 8)}…
               </span>
@@ -693,6 +628,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             ) : (
               <p className="text-[11px] text-neutral-500">Add lines now — you can update vehicle details later.</p>
             )}
+            <p className="text-[10px] uppercase tracking-wide text-neutral-500">
+              Menu items and inspection templates are separate from manual-entry smart suggestions.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -713,37 +651,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               AI Suggest
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* quick presets (static create-flow shortcuts, not catalog records) */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Quick Presets</h4>
-          <p className="text-[10px] text-neutral-500">Static shortcuts for common starting lines.</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {quickPresets.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              onClick={() => void addQuickPreset(p)}
-              disabled={addingId === p.id || !shopReady}
-              className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
-              title={p.summary}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-neutral-50">{p.name}</span>
-                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                  {p.jobType}
-                </span>
-              </div>
-              <div className="mt-1 text-xs text-neutral-400">
-                {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "Labor TBD"}
-              </div>
-              <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">{p.summary}</div>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -782,9 +689,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">From My Menu</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Menu Items</h4>
             <p className="text-[10px] text-neutral-500">
-              Authored menu items for this shop and matching global entries. Matches for this vehicle are shown first.
+              Reusable catalog entries from <span className="font-mono">menu_items</span>. Matches for this vehicle are shown first.
             </p>
           </div>
 
