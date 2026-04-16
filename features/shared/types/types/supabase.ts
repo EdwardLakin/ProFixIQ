@@ -3011,21 +3011,33 @@ export type Database = {
           created_at: string
           demo_id: string
           email: string
+          emails_sent: number
+          engagement_score: number | null
           id: string
+          last_viewed_at: string | null
+          share_count: number
           summary: string | null
         }
         Insert: {
           created_at?: string
           demo_id: string
           email: string
+          emails_sent?: number
+          engagement_score?: number | null
           id?: string
+          last_viewed_at?: string | null
+          share_count?: number
           summary?: string | null
         }
         Update: {
           created_at?: string
           demo_id?: string
           email?: string
+          emails_sent?: number
+          engagement_score?: number | null
           id?: string
+          last_viewed_at?: string | null
+          share_count?: number
           summary?: string | null
         }
         Relationships: [
@@ -16711,7 +16723,6 @@ export type Database = {
           intake_submitted_by: string | null
           job_priority: string | null
           job_type: string | null
-          job_priority: string | null
           labor_time: number | null
           line_no: number | null
           line_status: string | null
@@ -16772,7 +16783,6 @@ export type Database = {
           intake_submitted_by?: string | null
           job_priority?: string | null
           job_type?: string | null
-          job_priority?: string | null
           labor_time?: number | null
           line_no?: number | null
           line_status?: string | null
@@ -16833,7 +16843,6 @@ export type Database = {
           intake_submitted_by?: string | null
           job_priority?: string | null
           job_type?: string | null
-          job_priority?: string | null
           labor_time?: number | null
           line_no?: number | null
           line_status?: string | null
