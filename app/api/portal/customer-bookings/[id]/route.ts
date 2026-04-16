@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { cancelCustomerBooking } from "@/features/portal/server/customerBookings";
 
 type DB = Database;
 
@@ -13,40 +15,29 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   if (!id) return NextResponse.json({ error: "Missing booking id" }, { status: 400 });
 
-  const supabase = createRouteHandlerClient<DB>({ cookies });
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
   const body = (await req.json().catch(() => ({}))) as Body;
   if (body.status !== "cancelled") {
     return NextResponse.json({ error: "Only cancellation is allowed" }, { status: 400 });
   }
 
-  const { data: customer, error: custErr } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  if (custErr) return NextResponse.json({ error: custErr.message }, { status: 500 });
-  if (!customer?.id) return NextResponse.json({ error: "Customer profile not found" }, { status: 404 });
+  try {
+    const actor = await requirePortalCustomerActor(supabase);
+    const result = await cancelCustomerBooking({
+      supabase,
+      bookingId: id,
+      customerId: actor.customer.id,
+    });
 
-  const { data: updated, error: updateErr } = await supabase
-    .from("bookings")
-    .update({ status: "cancelled" })
-    .eq("id", id)
-    .eq("customer_id", customer.id)
-    .select("id, starts_at, ends_at, notes, status")
-    .maybeSingle();
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-  if (!updated) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-
-  return NextResponse.json(updated);
+    return NextResponse.json(result.data);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Not authenticated";
+    const status = message.toLowerCase().includes("not authenticated") ? 401 : 404;
+    return NextResponse.json({ error: message }, { status });
+  }
 }
