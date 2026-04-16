@@ -161,6 +161,9 @@ export function NewWorkOrderLineForm(props: {
     smartMatchTimer.current = window.setTimeout(async () => {
       setSmartMatchLoading(true);
       try {
+        // Manual-entry-only smart suggestions:
+        // backed by /api/work-orders/smart-repair-match (menu_repair_items + match history).
+        // Intentionally separate from menu_items catalog quick-add.
         const res = await fetch("/api/work-orders/smart-repair-match", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -381,6 +384,9 @@ export function NewWorkOrderLineForm(props: {
           <h3 className="text-sm font-semibold text-neutral-100">Add work order line</h3>
           <p className="text-[11px] text-neutral-400">
             Complaint is required. Cause / correction can be filled in later.
+          </p>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+            Manual entry with optional repair suggestions from vehicle/history matching
           </p>
         </div>
         <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">

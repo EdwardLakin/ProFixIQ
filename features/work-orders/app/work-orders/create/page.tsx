@@ -1993,9 +1993,9 @@ useEffect(() => {
               <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--copper)]">
-                    Quick add from menu
+                    Quick add: presets, templates, and menu
                   </h2>
-                  <span className="text-[11px] text-neutral-500">Saved services</span>
+                  <span className="text-[11px] text-neutral-500">Static presets + inspection templates + menu_items</span>
                 </div>
                 <MenuQuickAdd workOrderId={wo.id} />
               </section>

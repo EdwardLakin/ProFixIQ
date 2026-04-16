@@ -133,6 +133,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!menu) {
     return NextResponse.json({ ok: false, error: "Menu item not found" }, { status: 404 });
   }
+  // Guardrail: this route is for canonical menu_items only.
+  // Repair-intelligence suggestions (menu_repair_items) must use add-from-menu-repair.
 
   const laborOverride =
     typeof body.laborHours === "number" && Number.isFinite(body.laborHours)

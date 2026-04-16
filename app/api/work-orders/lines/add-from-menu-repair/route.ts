@@ -69,6 +69,8 @@ export async function POST(req: Request) {
     if (!repairItem?.id) {
       return NextResponse.json({ ok: false, error: "Repair item not found" }, { status: 404 });
     }
+    // Guardrail: this route handles repair-intelligence suggestions (menu_repair_items)
+    // from manual-entry smart-match flows, separate from menu_items quick-add.
 
     const laborOverride =
       typeof body?.laborHours === "number" && Number.isFinite(body.laborHours)

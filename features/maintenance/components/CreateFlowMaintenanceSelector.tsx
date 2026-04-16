@@ -143,6 +143,9 @@ export default function CreateFlowMaintenanceSelector({
           <p className="mt-1 text-[11px] text-neutral-500">
             History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
           </p>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+            Separate from quick presets and menu quick-add
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
