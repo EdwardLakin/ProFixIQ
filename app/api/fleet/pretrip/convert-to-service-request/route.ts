@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 
@@ -68,6 +69,10 @@ export async function POST(req: NextRequest) {
     }
 
     const pretripId = body.pretripId;
+    const actor = await resolveFleetActorContext(supabase);
+    if (!actor.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // Load the pretrip (fleet_id is authoritative)
     const { data: pretripRow, error: pretripError } = await supabase
@@ -100,6 +105,13 @@ export async function POST(req: NextRequest) {
     }
 
     const pretrip = pretripRow as unknown as PretripWithVehicle;
+    const fleetScopedActor = await resolveFleetActorContext(supabase, {
+      userId: actor.userId,
+      requestedFleetId: pretrip.fleet_id,
+    });
+    if (!fleetScopedActor.capabilities.canConvertPretripToServiceRequest) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Check if already linked
     const { data: existing, error: existingError } = await supabase

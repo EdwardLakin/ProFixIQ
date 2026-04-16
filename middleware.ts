@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 function isAssetPath(p: string) {
   return (
@@ -47,18 +48,8 @@ async function resolvePortalModeServer(
   }
 
   try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", userId)
-      .limit(1)
-      .maybeSingle();
-
-    const role = (profile?.role ?? null) as string | null;
-    const isFleetRole =
-      role === "driver" || role === "dispatcher" || role === "fleet_manager";
-
-    if (profile?.id && isFleetRole && profile.shop_id) return "fleet";
+    const actor = await resolveFleetActorContext(supabase, { userId });
+    if (actor.capabilities.canAccessPortalFleetWrappers) return "fleet";
   } catch {
     // ignore
   }
