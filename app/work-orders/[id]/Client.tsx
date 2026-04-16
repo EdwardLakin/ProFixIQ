@@ -20,7 +20,6 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
-import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
@@ -233,8 +232,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // parts
   const [partsLineId, setPartsLineId] = useState<string | null>(null);
-  const [bulkQueue, setBulkQueue] = useState<string[]>([]);
-  const [bulkActive, setBulkActive] = useState<boolean>(false);
 
   // inspection
   const [inspectionOpen, setInspectionOpen] = useState(false);
@@ -834,30 +831,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
 
-  const linesNeedingQuote = useMemo(
-    () =>
-      jobLines.filter((l) => {
-        const approval = l.approval_state ?? null;
-        const status = l.status ?? "awaiting";
-
-        if (approval === "pending" || approval === "approved" || approval === "declined") {
-          return false;
-        }
-
-        if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") {
-          return false;
-        }
-
-        const hold = (l.hold_reason ?? "").toLowerCase();
-        if (status === "on_hold" && (hold.includes("part") || hold.includes("quote"))) {
-          return false;
-        }
-
-        return true;
-      }),
-    [jobLines],
-  );
-
   const activeJobLines = useMemo(
     () => jobLines.filter((l) => (l.approval_state ?? null) !== "pending"),
     [jobLines],
@@ -1094,13 +1067,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   /* ----------------------- line actions ----------------------- */
 
-  const { sendAllPendingToParts } = useWorkOrderActions({
-    approvalPending: linesNeedingQuote,
-    setPartsLineId,
-    setBulkQueue,
-    setBulkActive,
-  });
-
   const approveLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
@@ -1332,23 +1298,13 @@ export default function WorkOrderIdClient(): JSX.Element {
     const evtName = `parts-drawer:closed:${partsLineId}`;
 
     const handler = () => {
-      if (bulkActive && bulkQueue.length > 0) {
-        const [, ...rest] = bulkQueue;
-        setBulkQueue(rest);
-        setPartsLineId(rest[0] ?? null);
-        if (rest.length === 0) {
-          setBulkActive(false);
-          void fetchAll();
-        }
-      } else {
-        setPartsLineId(null);
-        void fetchAll();
-      }
+      setPartsLineId(null);
+      void fetchAll();
     };
 
     window.addEventListener(evtName, handler as EventListener);
     return () => window.removeEventListener(evtName, handler as EventListener);
-  }, [partsLineId, bulkActive, bulkQueue, fetchAll]);
+  }, [partsLineId, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -1404,133 +1360,95 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : !wo ? (
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
-          <div className="space-y-3">
-          {/* Header */}
-          <section className={cn(PANEL_VARIANTS.primary, "p-2.5 sm:p-3")}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <h1 className="text-lg font-semibold text-foreground sm:text-xl">
-                    Work Order{" "}
-                    <span className="text-[rgba(184,115,51,0.95)]">
-                      {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                    </span>
-                  </h1>
-                  <p className="text-xs text-muted-foreground">Created {createdAtText}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Expected completion: {expectedCompletionText}
-                  </p>
+          <div className="space-y-2.5">
+            <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+              <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] xl:items-end">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className={cn(cardInner, "p-2.5")}>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Created
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-foreground">{createdAtText}</div>
+                  </div>
+                  <div className={cn(cardInner, "p-2.5 sm:col-span-2 xl:col-span-1")}>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Expected completion
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-foreground">{expectedCompletionText}</div>
+                  </div>
+                  <div className={cn(cardInner, "p-2.5")}>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Order state
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <StatusBadge
+                        variant={formatDecisionStatus({ workStatus: wo.status }).variant}
+                        size="sm"
+                      >
+                        {formatDecisionStatus({ workStatus: wo.status }).label}
+                      </StatusBadge>
+                      {isWaiter && (
+                        <StatusBadge variant="danger" size="sm">
+                          Waiter
+                        </StatusBadge>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)]"
-                    onClick={() => {
-                      if (!wo?.id) return;
-                      router.push(`/work-orders/${wo.id}/intake`);
-                    }}
+                <div className={cn(cardInner, "p-2.5")}>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Target completion
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <input
+                      type="datetime-local"
+                      value={expectedCompletionInput}
+                      onChange={(e) => setExpectedCompletionInput(e.target.value)}
+                      className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void saveExpectedCompletion()}
+                      disabled={savingExpectedCompletion}
+                      className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
+                    >
+                      {savingExpectedCompletion ? "Saving…" : "Save target"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-[rgba(184,115,51,0.45)] hover:text-amber-100"
+                      onClick={() => {
+                        if (!wo?.id) return;
+                        router.push(`/work-orders/${wo.id}/intake`);
+                      }}
                       title="Open intake"
                     >
                       Intake
                     </button>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                  <StatusBadge
-                    variant={formatDecisionStatus({ workStatus: wo.status }).variant}
-                    size="md"
+            <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)] xl:items-start">
+              <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Vehicle &amp; Customer
+                  </h2>
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                    onClick={() => setShowDetails((v) => !v)}
+                    aria-expanded={showDetails}
                   >
-                    {formatDecisionStatus({ workStatus: wo.status }).label}
-                  </StatusBadge>
-
-                  {isWaiter && (
-                    <StatusBadge variant="danger" size="md">
-                      Waiter
-                    </StatusBadge>
-                  )}
+                    {showDetails ? "Hide" : "Show"}
+                  </button>
                 </div>
-              </div>
-          </section>
 
-          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-[220px] flex-1">
-                <label className="mb-1 block text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                  Expected completion
-                </label>
-                <input
-                  type="datetime-local"
-                  value={expectedCompletionInput}
-                  onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => void saveExpectedCompletion()}
-                disabled={savingExpectedCompletion}
-                className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
-              >
-                {savingExpectedCompletion ? "Saving…" : "Save target"}
-              </button>
-            </div>
-          </section>
-
-          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}> 
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-2 text-left"
-              onClick={() => setShowTimeline((prev) => !prev)}
-              aria-expanded={showTimeline}
-            >
-              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Decision timeline & recent events
-              </span>
-              <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
-                {showTimeline ? "Hide" : "Show"}
-              </span>
-            </button>
-
-            {showTimeline ? (
-              <div className="mt-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <DecisionTimeline stages={decisionTimelineStages} compact />
-                <div className={cn(PANEL_VARIANTS.passive, "p-2")}> 
-                  <DecisionEventFeed
-                    events={decisionEvents}
-                    filter="all"
-                    maxVisible={showFullHistory ? 10 : 3}
-                    compact
-                  />
-                  {decisionEvents.length > 3 ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowFullHistory((prev) => !prev)}
-                      className="mt-1.5 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                    >
-                      {showFullHistory ? "Show recent only" : "View full history"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-          </section>
-
-          {/* Vehicle & Customer */}
-          <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}> 
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                Vehicle &amp; Customer
-              </h2>
-              <button
-                type="button"
-                className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                onClick={() => setShowDetails((v) => !v)}
-                aria-expanded={showDetails}
-              >
-                {showDetails ? "Hide details" : "Show details"}
-              </button>
-            </div>
-
-            {showDetails && (
-              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                {showDetails && (
+                  <div className="mt-2 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
                 {/* Vehicle */}
                 <div className={cardInner}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1598,32 +1516,31 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <p className="text-sm text-muted-foreground">No customer linked yet.</p>
                   )}
                 </div>
-              </div>
-            )}
-          </section>
+                  </div>
+                )}
+              </section>
 
-          {/* Awaiting Customer Approval */}
-          <section
-            className={cn(
-              PANEL_VARIANTS.secondary,
-              "p-2.5",
-              hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
-            )}
-            onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
-            role={hasAnyApprovalItems ? "button" : undefined}
-            tabIndex={hasAnyApprovalItems ? 0 : undefined}
-            onKeyDown={
-              hasAnyApprovalItems
-                ? (e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openQuoteReview();
-                    }
-                  }
-                : undefined
-            }
-            aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
-          >
+              <section
+                className={cn(
+                  PANEL_VARIANTS.secondary,
+                  "p-2.5",
+                  hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
+                )}
+                onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+                role={hasAnyApprovalItems ? "button" : undefined}
+                tabIndex={hasAnyApprovalItems ? 0 : undefined}
+                onKeyDown={
+                  hasAnyApprovalItems
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openQuoteReview();
+                        }
+                      }
+                    : undefined
+                }
+                aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
+              >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Approval queue
@@ -1786,26 +1703,56 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
                 </div>
               )}
-          </section>
+              </section>
+
+              <section className={cn(PANEL_VARIANTS.secondary, "p-2.5")}>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 text-left"
+                  onClick={() => setShowTimeline((prev) => !prev)}
+                  aria-expanded={showTimeline}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Decision timeline & recent events
+                  </span>
+                  <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
+                    {showTimeline ? "Hide" : "Show"}
+                  </span>
+                </button>
+
+                {showTimeline ? (
+                  <div className="mt-2 grid gap-2.5">
+                    <DecisionTimeline stages={decisionTimelineStages} compact />
+                    <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
+                      <DecisionEventFeed
+                        events={decisionEvents}
+                        filter="all"
+                        maxVisible={showFullHistory ? 10 : 3}
+                        compact
+                      />
+                      {decisionEvents.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowFullHistory((prev) => !prev)}
+                          className="mt-1.5 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                        >
+                          {showFullHistory ? "Show recent only" : "View full history"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Recent decision history is available when needed.
+                  </p>
+                )}
+              </section>
+            </section>
 
           {/* Workspace */}
           <section className="grid gap-3 lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)] lg:items-start lg:gap-4">
             {/* Left: jobs list/cards */}
             <div className="space-y-2">
-              {linesNeedingQuote.length > 0 && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(37,99,235,0.9)] hover:bg-blue-500 disabled:opacity-60"
-                    onClick={sendAllPendingToParts}
-                    disabled={bulkActive}
-                    title="Send all jobs to parts for quoting"
-                  >
-                    ⚡ Quote all lines
-                  </button>
-                </div>
-              )}
-
               {sortedLines.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No jobs added yet. Use the{" "}
