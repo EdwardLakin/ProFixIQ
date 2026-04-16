@@ -86,22 +86,6 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-function toDatetimeLocalInput(value: string | null | undefined): string {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function fromDatetimeLocalInput(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const d = new Date(trimmed);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
 function isCompletedLineStatus(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").trim().toLowerCase();
   return normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced";
@@ -251,8 +235,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // per-line technicians
   const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
-  const [expectedCompletionInput, setExpectedCompletionInput] = useState<string>("");
-  const [savingExpectedCompletion, setSavingExpectedCompletion] = useState(false);
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
@@ -971,10 +953,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     ? format(new Date(wo.expected_completion_at), "PPpp")
     : "—";
 
-  useEffect(() => {
-    setExpectedCompletionInput(toDatetimeLocalInput(wo?.expected_completion_at));
-  }, [wo?.expected_completion_at]);
-
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
   const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
 
@@ -993,30 +971,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     },
     [routeId],
   );
-
-  const saveExpectedCompletion = useCallback(async () => {
-    if (!wo?.id) return;
-    setSavingExpectedCompletion(true);
-    try {
-      const payload = {
-        expected_completion_at: fromDatetimeLocalInput(expectedCompletionInput),
-      } as DB["public"]["Tables"]["work_orders"]["Update"];
-      const { data, error } = await supabase
-        .from("work_orders")
-        .update(payload)
-        .eq("id", wo.id)
-        .select("*")
-        .single();
-      if (error) throw error;
-      setWo(data as WorkOrder);
-      toast.success("Expected completion updated.");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to update expected completion.";
-      toast.error(msg);
-    } finally {
-      setSavingExpectedCompletion(false);
-    }
-  }, [expectedCompletionInput, wo?.id, setWo]);
 
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
@@ -1363,8 +1317,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : (
           <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
-              <div className="grid gap-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)] xl:items-stretch">
-                <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Order state
@@ -1388,6 +1341,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                       Target completion
                     </div>
                     <div className="mt-1 text-sm font-medium text-foreground">{expectedCompletionText}</div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Planning target set from intake/advisor flow.
+                    </p>
                   </div>
                   <div className={cn(cardInner, "p-2 sm:col-span-2 xl:col-span-1")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -1395,40 +1351,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                     <div className="mt-1 text-xs font-medium text-muted-foreground">{createdAtText}</div>
                   </div>
-                </div>
-
-                <div className={cn(cardInner, "p-2")}>
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Target completion
-                  </div>
-                  <div className="flex flex-wrap items-end gap-1.5">
-                    <input
-                      type="datetime-local"
-                      value={expectedCompletionInput}
-                      onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                      className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs sm:text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveExpectedCompletion()}
-                      disabled={savingExpectedCompletion}
-                      className="rounded-md border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-2.5 py-1.5 text-[11px] font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)] disabled:opacity-60"
-                    >
-                      {savingExpectedCompletion ? "Saving…" : "Save target"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:border-[rgba(184,115,51,0.45)] hover:text-amber-100"
-                      onClick={() => {
-                        if (!wo?.id) return;
-                        router.push(`/work-orders/${wo.id}/intake`);
-                      }}
-                      title="Open intake"
-                    >
-                      Intake
-                    </button>
-                  </div>
-                </div>
               </div>
             </section>
 

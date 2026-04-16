@@ -39,8 +39,10 @@ const InspectionModal = dynamic(
 const COPPER = "#C57A4A";
 
 const card =
-  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+  "rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_90%,transparent)] shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
 const divider = "border-white/10";
+const sectionPanel =
+  "rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
 
 /* =============================================================================
    Types & helpers
@@ -590,7 +592,7 @@ useEffect(() => {
     const flag = (wo as WorkOrderWaiterRow).is_waiter ?? false;
     setIsWaiter(Boolean(flag));
     setExpectedCompletionInput(toDatetimeLocalInput(wo.expected_completion_at));
-  }, [wo, setIsWaiter]);
+  }, [wo, setIsWaiter, setExpectedCompletionInput]);
 
   // get current user id + current profile id
   useEffect((): void => {
@@ -1609,12 +1611,11 @@ useEffect(() => {
   return (
     <div
       className="
-        min-h-screen px-4 py-6 text-foreground
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        min-h-screen bg-[var(--theme-surface-2,#0B1220)] px-4 py-6 text-foreground
       "
       style={{ ["--copper" as never]: COPPER }}
     >
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className={cx(card, "px-5 py-4")}>
           <div className="flex items-start justify-between gap-4">
@@ -1622,16 +1623,12 @@ useEffect(() => {
               <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
                 Work Orders
               </div>
-              <h1
-                className="mt-1 text-2xl font-semibold text-white"
-                style={{ fontFamily: "var(--font-blackops), system-ui" }}
-              >
-                Create Work Order
-              </h1>
-              <p className="mt-1 text-sm text-neutral-400">
-                Link a customer and vehicle, add jobs and inspections, then send to
-                approval and signature.
-              </p>
+                <h1 className="mt-1 text-2xl font-semibold text-white">
+                  Create Work Order
+                </h1>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Intake and plan the visit, then continue to approvals once the order is ready.
+                </p>
 
               {wo?.custom_id && (
                 <p className="mt-1 text-xs text-neutral-500">
@@ -1658,7 +1655,7 @@ useEffect(() => {
         </div>
 
         {/* Body */}
-        <section className={cx(card, "px-4 py-5 backdrop-blur-xl sm:px-6 sm:py-6")}>
+        <section className={cx(card, "px-4 py-5 sm:px-6 sm:py-6")}>
           {error && (
             <div className="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
@@ -1680,16 +1677,16 @@ useEffect(() => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Visit setup */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+            <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Visit Setup
                 </h2>
-                <span className="text-[11px] text-neutral-500">Applies before save</span>
+                <span className="text-[11px] text-neutral-500">Planning controls</span>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
-                <div className="rounded-2xl border border-[color:var(--copper)]/20 bg-[color:var(--copper)]/5 p-4">
+              <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
@@ -1739,7 +1736,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div>
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Priority
                   </label>
@@ -1759,7 +1756,7 @@ useEffect(() => {
                   </p>
                 </div>
 
-                <div>
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Default job type
                   </label>
@@ -1778,9 +1775,9 @@ useEffect(() => {
                   </p>
                 </div>
 
-                <div>
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                    Expected completion
+                    Target completion
                   </label>
                   <input
                     type="datetime-local"
@@ -1790,20 +1787,20 @@ useEffect(() => {
                     disabled={loading}
                   />
                   <p className="mt-1 text-[11px] text-neutral-500">
-                    Internal target time for advisor/front-of-house coordination.
+                    Internal planning target for advisor/front-of-house coordination.
                   </p>
                 </div>
               </div>
             </section>
 
             {/* Customer & Vehicle */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+            <section className={cx(sectionPanel, "border-white/15 bg-black/45")}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                <h2 className="text-sm font-semibold tracking-[0.08em] text-neutral-100">
                   Customer &amp; Vehicle
                 </h2>
                 <span className="text-[11px] text-neutral-500">
-                  Save first, then add lines
+                  Primary intake section
                 </span>
               </div>
 
@@ -1833,9 +1830,9 @@ useEffect(() => {
                   }}
                   disabled={savingCv || loading}
                   className="
-                    rounded-full border border-white/10 bg-black/50
-                    px-4 py-2 text-sm font-semibold text-neutral-200
-                    hover:bg-black/65 disabled:opacity-60
+                    rounded-full border border-[color:var(--copper)]/70
+                    bg-[color:var(--copper)]/12 px-4 py-2 text-sm font-semibold
+                    text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:opacity-60
                   "
                 >
                   {savingCv ? "Saving…" : "Save & Continue"}
@@ -1845,9 +1842,9 @@ useEffect(() => {
                   type="button"
                   onClick={handleClearForm}
                   className="
-                    rounded-full border border-red-400/25 bg-black/50
-                    px-4 py-2 text-sm font-semibold text-red-200
-                    hover:bg-red-500/10
+                    rounded-full border border-white/15 bg-black/30
+                    px-4 py-2 text-sm font-semibold text-neutral-400
+                    hover:text-neutral-200 hover:bg-black/45
                   "
                 >
                   Clear form
@@ -1899,8 +1896,8 @@ useEffect(() => {
                   <span
                     className="
                       cursor-pointer rounded-full border px-4 py-2 text-sm font-semibold
-                      bg-[color:var(--copper)]/10 text-[color:var(--copper)]
-                      border-[color:var(--copper)]/70 hover:bg-[color:var(--copper)]/15
+                      border-white/15 bg-black/35 text-neutral-200
+                      hover:border-[color:var(--copper)]/55 hover:text-[color:var(--copper)]
                     "
                   >
                     Add by VIN / Scan
@@ -1931,7 +1928,7 @@ useEffect(() => {
             />
 
             {/* Uploads */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+            <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Uploads
@@ -1970,7 +1967,7 @@ useEffect(() => {
             </section>
 
             {/* Internal notes */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+            <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Internal Notes
@@ -1993,7 +1990,7 @@ useEffect(() => {
 
             {/* Menu quick add */}
             {wo?.id && (
-              <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--copper)]">
                     Quick add from menu
@@ -2006,7 +2003,7 @@ useEffect(() => {
 
             {/* Add line */}
             {wo?.id && (
-              <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                     Add work order line
@@ -2024,7 +2021,7 @@ useEffect(() => {
             )}
 
             {/* Current lines */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+            <section className={sectionPanel}>
               <div className={cx("mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between", divider)}>
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Current lines
@@ -2143,7 +2140,8 @@ useEffect(() => {
             </section>
 
             {/* Footer actions */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="sticky bottom-3 z-10 rounded-2xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_85%,transparent)] p-3 backdrop-blur-xl">
+              <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
                 disabled={loading}
@@ -2154,7 +2152,7 @@ useEffect(() => {
                   disabled:opacity-60
                 "
               >
-                {loading ? "Creating..." : "Approve & Sign"}
+                {loading ? "Creating..." : "Create & Continue to Approval"}
               </button>
 
               <button
@@ -2165,6 +2163,7 @@ useEffect(() => {
               >
                 Cancel
               </button>
+              </div>
             </div>
           </form>
 
