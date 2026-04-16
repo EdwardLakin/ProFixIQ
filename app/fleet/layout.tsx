@@ -3,33 +3,25 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import type { Database } from "@shared/types/types/supabase";
-import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
-
-const FLEET_ROLES: ProfileRow["role"][] = [
-  "driver",
-  "dispatcher",
-  "fleet_manager",
-  "owner",
-  "admin",
-  "manager",
-];
-
 export default async function FleetLayout({
   children,
 }: {
   children: ReactNode;
 }) {
   const supabase = createServerComponentClient<DB>({ cookies });
-  const actor = await resolveCurrentActor(supabase);
+  const actor = await resolveFleetActorContext(supabase);
 
-  if (!actor.user) {
+  if (!actor.userId) {
     redirect("/sign-in?next=%2Ffleet");
   }
 
-  if (!actor.profile || !actor.role || !FLEET_ROLES.includes(actor.role)) {
+  if (
+    actor.actorType === "none" ||
+    (!actor.isInternal && !actor.capabilities.canAccessPortalFleetWrappers)
+  ) {
     redirect("/dashboard");
   }
 

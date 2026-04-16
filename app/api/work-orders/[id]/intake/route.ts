@@ -7,6 +7,7 @@ import { IntakeV1Schema } from "@/features/work-orders/intake/schema.zod";
 import type { IntakeMode, IntakeV1 } from "@/features/work-orders/intake/types";
 import { buildPrefilledIntake, makeVehicleLabel } from "@/features/work-orders/intake/mappers";
 import { buildIntakeSuggestedLines } from "@/features/work-orders/intake/server/buildIntakeSuggestedLines";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
@@ -33,10 +34,6 @@ function getMode(url: string): IntakeMode {
   return "portal";
 }
 
-function isInternalShopRole(role: string | null | undefined): boolean {
-  return role === "owner" || role === "admin" || role === "manager" || role === "advisor";
-}
-
 async function requireFleetIntakeAccess(params: {
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
   userId: string;
@@ -47,14 +44,11 @@ async function requireFleetIntakeAccess(params: {
 }): Promise<boolean> {
   const { supabase, userId, workOrder } = params;
 
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", userId)
-    .maybeSingle();
+  const actor = await resolveFleetActorContext(supabase, { userId });
+  if (!actor.capabilities.canAccessFleetIntake) return false;
 
-  if (!profileErr && profile?.id && isInternalShopRole(profile.role)) {
-    return profile.shop_id === workOrder.shop_id;
+  if (actor.isInternal) {
+    return actor.shopId === workOrder.shop_id;
   }
 
   if (!workOrder.vehicle_id) return false;

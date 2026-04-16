@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 
@@ -41,88 +45,6 @@ type ListPretripBody = {
   shopId?: string | null;
 };
 
-type FleetContext = {
-  userId: string;
-  fleetId: string;
-  shopId: string;
-};
-
-async function resolveFleetContextForUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  requestedFleetId?: string | null,
-): Promise<FleetContext | null> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) return null;
-
-  const membershipsQuery = supabase
-    .from("fleet_members")
-    .select("fleet_id, shop_id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1);
-
-  const { data: membership, error: membershipError } = requestedFleetId
-    ? await membershipsQuery.eq("fleet_id", requestedFleetId).maybeSingle()
-    : await membershipsQuery.maybeSingle();
-
-  if (membershipError || !membership?.fleet_id || !membership.shop_id) {
-    return null;
-  }
-
-  return {
-    userId: user.id,
-    fleetId: membership.fleet_id,
-    shopId: membership.shop_id,
-  };
-}
-
-async function resolveShopIdForListing(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  explicitShopId: string | null,
-) {
-  const fleetContext = await resolveFleetContextForUser(supabase);
-  if (fleetContext) {
-    return {
-      shopId: fleetContext.shopId,
-      fleetId: fleetContext.fleetId,
-      source: "fleet_membership" as const,
-    };
-  }
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return null;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile?.shop_id) {
-    return null;
-  }
-
-  if (explicitShopId && explicitShopId !== profile.shop_id) {
-    return null;
-  }
-
-  return {
-    shopId: profile.shop_id,
-    fleetId: null,
-    source: "profile_shop" as const,
-  };
-}
-
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -142,8 +64,13 @@ export async function POST(req: NextRequest) {
     };
 
     try {
-      const fleetContext = await resolveFleetContextForUser(supabase);
-      if (!fleetContext) {
+      const actor = await resolveFleetActorContext(supabase);
+      const scope = resolveFleetActorScope(actor);
+      if (
+        !scope?.fleetId ||
+        !actor.userId ||
+        !actor.capabilities.canCreatePretripReports
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -152,7 +79,7 @@ export async function POST(req: NextRequest) {
         await supabase
           .from("fleet_vehicles")
           .select("vehicle_id, fleet_id")
-          .eq("fleet_id", fleetContext.fleetId)
+          .eq("fleet_id", scope.fleetId)
           .eq("vehicle_id", body.unitId)
           .or("active.is.null,active.eq.true")
           .maybeSingle();
@@ -194,10 +121,10 @@ export async function POST(req: NextRequest) {
       const { data: inserted, error: insertError } = await supabase
         .from("fleet_pretrip_reports")
         .insert({
-          fleet_id: fleetContext.fleetId,
-          shop_id: fleetContext.shopId,
+          fleet_id: scope.fleetId,
+          shop_id: scope.shopId,
           vehicle_id: vehicle.id,
-          driver_profile_id: fleetContext.userId,
+          driver_profile_id: actor.userId,
           driver_name: body.driverName,
           odometer_km: body.odometer ? Number(body.odometer) : null,
           checklist,
@@ -238,10 +165,10 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const scope = await resolveShopIdForListing(
-      supabase,
-      body.shopId ?? null,
-    );
+    const actor = await resolveFleetActorContext(supabase);
+    const scope = resolveFleetActorScope(actor, {
+      explicitShopId: body.shopId ?? null,
+    });
 
     if (!scope?.shopId) {
       return NextResponse.json(

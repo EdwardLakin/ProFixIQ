@@ -10,6 +10,10 @@ import type {
   FleetIssue,
   DispatchAssignment,
 } from "@/features/fleet/components/FleetControlTower";
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 
@@ -65,60 +69,6 @@ type InspectionScheduleSelect = Pick<
 >;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Auth + fleet scoping helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function requireUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-/**
- * Resolve a fleet_id that the current user is a member of.
- * - If explicitFleetId is provided, we verify membership.
- * - Otherwise we pick the earliest membership as a stable default.
- *
- * If you later add a fleet switcher in the UI, pass fleetId in body.
- */
-async function resolveFleetIdForUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  explicitFleetId: string | null,
-): Promise<string | null> {
-  const user = await requireUser(supabase);
-  if (!user) return null;
-
-  if (explicitFleetId) {
-    const { data, error } = await supabase
-      .from("fleet_members")
-      .select("fleet_id")
-      .eq("fleet_id", explicitFleetId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (error || !data?.fleet_id) return null;
-    return data.fleet_id;
-  }
-
-  const { data, error } = await supabase
-    .from("fleet_members")
-    .select("fleet_id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data?.fleet_id) return null;
-  return data.fleet_id;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Normalizers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -152,21 +102,21 @@ function normalizeDispatchState(st: string | null): DispatchAssignment["state"] 
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const user = await requireUser(supabase);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json().catch(() => ({}))) as {
-      // New: fleet scoped (membership-based)
       fleetId?: string | null;
-
-      // Legacy: callers might still send shopId. We ignore it for auth/scoping now.
       shopId?: string | null;
     };
-
-    const fleetId = await resolveFleetIdForUser(supabase, body.fleetId ?? null);
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId: body.fleetId ?? null,
+    });
+    if (!actor.userId || !actor.capabilities.canRunFleetDispatchActions) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const scope = resolveFleetActorScope(actor, {
+      explicitFleetId: body.fleetId ?? null,
+      explicitShopId: body.shopId ?? null,
+    });
+    const fleetId = scope?.fleetId;
 
     if (!fleetId) {
       return NextResponse.json(

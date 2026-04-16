@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
 export type PortalMode = "customer" | "fleet";
 
@@ -21,18 +22,8 @@ export async function resolvePortalMode(
   }
 
   try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", userId)
-      .limit(1)
-      .maybeSingle();
-
-    const role = (profile?.role ?? null) as string | null;
-    const isFleetRole =
-      role === "driver" || role === "dispatcher" || role === "fleet_manager";
-
-    if (profile?.id && isFleetRole && profile.shop_id) return "fleet";
+    const actor = await resolveFleetActorContext(supabase, { userId });
+    if (actor.capabilities.canAccessPortalFleetWrappers) return "fleet";
   } catch {
     // ignore and fall back to customer mode
   }

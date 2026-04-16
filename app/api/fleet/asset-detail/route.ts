@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
 
@@ -59,49 +63,6 @@ type Junction = Pick<FleetVehicleRow, "fleet_id" | "vehicle_id" | "nickname" | "
 
 type VehicleMeta = Pick<VehicleRow, "id" | "vin" | "unit_number" | "license_plate">;
 
-async function requireUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-async function resolveFleetIdForUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  explicitFleetId?: string | null,
-): Promise<string | null> {
-  const user = await requireUser(supabase);
-  if (!user) return null;
-
-  if (explicitFleetId) {
-    const { data, error } = await supabase
-      .from("fleet_members")
-      .select("fleet_id")
-      .eq("fleet_id", explicitFleetId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (error || !data?.fleet_id) return null;
-    return data.fleet_id;
-  }
-
-  const { data, error } = await supabase
-    .from("fleet_members")
-    .select("fleet_id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data?.fleet_id) return null;
-  return data.fleet_id;
-}
-
 // ---- helpers so we don't fight Supabase loose row typing ----
 function getStringField(
   row: Record<string, unknown>,
@@ -134,13 +95,14 @@ function normalizeIssueStatus(st: string | null): FleetIssue["status"] {
 export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
-
-    const user = await requireUser(supabase);
-    if (!user) {
+    const body = (await req.json().catch(() => null)) as RequestBody | null;
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId: body?.fleetId ?? null,
+    });
+    if (!actor.userId || !actor.capabilities.canSeeFleetWideUnits) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await req.json().catch(() => null)) as RequestBody | null;
     if (!body?.unitId) {
       return NextResponse.json({ error: "unitId is required." }, { status: 400 });
     }
@@ -148,7 +110,10 @@ export async function POST(req: Request) {
     const unitId = body.unitId;
 
     // Resolve fleet for this account (membership = source of truth)
-    const fleetId = await resolveFleetIdForUser(supabase, body.fleetId ?? null);
+    const scope = resolveFleetActorScope(actor, {
+      explicitFleetId: body.fleetId ?? null,
+    });
+    const fleetId = scope?.fleetId;
     if (!fleetId) {
       return NextResponse.json(
         { error: "No fleet access for this account." },
