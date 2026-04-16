@@ -133,6 +133,11 @@ export default function CreateFlowMaintenanceSelector({
 
   if (!enabled) return null;
 
+  const softButtonClass =
+    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)] disabled:opacity-50";
+  const itemPanelClass =
+    "rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] px-3 py-3";
+
   return (
     <section className="rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5">
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
@@ -153,7 +158,7 @@ export default function CreateFlowMaintenanceSelector({
             type="button"
             onClick={() => setReloadKey((v) => v + 1)}
             disabled={!canLoad || loading}
-            className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
+            className={softButtonClass}
           >
             Refresh
           </button>
@@ -161,7 +166,7 @@ export default function CreateFlowMaintenanceSelector({
             type="button"
             onClick={() => toggleAll(true)}
             disabled={!rows.length}
-            className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
+            className={softButtonClass}
           >
             Select all
           </button>
@@ -169,7 +174,7 @@ export default function CreateFlowMaintenanceSelector({
             type="button"
             onClick={() => toggleAll(false)}
             disabled={!rows.length}
-            className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
+            className={softButtonClass}
           >
             Clear
           </button>
@@ -177,7 +182,7 @@ export default function CreateFlowMaintenanceSelector({
       </div>
 
       {!canLoad ? (
-        <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-4 text-sm text-neutral-400">
           Save customer and vehicle first to load maintenance suggestions.
         </div>
       ) : error ? (
@@ -187,7 +192,7 @@ export default function CreateFlowMaintenanceSelector({
       ) : loading ? (
         <div className="text-sm text-neutral-400">Loading suggestions...</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-4 text-sm text-neutral-400">
           No active maintenance suggestions for this vehicle.
         </div>
       ) : (
@@ -197,7 +202,7 @@ export default function CreateFlowMaintenanceSelector({
             return (
               <div
                 key={item.serviceCode}
-                className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"
+                className={itemPanelClass}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <label className="flex min-w-0 flex-1 items-start gap-3">
@@ -231,7 +236,7 @@ export default function CreateFlowMaintenanceSelector({
                     type="button"
                     onClick={() => void dismissCompletedPreviously(item.serviceCode)}
                     disabled={!!busyCode}
-                    className="rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-50"
+                    className={softButtonClass}
                   >
                     {busyCode === item.serviceCode ? "Saving..." : "Mark done elsewhere"}
                   </button>

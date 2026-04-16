@@ -174,7 +174,7 @@ function CustomerAutocomplete({
           className="
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
             border border-white/12
-            bg-black/55 backdrop-blur-xl
+            bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] backdrop-blur-xl
             shadow-[0_18px_45px_rgba(0,0,0,0.70)]
           "
         >
@@ -300,7 +300,7 @@ function UnitNumberAutocomplete({
           className="
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
             border border-white/12
-            bg-black/55 backdrop-blur-xl
+            bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] backdrop-blur-xl
             shadow-[0_18px_45px_rgba(0,0,0,0.70)]
           "
         >
@@ -493,10 +493,16 @@ export default function CustomerVehicleForm({
     }
   };
 
+  const panelClass =
+    "rounded-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
+  const chipClass =
+    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1 text-[11px] text-white/60";
+  const labelClass = "text-xs text-neutral-300";
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 text-white">
       {/* Header card */}
-      <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl">
+      <section className={`${panelClass} px-4 py-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
@@ -514,7 +520,7 @@ export default function CustomerVehicleForm({
               </span>
             )}
             {shopId && (
-              <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[11px] font-mono text-white/55">
+              <span className={`${chipClass} font-mono`}>
                 Shop&nbsp;
                 <span className="text-[var(--accent-copper-soft)]">
                   {shopId.slice(0, 8)}
@@ -528,7 +534,7 @@ export default function CustomerVehicleForm({
       {/* Main grid: Customer / Vehicle */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr),minmax(0,1.1fr)]">
         {/* Customer card */}
-        <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+        <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-white sm:text-base">
               Customer Info
@@ -541,7 +547,7 @@ export default function CustomerVehicleForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Business name + autocomplete */}
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs text-white/60">
+              <label className={labelClass}>
                 Business name <span className="text-white/35">(optional)</span>
               </label>
               <input
@@ -561,7 +567,7 @@ export default function CustomerVehicleForm({
 
             {/* First name */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">First name</label>
+              <label className={labelClass}>First name</label>
               <input
                 className="input"
                 placeholder="First name"
@@ -577,7 +583,7 @@ export default function CustomerVehicleForm({
 
             {/* Last name */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Last name</label>
+              <label className={labelClass}>Last name</label>
               <input
                 className="input"
                 placeholder="Last name"
@@ -593,7 +599,7 @@ export default function CustomerVehicleForm({
 
             {/* Phone */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Phone</label>
+              <label className={labelClass}>Phone</label>
               <input
                 className="input"
                 placeholder="Phone"
@@ -609,7 +615,7 @@ export default function CustomerVehicleForm({
 
             {/* Email */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Email</label>
+              <label className={labelClass}>Email</label>
               <input
                 type="email"
                 className="input"
@@ -626,7 +632,7 @@ export default function CustomerVehicleForm({
 
             {/* Address */}
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs text-white/60">Address</label>
+              <label className={labelClass}>Address</label>
               <input
                 className="input"
                 placeholder="Street address"
@@ -637,7 +643,7 @@ export default function CustomerVehicleForm({
 
             {/* City */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">City</label>
+              <label className={labelClass}>City</label>
               <input
                 className="input"
                 placeholder="City"
@@ -648,7 +654,7 @@ export default function CustomerVehicleForm({
 
             {/* Province */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Province</label>
+              <label className={labelClass}>Province</label>
               <input
                 className="input"
                 placeholder="Province / State"
@@ -659,7 +665,7 @@ export default function CustomerVehicleForm({
 
             {/* Postal code */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Postal code</label>
+              <label className={labelClass}>Postal code</label>
               <input
                 className="input"
                 placeholder="Postal code"
@@ -673,7 +679,7 @@ export default function CustomerVehicleForm({
         </section>
 
         {/* Vehicle card */}
-        <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+        <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-white sm:text-base">
               Vehicle Info
@@ -686,7 +692,7 @@ export default function CustomerVehicleForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Unit # + autocomplete */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Unit #</label>
+              <label className={labelClass}>Unit #</label>
               <input
                 className="input"
                 placeholder="Unit #"
@@ -725,7 +731,7 @@ export default function CustomerVehicleForm({
 
             {/* Year */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Year</label>
+              <label className={labelClass}>Year</label>
               <input
                 inputMode="numeric"
                 className="input"
@@ -737,7 +743,7 @@ export default function CustomerVehicleForm({
 
             {/* Make */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Make</label>
+              <label className={labelClass}>Make</label>
               <input
                 className="input"
                 placeholder="Make"
@@ -748,7 +754,7 @@ export default function CustomerVehicleForm({
 
             {/* Model */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Model</label>
+              <label className={labelClass}>Model</label>
               <input
                 className="input"
                 placeholder="Model"
@@ -759,7 +765,7 @@ export default function CustomerVehicleForm({
 
             {/* VIN */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">VIN</label>
+              <label className={labelClass}>VIN</label>
               <input
                 className="input"
                 placeholder="VIN"
@@ -770,7 +776,7 @@ export default function CustomerVehicleForm({
 
             {/* Plate */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">License plate</label>
+              <label className={labelClass}>License plate</label>
               <input
                 className="input"
                 placeholder="License plate"
@@ -783,7 +789,7 @@ export default function CustomerVehicleForm({
 
             {/* Mileage */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Mileage</label>
+              <label className={labelClass}>Mileage</label>
               <input
                 inputMode="numeric"
                 className="input"
@@ -795,7 +801,7 @@ export default function CustomerVehicleForm({
 
             {/* Color */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Color</label>
+              <label className={labelClass}>Color</label>
               <input
                 className="input"
                 placeholder="Color"
@@ -806,7 +812,7 @@ export default function CustomerVehicleForm({
 
             {/* Engine hours */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Engine hours</label>
+              <label className={labelClass}>Engine hours</label>
               <input
                 inputMode="numeric"
                 className="input"
@@ -820,7 +826,7 @@ export default function CustomerVehicleForm({
 
             {/* Engine / trim */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Engine / Trim</label>
+              <label className={labelClass}>Engine / Trim</label>
               <input
                 className="input"
                 placeholder="e.g. 3.5L EcoBoost"
@@ -831,7 +837,7 @@ export default function CustomerVehicleForm({
 
             {/* Transmission */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Transmission</label>
+              <label className={labelClass}>Transmission</label>
               <select
                 className="input"
                 value={vehicle.transmission ?? ""}
@@ -850,7 +856,7 @@ export default function CustomerVehicleForm({
 
             {/* Fuel type */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Fuel type</label>
+              <label className={labelClass}>Fuel type</label>
               <select
                 className="input"
                 value={vehicle.fuel_type ?? ""}
@@ -870,7 +876,7 @@ export default function CustomerVehicleForm({
 
             {/* Drivetrain */}
             <div className="space-y-1">
-              <label className="text-xs text-white/60">Drivetrain</label>
+              <label className={labelClass}>Drivetrain</label>
               <select
                 className="input"
                 value={vehicle.drivetrain ?? ""}
@@ -926,7 +932,7 @@ export default function CustomerVehicleForm({
               onClick={onClear}
               className="
                 inline-flex items-center rounded-full
-                border border-white/12 bg-white/5
+                border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)]
                 px-3 py-1.5 text-xs sm:text-sm text-white/75
                 transition hover:border-red-400/60 hover:bg-red-950/35 hover:text-red-200
               "

@@ -43,6 +43,12 @@ const card =
 const divider = "border-white/10";
 const sectionPanel =
   "rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
+const childPanel =
+  "rounded-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+const subtlePanel =
+  "rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)]";
+const softButton =
+  "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)]";
 
 /* =============================================================================
    Types & helpers
@@ -1643,11 +1649,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={() => router.back()}
-              className="
-                shrink-0 rounded-full border border-white/10 bg-black/50
-                px-4 py-2 text-sm font-semibold text-neutral-200
-                hover:bg-black/65
-              "
+              className={cx("shrink-0 px-4 py-2 text-sm font-semibold", softButton)}
             >
               Back to list
             </button>
@@ -1663,14 +1665,14 @@ useEffect(() => {
           )}
 
           {uploadSummary && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm text-neutral-200">
+            <div className={cx("mb-4 px-4 py-3 text-sm text-neutral-200", subtlePanel)}>
               Uploaded {uploadSummary.uploaded} file(s)
               {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
             </div>
           )}
 
           {inviteNotice && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm text-neutral-200">
+            <div className={cx("mb-4 px-4 py-3 text-sm text-neutral-200", subtlePanel)}>
               {inviteNotice}
             </div>
           )}
@@ -1686,7 +1688,7 @@ useEffect(() => {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                <div className={cx("p-4", childPanel)}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
@@ -1707,7 +1709,7 @@ useEffect(() => {
                         "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition",
                         isWaiter
                           ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
-                          : "border-white/10 bg-black/50",
+                          : "border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)]",
                         loading ? "opacity-60" : "hover:bg-white/5",
                       ].join(" ")}
                     >
@@ -1728,7 +1730,7 @@ useEffect(() => {
                         "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
                         isWaiter
                           ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                          : "border-white/10 bg-black/40 text-neutral-400",
+                          : "border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_65%,transparent)] text-neutral-400",
                       ].join(" ")}
                     >
                       {isWaiter ? "Waiter" : "Drop-off"}
@@ -1736,7 +1738,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
+                <div className={cx("p-3.5", childPanel)}>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Priority
                   </label>
@@ -1756,7 +1758,7 @@ useEffect(() => {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
+                <div className={cx("p-3.5", childPanel)}>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Default job type
                   </label>
@@ -1775,7 +1777,7 @@ useEffect(() => {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
+                <div className={cx("p-3.5", childPanel)}>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Target completion
                   </label>
@@ -1794,7 +1796,7 @@ useEffect(() => {
             </section>
 
             {/* Customer & Vehicle */}
-            <section className={cx(sectionPanel, "border-white/15 bg-black/45")}>
+            <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
                 <h2 className="text-sm font-semibold tracking-[0.08em] text-neutral-100">
                   Customer &amp; Vehicle
@@ -1841,11 +1843,7 @@ useEffect(() => {
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className="
-                    rounded-full border border-white/15 bg-black/30
-                    px-4 py-2 text-sm font-semibold text-neutral-400
-                    hover:text-neutral-200 hover:bg-black/45
-                  "
+                  className={cx("px-4 py-2 text-sm font-semibold text-neutral-300 hover:text-neutral-100", softButton)}
                 >
                   Clear form
                 </button>
@@ -1894,11 +1892,10 @@ useEffect(() => {
                   }}
                 >
                   <span
-                    className="
-                      cursor-pointer rounded-full border px-4 py-2 text-sm font-semibold
-                      border-white/15 bg-black/35 text-neutral-200
-                      hover:border-[color:var(--copper)]/55 hover:text-[color:var(--copper)]
-                    "
+                    className={cx(
+                      "cursor-pointer px-4 py-2 text-sm font-semibold hover:border-[color:var(--copper)]/55 hover:text-[color:var(--copper)]",
+                      softButton,
+                    )}
                   >
                     Add by VIN / Scan
                   </span>
@@ -1911,7 +1908,7 @@ useEffect(() => {
                   type="checkbox"
                   checked={sendInvite}
                   onChange={(e) => setSendInvite(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/10 bg-black/50"
+                  className="h-4 w-4 rounded border-white/20 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)]"
                   disabled={loading}
                 />
                 Email a customer portal sign-up link
@@ -2047,7 +2044,9 @@ useEffect(() => {
               </div>
 
               {!wo?.id || lines.length === 0 ? (
-                <p className="text-sm text-neutral-400">No lines yet.</p>
+                <div className={cx("px-4 py-5 text-sm text-neutral-400", subtlePanel)}>
+                  No lines yet.
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div>
@@ -2060,7 +2059,10 @@ useEffect(() => {
                         .map((ln) => (
                     <div
                       key={ln.id}
-                      className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/50 p-3 sm:flex-row sm:items-start sm:justify-between"
+                      className={cx(
+                        "flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between",
+                        subtlePanel,
+                      )}
                     >
                       <div className="min-w-0">
                         <div className="truncate font-medium text-neutral-100">
@@ -2098,11 +2100,9 @@ useEffect(() => {
                         <button
                           type="button"
                           onClick={() => void handleDeleteLine(ln.id)}
-                          className="
-                            rounded-full border border-red-400/25 bg-black/50
-                            px-3 py-2 text-sm font-semibold text-red-200
-                            hover:bg-red-500/10
-                          "
+                          className={cx(
+                            "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
+                          )}
                         >
                           Delete
                         </button>
@@ -2122,7 +2122,7 @@ useEffect(() => {
                         .map((ln) => (
                           <div
                             key={ln.id}
-                            className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300"
+                            className={cx("p-3 text-sm text-neutral-300", subtlePanel)}
                           >
                             <div className="font-medium text-neutral-200">
                               {ln.description || ln.complaint || "Context line"}
