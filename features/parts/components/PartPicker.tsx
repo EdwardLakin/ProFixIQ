@@ -14,6 +14,7 @@ import {
   useAiPartSuggestions,
   type AiPartSuggestion,
 } from "@/features/parts/hooks/useAiPartSuggestions";
+import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 type UUID = string;
@@ -235,7 +236,7 @@ export function PartPicker({
         const term = search.trim();
         if (term) {
           q = q.or(
-            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`,
+            `name.ilike.%${term}%,sku.ilike.%${term}%,part_number.ilike.%${term}%,category.ilike.%${term}%`,
           );
         }
 
@@ -523,6 +524,7 @@ export function PartPicker({
                   ) : (
                     parts.map((p) => {
                       const pid = p.id as UUID;
+                      const summary = toPartDisplaySummary(p);
                       const active = selectedPartId === pid;
                       return (
                         <button
@@ -546,10 +548,10 @@ export function PartPicker({
                           type="button"
                         >
                           <div className="truncate text-sm font-semibold text-neutral-50">
-                            {p.name ?? "Unnamed part"}
+                            {summary.name}
                           </div>
                           <div className="truncate text-xs text-neutral-500">
-                            {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
+                            {summary.sku ?? "No SKU"} • {summary.partNumber ? `Part # ${summary.partNumber}` : "No part #"} • {summary.category ?? "Uncategorized"}
                           </div>
                         </button>
                       );

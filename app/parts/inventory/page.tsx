@@ -12,6 +12,7 @@ import {
   trustLevelLabel,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
+import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -298,6 +299,7 @@ export default function InventoryPage(): JSX.Element {
   const [sku, setSku] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [price, setPrice] = useState<number | "">("");
+  const [partNumber, setPartNumber] = useState<string>("");
 
   // initial receive (optional) for Add
   const [initLoc, setInitLoc] = useState<string>("");
@@ -310,6 +312,7 @@ export default function InventoryPage(): JSX.Element {
   const [editSku, setEditSku] = useState<string>("");
   const [editCategory, setEditCategory] = useState<string>("");
   const [editPrice, setEditPrice] = useState<number | "">("");
+  const [editPartNumber, setEditPartNumber] = useState<string>("");
 
   // receive modal (standalone quick receive)
   const [recvOpen, setRecvOpen] = useState<boolean>(false);
@@ -334,8 +337,7 @@ export default function InventoryPage(): JSX.Element {
   const pageWrap = "space-y-4 p-6 text-white";
   const glassCard =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const glassHeader =
-    "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
+  const glassHeader = "bg-slate-950/55 border-b border-white/10";
 
   const inputBase =
     `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
@@ -392,7 +394,14 @@ export default function InventoryPage(): JSX.Element {
       const q = search.trim();
 
       const { data, error } = await (q
-        ? base.or([`name.ilike.%${q}%`, `sku.ilike.%${q}%`, `category.ilike.%${q}%`].join(","))
+        ? base.or(
+            [
+              `name.ilike.%${q}%`,
+              `sku.ilike.%${q}%`,
+              `part_number.ilike.%${q}%`,
+              `category.ilike.%${q}%`,
+            ].join(","),
+          )
         : base);
 
       const partRows = (!error && (data as Part[])) || [];
@@ -558,6 +567,7 @@ export default function InventoryPage(): JSX.Element {
       shop_id: shopId,
       name: name.trim(),
       sku: sku.trim() ? sku.trim() : undefined,
+      part_number: partNumber.trim() ? partNumber.trim() : undefined,
       category: category.trim() ? category.trim() : undefined,
       price: typeof price === "number" ? price : undefined,
     };
@@ -587,6 +597,7 @@ export default function InventoryPage(): JSX.Element {
     setAddOpen(false);
     setName("");
     setSku("");
+    setPartNumber("");
     setCategory("");
     setPrice("");
     setInitQty("");
@@ -597,6 +608,7 @@ export default function InventoryPage(): JSX.Element {
     setEditPart(p);
     setEditName(p.name ?? "");
     setEditSku(p.sku ?? "");
+    setEditPartNumber(p.part_number ?? "");
     setEditCategory(p.category ?? "");
     setEditPrice(typeof p.price === "number" ? p.price : "");
     setEditOpen(true);
@@ -608,6 +620,7 @@ export default function InventoryPage(): JSX.Element {
     const patch: PartUpdate = {
       name: editName.trim() ? editName.trim() : undefined,
       sku: editSku.trim() ? editSku.trim() : undefined,
+      part_number: editPartNumber.trim() ? editPartNumber.trim() : undefined,
       category: editCategory.trim() ? editCategory.trim() : undefined,
       price: typeof editPrice === "number" ? editPrice : undefined,
     };
@@ -800,18 +813,18 @@ export default function InventoryPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory" className={btnCopper}>
+              <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory" className={btnBlue}>
                 Ask Assistant
               </Link>
 
               <input
                 className={`${inputBase} w-72`}
-                placeholder="Search name / SKU / category"
+                placeholder="Search name / SKU / part # / category"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
 
-              <button className={btnCopper} onClick={() => setAddOpen(true)} disabled={!shopId}>
+              <button className={btnBlue} onClick={() => setAddOpen(true)} disabled={!shopId}>
                 Add Part
               </button>
 
@@ -846,6 +859,7 @@ export default function InventoryPage(): JSX.Element {
                 <tr className="text-left">
                   <th className="p-3">Name</th>
                   <th className="p-3">SKU</th>
+                  <th className="p-3">Part #</th>
                   <th className="p-3">Category</th>
                   <th className="p-3">Trust</th>
                   <th className="p-3">Price</th>
@@ -855,19 +869,20 @@ export default function InventoryPage(): JSX.Element {
               </thead>
               <tbody>
                 {visibleParts.map((p) => {
+                  const summary = toPartDisplaySummary(p);
                   const total = onHand[p.id] ?? 0;
                   const onHandPill = total > 0 ? pillOk : pillZero;
                   const trust = trustByPartId[p.id] ?? { level: "high", reasons: [] as string[] };
                   return (
                     <tr key={p.id} className="border-t border-white/10">
                       <td className="p-3">
-                        <div className="font-medium text-white">{p.name}</div>
-                        <div className="mt-0.5 text-xs text-neutral-500">
-                          {p.id ? `#${String(p.id).slice(0, 8)}` : ""}
-                        </div>
+                        <div className="font-medium text-white">{summary.name}</div>
+                        {/* Previously this subtitle rendered String(p.id).slice(0, 8), which exposed internal ids as unlabeled metadata. */}
+                        <div className="mt-0.5 text-xs text-neutral-500">Record ID in Edit modal</div>
                       </td>
-                      <td className="p-3">{p.sku ?? "—"}</td>
-                      <td className="p-3">{p.category ?? "—"}</td>
+                      <td className="p-3">{summary.sku ?? "No SKU"}</td>
+                      <td className="p-3">{summary.partNumber ?? "—"}</td>
+                      <td className="p-3">{summary.category ?? "—"}</td>
                       <td className="p-3">
                         <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadgeTone(trust.level)}`}>
                           {trustLevelLabel(trust.level)}
@@ -934,6 +949,12 @@ export default function InventoryPage(): JSX.Element {
             <TextField label="Name*" value={name} onChange={setName} placeholder="Part name" />
           </div>
           <TextField label="SKU" value={sku} onChange={setSku} placeholder="Optional" />
+          <TextField
+            label="Part Number"
+            value={partNumber}
+            onChange={setPartNumber}
+            placeholder="Manufacturer or internal part #"
+          />
           <TextField label="Category" value={category} onChange={setCategory} placeholder="Optional" />
           <NumberField label="Price" value={price} onChange={(v) => setPrice(v === "" ? "" : v)} />
         </div>
@@ -987,8 +1008,12 @@ export default function InventoryPage(): JSX.Element {
             <TextField label="Name*" value={editName} onChange={setEditName} />
           </div>
           <TextField label="SKU" value={editSku} onChange={setEditSku} />
+          <TextField label="Part Number" value={editPartNumber} onChange={setEditPartNumber} />
           <TextField label="Category" value={editCategory} onChange={setEditCategory} />
           <NumberField label="Price" value={editPrice} onChange={(v) => setEditPrice(v === "" ? "" : v)} />
+          <div className="sm:col-span-2 text-xs text-neutral-500">
+            {editPart?.id ? `Internal record id: ${editPart.id}` : ""}
+          </div>
         </div>
       </Modal>
 

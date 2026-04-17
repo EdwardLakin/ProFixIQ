@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 type Alloc = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
-type PartLite = Pick<DB["public"]["Tables"]["parts"]["Row"], "id" | "name" | "sku">;
+type PartLite = Pick<DB["public"]["Tables"]["parts"]["Row"], "id" | "name" | "sku" | "part_number" | "category" | "price">;
 type LocLite = Pick<DB["public"]["Tables"]["stock_locations"]["Row"], "id" | "code" | "name">;
 type WoLite = Pick<DB["public"]["Tables"]["work_orders"]["Row"], "id" | "custom_id">;
 type ReqItemLite = Pick<DB["public"]["Tables"]["part_request_items"]["Row"], "id" | "request_id" | "po_id">;
@@ -67,7 +68,9 @@ export default function AllocationsPage(): JSX.Element {
         const moveIds = [...new Set(list.map((a) => String(a.stock_move_id ?? "")).filter(Boolean))];
 
         const [parts, locs, wos, reqItems, moves] = await Promise.all([
-          partIds.length ? supabase.from("parts").select("id,name,sku").in("id", partIds) : Promise.resolve({ data: [] as PartLite[] }),
+          partIds.length
+            ? supabase.from("parts").select("id,name,sku,part_number,category,price").in("id", partIds)
+            : Promise.resolve({ data: [] as PartLite[] }),
           locIds.length ? supabase.from("stock_locations").select("id,code,name").in("id", locIds) : Promise.resolve({ data: [] as LocLite[] }),
           woIds.length ? supabase.from("work_orders").select("id,custom_id").in("id", woIds) : Promise.resolve({ data: [] as WoLite[] }),
           reqItemIds.length ? supabase.from("part_request_items").select("id,request_id,po_id").in("id", reqItemIds) : Promise.resolve({ data: [] as ReqItemLite[] }),
@@ -125,7 +128,20 @@ export default function AllocationsPage(): JSX.Element {
               {filtered.map((r) => (
                 <tr key={String(r.a.id)} className="border-t border-white/10 align-top">
                   <td className="p-3.5">{r.a.work_order_id ? <Link className="text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(String(r.a.work_order_id))}`}>{r.wo?.custom_id ?? String(r.a.work_order_id).slice(0, 8)}</Link> : <span className="text-neutral-500">—</span>}</td>
-                  <td className="p-3.5"><div className="font-medium text-neutral-100">{r.part?.name ?? String(r.a.part_id).slice(0, 8)}</div><div className="text-xs text-neutral-500">{r.part?.sku ?? ""}</div></td>
+                  <td className="p-3.5">
+                    {(() => {
+                      const summary = r.part ? toPartDisplaySummary(r.part) : null;
+                      return (
+                        <>
+                          <div className="font-medium text-neutral-100">{summary?.name ?? "Unknown part"}</div>
+                          <div className="text-xs text-neutral-500">
+                            {summary ? (summary.sku ? `SKU ${summary.sku}` : "No SKU") : ""}
+                            {summary?.partNumber ? ` · Part # ${summary.partNumber}` : ""}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </td>
                   <td className="p-3.5">{r.loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{r.loc?.name ?? ""}</span></td>
                   <td className="p-3.5 tabular-nums text-neutral-200">{r.a.qty}</td>
                   <td className="p-3.5 text-xs text-neutral-300">

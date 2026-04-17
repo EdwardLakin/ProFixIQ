@@ -18,6 +18,7 @@ import {
   trustReasonTone,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
+import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import type { ReceiveDrawerItem } from "@/features/parts/components/ReceiveDrawer";
 
 type DB = Database;
@@ -264,14 +265,22 @@ export default function ReceivingInboxPage(): JSX.Element {
             <tbody>
               {items.map((it) => {
                 const p = it.part_id ? partsMap[it.part_id] : null;
+                const partSummary = p ? toPartDisplaySummary(p) : null;
                 const trust = it.part_id ? trustByPartId[it.part_id] : undefined;
                 const itemState = toItemFlowDisplay({ rawStatus: it.status, qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 return (
                   <tr key={it.id} className="border-t border-white/10 align-top">
                     <td className="p-3.5">
-                      <div className="font-semibold text-neutral-100">{p?.name ? String(p.name) : it.description}</div>
-                      <div className="mt-1 text-[11px] text-neutral-500">{p?.sku ? `${p.sku} • ` : ""}{itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}</div>
+                      <div className="font-semibold text-neutral-100">{partSummary?.name ?? it.description}</div>
+                      <div className="mt-1 text-[11px] text-neutral-500">
+                        {partSummary
+                          ? partSummary.sku
+                            ? `SKU ${partSummary.sku} • `
+                            : "No SKU • "
+                          : ""}
+                        {itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}
+                      </div>
                       {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}
                     </td>
                     <td className="p-3.5">
@@ -279,7 +288,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                       {trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                     </td>
                     <td className="p-3.5 tabular-nums text-neutral-200">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
-                    <td className="p-3.5"><button onClick={() => {setDrawerItem({ ...it, part_name: p?.name ?? null, sku: p?.sku ?? null, trust_level: trust?.level, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
+                    <td className="p-3.5"><button onClick={() => {setDrawerItem({ ...it, part_name: partSummary?.name ?? null, sku: partSummary?.sku ?? null, trust_level: trust?.level, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
                   </tr>
                 );
               })}
