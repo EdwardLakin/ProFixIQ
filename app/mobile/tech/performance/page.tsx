@@ -177,6 +177,9 @@ export default function MobileTechPerformancePage() {
           <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">ProFixIQ • Tech</div>
           <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-sky-300">My Performance</h1>
           <p className="text-[0.8rem] text-neutral-400">Jobs, hours and efficiency for your chosen time range.</p>
+          <p className="text-[0.68rem] text-neutral-500">
+            Productivity view: clocked hours are from labor segments (with timecard fallback), not attendance shift punches.
+          </p>
         </header>
 
         <section className="mobile-tech-panel space-y-2 px-3 py-3">

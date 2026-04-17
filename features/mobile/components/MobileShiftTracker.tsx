@@ -8,8 +8,10 @@ import {
   subscribeOfflineMutations,
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
-
-type Mode = "none" | "shift" | "break" | "lunch" | "ended";
+import {
+  fetchMobileShiftState,
+  type MobileShiftMode as Mode,
+} from "@/features/mobile/shifts/client";
 
 type PunchEventType =
   | "start_shift"
@@ -79,28 +81,24 @@ export default function MobileShiftTracker({ userId }: Props) {
     if (!userId) return;
     setErr(null);
 
-    const res = await fetch("/api/mobile/shifts", { cache: "no-store" });
-    const body = (await res.json().catch(() => null)) as
-      | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
-      | null;
-    if (!res.ok || !body?.ok) {
-      setErr(body?.error ?? "Failed to load shift state");
+    try {
+      const shiftState = await fetchMobileShiftState();
+      if (!shiftState.shiftId) {
+        setShiftId(null);
+        setStartTime(null);
+        setMode("none");
+        return;
+      }
+
+      setShiftId(shiftState.shiftId);
+      setStartTime(shiftState.startTime ?? null);
+      setMode(shiftState.mode ?? "shift");
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Failed to load shift state");
       setShiftId(null);
       setStartTime(null);
       setMode("none");
-      return;
     }
-
-    if (!body.shiftId) {
-      setShiftId(null);
-      setStartTime(null);
-      setMode("none");
-      return;
-    }
-
-    setShiftId(body.shiftId);
-    setStartTime(body.startTime ?? null);
-    setMode(body.mode ?? "shift");
   }, [userId]);
 
   useEffect(() => {
