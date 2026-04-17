@@ -383,9 +383,9 @@ export function MobileTechHome({
     : null;
 
   return (
-    <div className="space-y-6 px-4 py-4">
+    <div className="mobile-tech-page space-y-5 px-4 py-4">
       {/* hero – brushed metal panel */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+      <section className="mobile-tech-panel px-4 py-4 text-white">
         <div className="space-y-4">
           <div className="text-center">
             <h1 className="text-xl font-semibold leading-tight">
@@ -434,7 +434,7 @@ export function MobileTechHome({
       </section>
 
       {/* stat chips – jobs overview */}
-      <section className="grid grid-cols-3 gap-3">
+      <section className="grid grid-cols-3 gap-2.5">
         <StatCard
           label="Open jobs"
           value={loadingStats ? "…" : openJobs}
@@ -458,7 +458,7 @@ export function MobileTechHome({
             </h2>
             <Link
               href="/mobile/work-orders"
-              className="text-[0.7rem] text-[var(--accent-copper-soft)] underline-offset-4 hover:underline"
+              className="text-[0.7rem] text-sky-300 underline-offset-4 hover:underline"
             >
               View all
             </Link>
@@ -468,11 +468,11 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-xs text-neutral-100"
+                  className="mobile-tech-subpanel block px-3 py-2 text-xs text-neutral-100"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="accent-chip rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    <span className="accent-chip rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-sky-300">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -530,7 +530,7 @@ function CurrentJobPill({
 }) {
   if (loading) {
     return (
-      <div className="metal-card inline-flex w-full items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-[0.75rem] text-neutral-300">
+      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-neutral-300">
         <span className="uppercase tracking-[0.16em] text-neutral-400">
           Current job
         </span>
@@ -541,7 +541,7 @@ function CurrentJobPill({
 
   if (!job || !workOrder) {
     return (
-      <div className="metal-card inline-flex w-full items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-[0.75rem] text-neutral-400">
+      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-neutral-400">
         <span className="uppercase tracking-[0.16em] text-neutral-400">
           Current job
         </span>
@@ -569,10 +569,10 @@ function CurrentJobPill({
   return (
     <Link
       href={href}
-      className="metal-card flex items-center justify-between rounded-2xl border border-[var(--accent-copper-soft)] px-3 py-2 text-[0.8rem] text-neutral-100 shadow-[0_0_24px_rgba(212,118,49,0.45)]"
+      className="mobile-tech-subpanel flex items-center justify-between border border-sky-500/35 px-3 py-2 text-[0.8rem] text-neutral-100"
     >
       <div className="flex flex-col">
-        <span className="text-[0.65rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
+        <span className="text-[0.65rem] uppercase tracking-[0.18em] text-sky-300">
           Current job
         </span>
         <span className="mt-0.5 truncate text-sm font-medium">{jobLabel}</span>
@@ -581,7 +581,7 @@ function CurrentJobPill({
           {vehicleLabel ? ` • ${vehicleLabel}` : ""}
         </span>
       </div>
-      <span className="ml-3 text-xs text-[var(--accent-copper-soft)]">
+      <span className="ml-3 text-xs text-sky-300">
         Go →
       </span>
     </Link>
@@ -597,13 +597,12 @@ function StatCard({
   value: number | string;
   variant?: "default" | "accent";
 }) {
-  const base =
-    "metal-card rounded-2xl px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)]";
+  const base = "mobile-tech-stat px-3 py-3";
 
   const variantClasses =
     variant === "accent"
-      ? "border border-[var(--accent-copper-soft)]/80 shadow-[0_16px_32px_rgba(0,0,0,0.75),0_0_24px_rgba(212,118,49,0.55)]"
-      : "border border-[var(--metal-border-soft)]";
+      ? "border-sky-500/35"
+      : "border-[var(--metal-border-soft)]";
 
   return (
     <div className={`${base} ${variantClasses}`}>
@@ -646,7 +645,7 @@ function SummaryCard({
     loading || eff === null ? "–" : clampEfficiencyText(Number(eff));
 
   return (
-    <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
+    <div className="mobile-tech-panel px-4 py-3">
       <div className="text-center text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
         {label} – Worked vs Billed
       </div>
@@ -664,7 +663,7 @@ function SummaryCard({
 
       <div className="mt-2 text-center text-[0.7rem] text-neutral-400">
         Efficiency:{" "}
-        <span className="font-semibold text-[var(--accent-copper-soft)]">
+        <span className="font-semibold text-sky-300">
           {effText}
         </span>
       </div>
@@ -696,35 +695,17 @@ function ShiftStatusChip({
   let classes = "";
 
   if (loading) {
-    classes =
-      "border-[var(--metal-border-soft)] text-neutral-100 " +
-      "bg-[linear-gradient(to_right,rgba(148,163,184,0.4),rgba(15,23,42,0.95))]";
+    classes = "border-[var(--metal-border-soft)] text-neutral-100 bg-slate-900/70";
   } else if (status === "active") {
-    classes =
-      "border-emerald-400/80 text-emerald-50 " +
-      "bg-[linear-gradient(to_right,rgba(16,185,129,0.55),rgba(15,23,42,0.97))] " +
-      "shadow-[0_0_16px_rgba(16,185,129,0.45)]";
+    classes = "border-sky-400/70 text-sky-100 bg-sky-500/12";
   } else if (status === "break") {
-    classes =
-      "border-yellow-400/80 text-yellow-50 " +
-      "bg-[linear-gradient(to_right,rgba(250,204,21,0.55),rgba(15,23,42,0.97))] " +
-      "shadow-[0_0_16px_rgba(250,204,21,0.45)]";
+    classes = "border-amber-400/70 text-amber-100 bg-amber-500/12";
   } else if (status === "lunch") {
-    classes =
-      "border-orange-400/80 text-orange-50 " +
-      "bg-[linear-gradient(to_right,rgba(249,115,22,0.65),rgba(15,23,42,0.97))] " +
-      "shadow-[0_0_16px_rgba(249,115,22,0.5)]";
+    classes = "border-amber-500/70 text-amber-100 bg-amber-500/14";
   } else if (status === "ended") {
-    // ended – red gradient
-    classes =
-      "border-red-500/80 text-red-50 " +
-      "bg-[linear-gradient(to_right,rgba(239,68,68,0.7),rgba(15,23,42,0.97))] " +
-      "shadow-[0_0_18px_rgba(239,68,68,0.55)]";
+    classes = "border-red-500/70 text-red-100 bg-red-500/12";
   } else {
-    // none – subtle burnt copper
-    classes =
-      "border-[var(--accent-copper-soft)]/60 text-[var(--accent-copper-soft)] " +
-      "bg-[linear-gradient(to_right,rgba(212,118,49,0.45),rgba(15,23,42,0.96))]";
+    classes = "border-[var(--metal-border-soft)] text-neutral-200 bg-slate-900/70";
   }
 
   return (
@@ -749,7 +730,7 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-neutral-100 transition hover:border-[var(--accent-copper-soft)]"
+      className="mobile-tech-subpanel block px-4 py-3 text-sm text-neutral-100 transition hover:border-sky-500/45"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -758,7 +739,7 @@ function ToolCard({
           </div>
           <div className="mt-1 text-sm">{description}</div>
         </div>
-        <span className="text-xs text-[var(--accent-copper-soft)]">›</span>
+        <span className="text-xs text-sky-300">›</span>
       </div>
     </Link>
   );

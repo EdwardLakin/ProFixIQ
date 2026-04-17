@@ -58,25 +58,16 @@ const chip = (s: string | null) =>
 
 /* ---------------------------- UI (theme-only) ---------------------------- */
 
-const panel =
-  "metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 backdrop-blur shadow-[0_18px_45px_rgba(0,0,0,0.85)]";
+const panel = "mobile-tech-panel";
 
-const card =
-  "metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 backdrop-blur";
+const card = "mobile-tech-subpanel";
 
 const fieldLabel = "text-[11px] uppercase tracking-[0.18em] text-neutral-400";
 
-const btnBase =
-  "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors shadow-[0_10px_28px_rgba(0,0,0,0.55)]";
-const btnNeutral =
-  btnBase +
-  " border-[var(--metal-border-soft)] bg-black/40 text-neutral-100 hover:bg-white/5";
-const btnWarn =
-  btnBase +
-  " border-amber-400/70 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
-const btnInfo =
-  btnBase +
-  " border-sky-500/70 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
+const btnBase = "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors";
+const btnNeutral = `${btnBase} mobile-tech-btn-secondary`;
+const btnWarn = `${btnBase} mobile-tech-btn-danger`;
+const btnInfo = `${btnBase} mobile-tech-btn-utility`;
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -796,7 +787,7 @@ export default function MobileFocusedJob(props: {
           {workOrder?.id ? (
             <button
               type="button"
-              className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-[11px] font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
+              className="mobile-tech-btn-secondary rounded-full px-3 py-1.5 text-[11px] font-semibold"
               onClick={() => {
                 closeAllSubModals();
                 setOpenAddJob(true);
@@ -811,7 +802,7 @@ export default function MobileFocusedJob(props: {
         </header>
 
         <div className="px-3 pt-2">
-          <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2 text-xs">
+          <div className="mobile-tech-subpanel px-3 py-2 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="text-neutral-200">Sync status</span>
               <span
@@ -841,7 +832,7 @@ export default function MobileFocusedJob(props: {
               <button
                 type="button"
                 onClick={() => void replayOfflineMutations()}
-                className="mt-2 rounded-md border border-[var(--metal-border-soft)] bg-black/40 px-2 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+                className="mobile-tech-btn-secondary mt-2 rounded-md px-2 py-1 text-[11px] text-neutral-100"
               >
                 Retry sync now
               </button>
@@ -850,7 +841,7 @@ export default function MobileFocusedJob(props: {
         </div>
 
         {/* Body */}
-        <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
+        <main className="mobile-tech-page flex-1 overflow-y-auto px-3 py-3">
           <div className="mx-auto max-w-4xl space-y-4">
             {busy && !line ? (
               <div className="grid gap-3">
@@ -888,8 +879,7 @@ export default function MobileFocusedJob(props: {
                           }
                         }}
                         className={[
-                          "flex-1 rounded-xl border px-4 py-3 text-sm font-semibold transition",
-                          "border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)]",
+                          "mobile-tech-btn-primary flex-1 rounded-xl border px-4 py-3 text-sm font-semibold transition",
                           "disabled:cursor-not-allowed disabled:opacity-45",
                         ].join(" ")}
                       >
@@ -1008,7 +998,9 @@ export default function MobileFocusedJob(props: {
                 )}
 
                 {/* controls */}
-                <div className="grid gap-2 md:grid-cols-3">
+                <div className={`${panel} px-4 py-4`}>
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">Operational actions</div>
+                  <div className="grid gap-2 md:grid-cols-3">
                   {mode === "tech" ? (
                     <>
                       <button
@@ -1113,6 +1105,7 @@ export default function MobileFocusedJob(props: {
                       </button>
                     </>
                   )}
+                  </div>
                 </div>
 
                 {/* parts used */}
@@ -1135,7 +1128,7 @@ export default function MobileFocusedJob(props: {
                       {offlineMutations.map((mutation) => (
                         <li
                           key={mutation.clientMutationId}
-                          className="rounded-lg border border-[var(--metal-border-soft)] bg-black/30 px-2 py-2"
+                          className="mobile-tech-subpanel rounded-lg px-2 py-2"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="truncate text-neutral-100">{mutation.actionType.replaceAll("_", " ")}</span>
@@ -1174,7 +1167,7 @@ export default function MobileFocusedJob(props: {
                   ) : allocs.length === 0 ? (
                     <div className="text-sm text-neutral-300">No parts used yet.</div>
                   ) : (
-                    <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/40">
+                    <div className="mobile-tech-subpanel overflow-hidden">
                       <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
@@ -1218,7 +1211,7 @@ export default function MobileFocusedJob(props: {
                     }}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded-xl border border-[var(--metal-border-soft)] bg-black/45 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
+                    className="mobile-tech-input px-3 py-2 text-sm text-white"
                     placeholder="Add notes for this job…"
                   />
                   {notesDirty && (
