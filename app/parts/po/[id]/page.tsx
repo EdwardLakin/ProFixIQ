@@ -7,6 +7,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 
@@ -575,7 +576,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                   <option value="">— select —</option>
                   {parts.map((p) => (
                     <option key={String(p.id)} value={String(p.id)}>
-                      {p.sku ? `${String(p.sku)} — ${String(p.name)}` : String(p.name ?? String(p.id).slice(0, 8))}
+                      {partOptionLabel(toPartDisplaySummary(p))}
                     </option>
                   ))}
                 </select>
@@ -607,7 +608,9 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
               {linePartId ? (
                 <div className="md:col-span-4 text-[11px] text-neutral-500">
-                  Part #: <span className="text-neutral-200">{String(partById.get(linePartId)?.sku ?? "—")}</span>
+                  SKU: <span className="text-neutral-200">{String(partById.get(linePartId)?.sku ?? "—")}</span>
+                  <span className="mx-2 text-neutral-600">·</span>
+                  Part #: <span className="text-neutral-200">{String(partById.get(linePartId)?.part_number ?? "—")}</span>
                   <span className="mx-2 text-neutral-600">·</span>
                   Name:{" "}
                   <span className="text-neutral-200">{String(partById.get(linePartId)?.name ?? "—")}</span>

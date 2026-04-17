@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
-type PartLite = Pick<DB["public"]["Tables"]["parts"]["Row"], "id" | "name" | "sku">;
+type PartLite = Pick<DB["public"]["Tables"]["parts"]["Row"], "id" | "name" | "sku" | "part_number" | "category" | "price">;
 type LocLite = Pick<DB["public"]["Tables"]["stock_locations"]["Row"], "id" | "code" | "name">;
 type RequestItemLite = Pick<DB["public"]["Tables"]["part_request_items"]["Row"], "id" | "work_order_id">;
 type AllocationLite = Pick<DB["public"]["Tables"]["work_order_part_allocations"]["Row"], "stock_move_id" | "work_order_id" | "source_request_item_id">;
@@ -84,7 +85,9 @@ export default function StockMovementsPage(): JSX.Element {
     const stockMoveRefs = [...new Set(rows.filter((r) => String(r.reference_kind ?? "") === "work_order" && r.reference_id).map((r) => String(r.reference_id)))];
 
     const [pr, lr, reqItems, allocs] = await Promise.all([
-      partIds.length ? supabase.from("parts").select("id,name,sku").in("id", partIds) : Promise.resolve({ data: [] as PartLite[] }),
+      partIds.length
+        ? supabase.from("parts").select("id,name,sku,part_number,category,price").in("id", partIds)
+        : Promise.resolve({ data: [] as PartLite[] }),
       locIds.length ? supabase.from("stock_locations").select("id,code,name").in("id", locIds) : Promise.resolve({ data: [] as LocLite[] }),
       requestItemRefs.length ? supabase.from("part_request_items").select("id,work_order_id").in("id", requestItemRefs) : Promise.resolve({ data: [] as RequestItemLite[] }),
       stockMoveRefs.length ? supabase.from("work_order_part_allocations").select("stock_move_id,work_order_id,source_request_item_id").in("stock_move_id", stockMoveRefs) : Promise.resolve({ data: [] as AllocationLite[] }),
@@ -134,6 +137,7 @@ export default function StockMovementsPage(): JSX.Element {
             <tbody>
               {moves.map((m) => {
                 const part = parts[String(m.part_id)];
+                const partSummary = part ? toPartDisplaySummary(part) : null;
                 const loc = locs[String(m.location_id)];
                 const qty = n(m.qty_change);
                 const refId = String(m.reference_id ?? "");
@@ -141,7 +145,10 @@ export default function StockMovementsPage(): JSX.Element {
                 return (
                   <tr key={String(m.id)} className="border-t border-white/10 align-top">
                     <td className="p-3.5 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
-                    <td className="p-3.5"><div className="font-medium text-neutral-100">{part?.name ?? String(m.part_id).slice(0, 8)}</div><div className="text-xs text-neutral-500">{part?.sku ?? ""}</div></td>
+                    <td className="p-3.5">
+                      <div className="font-medium text-neutral-100">{partSummary?.name ?? "Unknown part"}</div>
+                      <div className="text-xs text-neutral-500">{partSummary?.sku ? `SKU ${partSummary.sku}` : "No SKU"}</div>
+                    </td>
                     <td className="p-3.5 text-neutral-300">{loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{loc?.name ?? ""}</span></td>
                     <td className="p-3.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${qty >= 0 ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200" : "border-rose-500/30 bg-rose-950/20 text-rose-200"}`}>{qty >= 0 ? "+" : ""}{qty}</span></td>
                     <td className="p-3.5"><div className="text-neutral-200">{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-neutral-500">{reasonLabel(m.reason)}</div></td>

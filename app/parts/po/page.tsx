@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
+import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 
@@ -540,9 +541,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                     <option value="">— select —</option>
                                     {parts.map((p) => (
                                       <option key={String(p.id)} value={String(p.id)}>
-                                        {p.sku
-                                          ? `${String(p.sku)} — ${String(p.name ?? "")}`
-                                          : String(p.name ?? String(p.id).slice(0, 8))}
+                                        {partOptionLabel(toPartDisplaySummary(p))}
                                       </option>
                                     ))}
                                   </select>
@@ -642,9 +641,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                 <option value="">— select —</option>
                                 {parts.map((p) => (
                                   <option key={String(p.id)} value={String(p.id)}>
-                                    {p.sku
-                                      ? `${String(p.sku)} — ${String(p.name ?? "")}`
-                                      : String(p.name ?? String(p.id).slice(0, 8))}
+                                    {partOptionLabel(toPartDisplaySummary(p))}
                                   </option>
                                 ))}
                               </select>
