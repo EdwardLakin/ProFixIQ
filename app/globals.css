@@ -212,6 +212,109 @@ select {
   border-radius: var(--theme-radius-xl);
 }
 
+
+
+.mobile-tech-page {
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 10%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-app-bg) 86%, #020617), var(--theme-app-bg-secondary));
+}
+
+.mobile-tech-panel {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--metal-border-soft) 88%, transparent);
+  background: linear-gradient(160deg, rgba(12, 20, 34, 0.9), rgba(3, 8, 18, 0.92));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(10px);
+}
+
+.mobile-tech-subpanel {
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--metal-border-soft) 74%, transparent);
+  background: rgba(3, 10, 20, 0.78);
+}
+
+.mobile-tech-stat {
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--metal-border-soft) 82%, transparent);
+  background: rgba(7, 16, 28, 0.9);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-tech-input {
+  width: 100%;
+  border-radius: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--metal-border-soft) 90%, transparent);
+  background: rgba(2, 7, 16, 0.84);
+  color: var(--theme-text-primary);
+}
+
+.mobile-tech-input::placeholder {
+  color: color-mix(in srgb, var(--theme-text-secondary) 92%, #9ca3af);
+}
+
+.mobile-tech-input:focus-visible {
+  border-color: color-mix(in srgb, #38bdf8 58%, var(--brand-accent));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #38bdf8 56%, transparent),
+    0 0 0 3px color-mix(in srgb, #38bdf8 25%, transparent);
+}
+
+.mobile-tech-btn-primary,
+.mobile-tech-btn-secondary,
+.mobile-tech-btn-ghost,
+.mobile-tech-btn-danger,
+.mobile-tech-btn-utility {
+  border-radius: 0.8rem;
+  border-width: 1px;
+  font-weight: 600;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.mobile-tech-btn-primary {
+  border-color: color-mix(in srgb, #38bdf8 60%, transparent);
+  background: color-mix(in srgb, #0ea5e9 24%, #081325);
+  color: #e0f2fe;
+}
+
+.mobile-tech-btn-secondary {
+  border-color: color-mix(in srgb, var(--metal-border-soft) 90%, transparent);
+  background: rgba(6, 14, 26, 0.72);
+  color: #e5e7eb;
+}
+
+.mobile-tech-btn-ghost {
+  border-color: color-mix(in srgb, var(--metal-border-soft) 66%, transparent);
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.mobile-tech-btn-danger {
+  border-color: color-mix(in srgb, #f59e0b 62%, transparent);
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #fef3c7;
+}
+
+.mobile-tech-btn-utility {
+  border-color: color-mix(in srgb, var(--brand-accent) 46%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 14%, #07101e);
+  color: color-mix(in srgb, var(--brand-accent) 88%, #f1f5f9);
+}
+
+.mobile-tech-utility-dock {
+  position: fixed;
+  right: 0.75rem;
+  bottom: calc(3.4rem + var(--safe-bottom));
+  z-index: 45;
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--metal-border-soft) 86%, transparent);
+  background: rgba(2, 7, 16, 0.8);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+}
 .accent-chip {
   border-radius: 9999px;
   border: 1px solid var(--brand-accent);

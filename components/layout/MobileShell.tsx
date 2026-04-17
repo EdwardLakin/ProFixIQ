@@ -74,7 +74,6 @@ export function MobileShell({ children, title }: Props) {
               <span className="h-[2px] w-[14px] rounded-full bg-white" />
               <span className="h-[2px] w-[14px] rounded-full bg-white" />
             </div>
-      <AskAssistantEntry mobile />
           </button>
 
           <span className="text-[0.75rem] font-medium text-neutral-100">
@@ -107,8 +106,10 @@ export function MobileShell({ children, title }: Props) {
         {children}
       </main>
 
+      <AskAssistantEntry mobile placement="dock" />
+
       {/* Footer – simple metal strip with sign-out */}
-      <footer className="metal-bar sticky bottom-0 z-30 flex items-center justify-between px-4 py-2 text-[0.7rem]">
+      <footer className="metal-bar sticky bottom-0 z-30 flex items-center justify-between px-4 py-2 text-[0.7rem] pb-[calc(0.5rem+var(--safe-bottom))]">
         <span className="text-neutral-400">
           ProFixIQ Mobile
         </span>

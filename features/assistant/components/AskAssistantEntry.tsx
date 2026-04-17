@@ -21,7 +21,7 @@ import {
 
 type Props = {
   mobile?: boolean;
-  placement?: "floating" | "header";
+  placement?: "floating" | "header" | "dock";
 };
 
 function deriveContextFromPath(pathname: string): AssistantContext {
@@ -258,16 +258,16 @@ export default function AskAssistantEntry({
 
   if (mobile) {
     return (
-      <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2">
+      <div className="mobile-tech-utility-dock" role="navigation" aria-label="Utility actions">
         <Link
           href={assistantHref}
-          className="rounded-full border border-orange-400/50 bg-black/85 px-4 py-3 text-sm font-semibold text-orange-300 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur-md"
+          className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
         >
           {assistantLabel}
         </Link>
         <Link
           href={plannerHref}
-          className="rounded-full border border-white/10 bg-black/80 px-4 py-2 text-xs text-neutral-200 shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md"
+          className="mobile-tech-btn-ghost inline-flex items-center rounded-full px-3 py-2 text-[0.7rem] leading-none"
         >
           {plannerLabel}
         </Link>
