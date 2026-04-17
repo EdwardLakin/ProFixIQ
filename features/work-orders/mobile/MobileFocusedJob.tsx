@@ -29,7 +29,6 @@ import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModa
 
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
-import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
@@ -79,18 +78,6 @@ type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
-
-type WorkflowStatus =
-  | "awaiting"
-  | "awaiting_approval"
-  | "declined"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "paused"
-  | "completed"
-  | "assigned"
-  | "unassigned";
 
 type SyncSummary = ReturnType<typeof getOfflineSyncSummary>;
 type StagedPhoto = {
@@ -746,12 +733,6 @@ export default function MobileFocusedJob(props: {
   const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
   const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
-  const punchDisabled =
-    busy ||
-    !canPunch(line) ||
-    // keep your existing additional guard
-    (!!line?.approval_state && line.approval_state !== "approved");
-
   const lineLabel =
     (line?.complaint ?? "").trim() ||
     (line?.description ?? "").trim() ||
@@ -1071,56 +1052,12 @@ export default function MobileFocusedJob(props: {
                   </div>
                 </div>
 
-                {/* punch — hide once completed */}
-                {mode === "tech" && line && line.status !== "completed" && (
-                  <div className={`${panel} px-4 py-4`}>
-                    <JobPunchButton
-                      lineId={line.id}
-                      punchedInAt={line.punched_in_at}
-                      punchedOutAt={line.punched_out_at}
-                      status={line.status as WorkflowStatus}
-                      onFinishRequested={() => {
-                        closeAllSubModals();
-                        setPrefillCause(line.cause ?? "");
-                        setPrefillCorrection(line.correction ?? "");
-                        setOpenComplete(true);
-                      }}
-                      onUpdated={refresh}
-                      disabled={punchDisabled}
-                    />
-
-                    {(line.status === "awaiting_approval" ||
-                      (line.approval_state && line.approval_state !== "approved") ||
-                      line.status === "declined") && (
-                      <div className="mt-2 text-[11px] text-amber-300">
-                        {line.status === "awaiting_approval"
-                          ? "Awaiting approval — punching disabled"
-                          : line.status === "declined"
-                            ? "Declined — punching disabled"
-                            : "Not approved — punching disabled"}
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* controls */}
                 <div className={`${panel} px-4 py-4`}>
                   <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">Operational actions</div>
                   <div className="grid gap-2 md:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      <button
-                        type="button"
-                        className={btnWarn}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenHold(true);
-                        }}
-                        disabled={busy}
-                      >
-                        {line.status === "on_hold" ? "On Hold" : "Hold"}
-                      </button>
-
                       <button
                         type="button"
                         className={btnNeutral}

@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useCallback, useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { Database } from "@shared/types/types/supabase";
 import {
   getOfflineSyncSummary,
   replayQueuedMutations,
@@ -11,9 +9,6 @@ import {
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 
-type DB = Database;
-
-type ShiftType = "shift" | "break" | "lunch";
 type Mode = "none" | "shift" | "break" | "lunch" | "ended";
 
 type PunchEventType =
@@ -26,15 +21,7 @@ type PunchEventType =
 
 type Props = { userId: string };
 
-function toShiftType(input: unknown, fallback: ShiftType): ShiftType {
-  const v = String(input ?? "").toLowerCase().trim();
-  if (v === "shift" || v === "break" || v === "lunch") return v;
-  return fallback;
-}
-
 export default function MobileShiftTracker({ userId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("none");
@@ -86,85 +73,35 @@ export default function MobileShiftTracker({ userId }: Props) {
     if (result.failed > 0) {
       setErr(`${result.failed} queued punch event(s) still failing to sync.`);
     }
-  }, [supabase]);
+  }, []);
 
   const loadOpenShift = useCallback(async () => {
     if (!userId) return;
     setErr(null);
 
-    const { data: shift, error: sErr } = await supabase
-      .from("tech_shifts")
-      .select("id, start_time, type, status, end_time")
-      .eq("user_id", userId)
-      .eq("status", "open")
-      .order("start_time", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (sErr) {
-      setErr(`${sErr.code ?? "load_error"}: ${sErr.message}`);
+    const res = await fetch("/api/mobile/shifts", { cache: "no-store" });
+    const body = (await res.json().catch(() => null)) as
+      | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
+      | null;
+    if (!res.ok || !body?.ok) {
+      setErr(body?.error ?? "Failed to load shift state");
       setShiftId(null);
       setStartTime(null);
       setMode("none");
       return;
     }
 
-    let open = shift ?? null;
-
-    if (!open) {
-      const { data: fb, error: fbErr } = await supabase
-        .from("tech_shifts")
-        .select("id, start_time, type, status, end_time")
-        .eq("user_id", userId)
-        .is("end_time", null)
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fbErr) {
-        setErr(`${fbErr.code ?? "load_error"}: ${fbErr.message}`);
-        setShiftId(null);
-        setStartTime(null);
-        setMode("none");
-        return;
-      }
-      open = fb ?? null;
-    }
-
-    if (!open) {
+    if (!body.shiftId) {
       setShiftId(null);
       setStartTime(null);
       setMode("none");
       return;
     }
 
-    setShiftId(open.id);
-    setStartTime(open.start_time ?? null);
-
-    const { data: lastPunch, error: pErr } = await supabase
-      .from("punch_events")
-      .select("event_type")
-      .eq("shift_id", open.id)
-      .order("timestamp", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (pErr) {
-      setMode(toShiftType(open.type, "shift"));
-      return;
-    }
-
-    const ev = lastPunch?.event_type ?? null;
-
-    const computed: Mode =
-      ev === "break_start"
-        ? "break"
-        : ev === "lunch_start"
-          ? "lunch"
-          : "shift";
-
-    setMode(computed);
-  }, [supabase, userId]);
+    setShiftId(body.shiftId);
+    setStartTime(body.startTime ?? null);
+    setMode(body.mode ?? "shift");
+  }, [userId]);
 
   useEffect(() => {
     void loadOpenShift();
