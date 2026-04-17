@@ -107,13 +107,13 @@ function getAssistantLabel(context: AssistantContext): string {
 function getPlannerLabel(context: AssistantContext): string {
   switch (context.pageType) {
     case "work_order":
-      return "Fix this WO";
+      return "Plan next steps";
     case "customer":
-      return "Plan for this customer";
+      return "Open in Planner";
     case "vehicle":
-      return "Plan for this vehicle";
+      return "Open in Planner";
     case "booking":
-      return "Plan this booking";
+      return "Open in Planner";
     default:
       return "Open Planner";
   }
@@ -122,15 +122,15 @@ function getPlannerLabel(context: AssistantContext): string {
 function getPlannerGoal(context: AssistantContext): string {
   switch (context.pageType) {
     case "work_order":
-      return "Help me review and take action on this work order";
+      return "Build next steps for this work order";
     case "customer":
-      return "Help me take action for this customer";
+      return "Build next steps for this customer";
     case "vehicle":
-      return "Help me take action for this vehicle";
+      return "Build next steps for this vehicle";
     case "booking":
-      return "Help me review and reschedule or act on this booking";
+      return "Build next steps for this booking";
     default:
-      return "Help me take action";
+      return "Build next operational plan";
   }
 }
 

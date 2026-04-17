@@ -29,6 +29,12 @@ type OcrFields = {
 
 type PlannerKind = "simple" | "openai" | "ops" | "fleet" | "approvals";
 
+type PlannerPreset = {
+  id: PlannerKind;
+  label: string;
+  description: string;
+};
+
 type PlannerStartOut = {
   runId: string;
   alreadyExists: boolean;
@@ -194,6 +200,7 @@ function labelFor(evt: PlannerEvent): string | null {
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
   const [planner, setPlanner] = useState<PlannerKind>("ops");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [allowCreate, setAllowCreate] = useState(false);
 
@@ -734,22 +741,42 @@ export default function PlannerPage() {
     bookingId,
   ]);
 
-  const plannerModes: { id: PlannerKind; label: string }[] = [
-    { id: "ops", label: "Ops Assistant" },
-    { id: "openai", label: "OpenAI (rich)" },
-    { id: "simple", label: "Simple (rules)" },
-    { id: "fleet", label: "Fleet PM" },
-    { id: "approvals", label: "Advisor approvals" },
+  const plannerPresets: PlannerPreset[] = [
+    {
+      id: "ops",
+      label: "General Operations",
+      description: "Build an action plan for mixed shop operations.",
+    },
+    {
+      id: "fleet",
+      label: "Fleet Follow-up",
+      description: "Plan fleet-ready next steps and status follow-up.",
+    },
+    {
+      id: "approvals",
+      label: "Resolve Approval Queue",
+      description: "Prepare advisor actions for pending approvals.",
+    },
+    {
+      id: "simple",
+      label: "Quick Plan",
+      description: "Fast structured planning for straightforward requests.",
+    },
+    {
+      id: "openai",
+      label: "Deep Plan",
+      description: "Use richer planning when the request has extra nuance.",
+    },
   ];
 
   return (
     <PageShell
-      title="AI Planner"
-      description="Ask operational questions, create work orders, move bookings, summarize history, and surface shop alerts."
+      title="Planner"
+      description="Turn operational goals into reviewable action plans, then confirm and execute."
     >
       <div className="metal-card rounded-3xl p-5 shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
         <div className="flex flex-wrap gap-2">
-          {plannerModes.map((m) => (
+          {plannerPresets.map((m) => (
             <Button
               key={m.id}
               variant={planner === m.id ? "outline" : "ghost"}
@@ -767,70 +794,107 @@ export default function PlannerPage() {
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
-          <div className="min-w-[220px]">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-              Data mode
-            </div>
-            <div className="mt-1 text-sm text-neutral-100">
-              {allowCreate
-                ? "Setup mode (allow auto-create)"
-                : "Existing DB mode (no auto-create)"}
-            </div>
+        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Active planner preset
           </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={allowCreate ? "ghost" : "outline"}
-              className={
-                allowCreate
-                  ? "opacity-80 hover:opacity-100"
-                  : "ring-2 ring-orange-400/60 bg-orange-500/10"
-              }
-              onClick={() => setAllowCreate(false)}
-              disabled={running}
-            >
-              Existing DB
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={allowCreate ? "outline" : "ghost"}
-              className={
-                allowCreate
-                  ? "ring-2 ring-orange-400/60 bg-orange-500/10"
-                  : "opacity-80 hover:opacity-100"
-              }
-              onClick={() => setAllowCreate(true)}
-              disabled={running}
-            >
-              Setup
-            </Button>
+          <div className="mt-1 text-sm text-neutral-100">
+            {plannerPresets.find((preset) => preset.id === planner)?.description}
           </div>
-
-          {!allowCreate ? (
-            <div className="w-full text-xs text-neutral-400">
-              Existing DB mode is best for history lookups, bookings, status
-              questions, and live shop summaries.
-            </div>
-          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
+            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Goal</span>
+            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Proposed plan</span>
+            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Affected records</span>
+            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Review checks</span>
+            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Execute / stage</span>
+          </div>
         </div>
+
+        <div className="mt-3 flex items-center justify-between rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Advanced settings
+            </div>
+            <div className="mt-1 text-xs text-neutral-400">
+              Internal planner tuning and safe create behavior.
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            {showAdvanced ? "Hide" : "Show"}
+          </Button>
+        </div>
+
+        {showAdvanced ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
+            <div className="min-w-[220px]">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                Data mode
+              </div>
+              <div className="mt-1 text-sm text-neutral-100">
+                {allowCreate
+                  ? "Setup mode (allow auto-create)"
+                  : "Existing DB mode (no auto-create)"}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={allowCreate ? "ghost" : "outline"}
+                className={
+                  allowCreate
+                    ? "opacity-80 hover:opacity-100"
+                    : "ring-2 ring-orange-400/60 bg-orange-500/10"
+                }
+                onClick={() => setAllowCreate(false)}
+                disabled={running}
+              >
+                Existing DB
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={allowCreate ? "outline" : "ghost"}
+                className={
+                  allowCreate
+                    ? "ring-2 ring-orange-400/60 bg-orange-500/10"
+                    : "opacity-80 hover:opacity-100"
+                }
+                onClick={() => setAllowCreate(true)}
+                disabled={running}
+              >
+                Setup
+              </Button>
+            </div>
+
+            {!allowCreate ? (
+              <div className="w-full text-xs text-neutral-400">
+                Existing DB mode is best for history lookups, bookings, status
+                questions, and live shop summaries.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
             What to do here
           </div>
           <div className="mt-2 text-sm leading-7 text-neutral-200">
-            Type the result you want, not the steps. Examples: “Resolve this hold job line”, “Show me what this customer approved last visit”, or “Create a work order for this vehicle”.
+            Describe the outcome you want Planner to produce. Planner will return proposed steps, affected records, and checks before execution.
           </div>
         </div>
 
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder='e.g. "When was the last time John Smith visited?" or "What is Mike working on?" or "Reschedule booking 123 to tomorrow at 10am"'
+          placeholder='e.g. "Create a work order for this complaint", "Move this booking to tomorrow morning", or "Prepare advisor follow-up for pending approvals"'
           className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
@@ -949,7 +1013,7 @@ export default function PlannerPage() {
         {summary ? (
           <div className="mt-4 rounded-3xl border border-orange-400/20 bg-orange-500/10 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
-              Summary
+              Proposed plan
             </div>
             <div className="text-sm text-neutral-100">{summary}</div>
           </div>
@@ -958,7 +1022,7 @@ export default function PlannerPage() {
         {notifications.length > 0 ? (
           <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-              Alerts
+              Affected records & alerts
             </div>
             <div className="space-y-2">
               {notifications.map((item, index) => (
@@ -985,10 +1049,10 @@ export default function PlannerPage() {
 
         <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-            Stream
+            Review checks & execution log
           </div>
           {steps.length === 0 ? (
-            <div className="text-sm text-neutral-400">Waiting for updates…</div>
+            <div className="text-sm text-neutral-400">Generate a plan to begin review checks.</div>
           ) : (
             <ul className="space-y-2">
               {steps.map((s, i) => (
@@ -1017,7 +1081,7 @@ export default function PlannerPage() {
             }
             className="min-w-[140px]"
           >
-            Run Assistant
+            Generate Plan
           </Button>
 
           <Button
