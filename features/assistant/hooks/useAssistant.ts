@@ -51,6 +51,7 @@ type ApiAnswer = {
     customerId?: string;
     vehicleId?: string;
     bookingId?: string;
+    fleetUnitId?: string;
   };
 };
 
@@ -69,6 +70,7 @@ type AssistantSession = {
   vehicleId?: string;
   customerId?: string;
   bookingId?: string;
+  fleetUnitId?: string;
   lastIntent?: string;
 };
 
@@ -118,6 +120,15 @@ function toPlannerPayload(
         typeof context.allowCreate === "boolean" ? context.allowCreate : false,
       emailInvoiceTo:
         typeof context.emailInvoiceTo === "string" ? context.emailInvoiceTo : undefined,
+      lane:
+        context.lane === "parts_follow_up" ||
+        context.lane === "low_inventory_reorder" ||
+        context.lane === "fleet_follow_up" ||
+        context.lane === "menu_item_draft" ||
+        context.lane === "inspection_template_draft" ||
+        context.lane === "service_bundle_draft"
+          ? context.lane
+          : undefined,
     },
   };
 }

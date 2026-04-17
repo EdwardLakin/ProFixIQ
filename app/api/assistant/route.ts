@@ -131,6 +131,15 @@ export async function POST(req: Request) {
                   typeof action.context?.allowCreate === "boolean"
                     ? action.context.allowCreate
                     : false,
+                lane:
+                  action.context?.lane === "parts_follow_up" ||
+                  action.context?.lane === "low_inventory_reorder" ||
+                  action.context?.lane === "fleet_follow_up" ||
+                  action.context?.lane === "menu_item_draft" ||
+                  action.context?.lane === "inspection_template_draft" ||
+                  action.context?.lane === "service_bundle_draft"
+                    ? action.context.lane
+                    : undefined,
               },
             },
       ),

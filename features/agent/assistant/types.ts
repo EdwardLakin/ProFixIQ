@@ -8,6 +8,11 @@ export type AssistantEntityType =
   | "inspection"
   | "invoice"
   | "fleet_unit"
+  | "part"
+  | "purchase_order"
+  | "part_request"
+  | "menu_item"
+  | "inspection_template"
   | "technician"
   | "alert";
 
@@ -41,6 +46,7 @@ export type AssistantResolvedContext = {
   customerId?: string;
   vehicleId?: string;
   bookingId?: string;
+  fleetUnitId?: string;
 };
 
 export type AssistantAnswer = {
@@ -59,6 +65,14 @@ export type AssistantAnswer = {
     | "tech_current_work"
     | "pending_approvals"
     | "work_order_status"
+    | "parts_inventory"
+    | "parts_blockers"
+    | "parts_purchasing"
+    | "fleet_history"
+    | "fleet_requests"
+    | "authoring_menu_item"
+    | "authoring_inspection_template"
+    | "authoring_bundle_draft"
     | "unknown";
 };
 
@@ -67,6 +81,7 @@ export type AssistantAskContext = {
   customerId?: string;
   vehicleId?: string;
   bookingId?: string;
+  fleetUnitId?: string;
   pageType?: string;
   pageTitle?: string;
 };
@@ -76,6 +91,7 @@ export type AssistantAskSession = {
   customerId?: string;
   vehicleId?: string;
   bookingId?: string;
+  fleetUnitId?: string;
   lastIntent?: AssistantAnswer["intent"];
 };
 
