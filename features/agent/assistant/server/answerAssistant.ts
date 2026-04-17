@@ -235,6 +235,11 @@ function looksLikePartsQuestion(q: string): boolean {
     "do we have this part",
     "in stock",
     "parts tied",
+    "fitment",
+    "part number",
+    "did we already order",
+    "used on this vehicle",
+    "blocked jobs",
   ]);
 }
 
@@ -272,7 +277,7 @@ async function answerPartsDomain(args: {
 
   const supabase = getServerSupabase();
 
-  const [stockRes, poRes, requestRes, requestItemsRes] = await Promise.all([
+  const [stockRes, poRes, requestRes, requestItemsRes, woRes, partUsageRes] = await Promise.all([
     supabase
       .from("part_stock")
       .select("part_id, qty_on_hand, reorder_point, reorder_qty, parts(name, sku, low_stock_threshold)")
@@ -298,14 +303,28 @@ async function answerPartsDomain(args: {
       .eq("shop_id", args.shopId)
       .order("updated_at", { ascending: false })
       .limit(80),
+    supabase
+      .from("work_orders")
+      .select("id, custom_id, status, vehicle_id, customer_id")
+      .eq("shop_id", args.shopId)
+      .order("created_at", { ascending: false })
+      .limit(180),
+    supabase
+      .from("work_order_parts")
+      .select("id, work_order_id, work_order_line_id, part_id, part_number, part_name, quantity")
+      .eq("shop_id", args.shopId)
+      .order("created_at", { ascending: false })
+      .limit(280),
   ]);
 
-  if (stockRes.error || poRes.error || requestRes.error || requestItemsRes.error) {
+  if (stockRes.error || poRes.error || requestRes.error || requestItemsRes.error || woRes.error || partUsageRes.error) {
     throw new Error(
       stockRes.error?.message ??
         poRes.error?.message ??
         requestRes.error?.message ??
         requestItemsRes.error?.message ??
+        woRes.error?.message ??
+        partUsageRes.error?.message ??
         "Failed to load parts context",
     );
   }
@@ -328,6 +347,23 @@ async function answerPartsDomain(args: {
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .sort((a, b) => a.qty_on_hand - b.qty_on_hand);
+
+  const workOrders = (woRes.data ?? []) as Array<{
+    id: string;
+    custom_id: string | null;
+    status: string | null;
+    vehicle_id: string | null;
+    customer_id: string | null;
+  }>;
+  const workOrderById = new Map(workOrders.map((row) => [row.id, row] as const));
+
+  const partsUsed = (partUsageRes.data ?? []) as Array<{
+    part_id: string | null;
+    part_number: string | null;
+    part_name: string | null;
+    quantity: number | null;
+    work_order_id: string | null;
+  }>;
 
   const requestItems = (requestItemsRes.data ?? []) as Array<{
     id: string;
@@ -353,6 +389,25 @@ async function answerPartsDomain(args: {
     ),
   );
 
+  const searchPartTokenMatch = args.q.match(/\b([A-Z0-9-]{4,})\b/i);
+  const searchPartToken = searchPartTokenMatch?.[1]?.toLowerCase() ?? null;
+
+  const matchingStock = searchPartToken
+    ? lowStock.filter((row) =>
+        [row.parts?.name, row.parts?.sku, row.part_id]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(searchPartToken)),
+      )
+    : [];
+
+  const matchingPriorUse = searchPartToken
+    ? partsUsed.filter((row) =>
+        [row.part_number, row.part_name, row.part_id]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(searchPartToken)),
+      )
+    : [];
+
   const links: AssistantLink[] = [];
   const entities: AssistantEntity[] = [];
   const bullets: string[] = [];
@@ -376,7 +431,37 @@ async function answerPartsDomain(args: {
   }
 
   for (const woId of blockedWorkOrderIds.slice(0, 3)) {
-    links.push({ label: `Work order blocked by parts • ${woId.slice(0, 8)}`, href: `/work-orders/${woId}` });
+    const wo = workOrderById.get(woId);
+    const woLabel = wo?.custom_id ? `WO #${wo.custom_id}` : `WO ${woId.slice(0, 8)}`;
+    links.push({ label: `${woLabel} blocked by parts • ${wo?.status ?? "status unknown"}`, href: `/work-orders/${woId}` });
+  }
+
+  const partsLinkedToActiveWork = requestItems
+    .filter((item) => item.work_order_id && item.part_id)
+    .slice(0, 4);
+  for (const item of partsLinkedToActiveWork) {
+    entities.push({
+      type: "part_request",
+      id: item.id,
+      label: `${item.description || item.part_id} • pending ${Math.max(0, item.qty_approved - item.qty_received)}`,
+      href: item.work_order_id ? `/work-orders/${item.work_order_id}` : undefined,
+    });
+  }
+
+  if (searchPartToken) {
+    bullets.push(
+      matchingStock.length > 0
+        ? `Inventory match for "${searchPartTokenMatch?.[1]}": ${matchingStock.length} matching stock record(s).`
+        : `Inventory match for "${searchPartTokenMatch?.[1]}": none found in stock snapshot.`,
+    );
+    bullets.push(
+      matchingPriorUse.length > 0
+        ? `Prior-use history: ${matchingPriorUse.length} matching usage record(s) across recent work orders.`
+        : "Prior-use history: no matching usage records in the sampled history.",
+    );
+    bullets.push(
+      "Fitment confidence: this response uses inventory and prior-use evidence only; fitment catalog confirmation is still required.",
+    );
   }
 
   const summary =
@@ -416,6 +501,19 @@ async function answerPartsDomain(args: {
           lane: "parts_follow_up",
           allowCreate: false,
           workOrderId: blockedWorkOrderIds[0] ?? args.resolvedContext.workOrderId,
+        },
+      },
+      {
+        type: "planner",
+        label: "Prepare receiving follow-up list",
+        goal: "Prepare receiving follow-up list for open POs and pending received quantities",
+        context: {
+          planner: "ops",
+          lane: "parts_follow_up",
+          allowCreate: false,
+          vehicleId: args.resolvedContext.vehicleId,
+          customerId: args.resolvedContext.customerId,
+          workOrderId: args.resolvedContext.workOrderId,
         },
       },
       {

@@ -59,6 +59,17 @@ type PlannerStartOut = {
 };
 
 type PlannerEvent = Record<string, unknown> & { kind?: string };
+type PlannerProposal = {
+  domain: "parts" | "menu_item_draft" | "inspection_template_draft";
+  lane: string;
+  title: string;
+  summary: string;
+  sections: Array<{ title: string; items: string[] }>;
+  warnings: string[];
+  affectedRecords: Array<{ type: string; id: string; href: string; label: string }>;
+  reviewActions: string[];
+  executionSummary: string;
+};
 
 type AnyObj = Record<string, unknown>;
 
@@ -164,6 +175,67 @@ function extractNotifications(evt: PlannerEvent): Array<{
   return out;
 }
 
+function extractProposal(evt: PlannerEvent): PlannerProposal | null {
+  const raw = getField(evt, "proposal");
+  if (!isObj(raw)) return null;
+  const domain = asString(raw.domain);
+  if (
+    domain !== "parts" &&
+    domain !== "menu_item_draft" &&
+    domain !== "inspection_template_draft"
+  ) {
+    return null;
+  }
+
+  const sections = Array.isArray(raw.sections)
+    ? raw.sections
+        .filter((item) => isObj(item))
+        .map((item) => ({
+          title: asString(item.title) ?? "Section",
+          items: Array.isArray(item.items)
+            ? item.items
+                .map((value: unknown) => asString(value))
+                .filter((value: string | null): value is string => Boolean(value))
+            : [],
+        }))
+    : [];
+
+  const warnings = Array.isArray(raw.warnings)
+    ? raw.warnings
+        .map((value) => asString(value))
+        .filter((value): value is string => Boolean(value))
+    : [];
+
+  const affectedRecords = Array.isArray(raw.affectedRecords)
+    ? raw.affectedRecords
+        .filter((item) => isObj(item))
+        .map((item) => ({
+          type: asString(item.type) ?? "record",
+          id: asString(item.id) ?? "",
+          href: asString(item.href) ?? "#",
+          label: asString(item.label) ?? "Record",
+        }))
+    : [];
+
+  const reviewActions = Array.isArray(raw.reviewActions)
+    ? raw.reviewActions
+        .map((value) => asString(value))
+        .filter((value): value is string => Boolean(value))
+    : [];
+
+  return {
+    domain,
+    lane: asString(raw.lane) ?? "",
+    title: asString(raw.title) ?? "Proposal",
+    summary: asString(raw.summary) ?? "",
+    sections,
+    warnings,
+    affectedRecords,
+    reviewActions,
+    executionSummary: asString(raw.executionSummary) ?? "",
+  };
+}
+
 function labelFor(evt: PlannerEvent): string | null {
   const kind = (evt.kind ?? "").toString();
   const toolName = extractToolName(evt);
@@ -206,6 +278,11 @@ function labelFor(evt: PlannerEvent): string | null {
         .join(" • ");
     }
 
+    case "proposal": {
+      const proposal = extractProposal(evt);
+      return proposal ? `Proposal staged: ${proposal.title}` : "Proposal staged";
+    }
+
     case "final":
       return text ? `Final: ${text}` : "Final";
 
@@ -246,6 +323,7 @@ export default function PlannerPage() {
   >([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [proposals, setProposals] = useState<PlannerProposal[]>([]);
 
   const esRef = useRef<EventSource | null>(null);
   const autoRanRef = useRef(false);
@@ -515,6 +593,7 @@ export default function PlannerPage() {
     setSteps([]);
     setSummary(null);
     setNotifications([]);
+    setProposals([]);
     setRunId(null);
     setPreviewWoId(null);
     setPreviewOpen(false);
@@ -533,6 +612,7 @@ export default function PlannerPage() {
     setSteps([]);
     setSummary(null);
     setNotifications([]);
+    setProposals([]);
     esRef.current?.close();
     esRef.current = null;
 
@@ -718,6 +798,13 @@ export default function PlannerPage() {
             const items = extractNotifications(data);
             if (items.length > 0) {
               setNotifications((prev) => [...prev, ...items]);
+            }
+          }
+
+          if (data.kind === "proposal") {
+            const proposal = extractProposal(data);
+            if (proposal) {
+              setProposals((prev) => [...prev, proposal]);
             }
           }
 
@@ -1051,6 +1138,98 @@ export default function PlannerPage() {
               Proposed plan
             </div>
             <div className="text-sm text-neutral-100">{summary}</div>
+          </div>
+        ) : null}
+
+        {proposals.length > 0 ? (
+          <div className="mt-4 space-y-4">
+            {proposals.map((proposal, index) => (
+              <div
+                key={`${proposal.domain}-${proposal.lane}-${index}`}
+                className="rounded-3xl border border-sky-400/30 bg-sky-950/20 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]"
+              >
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
+                  Review-first proposal
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">{proposal.title}</div>
+                <div className="mt-2 text-sm text-neutral-200">{proposal.summary}</div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {proposal.sections.map((section) => (
+                    <div
+                      key={`${proposal.title}-${section.title}`}
+                      className="rounded-2xl border border-white/10 bg-black/35 p-3"
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                        {section.title}
+                      </div>
+                      <ul className="mt-2 space-y-1">
+                        {section.items.map((item, itemIdx) => (
+                          <li key={`${section.title}-${itemIdx}`} className="text-sm text-neutral-100">
+                            • {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+
+                {proposal.warnings.length > 0 ? (
+                  <div className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-200">
+                      Warnings
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {proposal.warnings.map((warning, warningIdx) => (
+                        <li key={`${warningIdx}-${warning}`} className="text-sm text-amber-100">
+                          • {warning}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {proposal.affectedRecords.length > 0 ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                      Affected records
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {proposal.affectedRecords.slice(0, 8).map((record) => (
+                        <a
+                          key={`${record.type}-${record.id}-${record.href}`}
+                          href={record.href}
+                          className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1 text-xs text-sky-200"
+                        >
+                          {record.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {proposal.reviewActions.length > 0 ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                      Review actions
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {proposal.reviewActions.map((action, actionIdx) => (
+                        <li key={`${actionIdx}-${action}`} className="text-sm text-neutral-100">
+                          • {action}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {proposal.executionSummary ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                    {proposal.executionSummary}
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         ) : null}
 

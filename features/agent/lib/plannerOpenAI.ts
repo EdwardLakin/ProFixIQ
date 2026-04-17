@@ -1,5 +1,6 @@
 // features/agent/lib/plannerOpenAI.ts
 import type { ToolContext } from "./toolTypes";
+import { getServerSupabase } from "../server/supabase";
 
 import {
   runCreateWorkOrder,
@@ -82,6 +83,23 @@ type ParsedPlan = {
   approvalNotes?: string;
   requestedStart?: string;
   requestedEnd?: string;
+};
+
+type ProposalSection = {
+  title: string;
+  items: string[];
+};
+
+type PlannerProposal = {
+  domain: "parts" | "menu_item_draft" | "inspection_template_draft";
+  lane: string;
+  title: string;
+  summary: string;
+  sections: ProposalSection[];
+  warnings: string[];
+  affectedRecords: CitationItem[];
+  reviewActions: string[];
+  executionSummary: string;
 };
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
@@ -278,6 +296,451 @@ function mergeNotifications(
   return out;
 }
 
+async function buildPartsProposal(
+  lane: "low_inventory_reorder" | "parts_follow_up",
+  context: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<PlannerProposal> {
+  const supabase = getServerSupabase();
+
+  const [stockRes, poRes, requestItemRes, woRes, vehicleRes] = await Promise.all([
+    supabase
+      .from("part_stock")
+      .select("part_id, qty_on_hand, reorder_point, reorder_qty, parts(name, sku, low_stock_threshold)")
+      .eq("parts.shop_id", ctx.shopId)
+      .limit(400),
+    supabase
+      .from("purchase_orders")
+      .select("id, status, expected_at, created_at")
+      .eq("shop_id", ctx.shopId)
+      .in("status", ["draft", "sent", "partially_received", "receiving"])
+      .order("created_at", { ascending: false })
+      .limit(40),
+    supabase
+      .from("part_request_items")
+      .select("id, part_id, po_id, qty_approved, qty_received, work_order_id, description, updated_at")
+      .eq("shop_id", ctx.shopId)
+      .order("updated_at", { ascending: false })
+      .limit(180),
+    supabase
+      .from("work_orders")
+      .select("id, custom_id, status, vehicle_id")
+      .eq("shop_id", ctx.shopId)
+      .limit(400),
+    context.vehicleId
+      ? supabase
+          .from("vehicles")
+          .select("id, year, make, model, vin, license_plate")
+          .eq("id", String(context.vehicleId))
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (stockRes.error || poRes.error || requestItemRes.error || woRes.error || vehicleRes.error) {
+    throw new Error(
+      stockRes.error?.message ??
+        poRes.error?.message ??
+        requestItemRes.error?.message ??
+        woRes.error?.message ??
+        vehicleRes.error?.message ??
+        "Failed to build parts proposal",
+    );
+  }
+
+  const stockRows = (stockRes.data ?? []) as Array<{
+    part_id: string;
+    qty_on_hand: number;
+    reorder_point: number | null;
+    reorder_qty: number | null;
+    parts?: { name?: string | null; sku?: string | null; low_stock_threshold?: number | null } | null;
+  }>;
+  const openPos = (poRes.data ?? []) as Array<{
+    id: string;
+    status: string | null;
+    expected_at: string | null;
+  }>;
+  const requestItems = (requestItemRes.data ?? []) as Array<{
+    part_id: string | null;
+    po_id: string | null;
+    qty_approved: number | null;
+    qty_received: number | null;
+    work_order_id: string | null;
+    description: string | null;
+  }>;
+  const workOrders = (woRes.data ?? []) as Array<{
+    id: string;
+    custom_id: string | null;
+    status: string | null;
+    vehicle_id: string | null;
+  }>;
+
+  const lowStock = stockRows
+    .map((row) => {
+      const threshold = row.reorder_point ?? row.parts?.low_stock_threshold ?? null;
+      if (threshold == null || row.qty_on_hand > threshold) return null;
+      const suggested = row.reorder_qty ?? Math.max(1, threshold - row.qty_on_hand + 1);
+      return {
+        ...row,
+        threshold,
+        suggested,
+        name: row.parts?.name ?? row.parts?.sku ?? row.part_id,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => a.qty_on_hand - b.qty_on_hand);
+
+  const pendingReceiving = requestItems.filter((item) => {
+    const approved = item.qty_approved ?? 0;
+    const received = item.qty_received ?? 0;
+    return approved > received;
+  });
+
+  const blockedWoIds = Array.from(
+    new Set(
+      pendingReceiving
+        .map((item) => item.work_order_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const workOrderById = new Map(workOrders.map((row) => [row.id, row] as const));
+
+  const affectedRecords: CitationItem[] = [
+    ...lowStock.slice(0, 5).map((row) => ({
+      type: "part",
+      id: row.part_id,
+      href: `/parts/inventory?part=${row.part_id}`,
+      label: `${row.name} • on-hand ${row.qty_on_hand} / threshold ${row.threshold}`,
+    })),
+    ...openPos.slice(0, 4).map((po) => ({
+      type: "purchase_order",
+      id: po.id,
+      href: `/parts/po/${po.id}`,
+      label: `PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}`,
+    })),
+    ...blockedWoIds.slice(0, 4).map((woId) => {
+      const wo = workOrderById.get(woId);
+      return {
+        type: "work_order",
+        id: woId,
+        href: `/work-orders/${woId}`,
+        label: wo?.custom_id
+          ? `WO #${wo.custom_id} • ${wo.status ?? "status unknown"}`
+          : `WO ${woId.slice(0, 8)} • ${wo?.status ?? "status unknown"}`,
+      };
+    }),
+  ];
+
+  const inventorySection: ProposalSection = {
+    title: "Low inventory candidates",
+    items:
+      lowStock.length > 0
+        ? lowStock.slice(0, 8).map(
+            (row) =>
+              `${row.name}: on-hand ${row.qty_on_hand}, threshold ${row.threshold}, proposed reorder ${row.suggested}`,
+          )
+        : ["No low-inventory parts crossed the current threshold in this snapshot."],
+  };
+
+  const receivingSection: ProposalSection = {
+    title: "Receiving / PO follow-up",
+    items:
+      pendingReceiving.length > 0
+        ? [
+            `${pendingReceiving.length} request item(s) still not fully received.`,
+            `${openPos.length} open purchase order(s) in draft/sent/receiving states.`,
+            ...openPos.slice(0, 4).map((po) => `PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}${po.expected_at ? ` • expected ${po.expected_at.slice(0, 10)}` : ""}`),
+          ]
+        : ["No pending receiving deltas were found in the sampled request items."],
+  };
+
+  const blockersSection: ProposalSection = {
+    title: "Blocked or at-risk jobs",
+    items:
+      blockedWoIds.length > 0
+        ? blockedWoIds.slice(0, 6).map((woId) => {
+            const wo = workOrderById.get(woId);
+            return wo?.custom_id
+              ? `WO #${wo.custom_id} appears parts-constrained (${wo.status ?? "status unknown"}).`
+              : `WO ${woId.slice(0, 8)} appears parts-constrained (${wo?.status ?? "status unknown"}).`;
+          })
+        : ["No work orders are currently tied to partially received request items."],
+  };
+
+  const vehicleContext = vehicleRes.data as
+    | { year: string | null; make: string | null; model: string | null; vin: string | null; license_plate: string | null }
+    | null;
+  const vehicleLabel = vehicleContext
+    ? [vehicleContext.year, vehicleContext.make, vehicleContext.model].filter(Boolean).join(" ") ||
+      vehicleContext.vin ||
+      vehicleContext.license_plate ||
+      "selected vehicle"
+    : null;
+
+  return {
+    domain: "parts",
+    lane,
+    title:
+      lane === "low_inventory_reorder"
+        ? "Low-inventory reorder proposal"
+        : "Parts follow-up proposal",
+    summary:
+      lane === "low_inventory_reorder"
+        ? `Proposed reorder set includes ${lowStock.length} low-inventory part(s) with receiving and blocker checks.`
+        : `Proposed parts follow-up covers ${pendingReceiving.length} pending receiving item(s) and ${blockedWoIds.length} potentially blocked job(s).`,
+    sections: [
+      inventorySection,
+      receivingSection,
+      blockersSection,
+      {
+        title: "Evidence source distinctions",
+        items: [
+          "Inventory availability derived from part_stock on-hand and threshold values.",
+          "Pending receiving derived from part_request_items approved vs received quantities.",
+          "Blocked-job risk inferred when a work order is tied to not-yet-received request items.",
+          vehicleLabel ? `Vehicle-specific context applied for ${vehicleLabel}.` : "No specific vehicle context provided; shop-wide evidence was used.",
+        ],
+      },
+    ],
+    warnings: [
+      "This is a staged proposal only. No purchase orders or inventory quantities were modified.",
+      "Fitment confidence is not auto-assumed from inventory. Validate fitment before ordering if vehicle context is present.",
+    ],
+    affectedRecords,
+    reviewActions: [
+      "Review reorder quantities against min/max policy and supplier constraints.",
+      "Confirm blocked jobs to prioritize receiving follow-up.",
+      "Send selected follow-up items to execution only after explicit confirmation.",
+    ],
+    executionSummary:
+      lane === "low_inventory_reorder"
+        ? "When confirmed, Planner will execute only the approved reorder candidates and report PO/line outcomes."
+        : "When confirmed, Planner will execute only approved parts follow-up actions and report completed outreach/results.",
+  };
+}
+
+async function buildAuthoringProposal(
+  lane: "menu_item_draft" | "inspection_template_draft",
+  ctx: ToolContext,
+): Promise<PlannerProposal> {
+  const supabase = getServerSupabase();
+
+  const [menuRes, templateRes, linesRes, inspectionItemsRes] = await Promise.all([
+    supabase
+      .from("menu_items")
+      .select("id, name, category, estimated_hours, description")
+      .eq("shop_id", ctx.shopId)
+      .order("created_at", { ascending: false })
+      .limit(60),
+    supabase
+      .from("inspection_templates")
+      .select("id, template_name, sections, vehicle_type")
+      .eq("shop_id", ctx.shopId)
+      .order("updated_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("work_order_lines")
+      .select("id, description, complaint, labor_hours_actual, work_order_id, created_at")
+      .eq("shop_id", ctx.shopId)
+      .order("created_at", { ascending: false })
+      .limit(260),
+    supabase
+      .from("inspection_result_items")
+      .select("item_label, section_title, status, notes")
+      .limit(260),
+  ]);
+
+  if (menuRes.error || templateRes.error || linesRes.error || inspectionItemsRes.error) {
+    throw new Error(
+      menuRes.error?.message ??
+        templateRes.error?.message ??
+        linesRes.error?.message ??
+        inspectionItemsRes.error?.message ??
+        "Failed to build authoring proposal",
+    );
+  }
+
+  const lines = (linesRes.data ?? []) as Array<{
+    id: string;
+    description: string | null;
+    complaint: string | null;
+    labor_hours_actual: number | null;
+    work_order_id: string | null;
+  }>;
+  const templates = (templateRes.data ?? []) as Array<{
+    id: string;
+    template_name: string | null;
+    vehicle_type: string | null;
+  }>;
+  const menuItems = (menuRes.data ?? []) as Array<{
+    id: string;
+    name: string | null;
+    category: string | null;
+    estimated_hours: number | null;
+    description: string | null;
+  }>;
+  const inspectionItems = (inspectionItemsRes.data ?? []) as Array<{
+    item_label: string | null;
+    section_title: string | null;
+    status: string | null;
+  }>;
+
+  const clusterMap = new Map<string, { count: number; samples: string[]; hours: number[]; workOrderIds: string[] }>();
+  for (const line of lines) {
+    const raw = (line.description ?? line.complaint ?? "").trim();
+    if (raw.length < 6) continue;
+    const key = raw.toLowerCase();
+    const current = clusterMap.get(key) ?? { count: 0, samples: [], hours: [], workOrderIds: [] };
+    current.count += 1;
+    if (current.samples.length < 3) current.samples.push(raw);
+    if (typeof line.labor_hours_actual === "number") current.hours.push(line.labor_hours_actual);
+    if (line.work_order_id && current.workOrderIds.length < 8) current.workOrderIds.push(line.work_order_id);
+    clusterMap.set(key, current);
+  }
+
+  const topCluster = [...clusterMap.entries()]
+    .filter(([, value]) => value.count >= 2)
+    .sort((a, b) => b[1].count - a[1].count)[0];
+
+  const clusterLabel = topCluster?.[0] ?? "custom recurring service";
+  const clusterStats = topCluster?.[1] ?? { count: 0, samples: [], hours: [], workOrderIds: [] };
+
+  const nearDuplicateMenu = menuItems
+    .filter((item) => (item.name ?? "").toLowerCase().includes(clusterLabel.slice(0, 16)))
+    .slice(0, 5);
+  const nearDuplicateTemplates = templates
+    .filter((item) => (item.template_name ?? "").toLowerCase().includes(clusterLabel.slice(0, 16)))
+    .slice(0, 5);
+
+  const avgHours =
+    clusterStats.hours.length > 0
+      ? clusterStats.hours.reduce((sum, value) => sum + value, 0) / clusterStats.hours.length
+      : null;
+
+  const topInspectionSections = new Map<string, number>();
+  for (const row of inspectionItems) {
+    const section = (row.section_title ?? "").trim();
+    if (!section) continue;
+    topInspectionSections.set(section, (topInspectionSections.get(section) ?? 0) + 1);
+  }
+  const sortedSections = [...topInspectionSections.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  const affectedRecords: CitationItem[] = [
+    ...clusterStats.workOrderIds.slice(0, 5).map((woId) => ({
+      type: "work_order",
+      id: woId,
+      href: `/work-orders/${woId}`,
+      label: `Source work order ${woId.slice(0, 8)}`,
+    })),
+    ...(lane === "menu_item_draft" ? nearDuplicateMenu : nearDuplicateTemplates).map((item) => ({
+      type: lane === "menu_item_draft" ? "menu_item" : "inspection_template",
+      id: item.id,
+      href: lane === "menu_item_draft" ? `/menu/item/${item.id}` : "/inspections/custom-draft",
+      label:
+        lane === "menu_item_draft"
+          ? (item as { name: string | null }).name ?? `Menu item ${item.id.slice(0, 8)}`
+          : (item as { template_name: string | null }).template_name ?? `Template ${item.id.slice(0, 8)}`,
+    })),
+  ];
+
+  if (lane === "menu_item_draft") {
+    const proposedName = clusterLabel
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+      .slice(0, 62);
+
+    return {
+      domain: "menu_item_draft",
+      lane,
+      title: "Menu item draft proposal",
+      summary: `Draft menu item "${proposedName}" prepared from repeated custom work with duplicate checks and review-first controls.`,
+      sections: [
+        {
+          title: "Proposed draft",
+          items: [
+            `Title: ${proposedName}`,
+            `Customer-facing summary: Standardized service based on repeated custom lines for "${clusterLabel}".`,
+            `Likely category: ${nearDuplicateMenu[0]?.category ?? "General Repair"}`,
+            `Estimated labor: ${avgHours != null ? `${avgHours.toFixed(1)} hr` : "Needs advisor review"}`,
+            "Suggested line structure: Labor line + likely required parts from prior similar jobs.",
+          ],
+        },
+        {
+          title: "Source rationale",
+          items: [
+            `Repeated custom-line frequency: ${clusterStats.count} occurrence(s) in recent sample.`,
+            ...clusterStats.samples.slice(0, 3).map((sample) => `Observed line: ${sample}`),
+            nearDuplicateMenu.length > 0
+              ? `Near-duplicate menu candidates: ${nearDuplicateMenu
+                  .map((item) => item.name ?? item.id.slice(0, 8))
+                  .join(", ")}`
+              : "No near-duplicate menu candidates found in sampled catalog.",
+          ],
+        },
+      ],
+      warnings: [
+        "Draft only: no menu item was created.",
+        "Duplicate candidates require manual review before any create action.",
+      ],
+      affectedRecords,
+      reviewActions: [
+        "Keep as draft and request advisor edits.",
+        "Revise title, description, labor, and suggested parts.",
+        "Send reviewed draft to Planner execution lane for explicit create confirmation.",
+      ],
+      executionSummary:
+        "If confirmed in execution mode, Planner will create only the reviewed menu item draft and report created record id.",
+    };
+  }
+
+  return {
+    domain: "inspection_template_draft",
+    lane,
+    title: "Inspection template draft proposal",
+    summary: `Draft inspection template proposal generated from recurring findings/manual additions with overlap checks against existing templates.`,
+    sections: [
+      {
+        title: "Proposed template",
+        items: [
+          `Template name: ${clusterLabel
+            .split(" ")
+            .slice(0, 5)
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ")} Inspection`,
+          "Purpose: Standardize recurring manual checks into a reusable review workflow.",
+          ...sortedSections.map(([title, count]) => `Section: ${title} (${count} recurring item references)`),
+        ],
+      },
+      {
+        title: "Source rationale & overlap",
+        items: [
+          `Repeated custom-line/finding signal count: ${clusterStats.count}`,
+          nearDuplicateTemplates.length > 0
+            ? `Possible overlapping templates: ${nearDuplicateTemplates
+                .map((item) => item.template_name ?? item.id.slice(0, 8))
+                .join(", ")}`
+            : "No obvious overlapping templates were found in sampled template names.",
+          "Recurring manual items and findings were used as draft evidence; this does not auto-merge template domains.",
+        ],
+      },
+    ],
+    warnings: [
+      "Draft only: no inspection template was created.",
+      "Potential template overlap detected; review section structure before create.",
+    ],
+    affectedRecords,
+    reviewActions: [
+      "Keep as draft and edit sections/items.",
+      "Revise overlap and duplicate checks with service leads.",
+      "Send reviewed template draft to Planner execution lane for explicit confirmation.",
+    ],
+    executionSummary:
+      "If confirmed in execution mode, Planner will create only the reviewed inspection template draft and summarize created sections/items.",
+  };
+}
+
 export async function runOpenAIPlanner(
   goal: string,
   context: Record<string, unknown>,
@@ -287,6 +750,53 @@ export async function runOpenAIPlanner(
   await onEvent?.({ kind: "plan", text: `Goal: ${goal}` });
 
   const mode = getPlannerMode(context);
+  const lane = get<string>(context, "lane");
+
+  if (lane === "low_inventory_reorder" || lane === "parts_follow_up") {
+    const proposal = await buildPartsProposal(lane, context, ctx);
+    await onEvent?.({
+      kind: "proposal",
+      proposal,
+    });
+    await onEvent?.({
+      kind: "final",
+      text: proposal.summary,
+      citations: proposal.affectedRecords,
+    });
+    return {
+      summary: proposal.summary,
+      citations: proposal.affectedRecords,
+      notifications: proposal.warnings.map((warning, index) => ({
+        level: "warning",
+        code: `parts_proposal_warning_${index + 1}`,
+        title: "Review required",
+        message: warning,
+      })),
+    };
+  }
+
+  if (lane === "menu_item_draft" || lane === "inspection_template_draft") {
+    const proposal = await buildAuthoringProposal(lane, ctx);
+    await onEvent?.({
+      kind: "proposal",
+      proposal,
+    });
+    await onEvent?.({
+      kind: "final",
+      text: proposal.summary,
+      citations: proposal.affectedRecords,
+    });
+    return {
+      summary: proposal.summary,
+      citations: proposal.affectedRecords,
+      notifications: proposal.warnings.map((warning, index) => ({
+        level: "warning",
+        code: `authoring_proposal_warning_${index + 1}`,
+        title: "Review required",
+        message: warning,
+      })),
+    };
+  }
 
   let parsed: ParsedPlan = {};
   try {
