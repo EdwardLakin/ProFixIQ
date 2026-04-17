@@ -1,7 +1,7 @@
 // /features/work-orders/mobile/MobileFocusedJob.tsx (FULL FILE REPLACEMENT)
 // ✅ UI/theme only: align to MobileTechHome (metal-panel / metal-card)
 // ✅ FIX: pass lineLabel + onSaveDraft into CauseCorrectionModal so “Save” shows
-// ❗ NO other logic/behavior changes
+// ✅ Restore canonical hold/remove-hold flow for focused mobile actions
 
 "use client";
 
@@ -758,13 +758,14 @@ export default function MobileFocusedJob(props: {
     (normalizedStatus === "in_progress" || hasActivePunch);
   const isAwaiting = !!line && !isActive && !isOnHold && !isCompleted;
   const canStartOrResume = !!line && canPunch(line) && !isCompleted;
+  const canPrimaryAction = isOnHold || (canStartOrResume && (isActive || isAwaiting));
   const needsApprovalGate =
     line?.status === "awaiting_approval" ||
     (line?.approval_state != null && line.approval_state !== "approved") ||
     line?.status === "declined";
 
   const primaryActionLabel = isOnHold
-    ? "Resume Job"
+    ? "Remove Hold"
     : isActive
       ? "Finish Job"
       : isAwaiting
@@ -926,11 +927,12 @@ export default function MobileFocusedJob(props: {
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <button
                         type="button"
-                        disabled={busy || !canStartOrResume || isCompleted}
+                        disabled={busy || !canPrimaryAction}
                         onClick={() => {
                           if (!line || busy) return;
                           if (isOnHold) {
-                            void releaseHold();
+                            closeAllSubModals();
+                            setOpenHold(true);
                             return;
                           }
                           if (isActive) {
@@ -1396,8 +1398,8 @@ export default function MobileFocusedJob(props: {
           isOpen={openHold}
           onClose={() => setOpenHold(false)}
           onApply={applyHold}
-          onRelease={line.hold_reason ? releaseHold : undefined}
-          canRelease={!!line.hold_reason}
+          onRelease={isOnHold ? releaseHold : undefined}
+          canRelease={isOnHold}
           defaultReason={line.hold_reason || "Awaiting parts"}
         />
       )}
