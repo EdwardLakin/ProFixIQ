@@ -256,6 +256,25 @@ export default function AskAssistantEntry({
     );
   }
 
+  if (placement === "dock") {
+    return (
+      <div className="flex flex-wrap gap-2" role="navigation" aria-label="Utility actions">
+        <Link
+          href={assistantHref}
+          className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
+        >
+          {assistantLabel}
+        </Link>
+        <Link
+          href={plannerHref}
+          className="mobile-tech-btn-ghost inline-flex items-center rounded-full px-3 py-2 text-[0.7rem] leading-none"
+        >
+          {plannerLabel}
+        </Link>
+      </div>
+    );
+  }
+
   if (mobile) {
     return (
       <div className="mobile-tech-utility-dock" role="navigation" aria-label="Utility actions">

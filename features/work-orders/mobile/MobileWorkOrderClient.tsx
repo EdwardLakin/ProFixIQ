@@ -26,6 +26,7 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/mobile/MobileJobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
+import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
   getOfflineSyncSummary,
@@ -704,10 +705,6 @@ export default function MobileWorkOrderClient({
     () => lines.filter((l) => (l.status ?? "").toLowerCase() === "in_progress").length,
     [lines],
   );
-  const onHoldCount = useMemo(
-    () => lines.filter((l) => (l.status ?? "").toLowerCase() === "on_hold").length,
-    [lines],
-  );
   const unassignedCount = useMemo(
     () => lines.filter((l) => !l.assigned_tech_id).length,
     [lines],
@@ -724,12 +721,73 @@ export default function MobileWorkOrderClient({
     [lines],
   );
   const nextActionText = useMemo(() => {
-    if (approvalPending.length > 0) return "Review pending approvals before starting new labor actions.";
-    if (inProgressCount > 0) return "Continue active job punches and close blockers first.";
-    if (awaitingPartsCount > 0) return "Check parts holds and release next ready line.";
-    if (unassignedCount > 0) return "Assign the next unassigned line to keep throughput moving.";
-    return "Open a line to run inspection, notes, or punch actions.";
+    if (approvalPending.length > 0) return "Review pending approvals.";
+    if (inProgressCount > 0) return "Continue active job punches.";
+    if (awaitingPartsCount > 0) return "Release parts-blocked jobs.";
+    if (unassignedCount > 0) return "Assign unassigned jobs.";
+    return "Open a job to run focused actions.";
   }, [approvalPending.length, awaitingPartsCount, inProgressCount, unassignedCount]);
+
+  const vehicleSectionRef = useRef<HTMLElement | null>(null);
+  const approvalSectionRef = useRef<HTMLElement | null>(null);
+  const jobsSectionRef = useRef<HTMLElement | null>(null);
+  const focusedActionRef = useRef<HTMLElement | null>(null);
+  const lineRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const setLineRef = useCallback(
+    (lineId: string) => (el: HTMLDivElement | null) => {
+      lineRefs.current[lineId] = el;
+    },
+    [],
+  );
+
+  const jumpToElement = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: "auto" });
+  }, []);
+
+  const firstInProgressLineId = useMemo(
+    () => lines.find((l) => (l.status ?? "").toLowerCase() === "in_progress")?.id ?? null,
+    [lines],
+  );
+  const firstOnHoldLineId = useMemo(
+    () => lines.find((l) => (l.status ?? "").toLowerCase() === "on_hold")?.id ?? null,
+    [lines],
+  );
+  const firstPartsWaitingLineId = useMemo(
+    () =>
+      lines.find((l) => {
+        const holdReason = (l.hold_reason ?? "").toLowerCase();
+        return (
+          ((l.status ?? "").toLowerCase() === "on_hold" && holdReason.includes("part")) ||
+          holdReason.includes("quote")
+        );
+      })?.id ?? null,
+    [lines],
+  );
+  const firstUnassignedLineId = useMemo(
+    () => lines.find((l) => !l.assigned_tech_id)?.id ?? null,
+    [lines],
+  );
+
+  const primaryActionLine = useMemo(
+    () =>
+      sortedLines.find((l) => (l.status ?? "").toLowerCase() === "in_progress") ??
+      sortedLines.find((l) => (l.status ?? "").toLowerCase() !== "completed") ??
+      sortedLines[0] ??
+      null,
+    [sortedLines],
+  );
+
+  const operationalPills = useMemo(
+    () => [
+      { title: "In progress", targetLineId: firstInProgressLineId },
+      { title: "On hold", targetLineId: firstOnHoldLineId },
+      { title: "Parts waiting", targetLineId: firstPartsWaitingLineId },
+      { title: "Unassigned", targetLineId: firstUnassignedLineId },
+    ],
+    [firstInProgressLineId, firstOnHoldLineId, firstPartsWaitingLineId, firstUnassignedLineId],
+  );
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -913,7 +971,7 @@ export default function MobileWorkOrderClient({
   );
 
   return (
-    <div className="space-y-6 px-4 py-4 text-white">
+    <div className="space-y-5 px-4 pb-24 pt-4 text-white">
       <VoiceContextSetter
         currentView="work_order_page_mobile"
         workOrderId={wo?.id}
@@ -922,15 +980,12 @@ export default function MobileWorkOrderClient({
         lineId={null}
       />
 
-      {/* header bar */}
+      {/* compact operational header */}
       <div className="flex items-center justify-between gap-2">
         <PreviousPageButton />
         {wo?.custom_id && (
-          <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[11px] text-neutral-300 backdrop-blur">
-            Internal ID:{" "}
-            <span className="font-mono text-neutral-100">
-              {wo.id.slice(0, 8)}
-            </span>
+          <span className="rounded-full border border-[var(--metal-border-soft)] bg-slate-950/70 px-2.5 py-1 text-[10px] text-slate-300">
+            ID <span className="font-mono text-slate-100">{wo.id.slice(0, 8)}</span>
           </span>
         )}
       </div>
@@ -972,101 +1027,58 @@ export default function MobileWorkOrderClient({
       ) : !wo ? (
         <div className="text-sm text-red-300">Work order not found.</div>
       ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">In progress</div>
-              <div className="mt-1 text-base font-semibold text-[var(--accent-copper-light)]">{inProgressCount}</div>
-            </div>
-            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">On hold</div>
-              <div className="mt-1 text-base font-semibold text-amber-200">{onHoldCount}</div>
-            </div>
-            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Parts waiting</div>
-              <div className="mt-1 text-base font-semibold text-sky-200">{awaitingPartsCount}</div>
-            </div>
-            <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Unassigned</div>
-              <div className="mt-1 text-base font-semibold text-neutral-200">{unassignedCount}</div>
-            </div>
-          </div>
-          <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2 text-xs text-neutral-200">
-            <span className="font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)]">
-              Next action
-            </span>
-            <div className="mt-1">{nextActionText}</div>
-          </div>
-
-          {/* Header card */}
-          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-5">
+          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.78)]">
+            <div className="flex items-start justify-between gap-2">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-lg font-semibold sm:text-xl">
+                  <h1 className="text-base font-semibold sm:text-lg">
                     Work Order{" "}
-                    <span className="text-[color:var(--accent-copper-light)]">
-                      {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                    </span>
+                    <span className="text-sky-200">{wo.custom_id || `#${wo.id.slice(0, 8)}`}</span>
                   </h1>
-                  <span className={chip(wo.status)}>
-                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
-                  {isWaiter && (
-                    <span
-                      className="
-                        ml-auto
-                        inline-flex items-center whitespace-nowrap
-                        rounded-full border border-red-500/80
-                        bg-red-500/10
-                        px-4 py-1.5
-                        text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
-                        text-red-200
-                        shadow-[0_0_18px_rgba(239,68,68,0.55)]
-                      "
-                    >
+                  <span className={chip(wo.status)}>{(wo.status ?? "awaiting").replaceAll("_", " ")}</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Created {createdAtText}
+                  {isWaiter ? (
+                    <span className="ml-2 rounded-full border border-red-400/65 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200">
                       Waiter
                     </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-neutral-400">
-                  Created {createdAtText}
+                  ) : null}
                 </p>
               </div>
             </div>
-
-            <div className="mt-3 grid gap-3 text-[11px] text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <div className="text-neutral-500">Created</div>
-                <div>{createdAtText}</div>
-              </div>
-              <div>
-                <div className="text-neutral-500">WO ID</div>
-                <div className="truncate font-mono text-[11px] text-neutral-200">
-                  {wo.id}
-                </div>
-              </div>
-              <div>
-                <div className="text-neutral-500">Custom ID</div>
-                <div className="truncate">
-                  {wo.custom_id ?? (
-                    <span className="text-neutral-500">Not set</span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-neutral-500">Status</div>
-                <div className="mt-0.5">
-                  <span className={chip(wo.status)}>
-                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
-                </div>
-              </div>
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+              {operationalPills.map((pill) => {
+                const disabled = !pill.targetLineId;
+                return (
+                  <button
+                    key={pill.title}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      if (!pill.targetLineId) return;
+                      jumpToElement(lineRefs.current[pill.targetLineId] ?? null);
+                    }}
+                    className={[
+                      "inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                      disabled
+                        ? "cursor-not-allowed border-slate-700/80 bg-slate-900/40 text-slate-500"
+                        : "border-slate-500/70 bg-slate-900/70 text-slate-100 active:bg-slate-800/90",
+                    ].join(" ")}
+                  >
+                    {pill.title}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Vehicle & Customer */}
-          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)]">
+          <section
+            ref={vehicleSectionRef}
+            className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 bg-[linear-gradient(165deg,rgba(15,23,42,0.92),rgba(8,16,30,0.88))] px-4 py-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)]"
+          >
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold sm:text-base">
                 Vehicle &amp; Customer
@@ -1158,10 +1170,14 @@ export default function MobileWorkOrderClient({
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
           {/* Awaiting Customer Approval */}
-          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)]">
+          {hasAnyPending ? (
+            <section
+              ref={approvalSectionRef}
+              className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)]"
+            >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-neutral-100 sm:text-base">
                 Awaiting customer approval
@@ -1178,12 +1194,7 @@ export default function MobileWorkOrderClient({
               )}
             </div>
 
-            {!hasAnyPending ? (
-              <p className="text-xs text-neutral-400">
-                No lines waiting for approval.
-              </p>
-            ) : (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {/* Job lines needing approval */}
                 {approvalPending.length > 0 && (
                   <div className="space-y-2">
@@ -1362,11 +1373,14 @@ export default function MobileWorkOrderClient({
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </section>
+          ) : null}
 
           {/* Jobs list */}
-          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.88)]">
+          <section
+            ref={jobsSectionRef}
+            className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.88)]"
+          >
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold sm:text-base">
@@ -1382,7 +1396,21 @@ export default function MobileWorkOrderClient({
               <p className="text-sm text-neutral-400">No lines yet.</p>
             ) : (
               <div className="space-y-2">
-                {sortedLines.map((ln, idx) => {
+                {[...sortedLines]
+                  .sort((a, b) => {
+                    const pri = (s: string | null) => {
+                      const value = (s ?? "").toLowerCase();
+                      if (value === "in_progress") return 1;
+                      if (value === "awaiting" || value === "queued" || value === "planned") return 2;
+                      if (value === "on_hold") return 3;
+                      if (value === "completed" || value === "ready_to_invoice" || value === "invoiced") return 4;
+                      return 5;
+                    };
+                    const p = pri(a.status) - pri(b.status);
+                    if (p !== 0) return p;
+                    return (new Date(a.created_at ?? 0).getTime() || 0) - (new Date(b.created_at ?? 0).getTime() || 0);
+                  })
+                  .map((ln, idx) => {
                   const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
                   const openFocused = () => {
@@ -1402,10 +1430,12 @@ export default function MobileWorkOrderClient({
                   return (
                     <div
                       key={ln.id}
+                      ref={setLineRef(ln.id)}
                       className={[
-                        "space-y-1 rounded-2xl border p-2 transition-shadow",
+                        "scroll-mt-24 space-y-1 rounded-2xl border p-2 transition-shadow",
                         cardColor,
                         punchedIn ? "ring-2 ring-emerald-500/80" : "ring-0",
+                        bucket === "completed" ? "opacity-70" : "",
                       ].join(" ")}
                     >
                       {/* header row with status pill on the right */}
@@ -1454,9 +1484,38 @@ export default function MobileWorkOrderClient({
                 })}
               </div>
             )}
-          </div>
+          </section>
 
-          
+          <section
+            ref={focusedActionRef}
+            className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold sm:text-base">Focused job / actions</h2>
+                <p className="mt-1 text-[11px] text-slate-400">{nextActionText}</p>
+              </div>
+              {primaryActionLine ? (
+                <button
+                  type="button"
+                  className="mobile-tech-btn-utility rounded-full border px-3 py-1.5 text-[11px] font-semibold"
+                  onClick={() => {
+                    setFocusedJobId(primaryActionLine.id);
+                    setFocusedOpen(true);
+                  }}
+                >
+                  Open active job
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3">
+            <h2 className="text-sm font-semibold sm:text-base">Supporting utilities</h2>
+            <div className="mt-2">
+              <AskAssistantEntry mobile placement="dock" />
+            </div>
+          </section>
         </div>
       )}
     </div>
