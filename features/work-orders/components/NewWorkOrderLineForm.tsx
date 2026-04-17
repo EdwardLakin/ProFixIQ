@@ -25,6 +25,11 @@ type AllowedStatus = (typeof ALLOWED_STATUS)[number];
 type SmartRepairMatch = {
   id: string;
   label: string;
+  sourceType?: "history_repair" | "catalog_menu";
+  sourceLabel?: string;
+  whyShown?: string | null;
+  compatibilitySummary?: string | null;
+  compatibilityStatus?: "compatible";
   complaint?: string | null;
   correction?: string | null;
   laborHours?: number | null;
@@ -57,7 +62,14 @@ function isTopRepairDefault(match: SmartRepairMatch | null): boolean {
 
 type VehicleLite = Pick<
   DB["public"]["Tables"]["vehicles"]["Row"],
-  "id" | "year" | "make" | "model" | "engine" | "drivetrain" | "transmission"
+  | "id"
+  | "year"
+  | "make"
+  | "model"
+  | "engine"
+  | "drivetrain"
+  | "transmission"
+  | "fuel_type"
 >;
 
 export function NewWorkOrderLineForm(props: {
@@ -72,6 +84,7 @@ export function NewWorkOrderLineForm(props: {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [complaint, setComplaint] = useState("");
+  const [infoNote, setInfoNote] = useState("");
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");
   const [labor, setLabor] = useState<string>("");
@@ -89,7 +102,8 @@ export function NewWorkOrderLineForm(props: {
 
   const smartMatchTimer = useRef<number | null>(null);
 
-  const canSave = complaint.trim().length > 0 && !!workOrderId;
+  const infoTitle = complaint.trim();
+  const canSave = (lineType === "info" ? infoTitle.length > 0 : complaint.trim().length > 0) && !!workOrderId;
   const topRepairDefault = isTopRepairDefault(smartMatch);
   const formShellClass =
     "rounded-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] p-4 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
@@ -130,7 +144,7 @@ export function NewWorkOrderLineForm(props: {
 
       const { data, error } = await supabase
         .from("vehicles")
-        .select("id, year, make, model, engine, drivetrain, transmission")
+        .select("id, year, make, model, engine, drivetrain, transmission, fuel_type")
         .eq("id", vehicleId)
         .maybeSingle<VehicleLite>();
 
@@ -158,7 +172,7 @@ export function NewWorkOrderLineForm(props: {
       smartMatchTimer.current = null;
     }
 
-    if (term.length < 5 || !workOrderId) {
+    if (lineType !== "job" || term.length < 5 || !workOrderId) {
       setSmartMatch(null);
       setSmartMatchLoading(false);
       return;
@@ -186,6 +200,7 @@ export function NewWorkOrderLineForm(props: {
                   engine: vehicle.engine,
                   drivetrain: vehicle.drivetrain,
                   transmission: vehicle.transmission,
+                  fuel_type: vehicle.fuel_type,
                 }
               : null,
           }),
@@ -234,7 +249,7 @@ export function NewWorkOrderLineForm(props: {
         smartMatchTimer.current = null;
       }
     };
-  }, [complaint, vehicle, workOrderId]);
+  }, [complaint, lineType, vehicle, workOrderId]);
 
   function applySmartMatch(match: SmartRepairMatch) {
     setComplaint(match.complaint?.trim() || match.label || "");
@@ -279,8 +294,8 @@ export function NewWorkOrderLineForm(props: {
     setErr(null);
 
     try {
-      // Prefer exact vehicle-specific repair if available
-      if (smartMatch?.menuRepairItemId) {
+      // Prefer exact vehicle-specific repair if available (job lines only)
+      if (lineType === "job" && smartMatch?.menuRepairItemId) {
         const repairRes = await fetch("/api/work-orders/lines/add-from-menu-repair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -318,7 +333,19 @@ export function NewWorkOrderLineForm(props: {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const payload: InsertLine = {
+      const payload: InsertLine = lineType === "info" ? {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        user_id: user?.id ?? null,
+        line_type: "info",
+        description: infoTitle,
+        complaint: infoTitle || null,
+        notes: infoNote.trim() || null,
+        status: "awaiting",
+        job_type: null,
+        assigned_tech_id: null,
+        shop_id: shopId,
+      } : {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         user_id: user?.id ?? null,
@@ -327,10 +354,9 @@ export function NewWorkOrderLineForm(props: {
         correction: correction.trim() || null,
         labor_time: labor ? Number(labor) : null,
         status: normalizeStatus(status),
-        job_type: lineType === "info" ? null : normalizeJobType(jobType),
-        line_type: lineType,
-        punchable: lineType === "info" ? false : null,
-        assigned_tech_id: lineType === "info" ? null : undefined,
+        job_type: normalizeJobType(jobType),
+        line_type: "job",
+        assigned_tech_id: undefined,
 
         // IMPORTANT: keep shop_id explicit so all RLS/shop triggers stay deterministic
         shop_id: shopId,
@@ -365,6 +391,7 @@ export function NewWorkOrderLineForm(props: {
       }
 
       setComplaint("");
+      setInfoNote("");
       setCause("");
       setCorrection("");
       setLabor("");
@@ -389,10 +416,14 @@ export function NewWorkOrderLineForm(props: {
         <div>
           <h3 className="text-sm font-semibold text-neutral-100">Add work order line</h3>
           <p className="text-[11px] text-neutral-400">
-            Complaint is required. Cause / correction can be filled in later.
+            {lineType === "info"
+              ? "Add a concise info title and optional note."
+              : "Complaint is required. Cause / correction can be filled in later."}
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
-            Direct custom line entry with optional smart repair suggestions from complaint + history matching
+            {lineType === "info"
+              ? "Info lines are context-only and use a dedicated insert path."
+              : "Direct custom line entry with optional smart repair suggestions from complaint + history matching"}
           </p>
         </div>
         <div className={mutedPillClass}>
@@ -409,7 +440,7 @@ export function NewWorkOrderLineForm(props: {
             onChange={(e) => setLineType(e.target.value as WOLineType)}
             className={controlClass}
           >
-            <option value="job">Job line (punchable)</option>
+            <option value="job">Job line (technician action)</option>
             <option value="info">Info line (context only)</option>
           </select>
           <p className="text-[10px] text-neutral-500">
@@ -421,21 +452,26 @@ export function NewWorkOrderLineForm(props: {
 
         <div className="sm:col-span-2 space-y-1">
           <label className="mb-0.5 block text-xs text-neutral-300">
-            Complaint <span className="text-red-400">*</span>
+            {lineType === "info" ? "Info title" : "Complaint"}{" "}
+            <span className="text-red-400">*</span>
           </label>
           <textarea
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
             className={`${controlClass} min-h-[60px]`}
-            placeholder="Describe the issue / customer concern"
+            placeholder={
+              lineType === "info"
+                ? "Short title shown on the work order"
+                : "Describe the issue / customer concern"
+            }
           />
         </div>
 
-        {smartMatchLoading ? (
+        {lineType === "job" && smartMatchLoading ? (
           <div className="sm:col-span-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
             Looking for a matching quoted repair…
           </div>
-        ) : smartMatch ? (
+        ) : lineType === "job" && smartMatch ? (
           <div className="sm:col-span-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -464,6 +500,16 @@ export function NewWorkOrderLineForm(props: {
                   {smartMatch.menuRepairItemId && (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
                       vehicle-specific repair
+                    </span>
+                  )}
+                  {smartMatch.sourceLabel && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      source: {smartMatch.sourceLabel}
+                    </span>
+                  )}
+                  {smartMatch.compatibilityStatus && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {smartMatch.compatibilityStatus}
                     </span>
                   )}
                   {smartMatch.matchTier && (
@@ -496,6 +542,16 @@ export function NewWorkOrderLineForm(props: {
                     </span>
                   ) : null}
                 </div>
+                {smartMatch.whyShown && (
+                  <div className="mt-2 text-[11px] text-emerald-100/85">
+                    Why shown: {smartMatch.whyShown}
+                  </div>
+                )}
+                {smartMatch.compatibilitySummary && (
+                  <div className="mt-1 text-[11px] text-emerald-100/85">
+                    Fit check: {smartMatch.compatibilitySummary}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -518,72 +574,86 @@ export function NewWorkOrderLineForm(props: {
           </div>
         ) : null}
 
-        <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
-          <textarea
-            value={cause}
-            onChange={(e) => setCause(e.target.value)}
-            className={`${controlClass} min-h-[48px]`}
-            placeholder="Root cause (optional)"
-          />
-        </div>
+        {lineType === "info" ? (
+          <div className="space-y-1 sm:col-span-2">
+            <label className="mb-0.5 block text-xs text-neutral-300">Note/body</label>
+            <textarea
+              value={infoNote}
+              onChange={(e) => setInfoNote(e.target.value)}
+              className={`${controlClass} min-h-[72px]`}
+              placeholder="Additional context for advisors or technicians (optional)"
+            />
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
+              <textarea
+                value={cause}
+                onChange={(e) => setCause(e.target.value)}
+                className={`${controlClass} min-h-[48px]`}
+                placeholder="Root cause (optional)"
+              />
+            </div>
 
-        <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Correction</label>
-          <textarea
-            value={correction}
-            onChange={(e) => setCorrection(e.target.value)}
-            className={`${controlClass} min-h-[48px]`}
-            placeholder="What to do / repair plan (optional)"
-          />
-        </div>
+            <div className="space-y-1">
+              <label className="mb-0.5 block text-xs text-neutral-300">Correction</label>
+              <textarea
+                value={correction}
+                onChange={(e) => setCorrection(e.target.value)}
+                className={`${controlClass} min-h-[48px]`}
+                placeholder="What to do / repair plan (optional)"
+              />
+            </div>
 
-        <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Labor (hrs)</label>
-          <input
-            inputMode="decimal"
-            value={labor}
-            onChange={(e) => setLabor(e.target.value)}
-            className={controlClass}
-            placeholder="0.0"
-          />
-          <p className="text-[10px] text-neutral-500">
-            Flat-rate or estimated hours. Leave blank if unknown.
-          </p>
-        </div>
+            <div className="space-y-1">
+              <label className="mb-0.5 block text-xs text-neutral-300">Labor (hrs)</label>
+              <input
+                inputMode="decimal"
+                value={labor}
+                onChange={(e) => setLabor(e.target.value)}
+                className={controlClass}
+                placeholder="0.0"
+              />
+              <p className="text-[10px] text-neutral-500">
+                Flat-rate or estimated hours. Leave blank if unknown.
+              </p>
+            </div>
 
-        <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Status</label>
-          <select
-            value={normalizeStatus(status)}
-            onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
-            className={controlClass}
-          >
-            <option value="awaiting">Awaiting</option>
-            <option value="in_progress">In progress</option>
-            <option value="on_hold">On hold</option>
-            <option value="paused">Paused</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
+            <div className="space-y-1">
+              <label className="mb-0.5 block text-xs text-neutral-300">Status</label>
+              <select
+                value={normalizeStatus(status)}
+                onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
+                className={controlClass}
+              >
+                <option value="awaiting">Awaiting</option>
+                <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
 
-        <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Job type</label>
-          <select
-            value={jobType ?? ""}
-            onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
-            className={controlClass}
-          >
-            <option value="">Unspecified</option>
-            <option value="diagnosis">Diagnosis</option>
-            <option value="inspection">Inspection</option>
-            <option value="maintenance">Maintenance</option>
-            <option value="repair">Repair</option>
-          </select>
-        </div>
+            <div className="space-y-1">
+              <label className="mb-0.5 block text-xs text-neutral-300">Job type</label>
+              <select
+                value={jobType ?? ""}
+                onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
+                className={controlClass}
+              >
+                <option value="">Unspecified</option>
+                <option value="diagnosis">Diagnosis</option>
+                <option value="inspection">Inspection</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="repair">Repair</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
 
-      {smartMatch && (
+      {lineType === "job" && smartMatch && (
         <div className="rounded-md border border-white/10 bg-neutral-900/60 px-3 py-3 text-xs text-neutral-200">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-neutral-100">
@@ -651,7 +721,9 @@ export function NewWorkOrderLineForm(props: {
         >
           {busy
             ? "Adding…"
-            : smartMatch?.menuRepairItemId
+            : lineType === "info"
+              ? "Add info line"
+              : smartMatch?.menuRepairItemId
               ? "Add matched repair"
               : "Add line to work order"}
         </button>
