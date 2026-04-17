@@ -10,6 +10,14 @@ type Props = {
   data: AssistantResponse | { error: string } | null;
 };
 
+function normalizePlannerActionLabel(label: string): string {
+  const lower = label.trim().toLowerCase();
+  if (!lower || lower.includes("fix") || lower.includes("planner")) {
+    return "Plan next steps";
+  }
+  return "Open in Planner";
+}
+
 export default function AssistantResponseCard({ data }: Props) {
   if (!data) return null;
 
@@ -23,16 +31,12 @@ export default function AssistantResponseCard({ data }: Props) {
 
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 p-5">
-      <div className="mb-2 text-xs uppercase text-neutral-400">
-        Summary
-      </div>
-      <div className="whitespace-pre-line text-sm text-white">
-        {data.summary}
-      </div>
+      <div className="mb-2 text-xs uppercase text-neutral-400">Direct answer</div>
+      <div className="whitespace-pre-line text-sm text-white">{data.summary}</div>
 
       {data.bullets.length > 0 ? (
         <div className="mt-4">
-          <div className="mb-2 text-xs text-neutral-400">Action Items</div>
+          <div className="mb-2 text-xs text-neutral-400">Supporting evidence & context</div>
           <ul className="space-y-1">
             {data.bullets.map((bullet, i) => (
               <li key={`${bullet}-${i}`} className="text-sm text-neutral-200">
@@ -43,45 +47,45 @@ export default function AssistantResponseCard({ data }: Props) {
         </div>
       ) : null}
 
-      {data.actions.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {data.actions.map((action, i) =>
-            action.kind === "planner" ? (
-              <Link
-                key={`${action.label}-${i}`}
-                href={buildPlannerHref(action.plannerPayload)}
-                className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs text-orange-300"
-              >
-                {action.label}
-              </Link>
-            ) : (
-              <Link
-                key={`${action.href}-${i}`}
-                href={action.href}
-                className="rounded-full border border-orange-400/40 px-3 py-1 text-xs text-orange-300"
-              >
-                {action.label}
-              </Link>
-            ),
-          )}
-        </div>
-      ) : null}
-
       {data.notifications.length > 0 ? (
         <div className="mt-4 space-y-2">
+          <div className="mb-2 text-xs text-neutral-400">Related records</div>
           {data.notifications.slice(0, 3).map((notification, i) => (
             <div
               key={`${notification.code}-${notification.entityId ?? i}`}
               className="rounded-xl border border-white/10 bg-black/40 p-3"
             >
-              <div className="text-sm font-semibold text-white">
-                {notification.title}
-              </div>
-              <div className="text-xs text-neutral-300">
-                {notification.message}
-              </div>
+              <div className="text-sm font-semibold text-white">{notification.title}</div>
+              <div className="text-xs text-neutral-300">{notification.message}</div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {data.actions.length > 0 ? (
+        <div className="mt-4">
+          <div className="mb-2 text-xs text-neutral-400">Suggested next actions</div>
+          <div className="flex flex-wrap gap-2">
+            {data.actions.map((action, i) =>
+              action.kind === "planner" ? (
+                <Link
+                  key={`${action.label}-${i}`}
+                  href={buildPlannerHref(action.plannerPayload)}
+                  className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs text-orange-300"
+                >
+                  {normalizePlannerActionLabel(action.label)}
+                </Link>
+              ) : (
+                <Link
+                  key={`${action.href}-${i}`}
+                  href={action.href}
+                  className="rounded-full border border-orange-400/40 px-3 py-1 text-xs text-orange-300"
+                >
+                  {action.label}
+                </Link>
+              ),
+            )}
+          </div>
         </div>
       ) : null}
     </div>
