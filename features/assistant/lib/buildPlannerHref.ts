@@ -10,6 +10,13 @@ export type PlannerPayload = {
   allowCreate?: boolean;
   autorun?: boolean;
   planner?: "ops" | "openai" | "simple" | "fleet" | "approvals";
+  lane?:
+    | "parts_follow_up"
+    | "low_inventory_reorder"
+    | "fleet_follow_up"
+    | "menu_item_draft"
+    | "inspection_template_draft"
+    | "service_bundle_draft";
 };
 
 export function buildPlannerHref(payload: PlannerPayload): string {
@@ -30,6 +37,7 @@ export function buildPlannerHref(payload: PlannerPayload): string {
     params.set("autorun", "1");
   }
   if (payload.planner) params.set("planner", payload.planner);
+  if (payload.lane) params.set("lane", payload.lane);
 
   const qs = params.toString();
   return qs ? `/agent/planner?${qs}` : "/agent/planner";

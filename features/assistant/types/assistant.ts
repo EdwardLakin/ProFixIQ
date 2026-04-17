@@ -11,6 +11,13 @@ export type PlannerPayload = {
   workOrderId?: string;
   allowCreate?: boolean;
   planner?: "ops" | "openai" | "simple" | "fleet" | "approvals";
+  lane?:
+    | "parts_follow_up"
+    | "low_inventory_reorder"
+    | "fleet_follow_up"
+    | "menu_item_draft"
+    | "inspection_template_draft"
+    | "service_bundle_draft";
 };
 
 export type AssistantContext = {

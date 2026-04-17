@@ -7,6 +7,7 @@ import { runGetTechCurrentWork } from "../../tools/getTechCurrentWork";
 import { runGetVehicleHistory } from "../../tools/getVehicleHistory";
 import { runGetWorkOrderStatusSummary } from "../../tools/getWorkOrderStatusSummary";
 import { toolListPendingApprovals } from "../../tools/listPendingApprovals";
+import { getServerSupabase } from "../../server/supabase";
 
 import type {
   AssistantAction,
@@ -117,6 +118,11 @@ function toEntities(value: unknown): AssistantEntity[] {
         row.type === "inspection" ||
         row.type === "invoice" ||
         row.type === "fleet_unit" ||
+        row.type === "part" ||
+        row.type === "purchase_order" ||
+        row.type === "part_request" ||
+        row.type === "menu_item" ||
+        row.type === "inspection_template" ||
         row.type === "technician"
           ? row.type
           : "alert",
@@ -188,6 +194,7 @@ function resolveContext(request: AssistantAskRequest): AssistantResolvedContext 
     customerId: request.context?.customerId ?? request.session?.customerId,
     vehicleId: request.context?.vehicleId ?? request.session?.vehicleId,
     bookingId: request.context?.bookingId ?? request.session?.bookingId,
+    fleetUnitId: request.context?.fleetUnitId ?? request.session?.fleetUnitId,
   };
 }
 
@@ -212,6 +219,458 @@ function withResolvedContext(
   }
 
   return next;
+}
+
+function looksLikePartsQuestion(q: string): boolean {
+  return questionIncludes(q, [
+    "low stock",
+    "low inventory",
+    "reorder",
+    "po",
+    "purchase order",
+    "receiving",
+    "parts waiting",
+    "waiting on parts",
+    "blocked because of parts",
+    "do we have this part",
+    "in stock",
+    "parts tied",
+  ]);
+}
+
+function looksLikeFleetQuestion(q: string): boolean {
+  return questionIncludes(q, [
+    "fleet unit",
+    "service request",
+    "pre-trip",
+    "pretrip",
+    "overdue fleet",
+    "unit history",
+    "fleet follow",
+    "work orders tied to this unit",
+  ]);
+}
+
+function looksLikeAuthoringQuestion(q: string): boolean {
+  return questionIncludes(q, [
+    "menu item",
+    "inspection template",
+    "bundle",
+    "package",
+    "repeated custom",
+    "should this become",
+    "similar menu",
+  ]);
+}
+
+async function answerPartsDomain(args: {
+  shopId: string;
+  q: string;
+  resolvedContext: AssistantResolvedContext;
+}): Promise<AssistantAnswer | null> {
+  if (!looksLikePartsQuestion(args.q)) return null;
+
+  const supabase = getServerSupabase();
+
+  const [stockRes, poRes, requestRes, requestItemsRes] = await Promise.all([
+    supabase
+      .from("part_stock")
+      .select("part_id, qty_on_hand, reorder_point, reorder_qty, parts(name, sku, low_stock_threshold)")
+      .eq("parts.shop_id", args.shopId)
+      .limit(300),
+    supabase
+      .from("purchase_orders")
+      .select("id, status, created_at, expected_at, total")
+      .eq("shop_id", args.shopId)
+      .in("status", ["draft", "sent", "partially_received", "receiving"])
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("part_requests")
+      .select("id, status, work_order_id, created_at")
+      .eq("shop_id", args.shopId)
+      .in("status", ["requested", "quoted", "approved", "ordered", "partially_received"])
+      .order("created_at", { ascending: false })
+      .limit(30),
+    supabase
+      .from("part_request_items")
+      .select("id, request_id, part_id, po_id, qty_approved, qty_received, work_order_id, work_order_line_id, description")
+      .eq("shop_id", args.shopId)
+      .order("updated_at", { ascending: false })
+      .limit(80),
+  ]);
+
+  if (stockRes.error || poRes.error || requestRes.error || requestItemsRes.error) {
+    throw new Error(
+      stockRes.error?.message ??
+        poRes.error?.message ??
+        requestRes.error?.message ??
+        requestItemsRes.error?.message ??
+        "Failed to load parts context",
+    );
+  }
+
+  const stockRows = (stockRes.data ?? []) as Array<{
+    part_id: string;
+    qty_on_hand: number;
+    reorder_point: number | null;
+    reorder_qty: number | null;
+    parts?: { name?: string | null; sku?: string | null; low_stock_threshold?: number | null } | null;
+  }>;
+
+  const lowStock = stockRows
+    .map((row) => {
+      const threshold = row.reorder_point ?? row.parts?.low_stock_threshold ?? null;
+      if (threshold == null) return null;
+      if (row.qty_on_hand > threshold) return null;
+      const suggested = row.reorder_qty ?? Math.max(1, threshold - row.qty_on_hand + 1);
+      return { ...row, threshold, suggested };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => a.qty_on_hand - b.qty_on_hand);
+
+  const requestItems = (requestItemsRes.data ?? []) as Array<{
+    id: string;
+    request_id: string;
+    part_id: string | null;
+    po_id: string | null;
+    qty_approved: number;
+    qty_received: number;
+    work_order_id: string | null;
+    work_order_line_id: string | null;
+    description: string;
+  }>;
+
+  const pendingReceiving = requestItems.filter(
+    (item) => item.qty_approved > 0 && item.qty_received < item.qty_approved,
+  );
+
+  const blockedWorkOrderIds = Array.from(
+    new Set(
+      pendingReceiving
+        .map((item) => item.work_order_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const links: AssistantLink[] = [];
+  const entities: AssistantEntity[] = [];
+  const bullets: string[] = [];
+
+  for (const row of lowStock.slice(0, 4)) {
+    const name = row.parts?.name ?? row.parts?.sku ?? row.part_id;
+    const shortage = Math.max(0, row.threshold - row.qty_on_hand);
+    bullets.push(
+      `${name}: on-hand ${row.qty_on_hand}, threshold ${row.threshold}, suggested reorder ${Math.max(
+        row.suggested,
+        shortage,
+      )}`,
+    );
+    entities.push({ type: "part", id: row.part_id, label: name, href: `/parts/inventory?part=${row.part_id}` });
+  }
+
+  const poRows = (poRes.data ?? []) as Array<{ id: string; status: string; total: number | null }>;
+  for (const po of poRows.slice(0, 3)) {
+    links.push({ label: `PO ${po.id.slice(0, 8)} • ${po.status}`, href: `/parts/po/${po.id}` });
+    entities.push({ type: "purchase_order", id: po.id, label: `PO ${po.id.slice(0, 8)} • ${po.status}`, href: `/parts/po/${po.id}` });
+  }
+
+  for (const woId of blockedWorkOrderIds.slice(0, 3)) {
+    links.push({ label: `Work order blocked by parts • ${woId.slice(0, 8)}`, href: `/work-orders/${woId}` });
+  }
+
+  const summary =
+    `Parts snapshot: ${lowStock.length} low-stock SKU(s), ${poRows.length} open purchase order(s), and ${pendingReceiving.length} receiving item(s) still pending.` +
+    (blockedWorkOrderIds.length > 0
+      ? ` ${blockedWorkOrderIds.length} work order(s) appear blocked by parts receiving.`
+      : " No active jobs are currently flagged as blocked by pending receiving items.");
+
+  return buildAnswer({
+    intent: args.q.includes("po") || args.q.includes("purchase") || args.q.includes("receiving")
+      ? "parts_purchasing"
+      : blockedWorkOrderIds.length > 0
+        ? "parts_blockers"
+        : "parts_inventory",
+    summary,
+    bullets: dedupeStrings(bullets, 6),
+    links,
+    entities: entities.slice(0, 8),
+    actions: [
+      {
+        type: "planner",
+        label: "Prepare low-inventory reorder plan",
+        goal: "Prepare low-inventory reorder plan with critical parts, open POs, and receiving blockers",
+        context: {
+          planner: "ops",
+          lane: "low_inventory_reorder",
+          allowCreate: false,
+          workOrderId: args.resolvedContext.workOrderId,
+        },
+      },
+      {
+        type: "planner",
+        label: "Prepare parts follow-up for blocked jobs",
+        goal: "Prepare parts follow-up for jobs blocked by pending part requests or receiving",
+        context: {
+          planner: "ops",
+          lane: "parts_follow_up",
+          allowCreate: false,
+          workOrderId: blockedWorkOrderIds[0] ?? args.resolvedContext.workOrderId,
+        },
+      },
+      {
+        type: "link",
+        label: "Open receiving inbox",
+        href: "/parts/receiving",
+      },
+    ],
+    resolvedContext: args.resolvedContext,
+  });
+}
+
+async function answerFleetDomain(args: {
+  shopId: string;
+  q: string;
+  resolvedContext: AssistantResolvedContext;
+  plateOrVin: string | null;
+}): Promise<AssistantAnswer | null> {
+  if (!looksLikeFleetQuestion(args.q)) return null;
+
+  const supabase = getServerSupabase();
+
+  let vehicleId = args.resolvedContext.vehicleId ?? null;
+  if (!vehicleId && args.plateOrVin) {
+    const { data: vehicle } = await supabase
+      .from("vehicles")
+      .select("id")
+      .or(`license_plate.eq.${args.plateOrVin},vin.eq.${args.plateOrVin}`)
+      .maybeSingle();
+    vehicleId = vehicle?.id ?? null;
+  }
+
+  if (!vehicleId) {
+    return buildAnswer({
+      intent: "fleet_history",
+      summary: "I need a fleet unit context (vehicle id, plate, or VIN) to load fleet history and service requests.",
+      bullets: ["Try asking with a plate/VIN, or open this from a fleet unit record."],
+      resolvedContext: args.resolvedContext,
+    });
+  }
+
+  const [requestsRes, workOrdersRes, inspectionsRes] = await Promise.all([
+    supabase
+      .from("fleet_service_requests")
+      .select("id, status, severity, title, summary, scheduled_for_date, work_order_id, created_at")
+      .eq("shop_id", args.shopId)
+      .eq("vehicle_id", vehicleId)
+      .order("created_at", { ascending: false })
+      .limit(15),
+    supabase
+      .from("work_orders")
+      .select("id, custom_id, status, created_at, source_fleet_service_request_id")
+      .eq("shop_id", args.shopId)
+      .eq("vehicle_id", vehicleId)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("inspections")
+      .select("id, status, created_at, inspection_type, work_order_id")
+      .eq("shop_id", args.shopId)
+      .eq("vehicle_id", vehicleId)
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
+
+  if (requestsRes.error || workOrdersRes.error || inspectionsRes.error) {
+    throw new Error(
+      requestsRes.error?.message ?? workOrdersRes.error?.message ?? inspectionsRes.error?.message ?? "Failed to load fleet records",
+    );
+  }
+
+  const requests = (requestsRes.data ?? []) as Array<{ id: string; status: string; severity: string; title: string; summary: string; work_order_id: string | null }>;
+  const openRequests = requests.filter((row) => row.status !== "completed" && row.status !== "closed");
+  const overdue = requests.filter((row) => row.status !== "completed" && row.status !== "closed" && row.status !== "scheduled");
+  const workOrders = (workOrdersRes.data ?? []) as Array<{ id: string; custom_id: string | null; status: string | null }>;
+  const inspections = (inspectionsRes.data ?? []) as Array<{ id: string; status: string | null; inspection_type: string | null }>;
+
+  const links: AssistantLink[] = [
+    ...openRequests.slice(0, 3).map((row) => ({
+      label: `Fleet request • ${row.title || row.summary} • ${row.status}`,
+      href: `/fleet/service-requests`,
+    })),
+    ...workOrders.slice(0, 3).map((row) => ({
+      label: row.custom_id ? `WO #${row.custom_id} • ${row.status ?? "status unknown"}` : `WO ${row.id.slice(0, 8)} • ${row.status ?? "status unknown"}`,
+      href: `/work-orders/${row.id}`,
+    })),
+  ];
+
+  const bullets = dedupeStrings([
+    `Open service requests: ${openRequests.length}`,
+    overdue.length > 0 ? `Overdue or unscheduled fleet follow-ups: ${overdue.length}` : "No overdue fleet requests in the current unit scope.",
+    `Recent work orders tied to this unit: ${workOrders.length}`,
+    `Recent inspections/pre-trips tied to this unit: ${inspections.length}`,
+    ...openRequests.slice(0, 3).map((row) => `${row.title || row.summary} • ${row.severity} • ${row.status}`),
+  ]);
+
+  return buildAnswer({
+    intent: openRequests.length > 0 ? "fleet_requests" : "fleet_history",
+    summary: `Fleet unit snapshot: ${openRequests.length} open service request(s), ${workOrders.length} recent work order(s), and ${inspections.length} recent inspection/pre-trip record(s).`,
+    bullets,
+    links,
+    entities: [
+      ...openRequests.slice(0, 4).map((row) => ({ type: "fleet_unit" as const, id: vehicleId, label: row.title || row.summary, href: "/fleet/service-requests" })),
+      ...workOrders.slice(0, 2).map((row) => ({ type: "work_order" as const, id: row.id, label: row.custom_id ? `WO #${row.custom_id}` : `WO ${row.id.slice(0, 8)}`, href: `/work-orders/${row.id}` })),
+    ],
+    actions: [
+      {
+        type: "planner",
+        label: "Prepare fleet follow-up",
+        goal: "Prepare fleet follow-up plan for this unit, including open requests and overdue items",
+        context: {
+          planner: "fleet",
+          lane: "fleet_follow_up",
+          vehicleId,
+          allowCreate: false,
+        },
+      },
+      {
+        type: "planner",
+        label: "Create next-step work order for this unit",
+        goal: "Create next-step work order proposal for this fleet unit and summarize scope before execution",
+        context: {
+          planner: "fleet",
+          lane: "fleet_follow_up",
+          vehicleId,
+          allowCreate: false,
+        },
+      },
+    ],
+    resolvedContext: {
+      ...args.resolvedContext,
+      vehicleId,
+      fleetUnitId: args.resolvedContext.fleetUnitId ?? vehicleId,
+    },
+  });
+}
+
+async function answerAuthoringDomain(args: {
+  shopId: string;
+  q: string;
+  resolvedContext: AssistantResolvedContext;
+}): Promise<AssistantAnswer | null> {
+  if (!looksLikeAuthoringQuestion(args.q)) return null;
+
+  const supabase = getServerSupabase();
+
+  const [menuRes, templateRes, repeatLinesRes] = await Promise.all([
+    supabase.from("menu_items").select("id, name, category, inspection_template_id, created_at").eq("shop_id", args.shopId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("inspection_templates").select("id, template_name, vehicle_type, updated_at").eq("shop_id", args.shopId).order("updated_at", { ascending: false }).limit(20),
+    supabase
+      .from("work_order_lines")
+      .select("id, description, complaint, created_at, work_order_id, work_orders!inner(shop_id)")
+      .eq("work_orders.shop_id", args.shopId)
+      .order("created_at", { ascending: false })
+      .limit(120),
+  ]);
+
+  if (menuRes.error || templateRes.error || repeatLinesRes.error) {
+    throw new Error(menuRes.error?.message ?? templateRes.error?.message ?? repeatLinesRes.error?.message ?? "Failed to load authoring context");
+  }
+
+  const menuItems = (menuRes.data ?? []) as Array<{ id: string; name: string | null; category: string | null; inspection_template_id: string | null }>;
+  const templates = (templateRes.data ?? []) as Array<{ id: string; template_name: string; vehicle_type: string | null }>;
+  const lines = (repeatLinesRes.data ?? []) as Array<{ description: string | null; complaint: string | null }>;
+
+  const counts = new Map<string, number>();
+  for (const row of lines) {
+    const label = (row.description ?? row.complaint ?? "").trim().toLowerCase();
+    if (!label || label.length < 6) continue;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  const repeats = [...counts.entries()]
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const topRepeat = repeats[0]?.[0] ?? null;
+  const duplicateMenu = topRepeat
+    ? menuItems.filter((item) => (item.name ?? "").toLowerCase().includes(topRepeat.slice(0, 18))).slice(0, 3)
+    : [];
+
+  const duplicateTemplates = topRepeat
+    ? templates.filter((item) => item.template_name.toLowerCase().includes(topRepeat.slice(0, 18))).slice(0, 3)
+    : [];
+
+  const templateIntent = args.q.includes("inspection") || args.q.includes("template");
+  const bundleIntent = args.q.includes("bundle") || args.q.includes("package");
+
+  const summary = bundleIntent
+    ? "I can prepare a service bundle draft proposal from repeated jobs and existing menu items. I will stage it for review first, and only create a true package if your package domain exists."
+    : templateIntent
+      ? "I found inspection-template authoring signals from repeated findings and existing templates. Planner can draft sections/items for review before any create."
+      : "I found repeated custom work that may deserve a reusable menu item. Planner can draft title, labor, and pricing hints with duplicate checks before create.";
+
+  return buildAnswer({
+    intent: bundleIntent
+      ? "authoring_bundle_draft"
+      : templateIntent
+        ? "authoring_inspection_template"
+        : "authoring_menu_item",
+    summary,
+    bullets: dedupeStrings([
+      repeats.length > 0
+        ? `Top repeated custom line: "${repeats[0][0]}" (${repeats[0][1]} occurrences in sampled history)`
+        : "No repeated custom-line cluster cleared the draft threshold in the recent sample.",
+      `Existing menu items sampled: ${menuItems.length}`,
+      `Existing inspection templates sampled: ${templates.length}`,
+      duplicateMenu.length > 0 ? `Potential menu duplicates: ${duplicateMenu.map((item) => item.name ?? item.id.slice(0, 8)).join(", ")}` : "No immediate menu duplicates detected for the top repeated pattern.",
+      duplicateTemplates.length > 0 ? `Potential template duplicates: ${duplicateTemplates.map((item) => item.template_name).join(", ")}` : "No immediate inspection-template duplicates detected for the top repeated pattern.",
+      bundleIntent ? "Bundle/package note: this response is a draft proposal lane and does not assume a live authored package domain." : null,
+    ]),
+    links: [
+      ...menuItems.slice(0, 2).map((item) => ({ label: item.name ?? `Menu item ${item.id.slice(0, 8)}`, href: `/menu/item/${item.id}` })),
+      ...templates.slice(0, 2).map((item) => ({ label: item.template_name, href: "/inspection/templates" })),
+    ],
+    entities: [
+      ...menuItems.slice(0, 3).map((item) => ({ type: "menu_item" as const, id: item.id, label: item.name ?? `Menu item ${item.id.slice(0, 8)}`, href: `/menu/item/${item.id}` })),
+      ...templates.slice(0, 2).map((item) => ({ type: "inspection_template" as const, id: item.id, label: item.template_name, href: "/inspection/templates" })),
+    ],
+    actions: [
+      {
+        type: "planner",
+        label: "Create menu item draft",
+        goal: "Draft a menu item from repeated custom lines, include duplicate checks, and require review before create",
+        context: {
+          planner: "ops",
+          lane: "menu_item_draft",
+          allowCreate: false,
+          vehicleId: args.resolvedContext.vehicleId,
+        },
+      },
+      {
+        type: "planner",
+        label: "Create inspection template draft",
+        goal: "Draft an inspection template from repeated findings and historical forms, with review before create",
+        context: {
+          planner: "ops",
+          lane: "inspection_template_draft",
+          allowCreate: false,
+        },
+      },
+      {
+        type: "planner",
+        label: "Create service bundle/package draft",
+        goal: "Draft a service bundle/package proposal with included menu items and duplicate checks; create only if package domain exists",
+        context: {
+          planner: "ops",
+          lane: "service_bundle_draft",
+          allowCreate: false,
+        },
+      },
+    ],
+    resolvedContext: args.resolvedContext,
+  });
 }
 
 export async function answerAssistant({
@@ -301,6 +760,34 @@ export async function answerAssistant({
       ],
       resolvedContext: nextContext,
     });
+  }
+
+  const partsAnswer = await answerPartsDomain({
+    shopId,
+    q,
+    resolvedContext,
+  });
+  if (partsAnswer) {
+    return partsAnswer;
+  }
+
+  const fleetAnswer = await answerFleetDomain({
+    shopId,
+    q,
+    resolvedContext,
+    plateOrVin,
+  });
+  if (fleetAnswer) {
+    return fleetAnswer;
+  }
+
+  const authoringAnswer = await answerAuthoringDomain({
+    shopId,
+    q,
+    resolvedContext,
+  });
+  if (authoringAnswer) {
+    return authoringAnswer;
   }
 
   if (
@@ -672,7 +1159,7 @@ export async function answerAssistant({
   return buildAnswer({
     intent: "unknown",
     summary:
-      "I can answer shop operations questions across work orders, approvals, bookings, technician activity, and customer or vehicle history. Ask a specific operational question and I will ground it in current records.",
+      "I can answer shop operations questions across work orders, approvals, bookings, technician activity, parts/inventory/purchasing, fleet follow-up, and AI-assisted authoring opportunities. Ask a specific operational question and I will ground it in current records.",
     bullets: [
       '"What job is Lucas working on right now?"',
       '"What is blocking this work order?"',

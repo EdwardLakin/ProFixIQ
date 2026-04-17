@@ -35,6 +35,23 @@ type PlannerPreset = {
   description: string;
 };
 
+type PlannerLane =
+  | "parts_follow_up"
+  | "low_inventory_reorder"
+  | "fleet_follow_up"
+  | "menu_item_draft"
+  | "inspection_template_draft"
+  | "service_bundle_draft";
+
+const LANE_LABEL: Record<PlannerLane, string> = {
+  parts_follow_up: "Parts follow-up",
+  low_inventory_reorder: "Low inventory reorder",
+  fleet_follow_up: "Fleet follow-up",
+  menu_item_draft: "Menu item draft",
+  inspection_template_draft: "Inspection template draft",
+  service_bundle_draft: "Service bundle draft",
+};
+
 type PlannerStartOut = {
   runId: string;
   alreadyExists: boolean;
@@ -203,6 +220,7 @@ export default function PlannerPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [allowCreate, setAllowCreate] = useState(false);
+  const [lane, setLane] = useState<PlannerLane | null>(null);
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [plateOrVin, setPlateOrVin] = useState("");
@@ -284,6 +302,7 @@ export default function PlannerPage() {
     const bookingParam = searchParams.get("bookingId");
     const workOrderParam = searchParams.get("workOrderId");
     const allowCreateParam = searchParams.get("allowCreate");
+    const laneParam = searchParams.get("lane");
 
     if (
       plannerParam === "ops" ||
@@ -307,6 +326,16 @@ export default function PlannerPage() {
     if (workOrderParam) setWorkOrderId(workOrderParam);
     if (allowCreateParam === "1") setAllowCreate(true);
     if (allowCreateParam === "0") setAllowCreate(false);
+    if (
+      laneParam === "parts_follow_up" ||
+      laneParam === "low_inventory_reorder" ||
+      laneParam === "fleet_follow_up" ||
+      laneParam === "menu_item_draft" ||
+      laneParam === "inspection_template_draft" ||
+      laneParam === "service_bundle_draft"
+    ) {
+      setLane(laneParam);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -630,6 +659,7 @@ export default function PlannerPage() {
         jobType: "repair" as const,
         laborHours: 1,
         plannerKind: planner,
+        lane: lane ?? undefined,
       } satisfies Record<string, unknown>;
 
       const res = await fetch("/api/planner", {
@@ -801,6 +831,11 @@ export default function PlannerPage() {
           <div className="mt-1 text-sm text-neutral-100">
             {plannerPresets.find((preset) => preset.id === planner)?.description}
           </div>
+          {lane ? (
+            <div className="mt-2 inline-flex rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1 text-xs text-sky-200">
+              Operational lane: {LANE_LABEL[lane]}
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
             <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Goal</span>
             <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Proposed plan</span>
