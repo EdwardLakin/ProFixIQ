@@ -109,6 +109,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeAgentConsole =
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
+  const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(pathname);
 
   const showBillingBadge =
     (subStatus ?? "") === "trialing" ||
@@ -523,9 +524,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <Toaster closeButton richColors position="top-right" theme="dark" />
-      <div className="md:hidden">
-        <AskAssistantEntry mobile />
-      </div>
+      {!isMobileWorkOrderDetail ? (
+        <div className="md:hidden">
+          <AskAssistantEntry mobile />
+        </div>
+      ) : null}
     </>
   );
 }
