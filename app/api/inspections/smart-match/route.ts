@@ -18,6 +18,7 @@ type Body = {
     engine?: string | null;
     drivetrain?: string | null;
     transmission?: string | null;
+    fuel_type?: string | null;
   } | null;
 };
 
