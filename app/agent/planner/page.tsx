@@ -12,6 +12,10 @@ import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
 import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
+import type {
+  PlannerExecutionResult,
+  PlannerProposal,
+} from "@/features/agent/lib/plannerProposal";
 
 type OcrFields = {
   vin?: string | null;
@@ -41,7 +45,10 @@ type PlannerLane =
   | "fleet_follow_up"
   | "menu_item_draft"
   | "inspection_template_draft"
-  | "service_bundle_draft";
+  | "service_bundle_draft"
+  | "resolve_approval_queue"
+  | "reschedule_booking"
+  | "work_order_operations";
 
 const LANE_LABEL: Record<PlannerLane, string> = {
   parts_follow_up: "Parts follow-up",
@@ -50,6 +57,9 @@ const LANE_LABEL: Record<PlannerLane, string> = {
   menu_item_draft: "Menu item draft",
   inspection_template_draft: "Inspection template draft",
   service_bundle_draft: "Service bundle draft",
+  resolve_approval_queue: "Resolve approval queue",
+  reschedule_booking: "Reschedule booking",
+  work_order_operations: "Work-order operations",
 };
 
 type PlannerStartOut = {
@@ -59,18 +69,6 @@ type PlannerStartOut = {
 };
 
 type PlannerEvent = Record<string, unknown> & { kind?: string };
-type PlannerProposal = {
-  domain: "parts" | "menu_item_draft" | "inspection_template_draft";
-  lane: string;
-  title: string;
-  summary: string;
-  sections: Array<{ title: string; items: string[] }>;
-  warnings: string[];
-  affectedRecords: Array<{ type: string; id: string; href: string; label: string }>;
-  reviewActions: string[];
-  executionSummary: string;
-};
-
 type AnyObj = Record<string, unknown>;
 
 function isObj(v: unknown): v is AnyObj {
@@ -178,61 +176,75 @@ function extractNotifications(evt: PlannerEvent): Array<{
 function extractProposal(evt: PlannerEvent): PlannerProposal | null {
   const raw = getField(evt, "proposal");
   if (!isObj(raw)) return null;
-  const domain = asString(raw.domain);
+
+  const classification = asString(raw.classification);
   if (
-    domain !== "parts" &&
-    domain !== "menu_item_draft" &&
-    domain !== "inspection_template_draft"
+    classification !== "draft_only" &&
+    classification !== "confirmable_write" &&
+    classification !== "informational"
   ) {
     return null;
   }
 
-  const sections = Array.isArray(raw.sections)
-    ? raw.sections
-        .filter((item) => isObj(item))
-        .map((item) => ({
-          title: asString(item.title) ?? "Section",
-          items: Array.isArray(item.items)
-            ? item.items
-                .map((value: unknown) => asString(value))
-                .filter((value: string | null): value is string => Boolean(value))
-            : [],
-        }))
-    : [];
-
-  const warnings = Array.isArray(raw.warnings)
-    ? raw.warnings
-        .map((value) => asString(value))
-        .filter((value): value is string => Boolean(value))
-    : [];
-
-  const affectedRecords = Array.isArray(raw.affectedRecords)
-    ? raw.affectedRecords
-        .filter((item) => isObj(item))
-        .map((item) => ({
-          type: asString(item.type) ?? "record",
-          id: asString(item.id) ?? "",
-          href: asString(item.href) ?? "#",
-          label: asString(item.label) ?? "Record",
-        }))
-    : [];
-
-  const reviewActions = Array.isArray(raw.reviewActions)
-    ? raw.reviewActions
-        .map((value) => asString(value))
-        .filter((value): value is string => Boolean(value))
-    : [];
+  const stringList = (value: unknown) =>
+    Array.isArray(value)
+      ? value
+          .map((entry) => asString(entry))
+          .filter((entry): entry is string => Boolean(entry))
+      : [];
 
   return {
-    domain,
+    id: asString(raw.id) ?? crypto.randomUUID(),
     lane: asString(raw.lane) ?? "",
+    classification,
     title: asString(raw.title) ?? "Proposal",
     summary: asString(raw.summary) ?? "",
-    sections,
-    warnings,
-    affectedRecords,
-    reviewActions,
-    executionSummary: asString(raw.executionSummary) ?? "",
+    proposed_steps: stringList(raw.proposed_steps),
+    affected_records: Array.isArray(raw.affected_records)
+      ? raw.affected_records
+          .filter((item) => isObj(item))
+          .map((item) => ({
+            type: asString(item.type) ?? "record",
+            id: asString(item.id) ?? "",
+            href: asString(item.href) ?? "#",
+            label: asString(item.label) ?? "Record",
+          }))
+      : [],
+    warnings: stringList(raw.warnings),
+    review_actions: stringList(raw.review_actions),
+    duplicate_candidates: stringList(raw.duplicate_candidates),
+    source_rationale: stringList(raw.source_rationale),
+    confirmation_required: getField(raw, "confirmation_required") === true,
+    execution_available: getField(raw, "execution_available") === true,
+    execution_label: asString(raw.execution_label) ?? "Confirm and apply",
+    not_executable_reason: asString(raw.not_executable_reason) ?? undefined,
+    result_summary: asString(raw.result_summary) ?? undefined,
+    result_links: Array.isArray(raw.result_links)
+      ? raw.result_links
+          .filter((item) => isObj(item))
+          .map((item) => ({
+            href: asString(item.href) ?? "#",
+            label: asString(item.label) ?? "Result",
+          }))
+      : [],
+    audit: {
+      generated_at:
+        asString(getNested(raw, ["audit", "generated_at"])) ??
+        new Date().toISOString(),
+      run_id: asString(getNested(raw, ["audit", "run_id"])) ?? undefined,
+      event_step:
+        typeof getNested(raw, ["audit", "event_step"]) === "number"
+          ? (getNested(raw, ["audit", "event_step"]) as number)
+          : undefined,
+    },
+    execution_payload: isObj(raw.execution_payload)
+      ? {
+          lane: asString(raw.execution_payload.lane) ?? "",
+          action: asString(raw.execution_payload.action) ?? "",
+          data: isObj(raw.execution_payload.data) ? raw.execution_payload.data : {},
+        }
+      : undefined,
+    execution_result: undefined,
   };
 }
 
@@ -324,6 +336,11 @@ export default function PlannerPage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [proposals, setProposals] = useState<PlannerProposal[]>([]);
+  const [applyConfirmations, setApplyConfirmations] = useState<Record<string, boolean>>({});
+  const [applyingProposalId, setApplyingProposalId] = useState<string | null>(null);
+  const [executionResults, setExecutionResults] = useState<
+    Record<string, PlannerExecutionResult>
+  >({});
 
   const esRef = useRef<EventSource | null>(null);
   const autoRanRef = useRef(false);
@@ -410,7 +427,10 @@ export default function PlannerPage() {
       laneParam === "fleet_follow_up" ||
       laneParam === "menu_item_draft" ||
       laneParam === "inspection_template_draft" ||
-      laneParam === "service_bundle_draft"
+      laneParam === "service_bundle_draft" ||
+      laneParam === "resolve_approval_queue" ||
+      laneParam === "reschedule_booking" ||
+      laneParam === "work_order_operations"
     ) {
       setLane(laneParam);
     }
@@ -594,6 +614,8 @@ export default function PlannerPage() {
     setSummary(null);
     setNotifications([]);
     setProposals([]);
+    setApplyConfirmations({});
+    setExecutionResults({});
     setRunId(null);
     setPreviewWoId(null);
     setPreviewOpen(false);
@@ -613,6 +635,8 @@ export default function PlannerPage() {
     setSummary(null);
     setNotifications([]);
     setProposals([]);
+    setApplyConfirmations({});
+    setExecutionResults({});
     esRef.current?.close();
     esRef.current = null;
 
@@ -829,6 +853,44 @@ export default function PlannerPage() {
     } catch (e: unknown) {
       appendStep(`Error: ${toMsg(e)}`);
       setRunning(false);
+    }
+  }
+
+  async function applyProposal(proposal: PlannerProposal) {
+    if (!runId) {
+      appendStep("Apply blocked: missing run id.");
+      return;
+    }
+    if (!applyConfirmations[proposal.id]) {
+      appendStep("Apply blocked: confirm review before apply.");
+      return;
+    }
+    setApplyingProposalId(proposal.id);
+    try {
+      const res = await fetch("/api/planner/apply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          runId,
+          proposalId: proposal.id,
+          confirmationToken: "CONFIRM_APPLY",
+          applyKey: crypto.randomUUID(),
+        }),
+      });
+      const out = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        proposalId?: string;
+        result?: PlannerExecutionResult;
+      };
+      if (!res.ok || !out.result || !out.proposalId) {
+        throw new Error(out.error ?? `Apply failed (HTTP ${res.status})`);
+      }
+      setExecutionResults((prev) => ({ ...prev, [out.proposalId as string]: out.result as PlannerExecutionResult }));
+      appendStep(out.result.summary);
+    } catch (error: unknown) {
+      appendStep(`Apply failed: ${toMsg(error)}`);
+    } finally {
+      setApplyingProposalId(null);
     }
   }
 
@@ -1144,58 +1206,65 @@ export default function PlannerPage() {
         {proposals.length > 0 ? (
           <div className="mt-4 space-y-4">
             {proposals.map((proposal, index) => (
+              (() => {
+                const executionResult = executionResults[proposal.id];
+                const isDraft = proposal.classification === "draft_only";
+                const isConfirmable = proposal.classification === "confirmable_write";
+                const canApply =
+                  isConfirmable &&
+                  proposal.execution_available &&
+                  applyConfirmations[proposal.id] === true &&
+                  applyingProposalId !== proposal.id;
+
+                return (
               <div
-                key={`${proposal.domain}-${proposal.lane}-${index}`}
-                className="rounded-3xl border border-sky-400/30 bg-sky-950/20 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]"
+                key={`${proposal.id}-${proposal.lane}-${index}`}
+                className={`rounded-3xl p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)] ${
+                  isDraft
+                    ? "border border-violet-400/30 bg-violet-950/20"
+                    : "border border-sky-400/30 bg-sky-950/20"
+                }`}
               >
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
-                  Review-first proposal
+                  {isDraft ? "Draft proposal" : isConfirmable ? "Review before apply" : "Informational plan"}
                 </div>
                 <div className="mt-1 text-lg font-semibold text-white">{proposal.title}</div>
                 <div className="mt-2 text-sm text-neutral-200">{proposal.summary}</div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {proposal.sections.map((section) => (
-                    <div
-                      key={`${proposal.title}-${section.title}`}
-                      className="rounded-2xl border border-white/10 bg-black/35 p-3"
-                    >
-                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
-                        {section.title}
-                      </div>
-                      <ul className="mt-2 space-y-1">
-                        {section.items.map((item, itemIdx) => (
-                          <li key={`${section.title}-${itemIdx}`} className="text-sm text-neutral-100">
-                            • {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-
-                {proposal.warnings.length > 0 ? (
-                  <div className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-200">
-                      Warnings
+                  <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                      Proposed plan
                     </div>
                     <ul className="mt-2 space-y-1">
-                      {proposal.warnings.map((warning, warningIdx) => (
-                        <li key={`${warningIdx}-${warning}`} className="text-sm text-amber-100">
-                          • {warning}
+                      {proposal.proposed_steps.map((item, itemIdx) => (
+                        <li key={`${proposal.id}-step-${itemIdx}`} className="text-sm text-neutral-100">
+                          • {item}
                         </li>
                       ))}
                     </ul>
                   </div>
-                ) : null}
+                  <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                      Source rationale
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {proposal.source_rationale.map((item, itemIdx) => (
+                        <li key={`${proposal.id}-source-${itemIdx}`} className="text-sm text-neutral-100">
+                          • {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
 
-                {proposal.affectedRecords.length > 0 ? (
+                {proposal.affected_records.length > 0 ? (
                   <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
                       Affected records
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {proposal.affectedRecords.slice(0, 8).map((record) => (
+                      {proposal.affected_records.slice(0, 10).map((record) => (
                         <a
                           key={`${record.type}-${record.id}-${record.href}`}
                           href={record.href}
@@ -1208,13 +1277,43 @@ export default function PlannerPage() {
                   </div>
                 ) : null}
 
-                {proposal.reviewActions.length > 0 ? (
+                {proposal.warnings.length > 0 ? (
+                  <div className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-200">
+                      Warnings / validation checks
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {proposal.warnings.map((warning, warningIdx) => (
+                        <li key={`${warningIdx}-${warning}`} className="text-sm text-amber-100">
+                          • {warning}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {proposal.duplicate_candidates.length > 0 ? (
+                  <div className="mt-3 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-rose-200">
+                      Overlap / duplicate candidates
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {proposal.duplicate_candidates.map((item, itemIdx) => (
+                        <li key={`${proposal.id}-dup-${itemIdx}`} className="text-sm text-rose-100">
+                          • {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {proposal.review_actions.length > 0 ? (
                   <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
                       Review actions
                     </div>
                     <ul className="mt-2 space-y-1">
-                      {proposal.reviewActions.map((action, actionIdx) => (
+                      {proposal.review_actions.map((action, actionIdx) => (
                         <li key={`${actionIdx}-${action}`} className="text-sm text-neutral-100">
                           • {action}
                         </li>
@@ -1223,12 +1322,90 @@ export default function PlannerPage() {
                   </div>
                 ) : null}
 
-                {proposal.executionSummary ? (
-                  <div className="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
-                    {proposal.executionSummary}
+                {isConfirmable ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
+                      Required confirmation
+                    </div>
+                    <label className="mt-2 flex items-center gap-2 text-sm text-neutral-100">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(applyConfirmations[proposal.id])}
+                        onChange={(e) =>
+                          setApplyConfirmations((prev) => ({
+                            ...prev,
+                            [proposal.id]: e.target.checked,
+                          }))
+                        }
+                      />
+                      I reviewed this plan and want to continue with apply.
+                    </label>
+                    {proposal.execution_available ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-3"
+                        disabled={!canApply}
+                        isLoading={applyingProposalId === proposal.id}
+                        onClick={() => void applyProposal(proposal)}
+                      >
+                        {proposal.execution_label}
+                      </Button>
+                    ) : (
+                      <div className="mt-3 text-sm text-amber-100">
+                        {proposal.not_executable_reason ?? "Not yet executable"}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-violet-400/25 bg-violet-500/10 p-3 text-sm text-violet-100">
+                    {proposal.not_executable_reason ?? "Not yet applied"}
+                  </div>
+                )}
+
+                {executionResult ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
+                      Execution result
+                    </div>
+                    <div className="mt-2 text-sm text-emerald-100">{executionResult.summary}</div>
+                    {executionResult.changed_records.length > 0 ? (
+                      <ul className="mt-2 space-y-1">
+                        {executionResult.changed_records.map((record) => (
+                          <li key={`${proposal.id}-changed-${record.id}`} className="text-sm text-emerald-50">
+                            • {record.label}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {executionResult.result_links.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {executionResult.result_links.map((link, linkIdx) => (
+                          <a
+                            key={`${proposal.id}-result-${linkIdx}`}
+                            href={link.href}
+                            className="rounded-full border border-emerald-300/40 px-3 py-1 text-xs text-emerald-100"
+                          >
+                            {link.label}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {executionResult.audit_ref ? (
+                      <div className="mt-2 text-xs text-emerald-200/90">
+                        Audit reference: {executionResult.audit_ref}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : proposal.result_summary ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3 text-sm text-neutral-200">
+                    {proposal.result_summary}
                   </div>
                 ) : null}
               </div>
+                );
+              })()
             ))}
           </div>
         ) : null}
