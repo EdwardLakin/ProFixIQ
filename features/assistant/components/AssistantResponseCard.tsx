@@ -15,7 +15,7 @@ function normalizePlannerActionLabel(label: string): string {
   if (!lower || lower.includes("fix") || lower.includes("planner")) {
     return "Plan next steps";
   }
-  return "Open in Planner";
+  return label;
 }
 
 export default function AssistantResponseCard({ data }: Props) {
@@ -47,7 +47,28 @@ export default function AssistantResponseCard({ data }: Props) {
         </div>
       ) : null}
 
-      {data.notifications.length > 0 ? (
+      {data.relatedRecords && data.relatedRecords.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          <div className="mb-2 text-xs text-neutral-400">Related records</div>
+          {data.relatedRecords.slice(0, 6).map((record, i) => (
+            <div
+              key={`${record.label}-${record.href ?? i}`}
+              className="rounded-xl border border-white/10 bg-black/40 p-3"
+            >
+              {record.href ? (
+                <Link href={record.href} className="text-sm font-semibold text-orange-200 hover:text-orange-100">
+                  {record.label}
+                </Link>
+              ) : (
+                <div className="text-sm font-semibold text-white">{record.label}</div>
+              )}
+              <div className="text-xs text-neutral-300">
+                {record.type ? record.type.replaceAll("_", " ") : "record"}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : data.notifications.length > 0 ? (
         <div className="mt-4 space-y-2">
           <div className="mb-2 text-xs text-neutral-400">Related records</div>
           {data.notifications.slice(0, 3).map((notification, i) => (

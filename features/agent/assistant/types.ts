@@ -5,6 +5,9 @@ export type AssistantEntityType =
   | "vehicle"
   | "customer"
   | "booking"
+  | "inspection"
+  | "invoice"
+  | "fleet_unit"
   | "technician"
   | "alert";
 
@@ -33,12 +36,20 @@ export type AssistantEntity = {
   href?: string;
 };
 
+export type AssistantResolvedContext = {
+  workOrderId?: string;
+  customerId?: string;
+  vehicleId?: string;
+  bookingId?: string;
+};
+
 export type AssistantAnswer = {
   summary: string;
   bullets: string[];
   links: AssistantLink[];
   entities: AssistantEntity[];
   actions: AssistantAction[];
+  resolvedContext?: AssistantResolvedContext;
   intent:
     | "customer_visit_history"
     | "vehicle_history"
@@ -46,11 +57,32 @@ export type AssistantAnswer = {
     | "stalled_work_orders"
     | "bookings"
     | "tech_current_work"
+    | "pending_approvals"
+    | "work_order_status"
     | "unknown";
+};
+
+export type AssistantAskContext = {
+  workOrderId?: string;
+  customerId?: string;
+  vehicleId?: string;
+  bookingId?: string;
+  pageType?: string;
+  pageTitle?: string;
+};
+
+export type AssistantAskSession = {
+  workOrderId?: string;
+  customerId?: string;
+  vehicleId?: string;
+  bookingId?: string;
+  lastIntent?: AssistantAnswer["intent"];
 };
 
 export type AssistantAskRequest = {
   question: string;
+  context?: AssistantAskContext;
+  session?: AssistantAskSession;
 };
 
 export type AssistantAskResponse =

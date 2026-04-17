@@ -3,6 +3,8 @@
 export type PlannerPayload = {
   goal?: string;
   customerQuery?: string;
+  customerId?: string;
+  vehicleId?: string;
   plateOrVin?: string;
   emailInvoiceTo?: string;
   bookingId?: string;
@@ -42,9 +44,16 @@ export type AssistantNotification = {
   entityId?: string;
 };
 
+export type AssistantRelatedRecord = {
+  label: string;
+  href?: string;
+  type?: string;
+};
+
 export type AssistantResponse = {
   summary: string;
   bullets: string[];
   actions: AssistantAction[];
   notifications: AssistantNotification[];
+  relatedRecords?: AssistantRelatedRecord[];
 };
