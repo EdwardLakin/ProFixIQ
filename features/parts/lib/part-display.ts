@@ -34,7 +34,7 @@ export function toPartDisplaySummary(part: Pick<PartRow, "id" | "name" | "sku" |
     partNumber,
     category: clean(part.category),
     price: typeof part.price === "number" ? part.price : null,
-    internalRecordLabel: `Record ${String(part.id).slice(0, 8)}`,
+    internalRecordLabel: "Record",
     labeledIdentifiers,
   };
 }
@@ -43,6 +43,10 @@ export function partOptionLabel(summary: PartDisplaySummary): string {
   if (summary.sku) return `${summary.sku} — ${summary.name}`;
   if (summary.partNumber) return `${summary.partNumber} — ${summary.name}`;
   return summary.name;
+}
+
+export function partIdentifierLabel(summary: PartDisplaySummary): string {
+  return summary.labeledIdentifiers.map((item) => `${item.label} ${item.value}`).join(" · ");
 }
 
 export function partSearchText(summary: PartDisplaySummary): string {

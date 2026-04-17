@@ -20,6 +20,7 @@ import {
   trustReasonTone,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
+import { partOptionLabel, partSearchText, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -428,7 +429,7 @@ export default function PoReceivePage(): JSX.Element {
   };
 
   const poStatus = String(po?.status ?? "—");
-  const supplierName = supplier?.name ?? (po?.supplier_id ? String(po.supplier_id).slice(0, 8) : "—");
+  const supplierName = supplier?.name ?? (po?.supplier_id ? "Unknown supplier" : "—");
 
   const totalOrdered = useMemo(() => lines.reduce((sum, l) => sum + n(l.qty), 0), [lines]);
   const totalReceived = useMemo(() => lines.reduce((sum, l) => sum + n(l.received_qty), 0), [lines]);
@@ -438,12 +439,7 @@ export default function PoReceivePage(): JSX.Element {
     const term = manualSearch.trim().toLowerCase();
     if (!term) return parts.slice(0, 180);
     return parts
-      .filter((p) => {
-        const name = String(p.name ?? "").toLowerCase();
-        const sku = String(p.sku ?? "").toLowerCase();
-        const cat = String(p.category ?? "").toLowerCase();
-        return name.includes(term) || sku.includes(term) || cat.includes(term);
-      })
+      .filter((p) => partSearchText(toPartDisplaySummary(p)).includes(term))
       .slice(0, 180);
   }, [manualSearch, parts]);
 
@@ -625,7 +621,7 @@ export default function PoReceivePage(): JSX.Element {
                   <option value="">— select —</option>
                   {filteredParts.map((p) => (
                     <option key={String(p.id)} value={String(p.id)}>
-                      {p.name ?? "Unnamed"} {p.sku ? `• ${p.sku}` : ""} {p.category ? `• ${p.category}` : ""}
+                      {partOptionLabel(toPartDisplaySummary(p))}
                     </option>
                   ))}
                 </select>
@@ -688,9 +684,7 @@ export default function PoReceivePage(): JSX.Element {
                     return (
                       <tr key={String(ln.id)} className="border-t border-white/5 hover:bg-white/5">
                         <td className="p-3">
-                          <div className="font-mono text-xs text-neutral-300">
-                            {ln.part_id ? String(ln.part_id).slice(0, 8) : "—"}
-                          </div>
+                          <div className="font-mono text-xs text-neutral-300">{ln.part_id ? "Linked part" : "Unmapped part"}</div>
                           <div className="text-xs text-neutral-500">{ln.description ?? "—"}</div>
                           <div className="mt-1 flex items-center gap-2">
                             <span className="text-[11px] text-neutral-400">{receiveProgressLabel(recvState)}</span>

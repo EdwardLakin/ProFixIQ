@@ -7,7 +7,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
-import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { partIdentifierLabel, partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 
@@ -90,7 +90,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
     const m = new Map<string, string>();
     for (const s of suppliers) {
       const id = String(s.id);
-      const nm = typeof s.name === "string" && s.name.trim() ? s.name.trim() : id.slice(0, 8);
+      const nm = typeof s.name === "string" && s.name.trim() ? s.name.trim() : "Unnamed supplier";
       m.set(id, nm);
     }
     return m;
@@ -142,7 +142,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
     return {
       ...row,
-      ui_part_name: p?.name ? String(p.name) : partId ? partId.slice(0, 8) : "—",
+      ui_part_name: p?.name ? String(p.name) : "Unnamed part",
       ui_sku: p?.sku ? String(p.sku) : "",
       ui_ordered: ordered,
       ui_received: received,
@@ -238,7 +238,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
       return {
         ...r,
-        ui_part_name: p?.name ? String(p.name) : pid ? pid.slice(0, 8) : "—",
+        ui_part_name: p?.name ? String(p.name) : "Unnamed part",
         ui_sku: p?.sku ? String(p.sku) : "",
         ui_ordered: ordered,
         ui_received: received,
@@ -434,7 +434,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   }
 
   const poSupplierId = supplierId || ((po.supplier_id as string | null) ?? "");
-  const supplierName = poSupplierId ? supplierNameById.get(poSupplierId) ?? poSupplierId.slice(0, 8) : "—";
+  const supplierName = poSupplierId ? supplierNameById.get(poSupplierId) ?? "Unnamed supplier" : "—";
   const poStatus = (status || (po.status as string | null) || "open").toLowerCase();
 
   return (
@@ -482,7 +482,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                   <option value="">— select —</option>
                   {suppliers.map((s) => (
                     <option key={String(s.id)} value={String(s.id)}>
-                      {String(s.name ?? String(s.id).slice(0, 8))}
+                      {String(s.name ?? "Unnamed supplier")}
                     </option>
                   ))}
                 </select>
@@ -608,12 +608,22 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
               {linePartId ? (
                 <div className="md:col-span-4 text-[11px] text-neutral-500">
-                  SKU: <span className="text-neutral-200">{String(partById.get(linePartId)?.sku ?? "—")}</span>
-                  <span className="mx-2 text-neutral-600">·</span>
-                  Part #: <span className="text-neutral-200">{String(partById.get(linePartId)?.part_number ?? "—")}</span>
-                  <span className="mx-2 text-neutral-600">·</span>
-                  Name:{" "}
-                  <span className="text-neutral-200">{String(partById.get(linePartId)?.name ?? "—")}</span>
+                  {(() => {
+                    const part = partById.get(linePartId);
+                    if (!part) return <span className="text-neutral-400">Part selected</span>;
+                    const summary = toPartDisplaySummary(part);
+                    return (
+                      <>
+                        {summary.labeledIdentifiers.length > 0 ? (
+                          <>
+                            <span className="text-neutral-300">{partIdentifierLabel(summary)}</span>
+                            <span className="mx-2 text-neutral-600">·</span>
+                          </>
+                        ) : null}
+                        Name: <span className="text-neutral-200">{summary.name}</span>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : null}
             </div>
