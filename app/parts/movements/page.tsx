@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 
 type DB = Database;
 type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
@@ -147,7 +147,9 @@ export default function StockMovementsPage(): JSX.Element {
                     <td className="p-3.5 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
                     <td className="p-3.5">
                       <div className="font-medium text-neutral-100">{partSummary?.name ?? "Unknown part"}</div>
-                      <div className="text-xs text-neutral-500">{partSummary?.sku ? `SKU ${partSummary.sku}` : "No SKU"}</div>
+                      {partSummary && partSummary.labeledIdentifiers.length > 0 ? (
+                        <div className="text-xs text-neutral-500">{partIdentifierLabel(partSummary)}</div>
+                      ) : null}
                     </td>
                     <td className="p-3.5 text-neutral-300">{loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{loc?.name ?? ""}</span></td>
                     <td className="p-3.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${qty >= 0 ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200" : "border-rose-500/30 bg-rose-950/20 text-rose-200"}`}>{qty >= 0 ? "+" : ""}{qty}</span></td>

@@ -18,7 +18,7 @@ import {
   trustReasonTone,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
-import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import type { ReceiveDrawerItem } from "@/features/parts/components/ReceiveDrawer";
 
 type DB = Database;
@@ -274,11 +274,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                     <td className="p-3.5">
                       <div className="font-semibold text-neutral-100">{partSummary?.name ?? it.description}</div>
                       <div className="mt-1 text-[11px] text-neutral-500">
-                        {partSummary
-                          ? partSummary.sku
-                            ? `SKU ${partSummary.sku} • `
-                            : "No SKU • "
-                          : ""}
+                        {partSummary && partSummary.labeledIdentifiers.length > 0 ? `${partIdentifierLabel(partSummary)} · ` : ""}
                         {itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}
                       </div>
                       {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}

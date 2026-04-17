@@ -858,8 +858,8 @@ export default function InventoryPage(): JSX.Element {
               <thead className="bg-white/5 text-neutral-400">
                 <tr className="text-left">
                   <th className="p-3">Name</th>
-                  <th className="p-3">SKU</th>
-                  <th className="p-3">Part #</th>
+                  <th className="w-40 p-3">SKU</th>
+                  <th className="w-40 p-3">Part #</th>
                   <th className="p-3">Category</th>
                   <th className="p-3">Trust</th>
                   <th className="p-3">Price</th>
@@ -880,8 +880,8 @@ export default function InventoryPage(): JSX.Element {
                         {/* Previously this subtitle rendered String(p.id).slice(0, 8), which exposed internal ids as unlabeled metadata. */}
                         <div className="mt-0.5 text-xs text-neutral-500">Record ID in Edit modal</div>
                       </td>
-                      <td className="p-3">{summary.sku ?? "No SKU"}</td>
-                      <td className="p-3">{summary.partNumber ?? "—"}</td>
+                      <td className="p-3 font-mono text-xs text-neutral-300">{summary.sku ?? "—"}</td>
+                      <td className="p-3 font-mono text-xs text-neutral-300">{summary.partNumber ?? "—"}</td>
                       <td className="p-3">{summary.category ?? "—"}</td>
                       <td className="p-3">
                         <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadgeTone(trust.level)}`}>
