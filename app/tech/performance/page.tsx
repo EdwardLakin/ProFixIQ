@@ -330,6 +330,9 @@ export default function TechPerformancePage() {
               )}
             </div>
           </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            Productivity model: clocked hours come from labor segments (fallback payroll timecards), not attendance shift punches.
+          </p>
 
           {/* Quick compare row */}
           {!loading && !error && myRow && (

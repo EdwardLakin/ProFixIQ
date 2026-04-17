@@ -24,7 +24,7 @@ import type { Database } from "@shared/types/types/supabase";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
-import { JobCard } from "@/features/work-orders/mobile/MobileJobCard";
+import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
@@ -132,48 +132,6 @@ const chip = (s: string | null | undefined): string => {
     .replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
-
-/* ------------------------ Line status → card styles ------------------------ */
-
-type LineRollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
-
-const LINE_STATUS_LABELS: Record<LineRollupStatus, string> = {
-  awaiting: "Awaiting",
-  in_progress: "In progress",
-  on_hold: "On hold",
-  completed: "Completed",
-};
-
-const LINE_CARD_STYLES: Record<LineRollupStatus, string> = {
-  awaiting: "border-[var(--metal-border-soft)] bg-black/30",
-  in_progress:
-    "border-[var(--accent-copper-soft)] bg-[radial-gradient(circle_at_top,_rgba(212,118,49,0.18),rgba(15,23,42,0.96))] shadow-[0_0_26px_rgba(212,118,49,0.55)]",
-  on_hold:
-    "border-amber-500/70 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.14),rgba(15,23,42,0.98))]",
-  completed:
-    "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(15,23,42,0.97))]",
-};
-
-const LINE_PILL_STYLES: Record<LineRollupStatus, string> = {
-  awaiting:
-    "border-slate-500/70 bg-slate-900/60 text-slate-200",
-  in_progress:
-    "border-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.16)] text-[var(--accent-copper-light)] shadow-[0_0_20px_rgba(212,118,49,0.55)]",
-  on_hold:
-    "border-amber-400/70 bg-amber-500/12 text-amber-100",
-  completed:
-    "border-emerald-400/70 bg-emerald-500/12 text-emerald-100",
-};
-
-function toLineBucket(status: string | null | undefined): LineRollupStatus {
-  const s = (status ?? "").toLowerCase();
-  if (s === "in_progress") return "in_progress";
-  if (s === "on_hold") return "on_hold";
-  if (s === "completed" || s === "ready_to_invoice" || s === "invoiced") {
-    return "completed";
-  }
-  return "awaiting";
-}
 
 // roles allowed to approve / decline
 const APPROVAL_ROLES = new Set([
@@ -781,12 +739,25 @@ export default function MobileWorkOrderClient({
 
   const operationalPills = useMemo(
     () => [
-      { title: "In progress", targetLineId: firstInProgressLineId },
-      { title: "On hold", targetLineId: firstOnHoldLineId },
-      { title: "Parts waiting", targetLineId: firstPartsWaitingLineId },
-      { title: "Unassigned", targetLineId: firstUnassignedLineId },
+      { title: "In progress", count: inProgressCount, targetLineId: firstInProgressLineId },
+      {
+        title: "On hold",
+        count: lines.filter((l) => (l.status ?? "").toLowerCase() === "on_hold").length,
+        targetLineId: firstOnHoldLineId,
+      },
+      { title: "Parts waiting", count: awaitingPartsCount, targetLineId: firstPartsWaitingLineId },
+      { title: "Unassigned", count: unassignedCount, targetLineId: firstUnassignedLineId },
     ],
-    [firstInProgressLineId, firstOnHoldLineId, firstPartsWaitingLineId, firstUnassignedLineId],
+    [
+      awaitingPartsCount,
+      firstInProgressLineId,
+      firstOnHoldLineId,
+      firstPartsWaitingLineId,
+      firstUnassignedLineId,
+      inProgressCount,
+      lines,
+      unassignedCount,
+    ],
   );
 
   /* ----------------------- line & quote actions ----------------------- */
@@ -1061,13 +1032,16 @@ export default function MobileWorkOrderClient({
                       jumpToElement(lineRefs.current[pill.targetLineId] ?? null);
                     }}
                     className={[
-                      "inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                      "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
                       disabled
                         ? "cursor-not-allowed border-slate-700/80 bg-slate-900/40 text-slate-500"
                         : "border-slate-500/70 bg-slate-900/70 text-slate-100 active:bg-slate-800/90",
                     ].join(" ")}
                   >
                     {pill.title}
+                    <span className="rounded-full border border-current/30 px-1.5 py-0.5 text-[9px] leading-none">
+                      {pill.count}
+                    </span>
                   </button>
                 );
               })}
@@ -1418,67 +1392,35 @@ export default function MobileWorkOrderClient({
                     setFocusedOpen(true);
                   };
 
-                  const assignedTechName = ln.assigned_tech_id
-                    ? techNamesById[ln.assigned_tech_id] ?? "Assigned tech"
-                    : null;
-
-                  const bucket = toLineBucket(ln.status);
-                  const cardColor = LINE_CARD_STYLES[bucket];
-                  const pillColor = LINE_PILL_STYLES[bucket];
-                  const statusLabel = LINE_STATUS_LABELS[bucket];
+                  const lineTechnicians = ln.assigned_tech_id
+                    ? [
+                        {
+                          id: ln.assigned_tech_id,
+                          full_name: techNamesById[ln.assigned_tech_id] ?? "Assigned tech",
+                        },
+                      ]
+                    : [];
 
                   return (
                     <div
                       key={ln.id}
                       ref={setLineRef(ln.id)}
-                      className={[
-                        "scroll-mt-24 space-y-1 rounded-2xl border p-2 transition-shadow",
-                        cardColor,
-                        punchedIn ? "ring-2 ring-emerald-500/80" : "ring-0",
-                        bucket === "completed" ? "opacity-70" : "",
-                      ].join(" ")}
+                      className="scroll-mt-24"
                     >
-                      {/* header row with status pill on the right */}
-                      <div className="mb-1 flex items-center justify-between gap-2 px-1">
-                        <div className="text-[11px] text-neutral-400">
-                          {idx + 1}.{" "}
-                          {String(ln.job_type ?? "job").replaceAll(
-                            "_",
-                            " ",
-                          )}
-                        </div>
-                        <span
-                          className={[
-                            "inline-flex items-center rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em]",
-                            pillColor,
-                          ].join(" ")}
-                        >
-                          {statusLabel}
-                        </span>
-                      </div>
-
-                      <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35">
-                        <JobCard
-                          index={idx}
-                          line={ln}
-                          parts={[]} // stripped-down: no parts list on main mobile view
-                          technicians={[]} // assignment handled in focused view / desktop
-                          canAssign={canAssign}
-                          isPunchedIn={punchedIn}
-                          onOpen={openFocused}
-                          onAssign={undefined}
-                          onOpenInspection={() => openInspection(ln)}
-                          onAddPart={undefined}
-                        />
-                      </div>
-
-                      {/* Assigned tech pill */}
-                      <div className="pl-2 pt-1 text-[11px] text-neutral-400">
-                        Assigned to:{" "}
-                        <span className="font-medium text-neutral-200">
-                          {assignedTechName ?? "Unassigned"}
-                        </span>
-                      </div>
+                      <JobCard
+                        index={idx}
+                        line={ln}
+                        parts={[]} // stripped-down: no parts list on main mobile view
+                        technicians={lineTechnicians}
+                        canAssign={canAssign}
+                        isPunchedIn={punchedIn}
+                        onOpen={openFocused}
+                        onAssign={undefined}
+                        onOpenInspection={() => openInspection(ln)}
+                        onAddPart={undefined}
+                        compact
+                        hideExecutionStageCompletenessPills
+                      />
                     </div>
                   );
                 })}

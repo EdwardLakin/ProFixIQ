@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
+import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
 
 type DB = Database;
 
@@ -108,47 +109,14 @@ export function MobileTechHome({
         setShiftStart(null);
         return;
       }
-
-      // Latest shift for this user
-      const { data: latestShift, error: sErr } = await supabase
-        .from("tech_shifts")
-        .select("id, start_time, end_time, status")
-        .eq("user_id", id)
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (sErr || !latestShift) {
-        setShiftStatus("none");
-        setShiftStart(null);
-        return;
-      }
-
-      setShiftStart(latestShift.start_time ?? null);
-
-      // If shift is closed, mark ended
-      if (latestShift.end_time != null) {
-        setShiftStatus("ended");
-        return;
-      }
-
-      // Open shift – use last punch_event to decide active/break/lunch
-      const { data: lastPunch } = await supabase
-        .from("punch_events")
-        .select("event_type")
-        .eq("shift_id", latestShift.id)
-        .order("timestamp", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const t = lastPunch?.event_type;
-      let computed: ShiftStatus = "active";
-
-      if (t === "break_start") computed = "break";
-      else if (t === "lunch_start") computed = "lunch";
-      else if (t === "end_shift") computed = "ended";
-
-      setShiftStatus(computed);
+      const canonical = await fetchMobileShiftState();
+      setShiftStart(canonical.startTime ?? null);
+      if (canonical.mode === "shift") setShiftStatus("active");
+      else setShiftStatus(canonical.mode);
+    } catch (error) {
+      console.error("[MobileTechHome] shift state refresh failed:", error);
+      setShiftStatus("none");
+      setShiftStart(null);
     } finally {
       setLoadingShift(false);
     }
@@ -159,7 +127,7 @@ export function MobileTechHome({
     void refreshShiftState();
   }, [refreshShiftState]);
 
-  // realtime: follow tech_shifts for this user so it matches bottom nav punches
+  // realtime: follow canonical shift persistence tables for this user
   useEffect(() => {
     if (!userId) return;
 
@@ -187,6 +155,17 @@ export function MobileTechHome({
       }
     };
   }, [supabase, userId, refreshShiftState]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void refreshShiftState();
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase, refreshShiftState]);
 
   /* ---------------------------------------------------------------------- */
   /* Current job – job the tech is punched in on                            */

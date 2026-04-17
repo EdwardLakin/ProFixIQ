@@ -33,6 +33,16 @@ function dateDiffMinutes(start: string, end: string): number {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }
 
+function clampIso(iso: string, minIso: string, maxIso: string): string {
+  const v = new Date(iso).getTime();
+  const min = new Date(minIso).getTime();
+  const max = new Date(maxIso).getTime();
+  if (!Number.isFinite(v) || !Number.isFinite(min) || !Number.isFinite(max)) return iso;
+  if (v < min) return minIso;
+  if (v > max) return maxIso;
+  return iso;
+}
+
 export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) {
   const admin = createAdminSupabase() as any;
   const today = new Date();
@@ -147,6 +157,32 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
   if (shiftsErr) throw new Error(shiftsErr.message);
   if (jobsErr) throw new Error(jobsErr.message);
 
+  const shiftIds = (shifts ?? []).map((s: { id: string }) => s.id).filter(Boolean);
+  const { data: punchEvents, error: punchEventsErr } = shiftIds.length
+    ? await admin
+        .from("punch_events")
+        .select("shift_id, event_type, timestamp")
+        .in("shift_id", shiftIds)
+        .order("timestamp", { ascending: true })
+    : { data: [], error: null };
+
+  if (punchEventsErr) throw new Error(punchEventsErr.message);
+
+  const punchEventsByShift = new Map<
+    string,
+    Array<{ event_type: string | null; timestamp: string | null }>
+  >();
+  for (const event of punchEvents ?? []) {
+    const sid = event.shift_id as string | null;
+    if (!sid) continue;
+    const current = punchEventsByShift.get(sid) ?? [];
+    current.push({
+      event_type: (event.event_type as string | null) ?? null,
+      timestamp: (event.timestamp as string | null) ?? null,
+    });
+    punchEventsByShift.set(sid, current);
+  }
+
   const rowsByKey = new Map<string, {
     user_id: string;
     work_date: string;
@@ -180,11 +216,36 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     const endTime = shift.end_time ?? new Date().toISOString();
     const duration = dateDiffMinutes(shift.start_time, endTime);
 
-    if (shift.type === "shift") {
-      row.attendance_minutes += duration;
-    }
-    if (shift.type === "break" || shift.type === "lunch") {
-      row.unpaid_break_minutes += duration;
+    row.attendance_minutes += duration;
+
+    const events = punchEventsByShift.get(shift.id) ?? [];
+    if (events.length > 0) {
+      let activeBreakStart: string | null = null;
+
+      for (const event of events) {
+        const eventType = String(event.event_type ?? "").toLowerCase();
+        if (!event.timestamp) continue;
+        const eventTs = clampIso(event.timestamp, shift.start_time, endTime);
+
+        if (eventType === "break_start" || eventType === "lunch_start") {
+          if (activeBreakStart) {
+            row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, eventTs);
+          }
+          activeBreakStart = eventTs;
+          continue;
+        }
+
+        if (eventType === "break_end" || eventType === "lunch_end") {
+          if (activeBreakStart) {
+            row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, eventTs);
+            activeBreakStart = null;
+          }
+        }
+      }
+
+      if (activeBreakStart) {
+        row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, endTime);
+      }
     }
 
     const ids = Array.isArray(row.source_snapshot.shift_ids)
@@ -192,6 +253,11 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       : [];
     ids.push(shift.id);
     row.source_snapshot.shift_ids = ids;
+    row.source_snapshot = {
+      ...row.source_snapshot,
+      break_source: events.length > 0 ? "punch_events" : "none_recorded",
+      punch_event_count: events.length,
+    };
 
     if (!shift.end_time) {
       const openIds = Array.isArray(row.source_snapshot.open_shift_ids)
