@@ -90,10 +90,12 @@ function extractInspectionTemplateId(
 
 type KnownStatus =
   | "awaiting_approval"
+  | "parts_waiting"
   | "awaiting"
   | "queued"
   | "in_progress"
   | "on_hold"
+  | "unassigned"
   | "planned"
   | "new"
   | "completed"
@@ -105,15 +107,19 @@ const BASE_BADGE =
 
 const BADGE: Record<KnownStatus, string> = {
   awaiting_approval:
-    "bg-sky-900/30 border-sky-400/60 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.35)]",
+    "bg-amber-500/12 border-amber-300/65 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.24)]",
+  parts_waiting:
+    "bg-indigo-500/12 border-indigo-300/65 text-indigo-100 shadow-[0_0_18px_rgba(129,140,248,0.24)]",
   awaiting:
     "bg-slate-900/40 border-slate-400/60 text-slate-200 shadow-[0_0_18px_rgba(148,163,184,0.25)]",
   queued:
     "bg-indigo-900/30 border-indigo-400/70 text-indigo-200 shadow-[0_0_18px_rgba(129,140,248,0.40)]",
   in_progress:
-    "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.32),rgba(15,23,42,0.9))] border-[color:var(--accent-copper-soft)] text-[color:var(--accent-copper-light)] shadow-[0_0_20px_rgba(248,113,22,0.50)]",
+    "border-cyan-300/70 bg-cyan-500/14 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.30)]",
   on_hold:
-    "bg-amber-950/40 border-amber-400/70 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.35)]",
+    "bg-amber-500/12 border-amber-300/65 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.24)]",
+  unassigned:
+    "bg-slate-800/65 border-slate-400/60 text-slate-200 shadow-[0_0_14px_rgba(148,163,184,0.20)]",
   planned:
     "bg-purple-950/40 border-purple-400/70 text-purple-200 shadow-[0_0_18px_rgba(147,51,234,0.40)]",
   new:
@@ -143,6 +149,65 @@ const APPROVAL_ROLES = new Set([
   "lead",
   "leadhand",
 ]);
+
+type MobileOperationalState =
+  | "in_progress"
+  | "awaiting_approval"
+  | "parts_waiting"
+  | "on_hold"
+  | "unassigned"
+  | "completed";
+
+function normalizeStatus(status: string | null | undefined): string {
+  return String(status ?? "").trim().toLowerCase().replaceAll("-", "_");
+}
+
+function isCompletedLine(line: WorkOrderLine): boolean {
+  const status = normalizeStatus(line.status);
+  return (
+    status === "completed" ||
+    status === "ready_to_invoice" ||
+    status === "invoiced" ||
+    Boolean(line.punched_out_at)
+  );
+}
+
+function isApprovalPendingLine(line: WorkOrderLine): boolean {
+  const approval = normalizeStatus(line.approval_state);
+  const status = normalizeStatus(line.status);
+  return (
+    approval === "pending" ||
+    status === "awaiting_approval" ||
+    status === "needs_approval"
+  );
+}
+
+function isPartsWaitingLine(line: WorkOrderLine): boolean {
+  const status = normalizeStatus(line.status);
+  const holdReason = normalizeStatus(line.hold_reason);
+  return (
+    status === "waiting_parts" ||
+    status === "pending_parts" ||
+    holdReason.includes("part") ||
+    holdReason.includes("quote")
+  );
+}
+
+function isInProgressLine(line: WorkOrderLine): boolean {
+  const status = normalizeStatus(line.status);
+  const punchedIn = Boolean(line.punched_in_at);
+  const punchedOut = Boolean(line.punched_out_at);
+  return status === "in_progress" || (punchedIn && !punchedOut);
+}
+
+function getOperationalState(line: WorkOrderLine): MobileOperationalState {
+  if (isCompletedLine(line)) return "completed";
+  if (isInProgressLine(line)) return "in_progress";
+  if (isApprovalPendingLine(line)) return "awaiting_approval";
+  if (isPartsWaitingLine(line)) return "parts_waiting";
+  if (normalizeStatus(line.status) === "on_hold") return "on_hold";
+  return "unassigned";
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -594,7 +659,11 @@ export default function MobileWorkOrderClient({
   }, [quoteLines]);
 
   const approvalPending = useMemo(
-    () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
+    () =>
+      lines.filter(
+        (l) =>
+          getOperationalState(l) === "awaiting_approval" && !isCompletedLine(l),
+      ),
     [lines],
   );
 
@@ -607,27 +676,71 @@ export default function MobileWorkOrderClient({
     [quoteLines],
   );
 
-  const activeJobLines = useMemo(
-    () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
-    [lines],
-  );
+  const linesByOperationalState = useMemo(() => {
+    const grouped: Record<MobileOperationalState, WorkOrderLine[]> = {
+      in_progress: [],
+      awaiting_approval: [],
+      parts_waiting: [],
+      on_hold: [],
+      unassigned: [],
+      completed: [],
+    };
+    lines.forEach((line) => {
+      grouped[getOperationalState(line)].push(line);
+    });
+    return grouped;
+  }, [lines]);
 
-  const sortedLines = useMemo(() => {
+  const createdSortedLines = useMemo(() => {
+    return [...lines].sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return ta - tb;
+    });
+  }, [lines]);
+
+  const actionableLines = useMemo(() => {
+    return [
+      ...linesByOperationalState.in_progress,
+      ...linesByOperationalState.awaiting_approval,
+      ...linesByOperationalState.parts_waiting,
+      ...linesByOperationalState.on_hold,
+      ...linesByOperationalState.unassigned,
+    ].sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return ta - tb;
+    });
+  }, [linesByOperationalState]);
+
+  const displayLines = useMemo(() => {
     const pr: Record<string, number> = {
       diagnosis: 1,
       inspection: 2,
       maintenance: 3,
       repair: 4,
     };
-    return [...activeJobLines].sort((a, b) => {
-      const pa = pr[String(a.job_type ?? "repair")] ?? 999;
-      const pb = pr[String(b.job_type ?? "repair")] ?? 999;
+    const statePriority: Record<MobileOperationalState, number> = {
+      in_progress: 1,
+      awaiting_approval: 2,
+      parts_waiting: 3,
+      on_hold: 4,
+      unassigned: 5,
+      completed: 6,
+    };
+    return [...createdSortedLines].sort((a, b) => {
+      const sa = statePriority[getOperationalState(a)];
+      const sb = statePriority[getOperationalState(b)];
+      if (sa !== sb) return sa - sb;
+
+      const pa = pr[String(a.job_type ?? "repair").toLowerCase()] ?? 999;
+      const pb = pr[String(b.job_type ?? "repair").toLowerCase()] ?? 999;
       if (pa !== pb) return pa - pb;
       const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       return ta - tb;
     });
-  }, [activeJobLines]);
+  }, [createdSortedLines]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
@@ -658,33 +771,34 @@ export default function MobileWorkOrderClient({
         waiterFlagSource.customer_waiting)
     );
 
+  const canonicalHeaderStatus = useMemo<MobileOperationalState>(() => {
+    if (linesByOperationalState.in_progress.length > 0) return "in_progress";
+    if (linesByOperationalState.awaiting_approval.length > 0)
+      return "awaiting_approval";
+    if (linesByOperationalState.parts_waiting.length > 0) return "parts_waiting";
+    if (linesByOperationalState.on_hold.length > 0) return "on_hold";
+    if (linesByOperationalState.unassigned.length > 0) return "unassigned";
+    return "completed";
+  }, [linesByOperationalState]);
+
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
-  const inProgressCount = useMemo(
-    () => lines.filter((l) => (l.status ?? "").toLowerCase() === "in_progress").length,
-    [lines],
-  );
-  const unassignedCount = useMemo(
-    () => lines.filter((l) => !l.assigned_tech_id).length,
-    [lines],
-  );
-  const awaitingPartsCount = useMemo(
-    () =>
-      lines.filter((l) => {
-        const holdReason = (l.hold_reason ?? "").toLowerCase();
-        return (
-          ((l.status ?? "").toLowerCase() === "on_hold" && holdReason.includes("part")) ||
-          holdReason.includes("quote")
-        );
-      }).length,
-    [lines],
-  );
+  const inProgressCount = linesByOperationalState.in_progress.length;
+  const unassignedCount = linesByOperationalState.unassigned.length;
+  const awaitingPartsCount = linesByOperationalState.parts_waiting.length;
   const nextActionText = useMemo(() => {
-    if (approvalPending.length > 0) return "Review pending approvals.";
     if (inProgressCount > 0) return "Continue active job punches.";
+    if (approvalPending.length > 0) return "Review pending approvals.";
     if (awaitingPartsCount > 0) return "Release parts-blocked jobs.";
+    if (linesByOperationalState.on_hold.length > 0) return "Resolve held jobs.";
     if (unassignedCount > 0) return "Assign unassigned jobs.";
-    return "Open a job to run focused actions.";
-  }, [approvalPending.length, awaitingPartsCount, inProgressCount, unassignedCount]);
+    return "All lines are complete.";
+  }, [
+    approvalPending.length,
+    awaitingPartsCount,
+    inProgressCount,
+    linesByOperationalState.on_hold.length,
+    unassignedCount,
+  ]);
 
   const vehicleSectionRef = useRef<HTMLElement | null>(null);
   const approvalSectionRef = useRef<HTMLElement | null>(null);
@@ -704,45 +818,31 @@ export default function MobileWorkOrderClient({
     el.scrollIntoView({ block: "start", behavior: "auto" });
   }, []);
 
-  const firstInProgressLineId = useMemo(
-    () => lines.find((l) => (l.status ?? "").toLowerCase() === "in_progress")?.id ?? null,
-    [lines],
-  );
-  const firstOnHoldLineId = useMemo(
-    () => lines.find((l) => (l.status ?? "").toLowerCase() === "on_hold")?.id ?? null,
-    [lines],
-  );
-  const firstPartsWaitingLineId = useMemo(
-    () =>
-      lines.find((l) => {
-        const holdReason = (l.hold_reason ?? "").toLowerCase();
-        return (
-          ((l.status ?? "").toLowerCase() === "on_hold" && holdReason.includes("part")) ||
-          holdReason.includes("quote")
-        );
-      })?.id ?? null,
-    [lines],
-  );
-  const firstUnassignedLineId = useMemo(
-    () => lines.find((l) => !l.assigned_tech_id)?.id ?? null,
-    [lines],
-  );
+  const firstInProgressLineId = linesByOperationalState.in_progress[0]?.id ?? null;
+  const firstOnHoldLineId = linesByOperationalState.on_hold[0]?.id ?? null;
+  const firstPartsWaitingLineId = linesByOperationalState.parts_waiting[0]?.id ?? null;
+  const firstUnassignedLineId = linesByOperationalState.unassigned[0]?.id ?? null;
 
-  const primaryActionLine = useMemo(
-    () =>
-      sortedLines.find((l) => (l.status ?? "").toLowerCase() === "in_progress") ??
-      sortedLines.find((l) => (l.status ?? "").toLowerCase() !== "completed") ??
-      sortedLines[0] ??
-      null,
-    [sortedLines],
-  );
+  const primaryActionLine = actionableLines[0] ?? null;
+
+  useEffect(() => {
+    if (!focusedJobId) return;
+    const stillActionable = actionableLines.some((line) => line.id === focusedJobId);
+    if (stillActionable) return;
+
+    const nextLineId = actionableLines[0]?.id ?? null;
+    setFocusedJobId(nextLineId);
+    if (!nextLineId) {
+      setFocusedOpen(false);
+    }
+  }, [actionableLines, focusedJobId]);
 
   const operationalPills = useMemo(
     () => [
       { title: "In progress", count: inProgressCount, targetLineId: firstInProgressLineId },
       {
         title: "On hold",
-        count: lines.filter((l) => (l.status ?? "").toLowerCase() === "on_hold").length,
+        count: linesByOperationalState.on_hold.length,
         targetLineId: firstOnHoldLineId,
       },
       { title: "Parts waiting", count: awaitingPartsCount, targetLineId: firstPartsWaitingLineId },
@@ -755,7 +855,7 @@ export default function MobileWorkOrderClient({
       firstPartsWaitingLineId,
       firstUnassignedLineId,
       inProgressCount,
-      lines,
+      linesByOperationalState.on_hold.length,
       unassignedCount,
     ],
   );
@@ -942,7 +1042,11 @@ export default function MobileWorkOrderClient({
   );
 
   return (
-    <div className="space-y-5 px-4 pb-24 pt-4 text-white">
+    <div className="relative space-y-5 overflow-hidden px-4 pb-24 pt-4 text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.10)_0%,rgba(2,6,23,0.96)_58%,rgba(2,6,23,1)_100%)]"
+      />
       <VoiceContextSetter
         currentView="work_order_page_mobile"
         workOrderId={wo?.id}
@@ -1007,7 +1111,9 @@ export default function MobileWorkOrderClient({
                     Work Order{" "}
                     <span className="text-sky-200">{wo.custom_id || `#${wo.id.slice(0, 8)}`}</span>
                   </h1>
-                  <span className={chip(wo.status)}>{(wo.status ?? "awaiting").replaceAll("_", " ")}</span>
+                  <span className={chip(canonicalHeaderStatus)}>
+                    {canonicalHeaderStatus.replaceAll("_", " ")}
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
                   Created {createdAtText}
@@ -1057,12 +1163,12 @@ export default function MobileWorkOrderClient({
               <h2 className="text-sm font-semibold sm:text-base">
                 Vehicle &amp; Customer
               </h2>
-              <button
-                type="button"
-                className="text-[11px] font-medium text-[color:var(--accent-copper-light)] underline-offset-2 hover:underline"
-                onClick={() => setShowDetails((v) => !v)}
-                aria-expanded={showDetails}
-              >
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
+                  onClick={() => setShowDetails((v) => !v)}
+                  aria-expanded={showDetails}
+                >
                 {showDetails ? "Hide details" : "Show details"}
               </button>
             </div>
@@ -1129,7 +1235,7 @@ export default function MobileWorkOrderClient({
                       {customer.id && (
                         <Link
                           href={`/mobile/work-orders/${wo.id}/vehicle`}
-                          className="mt-2 inline-flex text-[11px] font-medium text-[color:var(--accent-copper-light)] underline-offset-2 hover:underline"
+                          className="mt-2 inline-flex text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
                           title="Open customer profile"
                         >
                           View customer profile →
@@ -1159,7 +1265,7 @@ export default function MobileWorkOrderClient({
               {approvalPending.length > 1 && (
                 <button
                   type="button"
-                  className="rounded-full bg-[var(--accent-copper-soft)] px-3 py-1.5 text-[11px] font-semibold text-black shadow-[0_0_18px_rgba(212,118,49,0.55)] hover:bg-[var(--accent-copper-light)]"
+                  className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18"
                   onClick={sendAllPendingToParts}
                   title="Queue all lines for parts quoting"
                 >
@@ -1366,25 +1472,11 @@ export default function MobileWorkOrderClient({
               </div>
             </div>
 
-            {sortedLines.length === 0 ? (
+            {displayLines.length === 0 ? (
               <p className="text-sm text-neutral-400">No lines yet.</p>
             ) : (
               <div className="space-y-2">
-                {[...sortedLines]
-                  .sort((a, b) => {
-                    const pri = (s: string | null) => {
-                      const value = (s ?? "").toLowerCase();
-                      if (value === "in_progress") return 1;
-                      if (value === "awaiting" || value === "queued" || value === "planned") return 2;
-                      if (value === "on_hold") return 3;
-                      if (value === "completed" || value === "ready_to_invoice" || value === "invoiced") return 4;
-                      return 5;
-                    };
-                    const p = pri(a.status) - pri(b.status);
-                    if (p !== 0) return p;
-                    return (new Date(a.created_at ?? 0).getTime() || 0) - (new Date(b.created_at ?? 0).getTime() || 0);
-                  })
-                  .map((ln, idx) => {
+                {displayLines.map((ln, idx) => {
                   const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
                   const openFocused = () => {
@@ -1446,9 +1538,15 @@ export default function MobileWorkOrderClient({
                     setFocusedOpen(true);
                   }}
                 >
-                  Open active job
+                  {canonicalHeaderStatus === "in_progress"
+                    ? "Open active job"
+                    : "Open next job"}
                 </button>
-              ) : null}
+              ) : (
+                <span className="rounded-full border border-slate-700/80 bg-slate-900/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                  Completed
+                </span>
+              )}
             </div>
           </section>
 
