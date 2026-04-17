@@ -114,6 +114,17 @@ function canPunch(line: WorkOrderLine | null): boolean {
   return true;
 }
 
+function formatElapsed(startIso: string, nowMs: number): string {
+  const startMs = new Date(startIso).getTime();
+  if (!Number.isFinite(startMs)) return "—";
+  const delta = Math.max(0, nowMs - startMs);
+  const totalMinutes = Math.floor(delta / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  return `${hours}h ${minutes}m`;
+}
+
 export default function MobileFocusedJob(props: {
   workOrderLineId: string;
   onBack: () => void;
@@ -135,6 +146,7 @@ export default function MobileFocusedJob(props: {
   const [notesDirty, setNotesDirty] = useState(false);
   const [pendingWrites, setPendingWrites] = useState(0);
   const [syncSummary, setSyncSummary] = useState<SyncSummary>(() => getOfflineSyncSummary());
+  const [elapsedNow, setElapsedNow] = useState<number>(() => Date.now());
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
 
   // sub-modals
@@ -205,6 +217,11 @@ export default function MobileFocusedJob(props: {
       window.removeEventListener("online", refreshPending);
     };
   }, [refreshSyncState]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setElapsedNow(Date.now()), 30000);
+    return () => window.clearInterval(t);
+  }, []);
 
   const closeAllSubModals = () => {
     setOpenComplete(false);
@@ -747,7 +764,19 @@ export default function MobileFocusedJob(props: {
   );
 
   const isOnHold = line?.status === "on_hold";
-  const canStartOrResume = !!line && canPunch(line) && line.status !== "completed";
+  const normalizedStatus = String(line?.status ?? "").toLowerCase();
+  const isCompleted =
+    normalizedStatus === "completed" ||
+    normalizedStatus === "ready_to_invoice" ||
+    normalizedStatus === "invoiced" ||
+    (!!line?.punched_out_at && normalizedStatus !== "on_hold");
+  const hasActivePunch = !!line?.punched_in_at && !line?.punched_out_at;
+  const isActive =
+    !isCompleted &&
+    !isOnHold &&
+    (normalizedStatus === "in_progress" || hasActivePunch);
+  const isAwaiting = !!line && !isActive && !isOnHold && !isCompleted;
+  const canStartOrResume = !!line && canPunch(line) && !isCompleted;
   const needsApprovalGate =
     line?.status === "awaiting_approval" ||
     (line?.approval_state != null && line.approval_state !== "approved") ||
@@ -755,9 +784,32 @@ export default function MobileFocusedJob(props: {
 
   const primaryActionLabel = isOnHold
     ? "Resume Job"
-    : line?.status === "in_progress"
-      ? "Complete Job"
-      : "Start Job";
+    : isActive
+      ? "Finish Job"
+      : isAwaiting
+        ? "Start Job"
+        : "View Details";
+
+  const liveStateLabel = isActive
+    ? "Active"
+    : isOnHold
+      ? "On Hold"
+      : isCompleted
+        ? "Completed"
+        : "Awaiting";
+
+  const livePillClass = isActive
+    ? "border-cyan-300/65 bg-cyan-500/14 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.22)] [animation:pulse_2.6s_ease-in-out_infinite]"
+    : isOnHold
+      ? "border-amber-300/60 bg-amber-500/14 text-amber-100"
+      : isCompleted
+        ? "border-slate-400/55 bg-slate-500/10 text-slate-200"
+        : "border-slate-500/60 bg-slate-900/55 text-slate-200";
+
+  const elapsedText =
+    line?.punched_in_at && (isActive || isCompleted)
+      ? formatElapsed(line.punched_in_at, elapsedNow)
+      : null;
 
   return (
     <>
@@ -857,25 +909,69 @@ export default function MobileFocusedJob(props: {
                 {/* dominant next action */}
                 {mode === "tech" && line && (
                   <div className={`${panel} px-4 py-3`}>
-                    <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Next action
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        Current Job State
+                      </div>
+                      <span
+                        className={[
+                          "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                          livePillClass,
+                        ].join(" ")}
+                      >
+                        {liveStateLabel}
+                      </span>
                     </div>
+
+                    <div className="mb-3 text-xs text-neutral-300">
+                      {line.punched_in_at ? (
+                        <div>
+                          Started {format(new Date(line.punched_in_at), "PPp")}
+                          {elapsedText ? <span className="text-neutral-400"> • Elapsed {elapsedText}</span> : null}
+                        </div>
+                      ) : (
+                        <div className="text-neutral-400">Not started yet.</div>
+                      )}
+                      {(isOnHold || line.hold_reason) && line.hold_reason ? (
+                        <div className="mt-1 text-amber-200">Hold reason: {line.hold_reason}</div>
+                      ) : null}
+                      {isCompleted && line.punched_out_at ? (
+                        <div className="mt-1 text-neutral-400">
+                          Finished {format(new Date(line.punched_out_at), "PPp")}
+                        </div>
+                      ) : null}
+                    </div>
+
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <button
                         type="button"
-                        disabled={busy || !canStartOrResume}
+                        disabled={busy || !canStartOrResume || isCompleted}
                         onClick={() => {
                           if (!line || busy) return;
                           if (isOnHold) {
                             void releaseHold();
                             return;
                           }
-                          if (line.status === "in_progress") {
+                          if (isActive) {
                             closeAllSubModals();
                             setPrefillCause(line.cause ?? "");
                             setPrefillCorrection(line.correction ?? "");
                             setOpenComplete(true);
                             return;
+                          }
+                          if (isAwaiting) {
+                            void (async () => {
+                              setBusy(true);
+                              try {
+                                await runJobPunchTransition(workOrderLineId, "start");
+                                toast.success("Job started");
+                                await refresh();
+                              } catch (error) {
+                                showErr("Start job failed", error as { message?: string });
+                              } finally {
+                                setBusy(false);
+                              }
+                            })();
                           }
                         }}
                         className={[
@@ -885,17 +981,31 @@ export default function MobileFocusedJob(props: {
                       >
                         {primaryActionLabel}
                       </button>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenParts(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Request Parts
-                      </button>
+                      {isActive ? (
+                        <button
+                          type="button"
+                          className={btnWarn}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenHold(true);
+                          }}
+                          disabled={busy}
+                        >
+                          Put on Hold
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenParts(true);
+                          }}
+                          disabled={busy}
+                        >
+                          Request Parts
+                        </button>
+                      )}
                     </div>
                     {needsApprovalGate && (
                       <div className="mt-2 text-[11px] text-amber-300">
@@ -905,32 +1015,28 @@ export default function MobileFocusedJob(props: {
                   </div>
                 )}
 
-                {/* meta info */}
-                <div className="grid gap-2 md:grid-cols-4">
-                  <div className={`${card} p-3`}>
-                    <div className={fieldLabel}>Status</div>
-                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
-                      {String(line.status || "awaiting").replaceAll("_", " ")}
+                {/* supporting timing/details */}
+                <details className={`${card} px-3 py-2`}>
+                  <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                    Timing & status details
+                  </summary>
+                  <div className="mt-2 grid gap-2 text-sm md:grid-cols-3">
+                    <div>
+                      <div className={fieldLabel}>Status</div>
+                      <div className={`mt-1 font-semibold ${chip(line.status ?? null)}`}>
+                        {String(line.status || "awaiting").replaceAll("_", " ")}
+                      </div>
+                    </div>
+                    <div>
+                      <div className={fieldLabel}>Start</div>
+                      <div className="mt-1 text-neutral-100">{createdStart}</div>
+                    </div>
+                    <div>
+                      <div className={fieldLabel}>Finish</div>
+                      <div className="mt-1 text-neutral-100">{createdFinish}</div>
                     </div>
                   </div>
-
-                  <div className={`${card} p-3`}>
-                    <div className={fieldLabel}>Start</div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
-                  </div>
-
-                  <div className={`${card} p-3`}>
-                    <div className={fieldLabel}>Finish</div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
-                  </div>
-
-                  <div className={`${card} p-3`}>
-                    <div className={fieldLabel}>Hold Reason</div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {line.hold_reason ?? "—"}
-                    </div>
-                  </div>
-                </div>
+                </details>
 
                 {/* vehicle & customer */}
                 <div className={`${panel} px-4 py-4 text-sm`}>
