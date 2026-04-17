@@ -1,3 +1,5 @@
+import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
+
 // features/agent/assistant/types.ts
 
 export type AssistantEntityType =
@@ -56,6 +58,7 @@ export type AssistantAnswer = {
   entities: AssistantEntity[];
   actions: AssistantAction[];
   resolvedContext?: AssistantResolvedContext;
+  partSuggestions?: CanonicalPartSuggestion[];
   intent:
     | "customer_visit_history"
     | "vehicle_history"

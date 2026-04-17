@@ -2,14 +2,9 @@
 
 import { useCallback, useState } from "react";
 
-/** A single AI-suggested part candidate. */
-export type AiPartSuggestion = {
-  name: string;
-  sku?: string | null;
-  qty?: number | null;
-  confidence?: number | null; // 0..1
-  rationale?: string | null;  // short reason the model suggested it
-};
+import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
+
+export type AiPartSuggestion = CanonicalPartSuggestion;
 
 /** Hook to request AI part suggestions for a WO / WO line. */
 export function useAiPartSuggestions() {

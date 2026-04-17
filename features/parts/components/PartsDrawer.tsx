@@ -176,7 +176,6 @@ export default function PartsDrawer({
             <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
               <PartPicker
                 open={true}
-                // @ts-expect-error If PartPicker doesn't have variant yet, patch PartPicker with variant="inline"
                 variant="inline"
                 onClose={emitClose}
                 onPick={handleUsePart}

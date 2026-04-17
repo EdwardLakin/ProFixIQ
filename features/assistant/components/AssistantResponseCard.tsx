@@ -10,6 +10,14 @@ type Props = {
   data: AssistantResponse | { error: string } | null;
 };
 
+
+function fitmentLabel(value: string): string {
+  if (value === "confirmed_fit") return "Confirmed fit";
+  if (value === "likely_fit") return "Likely fit";
+  if (value === "needs_review") return "Needs review";
+  return "Unknown fit";
+}
+
 function normalizePlannerActionLabel(label: string): string {
   const lower = label.trim().toLowerCase();
   if (!lower || lower.includes("fix") || lower.includes("planner")) {
@@ -44,6 +52,45 @@ export default function AssistantResponseCard({ data }: Props) {
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+
+      {data.partSuggestions && data.partSuggestions.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          <div className="mb-2 text-xs text-neutral-400">Suggested parts (review first)</div>
+          {data.partSuggestions.map((part) => (
+            <div key={part.candidateId} className="rounded-xl border border-white/10 bg-black/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">{part.title}</div>
+                  <div className="text-xs text-neutral-300">
+                    {part.sku ? `${part.sku} • ` : ""}Qty {part.quantitySuggestion} • {fitmentLabel(part.fitmentConfidence)}
+                  </div>
+                </div>
+                <div className="text-[11px] text-neutral-400">rank {Math.round(part.rankScore)}</div>
+              </div>
+              <div className="mt-2 text-xs text-neutral-300">{part.reviewRecommendation}</div>
+              {part.warnings.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-amber-300">
+                  {part.warnings.slice(0, 2).map((warning) => (
+                    <li key={`${part.candidateId}-${warning.type}`}>• {warning.message}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-1">
+                {part.linkedEvidence.slice(0, 3).map((evidence) => (
+                  <Link
+                    key={evidence.id}
+                    href={evidence.href ?? "#"}
+                    className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-neutral-300"
+                  >
+                    {evidence.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
 
