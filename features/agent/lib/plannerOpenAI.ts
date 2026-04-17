@@ -20,6 +20,10 @@ import {
   runGetStalledWorkOrders,
   runGetWorkOrderStatusSummary,
 } from "./toolRegistry";
+import type {
+  PlannerAffectedRecord,
+  PlannerProposal,
+} from "./plannerProposal";
 
 type PlannerEvent = {
   kind: string;
@@ -41,12 +45,7 @@ type NotificationItem = {
   entityId?: string;
 };
 
-type CitationItem = {
-  type: string;
-  id: string;
-  href: string;
-  label: string;
-};
+type CitationItem = PlannerAffectedRecord;
 
 
 type ParsedPlan = {
@@ -85,22 +84,9 @@ type ParsedPlan = {
   requestedEnd?: string;
 };
 
-type ProposalSection = {
-  title: string;
-  items: string[];
-};
-
-type PlannerProposal = {
-  domain: "parts" | "menu_item_draft" | "inspection_template_draft";
-  lane: string;
-  title: string;
-  summary: string;
-  sections: ProposalSection[];
-  warnings: string[];
-  affectedRecords: CitationItem[];
-  reviewActions: string[];
-  executionSummary: string;
-};
+function createProposalId(lane: string) {
+  return `${lane}:${crypto.randomUUID().slice(0, 8)}`;
+}
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
   return (obj as Record<string, T | undefined>)[key];
@@ -430,42 +416,6 @@ async function buildPartsProposal(
     }),
   ];
 
-  const inventorySection: ProposalSection = {
-    title: "Low inventory candidates",
-    items:
-      lowStock.length > 0
-        ? lowStock.slice(0, 8).map(
-            (row) =>
-              `${row.name}: on-hand ${row.qty_on_hand}, threshold ${row.threshold}, proposed reorder ${row.suggested}`,
-          )
-        : ["No low-inventory parts crossed the current threshold in this snapshot."],
-  };
-
-  const receivingSection: ProposalSection = {
-    title: "Receiving / PO follow-up",
-    items:
-      pendingReceiving.length > 0
-        ? [
-            `${pendingReceiving.length} request item(s) still not fully received.`,
-            `${openPos.length} open purchase order(s) in draft/sent/receiving states.`,
-            ...openPos.slice(0, 4).map((po) => `PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}${po.expected_at ? ` • expected ${po.expected_at.slice(0, 10)}` : ""}`),
-          ]
-        : ["No pending receiving deltas were found in the sampled request items."],
-  };
-
-  const blockersSection: ProposalSection = {
-    title: "Blocked or at-risk jobs",
-    items:
-      blockedWoIds.length > 0
-        ? blockedWoIds.slice(0, 6).map((woId) => {
-            const wo = workOrderById.get(woId);
-            return wo?.custom_id
-              ? `WO #${wo.custom_id} appears parts-constrained (${wo.status ?? "status unknown"}).`
-              : `WO ${woId.slice(0, 8)} appears parts-constrained (${wo?.status ?? "status unknown"}).`;
-          })
-        : ["No work orders are currently tied to partially received request items."],
-  };
-
   const vehicleContext = vehicleRes.data as
     | { year: string | null; make: string | null; model: string | null; vin: string | null; license_plate: string | null }
     | null;
@@ -477,8 +427,9 @@ async function buildPartsProposal(
     : null;
 
   return {
-    domain: "parts",
+    id: createProposalId(lane),
     lane,
+    classification: "confirmable_write",
     title:
       lane === "low_inventory_reorder"
         ? "Low-inventory reorder proposal"
@@ -487,34 +438,48 @@ async function buildPartsProposal(
       lane === "low_inventory_reorder"
         ? `Proposed reorder set includes ${lowStock.length} low-inventory part(s) with receiving and blocker checks.`
         : `Proposed parts follow-up covers ${pendingReceiving.length} pending receiving item(s) and ${blockedWoIds.length} potentially blocked job(s).`,
-    sections: [
-      inventorySection,
-      receivingSection,
-      blockersSection,
-      {
-        title: "Evidence source distinctions",
-        items: [
-          "Inventory availability derived from part_stock on-hand and threshold values.",
-          "Pending receiving derived from part_request_items approved vs received quantities.",
-          "Blocked-job risk inferred when a work order is tied to not-yet-received request items.",
-          vehicleLabel ? `Vehicle-specific context applied for ${vehicleLabel}.` : "No specific vehicle context provided; shop-wide evidence was used.",
-        ],
-      },
+    proposed_steps: [
+      "Review low-stock candidates and reorder thresholds.",
+      "Review receiving state and open purchase order dependencies.",
+      "Review linked work orders that may be parts-constrained.",
+      "Confirm follow-up scope before any apply action.",
+    ],
+    source_rationale: [
+      "Inventory availability derived from part_stock on-hand and threshold values.",
+      "Pending receiving derived from part_request_items approved vs received quantities.",
+      "Blocked-job risk inferred when a work order is tied to not-yet-received request items.",
+      vehicleLabel ? `Vehicle-specific context applied for ${vehicleLabel}.` : "No specific vehicle context provided; shop-wide evidence was used.",
+      lowStock.length > 0
+        ? `Top candidates: ${lowStock
+            .slice(0, 5)
+            .map((row) => `${row.name} (${row.qty_on_hand}/${row.threshold})`)
+            .join(", ")}`
+        : "No low-stock candidate crossed threshold in sampled rows.",
     ],
     warnings: [
       "This is a staged proposal only. No purchase orders or inventory quantities were modified.",
       "Fitment confidence is not auto-assumed from inventory. Validate fitment before ordering if vehicle context is present.",
     ],
-    affectedRecords,
-    reviewActions: [
+    affected_records: affectedRecords,
+    review_actions: [
       "Review reorder quantities against min/max policy and supplier constraints.",
       "Confirm blocked jobs to prioritize receiving follow-up.",
       "Send selected follow-up items to execution only after explicit confirmation.",
     ],
-    executionSummary:
+    duplicate_candidates: openPos.slice(0, 5).map((po) => `Open PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}`),
+    confirmation_required: true,
+    execution_available: false,
+    execution_label: "Confirm and apply",
+    not_executable_reason:
+      "Apply path is not enabled for parts follow-up yet. Keep this in review-first mode.",
+    result_summary:
       lane === "low_inventory_reorder"
-        ? "When confirmed, Planner will execute only the approved reorder candidates and report PO/line outcomes."
-        : "When confirmed, Planner will execute only approved parts follow-up actions and report completed outreach/results.",
+        ? "Ready for explicit apply when reorder mutation path is enabled."
+        : "Ready for explicit apply when parts follow-up mutation path is enabled.",
+    result_links: [],
+    audit: {
+      generated_at: new Date().toISOString(),
+    },
   };
 }
 
@@ -652,92 +617,238 @@ async function buildAuthoringProposal(
       .slice(0, 62);
 
     return {
-      domain: "menu_item_draft",
+      id: createProposalId(lane),
       lane,
+      classification: "draft_only",
       title: "Menu item draft proposal",
       summary: `Draft menu item "${proposedName}" prepared from repeated custom work with duplicate checks and review-first controls.`,
-      sections: [
-        {
-          title: "Proposed draft",
-          items: [
-            `Title: ${proposedName}`,
-            `Customer-facing summary: Standardized service based on repeated custom lines for "${clusterLabel}".`,
-            `Likely category: ${nearDuplicateMenu[0]?.category ?? "General Repair"}`,
-            `Estimated labor: ${avgHours != null ? `${avgHours.toFixed(1)} hr` : "Needs advisor review"}`,
-            "Suggested line structure: Labor line + likely required parts from prior similar jobs.",
-          ],
-        },
-        {
-          title: "Source rationale",
-          items: [
-            `Repeated custom-line frequency: ${clusterStats.count} occurrence(s) in recent sample.`,
-            ...clusterStats.samples.slice(0, 3).map((sample) => `Observed line: ${sample}`),
-            nearDuplicateMenu.length > 0
-              ? `Near-duplicate menu candidates: ${nearDuplicateMenu
-                  .map((item) => item.name ?? item.id.slice(0, 8))
-                  .join(", ")}`
-              : "No near-duplicate menu candidates found in sampled catalog.",
-          ],
-        },
+      proposed_steps: [
+        `Draft menu item title: ${proposedName}`,
+        `Draft category: ${nearDuplicateMenu[0]?.category ?? "General Repair"}`,
+        `Draft labor estimate: ${avgHours != null ? `${avgHours.toFixed(1)} hr` : "Needs advisor review"}`,
+        "Review duplicates and overlap before considering creation.",
+      ],
+      source_rationale: [
+        `Repeated custom-line frequency: ${clusterStats.count} occurrence(s) in recent sample.`,
+        ...clusterStats.samples.slice(0, 3).map((sample) => `Observed line: ${sample}`),
       ],
       warnings: [
         "Draft only: no menu item was created.",
         "Duplicate candidates require manual review before any create action.",
       ],
-      affectedRecords,
-      reviewActions: [
+      affected_records: affectedRecords,
+      review_actions: [
         "Keep as draft and request advisor edits.",
         "Revise title, description, labor, and suggested parts.",
         "Send reviewed draft to Planner execution lane for explicit create confirmation.",
       ],
-      executionSummary:
-        "If confirmed in execution mode, Planner will create only the reviewed menu item draft and report created record id.",
+      duplicate_candidates: nearDuplicateMenu.map((item) => item.name ?? item.id.slice(0, 8)),
+      confirmation_required: false,
+      execution_available: false,
+      execution_label: "Not yet executable",
+      not_executable_reason:
+        "Creation route is not enabled in this lane. Keep this proposal in draft review.",
+      result_summary: "Not yet applied.",
+      result_links: [],
+      audit: {
+        generated_at: new Date().toISOString(),
+      },
     };
   }
 
   return {
-    domain: "inspection_template_draft",
+    id: createProposalId(lane),
     lane,
+    classification: "draft_only",
     title: "Inspection template draft proposal",
     summary: `Draft inspection template proposal generated from recurring findings/manual additions with overlap checks against existing templates.`,
-    sections: [
-      {
-        title: "Proposed template",
-        items: [
-          `Template name: ${clusterLabel
-            .split(" ")
-            .slice(0, 5)
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(" ")} Inspection`,
-          "Purpose: Standardize recurring manual checks into a reusable review workflow.",
-          ...sortedSections.map(([title, count]) => `Section: ${title} (${count} recurring item references)`),
-        ],
-      },
-      {
-        title: "Source rationale & overlap",
-        items: [
-          `Repeated custom-line/finding signal count: ${clusterStats.count}`,
-          nearDuplicateTemplates.length > 0
-            ? `Possible overlapping templates: ${nearDuplicateTemplates
-                .map((item) => item.template_name ?? item.id.slice(0, 8))
-                .join(", ")}`
-            : "No obvious overlapping templates were found in sampled template names.",
-          "Recurring manual items and findings were used as draft evidence; this does not auto-merge template domains.",
-        ],
-      },
+    proposed_steps: [
+      `Draft template name: ${clusterLabel
+        .split(" ")
+        .slice(0, 5)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ")} Inspection`,
+      "Review recurring sections and checklist coverage.",
+      ...sortedSections.map(([title, count]) => `Candidate section: ${title} (${count} references)`),
+    ],
+    source_rationale: [
+      `Repeated custom-line/finding signal count: ${clusterStats.count}`,
+      "Recurring manual items and findings were used as draft evidence; this does not auto-merge template domains.",
     ],
     warnings: [
       "Draft only: no inspection template was created.",
       "Potential template overlap detected; review section structure before create.",
     ],
-    affectedRecords,
-    reviewActions: [
+    affected_records: affectedRecords,
+    review_actions: [
       "Keep as draft and edit sections/items.",
       "Revise overlap and duplicate checks with service leads.",
       "Send reviewed template draft to Planner execution lane for explicit confirmation.",
     ],
-    executionSummary:
-      "If confirmed in execution mode, Planner will create only the reviewed inspection template draft and summarize created sections/items.",
+    duplicate_candidates: nearDuplicateTemplates.map(
+      (item) => item.template_name ?? item.id.slice(0, 8),
+    ),
+    confirmation_required: false,
+    execution_available: false,
+    execution_label: "Not yet executable",
+    not_executable_reason:
+      "Creation route is not enabled in this lane. Keep this proposal in draft review.",
+    result_summary: "Not yet applied.",
+    result_links: [],
+    audit: {
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+function buildOperationalProposal(
+  lane: "resolve_approval_queue" | "reschedule_booking" | "work_order_operations",
+  context: Record<string, unknown>,
+): PlannerProposal {
+  const bookingId = normalizeText(get<string>(context, "bookingId"));
+  const workOrderId = normalizeText(get<string>(context, "workOrderId"));
+  const lineId =
+    normalizeText(get<string>(context, "lineId")) ??
+    normalizeText(get<string>(context, "workOrderLineId"));
+  const requestedStart = normalizeText(get<string>(context, "requestedStart"));
+  const lineDescription = normalizeText(get<string>(context, "lineDescription"));
+  const approvalAction = normalizeText(get<string>(context, "approvalAction")) ?? "approve";
+
+  const affectedRecords: CitationItem[] = [];
+  if (bookingId) {
+    affectedRecords.push({
+      type: "booking",
+      id: bookingId,
+      href: `/calendar?bookingId=${bookingId}`,
+      label: `Booking ${bookingId.slice(0, 8)}`,
+    });
+  }
+  if (workOrderId) {
+    affectedRecords.push({
+      type: "work_order",
+      id: workOrderId,
+      href: `/work-orders/${workOrderId}`,
+      label: `Work order ${workOrderId.slice(0, 8)}`,
+    });
+  }
+  if (lineId) {
+    affectedRecords.push({
+      type: "work_order_line",
+      id: lineId,
+      href: workOrderId ? `/work-orders/${workOrderId}` : "#",
+      label: `Line ${lineId.slice(0, 8)}`,
+    });
+  }
+
+  const base: Omit<PlannerProposal, "title" | "summary" | "proposed_steps" | "execution_payload" | "execution_available" | "not_executable_reason" | "id"> = {
+    lane,
+    classification: "confirmable_write",
+    affected_records: affectedRecords,
+    warnings: ["No records are changed during Generate Plan. Review before apply."],
+    review_actions: [
+      "Verify affected records are correct.",
+      "Review warnings and duplicate/conflict checks.",
+      "Use Confirm and apply only when ready.",
+    ],
+    duplicate_candidates: [],
+    source_rationale: ["Proposal derived from planner goal and linked record identifiers."],
+    confirmation_required: true,
+    execution_label: "Confirm and apply",
+    result_summary: "Not yet applied.",
+    result_links: [],
+    audit: {
+      generated_at: new Date().toISOString(),
+    },
+  };
+
+  if (lane === "resolve_approval_queue") {
+    const executionAvailable = Boolean(lineId);
+    return {
+      id: createProposalId(lane),
+      ...base,
+      title: "Approval resolution proposal",
+      summary: lineId
+        ? `Planner will set line ${lineId.slice(0, 8)} to ${approvalAction} after confirmation.`
+        : "Planner identified approval resolution work, but no line id was provided.",
+      proposed_steps: [
+        "Review pending approval line.",
+        `Apply approval state: ${approvalAction}.`,
+        "Capture execution result and changed records.",
+      ],
+      duplicate_candidates: lineId ? [`Line ${lineId.slice(0, 8)} may have been recently updated.`] : [],
+      execution_available: executionAvailable,
+      not_executable_reason: executionAvailable ? undefined : "Missing line id for apply.",
+      execution_payload: executionAvailable
+        ? { lane, action: "set_line_approval", data: { lineId, approvalAction } }
+        : undefined,
+    };
+  }
+
+  if (lane === "reschedule_booking") {
+    const executionAvailable = Boolean(bookingId && requestedStart);
+    return {
+      id: createProposalId(lane),
+      ...base,
+      title: "Booking reschedule proposal",
+      summary: executionAvailable
+        ? `Planner will move booking ${bookingId?.slice(0, 8)} to ${requestedStart} after confirmation.`
+        : "Planner identified booking reschedule work, but booking id and requested start are required.",
+      proposed_steps: [
+        "Review requested booking time change.",
+        "Validate conflicts and dependencies.",
+        "Confirm and apply booking update.",
+      ],
+      duplicate_candidates: bookingId ? [`Booking ${bookingId.slice(0, 8)} may already be rescheduled.`] : [],
+      execution_available: executionAvailable,
+      not_executable_reason: executionAvailable
+        ? undefined
+        : "Missing booking id or requested start timestamp for apply.",
+      execution_payload: executionAvailable
+        ? {
+            lane,
+            action: "reschedule_booking",
+            data: {
+              bookingId,
+              requestedStart,
+              requestedEnd: normalizeText(get<string>(context, "requestedEnd")),
+            },
+          }
+        : undefined,
+    };
+  }
+
+  const executionAvailable = Boolean(workOrderId && lineDescription);
+  return {
+    id: createProposalId(lane),
+    ...base,
+    title: "Work-order operation proposal",
+    summary: executionAvailable
+      ? `Planner will add/update work-order operations on ${workOrderId?.slice(0, 8)} after confirmation.`
+      : "Planner identified work-order operations, but work order id and line description are required.",
+    proposed_steps: [
+      "Review target work order and operation details.",
+      "Validate duplicate line risk.",
+      "Confirm and apply work-order line change.",
+    ],
+    duplicate_candidates: lineDescription
+      ? [`Potential duplicate operation text: "${lineDescription.slice(0, 80)}"`]
+      : [],
+    execution_available: executionAvailable,
+    not_executable_reason: executionAvailable
+      ? undefined
+      : "Missing work order id or operation description for apply.",
+    execution_payload: executionAvailable
+      ? {
+          lane,
+          action: "add_work_order_line",
+          data: {
+            workOrderId,
+            lineDescription,
+            jobType: coerceJobType(get<string>(context, "jobType")),
+            laborHours: Number(get<number>(context, "laborHours") ?? 1),
+          },
+        }
+      : undefined,
   };
 }
 
@@ -761,11 +872,11 @@ export async function runOpenAIPlanner(
     await onEvent?.({
       kind: "final",
       text: proposal.summary,
-      citations: proposal.affectedRecords,
+      citations: proposal.affected_records,
     });
     return {
       summary: proposal.summary,
-      citations: proposal.affectedRecords,
+      citations: proposal.affected_records,
       notifications: proposal.warnings.map((warning, index) => ({
         level: "warning",
         code: `parts_proposal_warning_${index + 1}`,
@@ -784,15 +895,39 @@ export async function runOpenAIPlanner(
     await onEvent?.({
       kind: "final",
       text: proposal.summary,
-      citations: proposal.affectedRecords,
+      citations: proposal.affected_records,
     });
     return {
       summary: proposal.summary,
-      citations: proposal.affectedRecords,
+      citations: proposal.affected_records,
       notifications: proposal.warnings.map((warning, index) => ({
         level: "warning",
         code: `authoring_proposal_warning_${index + 1}`,
         title: "Review required",
+        message: warning,
+      })),
+    };
+  }
+
+  if (
+    lane === "resolve_approval_queue" ||
+    lane === "reschedule_booking" ||
+    lane === "work_order_operations"
+  ) {
+    const proposal = buildOperationalProposal(lane, context);
+    await onEvent?.({ kind: "proposal", proposal });
+    await onEvent?.({
+      kind: "final",
+      text: proposal.summary,
+      citations: proposal.affected_records,
+    });
+    return {
+      summary: proposal.summary,
+      citations: proposal.affected_records,
+      notifications: proposal.warnings.map((warning, index) => ({
+        level: "warning",
+        code: `operational_proposal_warning_${index + 1}`,
+        title: "Review before apply",
         message: warning,
       })),
     };
