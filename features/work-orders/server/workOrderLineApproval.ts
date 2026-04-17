@@ -8,14 +8,22 @@ export type ApprovalDecision = "approve" | "decline" | "defer";
 type LineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 type WorkOrderUpdate = DB["public"]["Tables"]["work_orders"]["Update"];
 
+function sanitizeApprovalLinePatch(extraPatch?: LineUpdate): LineUpdate | undefined {
+  if (!extraPatch) return undefined;
+
+  // `punchable` is DB-derived/default-managed and must not be explicitly written
+  // during approval mutations.
+  const { punchable: _ignoredPunchable, ...safePatch } = extraPatch;
+  return safePatch;
+}
+
 export function getCanonicalWorkOrderLineApprovalTuple(
   decision: ApprovalDecision,
-): Pick<LineUpdate, "approval_state" | "status" | "punchable" | "hold_reason"> {
+): Pick<LineUpdate, "approval_state" | "status" | "hold_reason"> {
   if (decision === "approve") {
     return {
       approval_state: "approved",
       status: "in_progress",
-      punchable: true,
       hold_reason: null,
     };
   }
@@ -24,14 +32,12 @@ export function getCanonicalWorkOrderLineApprovalTuple(
     return {
       approval_state: "declined",
       status: "on_hold",
-      punchable: false,
     };
   }
 
   return {
     approval_state: "pending",
     status: "awaiting_approval",
-    punchable: false,
   };
 }
 
@@ -46,7 +52,7 @@ export function applyWorkOrderLineApprovalDecision(params: {
 
   const patch: LineUpdate = {
     ...getCanonicalWorkOrderLineApprovalTuple(decision),
-    ...(extraPatch ?? {}),
+    ...(sanitizeApprovalLinePatch(extraPatch) ?? {}),
   };
 
   let query = supabase
