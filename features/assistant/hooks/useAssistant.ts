@@ -9,6 +9,7 @@ import type {
   AssistantNotification,
   AssistantResponse,
 } from "../types/assistant";
+import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
 
 type AssistantError = {
   error: string;
@@ -45,6 +46,7 @@ type ApiAnswer = {
   links?: ApiAnswerLink[];
   entities?: ApiEntity[];
   actions?: ApiAnswerAction[];
+  partSuggestions?: CanonicalPartSuggestion[];
   intent?: string;
   resolvedContext?: {
     workOrderId?: string;
@@ -176,6 +178,7 @@ function mapAnswerToResponse(answer: ApiAnswer, context?: AssistantContext): Ass
     actions,
     notifications,
     relatedRecords,
+    partSuggestions: (answer.partSuggestions ?? []).slice(0, 5),
   };
 }
 

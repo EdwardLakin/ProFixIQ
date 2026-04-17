@@ -1,3 +1,5 @@
+import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
+
 // features/assistant/types/assistant.ts
 
 export type PlannerPayload = {
@@ -63,4 +65,5 @@ export type AssistantResponse = {
   actions: AssistantAction[];
   notifications: AssistantNotification[];
   relatedRecords?: AssistantRelatedRecord[];
+  partSuggestions?: CanonicalPartSuggestion[];
 };

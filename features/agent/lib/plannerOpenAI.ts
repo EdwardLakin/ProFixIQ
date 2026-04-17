@@ -1,6 +1,7 @@
 // features/agent/lib/plannerOpenAI.ts
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
+import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 
 import {
   runCreateWorkOrder,
@@ -426,6 +427,15 @@ async function buildPartsProposal(
       "selected vehicle"
     : null;
 
+  const canonicalSuggestions = await buildPartSuggestions({
+    supabase,
+    shopId: ctx.shopId,
+    workOrderId: typeof context.workOrderId === "string" ? context.workOrderId : null,
+    description: typeof context.goal === "string" ? context.goal : "parts follow up",
+    notes: null,
+    topK: 4,
+  });
+
   return {
     id: createProposalId(lane),
     lane,
@@ -455,10 +465,12 @@ async function buildPartsProposal(
             .map((row) => `${row.name} (${row.qty_on_hand}/${row.threshold})`)
             .join(", ")}`
         : "No low-stock candidate crossed threshold in sampled rows.",
+      ...canonicalSuggestions.slice(0, 3).map((s) => `Suggestion: ${s.title} • ${s.fitmentConfidence.replaceAll("_", " ")} • sources: ${s.sourceTypes.join(", ")}`),
     ],
     warnings: [
       "This is a staged proposal only. No purchase orders or inventory quantities were modified.",
       "Fitment confidence is not auto-assumed from inventory. Validate fitment before ordering if vehicle context is present.",
+      ...canonicalSuggestions.flatMap((s) => s.warnings.slice(0, 1).map((w) => `${s.title}: ${w.message}`)).slice(0, 3),
     ],
     affected_records: affectedRecords,
     review_actions: [
@@ -466,7 +478,10 @@ async function buildPartsProposal(
       "Confirm blocked jobs to prioritize receiving follow-up.",
       "Send selected follow-up items to execution only after explicit confirmation.",
     ],
-    duplicate_candidates: openPos.slice(0, 5).map((po) => `Open PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}`),
+    duplicate_candidates: [
+      ...openPos.slice(0, 5).map((po) => `Open PO ${po.id.slice(0, 8)} • ${po.status ?? "unknown"}`),
+      ...canonicalSuggestions.flatMap((s) => s.warnings.filter((w) => w.type === "duplicate_on_work_order" || w.type === "existing_part_request").map((w) => `${s.title}: ${w.message}`)),
+    ].slice(0, 6),
     confirmation_required: true,
     execution_available: false,
     execution_label: "Confirm and apply",

@@ -61,6 +61,7 @@ type Props = {
   jobNotes?: string | null;
   onClose?: () => void;
   onPick?: (sel: PickedPart) => void;
+  variant?: "modal" | "inline";
 };
 
 function cleanNumericString(raw: string): string {
@@ -104,6 +105,7 @@ export function PartPicker({
   jobNotes,
   onClose,
   onPick,
+  variant = "modal",
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -391,12 +393,12 @@ export function PartPicker({
       if (data?.id) return data.id as string;
     }
 
-    if (s.name) {
+    if (s.title) {
       const { data } = await supabase
         .from("parts")
         .select("id")
         .eq("shop_id", shopId)
-        .ilike("name", s.name)
+        .ilike("name", s.title)
         .maybeSingle();
       if (data?.id) return data.id as string;
     }
@@ -406,26 +408,8 @@ export function PartPicker({
 
   if (!open) return null;
 
-  return (
-    <div
-      className="fixed inset-0 z-[500] flex items-center justify-center"
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-        onClick={() => close()}
-      />
-
-      {/* Panel */}
-      <div
-        className="relative z-[510] w-full max-w-4xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
+  const panel = (
+    <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
@@ -466,27 +450,56 @@ export function PartPicker({
               ) : aiItems.length === 0 ? (
                 <div className="text-xs text-neutral-500">No suggestions.</div>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid gap-2">
                   {aiItems.map((s, i) => (
-                    <button
-                      key={`${s.sku ?? s.name ?? "s"}-${i}`}
-                      className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-[color:var(--accent-copper,#f97316)]/10"
-                      title={s.rationale || ""}
-                      type="button"
-                      onClick={async () => {
-                        const pid = await resolveSuggestionToPartId(s);
-                        if (pid) {
-                          setSelectedPartId(pid as UUID);
-                          setQtyStr(String(safeQty(Number(s.qty ?? 1))));
-                          // unit cost will auto-fill from selectedPart once parts list includes it
-                        } else {
-                          setSearch(s.sku || s.name || "");
-                        }
-                      }}
+                    <div
+                      key={`${s.sku ?? s.title ?? "s"}-${i}`}
+                      className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3"
                     >
-                      {(s.sku ? `${s.sku} • ` : "") + s.name}
-                      {s.qty ? ` ×${s.qty}` : ""}
-                    </button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-neutral-100">{s.title}</div>
+                          <div className="text-[11px] text-neutral-400">
+                            {s.sku ? `${s.sku} • ` : ""}
+                            Qty {s.quantitySuggestion} • {s.fitmentConfidence.replaceAll("_", " ")}
+                          </div>
+                        </div>
+                        <button
+                          className="rounded-full border border-[color:var(--accent-copper,#f97316)]/60 px-3 py-1 text-[11px] text-orange-200 disabled:opacity-50"
+                          type="button"
+                          disabled={!s.addable}
+                          onClick={async () => {
+                            const pid = await resolveSuggestionToPartId(s);
+                            if (pid) {
+                              setSelectedPartId(pid as UUID);
+                              setQtyStr(String(safeQty(Number(s.quantitySuggestion ?? 1))));
+                            } else {
+                              setSearch(s.sku || s.title || "");
+                            }
+                          }}
+                        >
+                          Review for add
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[11px] text-neutral-300">{s.reviewRecommendation}</div>
+                      {s.warnings.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-[11px] text-amber-300">
+                          {s.warnings.slice(0, 2).map((warning) => (
+                            <li key={warning.type}>• {warning.message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {s.linkedEvidence.slice(0, 3).map((e) => (
+                          <span
+                            key={e.id}
+                            className="rounded-full border border-white/10 bg-black/50 px-2 py-0.5 text-[10px] text-neutral-300"
+                          >
+                            {e.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -694,6 +707,27 @@ export function PartPicker({
             </div>
           )}
         </div>
+  );
+
+  if (variant === "inline") return panel;
+
+  return (
+    <div
+      className="fixed inset-0 z-[500] flex items-center justify-center"
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={() => close()}
+      />
+      <div
+        className="relative z-[510] w-full max-w-4xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {panel}
       </div>
     </div>
   );

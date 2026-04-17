@@ -8,6 +8,7 @@ import { runGetVehicleHistory } from "../../tools/getVehicleHistory";
 import { runGetWorkOrderStatusSummary } from "../../tools/getWorkOrderStatusSummary";
 import { toolListPendingApprovals } from "../../tools/listPendingApprovals";
 import { getServerSupabase } from "../../server/supabase";
+import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 
 import type {
   AssistantAction,
@@ -145,6 +146,7 @@ function buildAnswer(params: {
   entities?: AssistantEntity[];
   actions?: AssistantAction[];
   resolvedContext?: AssistantResolvedContext;
+  partSuggestions?: AssistantAnswer["partSuggestions"];
 }): AssistantAnswer {
   return {
     intent: params.intent,
@@ -154,6 +156,7 @@ function buildAnswer(params: {
     entities: params.entities ?? [],
     actions: params.actions ?? [],
     resolvedContext: params.resolvedContext,
+    partSuggestions: params.partSuggestions,
   };
 }
 
@@ -464,6 +467,16 @@ async function answerPartsDomain(args: {
     );
   }
 
+  const suggestions = await buildPartSuggestions({
+    supabase,
+    shopId: args.shopId,
+    workOrderId: args.resolvedContext.workOrderId ?? null,
+    vehicle: undefined,
+    description: args.q,
+    notes: null,
+    topK: 5,
+  });
+
   const summary =
     `Parts snapshot: ${lowStock.length} low-stock SKU(s), ${poRows.length} open purchase order(s), and ${pendingReceiving.length} receiving item(s) still pending.` +
     (blockedWorkOrderIds.length > 0
@@ -523,6 +536,7 @@ async function answerPartsDomain(args: {
       },
     ],
     resolvedContext: args.resolvedContext,
+    partSuggestions: suggestions,
   });
 }
 
