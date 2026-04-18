@@ -6,13 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
-import DecisionTimeline, {
-  type DecisionTimelineStage,
-} from "@/features/shared/components/ui/DecisionTimeline";
-import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
-import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
-import { deriveEventsFromQuote } from "@/features/shared/lib/decisionEvents";
+import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import {
   calculateTax,
   getTaxAmount,
@@ -28,6 +23,7 @@ type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type InspectionPhotoRow = DB["public"]["Tables"]["inspection_photos"]["Row"];
 
 type ParamsShape = Record<string, string | string[] | undefined>;
 
@@ -72,6 +68,7 @@ type LineView = {
     total: number;
     meta: string | null;
   }>;
+  evidencePhotos: string[];
 };
 
 function paramToString(value: string | string[] | undefined): string | null {
@@ -127,6 +124,27 @@ function getPartMeta(parts: AllocationWithPart["parts"]): string | null {
   const pn = safeTrim((source as { part_number?: unknown }).part_number);
   const sku = safeTrim((source as { sku?: unknown }).sku);
   return [pn, sku].filter(Boolean).join(" • ") || null;
+}
+
+function findEvidencePhotos(
+  line: Pick<QuoteLineRow, "description" | "complaint">,
+  photos: Array<Pick<InspectionPhotoRow, "image_url" | "item_name">>,
+): string[] {
+  if (photos.length === 0) return [];
+  const text = [safeTrim(line.description), safeTrim(line.complaint)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (!text) return [];
+
+  return photos
+    .filter((photo) => {
+      const itemName = safeTrim(photo.item_name).toLowerCase();
+      return itemName && (text.includes(itemName) || itemName.includes(text.slice(0, 20)));
+    })
+    .map((photo) => safeTrim(photo.image_url))
+    .filter(Boolean)
+    .slice(0, 3);
 }
 
 export default function QuotePageClient(): JSX.Element {
@@ -219,6 +237,18 @@ export default function QuotePageClient(): JSX.Element {
       allocRows = (allocs ?? []) as AllocationWithPart[];
     }
 
+    let inspectionPhotos: Array<Pick<InspectionPhotoRow, "image_url" | "item_name">> = [];
+    const inspectionId = safeTrim((wo as { inspection_id?: unknown } | null)?.inspection_id);
+    if (inspectionId) {
+      const { data: photos } = await supabase
+        .from("inspection_photos")
+        .select("image_url,item_name")
+        .eq("inspection_id", inspectionId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      inspectionPhotos = (photos ?? []) as Array<Pick<InspectionPhotoRow, "image_url" | "item_name">>;
+    }
+
     const byLine = new Map<string, AllocationWithPart[]>();
     for (const a of allocRows) {
       const lineId = safeTrim(a.work_order_line_id);
@@ -270,6 +300,7 @@ export default function QuotePageClient(): JSX.Element {
         createdAt: line.created_at ?? null,
         updatedAt: line.updated_at ?? null,
         parts,
+        evidencePhotos: findEvidencePhotos(line, inspectionPhotos),
       };
     });
 
@@ -303,56 +334,12 @@ export default function QuotePageClient(): JSX.Element {
   const taxRes = provinceCode ? calculateTax(subtotal, provinceCode) : null;
   const taxAmount = taxRes ? getTaxAmount(taxRes) : 0;
   const grandTotal = subtotal + taxAmount;
-  const timelineStages: DecisionTimelineStage[] = [
-    { key: "inspection", label: "Inspection completed", state: "past" },
-    {
-      key: "recommendation",
-      label: "Recommendation issued",
-      state: lines.length > 0 ? "past" : "future",
-    },
-    {
-      key: "approval",
-      label: "Awaiting approval",
-      state: lines.some((line) => resolveDecisionStatus({ approvalState: line.approvalState }) === "awaiting_approval")
-        ? "current"
-        : lines.some((line) => resolveDecisionStatus({ approvalState: line.approvalState }) === "approved")
-          ? "past"
-          : "future",
-    },
-    {
-      key: "execution",
-      label: "Work started",
-      state: lines.some((line) => resolveDecisionStatus({ workStatus: line.status }) === "in_progress")
-        ? "current"
-        : lines.some((line) => resolveDecisionStatus({ workStatus: line.status }) === "completed")
-          ? "past"
-          : "future",
-    },
-  ];
-  const decisionEvents = useMemo(
-    () =>
-      deriveEventsFromQuote({
-        workOrder,
-        lines: lines.map((line) => ({
-          id: line.id,
-          line_no: line.lineNo,
-          description: line.title,
-          approval_state: line.approvalState,
-          status: line.status,
-          created_at: line.createdAt,
-          updated_at: line.updatedAt,
-        })),
-        actorLabel: "Shop team",
-      }),
-    [workOrder, lines],
-  );
-
   return (
     <div
       className="
         min-h-screen px-4 text-foreground
         bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.1),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
       "
     >
       <div className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center py-10">
@@ -360,7 +347,7 @@ export default function QuotePageClient(): JSX.Element {
           className="
             w-full rounded-3xl border
             border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
+            bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
             shadow-[0_32px_80px_rgba(0,0,0,0.95)]
             px-6 py-7 sm:px-8 sm:py-9
           "
@@ -390,11 +377,9 @@ export default function QuotePageClient(): JSX.Element {
               {titleLabel}
             </h1>
             <p className="text-xs text-neutral-400 sm:text-sm">
-              Review each recommendation with pricing context, then decide what should proceed.
+              Review the finding, supporting photo, and price for each recommendation.
             </p>
           </div>
-          <DecisionTimeline stages={timelineStages} className="mb-6" />
-          <DecisionEventFeed events={decisionEvents} className="mb-6" compact maxVisible={5} />
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
@@ -432,9 +417,7 @@ export default function QuotePageClient(): JSX.Element {
                 <div key={line.id} className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                        Recommendation
-                      </div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Recommendation</div>
                       <div className="text-sm font-semibold text-white">
                         {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
                       </div>
@@ -467,9 +450,35 @@ export default function QuotePageClient(): JSX.Element {
                     </div>
                   </div>
 
+                  <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/50 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Evidence photo</div>
+                    {line.evidencePhotos.length > 0 ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {line.evidencePhotos.map((photo, idx) => (
+                          <a
+                            key={`${line.id}-photo-${idx}`}
+                            href={photo}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="overflow-hidden rounded-lg border border-white/10 bg-black/30"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={photo}
+                              alt={`Evidence ${idx + 1}`}
+                              className="h-24 w-full object-cover"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-neutral-400">No photo evidence attached.</div>
+                    )}
+                  </div>
+
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor evidence</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor</div>
                       <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.laborAmount)}</div>
                       <div className="mt-1 text-xs text-neutral-400">{line.laborHours.toFixed(1)} hr</div>
                     </div>

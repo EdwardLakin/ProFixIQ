@@ -31,7 +31,7 @@ type WorkOrderWithMeta = WorkOrder & {
 const COPPER = "#C57A4A";
 
 const INPUT_DARK =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+  "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/50 focus:ring-2 focus:ring-sky-300/20";
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
@@ -55,6 +55,15 @@ function queueAccent(waitingForParts: boolean): {
     border: "border-emerald-500/25",
     progress: "bg-emerald-400",
   };
+}
+
+function approvalProgress(lines: WorkOrderWithMeta["work_order_lines"] | undefined): number {
+  if (!Array.isArray(lines) || lines.length === 0) return 0;
+  const decided = lines.filter((line) => {
+    const state = safeTrim(line.approval_state).toLowerCase();
+    return state === "approved" || state === "declined" || state === "deferred";
+  }).length;
+  return Math.round((decided / lines.length) * 100);
 }
 
 function ApprovalsList(): JSX.Element {
@@ -284,23 +293,15 @@ function ApprovalsList(): JSX.Element {
 
   return (
     <section className="space-y-4">
-      <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.12),rgba(0,0,0,0.92)_38%,rgba(2,6,23,0.98)_100%)] shadow-[0_0_60px_rgba(0,0,0,0.8)]">
-        <div className="border-b border-white/8 px-5 py-5 sm:px-6">
+      <div className="overflow-hidden rounded-[24px] border border-slate-300/15 bg-slate-950/65 shadow-[0_0_40px_rgba(2,6,23,0.75)]">
+        <div className="border-b border-white/8 px-5 py-4 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
                 Work Orders
               </div>
-              <h1
-                className="mt-2 text-3xl text-white"
-                style={{ fontFamily: "var(--font-blackops)" }}
-              >
-                Quote Review
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-neutral-300">
-                Review work orders that are waiting for approval, see which ones
-                are still waiting on parts, and jump directly into the quote flow.
-              </p>
+              <h1 className="mt-1 text-2xl font-semibold text-white">Quote Review Queue</h1>
+              <p className="mt-1 text-sm text-neutral-400">Triage records ready for advisor review.</p>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
@@ -323,12 +324,6 @@ function ApprovalsList(): JSX.Element {
                 Open work orders
               </Link>
 
-              <Link
-                href="/billing"
-                className="inline-flex items-center justify-center rounded-full border border-[var(--accent-copper-light)]/35 bg-[var(--accent-copper)]/12 px-4 py-2 text-sm font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/20"
-              >
-                Billing
-              </Link>
             </div>
           </div>
         </div>
@@ -340,7 +335,7 @@ function ApprovalsList(): JSX.Element {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void load()}
-                placeholder="Search work order, shop, status, or queue state..."
+                placeholder="Search WO, customer, vehicle, or status..."
                 className={INPUT_DARK}
               />
             </div>
@@ -358,12 +353,12 @@ function ApprovalsList(): JSX.Element {
         </div>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((w) => {
           const quoteHref = `/quote-review/${w.id}`;
           const woHref = `/work-orders/${w.id}`;
           const accent = queueAccent(Boolean(w.waiting_for_parts));
-          const progressValue = w.waiting_for_parts ? 45 : 78;
+          const progressValue = approvalProgress(w.work_order_lines);
           const decisionEvents = deriveEventsFromQuote({
             workOrder: w,
             lines: w.work_order_lines ?? [],
@@ -373,16 +368,13 @@ function ApprovalsList(): JSX.Element {
           return (
             <div
               key={w.id}
-              className={[
-                "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] shadow-[0_0_40px_rgba(0,0,0,0.55)]",
-                accent.border,
-              ].join(" ")}
+              className={["overflow-hidden rounded-[18px] border bg-slate-950/65 shadow-[0_10px_30px_rgba(2,6,23,0.65)]", accent.border].join(" ")}
             >
-              <div className="border-b border-white/8 px-4 py-4">
+              <div className="border-b border-white/8 px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-2xl font-semibold text-white">
+                      <div className="text-lg font-semibold text-white">
                         {w.custom_id ? w.custom_id : `#${w.id.slice(0, 8)}`}
                       </div>
 
@@ -396,14 +388,11 @@ function ApprovalsList(): JSX.Element {
                       </StatusBadge>
                     </div>
 
-                    <div className="mt-3 text-base font-semibold text-white">
-                      {w.shops?.name || "Shop"}
+                    <div className="mt-2 truncate text-sm font-semibold text-white">
+                      {w.shops?.name || "Work order"}
                     </div>
-                    <div className="mt-1 text-sm text-neutral-300">
+                    <div className="mt-1 text-xs text-neutral-400">
                       {formatDecisionStatus({ workStatus: w.status }).label}
-                      {typeof w.labor_hours === "number"
-                        ? ` • ${w.labor_hours.toFixed(1)}h`
-                        : ""}
                     </div>
                   </div>
 
@@ -418,9 +407,9 @@ function ApprovalsList(): JSX.Element {
                 </div>
               </div>
 
-              <div className="px-4 py-4">
+              <div className="px-4 py-3">
                 <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                  <span>Approval progress</span>
+                  <span>Decision progress</span>
                   <span>{progressValue}%</span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
@@ -430,26 +419,31 @@ function ApprovalsList(): JSX.Element {
                   />
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                      Work order
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-white">
-                      {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                      Labor hours
+                      Labor
                     </div>
                     <div className="mt-1 text-sm font-semibold text-white">
                       {typeof w.labor_hours === "number" ? `${w.labor_hours.toFixed(1)}h` : "—"}
                     </div>
                   </div>
+
+                  <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                      Created
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-white">
+                      {w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}
+                    </div>
+                  </div>
                 </div>
-                <DecisionEventFeed events={decisionEvents} compact className="mt-4" maxVisible={5} />
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-medium text-neutral-400 hover:text-neutral-200">
+                    Decision history
+                  </summary>
+                  <DecisionEventFeed events={decisionEvents} compact className="mt-2" maxVisible={4} />
+                </details>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
@@ -491,7 +485,7 @@ export default function QuoteReviewIndexPage(): JSX.Element {
     <div
       className="
         min-h-screen px-4 py-6 text-foreground
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.1),transparent_52%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
       "
       style={{ ["--copper" as never]: COPPER }}
     >
