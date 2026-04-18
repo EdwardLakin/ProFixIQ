@@ -34,6 +34,7 @@ type AllocationUpdate =
   DB["public"]["Tables"]["work_order_part_allocations"]["Update"];
 
 type Part = DB["public"]["Tables"]["parts"]["Row"];
+type InspectionPhoto = DB["public"]["Tables"]["inspection_photos"]["Row"];
 
 type AllocationWithPart = Allocation & {
   parts?: Pick<Part, "name" | "sku"> | null;
@@ -99,6 +100,40 @@ function deriveComplaintFromNotes(notes: unknown): string | null {
 
   // Strip trailing punctuation that makes it look weird in an input
   return derived.replace(/[.\s]+$/, "");
+}
+
+function isValidEmail(v: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+}
+
+function toSearchable(value: unknown): string {
+  return safeTrim(value).toLowerCase();
+}
+
+function collectLinePhotoUrls(
+  line: Pick<Line, "description" | "complaint" | "cause" | "correction">,
+  photos: Array<Pick<InspectionPhoto, "image_url" | "item_name">>,
+): string[] {
+  if (photos.length === 0) return [];
+  const haystack = [
+    toSearchable(line.description),
+    toSearchable(line.complaint),
+    toSearchable(line.cause),
+    toSearchable(line.correction),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!haystack) return [];
+
+  return photos
+    .filter((photo) => {
+      const label = toSearchable(photo.item_name);
+      return label && (haystack.includes(label) || label.includes(haystack.slice(0, 24)));
+    })
+    .map((photo) => safeTrim(photo.image_url))
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 type EditableLine = Line & { _dirty?: boolean };
@@ -253,7 +288,7 @@ function partsToPaste(parts: Array<{ name: string; qty: number }>): string {
 }
 
 const card =
-  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+  "rounded-2xl border border-slate-300/15 bg-slate-950/55 shadow-[0_20px_48px_rgba(2,6,23,0.65)]";
 const divider = "border-white/10";
 const inputBase =
   "mt-1 w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white placeholder:text-neutral-500 outline-none";
@@ -281,6 +316,10 @@ export default function QuoteReviewView(props: {
 
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [savingCustomerEmail, setSavingCustomerEmail] = useState(false);
+  const [pendingCustomerEmail, setPendingCustomerEmail] = useState("");
+  const [sendBlocker, setSendBlocker] = useState<string | null>(null);
+  const [linePhotos, setLinePhotos] = useState<Record<string, string[]>>({});
 
   const [delOpen, setDelOpen] = useState(false);
   const [delLineId, setDelLineId] = useState<string | null>(null);
@@ -445,11 +484,14 @@ export default function QuoteReviewView(props: {
       if (custErr) {
         toast.error(custErr.message);
         setCustomer(null);
+        setPendingCustomerEmail("");
       } else {
         setCustomer((custRow as Customer | null) ?? null);
+        setPendingCustomerEmail(safeTrim(custRow?.email ?? ""));
       }
     } else {
       setCustomer(null);
+      setPendingCustomerEmail("");
     }
 
     // lines
@@ -462,6 +504,7 @@ export default function QuoteReviewView(props: {
     if (lineErr) {
       toast.error(lineErr.message);
       setLines([]);
+      setLinePhotos({});
     } else {
       const mapped = (lineRows ?? []).map((l) => {
         const existingComplaint = safeTrim(l.complaint);
@@ -476,6 +519,29 @@ export default function QuoteReviewView(props: {
       });
 
       setLines(mapped);
+
+      const inspectionId = safeTrim((woRow as { inspection_id?: unknown } | null)?.inspection_id);
+      if (inspectionId) {
+        const { data: photosRaw } = await supabase
+          .from("inspection_photos")
+          .select("image_url,item_name")
+          .eq("inspection_id", inspectionId)
+          .order("created_at", { ascending: false })
+          .limit(120);
+
+        const photos =
+          ((photosRaw ?? []) as Array<Pick<InspectionPhoto, "image_url" | "item_name">>)
+            .filter((photo) => safeTrim(photo.image_url).length > 0);
+
+        const nextPhotoMap: Record<string, string[]> = {};
+        for (const line of mapped) {
+          const matched = collectLinePhotoUrls(line, photos);
+          if (matched.length > 0) nextPhotoMap[line.id] = matched;
+        }
+        setLinePhotos(nextPhotoMap);
+      } else {
+        setLinePhotos({});
+      }
     }
 
     // allocations
@@ -699,6 +765,34 @@ export default function QuoteReviewView(props: {
     await reload();
   }
 
+  async function saveCustomerEmailInline() {
+    if (!wo?.customer_id) {
+      toast.error("No customer linked to this work order.");
+      return;
+    }
+    const nextEmail = safeTrim(pendingCustomerEmail);
+    if (!nextEmail || !isValidEmail(nextEmail)) {
+      toast.error("Enter a valid customer email.");
+      return;
+    }
+
+    setSavingCustomerEmail(true);
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .update({ email: nextEmail })
+        .eq("id", wo.customer_id);
+      if (error) throw error;
+      setSendBlocker(null);
+      toast.success("Customer email saved.");
+      await reload();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save customer email.");
+    } finally {
+      setSavingCustomerEmail(false);
+    }
+  }
+
   async function sendQuoteToCustomer() {
     if (!woId) return;
     if (sending) return;
@@ -716,10 +810,15 @@ export default function QuoteReviewView(props: {
       const json: { ok?: boolean; error?: string } = await res.json();
 
       if (!res.ok || !json.ok) {
-        toast.error(json.error ?? "Failed to send quote.");
+        const message = safeTrim(json.error ?? "Failed to send quote.");
+        if (message.toLowerCase().includes("missing customer email")) {
+          setSendBlocker("Customer email required to send quote");
+        }
+        toast.error(message);
         return;
       }
 
+      setSendBlocker(null);
       toast.success("Quote sent to customer (email + portal notification).");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to send quote.");
@@ -735,6 +834,7 @@ export default function QuoteReviewView(props: {
 
   const phoneRaw = safeTrim(customer?.phone ?? "");
   const emailRaw = safeTrim(customer?.email ?? "");
+  const missingCustomerEmail = !emailRaw;
   const tel = normalizePhoneForTel(phoneRaw);
 
   // ✅ Embedded mode sizing + padding
@@ -742,7 +842,7 @@ export default function QuoteReviewView(props: {
     ? "min-h-full w-full px-0 py-0 text-foreground"
     : `
       min-h-screen px-4 py-6 text-foreground
-      bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
     `;
 
   const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-7xl";
@@ -890,7 +990,7 @@ export default function QuoteReviewView(props: {
                   {emailRaw ? (
                     <a
                       href={`mailto:${emailRaw}`}
-                      className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline"
+                      className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline"
                       title="Email customer"
                     >
                       {emailRaw}
@@ -968,15 +1068,11 @@ export default function QuoteReviewView(props: {
                       "—";
 
                     const whyRecommended = [
-                      safeTrim(l.correction) ? "Corrective action maps directly to the identified issue." : "Recommendation is tied to the current finding.",
-                      laborHours > 0 ? `Labor time estimate recorded at ${laborHours.toFixed(2)}h.` : null,
-                      partsAmt > 0 ? `Parts are already scoped (${fmt(partsAmt)}).` : null,
-                    ].filter((item): item is string => Boolean(item));
+                      safeTrim(l.correction) || "Recommended repair linked to this finding.",
+                    ];
 
                     const supportingEvidence = [
-                      safeTrim(l.cause) ? `Finding detail: ${safeTrim(l.cause)}` : null,
-                      safeTrim(l.status) ? `Line status: ${statusLabel(l.status)}` : null,
-                      safeTrim(l.approval_state) ? `Decision state: ${statusLabel(l.approval_state)}` : null,
+                      safeTrim(l.cause) || safeTrim(l.notes) || safeTrim(l.complaint),
                     ].filter((item): item is string => Boolean(item));
 
                     const deferredConsequence =
@@ -986,13 +1082,14 @@ export default function QuoteReviewView(props: {
 
                     return (
                       <div key={l.id} className={`${padX} py-4`}>
-                        <div className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.10),rgba(0,0,0,0.88)_42%,rgba(2,6,23,0.96)_100%)] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.65)]">
+                        <div className="rounded-[20px] border border-slate-300/15 bg-slate-950/60 p-2.5 shadow-[0_18px_48px_rgba(2,6,23,0.7)]">
                           <QuoteLineCard
                             title={title}
                             statusLabel="Issue Found"
                             statusTone={tone}
                             issueText={issueText}
-                            photoUrl={null}
+                            photoUrl={(linePhotos[l.id] ?? [])[0] ?? null}
+                            photoUrls={linePhotos[l.id] ?? []}
                             recommendedText={recText}
                             partsTotal={partsAmt}
                             laborTotal={laborAmt}
@@ -1000,7 +1097,7 @@ export default function QuoteReviewView(props: {
                             onApprove={() => void setDecision(l.id, "approve")}
                             onDecline={() => void setDecision(l.id, "decline")}
                             onDefer={() => void setDecision(l.id, "defer")}
-                            footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
+                            footerNote={null}
                             whyRecommended={whyRecommended}
                             supportingEvidence={supportingEvidence}
                             deferredConsequence={deferredConsequence}
@@ -1358,15 +1455,45 @@ export default function QuoteReviewView(props: {
                 Send to customer
               </div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
-                Sends an email and creates a portal notification with the quote link.
+                Send quote email + portal notification.
+                {(missingCustomerEmail || sendBlocker) ? (
+                  <div className="mt-3 rounded-xl border border-amber-400/35 bg-amber-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">
+                      Blocked
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-amber-100">
+                      {sendBlocker ?? "Customer email required to send quote"}
+                    </div>
+                    <p className="mt-1 text-xs text-amber-100/80">
+                      Add the missing email here, save it, then retry send.
+                    </p>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="email"
+                        value={pendingCustomerEmail}
+                        onChange={(e) => setPendingCustomerEmail(e.target.value)}
+                        placeholder="customer@email.com"
+                        className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-amber-300/70"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void saveCustomerEmailInline()}
+                        disabled={savingCustomerEmail}
+                        className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/20 disabled:opacity-60"
+                      >
+                        {savingCustomerEmail ? "Saving…" : "Save email"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3">
                   <button
                     onClick={() => void sendQuoteToCustomer()}
-                    disabled={sending}
+                    disabled={sending || savingCustomerEmail}
                     className="
-                      w-full rounded-xl border border-white/10 bg-black/55
+                      w-full rounded-xl border border-white/10 bg-slate-900/80
                       px-4 py-2 text-sm font-semibold text-white
-                      hover:bg-black/70 disabled:opacity-60
+                      hover:bg-slate-900 disabled:opacity-60
                     "
                   >
                     {sending ? "Sending…" : "Send Quote"}

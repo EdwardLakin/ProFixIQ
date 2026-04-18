@@ -29,6 +29,7 @@ export function QuoteLineCard(props: {
 
   issueText?: string | null;
   photoUrl?: string | null;
+  photoUrls?: string[] | null;
 
   recommendedText?: string | null;
 
@@ -40,7 +41,7 @@ export function QuoteLineCard(props: {
   onDecline?: () => void;
   onDefer?: () => void;
 
-  footerNote?: string | null; // optional tiny footer line
+  footerNote?: string | null;
   whyRecommended?: string[];
   supportingEvidence?: string[];
   deferredConsequence?: string | null;
@@ -51,6 +52,7 @@ export function QuoteLineCard(props: {
     statusTone = "bad",
     issueText,
     photoUrl,
+    photoUrls,
     recommendedText,
     partsTotal,
     laborTotal,
@@ -65,6 +67,9 @@ export function QuoteLineCard(props: {
   } = props;
 
   const total = partsTotal + laborTotal;
+  const imageList = Array.from(
+    new Set([photoUrl, ...(Array.isArray(photoUrls) ? photoUrls : [])].filter(Boolean)),
+  ) as string[];
 
   const dotCls =
     statusTone === "bad"
@@ -76,22 +81,18 @@ export function QuoteLineCard(props: {
           : "bg-neutral-500";
 
   const card =
-    "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+    "rounded-2xl border border-slate-300/15 bg-slate-950/55 shadow-[0_20px_48px_rgba(2,6,23,0.65)]";
   const codeBox =
-    "mt-2 rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-neutral-200 whitespace-pre-wrap";
+    "mt-2 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-neutral-200 whitespace-pre-wrap";
 
   return (
     <div className={card} style={{ ["--copper" as never]: COPPER }}>
-      <div className="px-5 pt-5">
-        <div className="text-xs uppercase tracking-[0.18em] text-neutral-400">
-          Customer portal:
-        </div>
+      <div className="px-4 pt-4 sm:px-5 sm:pt-5">
+        <div className="text-xl font-semibold text-white">{title}</div>
 
-        <div className="mt-2 text-2xl font-semibold text-white">{title}</div>
-
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <span className={`h-3.5 w-3.5 rounded-full ${dotCls}`} />
-          <div className="text-xl font-semibold text-white">{statusLabel}</div>
+          <div className="text-sm font-semibold text-white">{statusLabel}</div>
         </div>
 
         {/* Issue found */}
@@ -100,23 +101,32 @@ export function QuoteLineCard(props: {
           <div className={codeBox}>{safeTrim(issueText) || "—"}</div>
         </div>
 
-        {/* Photo */}
         <div className="mt-4">
-          <div className="text-sm font-semibold text-neutral-200">
-            📷 Inspection Photo
-          </div>
-          <div className="mt-2 rounded-xl border border-white/10 bg-black/55 p-3">
-            {photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={photoUrl}
-                alt="Inspection"
-                className="h-auto w-full rounded-lg object-cover"
-              />
-            ) : (
-              <div className="text-sm text-neutral-400">(image)</div>
-            )}
-          </div>
+          <div className="text-sm font-semibold text-neutral-200">Evidence photo</div>
+          {imageList.length > 0 ? (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {imageList.slice(0, 3).map((url, idx) => (
+                <a
+                  key={`${url}-${idx}`}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="overflow-hidden rounded-xl border border-white/10 bg-slate-900/70"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Evidence ${idx + 1}`}
+                    className="h-28 w-full object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 rounded-xl border border-dashed border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-neutral-400">
+              No photo attached for this recommendation.
+            </div>
+          )}
         </div>
 
         {/* Recommended */}
@@ -168,9 +178,7 @@ export function QuoteLineCard(props: {
 
         {showActions ? (
           <div className="mt-5">
-            <div className="text-sm font-semibold text-neutral-200">
-              Approve / Decline
-            </div>
+            <div className="text-sm font-semibold text-neutral-200">Decision</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -199,11 +207,11 @@ export function QuoteLineCard(props: {
       </div>
 
       {footerNote ? (
-        <div className="mt-5 border-t border-white/10 px-5 py-3 text-xs text-neutral-500">
+        <div className="mt-4 border-t border-white/10 px-4 py-2.5 text-xs text-neutral-500 sm:px-5">
           {footerNote}
         </div>
       ) : (
-        <div className="h-5" />
+        <div className="h-4" />
       )}
     </div>
   );
