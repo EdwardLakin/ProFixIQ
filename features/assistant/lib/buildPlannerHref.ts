@@ -14,6 +14,9 @@ export type PlannerPayload = {
     | "parts_follow_up"
     | "low_inventory_reorder"
     | "fleet_follow_up"
+    | "smart_match_readiness"
+    | "menu_item_efficiency_review"
+    | "inspection_template_efficiency_review"
     | "menu_item_draft"
     | "inspection_template_draft"
     | "service_bundle_draft";

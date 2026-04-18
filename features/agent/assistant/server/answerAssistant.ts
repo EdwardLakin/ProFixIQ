@@ -8,6 +8,11 @@ import { runGetVehicleHistory } from "../../tools/getVehicleHistory";
 import { runGetWorkOrderStatusSummary } from "../../tools/getWorkOrderStatusSummary";
 import { toolListPendingApprovals } from "../../tools/listPendingApprovals";
 import { getServerSupabase } from "../../server/supabase";
+import {
+  buildInspectionTemplateEfficiencyRecommendations,
+  buildMenuItemEfficiencyRecommendations,
+  evaluateSmartMatchReadiness,
+} from "../../server/opsRecommendations";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 
 import type {
@@ -269,6 +274,94 @@ function looksLikeAuthoringQuestion(q: string): boolean {
     "should this become",
     "similar menu",
   ]);
+}
+
+function looksLikeOpsIntelligenceQuestion(q: string): boolean {
+  return questionIncludes(q, [
+    "smart match",
+    "smart-match",
+    "ready for conservative",
+    "ready for full",
+    "menu items should we create",
+    "repeated work",
+    "repeated jobs",
+    "reusable menu",
+    "inspection templates should we add",
+    "should be templated",
+    "manual complaint lines",
+    "operational recommendations",
+  ]);
+}
+
+async function answerOpsIntelligenceDomain(args: {
+  shopId: string;
+  q: string;
+  resolvedContext: AssistantResolvedContext;
+}): Promise<AssistantAnswer | null> {
+  if (!looksLikeOpsIntelligenceQuestion(args.q)) return null;
+
+  const [smartMatch, menuItemRecs, inspectionTemplateRecs] = await Promise.all([
+    evaluateSmartMatchReadiness(args.shopId),
+    buildMenuItemEfficiencyRecommendations(args.shopId),
+    buildInspectionTemplateEfficiencyRecommendations(args.shopId),
+  ]);
+
+  const bullets = dedupeStrings([
+    smartMatch.summary,
+    ...smartMatch.evidence.slice(0, 4),
+    menuItemRecs[0]
+      ? `Top menu-item opportunity: ${menuItemRecs[0].suggestedTitle} (${menuItemRecs[0].sourceRecords.length} evidence record(s) in sample).`
+      : "No menu item opportunity passed the repeat threshold in the sampled window.",
+    inspectionTemplateRecs[0]
+      ? `Top inspection-template opportunity: ${inspectionTemplateRecs[0].suggestedTemplateTitle} (${inspectionTemplateRecs[0].sourceRecords.length} evidence record(s) in sample).`
+      : "No inspection-template opportunity passed the repeat threshold in the sampled window.",
+  ]);
+
+  const links: AssistantLink[] = [
+    { label: "Review in Planner: Smart Match readiness", href: "/agent/planner?planner=ops&lane=smart_match_readiness&allowCreate=0&goal=Review%20Smart%20Match%20readiness%20with%20evidence" },
+    { label: "Review in Planner: Menu item efficiency", href: "/agent/planner?planner=ops&lane=menu_item_efficiency_review&allowCreate=0&goal=Review%20repeated%20manual%20work%20for%20menu%20item%20drafts" },
+    { label: "Review in Planner: Inspection template efficiency", href: "/agent/planner?planner=ops&lane=inspection_template_efficiency_review&allowCreate=0&goal=Review%20repeated%20inspection%20patterns%20for%20template%20drafts" },
+  ];
+
+  return buildAnswer({
+    intent: "shop_status",
+    summary: `Operational intelligence is ready for review. Smart Match is currently ${smartMatch.state.replaceAll("_", " ")}; menu item opportunities: ${menuItemRecs.length}; inspection template opportunities: ${inspectionTemplateRecs.length}.`,
+    bullets,
+    links,
+    entities: [
+      ...menuItemRecs.slice(0, 2).map((item) => ({
+        type: "menu_item" as const,
+        label: `Candidate menu item: ${item.suggestedTitle}`,
+        href: "/menu",
+      })),
+      ...inspectionTemplateRecs.slice(0, 2).map((item) => ({
+        type: "inspection_template" as const,
+        label: `Candidate template: ${item.suggestedTemplateTitle}`,
+        href: "/inspection/templates",
+      })),
+    ],
+    actions: [
+      {
+        type: "planner",
+        label: "Review Smart Match readiness proposal",
+        goal: "Build Smart Match readiness recommendation with evidence and review warnings",
+        context: { planner: "ops", lane: "smart_match_readiness", allowCreate: false },
+      },
+      {
+        type: "planner",
+        label: "Review menu item efficiency proposals",
+        goal: "Build review-first menu item efficiency recommendations from repeated manual work",
+        context: { planner: "ops", lane: "menu_item_efficiency_review", allowCreate: false },
+      },
+      {
+        type: "planner",
+        label: "Review inspection template efficiency proposals",
+        goal: "Build review-first inspection template recommendations from repeated inspection behavior",
+        context: { planner: "ops", lane: "inspection_template_efficiency_review", allowCreate: false },
+      },
+    ],
+    resolvedContext: args.resolvedContext,
+  });
 }
 
 async function answerPartsDomain(args: {
@@ -891,6 +984,15 @@ export async function answerAssistant({
   });
   if (fleetAnswer) {
     return fleetAnswer;
+  }
+
+  const opsIntelligenceAnswer = await answerOpsIntelligenceDomain({
+    shopId,
+    q,
+    resolvedContext,
+  });
+  if (opsIntelligenceAnswer) {
+    return opsIntelligenceAnswer;
   }
 
   const authoringAnswer = await answerAuthoringDomain({

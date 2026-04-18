@@ -2,6 +2,11 @@
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
+import {
+  buildInspectionTemplateEfficiencyRecommendations,
+  buildMenuItemEfficiencyRecommendations,
+  evaluateSmartMatchReadiness,
+} from "../server/opsRecommendations";
 
 import {
   runCreateWorkOrder,
@@ -716,6 +721,145 @@ async function buildAuthoringProposal(
   };
 }
 
+async function buildOpsIntelligenceProposal(
+  lane:
+    | "smart_match_readiness"
+    | "menu_item_efficiency_review"
+    | "inspection_template_efficiency_review",
+  ctx: ToolContext,
+): Promise<PlannerProposal> {
+  if (lane === "smart_match_readiness") {
+    const readiness = await evaluateSmartMatchReadiness(ctx.shopId);
+    return {
+      id: createProposalId(lane),
+      lane,
+      classification: "informational",
+      title: "Smart Match readiness proposal",
+      summary: readiness.summary,
+      proposed_steps: [
+        `Recommended state: ${readiness.state}`,
+        ...(readiness.nextAction ? [`Next action: ${readiness.nextAction}`] : []),
+      ],
+      affected_records: [],
+      warnings: readiness.reviewNotes,
+      review_actions: [
+        "Owner/admin reviews readiness evidence and false-match risk before changing Smart Match settings.",
+        "Do not auto-enable Smart Match from this proposal; use explicit settings action if approved.",
+      ],
+      duplicate_candidates: [],
+      source_rationale: readiness.evidence,
+      confirmation_required: false,
+      execution_available: false,
+      execution_label: "Review only",
+      not_executable_reason: "Readiness proposals are recommendation-only and never auto-enable Smart Match.",
+      result_summary: "No Smart Match mode changes were applied.",
+      result_links: [
+        { href: "/dashboard/owner/settings", label: "Open owner settings" },
+      ],
+      audit: {
+        generated_at: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (lane === "menu_item_efficiency_review") {
+    const recs = await buildMenuItemEfficiencyRecommendations(ctx.shopId);
+    const top = recs[0];
+    return {
+      id: createProposalId(lane),
+      lane,
+      classification: "draft_only",
+      title: "Menu item efficiency review proposal",
+      summary: top
+        ? `Found ${recs.length} menu-item candidate(s) from repeated manual work. Top recommendation: ${top.suggestedTitle}.`
+        : "No menu-item recommendation met the evidence threshold in the sampled history.",
+      proposed_steps: top
+        ? [
+            `Proposed title: ${top.suggestedTitle}`,
+            `Suggested category: ${top.suggestedCategory}`,
+            `Labor baseline: ${top.suggestedLaborHours != null ? `${top.suggestedLaborHours.toFixed(1)} hr` : "Needs review"}`,
+            "Review overlap candidates and advisor workflow impact before drafting.",
+          ]
+        : ["Collect more repeated manual line history, then re-run this review lane."],
+      affected_records: top
+        ? top.sourceRecords.slice(0, 8).map((record) => ({
+            type: "work_order_line",
+            id: record.id,
+            href: record.href,
+            label: record.label,
+          }))
+        : [],
+      warnings: [
+        "Review-first only: no menu_items records were created from this proposal.",
+        ...(top?.overlapCandidates.length ? ["Potential catalog overlap detected; verify duplicates before drafting."] : []),
+      ],
+      review_actions: [
+        "Review proposed title/category/labor with advisors.",
+        "Confirm duplicate/overlap handling with existing menu_items.",
+        "If approved, create manually through existing menu item flows.",
+      ],
+      duplicate_candidates: top?.overlapCandidates ?? [],
+      source_rationale: top ? [top.rationale, ...top.evidenceBullets] : ["No candidate reached repeat threshold."],
+      confirmation_required: false,
+      execution_available: false,
+      execution_label: "Draft only",
+      not_executable_reason: "This lane only stages evidence-backed recommendations for review.",
+      result_summary: "No catalog records were created.",
+      result_links: [{ href: "/menu", label: "Open menu catalog" }],
+      audit: {
+        generated_at: new Date().toISOString(),
+      },
+    };
+  }
+
+  const recs = await buildInspectionTemplateEfficiencyRecommendations(ctx.shopId);
+  const top = recs[0];
+  return {
+    id: createProposalId(lane),
+    lane,
+    classification: "draft_only",
+    title: "Inspection template efficiency review proposal",
+    summary: top
+      ? `Found ${recs.length} inspection-template candidate(s) from repeated inspection behavior. Top recommendation: ${top.suggestedTemplateTitle}.`
+      : "No inspection-template recommendation met the evidence threshold in the sampled history.",
+    proposed_steps: top
+      ? [
+          `Proposed template: ${top.suggestedTemplateTitle}`,
+          `Suggested scope: ${top.suggestedScope}`,
+          "Review overlap and section structure before drafting any template.",
+        ]
+      : ["Collect more repeated inspection activity, then re-run this review lane."],
+    affected_records: top
+      ? top.sourceRecords.slice(0, 8).map((record) => ({
+          type: "work_order_line",
+          id: record.id,
+          href: record.href,
+          label: record.label,
+        }))
+      : [],
+    warnings: [
+      "Review-first only: no inspection_templates records were created from this proposal.",
+      ...(top?.overlapCandidates.length ? ["Potential template overlap detected; validate before authoring."] : []),
+    ],
+    review_actions: [
+      "Review candidate scope with service leads/technicians.",
+      "Confirm overlap handling with existing inspection_templates.",
+      "If approved, create manually through existing inspection template flows.",
+    ],
+    duplicate_candidates: top?.overlapCandidates ?? [],
+    source_rationale: top ? [top.rationale, ...top.evidenceBullets] : ["No candidate reached repeat threshold."],
+    confirmation_required: false,
+    execution_available: false,
+    execution_label: "Draft only",
+    not_executable_reason: "This lane only stages evidence-backed recommendations for review.",
+    result_summary: "No template records were created.",
+    result_links: [{ href: "/inspection/templates", label: "Open inspection templates" }],
+    audit: {
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
 function buildOperationalProposal(
   lane: "resolve_approval_queue" | "reschedule_booking" | "work_order_operations",
   context: Record<string, unknown>,
@@ -922,6 +1066,37 @@ export async function runOpenAIPlanner(
         message: warning,
       })),
     };
+  }
+
+  if (
+    lane === "smart_match_readiness" ||
+    lane === "menu_item_efficiency_review" ||
+    lane === "inspection_template_efficiency_review"
+  ) {
+    const proposal = await buildOpsIntelligenceProposal(lane, ctx);
+    await onEvent?.({
+      kind: "proposal",
+      proposal,
+    });
+
+    await onEvent?.({
+      kind: "plan",
+      text: proposal.summary,
+      citations: proposal.affected_records,
+    });
+
+    await onEvent?.({
+      kind: "agent_result",
+      summary: proposal.summary,
+      citations: proposal.affected_records,
+      notifications: proposal.warnings.map((warning, index) => ({
+        level: "warning",
+        code: `ops_intel_warning_${index + 1}`,
+        title: "Review warning",
+        message: warning,
+      })),
+    });
+    return;
   }
 
   if (

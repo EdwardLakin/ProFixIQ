@@ -126,6 +126,9 @@ function toPlannerPayload(
         context.lane === "parts_follow_up" ||
         context.lane === "low_inventory_reorder" ||
         context.lane === "fleet_follow_up" ||
+        context.lane === "smart_match_readiness" ||
+        context.lane === "menu_item_efficiency_review" ||
+        context.lane === "inspection_template_efficiency_review" ||
         context.lane === "menu_item_draft" ||
         context.lane === "inspection_template_draft" ||
         context.lane === "service_bundle_draft"
