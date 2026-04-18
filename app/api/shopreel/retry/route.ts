@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { signShopReelPayload } from "@/features/integrations/shopreel/server/signShopReelPayload";
+import { getShopReelBaseUrl } from "@/features/integrations/shopreel/server/shopreelConfig";
 
 type DB = Database;
 
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
     typeof delivery.request_url === "string" && delivery.request_url.trim().length > 0
       ? delivery.request_url.trim()
       : `${
-          (integration.shopreel_base_url || process.env.SHOPREEL_BASE_URL || "https://shopreel.profixiq.com").replace(/\/+$/, "")
+          (integration.shopreel_base_url || getShopReelBaseUrl()).replace(/\/+$/, "")
         }/api/integrations/profixiq/events`;
 
   const payload = JSON.stringify({
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
     await admin
       .from("shopreel_integrations")
       .update({
-        last_success_at: response.ok ? new Date().toISOString() : null,
+        ...(response.ok ? { last_success_at: new Date().toISOString() } : {}),
         last_error_at: response.ok ? null : new Date().toISOString(),
         last_error_message: response.ok ? null : `ShopReel responded with ${response.status}`,
       })
