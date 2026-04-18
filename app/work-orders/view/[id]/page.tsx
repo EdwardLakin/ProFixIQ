@@ -19,12 +19,12 @@ function chipClass(status: string | null | undefined): string {
   if (s.includes("paid") || s.includes("completed"))
     return "border-emerald-400/60 bg-emerald-500/10 text-emerald-200";
   if (s.includes("invoice"))
-    return "border-orange-400/60 bg-orange-500/10 text-orange-200";
+    return "border-cyan-400/60 bg-cyan-500/10 text-cyan-100";
   if (s.includes("approval"))
     return "border-blue-400/60 bg-blue-500/10 text-blue-200";
   if (s.includes("hold"))
-    return "border-amber-400/60 bg-amber-500/10 text-amber-200";
-  return "border-white/15 bg-white/5 text-neutral-200";
+    return "border-slate-400/50 bg-slate-500/10 text-slate-200";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-200";
 }
 
 function safeTrim(v: unknown): string {

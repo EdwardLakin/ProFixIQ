@@ -1031,7 +1031,7 @@ export default function QuoteReviewView(props: {
                   No lines yet.
                 </div>
               ) : (
-                <div className="divide-y divide-white/10">
+                <div className="divide-y divide-[color:var(--desktop-border)]">
                   {lines.map((l) => {
                     const la = lineAllocs.get(l.id) ?? [];
                     const laborHours = typeof l.labor_time === "number" ? l.labor_time : 0;

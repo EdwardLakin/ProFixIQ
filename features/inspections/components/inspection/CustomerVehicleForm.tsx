@@ -173,8 +173,8 @@ function CustomerAutocomplete({
         <div
           className="
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
-            border border-white/12
-            bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] backdrop-blur-xl
+            border border-[color:var(--desktop-border)]
+            bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl
             shadow-[0_18px_45px_rgba(0,0,0,0.70)]
           "
         >
@@ -299,8 +299,8 @@ function UnitNumberAutocomplete({
         <div
           className="
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
-            border border-white/12
-            bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] backdrop-blur-xl
+            border border-[color:var(--desktop-border)]
+            bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl
             shadow-[0_18px_45px_rgba(0,0,0,0.70)]
           "
         >
@@ -494,9 +494,9 @@ export default function CustomerVehicleForm({
   };
 
   const panelClass =
-    "rounded-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
   const chipClass =
-    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1 text-[11px] text-white/60";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] text-white/60";
   const labelClass = "text-xs text-neutral-300";
 
   return (
@@ -932,7 +932,7 @@ export default function CustomerVehicleForm({
               onClick={onClear}
               className="
                 inline-flex items-center rounded-full
-                border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)]
+                border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]
                 px-3 py-1.5 text-xs sm:text-sm text-white/75
                 transition hover:border-red-400/60 hover:bg-red-950/35 hover:text-red-200
               "

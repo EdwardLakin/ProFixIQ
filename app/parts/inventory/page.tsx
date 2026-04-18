@@ -101,7 +101,7 @@ function TextField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -123,7 +123,7 @@ function NumberField(props: {
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
         type="number"
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value === "" ? "" : value}
         min={min}
         step={step}
@@ -147,7 +147,7 @@ function SelectField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <select
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -345,7 +345,7 @@ export default function InventoryPage(): JSX.Element {
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
   const btnCopper = `${btnBase} border-[rgba(197,122,74,0.55)] ${ACCENT_TEXT} bg-[linear-gradient(135deg,rgba(197,122,74,0.22),rgba(197,122,74,0.12))] hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.3),rgba(197,122,74,0.18))]`;
-  const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25`;
+  const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-sky-100 hover:bg-sky-900/25`;
 
   const pillBase =
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";

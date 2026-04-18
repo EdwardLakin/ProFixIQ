@@ -106,11 +106,11 @@ export function NewWorkOrderLineForm(props: {
   const canSave = (lineType === "info" ? infoTitle.length > 0 : complaint.trim().length > 0) && !!workOrderId;
   const topRepairDefault = isTopRepairDefault(smartMatch);
   const formShellClass =
-    "rounded-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] p-4 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
   const controlClass =
-    "w-full rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[color:var(--accent-copper,#C57A4A)] focus:outline-none";
+    "w-full rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-sky-400/70 focus:outline-none";
   const mutedPillClass =
-    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1 text-[10px] text-neutral-300";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[10px] text-neutral-300";
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = [
@@ -268,7 +268,7 @@ export function NewWorkOrderLineForm(props: {
       return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
     }
     if (status === "stale") {
-      return "border-amber-500/40 bg-amber-500/10 text-amber-200";
+      return "border-slate-500/40 bg-slate-500/10 text-slate-200";
     }
     return "border-red-500/40 bg-red-500/10 text-red-200";
   }
@@ -717,7 +717,7 @@ export function NewWorkOrderLineForm(props: {
         <button
           disabled={!canSave || busy}
           onClick={addLine}
-          className="btn btn-orange px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+          className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.28),rgba(197,122,74,0.14))] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65 hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.36),rgba(197,122,74,0.2))] disabled:opacity-60"
         >
           {busy
             ? "Adding…"

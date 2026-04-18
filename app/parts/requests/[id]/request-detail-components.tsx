@@ -12,7 +12,7 @@ const SUBCARD =
 const INPUT =
   "w-72 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30";
 const LINK_BTN =
-  "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-200 hover:bg-white/5";
+  "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]";
 
 export function RequestStatusSummary({
   waiting,

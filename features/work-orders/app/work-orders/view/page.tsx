@@ -695,14 +695,14 @@ export default function WorkOrdersView(): JSX.Element {
 
             <Link
               href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
             >
               Open Planner
             </Link>
 
             <Link
               href="/work-orders/create"
-              className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-3.5 py-1.5 text-sm font-semibold text-black transition hover:opacity-90"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3.5 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
             >
               <span className="mr-1.5 text-base leading-none">+</span>
               New work order
@@ -744,7 +744,7 @@ export default function WorkOrdersView(): JSX.Element {
               void load();
               setAssignVersion((v) => v + 1);
             }}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
           >
             Refresh
           </button>
@@ -814,7 +814,7 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div
                 key={r.id}
-                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:bg-white/5 ${accent.border}`}
+                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] ${accent.border}`}
                 style={{
                   boxShadow:
                     "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
@@ -913,7 +913,7 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href={href}
-                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
                   >
                     Open
                   </Link>
@@ -1003,7 +1003,7 @@ export default function WorkOrdersView(): JSX.Element {
 
                           <button
                             onClick={() => void handleAssignAll(r.id)}
-                            className="rounded-full bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black transition hover:opacity-90"
+                            className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
                           >
                             Apply
                           </button>
@@ -1013,7 +1013,7 @@ export default function WorkOrdersView(): JSX.Element {
                               setAssigningFor(null);
                               setSelectedTechId("");
                             }}
-                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-white/10"
+                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
                           >
                             Cancel
                           </button>
