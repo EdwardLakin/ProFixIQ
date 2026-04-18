@@ -158,37 +158,38 @@ export default function InspectionTemplatesPage() {
   }
 
   const headerCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[rgba(71,85,105,0.55)] " +
+    "bg-[linear-gradient(180deg,rgba(2,6,23,0.98)_0%,rgba(1,4,14,0.95)_100%)] " +
+    "shadow-[0_26px_90px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(148,163,184,0.2)] backdrop-blur-xl";
 
   const listCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[rgba(51,65,85,0.7)] " +
+    "bg-[rgba(2,6,18,0.88)] shadow-[0_26px_90px_rgba(0,0,0,0.96)] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border " +
     "transition-colors";
 
   // copper palette (replaces all orange usage)
-  const COPPER_18 = "rgba(200,122,67,0.18)";
-  const COPPER_20 = "rgba(200,122,67,0.20)";
+  const COPPER_22 = "rgba(178,101,50,0.22)";
+  const COPPER_26 = "rgba(178,101,50,0.26)";
   const COPPER_14 = "rgba(200,122,67,0.14)";
-  const COPPER_90 = "rgba(200,122,67,0.90)";
-  const COPPER_70 = "rgba(200,122,67,0.70)";
-  const COPPER_65 = "rgba(200,122,67,0.65)";
+  const COPPER_95 = "rgba(241,245,249,0.95)";
+  const COPPER_70 = "rgba(186,110,56,0.70)";
+  const COPPER_65 = "rgba(186,110,56,0.65)";
   const COPPER_55 = "rgba(200,122,67,0.55)";
-  const COPPER_SHADOW_60 = "rgba(200,122,67,0.60)";
-  const COPPER_SHADOW_80 = "rgba(200,122,67,0.80)";
+  const COPPER_SHADOW_55 = "rgba(186,110,56,0.55)";
+  const COPPER_SHADOW_70 = "rgba(186,110,56,0.70)";
 
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash (was orange) */}
+        {/* Signature backdrop wash */}
         <div
           aria-hidden
           className={`
             pointer-events-none fixed inset-0 -z-10
-            bg-[radial-gradient(circle_at_top,${COPPER_18},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]
+            bg-[radial-gradient(circle_at_50%_-8%,${COPPER_22},transparent_45%),radial-gradient(circle_at_90%_10%,rgba(30,41,59,0.36),transparent_44%),linear-gradient(180deg,#02030b_0%,#020617_65%,#01030a_100%)]
           `}
         />
 
@@ -198,14 +199,21 @@ export default function InspectionTemplatesPage() {
             aria-hidden
             className={`
               pointer-events-none absolute inset-x-0 -top-10 h-24
-              bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_65%)]
+              bg-[radial-gradient(circle_at_top,${COPPER_26},transparent_65%)]
+            `}
+          />
+          <div
+            aria-hidden
+            className={`
+              pointer-events-none absolute inset-x-0 -bottom-16 h-28
+              bg-[radial-gradient(circle_at_bottom,rgba(30,41,59,0.5),transparent_72%)]
             `}
           />
 
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1
-                className={`text-xl font-bold tracking-[0.22em] text-[${COPPER_90}] md:text-2xl uppercase`}
+                className={`text-xl font-bold tracking-[0.22em] text-[${COPPER_95}] md:text-2xl uppercase`}
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
                 Inspection Templates
@@ -243,9 +251,9 @@ export default function InspectionTemplatesPage() {
                 href="/inspections/custom-inspection"
                 className={`
                   mt-1 inline-flex items-center justify-center rounded-full
-                  bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))]
-                  px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black
-                  shadow-[0_0_22px_${COPPER_SHADOW_60}] hover:shadow-[0_0_30px_${COPPER_SHADOW_80}]
+                  bg-[linear-gradient(to_right,rgba(186,110,56,0.95),rgba(161,93,45,0.86))]
+                  px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0a0a0a]
+                  shadow-[0_0_18px_${COPPER_SHADOW_55}] hover:shadow-[0_0_24px_${COPPER_SHADOW_70}]
                   md:mt-0
                 `}
               >
@@ -262,8 +270,9 @@ export default function InspectionTemplatesPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name, description, or tags…"
                 className={`
-                  w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70
+                  w-full rounded-xl border border-[rgba(71,85,105,0.6)] bg-[rgba(0,0,0,0.82)]
                   px-3 py-2 text-sm text-white placeholder:text-neutral-500
+                  shadow-[inset_0_1px_0_rgba(148,163,184,0.14)]
                   focus:outline-none focus:ring-2 focus:ring-[${COPPER_55}]
                 `}
               />
@@ -352,7 +361,7 @@ export default function InspectionTemplatesPage() {
                 return (
                   <li
                     key={t.id}
-                    className="relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.95)]"
+                    className="relative overflow-hidden rounded-2xl border border-[rgba(51,65,85,0.7)] bg-[rgba(0,0,0,0.82)] p-4 shadow-[0_20px_62px_rgba(0,0,0,0.95)]"
                   >
                     <div
                       aria-hidden
