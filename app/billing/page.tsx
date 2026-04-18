@@ -22,10 +22,10 @@ type Status = Exclude<WorkOrder["status"], null> | "ready_to_invoice" | "invoice
 const BILLING_STATUSES: Status[] = ["completed", "ready_to_invoice", "invoiced"];
 
 const INPUT_DARK =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+  "desktop-input w-full px-3 py-2 text-sm";
 
 const SELECT_DARK =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+  "desktop-input w-full px-3 py-2 text-sm";
 
 function stageAccent(status: string | null | undefined): {
   badge: string;
@@ -36,9 +36,9 @@ function stageAccent(status: string | null | undefined): {
 
   if (key === "ready_to_invoice") {
     return {
-      badge: "border-amber-400/70 bg-amber-500/10 text-amber-100",
-      border: "border-amber-500/30",
-      progress: "bg-amber-400",
+      badge: "border-sky-400/45 bg-sky-500/10 text-sky-100",
+      border: "border-sky-500/25",
+      progress: "bg-sky-400",
     };
   }
 
@@ -75,7 +75,7 @@ function priorityChip(priority: number | null | undefined): string {
   if (priority === 4) {
     return "border-slate-500/40 bg-slate-500/10 text-slate-300";
   }
-  return "border-white/10 bg-white/5 text-neutral-300";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-300";
 }
 
 function formatMoney(value: number | null | undefined): string {
@@ -339,7 +339,7 @@ export default function BillingPage(): JSX.Element {
 
               {!loading && !err ? (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                     Total: <span className="text-white">{total}</span>
                   </div>
                   <div className="rounded-full border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-[11px] font-semibold text-sky-100">
@@ -401,7 +401,7 @@ export default function BillingPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
               >
                 Refresh
               </button>
@@ -426,7 +426,7 @@ export default function BillingPage(): JSX.Element {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-[24px] border border-white/10 bg-black/25 p-6 text-sm text-neutral-400">
+        <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-400">
           No billing work orders match your current filters.
         </div>
       ) : (
@@ -533,7 +533,7 @@ export default function BillingPage(): JSX.Element {
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                         Labor
                       </div>
@@ -542,7 +542,7 @@ export default function BillingPage(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                         Parts
                       </div>
@@ -551,7 +551,7 @@ export default function BillingPage(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="col-span-2 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                    <div className="col-span-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                         Invoice total
                       </div>

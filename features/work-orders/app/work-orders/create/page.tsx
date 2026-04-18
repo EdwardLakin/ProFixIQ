@@ -39,16 +39,16 @@ const InspectionModal = dynamic(
 const COPPER = "#C57A4A";
 
 const card =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
 const divider = "border-white/10";
 const sectionPanel =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
 const childPanel =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#374151)] bg-black/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const subtlePanel =
-  "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/65";
+  "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]";
 const softButton =
-  "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/65 text-neutral-200 hover:bg-black/75";
+  "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-200 hover:bg-black/75";
 
 /* =============================================================================
    Types & helpers
@@ -2200,7 +2200,7 @@ useEffect(() => {
                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                 onClick={dismissIntakeOnce}
               />
-              <div className="relative w-full max-w-2xl rounded-3xl border border-white/10 bg-black/70 p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md">
+              <div className="relative w-full max-w-2xl rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">

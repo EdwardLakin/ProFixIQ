@@ -51,11 +51,11 @@ function Modal(props: {
   if (!open) return null;
 
   // ---- Theme (glass + neutral accent styling) ----
-  const ACCENT_BORDER = "border-[rgba(200,122,67,0.45)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
+  const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
   const shell =
-    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl " +
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl " +
     "shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset] text-white";
 
   return (
@@ -73,7 +73,7 @@ function Modal(props: {
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className={`rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${ACCENT_FOCUS_RING}`}
+            className={`rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${ACCENT_FOCUS_RING}`}
             aria-label="Close"
           >
             ✕
@@ -101,7 +101,7 @@ function TextField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
-        className="w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -123,7 +123,7 @@ function NumberField(props: {
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
         type="number"
-        className="w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
         value={value === "" ? "" : value}
         min={min}
         step={step}
@@ -147,7 +147,7 @@ function SelectField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <select
-        className="w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -330,13 +330,13 @@ export default function InventoryPage(): JSX.Element {
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
 
   // ---- Theme (glass + neutral accent styling) ----
-  const ACCENT_TEXT = "text-[rgba(242,210,187,0.94)]";
-  const ACCENT_HOVER_BG = "hover:bg-[rgba(200,122,67,0.14)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
   const pageWrap = "space-y-4 p-6 text-white";
   const glassCard =
-    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader = "bg-slate-950/55 border-b border-white/10";
 
   const inputBase =
@@ -344,7 +344,7 @@ export default function InventoryPage(): JSX.Element {
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-[color:var(--metal-border-soft,#374151)] bg-black/70 hover:bg-white/5`;
+  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
   const btnCopper = `${btnBase} border-white/10 ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25`;
 
@@ -959,7 +959,7 @@ export default function InventoryPage(): JSX.Element {
           <NumberField label="Price" value={price} onChange={(v) => setPrice(v === "" ? "" : v)} />
         </div>
 
-        <div className="mt-4 rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3">
+        <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3">
           <div className="mb-2 text-sm font-semibold text-white">
             Initial Stock <span className="text-xs font-normal text-neutral-400">(optional)</span>
           </div>
@@ -1067,7 +1067,7 @@ export default function InventoryPage(): JSX.Element {
         {ohLines.length === 0 ? (
           <div className="text-sm text-neutral-300">No movement found for this part.</div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70">
+          <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-left text-neutral-400">
                 <tr>
@@ -1135,7 +1135,7 @@ export default function InventoryPage(): JSX.Element {
         }
       >
         <div className="grid gap-3">
-          <div className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3 text-sm text-neutral-300">
+          <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
             Expected headers (case-insensitive): <code className={ACCENT_TEXT}>name, sku, category, price, qty</code>.
             Extra columns are ignored.
           </div>
@@ -1173,7 +1173,7 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
           />
 
           {csvPreview && (
-            <div className="overflow-hidden rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70">
+            <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
               <table className="w-full text-sm">
                 <thead className="bg-white/5 text-left text-neutral-400">
                   <tr>

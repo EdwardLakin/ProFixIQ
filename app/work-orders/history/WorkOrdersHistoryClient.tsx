@@ -242,12 +242,12 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(200,122,67,0.18),#020617_82%)] px-4 py-6 text-white">
-      <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_65%,_#000)] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] sm:px-6 sm:py-6">
+    <div className="min-h-[calc(100vh-4rem)] desktop-backdrop px-4 py-6 text-white">
+      <div className="mx-auto max-w-6xl desktop-panel px-4 py-5 sm:px-6 sm:py-6">
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1">
               <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-neutral-200">
                 Work Order History
               </span>
@@ -380,7 +380,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                       </Link>
 
                       {r.custom_id ? (
-                        <span className="rounded-full border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] font-mono text-neutral-400">
+                        <span className="desktop-btn-secondary px-2 py-0.5 text-[10px] font-mono text-neutral-400">
                           #{r.id.slice(0, 6)}
                         </span>
                       ) : null}

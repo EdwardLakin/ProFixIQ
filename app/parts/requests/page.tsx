@@ -107,20 +107,20 @@ export default function PartsRequestsPage(): JSX.Element {
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
   const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
-  const ACCENT_BORDER = "border-[rgba(200,122,67,0.45)]";
-  const ACCENT_TEXT = "text-[rgba(242,210,187,0.94)]";
-  const ACCENT_HOVER_BG = "hover:bg-[rgba(200,122,67,0.14)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
+  const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
   const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
-    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const CARD_PAD = `${CARD} p-3`;
-  const INPUT = `w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const SELECT = `w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const INPUT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
-  const BTN_GHOST = `${BTN_BASE} border-[color:var(--metal-border-soft,#374151)] bg-black/70 hover:bg-white/5`;
+  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
   const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
@@ -492,7 +492,7 @@ export default function PartsRequestsPage(): JSX.Element {
 
           <div className="md:col-span-3">
             <div className="mb-1 text-xs text-neutral-400">Showing</div>
-            <div className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-neutral-200">
+            <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-200">
               <span className="font-semibold text-white">{filtered.length}</span>{" "}
               work order{filtered.length === 1 ? "" : "s"}
             </div>
@@ -562,7 +562,7 @@ export default function PartsRequestsPage(): JSX.Element {
                     <span>Completion</span>
                     <span className={ACCENT_TEXT}>{b.completionPct}%</span>
                   </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-white/10 bg-black/40">
+                  <div className="mt-1 h-2 w-full overflow-hidden desktop-pill">
                     <div
                       className="h-full rounded-full bg-white/20"
                       style={{ width: `${b.completionPct}%` }}
