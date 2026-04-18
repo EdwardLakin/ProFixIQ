@@ -123,14 +123,14 @@ export default function PortalShell({
   };
 
   const ShellCard =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+    "desktop-panel-soft rounded-3xl border p-4 backdrop-blur-md shadow-card sm:p-6";
 
   // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
       <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.18),transparent_60%)]" />
+          <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.15),transparent_60%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_68%)]" />
         </div>
 
@@ -151,7 +151,7 @@ export default function PortalShell({
           <button
             type="button"
             onClick={() => router.push("/portal")}
-            className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-100 hover:bg-black/70 active:scale-95"
+            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-neutral-100 active:scale-95"
           >
             <span className="uppercase tracking-[0.16em]">Home</span>
           </button>
@@ -167,7 +167,7 @@ export default function PortalShell({
   return (
     <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
+        <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.12),transparent_62%)]" />
         <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
       </div>
@@ -179,7 +179,7 @@ export default function PortalShell({
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95 md:hidden"
+            className="desktop-btn-secondary inline-flex h-8 w-8 items-center justify-center rounded-full border active:scale-95 md:hidden"
           >
             <MenuIcon />
           </button>
@@ -188,7 +188,7 @@ export default function PortalShell({
             type="button"
             onClick={() => setDesktopOpen((v) => !v)}
             aria-label="Toggle sidebar"
-            className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95"
+            className="desktop-btn-secondary hidden h-8 w-8 items-center justify-center rounded-full border active:scale-95 md:inline-flex"
           >
             <MenuIcon />
           </button>
@@ -206,23 +206,23 @@ export default function PortalShell({
 
           <Link
             href="/portal/request/when"
-            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
+            className="desktop-btn-primary inline-flex items-center rounded-full border px-3 py-1 text-[0.7rem] font-semibold transition active:scale-95"
           >
-            <span style={{ color: COPPER }}>Request</span>
+            <span>Request</span>
           </Link>
 
           <Link
             href="/portal/approvals"
-            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
+            className="desktop-btn-secondary inline-flex items-center rounded-full border px-3 py-1 text-[0.7rem] font-semibold transition active:scale-95"
           >
-            <span style={{ color: COPPER }}>Approvals</span>
+            <span>Approvals</span>
           </Link>
 
           <button
             type="button"
             onClick={() => void signOut()}
             disabled={signingOut}
-            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95 disabled:opacity-60"
+            className="desktop-btn-secondary inline-flex items-center rounded-full border px-3 py-1 text-[0.7rem] font-semibold transition active:scale-95 disabled:opacity-60"
             title="Sign out"
           >
             {signingOut ? "Signing out…" : "Sign out"}
@@ -233,7 +233,7 @@ export default function PortalShell({
       <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
         <aside
           className={cx(
-            "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
+            "desktop-panel-soft hidden overflow-hidden rounded-2xl border backdrop-blur-md shadow-card transition-all duration-300 md:flex md:flex-col",
             desktopOpen
               ? "w-72"
               : "w-0 border-transparent bg-transparent shadow-none",
@@ -280,8 +280,8 @@ export default function PortalShell({
               className="absolute inset-0 bg-black/60"
               onClick={() => setMobileOpen(false)}
             />
-            <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
-              <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
+            <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-[#020611]/95 backdrop-blur-xl">
+              <div className="flex items-center justify-between border-b border-[color:var(--desktop-border)] px-5 py-5">
                 <div>
                   <div
                     className="font-blackops text-lg tracking-[0.16em]"
@@ -294,7 +294,7 @@ export default function PortalShell({
                   </div>
                 </div>
                 <button
-                  className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-neutral-100"
+                  className="desktop-btn-secondary rounded-full border px-3 py-1 text-xs text-neutral-100"
                   onClick={() => setMobileOpen(false)}
                 >
                   Close

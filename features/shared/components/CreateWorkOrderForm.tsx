@@ -105,14 +105,14 @@ export default function CreateWorkOrderForm() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto mt-8 p-6 border border-orange-500 rounded-xl bg-black/60 backdrop-blur-md shadow-card text-white space-y-4">
-      <h2 className="text-3xl font-bold text-center text-yellow-400 font-blackops">
+    <div className="desktop-panel-soft mx-auto mt-8 max-w-2xl space-y-4 rounded-xl border p-6 text-white backdrop-blur-md shadow-card">
+      <h2 className="font-blackops text-center text-3xl font-bold text-[var(--theme-text-primary)]">
         Create Work Order
       </h2>
 
       {/* Customer Info */}
       <div>
-        <h3 className="text-xl font-semibold text-orange-400">
+        <h3 className="text-xl font-semibold text-[var(--theme-text-secondary)]">
           Customer Information
         </h3>
         <input
@@ -167,7 +167,7 @@ export default function CreateWorkOrderForm() {
 
       {/* Vehicle Info */}
       <div>
-        <h3 className="text-xl font-semibold text-orange-400">
+        <h3 className="text-xl font-semibold text-[var(--theme-text-secondary)]">
           Vehicle Information
         </h3>
         <div className="flex gap-2">
@@ -204,7 +204,7 @@ export default function CreateWorkOrderForm() {
 
       {/* Inspection Type */}
       <div>
-        <h3 className="text-xl font-semibold text-orange-400">Inspection</h3>
+        <h3 className="text-xl font-semibold text-[var(--theme-text-secondary)]">Inspection</h3>
         <select
           value={inspection}
           onChange={(e) => setInspection(e.target.value)}
@@ -219,7 +219,7 @@ export default function CreateWorkOrderForm() {
 
       {/* Concern Lines */}
       <div>
-        <h3 className="text-xl font-semibold text-orange-400">Concerns</h3>
+        <h3 className="text-xl font-semibold text-[var(--theme-text-secondary)]">Concerns</h3>
         {concerns.map((concern, index) => (
           <input
             key={index}
@@ -232,7 +232,7 @@ export default function CreateWorkOrderForm() {
         ))}
         <button
           onClick={handleAddConcern}
-          className="text-sm text-yellow-300 hover:underline mt-1"
+          className="mt-1 text-sm text-[var(--brand-accent)] hover:underline"
         >
           + Add Concern
         </button>
@@ -242,14 +242,14 @@ export default function CreateWorkOrderForm() {
       <button
         onClick={handleSubmit}
         disabled={loading}
-        className="w-full mt-4 py-3 font-blackops text-lg rounded bg-orange-600 hover:bg-orange-700 transition-all"
+        className="desktop-btn-primary mt-4 w-full rounded py-3 text-lg font-blackops transition-all"
       >
         {loading ? "Creating..." : "Create Work Order"}
       </button>
 
       {/* Message */}
       {message && (
-        <p className="text-center text-sm mt-2 text-yellow-300">{message}</p>
+        <p className="mt-2 text-center text-sm text-[var(--brand-accent)]">{message}</p>
       )}
     </div>
   );
