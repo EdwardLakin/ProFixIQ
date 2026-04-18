@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type Props = {
   shopId?: string | null;
@@ -22,10 +23,6 @@ export default function FleetUnitsPage({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [fleetFilter, setFleetFilter] = useState<string>("all");
-
-  const card =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   useEffect(() => {
     let cancelled = false;
@@ -107,35 +104,20 @@ export default function FleetUnitsPage({
   }, [units, search, fleetFilter]);
 
   return (
-    <div className="px-4 py-6 text-white">
-      <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash */}
-        <div
-          aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
-        />
+    <div className={ui.page}>
+      <div className={ui.container}>
+        <div aria-hidden className={ui.backdrop} />
 
         {/* Header */}
-        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),transparent_65%)]"
-          />
-          <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className={`${ui.panel} ${ui.panelPadding} relative overflow-hidden`}>
+          <div className={ui.headerTop}>
             <div>
-              <h1
-                className="text-xl font-bold tracking-[0.22em] text-sky-300 md:text-2xl uppercase"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                Fleet Units
-              </h1>
-              <p className="mt-1 text-xs text-neutral-300">
+              <h1 className={ui.title}>Fleet Units</h1>
+              <p className={ui.subtitle}>
                 Master list of tractors, trailers, buses and other HD assets
                 enrolled in fleet programs.
               </p>
-              <p className="mt-1 text-[11px] text-neutral-500">
-                Actor surface: {uiContext.actorLabel}
-              </p>
+              <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
             </div>
 
             <div className="flex flex-col gap-2 md:items-end">
@@ -145,7 +127,7 @@ export default function FleetUnitsPage({
               <select
                 value={fleetFilter}
                 onChange={(e) => setFleetFilter(e.target.value)}
-                className="min-w-[180px] rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white shadow-card backdrop-blur-xl"
+                className={`${ui.input} min-w-[180px] text-xs`}
               >
                 <option value="all">All fleets</option>
                 {fleets.map((f) => (
@@ -158,13 +140,13 @@ export default function FleetUnitsPage({
           </div>
 
           {/* Search */}
-          <div className="relative mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+          <div className={ui.toolbarRow}>
             <div className="relative flex-1">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by unit, plate, VIN, location…"
-                className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 shadow-card backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-sky-400/40"
+                className={ui.input}
               />
             </div>
 
@@ -175,7 +157,7 @@ export default function FleetUnitsPage({
         </div>
 
         {/* Content */}
-        <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
+        <div className={`${ui.panel} ${ui.panelPadding}`}>
           {error && (
             <div className="rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
               {error}

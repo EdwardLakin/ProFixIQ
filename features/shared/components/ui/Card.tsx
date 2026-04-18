@@ -14,10 +14,10 @@ export default function Card({ children, onClick, className }: CardProps) {
       onClick={onClick}
       className={cn(
         "rounded-[var(--theme-radius-xl,1rem)] border px-6 py-5 backdrop-blur-sm transition duration-200",
-        "border-[var(--theme-card-border,#334155)]",
-        "bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_94%,transparent)]",
+        "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
+        "bg-[var(--desktop-panel-bg,var(--theme-card-bg,#111827))]",
         "text-[var(--theme-text-primary,#FFFFFF)]",
-        "shadow-[var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))]",
+        "shadow-[var(--desktop-shadow-card,var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35)))]",
         onClick
           ? "cursor-pointer hover:-translate-y-[1px] hover:brightness-105"
           : "",
