@@ -3569,6 +3569,7 @@ export type Database = {
           next_inspection_date: string | null
           notes: string | null
           shop_id: string
+          updated_at: string
           vehicle_id: string
         }
         Insert: {
@@ -3580,6 +3581,7 @@ export type Database = {
           next_inspection_date?: string | null
           notes?: string | null
           shop_id: string
+          updated_at?: string
           vehicle_id: string
         }
         Update: {
@@ -3591,6 +3593,7 @@ export type Database = {
           next_inspection_date?: string | null
           notes?: string | null
           shop_id?: string
+          updated_at?: string
           vehicle_id?: string
         }
         Relationships: [
@@ -3684,6 +3687,7 @@ export type Database = {
           shop_id: string
           source: string
           status: string
+          updated_at: string
           vehicle_id: string
         }
         Insert: {
@@ -3700,6 +3704,7 @@ export type Database = {
           shop_id: string
           source?: string
           status?: string
+          updated_at?: string
           vehicle_id: string
         }
         Update: {
@@ -3716,6 +3721,7 @@ export type Database = {
           shop_id?: string
           source?: string
           status?: string
+          updated_at?: string
           vehicle_id?: string
         }
         Relationships: [
@@ -3860,6 +3866,7 @@ export type Database = {
           status: string
           summary: string
           title: string
+          updated_at: string
           vehicle_id: string
           work_order_id: string | null
         }
@@ -3875,6 +3882,7 @@ export type Database = {
           status?: string
           summary: string
           title: string
+          updated_at?: string
           vehicle_id: string
           work_order_id?: string | null
         }
@@ -3890,6 +3898,7 @@ export type Database = {
           status?: string
           summary?: string
           title?: string
+          updated_at?: string
           vehicle_id?: string
           work_order_id?: string | null
         }
@@ -3983,6 +3992,7 @@ export type Database = {
       fleet_vehicles: {
         Row: {
           active: boolean
+          created_at: string
           custom_interval_days: number | null
           custom_interval_hours: number | null
           custom_interval_km: number | null
@@ -3993,6 +4003,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          created_at?: string
           custom_interval_days?: number | null
           custom_interval_hours?: number | null
           custom_interval_km?: number | null
@@ -4003,6 +4014,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          created_at?: string
           custom_interval_days?: number | null
           custom_interval_hours?: number | null
           custom_interval_km?: number | null
@@ -12408,6 +12420,97 @@ export type Database = {
           },
         ]
       }
+      shopreel_drafts: {
+        Row: {
+          angle: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          opportunity_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          script: string | null
+          shop_id: string
+          status: Database["public"]["Enums"]["shopreel_draft_status"]
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          angle?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          script?: string | null
+          shop_id: string
+          status?: Database["public"]["Enums"]["shopreel_draft_status"]
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          angle?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          script?: string | null
+          shop_id?: string
+          status?: Database["public"]["Enums"]["shopreel_draft_status"]
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_drafts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_drafts_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: true
+            referencedRelation: "shopreel_opportunities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_drafts_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_drafts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_drafts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_drafts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shopreel_event_deliveries: {
         Row: {
           attempt_count: number
@@ -12718,6 +12821,169 @@ export type Database = {
           },
         ]
       }
+      shopreel_opportunities: {
+        Row: {
+          accepted_at: string | null
+          acted_by: string | null
+          angle: string | null
+          created_at: string
+          dismissed_at: string | null
+          event_type: string
+          first_generated_at: string | null
+          generated_at: string | null
+          id: string
+          shop_id: string
+          source_occurred_at: string
+          status: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          story_source_id: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          acted_by?: string | null
+          angle?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          event_type: string
+          first_generated_at?: string | null
+          generated_at?: string | null
+          id?: string
+          shop_id: string
+          source_occurred_at: string
+          status?: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          story_source_id: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          acted_by?: string | null
+          angle?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          event_type?: string
+          first_generated_at?: string | null
+          generated_at?: string | null
+          id?: string
+          shop_id?: string
+          source_occurred_at?: string
+          status?: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          story_source_id?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_opportunities_acted_by_fkey"
+            columns: ["acted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunities_story_source_id_fkey"
+            columns: ["story_source_id"]
+            isOneToOne: true
+            referencedRelation: "shopreel_story_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shopreel_opportunity_status_history: {
+        Row: {
+          action:
+            | Database["public"]["Enums"]["shopreel_opportunity_action"]
+            | null
+          changed_at: string
+          changed_by: string | null
+          id: string
+          next_status: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          note: string | null
+          opportunity_id: string
+          previous_status:
+            | Database["public"]["Enums"]["shopreel_opportunity_status"]
+            | null
+          shop_id: string
+        }
+        Insert: {
+          action?:
+            | Database["public"]["Enums"]["shopreel_opportunity_action"]
+            | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          next_status: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          note?: string | null
+          opportunity_id: string
+          previous_status?:
+            | Database["public"]["Enums"]["shopreel_opportunity_status"]
+            | null
+          shop_id: string
+        }
+        Update: {
+          action?:
+            | Database["public"]["Enums"]["shopreel_opportunity_action"]
+            | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          next_status?: Database["public"]["Enums"]["shopreel_opportunity_status"]
+          note?: string | null
+          opportunity_id?: string
+          previous_status?:
+            | Database["public"]["Enums"]["shopreel_opportunity_status"]
+            | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_opportunity_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunity_status_history_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "shopreel_opportunities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunity_status_history_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_opportunity_status_history_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shopreel_publications: {
         Row: {
           attempt_count: number
@@ -12943,6 +13209,60 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      shopreel_story_sources: {
+        Row: {
+          created_at: string
+          event_key: string
+          event_type: string
+          id: string
+          ingest_status: string
+          ingested_at: string
+          occurred_at: string
+          payload: Json
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_key: string
+          event_type: string
+          id?: string
+          ingest_status?: string
+          ingested_at?: string
+          occurred_at: string
+          payload?: Json
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_key?: string
+          event_type?: string
+          id?: string
+          ingest_status?: string
+          ingested_at?: string
+          occurred_at?: string
+          payload?: Json
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_story_sources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_story_sources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shops: {
         Row: {
@@ -20067,6 +20387,13 @@ export type Database = {
         | "end"
       quote_request_status: "pending" | "in_progress" | "done"
       shift_status: "active" | "ended"
+      shopreel_draft_status: "draft" | "in_review" | "approved"
+      shopreel_opportunity_action: "accepted" | "dismissed" | "generated"
+      shopreel_opportunity_status:
+        | "new"
+        | "accepted"
+        | "dismissed"
+        | "generated"
       stock_move_reason:
         | "receive"
         | "adjust"
@@ -20410,6 +20737,14 @@ export const Constants = {
       ],
       quote_request_status: ["pending", "in_progress", "done"],
       shift_status: ["active", "ended"],
+      shopreel_draft_status: ["draft", "in_review", "approved"],
+      shopreel_opportunity_action: ["accepted", "dismissed", "generated"],
+      shopreel_opportunity_status: [
+        "new",
+        "accepted",
+        "dismissed",
+        "generated",
+      ],
       stock_move_reason: [
         "receive",
         "adjust",
