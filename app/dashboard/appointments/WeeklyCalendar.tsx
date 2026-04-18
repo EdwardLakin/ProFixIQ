@@ -49,7 +49,7 @@ function statusPill(status?: string | null) {
   const s = (status || "pending").toLowerCase();
   if (s === "confirmed") return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
   if (s === "cancelled") return "border-red-500/30 bg-red-900/15 text-red-200";
-  return "border-orange-500/30 bg-orange-900/10 text-orange-200";
+  return "border-sky-400/30 bg-sky-900/20 text-sky-100";
 }
 
 function bookingCardStyle(status?: string | null) {
@@ -61,7 +61,7 @@ function bookingCardStyle(status?: string | null) {
     return "border-emerald-400/25 bg-emerald-500/10 hover:bg-emerald-500/15";
   }
   // pending
-  return "border-orange-400/30 bg-orange-500/10 hover:bg-orange-500/15";
+  return "border-sky-400/30 bg-sky-500/10 hover:bg-sky-500/20";
 }
 
 export default function WeeklyCalendar({
@@ -114,7 +114,7 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-white/10 bg-black/35 p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md overflow-hidden"
+            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md overflow-hidden"
           >
             {/* Day header */}
             <div className="flex items-center gap-2">
@@ -135,7 +135,7 @@ export default function WeeklyCalendar({
 
                 <span className="flex items-center gap-2">
                   {isToday ? (
-                    <span className="rounded-full bg-black/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
+                    <span className="rounded-full bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
                       Today
                     </span>
                   ) : null}
@@ -155,7 +155,7 @@ export default function WeeklyCalendar({
                   <div className="h-9 w-full animate-pulse rounded-xl border border-white/10 bg-white/5" />
                 </div>
               ) : dayBookings.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 bg-black/25 px-2 py-2 text-[0.65rem] text-neutral-500">
+                <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-[0.65rem] text-neutral-500">
                   No appointments
                 </div>
               ) : (

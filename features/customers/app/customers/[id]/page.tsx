@@ -38,8 +38,8 @@ const looksLikeUuid = (s: string | null): boolean =>
   !!s && s.includes("-") && s.length >= 36;
 
 const CARD_BASE =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-const CARD_INNER = "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/60";
+  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+const CARD_INNER = "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-[color:var(--desktop-item-bg)]";
 
 const STATUS_CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
@@ -97,8 +97,8 @@ function DetailRow({
   value: string | number | null | undefined;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-700/60 bg-black/40 px-3 py-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
         {label}
       </div>
       <div className="min-w-0 truncate text-sm font-medium text-white">
@@ -161,7 +161,7 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[color:var(--desktop-panel-bg-soft)] p-3"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -169,8 +169,8 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.95)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-800/60 px-4 py-3">
+      <div className="w-full max-w-2xl rounded-2xl border border-[color:var(--desktop-border)] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.95)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-white">
               {title}
@@ -179,14 +179,14 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 hover:bg-black/55"
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/55"
           >
             Close
           </button>
         </div>
         <div className="px-4 py-4">{children}</div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-slate-800/60 px-4 py-3">
+          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
             {footer}
           </div>
         ) : null}
@@ -216,14 +216,14 @@ function TopBar({
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-200 hover:bg-black/55 hover:text-white"
+        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/55 hover:text-white"
       >
         <span aria-hidden className="text-base leading-none">
           ←
         </span>
         Back
       </button>
-      <div className="text-[10px] text-slate-500">{rightLabel}</div>
+      <div className="text-[10px] text-neutral-500">{rightLabel}</div>
     </div>
   );
 }
@@ -876,7 +876,7 @@ export default function CustomerProfilePage(): JSX.Element {
               >
                 Customer Files
               </h1>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-neutral-400">
                 Search by name, email, or phone. Open a customer to view the full file.
               </p>
             </div>
@@ -893,7 +893,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   }
                 }}
                 placeholder="Search customers…"
-                className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
               <button
                 type="button"
@@ -908,9 +908,9 @@ export default function CustomerProfilePage(): JSX.Element {
 
           <div className="mt-4">
             {query.trim().length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>Start typing to search customers.</div>
+              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>Start typing to search customers.</div>
             ) : results.length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
+              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
                 {searching ? "Searching…" : "No matches yet."}
               </div>
             ) : (
@@ -922,7 +922,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       key={r.id}
                       type="button"
                       onClick={() => router.push(`/customers/${r.id}`)}
-                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(200,122,67,0.62)]`}
+                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[var(--accent-copper-soft)]/65`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -933,7 +933,7 @@ export default function CustomerProfilePage(): JSX.Element {
                                 ? r.name
                                 : fmtName(r)}
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] text-slate-400">
+                          <div className="mt-0.5 truncate text-[11px] text-neutral-400">
                             {r.business_name?.trim() && (r.first_name || r.last_name)
                               ? fmtName(r)
                               : r.business_name?.trim()
@@ -942,17 +942,17 @@ export default function CustomerProfilePage(): JSX.Element {
                                   ? fmtName(r)
                                   : "—"}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-slate-400">
+                          <div className="mt-0.5 text-[11px] text-neutral-400">
                             {r.email ?? "—"}
                             {phone ? (
                               <>
-                                <span className="mx-2 text-slate-600">•</span>
+                                <span className="mx-2 text-neutral-600">•</span>
                                 {phone}
                               </>
                             ) : null}
                           </div>
                         </div>
-                        <div className="text-[10px] text-slate-500">{safeDate(r.created_at)}</div>
+                        <div className="text-[10px] text-neutral-500">{safeDate(r.created_at)}</div>
                       </div>
                     </button>
                   );
@@ -970,9 +970,9 @@ export default function CustomerProfilePage(): JSX.Element {
     return (
       <PageShell>
         <div className={`${CARD_BASE} p-4`}>
-          <div className="text-sm text-slate-200">This route expects a customer id.</div>
-          <div className="mt-2 text-xs text-slate-400">
-            Use <span className="font-mono text-slate-200">/customers/search</span> to open the customer directory.
+          <div className="text-sm text-neutral-200">This route expects a customer id.</div>
+          <div className="mt-2 text-xs text-neutral-400">
+            Use <span className="font-mono text-neutral-200">/customers/search</span> to open the customer directory.
           </div>
           <div className="mt-4">
             <button
@@ -1033,14 +1033,14 @@ export default function CustomerProfilePage(): JSX.Element {
                         </h1>
 
                         {biz && (customer.first_name || customer.last_name) ? (
-                          <div className="mt-1 text-xs text-slate-400">{fmtName(customer)}</div>
+                          <div className="mt-1 text-xs text-neutral-400">{fmtName(customer)}</div>
                         ) : null}
 
-                        <div className="mt-2 text-sm text-slate-300">
+                        <div className="mt-2 text-sm text-neutral-300">
                           {customer.email ?? "—"}
                           {customer.phone ?? customer.phone_number ? (
                             <>
-                              <span className="mx-2 text-slate-600">•</span>
+                              <span className="mx-2 text-neutral-600">•</span>
                               {customer.phone ?? customer.phone_number}
                             </>
                           ) : null}
@@ -1049,7 +1049,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     );
                   })()}
 
-                  <div className="mt-2 text-sm leading-6 text-slate-400">
+                  <div className="mt-2 text-sm leading-6 text-neutral-400">
                     <div>{asText((customer as unknown as Record<string, unknown>)["address"])}</div>
                     <div>
                       {[
@@ -1068,7 +1068,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setEditCustomerOpen(true)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-sm font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
                   >
                     Edit customer
                   </button>
@@ -1095,14 +1095,14 @@ export default function CustomerProfilePage(): JSX.Element {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white sm:text-base">Vehicles</h2>
-                  <p className="mt-1 text-[11px] text-slate-400">Select a vehicle to view details and files.</p>
+                  <p className="mt-1 text-[11px] text-neutral-400">Select a vehicle to view details and files.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setAddVehicleOpen(true)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
                   >
                     + Add vehicle
                   </button>
@@ -1111,7 +1111,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     <select
                       value={selectedVehicleId ?? ""}
                       onChange={(e) => setSelectedVehicleId(e.target.value || null)}
-                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none"
+                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none"
                     >
                       {vehicles.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -1125,7 +1125,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => setEditVehicleOpen(true)}
-                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
+                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
                     >
                       Edit vehicle
                     </button>
@@ -1134,7 +1134,7 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {vehicles.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No vehicles linked to this customer yet.</div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}>No vehicles linked to this customer yet.</div>
               ) : selectedVehicle ? (
                 <div className="mt-3 space-y-3">
                   <div className={`${CARD_INNER} p-3`}>
@@ -1185,7 +1185,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
                     {vehicleExtraDetails.length > 0 ? (
                       <div className="mt-3">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                           Additional vehicle details
                         </div>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1205,7 +1205,7 @@ export default function CustomerProfilePage(): JSX.Element {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white sm:text-base">Work Order History</h2>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-1 text-[11px] text-neutral-400">
                     Showing {showAllHistory ? "all" : "latest 3"} work orders for this customer.
                   </p>
                 </div>
@@ -1222,7 +1222,7 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {workOrders.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No work orders yet.</div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}>No work orders yet.</div>
               ) : (
                 <div className="mt-3 space-y-2">
                   {historySlice.map((wo) => (
@@ -1230,7 +1230,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       key={wo.id}
                       type="button"
                       onClick={() => router.push(`/work-orders/${wo.id}`)}
-                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(200,122,67,0.62)]`}
+                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[var(--accent-copper-soft)]/65`}
                       title="Open work order"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -1240,7 +1240,7 @@ export default function CustomerProfilePage(): JSX.Element {
                               ? `WO ${(wo as unknown as Record<string, unknown>)["custom_id"] as string}`
                               : `WO #${wo.id.slice(0, 8)}`}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-slate-400">{safeDate(wo.created_at)}</div>
+                          <div className="mt-0.5 text-[11px] text-neutral-400">{safeDate(wo.created_at)}</div>
                         </div>
 
                         <span className={chipClass((wo as unknown as Record<string, unknown>)["status"] as string | null)}>
@@ -1258,7 +1258,7 @@ export default function CustomerProfilePage(): JSX.Element {
           <aside className="space-y-6">
             <div className={`${CARD_BASE} p-4`}>
               <h3 className="text-sm font-semibold text-white">Upload Vehicle Photos</h3>
-              <p className="mt-1 text-[11px] text-slate-400">Condition photos, damage evidence, before/after.</p>
+              <p className="mt-1 text-[11px] text-neutral-400">Condition photos, damage evidence, before/after.</p>
               <div className="mt-3">
                 <input
                   type="file"
@@ -1269,15 +1269,15 @@ export default function CustomerProfilePage(): JSX.Element {
                     if (f) void handleUpload(f, "photo");
                     e.currentTarget.value = "";
                   }}
-                  className="w-full text-sm text-slate-200"
+                  className="w-full text-sm text-neutral-200"
                 />
-                {uploadingPhoto ? <div className="mt-2 text-[11px] text-slate-400">Uploading photo…</div> : null}
+                {uploadingPhoto ? <div className="mt-2 text-[11px] text-neutral-400">Uploading photo…</div> : null}
               </div>
             </div>
 
             <div className={`${CARD_BASE} p-4`}>
               <h3 className="text-sm font-semibold text-white">Upload Documents</h3>
-              <p className="mt-1 text-[11px] text-slate-400">Registration, CVIP, inspection PDFs, misc docs.</p>
+              <p className="mt-1 text-[11px] text-neutral-400">Registration, CVIP, inspection PDFs, misc docs.</p>
               <div className="mt-3">
                 <input
                   type="file"
@@ -1288,10 +1288,10 @@ export default function CustomerProfilePage(): JSX.Element {
                     if (f) void handleUpload(f, "document");
                     e.currentTarget.value = "";
                   }}
-                  className="w-full text-sm text-slate-200"
+                  className="w-full text-sm text-neutral-200"
                 />
                 {uploadingDoc ? (
-                  <div className="mt-2 text-[11px] text-slate-400">Uploading document…</div>
+                  <div className="mt-2 text-[11px] text-neutral-400">Uploading document…</div>
                 ) : null}
               </div>
             </div>
@@ -1300,13 +1300,13 @@ export default function CustomerProfilePage(): JSX.Element {
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-semibold text-white">Vehicle Gallery & Files</h3>
-                  <p className="mt-1 text-[11px] text-slate-400">Files shown for the selected vehicle.</p>
+                  <p className="mt-1 text-[11px] text-neutral-400">Files shown for the selected vehicle.</p>
                 </div>
                 {selectedVehicleId ? (
                   <button
                     type="button"
                     onClick={() => void fetchRawMedia(selectedVehicleId)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[11px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
                   >
                     Refresh
                   </button>
@@ -1314,9 +1314,9 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {!selectedVehicleId ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>Select a vehicle to view files.</div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}>Select a vehicle to view files.</div>
               ) : media.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No files uploaded yet.</div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}>No files uploaded yet.</div>
               ) : (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {media.map((m) => {
@@ -1332,14 +1332,14 @@ export default function CustomerProfilePage(): JSX.Element {
                           setViewerItem(m);
                           setViewerOpen(true);
                         }}
-                        className="block overflow-hidden rounded-xl border border-slate-700/60 bg-black/40 hover:border-[rgba(200,122,67,0.62)]"
+                        className="block overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:border-[var(--accent-copper-soft)]/65"
                         title={title}
                       >
                         {img && url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={url} alt={title} className="h-28 w-full object-cover" />
                         ) : (
-                          <div className="flex h-28 w-full items-center justify-center px-2 text-center text-[11px] text-slate-300">
+                          <div className="flex h-28 w-full items-center justify-center px-2 text-center text-[11px] text-neutral-300">
                             Open file
                           </div>
                         )}
@@ -1367,7 +1367,7 @@ export default function CustomerProfilePage(): JSX.Element {
               href={viewerItem.displayUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
             >
               Open in new tab
             </a>
@@ -1375,16 +1375,16 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!viewerItem ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No file selected.</div>
+          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>No file selected.</div>
         ) : !viewerItem.displayUrl ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
             This file doesn’t have a viewable URL yet (likely a private bucket without a signed URL).
           </div>
         ) : viewerItem.kind === "photo" || isImageUrl(viewerItem.displayUrl) ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={viewerItem.displayUrl} alt={viewerItem.filename ?? "photo"} className="w-full rounded-xl" />
         ) : (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>Document ready. Use “Open in new tab”.</div>
+          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>Document ready. Use “Open in new tab”.</div>
         )}
       </Modal>
 
@@ -1398,7 +1398,7 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setEditCustomerOpen(false)}
-              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
             >
               Cancel
             </button>
@@ -1429,11 +1429,11 @@ export default function CustomerProfilePage(): JSX.Element {
             ] as const
           ).map(([label, key]) => (
             <div key={key} className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">{label}</div>
               <input
                 value={String(custDraft[key] ?? "")}
                 onChange={(e) => setCustDraft((p) => ({ ...p, [key]: e.target.value }))}
-                className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
             </div>
           ))}
@@ -1450,7 +1450,7 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setEditVehicleOpen(false)}
-              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
             >
               Cancel
             </button>
@@ -1465,7 +1465,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!selectedVehicle ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No vehicle selected.</div>
+          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>No vehicle selected.</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(
@@ -1490,7 +1490,7 @@ export default function CustomerProfilePage(): JSX.Element {
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">{label}</div>
                 <input
                   value={String(vehDraft[key] ?? "")}
                   onChange={(e) => {
@@ -1503,7 +1503,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       return { ...p, [key]: raw };
                     });
                   }}
-                  className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </div>
             ))}
@@ -1521,7 +1521,7 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setAddVehicleOpen(false)}
-              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
             >
               Cancel
             </button>
@@ -1537,7 +1537,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!customer ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No customer loaded.</div>
+          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>No customer loaded.</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(
@@ -1562,7 +1562,7 @@ export default function CustomerProfilePage(): JSX.Element {
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">{label}</div>
                 <input
                   value={String(newVeh[key] ?? "")}
                   onChange={(e) => {
@@ -1575,7 +1575,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       return { ...p, [key]: raw };
                     });
                   }}
-                  className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </div>
             ))}
