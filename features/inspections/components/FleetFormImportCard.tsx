@@ -1,4 +1,3 @@
-//features/inspections/components/FleetFormImportCard.tsx
 
 "use client";
 
@@ -476,9 +475,16 @@ export default function FleetFormImportCard() {
       <form
         onSubmit={handleSubmit}
         className="
-          desktop-panel relative p-5
+          relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)]
+          bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl p-5
         "
       >
+        {/* Copper glow wash */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_65%)]"
+        />
+
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
@@ -505,7 +511,8 @@ export default function FleetFormImportCard() {
               multiple
               onChange={handleFileChange}
               className="
-                desktop-input px-3 py-2 text-xs text-white
+                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-3 py-2 text-xs text-white
                 file:mr-2 file:rounded-lg file:border file:border-[color:var(--metal-border-soft,#374151)]
                 file:bg-black/50 file:px-3 file:py-1.5 file:text-[10px] file:uppercase
                 file:tracking-[0.18em] file:text-neutral-300
@@ -525,7 +532,8 @@ export default function FleetFormImportCard() {
               onChange={(e) => setTitleHint(e.target.value)}
               placeholder="ABC Logistics – Daily Truck Inspection"
               className="
-                desktop-input px-3 py-2 text-xs text-white placeholder:text-neutral-500
+                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-3 py-2 text-xs text-white placeholder:text-neutral-500
               "
             />
           </label>
@@ -574,7 +582,8 @@ export default function FleetFormImportCard() {
               value={vehicleType}
               onChange={(e) => setVehicleType(e.target.value)}
               className="
-                desktop-input px-3 py-2 text-xs text-white
+                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-3 py-2 text-xs text-white
               "
             >
               <option value="">Not specified</option>
@@ -592,7 +601,8 @@ export default function FleetFormImportCard() {
               value={dutyClass}
               onChange={(e) => setDutyClass(e.target.value as DutyClass | "")}
               className="
-                desktop-input px-3 py-2 text-xs text-white
+                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-3 py-2 text-xs text-white
               "
             >
               <option value="">Not specified</option>
@@ -611,7 +621,9 @@ export default function FleetFormImportCard() {
               disabled={loading}
               onClick={openCamera}
               className="
-                w-full desktop-btn-secondary px-4 py-2 text-[11px]
+                w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-neutral-200 hover:bg-black/80 hover:border-neutral-500
                 disabled:opacity-50
               "
             >
@@ -624,7 +636,9 @@ export default function FleetFormImportCard() {
               type="submit"
               disabled={!canSubmit}
               className="
-                w-full desktop-btn-secondary px-4 py-2 text-[11px]
+                w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)]
+                bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-neutral-200 hover:bg-black/80 hover:border-neutral-500
                 disabled:opacity-50
               "
             >
