@@ -13,6 +13,8 @@ import {
   trustLevelLabel,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -274,12 +276,12 @@ export default function ReceivePage(): JSX.Element {
   const locLabel = locs.find((l) => l.id === selectedLoc)?.code ?? "LOC";
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
-          <div className="text-sm text-neutral-400">Scan to Receive: fast intake via barcode/manual entry.</div>
-        </div>
+    <PageShell
+      eyebrow="Parts · Receiving"
+      title="Scan to Receive"
+      description="Fast intake via barcode or manual entry."
+    >
+      <div className="space-y-4">
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -290,7 +292,7 @@ export default function ReceivePage(): JSX.Element {
           </Link>
           <Link
             href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20scan-to-receive%20workflow%20and%20suggest%20the%20best%20next%20actions"
-            className="rounded border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-neutral-200 hover:border-sky-500/30 hover:text-sky-200"
+            className={ui.buttonSecondary}
           >
             Open Planner
           </Link>
@@ -301,11 +303,11 @@ export default function ReceivePage(): JSX.Element {
         Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>
       </div>
 
-      <div className="rounded border border-neutral-800 bg-neutral-900 p-3 grid gap-3 sm:grid-cols-3">
+      <div className="desktop-toolbar-row grid gap-3 p-3 sm:grid-cols-3">
         <div className="sm:col-span-1">
           <div className="text-xs text-neutral-400 mb-1">Purchase Order (optional)</div>
           <select
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className={ui.input}
             value={selectedPo}
             onChange={(e) => setSelectedPo(e.target.value)}
           >
@@ -321,7 +323,7 @@ export default function ReceivePage(): JSX.Element {
         <div>
           <div className="text-xs text-neutral-400 mb-1">Location</div>
           <select
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className={ui.input}
             value={selectedLoc}
             onChange={(e) => setSelectedLoc(e.target.value)}
           >
@@ -339,7 +341,7 @@ export default function ReceivePage(): JSX.Element {
             type="number"
             min={0.01}
             step="0.01"
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className={ui.input}
             value={qty}
             onChange={(e) => setQty(Math.max(0.01, Number(e.target.value || 1)))}
           />
@@ -347,7 +349,7 @@ export default function ReceivePage(): JSX.Element {
       </div>
 
       {/* Result panel */}
-      <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+      <div className="desktop-panel-soft p-3">
         <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-2">
           Last receive
         </div>
@@ -379,7 +381,7 @@ export default function ReceivePage(): JSX.Element {
         )}
       </div>
 
-      <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
+      <div className="desktop-panel-soft p-3">
         <div className="mb-2 flex items-center gap-2">
           {!scanning ? (
             <button
@@ -407,6 +409,6 @@ export default function ReceivePage(): JSX.Element {
           className="aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black"
         />
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -20,6 +20,8 @@ import {
 } from "@/features/parts/lib/trust-signals";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import type { ReceiveDrawerItem } from "@/features/parts/components/ReceiveDrawer";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
@@ -227,26 +229,24 @@ export default function ReceivingInboxPage(): JSX.Element {
   const poOptions = pos.map((po) => ({ value: String(po.id), label: `${String(po.id).slice(0, 8)} • ${String(po.status ?? "draft")}` }));
 
   return (
-    <div className="p-6 space-y-4 text-white">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts · Receiving Lens</div>
-          <h1 className="text-2xl font-bold">Receiving Inbox</h1>
-          <div className="text-sm text-neutral-400">Shared receive flow for request items with consistent status and trust context.</div>
-        </div>
-        <button onClick={() => void load(page)} className="rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm hover:bg-white/5">Refresh</button>
-      </div>
+    <PageShell
+      eyebrow="Parts · Receiving lens"
+      title="Receiving Inbox"
+      description="Shared receive flow for request items with consistent status and trust context."
+      actions={<button onClick={() => void load(page)} className={ui.buttonSecondary}>Refresh</button>}
+    >
+      <div className="space-y-4 text-white">
 
       <div className="text-xs text-neutral-500">
         Last updated <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-neutral-300">stale</span> : <span className="text-emerald-300">fresh</span>}
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4">
+      <div className="desktop-toolbar-row p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <select className="rounded-lg border border-white/10 bg-neutral-950/40 p-2" value={selectedLoc} onChange={(e) => setSelectedLoc(e.target.value)}>
+          <select className={ui.input} value={selectedLoc} onChange={(e) => setSelectedLoc(e.target.value)}>
             {locs.map((l) => <option key={String(l.id)} value={String(l.id)}>{l.code ?? "LOC"} — {l.name ?? ""}</option>)}
           </select>
-          <select className="rounded-lg border border-white/10 bg-neutral-950/40 p-2" value={selectedPo} onChange={(e) => setSelectedPo(e.target.value)}>
+          <select className={ui.input} value={selectedPo} onChange={(e) => setSelectedPo(e.target.value)}>
             <option value="">PO optional</option>
             {pos.map((po) => <option key={String(po.id)} value={String(po.id)}>{String(po.id).slice(0, 8)} • {String(po.status ?? "draft")}</option>)}
           </select>
@@ -254,12 +254,12 @@ export default function ReceivingInboxPage(): JSX.Element {
         </div>
       </div>
 
-      {err ? <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
-      {loading ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">Loading…</div> : null}
+      {err ? <div className="desktop-panel-soft border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
+      {loading ? <div className={ui.loadingState}>Loading…</div> : null}
 
       {!loading && items.length > 0 ? (
-        <div className="rounded-xl border border-white/10 bg-neutral-950/35 overflow-hidden">
-          <div className="border-b border-white/10 px-4 py-3 text-xs text-neutral-500">{items.length} of {totalCount} rows loaded · page {page}</div>
+        <div className="desktop-panel-soft overflow-hidden">
+          <div className="border-b border-[color:var(--desktop-border)] px-4 py-3 text-xs text-neutral-500">{items.length} of {totalCount} rows loaded · page {page}</div>
           <table className="w-full text-sm">
             <thead><tr className="text-left text-neutral-400"><th className="p-3">Part / Context</th><th className="p-3">Receive state</th><th className="p-3">Qty</th><th className="p-3"/></tr></thead>
             <tbody>
@@ -270,7 +270,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                 const itemState = toItemFlowDisplay({ rawStatus: it.status, qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 return (
-                  <tr key={it.id} className="border-t border-white/10 align-top">
+                  <tr key={it.id} className="border-t border-[color:var(--desktop-border)] align-top">
                     <td className="p-3.5">
                       <div className="font-semibold text-neutral-100">{partSummary?.name ?? it.description}</div>
                       <div className="mt-1 text-[11px] text-neutral-500">
@@ -280,7 +280,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                       {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}
                     </td>
                     <td className="p-3.5">
-                      <span className="inline-flex rounded-full border border-white/10 bg-black/40 px-2 py-1 text-xs">{receiveProgressLabel(recvState)}</span>
+                      <span className="desktop-link-chip">{receiveProgressLabel(recvState)}</span>
                       {trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                     </td>
                     <td className="p-3.5 tabular-nums text-neutral-200">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
@@ -290,13 +290,14 @@ export default function ReceivingInboxPage(): JSX.Element {
               })}
             </tbody>
           </table>
-          <div className="flex justify-between border-t border-white/10 p-3 text-xs"><button className="rounded border border-white/10 px-2 py-1" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button><button className="rounded border border-white/10 px-2 py-1" disabled={items.length < pageSize} onClick={() => setPage((p) => p + 1)}>Next</button></div>
+          <div className="flex justify-between border-t border-[color:var(--desktop-border)] p-3 text-xs"><button className="desktop-link-chip" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button><button className="desktop-link-chip" disabled={items.length < pageSize} onClick={() => setPage((p) => p + 1)}>Next</button></div>
         </div>
       ) : null}
 
-      {!loading && items.length === 0 ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">No outstanding receive items.</div> : null}
+      {!loading && items.length === 0 ? <div className={ui.emptyState}>No outstanding receive items.</div> : null}
 
       <ReceiveDrawer open={drawerOpen} item={drawerItem} onClose={() => { setDrawerOpen(false); setDrawerItem(null); void load(); }} locations={locOptions} defaultLocationId={selectedLoc || locOptions[0]?.value || ""} purchaseOrders={poOptions} defaultPoId={selectedPo || ""} />
-    </div>
+      </div>
+    </PageShell>
   );
 }
