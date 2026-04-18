@@ -475,14 +475,15 @@ export default function FleetFormImportCard() {
       <form
         onSubmit={handleSubmit}
         className="
-          relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)]
-          bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl p-5
+          relative rounded-2xl border border-[rgba(120,88,66,0.4)]
+          bg-[linear-gradient(180deg,rgba(13,11,10,0.92),rgba(7,7,8,0.96))]
+          shadow-[0_28px_90px_rgba(0,0,0,0.95)] backdrop-blur-xl p-5
         "
       >
         {/* Copper glow wash */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_65%)]"
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_16%_10%,rgba(200,122,67,0.2),transparent_48%),radial-gradient(circle_at_84%_8%,rgba(64,84,120,0.14),transparent_42%)]"
         />
 
         <div className="mb-3 flex items-center justify-between">
@@ -511,12 +512,12 @@ export default function FleetFormImportCard() {
               multiple
               onChange={handleFileChange}
               className="
-                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-3 py-2 text-xs text-white
-                file:mr-2 file:rounded-lg file:border file:border-[color:var(--metal-border-soft,#374151)]
-                file:bg-black/50 file:px-3 file:py-1.5 file:text-[10px] file:uppercase
+                rounded-xl border border-[rgba(125,134,153,0.56)]
+                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
+                file:mr-2 file:rounded-lg file:border file:border-[rgba(120,88,66,0.5)]
+                file:bg-[rgba(12,12,14,0.78)] file:px-3 file:py-1.5 file:text-[10px] file:uppercase
                 file:tracking-[0.18em] file:text-neutral-300
-                hover:file:bg-black/70
+                hover:file:bg-[rgba(20,18,16,0.88)]
               "
             />
             <span className="mt-1 text-[10px] text-neutral-500">
@@ -532,8 +533,8 @@ export default function FleetFormImportCard() {
               onChange={(e) => setTitleHint(e.target.value)}
               placeholder="ABC Logistics – Daily Truck Inspection"
               className="
-                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-3 py-2 text-xs text-white placeholder:text-neutral-500
+                rounded-xl border border-[rgba(125,134,153,0.56)]
+                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white placeholder:text-neutral-500
               "
             />
           </label>
@@ -541,7 +542,7 @@ export default function FleetFormImportCard() {
 
         {/* Selected files list */}
         {files.length > 0 && (
-          <div className="mb-4 rounded-xl border border-neutral-800 bg-black/50 p-3">
+          <div className="mb-4 rounded-xl border border-[rgba(84,96,122,0.5)] bg-[rgba(2,4,8,0.72)] p-3">
             <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
               Selected pages ({files.length})
             </div>
@@ -549,7 +550,7 @@ export default function FleetFormImportCard() {
               {files.map((f, idx) => (
                 <li
                   key={`${f.name}-${idx}`}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-neutral-800 bg-black/40 px-3 py-2"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(72,84,110,0.52)] bg-[rgba(1,2,4,0.7)] px-3 py-2"
                 >
                   <div className="min-w-0">
                     <div className="truncate text-xs text-neutral-200">
@@ -563,7 +564,7 @@ export default function FleetFormImportCard() {
                   <button
                     type="button"
                     onClick={() => handleRemove(idx)}
-                    className="rounded-full border border-neutral-700 bg-black/50 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/70"
+                    className="rounded-full border border-[rgba(120,88,66,0.44)] bg-[rgba(8,8,11,0.74)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-[rgba(17,13,11,0.88)]"
                     aria-label={`Remove ${f.name}`}
                   >
                     Remove
@@ -582,8 +583,8 @@ export default function FleetFormImportCard() {
               value={vehicleType}
               onChange={(e) => setVehicleType(e.target.value)}
               className="
-                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-3 py-2 text-xs text-white
+                rounded-xl border border-[rgba(125,134,153,0.56)]
+                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
               "
             >
               <option value="">Not specified</option>
@@ -601,8 +602,8 @@ export default function FleetFormImportCard() {
               value={dutyClass}
               onChange={(e) => setDutyClass(e.target.value as DutyClass | "")}
               className="
-                rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-3 py-2 text-xs text-white
+                rounded-xl border border-[rgba(125,134,153,0.56)]
+                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
               "
             >
               <option value="">Not specified</option>
@@ -621,9 +622,9 @@ export default function FleetFormImportCard() {
               disabled={loading}
               onClick={openCamera}
               className="
-                w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-neutral-200 hover:bg-black/80 hover:border-neutral-500
+                w-full rounded-xl border border-[rgba(120,88,66,0.45)]
+                bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-neutral-200 hover:bg-[rgba(18,15,13,0.9)] hover:border-[rgba(181,130,93,0.62)]
                 disabled:opacity-50
               "
             >
@@ -636,9 +637,9 @@ export default function FleetFormImportCard() {
               type="submit"
               disabled={!canSubmit}
               className="
-                w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-neutral-200 hover:bg-black/80 hover:border-neutral-500
+                w-full rounded-xl border border-[rgba(120,88,66,0.45)]
+                bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-neutral-200 hover:bg-[rgba(18,15,13,0.9)] hover:border-[rgba(181,130,93,0.62)]
                 disabled:opacity-50
               "
             >
@@ -667,15 +668,15 @@ export default function FleetFormImportCard() {
       {/* Camera modal (simple, dependency-free) */}
       {cameraOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-neutral-800 bg-black/80 shadow-[0_30px_120px_rgba(0,0,0,0.95)]">
-            <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[rgba(110,119,138,0.55)] bg-[linear-gradient(180deg,rgba(8,10,16,0.96),rgba(4,5,8,0.98))] shadow-[0_30px_120px_rgba(0,0,0,0.95)]">
+            <div className="flex items-center justify-between border-b border-[rgba(110,119,138,0.45)] px-4 py-3">
               <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-300">
                 Camera Capture
               </div>
               <button
                 type="button"
                 onClick={closeCamera}
-                className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/80"
+                className="rounded-full border border-[rgba(120,88,66,0.45)] bg-[rgba(8,9,12,0.8)] px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-[rgba(18,15,13,0.88)]"
               >
                 Close
               </button>
@@ -690,7 +691,7 @@ export default function FleetFormImportCard() {
                 <>
                   <video
                     ref={videoRef}
-                    className="aspect-video w-full rounded-xl border border-neutral-800 bg-black"
+                    className="aspect-video w-full rounded-xl border border-[rgba(110,119,138,0.45)] bg-black"
                     playsInline
                     muted
                   />
@@ -701,9 +702,9 @@ export default function FleetFormImportCard() {
                       type="button"
                       onClick={handleCapture}
                       className="
-                        rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                        bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                        text-neutral-200 hover:bg-black/80 hover:border-neutral-500
+                        rounded-xl border border-[rgba(120,88,66,0.45)]
+                        bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                        text-neutral-200 hover:bg-[rgba(18,15,13,0.9)] hover:border-[rgba(181,130,93,0.62)]
                       "
                     >
                       Capture

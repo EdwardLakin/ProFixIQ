@@ -158,21 +158,23 @@ export default function InspectionTemplatesPage() {
   }
 
   const headerCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[rgba(120,88,66,0.38)] " +
+    "bg-[linear-gradient(180deg,rgba(14,14,16,0.92),rgba(5,5,7,0.96))] " +
+    "shadow-[0_30px_90px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   const listCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[rgba(73,86,112,0.38)] " +
+    "bg-[linear-gradient(180deg,rgba(10,12,18,0.94),rgba(2,4,8,0.98))] " +
+    "shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border " +
     "transition-colors";
 
   // copper palette (replaces all orange usage)
-  const COPPER_18 = "rgba(200,122,67,0.18)";
-  const COPPER_20 = "rgba(200,122,67,0.20)";
-  const COPPER_14 = "rgba(200,122,67,0.14)";
+  const COPPER_22 = "rgba(200,122,67,0.22)";
+  const COPPER_26 = "rgba(200,122,67,0.26)";
+  const COPPER_16 = "rgba(200,122,67,0.16)";
   const COPPER_90 = "rgba(200,122,67,0.90)";
   const COPPER_70 = "rgba(200,122,67,0.70)";
   const COPPER_65 = "rgba(200,122,67,0.65)";
@@ -183,13 +185,17 @@ export default function InspectionTemplatesPage() {
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash (was orange) */}
+        {/* Atmospheric page wash */}
         <div
           aria-hidden
           className={`
             pointer-events-none fixed inset-0 -z-10
-            bg-[radial-gradient(circle_at_top,${COPPER_18},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]
+            bg-[radial-gradient(circle_at_14%_8%,${COPPER_22},transparent_44%),radial-gradient(circle_at_82%_24%,rgba(28,60,112,0.18),transparent_40%),radial-gradient(circle_at_bottom,rgba(7,10,18,0.98),#010103_76%)]
           `}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(2,4,9,0.25),rgba(0,0,0,0.78)_72%)]"
         />
 
         {/* Header + filters */}
@@ -197,9 +203,13 @@ export default function InspectionTemplatesPage() {
           <div
             aria-hidden
             className={`
-              pointer-events-none absolute inset-x-0 -top-10 h-24
-              bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_65%)]
+              pointer-events-none absolute inset-x-0 -top-12 h-28
+              bg-[radial-gradient(circle_at_top,${COPPER_26},transparent_64%)]
             `}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(9,10,14,0.05),rgba(2,2,4,0.35)_62%,rgba(1,1,2,0.62))]"
           />
 
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -217,7 +227,7 @@ export default function InspectionTemplatesPage() {
 
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               {/* Scope pills */}
-              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-black/60">
+              <div className="flex overflow-hidden rounded-full border border-[rgba(120,88,66,0.42)] bg-[rgba(2,4,9,0.78)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.45)]">
                 {(["mine", "shared", "all"] as Scope[]).map((s) => {
                   const isActive = scope === s;
                   return (
@@ -255,14 +265,14 @@ export default function InspectionTemplatesPage() {
           </div>
 
           {/* Search */}
-          <div className="relative mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+          <div className="relative mt-4 flex flex-col gap-2 rounded-2xl border border-[rgba(120,88,66,0.28)] bg-[linear-gradient(180deg,rgba(5,8,14,0.88),rgba(2,2,4,0.95))] p-3 md:flex-row md:items-center">
             <div className="relative flex-1">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name, description, or tags…"
                 className={`
-                  w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70
+                  w-full rounded-xl border border-[rgba(111,120,140,0.55)] bg-[rgba(2,5,11,0.92)]
                   px-3 py-2 text-sm text-white placeholder:text-neutral-500
                   focus:outline-none focus:ring-2 focus:ring-[${COPPER_55}]
                 `}
@@ -352,13 +362,13 @@ export default function InspectionTemplatesPage() {
                 return (
                   <li
                     key={t.id}
-                    className="relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.95)]"
+                    className="relative overflow-hidden rounded-2xl border border-[rgba(83,97,125,0.46)] bg-[linear-gradient(180deg,rgba(6,9,16,0.94),rgba(2,3,7,0.98))] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.95)]"
                   >
                     <div
                       aria-hidden
                       className={`
                         pointer-events-none absolute inset-x-0 -top-10 h-20
-                        bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]
+                        bg-[radial-gradient(circle_at_top,${COPPER_16},transparent_70%)]
                       `}
                     />
 
