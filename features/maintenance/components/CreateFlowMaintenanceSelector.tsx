@@ -134,12 +134,12 @@ export default function CreateFlowMaintenanceSelector({
   if (!enabled) return null;
 
   const softButtonClass =
-    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)] disabled:opacity-50";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)] disabled:opacity-50";
   const itemPanelClass =
-    "rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] px-3 py-3";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3";
 
   return (
-    <section className="rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5">
+    <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5">
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
@@ -182,7 +182,7 @@ export default function CreateFlowMaintenanceSelector({
       </div>
 
       {!canLoad ? (
-        <div className="rounded-xl border border-dashed border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-neutral-400">
           Save customer and vehicle first to load maintenance suggestions.
         </div>
       ) : error ? (
@@ -192,7 +192,7 @@ export default function CreateFlowMaintenanceSelector({
       ) : loading ? (
         <div className="text-sm text-neutral-400">Loading suggestions...</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-neutral-400">
           No active maintenance suggestions for this vehicle.
         </div>
       ) : (
@@ -215,7 +215,7 @@ export default function CreateFlowMaintenanceSelector({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-sm font-semibold text-white">{item.label}</div>
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-300">
+                        <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-300">
                           {item.serviceCode}
                         </span>
                       </div>

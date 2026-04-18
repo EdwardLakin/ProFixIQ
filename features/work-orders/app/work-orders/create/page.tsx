@@ -40,7 +40,7 @@ const COPPER = "#C57A4A";
 
 const card =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
-const divider = "border-white/10";
+const divider = "border-[color:var(--desktop-border)]";
 const sectionPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
 const childPanel =
@@ -1709,8 +1709,8 @@ useEffect(() => {
                         "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition",
                         isWaiter
                           ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
-                          : "border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)]",
-                        loading ? "opacity-60" : "hover:bg-white/5",
+                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
+                        loading ? "opacity-60" : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)]",
                       ].join(" ")}
                     >
                       <span
@@ -1730,7 +1730,7 @@ useEffect(() => {
                         "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
                         isWaiter
                           ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                          : "border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_65%,transparent)] text-neutral-400",
+                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-400",
                       ].join(" ")}
                     >
                       {isWaiter ? "Waiter" : "Drop-off"}
@@ -1908,7 +1908,7 @@ useEffect(() => {
                   type="checkbox"
                   checked={sendInvite}
                   onChange={(e) => setSendInvite(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/20 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)]"
+                  className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
                   disabled={loading}
                 />
                 Email a customer portal sign-up link
@@ -2144,7 +2144,7 @@ useEffect(() => {
             </section>
 
             {/* Footer actions */}
-            <div className="sticky bottom-3 z-10 rounded-2xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_85%,transparent)] p-3 backdrop-blur-xl">
+            <div className="sticky bottom-3 z-10 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 backdrop-blur-xl">
               <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
@@ -2220,7 +2220,7 @@ useEffect(() => {
                   <button
                     type="button"
                     onClick={dismissIntakeOnce}
-                    className="rounded-full border border-white/10 bg-black/50 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/65"
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)]"
                   >
                     Skip
                   </button>
@@ -2305,7 +2305,7 @@ useEffect(() => {
                       type="button"
                       onClick={dismissIntakeOnce}
                       disabled={intakeSaving}
-                      className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)] disabled:opacity-60"
                     >
                       Skip for now
                     </button>
@@ -2314,7 +2314,7 @@ useEffect(() => {
                       type="button"
                       onClick={dismissIntakeForever}
                       disabled={intakeSaving}
-                      className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-400 hover:text-neutral-200 hover:bg-black/65 disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-400 hover:text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)] disabled:opacity-60"
                     >
                       Don’t ask again
                     </button>

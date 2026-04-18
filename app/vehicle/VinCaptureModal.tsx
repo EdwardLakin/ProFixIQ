@@ -151,13 +151,13 @@ function ScannerPane({
   return (
     <div
       className={`space-y-3 ${
-        isBusy ? "ring-2 ring-orange-500 rounded-md animate-pulse" : ""
+        isBusy ? "ring-2 ring-cyan-500/60 rounded-md animate-pulse" : ""
       }`}
     >
       {isBusy && (
-        <div className="flex items-center gap-2 rounded border border-orange-500/60 bg-neutral-950 px-3 py-2">
-          <span className="inline-block h-4 w-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
-          <span className="text-xs text-orange-300">
+        <div className="flex items-center gap-2 rounded border border-cyan-500/50 bg-[color:var(--desktop-item-bg)] px-3 py-2">
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span className="text-xs text-cyan-100">
             Decoding VIN… this can take a moment
           </span>
         </div>
@@ -174,7 +174,7 @@ function ScannerPane({
       </div>
 
       {error ? (
-        <div className="text-xs text-amber-300">{error}</div>
+        <div className="text-xs text-slate-200">{error}</div>
       ) : (
         <div className="text-xs text-neutral-400">
           {active
@@ -192,7 +192,7 @@ function ScannerPane({
           type="file"
           accept="image/*"
           disabled={isBusy}
-          className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-orange-500 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-orange-400 disabled:opacity-60"
+          className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-[linear-gradient(135deg,rgba(197,122,74,0.9),rgba(197,122,74,0.75))] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-[linear-gradient(135deg,rgba(197,122,74,1),rgba(197,122,74,0.85))] disabled:opacity-60"
           onChange={async (e) => {
             if (isBusy) return;
             const file = e.target.files?.[0];

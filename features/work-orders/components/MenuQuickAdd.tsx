@@ -603,13 +603,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   const currency: "CAD" | "USD" = shopDefaults?.country === "CA" ? "CAD" : "USD";
   const panelClass =
-    "rounded-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_74%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
   const chipClass =
-    "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_68%,transparent)] px-2 py-0.5 text-[10px] text-neutral-300";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] text-neutral-300";
   const itemCardClass =
-    "flex flex-col rounded-lg border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] p-3 text-left text-sm hover:border-[color:var(--accent-copper,#C57A4A)]/50 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_63%,transparent)] disabled:opacity-60";
+    "flex flex-col rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-left text-sm hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] disabled:opacity-60";
   const softActionClass =
-    "rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#C57A4A)]/55 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_60%,transparent)]";
+    "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-sky-400/55 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]";
 
   return (
     <div className="space-y-5 text-white">
@@ -708,14 +708,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               value={menuQuery}
               onChange={(e) => setMenuQuery(e.target.value)}
               placeholder="Search menu items (e.g. brakes, alignment, oil)…"
-              className="w-full sm:w-[320px] rounded-md border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_66%,transparent)] px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-[color:var(--accent-copper,#C57A4A)] focus:outline-none"
+              className="w-full sm:w-[320px] rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-sky-400/70 focus:outline-none"
             />
             <label className="flex items-center gap-2 text-[11px] text-neutral-300">
               <input
                 type="checkbox"
                 checked={includeGlobal}
                 onChange={(e) => setIncludeGlobal(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_64%,transparent)]"
+                className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
               />
               Include global services
             </label>
@@ -758,7 +758,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                         GLOBAL
                       </span>
                     ) : (
-                      <span className="ml-2 rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-200">
+                      <span className="ml-2 rounded-full border border-cyan-500/60 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
                         FIT
                       </span>
                     )}

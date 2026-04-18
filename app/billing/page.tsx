@@ -358,7 +358,7 @@ export default function BillingPage(): JSX.Element {
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/work-orders/view"
-                className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
               >
                 Open work orders
               </Link>
@@ -564,7 +564,7 @@ export default function BillingPage(): JSX.Element {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Link
                       href={href}
-                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
                     >
                       Open WO
                     </Link>

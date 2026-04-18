@@ -36,7 +36,7 @@ function statusMeta(status: string | null | undefined): { label: string; classNa
 
   switch (s) {
     case "queued":
-      return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-[rgba(242,210,187,0.94)]" };
+      return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-sky-100" };
     case "awaiting_approval":
       return { label: "Awaiting approval", className: "border-sky-400/55 bg-sky-500/10 text-sky-100" };
     case "ready_to_invoice":

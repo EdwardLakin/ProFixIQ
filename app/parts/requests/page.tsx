@@ -120,7 +120,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
-  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
+  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]`;
   const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
