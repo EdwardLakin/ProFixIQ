@@ -246,7 +246,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       <div className="mx-auto max-w-6xl space-y-4">
         {/* Header */}
         <section className="overflow-hidden rounded-[26px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_48px_rgba(2,6,23,0.58)]">
-          <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.1),rgba(15,23,42,0.02))] px-4 py-4 sm:px-6">
+          <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(96,165,250,0.12),rgba(15,23,42,0.04))] px-4 py-4 sm:px-6">
             <div className="flex flex-wrap items-center gap-3">
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1">
@@ -261,7 +261,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
               <div className="ml-auto text-right text-xs text-neutral-400">
                 <div>
-                  <span className="font-mono text-sm font-semibold text-cyan-300">
+                  <span className="font-mono text-sm font-semibold text-sky-300">
                     {rows.length.toString().padStart(2, "0")}
                   </span>{" "}
                   <span className="uppercase tracking-[0.14em] text-neutral-500">Loaded</span>
@@ -289,7 +289,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && load()}
                 placeholder="ID, custom ID, status, name, VIN, plate, YMM…"
-                className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
+                className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-sky-400/65 focus:ring-2 focus:ring-sky-500/25"
               />
             </div>
 
@@ -299,7 +299,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
+                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/65 focus:ring-2 focus:ring-sky-500/25"
                 aria-label="From date"
               />
             </div>
@@ -310,7 +310,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
+                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/65 focus:ring-2 focus:ring-sky-500/25"
                 aria-label="To date"
               />
             </div>
@@ -319,7 +319,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               <button
                 type="button"
                 onClick={load}
-                className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-400/60 hover:bg-white/10"
+                className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-300/45 hover:bg-white/10"
               >
                 Apply
               </button>
@@ -380,7 +380,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/work-orders/view/${r.id}`}
-                        className="font-mono text-sm text-cyan-200 underline decoration-transparent underline-offset-2 hover:decoration-cyan-300"
+                        className="font-mono text-sm text-sky-200 underline decoration-transparent underline-offset-2 hover:decoration-sky-300"
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                       </Link>
@@ -411,7 +411,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
                       href={`/work-orders/invoice/${r.id}`}
-                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-400/60 hover:bg-white/10"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-300/45 hover:bg-white/10"
                       title="Open invoice inside ProFixIQ (staff view)"
                     >
                       View Invoice

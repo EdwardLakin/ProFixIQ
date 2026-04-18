@@ -95,7 +95,7 @@ function cardClass() {
 function fieldClass() {
   return [
     "mt-1 w-full rounded-md",
-    "border border-white/10 bg-black/40",
+    "border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
     "px-2 py-2 text-sm text-white outline-none",
     COPPER_FOCUS,
   ].join(" ");
@@ -103,9 +103,9 @@ function fieldClass() {
 
 function subtleButtonClass() {
   return [
-    "rounded-md border border-white/10 bg-black/30",
+    "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
     "px-2 py-1 text-xs text-white/90",
-    "hover:bg-black/45",
+    "hover:bg-white/10",
     COPPER_FOCUS,
   ].join(" ");
 }
@@ -116,7 +116,7 @@ function pillClass(status?: string | null) {
     return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
   if (s === "cancelled")
     return "border-red-500/25 bg-red-500/10 text-red-200";
-  return "border-orange-500/25 bg-orange-500/10 text-orange-200";
+  return "border-sky-400/30 bg-sky-500/10 text-sky-100";
 }
 
 function safeString(v: unknown): string {
@@ -497,7 +497,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       <Toaster position="top-center" />
 
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-500">Appointments</h1>
+        <h1 className="text-2xl font-blackops text-white">Appointments</h1>
         <p className="text-sm text-neutral-400">
           Admin / manager view of customer bookings for the week.
         </p>
@@ -530,14 +530,14 @@ export default function PortalAppointmentsPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-2">
+              <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-white/55">
                   Week
                 </div>
                 <div className="text-sm font-semibold text-white/90">{weekLabel}</div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-2">
+              <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-white/55">
                   This week
                 </div>
@@ -546,11 +546,11 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-orange-500/20 bg-orange-950/10 px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-orange-200/80">
+              <div className="rounded-xl border border-sky-500/25 bg-sky-950/20 px-3 py-2">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-sky-200/80">
                   Requests
                 </div>
-                <div className="text-sm font-semibold text-orange-100">{pending.length}</div>
+                <div className="text-sm font-semibold text-sky-100">{pending.length}</div>
               </div>
 
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-3 py-2">
@@ -674,7 +674,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
             </div>
 
             {filteredPending.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 bg-black/30 p-3 text-sm text-white/60">
+              <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-white/60">
                 No pending requests{query.trim() ? " matching your search." : " for this week."}
               </div>
             ) : (
@@ -689,7 +689,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                         "py-3 text-sm",
                         // subtle "actionable" highlight
                         "rounded-xl px-2 -mx-2",
-                        "bg-orange-500/[0.04] hover:bg-orange-500/[0.07]",
+                        "bg-sky-500/[0.05] hover:bg-sky-500/[0.1]",
                       ].join(" ")}
                     >
                       <div className="flex items-start gap-3">
@@ -755,7 +755,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                             </button>
 
                             {menuOpenFor === b.id ? (
-                              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-xl border border-white/10 bg-black/80 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+                              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
                                 <button
                                   type="button"
                                   className="w-full px-3 py-2 text-left text-sm text-white/90 hover:bg-white/5"
@@ -932,7 +932,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
             tabIndex={-1}
             aria-label="Close panel overlay"
           />
-          <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-3xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] p-4 shadow-[0_-18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+          <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-3xl border border-[color:var(--desktop-border)] bg-[var(--desktop-panel-bg)] p-4 shadow-[0_-18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-semibold text-white/95">
                 {panelMode === "edit" ? "Edit appointment" : "Create appointment"}
@@ -986,8 +986,8 @@ function TabButton({
         "rounded-full border px-3 py-1 text-xs font-semibold",
         "transition",
         active
-          ? "border-orange-500/35 bg-orange-500/10 text-orange-100"
-          : "border-white/10 bg-black/30 text-white/75 hover:bg-black/45",
+          ? "border-sky-400/35 bg-sky-500/10 text-sky-100"
+          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-white/75 hover:bg-white/10",
       ].join(" ")}
     >
       {children}
