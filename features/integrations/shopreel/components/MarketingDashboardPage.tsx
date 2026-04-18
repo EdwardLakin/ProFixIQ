@@ -3,6 +3,7 @@ import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
 import { getMarketingDashboardData } from "../server/getMarketingDashboardData";
 import RetryDeliveryButton from "./RetryDeliveryButton";
+import ShopReelLifecycleQueue from "./ShopReelLifecycleQueue";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -34,7 +35,7 @@ export default async function MarketingDashboardPage() {
     );
   }
 
-  const { integration, deliveries, kpis, sourceHealth, pipeline, needsAttention } = data;
+  const { integration, deliveries, sourceHealth, lifecycle, pipeline, needsAttention } = data;
 
   return (
     <PageShell title="Marketing">
@@ -86,27 +87,27 @@ export default async function MarketingDashboardPage() {
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Delivery attempts</div>
-            <div className="mt-2 text-2xl font-semibold">{kpis.attempts}</div>
-            <div className="mt-1 text-xs text-white/60">Last 40 logged events</div>
+            <div className="text-sm text-white/60">Story sources</div>
+            <div className="mt-2 text-2xl font-semibold">{lifecycle.sourceCount}</div>
+            <div className="mt-1 text-xs text-white/60">Ingested canonical source records</div>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Success rate</div>
-            <div className="mt-2 text-2xl font-semibold">{kpis.successRatePct == null ? "—" : `${kpis.successRatePct}%`}</div>
-            <div className="mt-1 text-xs text-white/60">{kpis.successCount} succeeded / {kpis.failedCount} failed</div>
+            <div className="text-sm text-white/60">New opportunities</div>
+            <div className="mt-2 text-2xl font-semibold">{lifecycle.newOpportunities}</div>
+            <div className="mt-1 text-xs text-white/60">Awaiting queue action</div>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Pending deliveries</div>
-            <div className="mt-2 text-2xl font-semibold">{kpis.pendingCount}</div>
-            <div className="mt-1 text-xs text-white/60">{kpis.stalePending} stale ({">"} 3h old)</div>
+            <div className="text-sm text-white/60">Dismissed / accepted</div>
+            <div className="mt-2 text-2xl font-semibold">{lifecycle.dismissedOpportunities} / {lifecycle.acceptedOpportunities}</div>
+            <div className="mt-1 text-xs text-white/60">Opportunity decisions</div>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Published content</div>
-            <div className="mt-2 text-2xl font-semibold">{pipeline.publicationsPublished}</div>
-            <div className="mt-1 text-xs text-white/60">{pipeline.publicationsScheduled} scheduled</div>
+            <div className="text-sm text-white/60">Drafts awaiting review</div>
+            <div className="mt-2 text-2xl font-semibold">{lifecycle.draftsAwaitingReview}</div>
+            <div className="mt-1 text-xs text-white/60">{lifecycle.approvedItems} approved</div>
           </div>
         </section>
 
@@ -156,10 +157,13 @@ export default async function MarketingDashboardPage() {
           </div>
         </section>
 
+
+
+        <ShopReelLifecycleQueue opportunities={lifecycle.opportunities} drafts={lifecycle.drafts} />
         <section className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
             <h2 className="text-lg font-semibold">Source ingest health</h2>
-            <p className="mt-1 text-sm text-white/60">Signals below are computed from delivery logs grouped by ShopReel event type.</p>
+            <p className="mt-1 text-sm text-white/60">Signals below are transport diagnostics from delivery logs grouped by ShopReel event type.</p>
 
             <div className="mt-4 space-y-2">
               {sourceHealth.map((eventHealth) => (

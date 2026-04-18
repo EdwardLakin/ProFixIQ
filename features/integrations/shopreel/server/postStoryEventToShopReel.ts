@@ -3,6 +3,7 @@ import { getShopReelIntegrationForShop } from "./getShopReelIntegrationForShop";
 import { createShopReelDeliveryLog, finalizeShopReelDeliveryLog } from "./recordShopReelDelivery";
 import { sanitizeProFixIQStoryEvent } from "./sanitizeProFixIQStoryEvent";
 import { signShopReelPayload } from "./signShopReelPayload";
+import { persistShopReelLifecycleSource } from "./persistShopReelLifecycleSource";
 import { getShopReelBaseUrl } from "./shopreelConfig";
 import type { ProFixIQStoryEvent } from "../types";
 
@@ -13,6 +14,12 @@ function buildIngestUrl(baseUrl: string) {
 export async function postStoryEventToShopReel(
   event: ProFixIQStoryEvent
 ): Promise<{ skipped?: boolean; ok: boolean; status?: number; message?: string }> {
+  try {
+    await persistShopReelLifecycleSource(event);
+  } catch (error) {
+    console.error("[shopreel] failed to persist lifecycle source", error);
+  }
+
   const integration = await getShopReelIntegrationForShop(event.source.shopId);
 
   if (!integration || !integration.enabled) {

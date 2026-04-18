@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import type { Database } from "@shared/types/types/supabase";
 import { DEFAULT_SHOPREEL_EVENT_TYPES, getShopReelBaseUrl } from "./shopreelConfig";
+import type { ShopReelDraftDto, ShopReelOpportunityDto, ShopReelStorySourceDto } from "../types";
 
 type DB = Database;
 type DeliveryStatus = "pending" | "success" | "failed";
@@ -55,6 +56,9 @@ function toDeliveryStatus(value: string): DeliveryStatus {
 
 export async function getMarketingDashboardData() {
   const supabase = createServerComponentClient<DB>({ cookies });
+  const lifecycleSupabase = supabase as unknown as {
+    from: (table: string) => ReturnType<typeof supabase.from>
+  };
 
   const {
     data: { user },
@@ -91,6 +95,9 @@ export async function getMarketingDashboardData() {
     { data: publishJobs },
     { data: socialConnections },
     { data: manualAssets },
+    { data: storySources },
+    { data: opportunities },
+    { data: drafts },
   ] = await Promise.all([
     supabase.from("shopreel_integrations").select("*").eq("shop_id", shopId).maybeSingle(),
     supabase
@@ -117,6 +124,24 @@ export async function getMarketingDashboardData() {
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(100),
+    lifecycleSupabase
+      .from("shopreel_story_sources")
+      .select("id, event_key, event_type, occurred_at, ingested_at")
+      .eq("shop_id", shopId)
+      .order("ingested_at", { ascending: false })
+      .limit(120),
+    lifecycleSupabase
+      .from("shopreel_opportunities")
+      .select("id, story_source_id, status, title, angle, summary, event_type, source_occurred_at, created_at, updated_at, accepted_at, dismissed_at, generated_at")
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: false })
+      .limit(120),
+    lifecycleSupabase
+      .from("shopreel_drafts")
+      .select("id, opportunity_id, status, title, angle, script, updated_at, reviewed_at")
+      .eq("shop_id", shopId)
+      .order("updated_at", { ascending: false })
+      .limit(120),
   ]);
 
   const typedDeliveries = (deliveries ?? []) as DeliveryRow[];
@@ -168,6 +193,48 @@ export async function getMarketingDashboardData() {
     return expiresAt.getTime() - Date.now() <= 3 * 24 * 60 * 60 * 1000;
   }).length;
 
+  const typedStorySources = ((storySources ?? []) as Array<Record<string, unknown>>).map((item) => ({
+    id: String(item.id),
+    eventKey: String(item.event_key),
+    eventType: String(item.event_type),
+    occurredAt: String(item.occurred_at),
+    ingestedAt: String(item.ingested_at),
+  })) as ShopReelStorySourceDto[];
+
+  const typedOpportunities = ((opportunities ?? []) as Array<Record<string, unknown>>).map((item) => ({
+    id: String(item.id),
+    storySourceId: String(item.story_source_id),
+    status: String(item.status) as ShopReelOpportunityDto["status"],
+    title: String(item.title ?? ""),
+    angle: typeof item.angle === "string" ? item.angle : null,
+    summary: typeof item.summary === "string" ? item.summary : null,
+    eventType: String(item.event_type),
+    sourceOccurredAt: String(item.source_occurred_at),
+    createdAt: String(item.created_at),
+    updatedAt: String(item.updated_at),
+    acceptedAt: typeof item.accepted_at === "string" ? item.accepted_at : null,
+    dismissedAt: typeof item.dismissed_at === "string" ? item.dismissed_at : null,
+    generatedAt: typeof item.generated_at === "string" ? item.generated_at : null,
+  })) as ShopReelOpportunityDto[];
+
+  const typedDrafts = ((drafts ?? []) as Array<Record<string, unknown>>).map((item) => ({
+    id: String(item.id),
+    opportunityId: String(item.opportunity_id),
+    status: String(item.status) as ShopReelDraftDto["status"],
+    title: String(item.title ?? ""),
+    angle: typeof item.angle === "string" ? item.angle : null,
+    script: typeof item.script === "string" ? item.script : null,
+    updatedAt: String(item.updated_at),
+    reviewedAt: typeof item.reviewed_at === "string" ? item.reviewed_at : null,
+  })) as ShopReelDraftDto[];
+
+  const lifecycleSourceCount = typedStorySources.length;
+  const lifecycleNewOpportunities = typedOpportunities.filter((item) => item.status === "new").length;
+  const lifecycleDismissedOpportunities = typedOpportunities.filter((item) => item.status === "dismissed").length;
+  const lifecycleAcceptedOpportunities = typedOpportunities.filter((item) => item.status === "accepted").length;
+  const lifecycleDraftsAwaitingReview = typedDrafts.filter((item) => item.status === "in_review").length;
+  const lifecycleApprovedDrafts = typedDrafts.filter((item) => item.status === "approved").length;
+
   const draftManualAssets = typedManualAssets.filter((item) => item.status === "draft").length;
 
   const needsAttention: string[] = [];
@@ -198,6 +265,10 @@ export async function getMarketingDashboardData() {
 
   if (publishJobsFailed > 0) {
     needsAttention.push(`${publishJobsFailed} publish job${publishJobsFailed === 1 ? " has" : "s have"} failed.`);
+  }
+
+  if (lifecycleNewOpportunities > 0) {
+    needsAttention.push(`${lifecycleNewOpportunities} lifecycle opportunit${lifecycleNewOpportunities === 1 ? "y is" : "ies are"} waiting in the queue.`);
   }
 
   return {
@@ -233,6 +304,39 @@ export async function getMarketingDashboardData() {
       stalePending,
     },
     sourceHealth: deliveryByEventType,
+    lifecycle: {
+      sourceCount: lifecycleSourceCount,
+      newOpportunities: lifecycleNewOpportunities,
+      dismissedOpportunities: lifecycleDismissedOpportunities,
+      acceptedOpportunities: lifecycleAcceptedOpportunities,
+      draftsAwaitingReview: lifecycleDraftsAwaitingReview,
+      approvedItems: lifecycleApprovedDrafts,
+      opportunities: typedOpportunities.map((item) => ({
+        id: item.id,
+        storySourceId: item.storySourceId,
+        status: item.status,
+        title: item.title,
+        angle: item.angle,
+        summary: item.summary,
+        eventType: item.eventType,
+        sourceOccurredAt: item.sourceOccurredAt,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        acceptedAt: item.acceptedAt,
+        dismissedAt: item.dismissedAt,
+        generatedAt: item.generatedAt,
+      })),
+      drafts: typedDrafts.map((item) => ({
+        id: item.id,
+        opportunityId: item.opportunityId,
+        status: item.status,
+        title: item.title,
+        angle: item.angle,
+        script: item.script,
+        updatedAt: item.updatedAt,
+        reviewedAt: item.reviewedAt,
+      })),
+    },
     pipeline: {
       publicationsQueued,
       publicationsScheduled,
