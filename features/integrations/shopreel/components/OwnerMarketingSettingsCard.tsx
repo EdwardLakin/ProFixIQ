@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@shared/components/ui/Button";
+import { DEFAULT_SHOPREEL_EVENT_TYPES } from "../server/shopreelConfig";
 
 type IntegrationState = {
   shopId: string;
@@ -15,15 +16,7 @@ type IntegrationState = {
   lastErrorMessage: string | null;
 };
 
-const DEFAULT_EVENT_TYPES = [
-  "inspection.completed",
-  "inspection.finding.flagged",
-  "inspection.media.captured",
-  "workorder.approved",
-  "workorder.completed",
-  "media.before_after.added",
-  "operations.signal",
-];
+const DEFAULT_EVENT_TYPES = [...DEFAULT_SHOPREEL_EVENT_TYPES];
 
 export default function OwnerMarketingSettingsCard({
   initialState,

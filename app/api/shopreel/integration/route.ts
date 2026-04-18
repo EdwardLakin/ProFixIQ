@@ -1,10 +1,13 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+import { DEFAULT_SHOPREEL_EVENT_TYPES, getShopReelBaseUrl } from "@/features/integrations/shopreel/server/shopreelConfig";
 
 type DB = Database;
+const ALLOWED_EVENT_TYPES = new Set<string>(DEFAULT_SHOPREEL_EVENT_TYPES);
 
 async function getOwnerShopContext() {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -66,17 +69,8 @@ export async function GET() {
       remoteShopId: data?.remote_shop_id ?? null,
       shopreelBaseUrl:
         data?.shopreel_base_url ??
-        process.env.SHOPREEL_BASE_URL ??
-        "https://shopreel.profixiq.com",
-      enabledEventTypes: data?.enabled_event_types ?? [
-        "inspection.completed",
-        "inspection.finding.flagged",
-        "inspection.media.captured",
-        "workorder.approved",
-        "workorder.completed",
-        "media.before_after.added",
-        "operations.signal",
-      ],
+        getShopReelBaseUrl(),
+      enabledEventTypes: data?.enabled_event_types ?? [...DEFAULT_SHOPREEL_EVENT_TYPES],
       lastTestedAt: data?.last_tested_at ?? null,
       lastSuccessAt: data?.last_success_at ?? null,
       lastErrorAt: data?.last_error_at ?? null,
@@ -93,7 +87,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { supabase, user, shopId } = context;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   const enabled = Boolean(body?.enabled);
   const remoteShopId =
@@ -103,18 +97,12 @@ export async function POST(request: NextRequest) {
   const shopreelBaseUrl =
     typeof body?.shopreelBaseUrl === "string" && body.shopreelBaseUrl.trim().length
       ? body.shopreelBaseUrl.trim()
-      : process.env.SHOPREEL_BASE_URL ?? "https://shopreel.profixiq.com";
+      : getShopReelBaseUrl();
   const enabledEventTypes = Array.isArray(body?.enabledEventTypes)
-    ? body.enabledEventTypes.filter((value: unknown): value is string => typeof value === "string")
-    : [
-        "inspection.completed",
-        "inspection.finding.flagged",
-        "inspection.media.captured",
-        "workorder.approved",
-        "workorder.completed",
-        "media.before_after.added",
-        "operations.signal",
-      ];
+    ? body.enabledEventTypes
+        .filter((value: unknown): value is string => typeof value === "string")
+        .filter((value: string) => ALLOWED_EVENT_TYPES.has(value))
+    : [...DEFAULT_SHOPREEL_EVENT_TYPES];
 
   const { data, error } = await supabase
     .from("shopreel_integrations")

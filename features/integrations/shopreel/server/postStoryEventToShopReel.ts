@@ -3,6 +3,7 @@ import { getShopReelIntegrationForShop } from "./getShopReelIntegrationForShop";
 import { createShopReelDeliveryLog, finalizeShopReelDeliveryLog } from "./recordShopReelDelivery";
 import { sanitizeProFixIQStoryEvent } from "./sanitizeProFixIQStoryEvent";
 import { signShopReelPayload } from "./signShopReelPayload";
+import { getShopReelBaseUrl } from "./shopreelConfig";
 import type { ProFixIQStoryEvent } from "../types";
 
 function buildIngestUrl(baseUrl: string) {
@@ -37,7 +38,7 @@ export async function postStoryEventToShopReel(
 
   const sanitized = sanitizeProFixIQStoryEvent(event);
   const requestUrl = buildIngestUrl(
-    integration.shopreel_base_url || process.env.SHOPREEL_BASE_URL || "https://shopreel.profixiq.com"
+    integration.shopreel_base_url || getShopReelBaseUrl()
   );
   const payload = JSON.stringify({
     ...sanitized,
@@ -81,7 +82,7 @@ export async function postStoryEventToShopReel(
     await supabase
       .from("shopreel_integrations")
       .update({
-        last_success_at: response.ok ? new Date().toISOString() : null,
+        ...(response.ok ? { last_success_at: new Date().toISOString() } : {}),
         last_error_at: response.ok ? null : new Date().toISOString(),
         last_error_message: response.ok ? null : `ShopReel responded with ${response.status}`,
       })
