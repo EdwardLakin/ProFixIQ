@@ -9,6 +9,8 @@ import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { deriveEventsFromQuote } from "@/features/shared/lib/decisionEvents";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 
@@ -28,10 +30,7 @@ type WorkOrderWithMeta = WorkOrder & {
   waiting_for_parts?: boolean;
 };
 
-const COPPER = "#C57A4A";
-
-const INPUT_DARK =
-  "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/50 focus:ring-2 focus:ring-sky-300/20";
+const INPUT_DARK = ui.input;
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
@@ -293,8 +292,8 @@ function ApprovalsList(): JSX.Element {
 
   return (
     <section className="space-y-4">
-      <div className="overflow-hidden rounded-[24px] border border-slate-300/15 bg-slate-950/65 shadow-[0_0_40px_rgba(2,6,23,0.75)]">
-        <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+      <div className={`${ui.panel} overflow-hidden`}>
+        <div className="border-b border-[color:var(--desktop-border)] px-5 py-4 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -304,13 +303,13 @@ function ApprovalsList(): JSX.Element {
               <p className="mt-1 text-sm text-neutral-400">Triage records ready for advisor review.</p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className={ui.pill}>
                   Total: <span className="text-white">{rows.length}</span>
                 </div>
-                <div className="rounded-full border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-[11px] font-semibold text-sky-100">
+                <div className={`${ui.pill} border-sky-500/30 bg-sky-500/10 text-sky-100`}>
                   Waiting for parts: <span className="text-white">{waitingCount}</span>
                 </div>
-                <div className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                <div className={`${ui.pill} border-emerald-500/30 bg-emerald-500/10 text-emerald-100`}>
                   Quotes ready: <span className="text-white">{readyCount}</span>
                 </div>
               </div>
@@ -319,7 +318,7 @@ function ApprovalsList(): JSX.Element {
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/work-orders/view"
-                className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+                className={ui.buttonSecondary}
               >
                 Open work orders
               </Link>
@@ -344,7 +343,7 @@ function ApprovalsList(): JSX.Element {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
+                className={ui.buttonSecondary}
               >
                 Refresh
               </button>
@@ -368,9 +367,9 @@ function ApprovalsList(): JSX.Element {
           return (
             <div
               key={w.id}
-              className={["overflow-hidden rounded-[18px] border bg-slate-950/65 shadow-[0_10px_30px_rgba(2,6,23,0.65)]", accent.border].join(" ")}
+              className={["desktop-item-card overflow-hidden", accent.border].join(" ")}
             >
-              <div className="border-b border-white/8 px-4 py-3">
+              <div className="border-b border-[color:var(--desktop-border)] px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -420,7 +419,7 @@ function ApprovalsList(): JSX.Element {
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                  <div className="desktop-panel-soft px-3 py-3">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                       Labor
                     </div>
@@ -429,7 +428,7 @@ function ApprovalsList(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                  <div className="desktop-panel-soft px-3 py-3">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                       Created
                     </div>
@@ -449,8 +448,7 @@ function ApprovalsList(): JSX.Element {
                   <Link
                     href={quoteHref}
                     prefetch={false}
-                    className="rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-3 py-1.5 text-sm font-semibold text-[color:var(--copper)] transition hover:bg-[color:var(--copper)]/15"
-                    style={{ ["--copper" as never]: COPPER }}
+                    className={ui.buttonPrimary}
                   >
                     Review
                   </Link>
@@ -458,7 +456,7 @@ function ApprovalsList(): JSX.Element {
                   <Link
                     href={woHref}
                     prefetch={false}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+                    className={ui.buttonSecondary}
                   >
                     Open WO
                   </Link>
@@ -482,24 +480,21 @@ export default function QuoteReviewIndexPage(): JSX.Element {
   }, [woId, router]);
 
   return (
-    <div
-      className="
-        min-h-screen px-4 py-6 text-foreground
-        bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.1),transparent_52%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      "
-      style={{ ["--copper" as never]: COPPER }}
+    <div className="px-4 py-6 text-foreground"
     >
       <div className="mx-auto max-w-7xl">
-        <div className="mb-4">
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-[color:var(--copper)] hover:underline"
-          >
-            ← Back
-          </button>
-        </div>
-
-        <ApprovalsList />
+        <PageShell
+          title="Quote Review Queue"
+          eyebrow="Work Orders"
+          description="Triage records ready for advisor review."
+          actions={
+            <button onClick={() => router.back()} className={ui.buttonSecondary}>
+              Back
+            </button>
+          }
+        >
+          <ApprovalsList />
+        </PageShell>
       </div>
     </div>
   );
