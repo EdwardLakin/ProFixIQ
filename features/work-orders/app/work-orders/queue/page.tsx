@@ -24,7 +24,7 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
 
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    `${ui.itemCard} hover:border-[color:var(--brand-accent,#E39A6E)] data-[active=true]:border-[color:var(--brand-accent,#E39A6E)] data-[active=true]:bg-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_12%,transparent)]`,
+    `${ui.itemCard} hover:border-sky-400/55 data-[active=true]:border-sky-400/60 data-[active=true]:bg-sky-500/10`,
   in_progress:
     `${ui.itemCard} hover:border-sky-400/60 data-[active=true]:border-sky-400/60 data-[active=true]:bg-sky-500/10`,
   on_hold:

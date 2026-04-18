@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
@@ -115,19 +117,17 @@ export default function StockMovementsPage(): JSX.Element {
   useEffect(() => { void load(); }, []);
 
   return (
-    <div className="space-y-4 p-6 text-white">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Parts · Traceability</div>
-          <h1 className="text-2xl font-bold">Stock movements</h1>
-          <div className="text-sm text-neutral-400">Ledger with direct source links for PO, request receive, and WO allocation context.</div>
-        </div>
-        <button onClick={() => void load()} className="rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm">Refresh</button>
-      </div>
+    <PageShell
+      eyebrow="Parts · Traceability"
+      title="Stock movements"
+      description="Ledger with direct source links for PO, request receive, and WO allocation context."
+      actions={<button onClick={() => void load()} className={ui.buttonSecondary}>Refresh</button>}
+    >
+      <div className="space-y-4 text-white">
 
-      {err ? <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
-      {loading ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">Loading…</div> : (
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/35">
+      {err ? <div className="desktop-panel-soft border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
+      {loading ? <div className={ui.loadingState}>Loading…</div> : (
+        <div className="desktop-panel-soft overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-neutral-400">
@@ -143,7 +143,7 @@ export default function StockMovementsPage(): JSX.Element {
                 const refId = String(m.reference_id ?? "");
                 const ctx = ctxMap[refId] ?? ctxMap[String(m.id)] ?? null;
                 return (
-                  <tr key={String(m.id)} className="border-t border-white/10 align-top">
+                  <tr key={String(m.id)} className="border-t border-[color:var(--desktop-border)] align-top">
                     <td className="p-3.5 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
                     <td className="p-3.5">
                       <div className="font-medium text-neutral-100">{partSummary?.name ?? "Unknown part"}</div>
@@ -156,8 +156,8 @@ export default function StockMovementsPage(): JSX.Element {
                     <td className="p-3.5"><div className="text-neutral-200">{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-neutral-500">{reasonLabel(m.reason)}</div></td>
                     <td className="p-3.5 text-xs">
                       <div className="flex flex-wrap gap-2">
-                        {ctx?.workOrderId ? <Link className="rounded border border-white/10 px-2 py-0.5 text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(ctx.workOrderId)}`}>WO {ctx.workOrderId.slice(0, 8)}</Link> : <span className="text-neutral-500">No WO</span>}
-                        {ctx?.requestItemId ? <span className="rounded border border-white/10 px-2 py-0.5 text-neutral-300">Req item {ctx.requestItemId.slice(0, 8)}</span> : null}
+                        {ctx?.workOrderId ? <Link className="desktop-link-chip hover:text-white" href={`/work-orders/${encodeURIComponent(ctx.workOrderId)}`}>WO {ctx.workOrderId.slice(0, 8)}</Link> : <span className="text-neutral-500">No WO</span>}
+                        {ctx?.requestItemId ? <span className="desktop-link-chip">Req item {ctx.requestItemId.slice(0, 8)}</span> : null}
                       </div>
                     </td>
                   </tr>
@@ -167,6 +167,7 @@ export default function StockMovementsPage(): JSX.Element {
           </table>
         </div>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }

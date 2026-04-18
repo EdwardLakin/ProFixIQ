@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type Alloc = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
@@ -121,27 +123,25 @@ export default function AllocationsPage(): JSX.Element {
   }, [rows, search]);
 
   return (
-    <div className="space-y-4 p-6 text-white">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Parts · Traceability</div>
-          <h1 className="text-2xl font-bold">Allocations</h1>
-          <div className="text-sm text-neutral-400">Track inventory committed to work orders with upstream request and stock move context.</div>
-        </div>
-        <Link href="/parts" className="rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm">Parts</Link>
+    <PageShell
+      eyebrow="Parts · Traceability"
+      title="Allocations"
+      description="Track inventory committed to work orders with upstream request and stock move context."
+      actions={<Link href="/parts" className={ui.buttonSecondary}>Parts</Link>}
+    >
+      <div className="space-y-4 text-white">
+
+      <div className="desktop-toolbar-row p-3">
+        <input className={ui.input} placeholder="Search WO, part, source request, move kind..." value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-3">
-        <input className="w-full rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm" placeholder="Search WO, part, source request, move kind..." value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
-      {loading ? <div className="rounded-xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">Loading…</div> : err ? <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">{err}</div> : (
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/35">
+      {loading ? <div className={ui.loadingState}>Loading…</div> : err ? <div className="desktop-panel-soft border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">{err}</div> : (
+        <div className="desktop-panel-soft overflow-hidden">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-neutral-400"><th className="p-3">WO</th><th className="p-3">Part</th><th className="p-3">Location</th><th className="p-3">Qty</th><th className="p-3">Upstream trace</th><th className="p-3">Created</th></tr></thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={String(r.a.id)} className="border-t border-white/10 align-top">
+                <tr key={String(r.a.id)} className="border-t border-[color:var(--desktop-border)] align-top">
                   <td className="p-3.5">{r.a.work_order_id ? <Link className="text-neutral-200 hover:text-white" href={`/work-orders/${encodeURIComponent(String(r.a.work_order_id))}`}>{r.wo?.custom_id ?? "Work order"}</Link> : <span className="text-neutral-500">—</span>}</td>
                   <td className="p-3.5">
                     {(() => {
@@ -159,7 +159,7 @@ export default function AllocationsPage(): JSX.Element {
                   <td className="p-3.5">{r.loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{r.loc?.name ?? ""}</span></td>
                   <td className="p-3.5 tabular-nums text-neutral-200">{r.a.qty}</td>
                   <td className="p-3.5 text-xs text-neutral-300">
-                    {r.req?.request_id ? <span className="rounded border border-white/10 px-2 py-0.5">Linked request</span> : <span className="text-neutral-500">No request link</span>}
+                    {r.req?.request_id ? <span className="desktop-link-chip">Linked request</span> : <span className="text-neutral-500">No request link</span>}
                     <div className="mt-1 text-neutral-500">{String(r.move?.reference_kind ?? "—").replaceAll("_", " ")} · {movementReasonLabel(r.move?.reason)}</div>
                   </td>
                   <td className="p-3.5 text-xs text-neutral-500">{r.a.created_at ? new Date(r.a.created_at).toLocaleString() : "—"}</td>
@@ -170,6 +170,7 @@ export default function AllocationsPage(): JSX.Element {
         </div>
       )}
       {!shopId ? <div className="text-xs text-neutral-500">No shop detected for this user.</div> : null}
-    </div>
+      </div>
+    </PageShell>
   );
 }

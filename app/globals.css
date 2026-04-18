@@ -68,7 +68,7 @@
   --desktop-border-strong: rgba(124, 155, 191, 0.56);
   --desktop-shadow-panel: 0 24px 72px rgba(0, 0, 0, 0.62);
   --desktop-shadow-card: 0 18px 45px rgba(0, 0, 0, 0.54);
-  --desktop-focus-ring: color-mix(in srgb, var(--brand-primary) 40%, #60a5fa);
+  --desktop-focus-ring: color-mix(in srgb, #60a5fa 70%, var(--brand-primary));
 
   --app-shell-bg:
     radial-gradient(circle at top, var(--desktop-bg-tint), transparent 52%),
@@ -257,7 +257,7 @@ select {
     font-family: var(--font-blackops), var(--font-inter), system-ui, sans-serif;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--brand-primary) 82%, #f3f4f6);
+    color: color-mix(in srgb, #dbeafe 82%, var(--brand-primary) 18%);
   }
 
   .desktop-toolbar-row {
@@ -299,15 +299,15 @@ select {
   }
 
   .desktop-pill-active {
-    border-color: color-mix(in srgb, var(--brand-primary) 66%, #facc15);
-    background: color-mix(in srgb, var(--brand-primary) 22%, rgba(6, 10, 19, 0.9));
+    border-color: color-mix(in srgb, #60a5fa 58%, var(--desktop-border));
+    background: color-mix(in srgb, #1d4ed8 20%, rgba(6, 10, 19, 0.9));
     color: #f8fafc;
   }
 
   .desktop-btn-primary {
     border-radius: 9999px;
-    border: 1px solid color-mix(in srgb, var(--brand-primary) 58%, #fbbf24);
-    background: linear-gradient(to right, color-mix(in srgb, var(--brand-primary) 88%, #f3f4f6), color-mix(in srgb, var(--brand-primary) 60%, #f59e0b));
+    border: 1px solid color-mix(in srgb, var(--brand-primary) 52%, #f59e0b);
+    background: linear-gradient(to right, color-mix(in srgb, var(--brand-primary) 78%, #f3f4f6), color-mix(in srgb, var(--brand-primary) 54%, #fb923c));
     color: #020617;
     text-transform: uppercase;
     letter-spacing: 0.16em;
@@ -321,6 +321,24 @@ select {
     color: #e5e7eb;
     text-transform: uppercase;
     letter-spacing: 0.16em;
+  }
+
+  .desktop-btn-danger {
+    border-radius: 9999px;
+    border: 1px solid color-mix(in srgb, #ef4444 68%, transparent);
+    background: color-mix(in srgb, #7f1d1d 35%, rgba(3, 8, 16, 0.78));
+    color: #fecaca;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+  }
+
+  .desktop-link-chip {
+    border-radius: 9999px;
+    border: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
+    background: rgba(3, 8, 16, 0.72);
+    padding: 0.2rem 0.55rem;
+    font-size: 11px;
+    color: #d1d5db;
   }
 }
 

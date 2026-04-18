@@ -60,10 +60,10 @@ const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 const INPUT_DARK =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 const SELECT_DARK =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 function isStatusKey(x: string): x is StatusKey {
   return (
@@ -105,8 +105,8 @@ function stageAccent(status: string | null | undefined): {
   if (key === "in_progress") {
     return {
       badge:
-        "border-[var(--accent-copper-light)]/70 bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]",
-      border: "border-[var(--accent-copper)]/30",
+        "border-sky-400/60 bg-sky-500/10 text-sky-100",
+      border: "border-sky-500/30",
       progress: "bg-[linear-gradient(90deg,#f59e0b,#c57a4a)]",
     };
   }
@@ -168,7 +168,7 @@ function stageAccent(status: string | null | undefined): {
 
 function techRollupChip(rollup: TechRollup): string {
   if (rollup === "in_progress") {
-    return "border-[var(--accent-copper-light)]/70 bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]";
+    return "border-sky-400/60 bg-sky-500/10 text-sky-100";
   }
   if (rollup === "on_hold") {
     return "border-amber-400/70 bg-amber-500/10 text-amber-100";
@@ -695,7 +695,7 @@ export default function WorkOrdersView(): JSX.Element {
 
             <Link
               href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/65 hover:bg-sky-500/10"
             >
               Open Planner
             </Link>
@@ -744,7 +744,7 @@ export default function WorkOrdersView(): JSX.Element {
               void load();
               setAssignVersion((v) => v + 1);
             }}
-            className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+            className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/65 hover:bg-sky-500/10"
           >
             Refresh
           </button>
@@ -825,7 +825,7 @@ export default function WorkOrdersView(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={href}
-                        className="text-sm font-extrabold text-white hover:text-[var(--accent-copper-light)]"
+                        className="text-sm font-extrabold text-white hover:text-sky-200"
                       >
                         {r.custom_id ?? `#${r.id.slice(0, 8)}`}
                       </Link>
@@ -913,7 +913,7 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href={href}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-sky-500/10"
                   >
                     Open
                   </Link>
@@ -952,7 +952,7 @@ export default function WorkOrdersView(): JSX.Element {
                       disabled={!reviewedOk}
                       className={
                         reviewedOk
-                          ? "rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25"
+                          ? "rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
                           : "rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-500 opacity-60"
                       }
                     >
