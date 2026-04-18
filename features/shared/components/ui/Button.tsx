@@ -26,22 +26,22 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const base =
   "inline-flex items-center justify-center rounded-[var(--theme-radius-md,0.5rem)] font-semibold transition duration-150 ease-in-out " +
   "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-  "focus:ring-[var(--brand-primary,#C97A3D)] focus:ring-offset-black";
+  "focus:ring-[var(--desktop-focus-ring,var(--brand-primary,#C97A3D))] focus:ring-offset-black";
 
 const variantClasses: Record<Exclude<Variant, "copper">, string> = {
   default: clsx(
     "border",
-    "text-[var(--theme-button-primary-text,#000000)]",
-    "border-[var(--theme-card-border,#334155)]",
-    "bg-[var(--theme-button-primary-bg,var(--brand-primary,#C97A3D))]",
-    "hover:brightness-110",
+    "text-[#020617]",
+    "border-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_58%,#fbbf24)]",
+    "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,#f3f4f6),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
+    "hover:brightness-105",
   ),
   secondary: clsx(
     "border",
     "text-[var(--theme-button-secondary-text,#FFFFFF)]",
-    "border-[var(--theme-card-border,#334155)]",
-    "bg-[var(--theme-button-secondary-bg,var(--theme-card-bg,#111827))]",
-    "hover:brightness-110",
+    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
+    "bg-[color:rgba(3,8,16,0.72)]",
+    "hover:bg-[rgba(3,8,16,0.84)]",
   ),
   destructive: clsx(
     "text-white",
@@ -52,14 +52,13 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
   ghost: clsx(
     "border",
     "text-[var(--theme-text-primary,#FFFFFF)]",
-    "border-[var(--theme-card-border,#334155)]",
-    "bg-transparent",
-    "hover:bg-white/5",
+    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
+    "bg-transparent hover:bg-white/5",
   ),
   outline: clsx(
     "border",
     "text-[var(--theme-text-primary,#FFFFFF)]",
-    "border-[var(--theme-card-border,#334155)]",
+    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
     "bg-transparent",
     "hover:bg-white/5",
   ),
@@ -67,10 +66,10 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
 
 const copperClass = clsx(
   "border",
-  "text-[var(--theme-button-primary-text,#000000)]",
-  "bg-[var(--theme-button-primary-bg,var(--brand-primary,#C97A3D))]",
-  "border-[var(--theme-card-border,#334155)]",
-  "hover:brightness-110",
+  "text-[#020617]",
+  "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,#f3f4f6),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
+  "border-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_58%,#fbbf24)]",
+  "hover:brightness-105",
   "shadow-[var(--theme-shadow-soft,0_0_0_1px_rgba(193,102,59,0.12),0_0_16px_rgba(193,102,59,0.18))]",
 );
 
