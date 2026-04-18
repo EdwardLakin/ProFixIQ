@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 import { useAssistant } from "@/features/assistant/hooks/useAssistant";
 import AssistantResponseCard from "@/features/assistant/components/AssistantResponseCard";
@@ -57,8 +58,8 @@ export default function AssistantPage() {
       title="Shop Assistant"
       description="Your universal shop intelligence surface for questions, explanations, and cross-record history."
     >
-      <div className="metal-card rounded-3xl p-5">
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+      <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
+        <div className="desktop-panel-soft p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
             Assistant scope
           </div>
@@ -66,10 +67,10 @@ export default function AssistantPage() {
             {contextChips.map((chip) => (
               <span
                 key={chip.label}
-                className={`rounded-full border px-3 py-1 text-xs ${
+                className={`desktop-pill px-3 py-1 text-xs ${
                   chip.active
-                    ? "border-orange-400/40 bg-orange-500/10 text-orange-300"
-                    : "border-white/15 bg-black/30 text-neutral-400"
+                    ? "border-[color:var(--brand-accent,#E39A6E)]/55 bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_16%,transparent)] text-[color:var(--brand-accent,#E39A6E)]"
+                    : "text-neutral-400"
                 }`}
               >
                 {chip.label}
@@ -87,15 +88,15 @@ export default function AssistantPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Ask a shop question, request an explanation, or compare records..."
-          className="mt-4 w-full min-h-[120px] rounded-2xl bg-black/60 p-3 text-white"
+          className="desktop-input min-h-[120px] w-full resize-y rounded-2xl px-3 py-2 text-white"
         />
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           {EXAMPLE_PROMPTS.map((example) => (
             <button
               key={example}
               type="button"
-              className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-xs text-neutral-300 hover:border-orange-400/40 hover:text-orange-200"
+              className="desktop-pill px-3 py-1 text-xs text-neutral-300 hover:border-[color:var(--brand-accent,#E39A6E)]/50 hover:text-[color:var(--brand-accent,#E39A6E)]"
               onClick={() => setQuery(example)}
             >
               {example}
