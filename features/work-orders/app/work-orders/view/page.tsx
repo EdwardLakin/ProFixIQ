@@ -107,7 +107,7 @@ function stageAccent(status: string | null | undefined): {
       badge:
         "border-sky-400/60 bg-sky-500/10 text-sky-100",
       border: "border-sky-500/30",
-      progress: "bg-[linear-gradient(90deg,#f59e0b,#c57a4a)]",
+      progress: "bg-[linear-gradient(90deg,#0ea5e9,#c57a4a)]",
     };
   }
 
@@ -192,10 +192,10 @@ function priorityChip(priority: number | null | undefined): string {
     return "border-red-500/50 bg-red-500/15 text-red-200";
   }
   if (priority === 2) {
-    return "border-orange-500/50 bg-orange-500/15 text-orange-200";
+    return "border-sky-500/50 bg-sky-500/15 text-sky-100";
   }
   if (priority === 4) {
-    return "border-slate-500/40 bg-slate-500/10 text-slate-300";
+    return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-slate-300";
   }
   return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-300";
 }
@@ -695,7 +695,7 @@ export default function WorkOrdersView(): JSX.Element {
 
             <Link
               href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[rgba(200,122,67,0.62)] hover:bg-[rgba(200,122,67,0.15)]"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
             >
               Open Planner
             </Link>
@@ -744,7 +744,7 @@ export default function WorkOrdersView(): JSX.Element {
               void load();
               setAssignVersion((v) => v + 1);
             }}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[rgba(200,122,67,0.62)] hover:bg-[rgba(200,122,67,0.15)]"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
           >
             Refresh
           </button>
@@ -762,7 +762,7 @@ export default function WorkOrdersView(): JSX.Element {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-64 animate-pulse rounded-2xl border border-white/10 bg-white/5"
+              className="h-64 animate-pulse rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
             />
           ))}
         </div>
@@ -814,7 +814,7 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div
                 key={r.id}
-                className={`rounded-2xl border bg-black/25 p-4 backdrop-blur transition hover:bg-black/30 ${accent.border}`}
+                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:bg-white/5 ${accent.border}`}
                 style={{
                   boxShadow:
                     "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
@@ -845,7 +845,7 @@ export default function WorkOrdersView(): JSX.Element {
                       </span>
 
                       {r.is_waiter ? (
-                        <span className="rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-100">
+                        <span className="rounded-full border border-sky-400/50 bg-sky-500/15 px-2 py-0.5 text-[11px] font-bold text-sky-100">
                           Waiting
                         </span>
                       ) : null}
@@ -866,7 +866,7 @@ export default function WorkOrdersView(): JSX.Element {
                             Reviewed ✓
                           </span>
                         ) : (
-                          <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-200">
+                          <span className="rounded-full border border-sky-500/50 bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-100">
                             Issues: {issueCount}
                           </span>
                         )
@@ -913,7 +913,7 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href={href}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-sky-500/10"
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
                   >
                     Open
                   </Link>
@@ -953,7 +953,7 @@ export default function WorkOrdersView(): JSX.Element {
                       className={
                         reviewedOk
                           ? "rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                          : "rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-500 opacity-60"
+                          : "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-500 opacity-60"
                       }
                     >
                       Invoice
@@ -1013,7 +1013,7 @@ export default function WorkOrdersView(): JSX.Element {
                               setAssigningFor(null);
                               setSelectedTechId("");
                             }}
-                            className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-white/10"
+                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-white/10"
                           >
                             Cancel
                           </button>

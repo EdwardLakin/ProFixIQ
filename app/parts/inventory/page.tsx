@@ -83,7 +83,7 @@ function Modal(props: {
         <div>{children}</div>
 
         {footer ? (
-          <div className={`mt-4 border-t border-white/10 pt-3 ${ACCENT_BORDER}`}>{footer}</div>
+          <div className={`mt-4 border-t border-[color:var(--desktop-border)] pt-3 ${ACCENT_BORDER}`}>{footer}</div>
         ) : null}
       </div>
     </div>
@@ -331,21 +331,20 @@ export default function InventoryPage(): JSX.Element {
 
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
-  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
   const pageWrap = "space-y-4 p-6 text-white";
   const glassCard =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const glassHeader = "bg-slate-950/55 border-b border-white/10";
+  const glassHeader = "bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] border-b border-[color:var(--desktop-border)]";
 
   const inputBase =
-    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
+    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-white/10 ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
+  const btnCopper = `${btnBase} border-[rgba(197,122,74,0.55)] ${ACCENT_TEXT} bg-[linear-gradient(135deg,rgba(197,122,74,0.22),rgba(197,122,74,0.12))] hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.3),rgba(197,122,74,0.18))]`;
   const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25`;
 
   const pillBase =
@@ -855,7 +854,7 @@ export default function InventoryPage(): JSX.Element {
         <div className={`${glassCard} overflow-hidden`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-white/5 text-neutral-400">
+              <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
                 <tr className="text-left">
                   <th className="p-3">Name</th>
                   <th className="w-40 p-3">SKU</th>
@@ -874,7 +873,7 @@ export default function InventoryPage(): JSX.Element {
                   const onHandPill = total > 0 ? pillOk : pillZero;
                   const trust = trustByPartId[p.id] ?? { level: "high", reasons: [] as string[] };
                   return (
-                    <tr key={p.id} className="border-t border-white/10">
+                    <tr key={p.id} className="border-t border-[color:var(--desktop-border)]">
                       <td className="p-3">
                         <div className="font-medium text-white">{summary.name}</div>
                         {/* Previously this subtitle rendered String(p.id).slice(0, 8), which exposed internal ids as unlabeled metadata. */}
@@ -922,7 +921,7 @@ export default function InventoryPage(): JSX.Element {
             </table>
           </div>
 
-          <div className="border-t border-white/10 px-5 py-3 text-xs text-neutral-500">
+          <div className="border-t border-[color:var(--desktop-border)] px-5 py-3 text-xs text-neutral-500">
             Tip: Click on-hand to see locations. {suspectCount} row(s) currently flagged for trust review.
           </div>
         </div>
@@ -1077,7 +1076,7 @@ export default function InventoryPage(): JSX.Element {
               </thead>
               <tbody>
                 {ohLines.map((l, i) => (
-                  <tr key={i} className="border-t border-white/10">
+                  <tr key={i} className="border-t border-[color:var(--desktop-border)]">
                     <td className="p-3">{l.location}</td>
                     <td className="p-3 tabular-nums">{l.qty}</td>
                   </tr>
@@ -1186,7 +1185,7 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
                 </thead>
                 <tbody>
                   {csvRows.map((r, i) => (
-                    <tr key={i} className="border-t border-white/10">
+                    <tr key={i} className="border-t border-[color:var(--desktop-border)]">
                       <td className="p-3">{r.name}</td>
                       <td className="p-3">{r.sku ?? "—"}</td>
                       <td className="p-3">{r.category ?? "—"}</td>

@@ -38,9 +38,9 @@ function statusMeta(status: string | null | undefined): { label: string; classNa
     case "queued":
       return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-[rgba(242,210,187,0.94)]" };
     case "awaiting_approval":
-      return { label: "Awaiting approval", className: "border-amber-400/55 bg-amber-500/10 text-amber-200" };
+      return { label: "Awaiting approval", className: "border-sky-400/55 bg-sky-500/10 text-sky-100" };
     case "ready_to_invoice":
-      return { label: "Ready to invoice", className: "border-orange-400/55 bg-orange-500/10 text-orange-200" };
+      return { label: "Ready to invoice", className: "border-cyan-400/55 bg-cyan-500/10 text-cyan-100" };
     case "invoiced":
       return { label: "Invoiced", className: "border-indigo-400/55 bg-indigo-500/10 text-indigo-200" };
     case "paid":
@@ -48,7 +48,7 @@ function statusMeta(status: string | null | undefined): { label: string; classNa
     case "completed":
       return { label: "Completed", className: "border-emerald-400/55 bg-emerald-500/10 text-emerald-200" };
     default:
-      return { label: status ? String(status) : "—", className: "border-white/15 bg-white/5 text-neutral-200" };
+      return { label: status ? String(status) : "—", className: "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-200" };
   }
 }
 
@@ -259,7 +259,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
           <div className="ml-auto text-right text-xs text-neutral-400">
             <div>
-              <span className="font-mono text-sm font-semibold text-orange-400">
+              <span className="font-mono text-sm font-semibold text-cyan-300">
                 {rows.length.toString().padStart(2, "0")}
               </span>{" "}
               <span className="uppercase tracking-[0.14em] text-neutral-500">Loaded</span>
@@ -275,7 +275,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         </div>
 
         {/* Filters bar */}
-        <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">
+        <div className="mb-5 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[220px] flex-1">
               <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
@@ -286,7 +286,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && load()}
                 placeholder="ID, custom ID, status, name, VIN, plate, YMM…"
-                className="w-full rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
               />
             </div>
 
@@ -296,7 +296,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
                 aria-label="From date"
               />
             </div>
@@ -307,7 +307,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30"
                 aria-label="To date"
               />
             </div>
@@ -316,14 +316,14 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               <button
                 type="button"
                 onClick={load}
-                className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-400/60 hover:bg-white/10"
               >
                 Apply
               </button>
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="rounded-full border border-neutral-700 bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
               >
                 Print
               </button>
@@ -347,11 +347,11 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
         {/* Content */}
         {loading ? (
-          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-6 text-sm text-neutral-400">
             Loading work orders…
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-6 text-sm text-neutral-400">
             No work orders found for this shop and date range.
           </div>
         ) : (
@@ -368,13 +368,13 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               return (
                 <div
                   key={r.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.24),_#020617_75%)]/90 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.9)] sm:flex-row sm:items-center"
+                  className="flex flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.9)] sm:flex-row sm:items-center"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/work-orders/view/${r.id}`}
-                        className="font-mono text-sm text-orange-300 underline decoration-transparent underline-offset-2 hover:decoration-orange-400"
+                        className="font-mono text-sm text-cyan-200 underline decoration-transparent underline-offset-2 hover:decoration-cyan-300"
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                       </Link>
@@ -405,7 +405,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
                       href={`/work-orders/invoice/${r.id}`}
-                      className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-400/60 hover:bg-white/10"
                       title="Open invoice inside ProFixIQ (staff view)"
                     >
                       View Invoice
@@ -416,7 +416,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                         href={r.invoice_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/80"
+                        className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-white/10"
                         title="Open customer portal invoice link"
                       >
                         Portal Link
@@ -426,7 +426,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                         href={r.quote_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/80"
+                        className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-white/10"
                         title="Open quote link"
                       >
                         Open Quote

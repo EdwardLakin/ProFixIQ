@@ -70,7 +70,7 @@ function priorityChip(priority: number | null | undefined): string {
     return "border-red-500/50 bg-red-500/15 text-red-200";
   }
   if (priority === 2) {
-    return "border-orange-500/50 bg-orange-500/15 text-orange-200";
+    return "border-sky-500/50 bg-sky-500/15 text-sky-100";
   }
   if (priority === 4) {
     return "border-slate-500/40 bg-slate-500/10 text-slate-300";
@@ -319,8 +319,8 @@ export default function BillingPage(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 bg-background px-4 py-6 text-foreground">
-      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.12),rgba(0,0,0,0.92)_38%,rgba(2,6,23,0.98)_100%)] shadow-[0_0_60px_rgba(0,0,0,0.8)]">
-        <div className="border-b border-white/8 px-5 py-5 sm:px-6">
+      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_0_50px_rgba(2,6,23,0.55)]">
+        <div className="border-b border-[color:var(--desktop-border)] px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -345,7 +345,7 @@ export default function BillingPage(): JSX.Element {
                   <div className="rounded-full border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-[11px] font-semibold text-sky-100">
                     Completed: <span className="text-white">{completedCount}</span>
                   </div>
-                  <div className="rounded-full border border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                  <div className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold text-sky-100">
                     Ready: <span className="text-white">{readyCount}</span>
                   </div>
                   <div className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-semibold text-emerald-100">
@@ -358,7 +358,7 @@ export default function BillingPage(): JSX.Element {
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/work-orders/view"
-                className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
               >
                 Open work orders
               </Link>
@@ -421,7 +421,7 @@ export default function BillingPage(): JSX.Element {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-64 animate-pulse rounded-[24px] border border-white/10 bg-white/5"
+              className="h-64 animate-pulse rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
             />
           ))}
         </div>
@@ -473,7 +473,7 @@ export default function BillingPage(): JSX.Element {
                   accent.border,
                 ].join(" ")}
               >
-                <div className="border-b border-white/8 px-4 py-4">
+                <div className="border-b border-[color:var(--desktop-border)] px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -564,7 +564,7 @@ export default function BillingPage(): JSX.Element {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Link
                       href={href}
-                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-white/10"
                     >
                       Open WO
                     </Link>
@@ -582,7 +582,7 @@ export default function BillingPage(): JSX.Element {
                       type="button"
                       onClick={() => void handleMarkReady(r.id)}
                       disabled={r.status === "invoiced" || r.status === "ready_to_invoice"}
-                      className="rounded-full border border-amber-400/70 bg-amber-500/10 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Mark ready to invoice"
                     >
                       Mark Ready

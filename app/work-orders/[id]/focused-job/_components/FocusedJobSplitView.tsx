@@ -14,7 +14,7 @@ export default function FocusedJobSplitView(props: {
   right: ReactNode;
 }): JSX.Element {
   return (
-    <div className="min-h-screen w-full bg-background text-foreground">
+    <div className="min-h-screen w-full desktop-backdrop text-foreground">
       <div className="mx-auto max-w-[1800px] px-3 py-4 sm:px-6 lg:px-8">
         <div className="grid min-h-0 gap-4 lg:grid-cols-12">
           {/* Left column */}
