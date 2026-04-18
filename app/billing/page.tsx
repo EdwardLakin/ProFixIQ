@@ -318,9 +318,9 @@ export default function BillingPage(): JSX.Element {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 bg-background px-4 py-6 text-foreground">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
       <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_0_50px_rgba(2,6,23,0.55)]">
-        <div className="border-b border-[color:var(--desktop-border)] px-5 py-5 sm:px-6">
+        <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.03))] px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -469,7 +469,7 @@ export default function BillingPage(): JSX.Element {
               <div
                 key={r.id}
                 className={[
-                  "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] shadow-[0_0_40px_rgba(0,0,0,0.55)]",
+                  "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[0_20px_44px_rgba(2,6,23,0.58)]",
                   accent.border,
                 ].join(" ")}
               >
@@ -561,7 +561,7 @@ export default function BillingPage(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-[color:var(--desktop-border)] pt-3">
                     <Link
                       href={href}
                       className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"

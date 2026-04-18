@@ -647,7 +647,8 @@ export default function WorkOrdersView(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
-      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur md:p-5">
+      <section className="overflow-hidden rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_22px_52px_rgba(2,6,23,0.58)]">
+        <div className="bg-[linear-gradient(180deg,rgba(56,189,248,0.1),rgba(15,23,42,0.02))] p-4 md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -688,7 +689,7 @@ export default function WorkOrdersView(): JSX.Element {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/assistant?pageType=work_orders&pageTitle=Work%20Orders"
-              className="inline-flex items-center justify-center rounded-full border border-[rgba(200,122,67,0.55)] bg-[rgba(200,122,67,0.16)] px-3.5 py-1.5 text-sm font-semibold text-[rgba(246,224,207,0.96)] transition hover:bg-[rgba(200,122,67,0.22)]"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--accent-copper-light)]/35 bg-[var(--accent-copper)]/15 px-3.5 py-1.5 text-sm font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/22"
             >
               Ask Assistant
             </Link>
@@ -709,9 +710,10 @@ export default function WorkOrdersView(): JSX.Element {
             </Link>
           </div>
         </div>
+        </div>
       </section>
 
-      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur">
+      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur shadow-[0_16px_36px_rgba(2,6,23,0.5)]">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
           <input
             value={q}

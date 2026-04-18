@@ -243,39 +243,42 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] desktop-backdrop px-4 py-6 text-white">
-      <div className="mx-auto max-w-6xl desktop-panel px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mx-auto max-w-6xl space-y-4">
         {/* Header */}
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1">
-              <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-neutral-200">
-                Work Order History
-              </span>
-            </div>
-            <p className="text-xs text-neutral-400">
-              All work orders for your shop (any status). Search, filter by date, export for reporting.
-            </p>
-          </div>
-
-          <div className="ml-auto text-right text-xs text-neutral-400">
-            <div>
-              <span className="font-mono text-sm font-semibold text-cyan-300">
-                {rows.length.toString().padStart(2, "0")}
-              </span>{" "}
-              <span className="uppercase tracking-[0.14em] text-neutral-500">Loaded</span>
-            </div>
-            {from || to ? (
-              <div className="mt-0.5 font-mono text-[11px] text-neutral-500">
-                Range: {from || "…"} → {to || "…"}
+        <section className="overflow-hidden rounded-[26px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_48px_rgba(2,6,23,0.58)]">
+          <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.1),rgba(15,23,42,0.02))] px-4 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1">
+                  <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-neutral-200">
+                    Work Order History
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-400">
+                  All work orders for your shop (any status). Search, filter by date, export for reporting.
+                </p>
               </div>
-            ) : (
-              <div className="mt-0.5 text-[11px] text-neutral-500">Showing last {rows.length} records loaded</div>
-            )}
+
+              <div className="ml-auto text-right text-xs text-neutral-400">
+                <div>
+                  <span className="font-mono text-sm font-semibold text-cyan-300">
+                    {rows.length.toString().padStart(2, "0")}
+                  </span>{" "}
+                  <span className="uppercase tracking-[0.14em] text-neutral-500">Loaded</span>
+                </div>
+                {from || to ? (
+                  <div className="mt-0.5 font-mono text-[11px] text-neutral-500">
+                    Range: {from || "…"} → {to || "…"}
+                  </div>
+                ) : (
+                  <div className="mt-0.5 text-[11px] text-neutral-500">Showing last {rows.length} records loaded</div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
 
         {/* Filters bar */}
-        <div className="mb-5 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">
+        <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[220px] flex-1">
               <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
@@ -337,6 +340,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
             </div>
           </div>
         </div>
+        </section>
+
+        <section className="desktop-panel px-4 py-5 sm:px-6 sm:py-6">
 
         {/* Error */}
         {err && (
@@ -440,6 +446,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
             })}
           </div>
         )}
+        </section>
       </div>
     </div>
   );
