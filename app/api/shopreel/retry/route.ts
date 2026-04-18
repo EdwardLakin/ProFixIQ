@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const { data: integration, error: integrationError } = await admin
     .from("shopreel_integrations")
-    .select("id, remote_shop_id, shopreel_base_url, enabled")
+    .select("id, remote_shop_id, shopreel_base_url, enabled, last_success_at")
     .eq("shop_id", shopId)
     .maybeSingle();
 
@@ -88,6 +88,13 @@ export async function POST(request: NextRequest) {
   if (!integration?.id || !integration.remote_shop_id) {
     return NextResponse.json(
       { error: "ShopReel integration is missing a remote shop ID." },
+      { status: 400 }
+    );
+  }
+
+  if (!integration.enabled) {
+    return NextResponse.json(
+      { error: "Enable the ShopReel integration before retrying a delivery." },
       { status: 400 }
     );
   }
@@ -159,7 +166,7 @@ export async function POST(request: NextRequest) {
     await admin
       .from("shopreel_integrations")
       .update({
-        last_success_at: response.ok ? new Date().toISOString() : null,
+        last_success_at: response.ok ? new Date().toISOString() : integration.last_success_at,
         last_error_at: response.ok ? null : new Date().toISOString(),
         last_error_message: response.ok ? null : `ShopReel responded with ${response.status}`,
       })

@@ -1,8 +1,12 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+import {
+  sanitizeShopReelEventTypes,
+} from "@/features/integrations/shopreel/constants";
 
 type DB = Database;
 
@@ -68,15 +72,7 @@ export async function GET() {
         data?.shopreel_base_url ??
         process.env.SHOPREEL_BASE_URL ??
         "https://shopreel.profixiq.com",
-      enabledEventTypes: data?.enabled_event_types ?? [
-        "inspection.completed",
-        "inspection.finding.flagged",
-        "inspection.media.captured",
-        "workorder.approved",
-        "workorder.completed",
-        "media.before_after.added",
-        "operations.signal",
-      ],
+      enabledEventTypes: sanitizeShopReelEventTypes(data?.enabled_event_types),
       lastTestedAt: data?.last_tested_at ?? null,
       lastSuccessAt: data?.last_success_at ?? null,
       lastErrorAt: data?.last_error_at ?? null,
@@ -104,17 +100,7 @@ export async function POST(request: NextRequest) {
     typeof body?.shopreelBaseUrl === "string" && body.shopreelBaseUrl.trim().length
       ? body.shopreelBaseUrl.trim()
       : process.env.SHOPREEL_BASE_URL ?? "https://shopreel.profixiq.com";
-  const enabledEventTypes = Array.isArray(body?.enabledEventTypes)
-    ? body.enabledEventTypes.filter((value: unknown): value is string => typeof value === "string")
-    : [
-        "inspection.completed",
-        "inspection.finding.flagged",
-        "inspection.media.captured",
-        "workorder.approved",
-        "workorder.completed",
-        "media.before_after.added",
-        "operations.signal",
-      ];
+  const enabledEventTypes = sanitizeShopReelEventTypes(body?.enabledEventTypes);
 
   const { data, error } = await supabase
     .from("shopreel_integrations")
@@ -143,7 +129,7 @@ export async function POST(request: NextRequest) {
       enabled: data.enabled,
       remoteShopId: data.remote_shop_id,
       shopreelBaseUrl: data.shopreel_base_url,
-      enabledEventTypes: data.enabled_event_types,
+      enabledEventTypes: sanitizeShopReelEventTypes(data.enabled_event_types),
       lastTestedAt: data.last_tested_at,
       lastSuccessAt: data.last_success_at,
       lastErrorAt: data.last_error_at,

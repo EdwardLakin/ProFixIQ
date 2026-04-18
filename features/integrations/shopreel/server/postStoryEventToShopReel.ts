@@ -4,6 +4,7 @@ import { createShopReelDeliveryLog, finalizeShopReelDeliveryLog } from "./record
 import { sanitizeProFixIQStoryEvent } from "./sanitizeProFixIQStoryEvent";
 import { signShopReelPayload } from "./signShopReelPayload";
 import type { ProFixIQStoryEvent } from "../types";
+import { sanitizeShopReelEventTypes } from "../constants";
 
 function buildIngestUrl(baseUrl: string) {
   return `${baseUrl.replace(/\/+$/, "")}/api/integrations/profixiq/events`;
@@ -22,11 +23,31 @@ export async function postStoryEventToShopReel(
     };
   }
 
-  if (!integration.enabled_event_types.includes(event.eventType)) {
+  const enabledEventTypes = sanitizeShopReelEventTypes(integration.enabled_event_types);
+
+  if (!enabledEventTypes.includes(event.eventType)) {
     return {
       skipped: true,
       ok: true,
       message: "Event type is disabled for this shop.",
+    };
+  }
+
+  if (!integration.remote_shop_id) {
+    const message = "ShopReel integration is missing a remote shop ID.";
+    const supabase = createAdminClient();
+    await supabase
+      .from("shopreel_integrations")
+      .update({
+        last_error_at: new Date().toISOString(),
+        last_error_message: message,
+      })
+      .eq("id", integration.id);
+
+    return {
+      skipped: true,
+      ok: true,
+      message,
     };
   }
 
@@ -81,7 +102,7 @@ export async function postStoryEventToShopReel(
     await supabase
       .from("shopreel_integrations")
       .update({
-        last_success_at: response.ok ? new Date().toISOString() : null,
+        last_success_at: response.ok ? new Date().toISOString() : integration.last_success_at,
         last_error_at: response.ok ? null : new Date().toISOString(),
         last_error_message: response.ok ? null : `ShopReel responded with ${response.status}`,
       })

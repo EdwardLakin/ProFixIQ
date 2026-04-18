@@ -416,7 +416,7 @@ export const TILES: Tile[] = [
     href: "/dashboard/marketing",
     title: "Marketing",
     subtitle: "ShopReel sync & activity",
-    roles: ["owner", "admin"],
+    roles: ["owner"],
     scopes: ["management", "all"],
     section: "Admin",
   },

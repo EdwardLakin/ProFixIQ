@@ -1,6 +1,10 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  getDefaultShopReelEventTypes,
+  sanitizeShopReelEventTypes,
+} from "../constants";
 
 type DB = Database;
 
@@ -61,7 +65,7 @@ export async function getMarketingDashboardData() {
           lastSuccessAt: integration.last_success_at,
           lastErrorAt: integration.last_error_at,
           lastErrorMessage: integration.last_error_message,
-          enabledEventTypes: integration.enabled_event_types ?? [],
+          enabledEventTypes: sanitizeShopReelEventTypes(integration.enabled_event_types),
         }
       : {
           enabled: false,
@@ -72,7 +76,7 @@ export async function getMarketingDashboardData() {
           lastSuccessAt: null,
           lastErrorAt: null,
           lastErrorMessage: null,
-          enabledEventTypes: [],
+          enabledEventTypes: getDefaultShopReelEventTypes(),
         },
     deliveries:
       deliveries?.map((delivery) => ({

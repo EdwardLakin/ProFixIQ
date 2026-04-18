@@ -3,6 +3,7 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import OwnerMarketingSettingsCard from "@/features/integrations/shopreel/components/OwnerMarketingSettingsCard";
+import { getDefaultShopReelEventTypes } from "@/features/integrations/shopreel/constants";
 
 type DB = Database;
 
@@ -67,12 +68,7 @@ export default async function OwnerMarketingPage() {
               process.env.SHOPREEL_BASE_URL ??
               "https://shopreel.profixiq.com",
             enabledEventTypes: integration?.enabled_event_types ?? [
-              "inspection.completed",
-              "inspection.finding.flagged",
-              "inspection.media.captured",
-              "workorder.approved",
-              "workorder.completed",
-              "media.before_after.added",
+              ...getDefaultShopReelEventTypes(),
             ],
             lastTestedAt: integration?.last_tested_at ?? null,
             lastSuccessAt: integration?.last_success_at ?? null,

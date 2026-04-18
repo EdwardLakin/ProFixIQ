@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@shared/components/ui/Button";
+import { SHOPREEL_EVENT_TYPES } from "../constants";
 
 type IntegrationState = {
   shopId: string;
@@ -14,16 +15,6 @@ type IntegrationState = {
   lastErrorAt: string | null;
   lastErrorMessage: string | null;
 };
-
-const DEFAULT_EVENT_TYPES = [
-  "inspection.completed",
-  "inspection.finding.flagged",
-  "inspection.media.captured",
-  "workorder.approved",
-  "workorder.completed",
-  "media.before_after.added",
-  "operations.signal",
-];
 
 export default function OwnerMarketingSettingsCard({
   initialState,
@@ -178,7 +169,7 @@ export default function OwnerMarketingSettingsCard({
       <div className="space-y-2">
         <div className="text-sm font-medium text-white">Enabled event types</div>
         <div className="grid gap-2">
-          {DEFAULT_EVENT_TYPES.map((eventType) => (
+          {SHOPREEL_EVENT_TYPES.map((eventType) => (
             <label
               key={eventType}
               className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm text-white"
