@@ -200,16 +200,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
   const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
-  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
+  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
   const pageWrap = "space-y-3 p-4 text-white";
   const glassCard =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
-    "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
-  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
+    "bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] border-b border-[color:var(--desktop-border)]";
+  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
@@ -221,7 +221,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
   const pillNeedsQuote = `${pillBase} border-red-500/35 bg-red-950/35 text-red-200`;
   const pillQuoted = `${pillBase} border-teal-500/35 bg-teal-950/25 text-teal-200`;
-  const pillProgress = `${pillBase} border-[rgba(200,122,67,0.45)] bg-sky-950/25 text-[rgba(242,210,187,0.94)]`;
+  const pillProgress = `${pillBase} border-sky-500/45 bg-sky-950/25 text-sky-100`;
   const pillComplete = `${pillBase} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
 
   const supplierNameById = useMemo(() => {
@@ -1232,7 +1232,7 @@ if (!lineId || !isUuid(lineId)) {
                     <div className="p-3 space-y-3">
                       <RequestItemsTable>
                         <table className="w-full text-sm">
-                          <thead className="bg-white/5 text-neutral-400">
+                          <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
                             <tr>
                               <th className="px-3 py-2 text-left">Requested part</th>
                               <th className="px-3 py-2 text-right">Qty</th>
@@ -1245,7 +1245,7 @@ if (!lineId || !isUuid(lineId)) {
 
                           <tbody>
                             {r.items.length === 0 ? (
-                              <tr className="border-t border-white/10">
+                              <tr className="border-t border-[color:var(--desktop-border)]">
                                 <td
                                   className="p-4 text-sm text-neutral-500"
                                   colSpan={6}
@@ -1296,7 +1296,7 @@ if (!lineId || !isUuid(lineId)) {
                                 return (
                                   <tr
                                     key={String(it.id)}
-                                    className="border-t border-white/10"
+                                    className="border-t border-[color:var(--desktop-border)]"
                                   >
                                     {/* ✅ Bigger request description ABOVE stock-part selector */}
                                     <td className="px-3 py-2 align-top">

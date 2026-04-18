@@ -868,7 +868,7 @@ export default function QuoteReviewView(props: {
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
         {loading ? (
-          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-black/35 px-3 py-2 text-xs text-neutral-300">
+          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-neutral-300">
             Refreshing quote review data…
           </div>
         ) : null}
@@ -1454,14 +1454,14 @@ export default function QuoteReviewView(props: {
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
                 Send quote email + portal notification.
                 {(missingCustomerEmail || sendBlocker) ? (
-                  <div className="mt-3 rounded-xl border border-amber-400/35 bg-amber-500/10 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">
+                  <div className="mt-3 rounded-xl border border-sky-400/35 bg-sky-500/10 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100">
                       Blocked
                     </div>
-                    <div className="mt-1 text-sm font-semibold text-amber-100">
+                    <div className="mt-1 text-sm font-semibold text-sky-100">
                       {sendBlocker ?? "Customer email required to send quote"}
                     </div>
-                    <p className="mt-1 text-xs text-amber-100/80">
+                    <p className="mt-1 text-xs text-sky-100/80">
                       Add the missing email here, save it, then retry send.
                     </p>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -1470,13 +1470,13 @@ export default function QuoteReviewView(props: {
                         value={pendingCustomerEmail}
                         onChange={(e) => setPendingCustomerEmail(e.target.value)}
                         placeholder="customer@email.com"
-                        className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-amber-300/70"
+                        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/70"
                       />
                       <button
                         type="button"
                         onClick={() => void saveCustomerEmailInline()}
                         disabled={savingCustomerEmail}
-                        className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/20 disabled:opacity-60"
+                        className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-amber-400/20 disabled:opacity-60"
                       >
                         {savingCustomerEmail ? "Saving…" : "Save email"}
                       </button>

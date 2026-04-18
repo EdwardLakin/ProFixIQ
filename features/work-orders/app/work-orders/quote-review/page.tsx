@@ -267,7 +267,7 @@ function ApprovalsList(): JSX.Element {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="h-56 animate-pulse rounded-[24px] border border-white/10 bg-white/5"
+            className="h-56 animate-pulse rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
           />
         ))}
       </div>
@@ -284,7 +284,7 @@ function ApprovalsList(): JSX.Element {
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-[24px] border border-white/10 bg-black/25 p-6 text-sm text-neutral-400">
+      <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-400">
         No work orders waiting for approval.
       </div>
     );

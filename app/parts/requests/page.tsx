@@ -109,8 +109,8 @@ export default function PartsRequestsPage(): JSX.Element {
 
   const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
   const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
-  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
+  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
   const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
@@ -128,7 +128,7 @@ export default function PartsRequestsPage(): JSX.Element {
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
   const PILL_NEEDS = `${PILL_BASE} border-red-500/35 bg-red-950/35 text-red-200`;
   const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-950/25 text-teal-200`;
-  const PILL_APPROVED = `${PILL_BASE} border-[rgba(200,122,67,0.45)] bg-sky-950/25 text-[rgba(242,210,187,0.94)]`;
+  const PILL_APPROVED = `${PILL_BASE} border-sky-500/45 bg-sky-950/25 text-sky-100`;
   const PILL_FULFILLED = `${PILL_BASE} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
 
   function pillFor(status: BucketStatus): string {
