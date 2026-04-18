@@ -158,8 +158,8 @@ export default function InspectionTemplatesPage() {
   }
 
   const headerCard =
-    "rounded-2xl border border-[rgba(120,88,66,0.38)] " +
-    "bg-[linear-gradient(180deg,rgba(14,14,16,0.92),rgba(5,5,7,0.96))] " +
+    "rounded-2xl border border-[rgba(100,116,139,0.34)] " +
+    "bg-[linear-gradient(180deg,rgba(10,14,24,0.92),rgba(4,8,18,0.96))] " +
     "shadow-[0_30px_90px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   const listCard =
@@ -172,13 +172,13 @@ export default function InspectionTemplatesPage() {
     "transition-colors";
 
   // copper palette (replaces all orange usage)
-  const COPPER_22 = "rgba(200,122,67,0.22)";
-  const COPPER_26 = "rgba(200,122,67,0.26)";
-  const COPPER_16 = "rgba(200,122,67,0.16)";
-  const COPPER_90 = "rgba(200,122,67,0.90)";
-  const COPPER_70 = "rgba(200,122,67,0.70)";
-  const COPPER_65 = "rgba(200,122,67,0.65)";
-  const COPPER_55 = "rgba(200,122,67,0.55)";
+  const COPPER_22 = "rgba(59,130,246,0.12)";
+  const COPPER_26 = "rgba(59,130,246,0.16)";
+  const COPPER_16 = "rgba(59,130,246,0.10)";
+  const COPPER_90 = "rgba(224,174,130,0.90)";
+  const COPPER_70 = "rgba(224,174,130,0.62)";
+  const COPPER_65 = "rgba(224,174,130,0.58)";
+  const COPPER_55 = "rgba(224,174,130,0.48)";
   const COPPER_SHADOW_60 = "rgba(200,122,67,0.60)";
   const COPPER_SHADOW_80 = "rgba(200,122,67,0.80)";
 
@@ -227,7 +227,7 @@ export default function InspectionTemplatesPage() {
 
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               {/* Scope pills */}
-              <div className="flex overflow-hidden rounded-full border border-[rgba(120,88,66,0.42)] bg-[rgba(2,4,9,0.78)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.45)]">
+              <div className="flex overflow-hidden rounded-full border border-[rgba(100,116,139,0.42)] bg-[rgba(2,4,9,0.78)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.45)]">
                 {(["mine", "shared", "all"] as Scope[]).map((s) => {
                   const isActive = scope === s;
                   return (
@@ -265,7 +265,7 @@ export default function InspectionTemplatesPage() {
           </div>
 
           {/* Search */}
-          <div className="relative mt-4 flex flex-col gap-2 rounded-2xl border border-[rgba(120,88,66,0.28)] bg-[linear-gradient(180deg,rgba(5,8,14,0.88),rgba(2,2,4,0.95))] p-3 md:flex-row md:items-center">
+          <div className="relative mt-4 flex flex-col gap-2 rounded-2xl border border-[rgba(100,116,139,0.28)] bg-[linear-gradient(180deg,rgba(5,8,14,0.88),rgba(2,2,4,0.95))] p-3 md:flex-row md:items-center">
             <div className="relative flex-1">
               <input
                 value={search}

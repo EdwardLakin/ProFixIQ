@@ -467,7 +467,7 @@ export default function SavedInspectionsPage(): JSX.Element {
   const inProgressCount = rows.length - completedCount;
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),#020617_82%)] px-4 py-6 text-white">
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),#020617_82%)] px-4 py-6 text-white">
       <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_65%,_#000)] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] sm:px-6 sm:py-6">
         {/* Top nav */}
         <div className="mb-4">
@@ -514,7 +514,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void load()}
                 placeholder="Plate, VIN, unit, customer, template, WO, status…"
-                className="w-full rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="w-full rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
               />
             </div>
 
@@ -525,7 +525,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
               >
                 <option value="all">All</option>
                 <option value="completed">Completed</option>
@@ -542,7 +542,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
                 aria-label="From date"
               />
             </div>
@@ -555,7 +555,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
+                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
                 aria-label="To date"
               />
             </div>
@@ -564,7 +564,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-slate-400 hover:bg-black/80"
               >
                 Apply
               </button>
@@ -638,7 +638,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/inspection/${r.id}`}
-                        className="font-mono text-sm text-orange-300 underline decoration-transparent underline-offset-2 hover:decoration-orange-400"
+                        className="font-mono text-sm text-sky-300 underline decoration-transparent underline-offset-2 hover:decoration-sky-400"
                         title="Open inspection"
                       >
                         {tplName ? tplName : `Inspection #${r.id.slice(0, 8)}`}
@@ -649,7 +649,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                           "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] " +
                           (completed
                             ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-300"
-                            : "border-amber-400/60 bg-amber-500/10 text-amber-200")
+                            : "border-sky-400/60 bg-sky-500/10 text-sky-200")
                         }
                         title="Inspection status"
                       >
@@ -687,7 +687,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                     {wo?.id ? (
                       <Link
                         href={`/work-orders/${wo.id}`}
-                        className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                        className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-slate-400 hover:bg-black/80"
                         title="Open related work order"
                       >
                         Open WO

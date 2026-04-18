@@ -140,10 +140,10 @@ export default function MenuItemsPage() {
   // ---------------------------
   // THEME (copper, matching inspections pages)
   // ---------------------------
-  const COPPER = "rgba(200,122,67,0.95)";
-  const COPPER_SOFT = "rgba(200,122,67,0.70)";
-  const COPPER_RING = "rgba(200,122,67,0.55)";
-  const COPPER_WASH_A = "rgba(200,122,67,0.16)";
+  const COPPER = "rgba(224,174,130,0.92)";
+  const COPPER_SOFT = "rgba(224,174,130,0.58)";
+  const COPPER_RING = "rgba(224,174,130,0.46)";
+  const COPPER_WASH_A = "rgba(59,130,246,0.10)";
 
   // ---------------------------
   // SHOP DEFAULTS (use shops table)
@@ -576,14 +576,14 @@ export default function MenuItemsPage() {
   const btnOutline =
     "inline-flex items-center justify-center rounded-full border bg-black/70 px-4 py-2 text-xs font-semibold " +
     "text-neutral-100 disabled:cursor-not-allowed disabled:opacity-50 " +
-    `border-[${COPPER_SOFT}] hover:bg-[rgba(200,122,67,0.12)]`;
+    `border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]`;
 
   const btnPrimary =
     "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-neutral-50 " +
     "shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition " +
-    `border-[${COPPER_SOFT}] hover:border-[rgba(200,122,67,0.85)] ` +
-    "bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(200,122,67,0.14),rgba(0,0,0,0.80))] " +
-    "hover:bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(200,122,67,0.22),rgba(0,0,0,0.80))] " +
+    `border-[${COPPER_SOFT}] hover:border-[rgba(224,174,130,0.78)] ` +
+    "bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(59,130,246,0.10),rgba(0,0,0,0.80))] " +
+    "hover:bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(59,130,246,0.12),rgba(0,0,0,0.80))] " +
     "disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
@@ -794,7 +794,7 @@ export default function MenuItemsPage() {
                     onClick={() => setPickerOpenForRow(idx)}
                     className={`
                       rounded-lg border px-3 py-2 text-xs font-medium text-neutral-100
-                      border-[${COPPER_SOFT}] hover:bg-[rgba(200,122,67,0.12)]
+                      border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]
                     `}
                   >
                     Pick
@@ -813,7 +813,7 @@ export default function MenuItemsPage() {
               <button
                 onClick={addPartRow}
                 type="button"
-                className={`text-xs font-medium text-[${COPPER}] hover:text-[rgba(200,122,67,0.80)]`}
+                className={`text-xs font-medium text-[${COPPER}] hover:text-[rgba(224,174,130,0.80)]`}
               >
                 + Add part
               </button>
@@ -853,7 +853,7 @@ export default function MenuItemsPage() {
                       type="checkbox"
                       checked={requestIncludeUnlinkedOnly}
                       onChange={(e) => setRequestIncludeUnlinkedOnly(e.target.checked)}
-                      className="h-4 w-4 accent-[rgba(200,122,67,0.9)]"
+                      className="h-4 w-4 accent-[rgba(224,174,130,0.9)]"
                     />
                     <label htmlFor="unlinked-only" className="select-none">
                       Only include unlinked/manual parts
