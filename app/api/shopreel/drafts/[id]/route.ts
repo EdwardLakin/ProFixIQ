@@ -4,7 +4,11 @@ import { SHOPREEL_DRAFT_STATUSES } from "@/features/integrations/shopreel/types"
 
 const STATUS_SET = new Set<string>(SHOPREEL_DRAFT_STATUSES);
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
   const context = await getOwnerShopContext();
 
   if ("error" in context) {
@@ -42,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const { error } = await scopedSupabase
     .from("shopreel_drafts")
     .update(patch)
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("shop_id", shopId);
 
   if (error) {
