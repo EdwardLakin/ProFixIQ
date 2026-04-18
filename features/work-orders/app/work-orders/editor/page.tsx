@@ -8,6 +8,7 @@ import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
@@ -30,8 +31,7 @@ type LineDraft = {
   job_type?: "maintenance" | "diagnosis" | "inspection";
 };
 
-const fieldClass =
-  "w-full rounded-lg border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_75%,transparent)] px-3 py-2 text-sm text-[var(--theme-text-primary,#E2E8F0)] placeholder:text-[var(--theme-text-muted,#64748B)] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_45%,transparent)]";
+const fieldClass = ui.input;
 
 export default function WorkOrderEditorPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -202,7 +202,7 @@ export default function WorkOrderEditorPage() {
         <Button
           onClick={saveToWorkOrder}
           disabled={saving}
-          className="px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]"
+          className={ui.buttonPrimary}
         >
           {saving ? "Saving…" : "Save to selected work order"}
         </Button>
@@ -219,7 +219,7 @@ export default function WorkOrderEditorPage() {
                 Compose and stage work-order lines
               </h2>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={addEmptyLine}>
+            <Button type="button" variant="outline" size="sm" onClick={addEmptyLine} className={ui.buttonSecondary}>
               + Add line
             </Button>
           </div>
@@ -240,7 +240,7 @@ export default function WorkOrderEditorPage() {
                   <button
                     type="button"
                     onClick={() => removeLine(idx)}
-                    className="text-xs font-medium text-rose-300 hover:text-rose-200"
+                    className="desktop-pill border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs font-medium normal-case tracking-[0.08em] text-rose-200 hover:border-rose-400/60"
                   >
                     Remove
                   </button>
@@ -340,7 +340,7 @@ export default function WorkOrderEditorPage() {
                   <li key={mi.id}>
                     <button
                       type="button"
-                      className="w-full rounded-md border border-[var(--theme-card-border,#334155)] bg-black/20 px-2.5 py-2 text-left text-xs text-[var(--theme-text-secondary,#94A3B8)] hover:border-[var(--brand-accent,#E39A6E)]/70"
+                    className="desktop-panel-soft w-full rounded-md px-2.5 py-2 text-left text-xs text-[var(--theme-text-secondary,#94A3B8)] hover:border-[var(--brand-accent,#E39A6E)]/70"
                       onClick={() => addFromMenu(mi)}
                     >
                       {(mi.name ?? mi.complaint ?? "Untitled")}

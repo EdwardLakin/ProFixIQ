@@ -7,6 +7,8 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
@@ -33,8 +35,7 @@ function Sparkline({ points, width = 120, height = 28 }: { points: number[]; wid
 
 function OverviewCard({ title, value, href, hint }: { title: string; value: React.ReactNode; href?: string; hint?: string }) {
   const content = (
-    <div className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] px-4 py-4 shadow-card backdrop-blur-md transition hover:border-sky-400/50 hover:shadow-glow">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.14),transparent_58%)] opacity-0 transition-opacity group-hover:opacity-100" />
+    <div className={`${ui.itemCard} group px-4 py-4 transition hover:border-[color:var(--brand-accent,#E39A6E)]`}>
       <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">{title}</p>
       <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
       {hint ? <div className="mt-1 text-xs text-neutral-500">{hint}</div> : null}
@@ -49,8 +50,8 @@ function ActionButton({ href, children, emphasis }: { href: string; children: Re
       href={href}
       className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-white transition ${
         emphasis
-          ? "border-sky-400/45 bg-sky-950/35 hover:border-sky-300 hover:bg-sky-900/30"
-          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08]"
+          ? ui.buttonPrimary
+          : ui.buttonSecondary
       }`}
     >
       {children}
@@ -158,23 +159,19 @@ export default function PartsDashboardPage(): JSX.Element {
   const hasOpenRequests = (openRequestsCount ?? 0) > 0;
 
   return (
-    <div className="relative space-y-4 p-5 text-white fade-in md:space-y-5 md:p-6">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.09),transparent_56%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_72%)]" />
-
-      <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(130deg,rgba(148,163,184,0.1),rgba(15,23,42,0.03)_45%,transparent_70%)]" />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">Parts command center</div>
-            <h1 className="mt-1 text-2xl font-semibold md:text-3xl">Start your parts day with clear signals</h1>
-            <p className="mt-2 max-w-2xl text-sm text-neutral-300">Prioritize open requests, receiving, and recent movement from one operational surface.</p>
-          </div>
+    <div className="relative p-5 text-white fade-in md:p-6">
+      <PageShell
+        title="Parts Dashboard"
+        eyebrow="Parts command center"
+        description="Prioritize open requests, receiving, and recent movement from one operational surface."
+        actions={
           <div className="flex flex-wrap gap-2">
             <ActionButton href="/parts/requests" emphasis>Open requests</ActionButton>
             <ActionButton href="/parts/receiving">Receiving inbox</ActionButton>
           </div>
-        </div>
-      </section>
+        }
+      >
+      <div className="space-y-4 md:space-y-5">
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <OverviewCard title="SKUs in catalog" value={loading ? "…" : skuTotal.toLocaleString()} href="/parts/inventory" />
@@ -184,7 +181,7 @@ export default function PartsDashboardPage(): JSX.Element {
       </section>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 shadow-[0_0_24px_rgba(15,23,42,0.24)]">
+        <div className="desktop-panel-soft px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-300">Operational bottleneck</div>
@@ -194,7 +191,7 @@ export default function PartsDashboardPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="desktop-panel-soft p-4">
           <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Primary actions</div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <ActionButton href="/parts/po" emphasis>Create PO</ActionButton>
@@ -219,7 +216,7 @@ export default function PartsDashboardPage(): JSX.Element {
           hideDescription
         />
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 shadow-card backdrop-blur-md">
+        <div className="desktop-panel-soft px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Operational insights</h2>
@@ -228,22 +225,22 @@ export default function PartsDashboardPage(): JSX.Element {
             <Sparkline points={moves30Spark} />
           </div>
           <div className="mt-3 grid gap-2 text-sm">
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span className="text-neutral-300">Receive queue</span><span className="font-semibold">{loading ? "…" : (receiveQueueCount ?? 0).toLocaleString()}</span></div>
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span className="text-neutral-300">Open purchase orders</span><span className="font-semibold">{loading ? "…" : (openPoCount ?? 0).toLocaleString()}</span></div>
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span className="text-neutral-300">Low-trust catalog records</span><span className="font-semibold text-rose-200">{loading ? "…" : trustSummary.lowTrust.toLocaleString()}</span></div>
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span className="text-neutral-300">Review-needed imports</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.reviewStaging.toLocaleString()}</span></div>
-            <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span className="text-neutral-300">Ambiguous match candidates</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.ambiguousCandidates.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Receive queue</span><span className="font-semibold">{loading ? "…" : (receiveQueueCount ?? 0).toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Open purchase orders</span><span className="font-semibold">{loading ? "…" : (openPoCount ?? 0).toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Low-trust catalog records</span><span className="font-semibold text-rose-200">{loading ? "…" : trustSummary.lowTrust.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Review-needed imports</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.reviewStaging.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Ambiguous match candidates</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.ambiguousCandidates.toLocaleString()}</span></div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md">
+      <section className="desktop-panel-soft px-5 py-4">
         <div className="mb-2 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Recent stock moves</h2>
             <p className="text-xs text-neutral-400">Most recent inventory movement with source traceability.</p>
           </div>
-          <Link href="/parts/movements" className="text-xs uppercase tracking-[0.14em] text-sky-300 hover:text-sky-200">View ledger</Link>
+          <Link href="/parts/movements" className={ui.buttonSecondary}>View ledger</Link>
         </div>
 
         {loading ? (
@@ -268,6 +265,8 @@ export default function PartsDashboardPage(): JSX.Element {
           </ul>
         )}
       </section>
+      </div>
+      </PageShell>
     </div>
   );
 }

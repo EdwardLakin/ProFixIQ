@@ -19,6 +19,7 @@ import {
   isProvinceCode,
   type ProvinceCode,
 } from "@/features/integrations/tax";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 
@@ -287,13 +288,12 @@ function partsToPaste(parts: Array<{ name: string; qty: number }>): string {
   return parts.map((p) => `${p.qty}x ${p.name}`).join("\n");
 }
 
-const card =
-  "rounded-2xl border border-slate-300/15 bg-slate-950/55 shadow-[0_20px_48px_rgba(2,6,23,0.65)]";
-const divider = "border-white/10";
+const card = ui.panel;
+const divider = "border-[color:var(--desktop-border)]";
 const inputBase =
-  "mt-1 w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white placeholder:text-neutral-500 outline-none";
+  "mt-1 w-full desktop-input px-2.5 py-2 text-sm text-white placeholder:text-neutral-500 outline-none";
 const inputFocus =
-  "focus:border-[color:var(--copper,#C57A4A)]/60 focus:ring-2 focus:ring-[color:var(--copper,#C57A4A)]/15";
+  "focus:border-[color:var(--brand-accent,#E39A6E)]/60 focus:ring-2 focus:ring-[color:var(--brand-accent,#E39A6E)]/15";
 const inputCls = `${inputBase} ${inputFocus}`;
 
 export default function QuoteReviewView(props: {
@@ -840,10 +840,7 @@ export default function QuoteReviewView(props: {
   // ✅ Embedded mode sizing + padding
   const outerCls = embedded
     ? "min-h-full w-full px-0 py-0 text-foreground"
-    : `
-      min-h-screen px-4 py-6 text-foreground
-      bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-    `;
+    : "min-h-screen px-4 py-6 text-foreground";
 
   const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-7xl";
   const padX = embedded ? "px-3" : "px-5";
@@ -856,12 +853,12 @@ export default function QuoteReviewView(props: {
 
   // ✅ Smaller action buttons when embedded
   const actionBtnCls = embedded
-    ? "rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/65 disabled:opacity-60"
-    : "rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-black/65 disabled:opacity-60";
+    ? `${ui.buttonSecondary} px-3 py-1.5 text-xs disabled:opacity-60`
+    : `${ui.buttonSecondary} px-4 py-2 text-sm disabled:opacity-60`;
 
   const saveBtnCls = embedded
-    ? "rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15 disabled:opacity-60"
-    : "rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-4 py-2 text-sm font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15 disabled:opacity-60";
+    ? `${ui.buttonPrimary} px-3 py-1.5 text-xs disabled:opacity-60`
+    : `${ui.buttonPrimary} px-4 py-2 text-sm disabled:opacity-60`;
 
   return (
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
@@ -906,9 +903,8 @@ export default function QuoteReviewView(props: {
               <a
                 href={`/work-orders/${woId}`}
                 className="
-                  rounded-full border border-white/10 bg-black/40
+                  desktop-btn-secondary rounded-full
                   px-4 py-2 text-sm font-semibold text-neutral-200
-                  hover:bg-black/55
                 "
                 title="Open the work order"
               >
@@ -952,10 +948,7 @@ export default function QuoteReviewView(props: {
 
             {/* middle */}
             <div
-              className={`
-                w-full rounded-2xl border border-white/10 bg-black/35
-                px-4 py-3
-              `}
+              className="desktop-panel-soft w-full px-4 py-3"
             >
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
                 Customer contact
@@ -1082,7 +1075,7 @@ export default function QuoteReviewView(props: {
 
                     return (
                       <div key={l.id} className={`${padX} py-4`}>
-                        <div className="rounded-[20px] border border-slate-300/15 bg-slate-950/60 p-2.5 shadow-[0_18px_48px_rgba(2,6,23,0.7)]">
+                        <div className="desktop-panel-soft p-2.5">
                           <QuoteLineCard
                             title={title}
                             statusLabel="Issue Found"
@@ -1172,17 +1165,15 @@ export default function QuoteReviewView(props: {
                               setOpenDetails((p) => ({ ...p, [l.id]: !p[l.id] }))
                             }
                             className="
-                              w-full rounded-2xl border border-white/10 bg-black/45
+                              desktop-btn-secondary w-full rounded-2xl
                               px-4 py-2.5 text-sm font-semibold text-neutral-200
-                              shadow-[0_12px_35px_rgba(0,0,0,0.45)]
-                              hover:bg-black/55
                             "
                           >
                             {openDetails[l.id] ? "Hide details" : "Show details"}
                           </button>
 
                           {openDetails[l.id] ? (
-                            <div className="mt-3 rounded-[24px] border border-white/10 bg-black/40 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
+                            <div className="desktop-panel-soft mt-3 p-4">
                               {/* line editor */}
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
                                 <label className="text-xs text-neutral-400">
@@ -1250,7 +1241,7 @@ export default function QuoteReviewView(props: {
                               </div>
 
                               {/* parts editor */}
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/45 p-4">
+                              <div className="desktop-panel-soft mt-4 p-4">
                                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
                                   Parts
                                 </div>
@@ -1281,7 +1272,7 @@ export default function QuoteReviewView(props: {
                                           key={a.id}
                                           className="
                                             flex flex-wrap items-center justify-between gap-3
-                                            rounded-2xl border border-white/10 bg-black/55 px-3 py-3
+                                            desktop-panel-soft rounded-2xl px-3 py-3
                                           "
                                         >
                                           <div className="min-w-0">
@@ -1338,9 +1329,8 @@ export default function QuoteReviewView(props: {
                                   type="button"
                                   onClick={() => openDeleteForLine(l.id)}
                                   className="
-                                    rounded-xl border border-white/15 bg-black/50
+                                    desktop-btn-secondary rounded-xl
                                     px-4 py-2 text-sm font-semibold text-neutral-200
-                                    hover:bg-black/65 hover:text-white
                                   "
                                 >
                                   Delete / Void
@@ -1380,9 +1370,8 @@ export default function QuoteReviewView(props: {
                       })
                     }
                     className="
-                      w-full rounded-xl border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
-                      px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
-                      hover:bg-[color:var(--copper)]/15
+                      desktop-btn-primary w-full rounded-xl
+                      px-4 py-2 text-sm font-semibold
                     "
                   >
                     + Add job line
@@ -1437,9 +1426,8 @@ export default function QuoteReviewView(props: {
                     onClick={() => void saveAllDirty()}
                     disabled={saving}
                     className="
-                      w-full rounded-xl border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
-                      px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
-                      hover:bg-[color:var(--copper)]/15 disabled:opacity-60
+                      desktop-btn-primary w-full rounded-xl
+                      px-4 py-2 text-sm font-semibold disabled:opacity-60
                     "
                   >
                     {saving ? "Saving…" : "Save changes"}
@@ -1491,9 +1479,9 @@ export default function QuoteReviewView(props: {
                     onClick={() => void sendQuoteToCustomer()}
                     disabled={sending || savingCustomerEmail}
                     className="
-                      w-full rounded-xl border border-white/10 bg-slate-900/80
+                      desktop-btn-secondary w-full rounded-xl
                       px-4 py-2 text-sm font-semibold text-white
-                      hover:bg-slate-900 disabled:opacity-60
+                      disabled:opacity-60
                     "
                   >
                     {sending ? "Sending…" : "Send Quote"}

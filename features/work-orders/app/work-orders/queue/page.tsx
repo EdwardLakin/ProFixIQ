@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -23,13 +24,13 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
 
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    `${ui.itemCard} hover:border-[color:var(--brand-accent,#E39A6E)] data-[active=true]:border-[color:var(--brand-accent,#E39A6E)] data-[active=true]:bg-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_12%,transparent)]`,
   in_progress:
-    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    `${ui.itemCard} hover:border-sky-400/60 data-[active=true]:border-sky-400/60 data-[active=true]:bg-sky-500/10`,
   on_hold:
-    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    `${ui.itemCard} hover:border-amber-400/60 data-[active=true]:border-amber-400/60 data-[active=true]:bg-amber-500/10`,
   completed:
-    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    `${ui.itemCard} hover:border-emerald-400/60 data-[active=true]:border-emerald-400/60 data-[active=true]:bg-emerald-500/10`,
 };
 
 function rollupStatus(lines: Line[]): RollupStatus {
@@ -250,7 +251,7 @@ export default function QueuePage() {
         title="Job Queue"
         description="Live job queue for technicians, grouped by work order."
       >
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-6 text-sm text-neutral-300">
+        <div className={ui.loadingState}>
           Loading queue…
         </div>
       </PageShell>
@@ -263,7 +264,7 @@ export default function QueuePage() {
         title="Job Queue"
         description="Live job queue for technicians, grouped by work order."
       >
-        <div className="rounded-xl border border-red-500/40 bg-red-900/20 px-4 py-6 text-sm text-red-200">
+        <div className="desktop-panel-soft border-red-500/40 bg-red-900/20 px-4 py-6 text-sm text-red-200">
           {err}
         </div>
       </PageShell>
@@ -281,8 +282,8 @@ export default function QueuePage() {
       <div className="space-y-6">
 
         {/* Header row / top summary */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-xs text-neutral-300">
+        <div className={ui.toolbarRow}>
+          <div className="desktop-panel-soft px-3 py-2 text-xs text-neutral-300">
             <div className="text-[10px] uppercase tracking-wide text-neutral-500">
               Active work orders (last 30 days)
             </div>
@@ -291,13 +292,13 @@ export default function QueuePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-xs text-neutral-300">
+          <div className="desktop-panel-soft flex items-center gap-3 px-3 py-2 text-xs text-neutral-300">
             <label className="inline-flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={showMineOnly}
                 onChange={(e) => setShowMineOnly(e.target.checked)}
-                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-orange-500"
+                className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-black/60 text-[var(--brand-primary,#C97A3D)]"
               />
               <span>
                 Show only jobs assigned to{" "}
@@ -309,14 +310,14 @@ export default function QueuePage() {
           <div className="ml-auto flex items-center gap-2">
             <Link
               href="/assistant?pageType=work_order_queue&pageTitle=Work%20Order%20Queue"
-              className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-1.5 text-[11px] text-orange-200 hover:bg-orange-500/15"
+              className={ui.buttonPrimary}
             >
               Ask Assistant
             </Link>
 
             <Link
               href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
+              className={ui.buttonSecondary}
             >
               Open Planner
             </Link>
@@ -324,7 +325,7 @@ export default function QueuePage() {
             <button
               type="button"
               onClick={() => setShowDebug((v) => !v)}
-              className="rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
+              className={ui.buttonSecondary}
             >
               {showDebug ? "Hide debug" : "Show debug"}
             </button>
@@ -333,7 +334,7 @@ export default function QueuePage() {
 
         {/* Optional debug block */}
         {showDebug && (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 px-4 py-3 text-xs text-neutral-300">
+          <div className="desktop-panel-soft px-4 py-3 text-xs text-neutral-300">
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-orange-400">
               Debug
             </div>
@@ -381,7 +382,7 @@ export default function QueuePage() {
                 key={s}
                 type="button"
                 onClick={() => setActiveFilter(isActive ? null : s)}
-                className={`rounded-xl border px-3 py-3 text-left text-sm text-neutral-100 transition ${STATUS_STYLES[s]}`}
+                className={`px-3 py-3 text-left text-sm text-neutral-100 transition ${STATUS_STYLES[s]}`}
                 data-active={isActive ? "true" : "false"}
               >
                 <div className="text-[10px] uppercase tracking-wide text-neutral-400">
@@ -425,7 +426,7 @@ export default function QueuePage() {
               <Link
                 key={wo.id}
                 href={`/work-orders/${slug}?mode=tech`}
-                className="block rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-3 text-sm text-neutral-100 transition hover:border-orange-500 hover:bg-neutral-900"
+                className="desktop-item-card block px-3 py-3 text-sm text-neutral-100 transition hover:border-[color:var(--brand-accent,#E39A6E)]"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -449,7 +450,7 @@ export default function QueuePage() {
                   </div>
 
                   <div className="flex flex-col items-end gap-2">
-                    <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-[11px] capitalize text-neutral-300">
+                    <span className={`${ui.pill} !normal-case !tracking-[0.08em] px-2.5 py-1 text-[11px] text-neutral-300`}>
                       {status.replace("_", " ")}
                     </span>
 
@@ -465,7 +466,7 @@ export default function QueuePage() {
           })}
 
           {filteredWos.length === 0 && (
-            <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 p-4 text-sm text-neutral-400">
+            <div className={ui.emptyState}>
               No work orders in this bucket.
             </div>
           )}
