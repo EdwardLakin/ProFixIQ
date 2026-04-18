@@ -150,13 +150,13 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)] px-4 py-6 text-white">
+    <div className="min-h-screen desktop-backdrop px-4 py-6 text-white">
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={goBack}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/70"
+            className="inline-flex items-center gap-2 desktop-btn-secondary px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/70"
           >
             <span aria-hidden className="text-base leading-none">
               ←
@@ -169,7 +169,7 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-black/35 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.9)]">
+        <div className="desktop-panel p-5">
           {loading ? (
             <div className="text-sm text-neutral-300">Loading…</div>
           ) : err ? (
@@ -212,13 +212,13 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                   >
                     {String(wo.status ?? "—").replaceAll("_", " ")}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-mono text-neutral-400">
+                  <span className="desktop-pill px-2 py-0.5 text-[10px] font-mono text-neutral-400">
                     {wo.id.slice(0, 8)}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-black/35 p-4">
+              <div className="mt-5 desktop-panel-soft p-4">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
                   Jobs (Punchable)
                 </div>
@@ -242,7 +242,7 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                       return (
                         <div
                           key={l.id}
-                          className="rounded-xl border border-white/10 bg-black/40 p-3"
+                          className="desktop-item-card p-3"
                         >
                           <div className="flex items-baseline justify-between gap-2">
                             <div className="min-w-0">
@@ -292,7 +292,7 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                     {lines
                       .filter((line) => (line.line_type ?? "job") === "info")
                       .map((line) => (
-                        <div key={line.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                        <div key={line.id} className="desktop-item-card p-3">
                           <div className="text-sm text-neutral-100">
                             {safeTrim(line.description) || safeTrim(line.complaint) || "Context line"}
                           </div>

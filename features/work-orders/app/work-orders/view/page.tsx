@@ -60,10 +60,10 @@ const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 const INPUT_DARK =
-  "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
+  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 const SELECT_DARK =
-  "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
+  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 function isStatusKey(x: string): x is StatusKey {
   return (
@@ -129,9 +129,9 @@ function stageAccent(status: string | null | undefined): {
 
   if (key === "on_hold") {
     return {
-      badge: "border-amber-400/70 bg-amber-500/10 text-amber-100",
-      border: "border-amber-500/30",
-      progress: "bg-amber-400",
+      badge: "border-sky-400/45 bg-sky-500/10 text-sky-100",
+      border: "border-sky-500/25",
+      progress: "bg-sky-400",
     };
   }
 
@@ -171,7 +171,7 @@ function techRollupChip(rollup: TechRollup): string {
     return "border-sky-400/60 bg-sky-500/10 text-sky-100";
   }
   if (rollup === "on_hold") {
-    return "border-amber-400/70 bg-amber-500/10 text-amber-100";
+    return "border-sky-400/45 bg-sky-500/10 text-sky-100";
   }
   if (rollup === "completed") {
     return "border-emerald-400/70 bg-emerald-500/10 text-emerald-100";
@@ -197,7 +197,7 @@ function priorityChip(priority: number | null | undefined): string {
   if (priority === 4) {
     return "border-slate-500/40 bg-slate-500/10 text-slate-300";
   }
-  return "border-white/10 bg-white/5 text-neutral-300";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-300";
 }
 
 export default function WorkOrdersView(): JSX.Element {
@@ -647,7 +647,7 @@ export default function WorkOrdersView(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
-      <section className="rounded-3xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 backdrop-blur md:p-5">
+      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -665,20 +665,20 @@ export default function WorkOrdersView(): JSX.Element {
 
             {!loading && !err ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                <div className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                   Active: <span className="text-white">{activeCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                   Awaiting approval:{" "}
                   <span className="text-white">{awaitingApprovalCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                   Waiters: <span className="text-white">{waiterCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                   Urgent: <span className="text-white">{urgentCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
                   Total: <span className="text-white">{total}</span>
                 </div>
               </div>
@@ -711,7 +711,7 @@ export default function WorkOrdersView(): JSX.Element {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 backdrop-blur">
+      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
           <input
             value={q}
@@ -744,7 +744,7 @@ export default function WorkOrdersView(): JSX.Element {
               void load();
               setAssignVersion((v) => v + 1);
             }}
-            className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[rgba(200,122,67,0.62)] hover:bg-[rgba(200,122,67,0.15)]"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[rgba(200,122,67,0.62)] hover:bg-[rgba(200,122,67,0.15)]"
           >
             Refresh
           </button>
@@ -767,7 +767,7 @@ export default function WorkOrdersView(): JSX.Element {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-6 text-sm text-neutral-300">
+        <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-300">
           No work orders match your current filters.
         </div>
       ) : (
@@ -969,7 +969,7 @@ export default function WorkOrdersView(): JSX.Element {
                 </div>
 
                 {canAssign ? (
-                  <div className="mt-4 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-3">
+                  <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3">
                     {!isAssigning ? (
                       <button
                         onClick={() => {

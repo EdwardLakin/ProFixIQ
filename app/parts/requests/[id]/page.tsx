@@ -198,14 +198,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [recvItem, setRecvItem] = useState<DrawerItem | null>(null);
 
   // ---- Theme (glass + neutral accent styling) ----
-  const ACCENT_BORDER = "border-[rgba(200,122,67,0.45)]";
-  const ACCENT_TEXT = "text-[rgba(242,210,187,0.94)]";
-  const ACCENT_HOVER_BG = "hover:bg-[rgba(200,122,67,0.14)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
+  const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_12%,transparent)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
   const pageWrap = "space-y-3 p-4 text-white";
   const glassCard =
-    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
     "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
   const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
@@ -213,7 +213,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-[color:var(--metal-border-soft,#374151)] bg-black/70 hover:bg-white/5`;
+  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
   const btnCopper = `${btnBase} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
@@ -1469,7 +1469,7 @@ if (!lineId || !isUuid(lineId)) {
                                           ))}
                                         </select>
 
-                                        <details className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2">
+                                        <details className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
                                           <summary className="cursor-pointer select-none text-xs text-neutral-300">
                                             Create PO for supplier
                                           </summary>
