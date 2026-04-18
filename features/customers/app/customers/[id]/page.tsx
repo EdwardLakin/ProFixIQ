@@ -38,8 +38,8 @@ const looksLikeUuid = (s: string | null): boolean =>
   !!s && s.includes("-") && s.length >= 36;
 
 const CARD_BASE =
-  "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-const CARD_INNER = "rounded-xl border border-slate-700/60 bg-slate-950/60";
+  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+const CARD_INNER = "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/60";
 
 const STATUS_CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
@@ -922,7 +922,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       key={r.id}
                       type="button"
                       onClick={() => router.push(`/customers/${r.id}`)}
-                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(184,115,51,0.65)]`}
+                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(200,122,67,0.62)]`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -1068,7 +1068,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setEditCustomerOpen(true)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-sm font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-sm font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
                   >
                     Edit customer
                   </button>
@@ -1102,7 +1102,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setAddVehicleOpen(true)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
                   >
                     + Add vehicle
                   </button>
@@ -1125,7 +1125,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => setEditVehicleOpen(true)}
-                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
                     >
                       Edit vehicle
                     </button>
@@ -1230,7 +1230,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       key={wo.id}
                       type="button"
                       onClick={() => router.push(`/work-orders/${wo.id}`)}
-                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(184,115,51,0.65)]`}
+                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[rgba(200,122,67,0.62)]`}
                       title="Open work order"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -1306,7 +1306,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => void fetchRawMedia(selectedVehicleId)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
                   >
                     Refresh
                   </button>
@@ -1332,7 +1332,7 @@ export default function CustomerProfilePage(): JSX.Element {
                           setViewerItem(m);
                           setViewerOpen(true);
                         }}
-                        className="block overflow-hidden rounded-xl border border-slate-700/60 bg-black/40 hover:border-[rgba(184,115,51,0.65)]"
+                        className="block overflow-hidden rounded-xl border border-slate-700/60 bg-black/40 hover:border-[rgba(200,122,67,0.62)]"
                         title={title}
                       >
                         {img && url ? (
@@ -1367,7 +1367,7 @@ export default function CustomerProfilePage(): JSX.Element {
               href={viewerItem.displayUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-[rgba(200,122,67,0.62)]"
             >
               Open in new tab
             </a>

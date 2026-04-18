@@ -1816,7 +1816,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </div>
                   <div className="space-y-2">
                     {infoLines.map((line) => (
-                      <div key={line.id} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+                      <div key={line.id} className="rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-2.5">
                         <div className="text-sm text-foreground">
                           {line.description || line.complaint || "Context line"}
                         </div>

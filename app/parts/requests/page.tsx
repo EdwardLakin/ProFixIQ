@@ -107,20 +107,20 @@ export default function PartsRequestsPage(): JSX.Element {
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
   const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
-  const ACCENT_BORDER = "border-sky-500/35";
-  const ACCENT_TEXT = "text-sky-200";
-  const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
+  const ACCENT_BORDER = "border-[rgba(200,122,67,0.45)]";
+  const ACCENT_TEXT = "text-[rgba(242,210,187,0.94)]";
+  const ACCENT_HOVER_BG = "hover:bg-[rgba(200,122,67,0.14)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
 
   const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
-    "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const CARD_PAD = `${CARD} p-3`;
-  const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const SELECT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const INPUT = `w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const SELECT = `w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
-  const BTN_GHOST = `${BTN_BASE} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
+  const BTN_GHOST = `${BTN_BASE} border-[color:var(--metal-border-soft,#374151)] bg-black/70 hover:bg-white/5`;
   const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
@@ -128,7 +128,7 @@ export default function PartsRequestsPage(): JSX.Element {
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
   const PILL_NEEDS = `${PILL_BASE} border-red-500/35 bg-red-950/35 text-red-200`;
   const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-950/25 text-teal-200`;
-  const PILL_APPROVED = `${PILL_BASE} border-sky-500/35 bg-sky-950/25 text-sky-200`;
+  const PILL_APPROVED = `${PILL_BASE} border-[rgba(200,122,67,0.45)] bg-sky-950/25 text-[rgba(242,210,187,0.94)]`;
   const PILL_FULFILLED = `${PILL_BASE} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
 
   function pillFor(status: BucketStatus): string {
@@ -492,7 +492,7 @@ export default function PartsRequestsPage(): JSX.Element {
 
           <div className="md:col-span-3">
             <div className="mb-1 text-xs text-neutral-400">Showing</div>
-            <div className="rounded-lg border border-white/10 bg-neutral-950/20 px-3 py-2 text-sm text-neutral-200">
+            <div className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-neutral-200">
               <span className="font-semibold text-white">{filtered.length}</span>{" "}
               work order{filtered.length === 1 ? "" : "s"}
             </div>

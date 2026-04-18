@@ -36,7 +36,7 @@ function statusMeta(status: string | null | undefined): { label: string; classNa
 
   switch (s) {
     case "queued":
-      return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-sky-200" };
+      return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-[rgba(242,210,187,0.94)]" };
     case "awaiting_approval":
       return { label: "Awaiting approval", className: "border-amber-400/55 bg-amber-500/10 text-amber-200" };
     case "ready_to_invoice":
@@ -242,7 +242,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),#020617_82%)] px-4 py-6 text-white">
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(200,122,67,0.18),#020617_82%)] px-4 py-6 text-white">
       <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_65%,_#000)] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] sm:px-6 sm:py-6">
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center gap-3">

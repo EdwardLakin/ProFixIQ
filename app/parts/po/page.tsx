@@ -28,9 +28,9 @@ function fmtDate(v: string | null): string {
 function statusPill(status: string | null | undefined): string {
   const s = (status ?? "").toLowerCase();
   if (s === "received") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
-  if (s === "receiving") return "border-sky-500/40 bg-sky-500/10 text-sky-200";
+  if (s === "receiving") return "border-sky-500/40 bg-sky-500/10 text-[rgba(242,210,187,0.94)]";
   if (s === "ordered") return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
-  if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-sky-200";
+  if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-[rgba(242,210,187,0.94)]";
   if (s === "cancelled" || s === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
   return "border-white/10 bg-white/5 text-neutral-200";
 }
@@ -315,7 +315,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
     <div className={pageWrap}>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(200,122,67,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
       />
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

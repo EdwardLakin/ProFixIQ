@@ -495,7 +495,7 @@ export default function PoReceivePage(): JSX.Element {
               </div>
               <div className="rounded-xl border border-white/10 bg-black/50 p-3">
                 <div className="text-xs text-neutral-400">Remaining</div>
-                <div className="mt-1 text-lg font-semibold text-sky-200">{remaining}</div>
+                <div className="mt-1 text-lg font-semibold text-[rgba(242,210,187,0.94)]">{remaining}</div>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/50 p-3">
                 <div className="text-xs text-neutral-400">Receiving Location</div>
@@ -520,7 +520,7 @@ export default function PoReceivePage(): JSX.Element {
                 {!scanning ? (
                   <button
                     onClick={startScan}
-                    className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-sky-200 hover:bg-sky-900/25"
+                    className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25"
                     type="button"
                   >
                     Start Scanner
@@ -636,7 +636,7 @@ export default function PoReceivePage(): JSX.Element {
                 <button
                   onClick={() => void doReceive(manualPartId, qty)}
                   disabled={!manualPartId || !selectedLoc || qty <= 0}
-                  className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-sky-200 hover:bg-sky-900/25 disabled:opacity-50"
+                  className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25 disabled:opacity-50"
                   type="button"
                 >
                   Receive & Allocate →
@@ -696,7 +696,7 @@ export default function PoReceivePage(): JSX.Element {
                         <td className="p-3 font-mono">{received}</td>
                         <td className="p-3 font-mono">
                           {rem > 0 ? (
-                            <span className="text-sky-200">{rem}</span>
+                            <span className="text-[rgba(242,210,187,0.94)]">{rem}</span>
                           ) : (
                             <span className="text-neutral-500">0</span>
                           )}
