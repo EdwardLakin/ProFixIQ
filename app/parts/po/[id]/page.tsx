@@ -63,6 +63,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
 
   const [po, setPo] = useState<PurchaseOrderRow | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -159,15 +160,19 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
     if (poErr) {
       toast.error(poErr.message);
-      setPo(null);
-      setLines([]);
+      if (!loadedOnce) {
+        setPo(null);
+        setLines([]);
+      }
       setLoading(false);
       return;
     }
 
     if (!poRow) {
-      setPo(null);
-      setLines([]);
+      if (!loadedOnce) {
+        setPo(null);
+        setLines([]);
+      }
       setLoading(false);
       return;
     }
@@ -249,6 +254,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
     setLines(mapped);
 
     setLoading(false);
+    setLoadedOnce(true);
   }
 
   useEffect(() => {
@@ -414,7 +420,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
   const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
-  if (loading) {
+  if (loading && !loadedOnce) {
     return (
       <div className="p-6 text-white">
         <div className={`${panel} p-4 text-neutral-300`}>Loading…</div>
@@ -439,6 +445,9 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
   return (
     <div className="space-y-4 p-6 text-white">
+      {loading ? (
+        <div className={`${panel} p-3 text-xs text-neutral-300`}>Refreshing purchase order…</div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button className={btnGhost} onClick={() => router.back()} type="button">

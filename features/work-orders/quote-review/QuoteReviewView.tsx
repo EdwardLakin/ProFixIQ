@@ -307,6 +307,7 @@ export default function QuoteReviewView(props: {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -450,11 +451,13 @@ export default function QuoteReviewView(props: {
 
     if (woErr) {
       toast.error(woErr.message);
-      setWo(null);
-      setShop(null);
-      setCustomer(null);
-      setLines([]);
-      setAllocs([]);
+      if (!loadedOnce) {
+        setWo(null);
+        setShop(null);
+        setCustomer(null);
+        setLines([]);
+        setAllocs([]);
+      }
       setLoading(false);
       return;
     }
@@ -560,7 +563,8 @@ export default function QuoteReviewView(props: {
     }
 
     setLoading(false);
-  }, [supabase, woId]);
+    setLoadedOnce(true);
+  }, [loadedOnce, supabase, woId]);
 
   useEffect(() => {
     void reload();
@@ -829,7 +833,7 @@ export default function QuoteReviewView(props: {
 
   if (!woId)
     return <div className="p-6 text-red-300">Missing work order id.</div>;
-  if (loading) return <div className="p-6 text-neutral-300">Loading…</div>;
+  if (loading && !loadedOnce) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
   const phoneRaw = safeTrim(customer?.phone ?? "");
@@ -863,6 +867,11 @@ export default function QuoteReviewView(props: {
   return (
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
+        {loading ? (
+          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-black/35 px-3 py-2 text-xs text-neutral-300">
+            Refreshing quote review data…
+          </div>
+        ) : null}
         {/* top row */}
         <div
           className={

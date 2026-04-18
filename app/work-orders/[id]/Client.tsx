@@ -192,6 +192,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
@@ -461,14 +462,16 @@ export default function WorkOrderIdClient(): JSX.Element {
             return fetchAll(retry + 1);
           }
           setViewError("Work order not visible / not found.");
-          setWo(null);
-          setLines([]);
-          setQuoteLines([]);
-          setVehicle(null);
-          setCustomer(null);
-          setAllocsByLine({});
-          setStagedPartsByLine({});
-          setLineTechsByLine({});
+          if (!loadedOnce) {
+            setWo(null);
+            setLines([]);
+            setQuoteLines([]);
+            setVehicle(null);
+            setCustomer(null);
+            setAllocsByLine({});
+            setStagedPartsByLine({});
+            setLineTechsByLine({});
+          }
 
           // ✅ reset review state
           setReviewChecked(true);
@@ -607,6 +610,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
+        setLoadedOnce(true);
       }
     },
     [
@@ -618,6 +622,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setVehicle,
       setCustomer,
       fetchLatestReview,
+      loadedOnce,
       setReviewChecked,
     ],
   );
@@ -1306,7 +1311,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </section>
         )}
 
-        {loading ? (
+        {loading && !loadedOnce ? (
           <div className="mt-1 grid gap-4">
             <Skeleton className="h-24" />
             <Skeleton className="h-40" />
@@ -1316,6 +1321,11 @@ export default function WorkOrderIdClient(): JSX.Element {
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
           <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
+            {loading ? (
+              <div className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/50 px-3 py-2 text-xs text-muted-foreground">
+                Refreshing work order data…
+              </div>
+            ) : null}
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
               <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
