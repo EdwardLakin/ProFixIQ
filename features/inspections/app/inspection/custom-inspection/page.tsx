@@ -743,10 +743,10 @@ export default function CustomBuilderPage() {
   /* ------------------------------------------------------------------ */
 
   // copper: slightly muted, avoids neon/orange pop
-  const COPPER = "rgba(200,122,67,0.9)";
-  const COPPER_55 = "rgba(200,122,67,0.55)";
-  const COPPER_20 = "rgba(200,122,67,0.20)";
-  const COPPER_14 = "rgba(200,122,67,0.14)";
+  const COPPER = "rgba(224,174,130,0.88)";
+  const COPPER_55 = "rgba(224,174,130,0.46)";
+  const COPPER_20 = "rgba(59,130,246,0.14)";
+  const COPPER_14 = "rgba(59,130,246,0.10)";
 
   const headerCard =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
