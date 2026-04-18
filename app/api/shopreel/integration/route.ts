@@ -1,47 +1,10 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 import { DEFAULT_SHOPREEL_EVENT_TYPES, getShopReelBaseUrl } from "@/features/integrations/shopreel/server/shopreelConfig";
+import { getOwnerShopContext } from "@/features/integrations/shopreel/server/getOwnerShopContext";
 
-type DB = Database;
 const ALLOWED_EVENT_TYPES = new Set<string>(DEFAULT_SHOPREEL_EVENT_TYPES);
-
-async function getOwnerShopContext() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { error: "Unauthorized", status: 401 as const };
-  }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from("shop_members")
-    .select("shop_id, role")
-    .eq("user_id", user.id)
-    .eq("role", "owner")
-    .limit(1)
-    .maybeSingle();
-
-  if (membershipError) {
-    return { error: membershipError.message, status: 500 as const };
-  }
-
-  if (!membership?.shop_id) {
-    return { error: "Owner shop membership not found.", status: 403 as const };
-  }
-
-  return {
-    supabase,
-    user,
-    shopId: membership.shop_id as string,
-  };
-}
 
 export async function GET() {
   const context = await getOwnerShopContext();

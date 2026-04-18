@@ -103,3 +103,47 @@ export type OperationalStoryCandidate = {
   opportunityScore: number;
   tags: string[];
 };
+
+export const SHOPREEL_OPPORTUNITY_STATUSES = ["new", "accepted", "dismissed", "generated"] as const;
+export type ShopReelOpportunityStatus = (typeof SHOPREEL_OPPORTUNITY_STATUSES)[number];
+
+export const SHOPREEL_OPPORTUNITY_ACTIONS = ["accepted", "dismissed", "generated"] as const;
+export type ShopReelOpportunityAction = (typeof SHOPREEL_OPPORTUNITY_ACTIONS)[number];
+
+export const SHOPREEL_DRAFT_STATUSES = ["draft", "in_review", "approved"] as const;
+export type ShopReelDraftStatus = (typeof SHOPREEL_DRAFT_STATUSES)[number];
+
+export type ShopReelStorySourceDto = {
+  id: string;
+  eventKey: string;
+  eventType: string;
+  occurredAt: string;
+  ingestedAt: string;
+};
+
+export type ShopReelOpportunityDto = {
+  id: string;
+  storySourceId: string;
+  status: ShopReelOpportunityStatus;
+  title: string;
+  angle: string | null;
+  summary: string | null;
+  eventType: string;
+  sourceOccurredAt: string;
+  createdAt: string;
+  updatedAt: string;
+  acceptedAt: string | null;
+  dismissedAt: string | null;
+  generatedAt: string | null;
+};
+
+export type ShopReelDraftDto = {
+  id: string;
+  opportunityId: string;
+  status: ShopReelDraftStatus;
+  title: string;
+  angle: string | null;
+  script: string | null;
+  updatedAt: string;
+  reviewedAt: string | null;
+};
