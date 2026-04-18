@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
 type Option = { value: string; label: string };
 
 const CARD =
-  "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_16px_42px_rgba(2,6,23,0.52)]";
 const SUBCARD =
-  "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]";
+  "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 const INPUT =
   "w-72 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30";
 const LINK_BTN =
@@ -55,7 +55,7 @@ export function RequestHeaderSection({
 }): JSX.Element {
   return (
     <div className={`${CARD} overflow-hidden`}>
-      <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] px-4 py-3">
+      <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.02))] px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xl font-semibold tracking-wide text-white">{title}</div>
@@ -126,7 +126,7 @@ export function RequestReceivingPanel(): JSX.Element {
 
 export function RequestItemsTable({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
+    <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       {children}
     </div>
   );

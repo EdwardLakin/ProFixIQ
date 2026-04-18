@@ -203,13 +203,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
-  const pageWrap = "space-y-3 p-4 text-white";
+  const pageWrap = "space-y-4 p-4 text-white";
   const glassCard =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
     "bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] border-b border-[color:var(--desktop-border)]";
-  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const inputBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const selectBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-2 py-2 text-xs text-white border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
@@ -1101,9 +1101,16 @@ if (!lineId || !isUuid(lineId)) {
 
   return (
     <div className={pageWrap}>
-      <button className={btnGhost} onClick={() => router.back()} type="button">
-        ← Back
-      </button>
+      <div className="sticky top-2 z-20 flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)]/90 px-3 py-2 backdrop-blur">
+        <button className={btnGhost} onClick={() => router.back()} type="button">
+          ← Back
+        </button>
+        {woDisplay ? (
+          <div className="text-xs uppercase tracking-[0.16em] text-neutral-400">
+            Work order <span className="text-neutral-200">{woDisplay}</span>
+          </div>
+        ) : null}
+      </div>
 
       {loading ? (
         <div className={`${glassCard} p-4 text-neutral-300`}>Loading…</div>
@@ -1229,7 +1236,25 @@ if (!lineId || !isUuid(lineId)) {
                       </div>
                     </div>
 
-                    <div className="p-3 space-y-3">
+                    <div className="space-y-3 p-3">
+                      <div className="grid gap-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-neutral-400 md:grid-cols-3">
+                        <div>
+                          Request state:{" "}
+                          <span className="font-semibold text-neutral-200">
+                            {requestFlowLabel(requestState)}
+                          </span>
+                        </div>
+                        <div>
+                          Items:{" "}
+                          <span className="font-semibold text-neutral-200">{r.items.length}</span>
+                        </div>
+                        <div>
+                          Linked line:{" "}
+                          <span className="font-semibold text-neutral-200">
+                            {hasValidLineId ? lineId?.slice(0, 8) : "Not linked"}
+                          </span>
+                        </div>
+                      </div>
                       <RequestItemsTable>
                         <table className="w-full text-sm">
                           <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
@@ -1382,7 +1407,7 @@ if (!lineId || !isUuid(lineId)) {
                                           </div>
                                         ) : null}
                                         {trustMeta && trustMeta.reasons.length > 0 ? (
-                                          <div className="text-[11px] text-[rgba(242,210,187,0.94)]">
+                                          <div className="text-[11px] text-[var(--accent-copper-light)]/90">
                                             {trustMeta.reasons.slice(0, 2).join(" · ")}
                                           </div>
                                         ) : null}
@@ -1469,7 +1494,7 @@ if (!lineId || !isUuid(lineId)) {
                                           ))}
                                         </select>
 
-                                        <details className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
+                                        <details className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                                           <summary className="cursor-pointer select-none text-xs text-neutral-300">
                                             Create PO for supplier
                                           </summary>

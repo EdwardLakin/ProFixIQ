@@ -112,10 +112,10 @@ export default function PartsRequestsPage(): JSX.Element {
   const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
-  const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
+  const PAGE = "w-full space-y-4 px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const CARD_PAD = `${CARD} p-3`;
+  const CARD_PAD = `${CARD} p-4`;
   const INPUT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
   const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
@@ -428,8 +428,10 @@ export default function PartsRequestsPage(): JSX.Element {
 
   return (
     <div className={PAGE}>
-      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
+      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_24px_60px_rgba(2,6,23,0.62)]">
+        <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.02))] px-4 py-5 sm:px-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
             Parts
           </div>
@@ -443,68 +445,70 @@ export default function PartsRequestsPage(): JSX.Element {
             One card per work order. Completion % is based on items with part + qty
             + price.
           </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link href="/parts" className={BTN_ACCENT}>
-            Parts Dashboard
-          </Link>
-          <button
-            type="button"
-            className={BTN_GHOST}
-            onClick={() => void reload()}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <div className={`${CARD_PAD} mb-4 space-y-3`}>
-        <div className="grid gap-3 md:grid-cols-12 md:items-center">
-          <div className="md:col-span-5">
-            <div className="mb-1 text-xs text-neutral-400">
-              Search (WO#, customer, vehicle, request id, part description)
             </div>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className={INPUT}
-            />
-          </div>
 
-          <div className="md:col-span-4">
-            <div className="mb-1 text-xs text-neutral-400">Status</div>
-            <select
-              className={SELECT}
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter((e.target.value as typeof statusFilter) ?? "all")
-              }
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="ready">Ready</option>
-              <option value="complete">Complete</option>
-            </select>
-          </div>
-
-          <div className="md:col-span-3">
-            <div className="mb-1 text-xs text-neutral-400">Showing</div>
-            <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-200">
-              <span className="font-semibold text-white">{filtered.length}</span>{" "}
-              work order{filtered.length === 1 ? "" : "s"}
+            <div className="flex flex-wrap gap-2">
+              <Link href="/parts" className={BTN_ACCENT}>
+                Parts Dashboard
+              </Link>
+              <button
+                type="button"
+                className={BTN_GHOST}
+                onClick={() => void reload()}
+              >
+                Refresh
+              </button>
             </div>
           </div>
         </div>
-      </div>
+
+        <div className="px-4 py-4 sm:px-6">
+          <div className="grid gap-3 md:grid-cols-12 md:items-end">
+            <div className="md:col-span-6">
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">
+                Search queue
+              </div>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="WO#, customer, vehicle, request id, part description…"
+                className={INPUT}
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">Flow state</div>
+              <select
+                className={SELECT}
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter((e.target.value as typeof statusFilter) ?? "all")
+                }
+              >
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="ready">Ready</option>
+                <option value="complete">Complete</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-3">
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">Visible cards</div>
+              <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-200">
+                <span className="font-semibold text-white">{filtered.length}</span>{" "}
+                work order{filtered.length === 1 ? "" : "s"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {loading ? (
-        <div className={`${CARD_PAD} text-sm text-neutral-300`}>Loading…</div>
+        <div className={`${CARD_PAD} text-sm text-neutral-300`}>Loading active request buckets…</div>
       ) : filtered.length === 0 ? (
-        <div className={`${CARD_PAD} text-sm text-neutral-400`}>
-          No active parts requests.
+        <div className={`${CARD_PAD} border-dashed text-sm text-neutral-400`}>
+          No active parts requests match this filter.
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
@@ -557,21 +561,21 @@ export default function PartsRequestsPage(): JSX.Element {
                   <span className={pillFor(b.status)}>{labelFor(b.status)}</span>
                 </div>
 
-                <div className="mt-3">
+                <div className="mt-4">
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>Completion</span>
                     <span className={ACCENT_TEXT}>{b.completionPct}%</span>
                   </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden desktop-pill">
+                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
                     <div
-                      className="h-full rounded-full bg-white/20"
+                      className="h-full rounded-full bg-[linear-gradient(90deg,rgba(56,189,248,0.45),rgba(197,122,74,0.65))]"
                       style={{ width: `${b.completionPct}%` }}
                       aria-hidden="true"
                     />
                   </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[color:var(--desktop-border)] pt-3">
                   <button
                     type="button"
                     className={BTN_DANGER}
