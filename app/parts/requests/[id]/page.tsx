@@ -198,14 +198,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [recvItem, setRecvItem] = useState<DrawerItem | null>(null);
 
   // ---- Theme (glass + neutral accent styling) ----
-  const ACCENT_BORDER = "border-sky-500/35";
-  const ACCENT_TEXT = "text-sky-200";
-  const ACCENT_HOVER_BG = "hover:bg-sky-900/20";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-sky-500/35";
+  const ACCENT_BORDER = "border-[rgba(200,122,67,0.45)]";
+  const ACCENT_TEXT = "text-[rgba(242,210,187,0.94)]";
+  const ACCENT_HOVER_BG = "hover:bg-[rgba(200,122,67,0.14)]";
+  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[rgba(200,122,67,0.38)]";
 
   const pageWrap = "space-y-3 p-4 text-white";
   const glassCard =
-    "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
     "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
   const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${ACCENT_FOCUS_RING}`;
@@ -213,7 +213,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
+  const btnGhost = `${btnBase} border-[color:var(--metal-border-soft,#374151)] bg-black/70 hover:bg-white/5`;
   const btnCopper = `${btnBase} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
   const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
@@ -221,7 +221,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
   const pillNeedsQuote = `${pillBase} border-red-500/35 bg-red-950/35 text-red-200`;
   const pillQuoted = `${pillBase} border-teal-500/35 bg-teal-950/25 text-teal-200`;
-  const pillProgress = `${pillBase} border-sky-500/35 bg-sky-950/25 text-sky-200`;
+  const pillProgress = `${pillBase} border-[rgba(200,122,67,0.45)] bg-sky-950/25 text-[rgba(242,210,187,0.94)]`;
   const pillComplete = `${pillBase} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
 
   const supplierNameById = useMemo(() => {
@@ -1189,13 +1189,13 @@ if (!lineId || !isUuid(lineId)) {
                               Job:{" "}
                               <span className="text-neutral-300">{jobText}</span>
                               {isFallbackLinked ? (
-                                <span className="ml-2 text-sky-200">
+                                <span className="ml-2 text-[rgba(242,210,187,0.94)]">
                                   (using only work order line)
                                 </span>
                               ) : null}
                             </div>
                           ) : !hasValidLineId ? (
-                            <div className="mt-1 text-xs text-sky-200">
+                            <div className="mt-1 text-xs text-[rgba(242,210,187,0.94)]">
                               This request is not linked to a valid work order line yet.
                             </div>
                           ) : null}
@@ -1382,7 +1382,7 @@ if (!lineId || !isUuid(lineId)) {
                                           </div>
                                         ) : null}
                                         {trustMeta && trustMeta.reasons.length > 0 ? (
-                                          <div className="text-[11px] text-sky-200">
+                                          <div className="text-[11px] text-[rgba(242,210,187,0.94)]">
                                             {trustMeta.reasons.slice(0, 2).join(" · ")}
                                           </div>
                                         ) : null}
@@ -1469,7 +1469,7 @@ if (!lineId || !isUuid(lineId)) {
                                           ))}
                                         </select>
 
-                                        <details className="rounded-xl border border-white/10 bg-neutral-950/20 px-3 py-2">
+                                        <details className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2">
                                           <summary className="cursor-pointer select-none text-xs text-neutral-300">
                                             Create PO for supplier
                                           </summary>

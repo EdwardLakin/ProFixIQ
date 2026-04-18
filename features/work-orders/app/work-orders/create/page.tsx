@@ -39,16 +39,16 @@ const InspectionModal = dynamic(
 const COPPER = "#C57A4A";
 
 const card =
-  "rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_90%,transparent)] shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
 const divider = "border-white/10";
 const sectionPanel =
-  "rounded-2xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_84%,transparent)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
+  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
 const childPanel =
-  "rounded-2xl border border-white/12 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+  "rounded-2xl border border-[color:var(--metal-border-soft,#374151)] bg-black/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const subtlePanel =
-  "rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)]";
+  "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/65";
 const softButton =
-  "rounded-full border border-white/15 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_70%,transparent)] text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)]";
+  "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/65 text-neutral-200 hover:bg-black/75";
 
 /* =============================================================================
    Types & helpers
