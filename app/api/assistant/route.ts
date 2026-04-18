@@ -135,6 +135,9 @@ export async function POST(req: Request) {
                   action.context?.lane === "parts_follow_up" ||
                   action.context?.lane === "low_inventory_reorder" ||
                   action.context?.lane === "fleet_follow_up" ||
+                  action.context?.lane === "smart_match_readiness" ||
+                  action.context?.lane === "menu_item_efficiency_review" ||
+                  action.context?.lane === "inspection_template_efficiency_review" ||
                   action.context?.lane === "menu_item_draft" ||
                   action.context?.lane === "inspection_template_draft" ||
                   action.context?.lane === "service_bundle_draft"

@@ -43,6 +43,9 @@ type PlannerLane =
   | "parts_follow_up"
   | "low_inventory_reorder"
   | "fleet_follow_up"
+  | "smart_match_readiness"
+  | "menu_item_efficiency_review"
+  | "inspection_template_efficiency_review"
   | "menu_item_draft"
   | "inspection_template_draft"
   | "service_bundle_draft"
@@ -54,6 +57,9 @@ const LANE_LABEL: Record<PlannerLane, string> = {
   parts_follow_up: "Parts follow-up",
   low_inventory_reorder: "Low inventory reorder",
   fleet_follow_up: "Fleet follow-up",
+  smart_match_readiness: "Smart Match readiness",
+  menu_item_efficiency_review: "Menu item efficiency review",
+  inspection_template_efficiency_review: "Inspection template efficiency review",
   menu_item_draft: "Menu item draft",
   inspection_template_draft: "Inspection template draft",
   service_bundle_draft: "Service bundle draft",
@@ -425,6 +431,9 @@ export default function PlannerPage() {
       laneParam === "parts_follow_up" ||
       laneParam === "low_inventory_reorder" ||
       laneParam === "fleet_follow_up" ||
+      laneParam === "smart_match_readiness" ||
+      laneParam === "menu_item_efficiency_review" ||
+      laneParam === "inspection_template_efficiency_review" ||
       laneParam === "menu_item_draft" ||
       laneParam === "inspection_template_draft" ||
       laneParam === "service_bundle_draft" ||
