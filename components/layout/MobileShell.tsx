@@ -66,7 +66,7 @@ export function MobileShell({ children, title }: Props) {
             type="button"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open menu"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95"
+            className="desktop-btn-secondary inline-flex h-8 w-8 items-center justify-center rounded-full border active:scale-95"
           >
             <span className="sr-only">Open menu</span>
             <div className="flex flex-col gap-[3px]">
@@ -86,7 +86,7 @@ export function MobileShell({ children, title }: Props) {
           <button
             type="button"
             onClick={handleHome}
-            className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-100 hover:bg-black/70 active:scale-95"
+            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-neutral-100 active:scale-95"
           >
             <span className="block h-[10px] w-[10px] rounded-[3px] border border-white/70 bg-white/10" />
             <span className="uppercase tracking-[0.16em]">Home</span>

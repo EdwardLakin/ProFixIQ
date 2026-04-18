@@ -73,7 +73,7 @@ export default async function RootLayout({
         className="min-h-screen antialiased"
         style={{
           backgroundImage:
-            "var(--app-shell-bg, radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",
+            "var(--app-shell-bg, radial-gradient(circle at top, rgba(59,130,246,0.12), transparent 56%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",
         }}
       >
         <Providers initialSession={session ?? null}>
