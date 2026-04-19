@@ -743,18 +743,18 @@ export default function CustomBuilderPage() {
   /* ------------------------------------------------------------------ */
 
   // copper: slightly muted, avoids neon/orange pop
-  const COPPER = "rgba(224,174,130,0.88)";
-  const COPPER_55 = "rgba(224,174,130,0.46)";
-  const COPPER_GLOW_20 = "rgba(224,174,130,0.20)";
-  const COOL_WASH_20 = "rgba(56,189,248,0.10)";
+  const COPPER = "rgba(176,141,112,0.9)";
+  const COPPER_55 = "rgba(176,141,112,0.42)";
+  const COPPER_GLOW_20 = "rgba(176,141,112,0.18)";
+  const COOL_WASH_20 = "rgba(96,165,250,0.12)";
 
   const headerCard =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "bg-slate-950/75 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   const sectionCard =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/70 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "bg-slate-950/75 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
@@ -765,21 +765,21 @@ export default function CustomBuilderPage() {
   const pillInactive = "border-transparent bg-transparent text-neutral-400 hover:bg-zinc-900/80";
 
   const inputBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
     `focus:ring-[${COPPER_55}]`;
 
   const selectBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
     `focus:ring-[${COPPER_55}]`;
 
   const actionBtn =
     "rounded-full border border-[color:var(--metal-border-soft,#374151)] " +
-    "bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] " +
-    "text-neutral-100 hover:bg-black/80 " +
+    "bg-slate-950/75 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] " +
+    "text-neutral-100 hover:bg-slate-900/80 " +
     `hover:border-[${COPPER_55}]`;
 
   const primaryBtn =
-    "rounded-full bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))] " +
+    "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.82),rgba(160,116,82,0.76))] " +
     "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black " +
     `shadow-[0_0_18px_${COPPER_GLOW_20}] hover:shadow-[0_0_26px_${COPPER_GLOW_20}] disabled:opacity-60`;
 
@@ -791,7 +791,7 @@ export default function CustomBuilderPage() {
           aria-hidden
           className={cx(
             "pointer-events-none fixed inset-0 -z-10",
-            `bg-[radial-gradient(circle_at_top,${COOL_WASH_20},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]`,
+            `bg-[radial-gradient(circle_at_top,${COOL_WASH_20},transparent_52%),radial-gradient(circle_at_bottom,rgba(10,15,28,0.97),#020617_80%)]`,
           )}
         />
 
@@ -816,7 +816,7 @@ export default function CustomBuilderPage() {
                 <span
                   key={c.k}
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-3 py-1 text-[11px]",
+                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-3 py-1 text-[11px]",
                     "text-neutral-200",
                   )}
                 >
@@ -864,7 +864,7 @@ export default function CustomBuilderPage() {
           {/* Toggles + corner grid (templates-style pill group) */}
           <div className="relative mt-5 space-y-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-black/60">
+              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-slate-950/70">
                 <button
                   type="button"
                   onClick={() => setIncludeOil((v) => !v)}
@@ -896,11 +896,11 @@ export default function CustomBuilderPage() {
               </div>
 
               {includeOil && (
-                <div className="flex items-center gap-2 rounded-full border border-neutral-700/80 bg-black/60 px-3 py-1.5">
+                <div className="flex items-center gap-2 rounded-full border border-neutral-700/80 bg-slate-950/70 px-3 py-1.5">
                   <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
                   <select
                     className={cx(
-                      "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
+                      "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
                       `focus:ring-[${COPPER_55}]`,
                     )}
                     value={oilEngineType}
@@ -915,7 +915,7 @@ export default function CustomBuilderPage() {
 
             <div className="flex flex-wrap items-center justify-center gap-2">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
-              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-black/60">
+              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-slate-950/70">
                 {gridModeButtons.map((opt) => {
                   const active = gridMode === opt.value;
                   return (
@@ -943,7 +943,7 @@ export default function CustomBuilderPage() {
             <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
               Quick Build
             </div>
-            <p className="mb-4 text-center text-sm text-neutral-400">
+            <p className="mb-4 text-center text-sm text-slate-400">
               Deterministic build from your master list (keeps CVIP/spec codes).
             </p>
 
@@ -1013,7 +1013,7 @@ export default function CustomBuilderPage() {
             <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
               Prompt Build
             </div>
-            <p className="mb-4 text-center text-sm text-neutral-400">
+            <p className="mb-4 text-center text-sm text-slate-400">
               Triggers auto-apply while typing (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
             </p>
 
@@ -1052,7 +1052,7 @@ export default function CustomBuilderPage() {
 
             <textarea
               className={cx(
-                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
                 `focus:ring-[${COPPER_55}]`,
               )}
               placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
@@ -1099,7 +1099,7 @@ export default function CustomBuilderPage() {
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-semibold text-neutral-100">{sec.title}</div>
-                    <span className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-2 py-0.5 text-[11px] text-neutral-300">
+                    <span className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-2 py-0.5 text-[11px] text-neutral-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
@@ -1127,7 +1127,7 @@ export default function CustomBuilderPage() {
                         <label
                           key={label}
                           className={cx(
-                            "flex items-center gap-2 rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-2 py-1 text-sm text-neutral-100",
+                            "flex items-center gap-2 rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-2 py-1 text-sm text-neutral-100",
                             checked && `border-[${COPPER_55}]`,
                           )}
                         >
