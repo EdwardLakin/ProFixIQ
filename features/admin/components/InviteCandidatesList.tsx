@@ -34,12 +34,12 @@ const T = {
   glass:
     "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-black/35 backdrop-blur-md",
   glassStrong:
-    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.12),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.62),rgba(0,0,0,0.42))] backdrop-blur-md",
+    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(56,189,248,0.08),transparent_55%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.72))] backdrop-blur-md",
   shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
   panel: "rounded-2xl border",
   label: "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
   input:
-    "w-full rounded-md border bg-black/50 px-3 py-2 text-sm text-neutral-100 outline-none transition " +
+    "w-full rounded-md border bg-slate-950/70 px-3 py-2 text-sm text-neutral-100 outline-none transition " +
     "placeholder:text-neutral-500 focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]",
   chip:

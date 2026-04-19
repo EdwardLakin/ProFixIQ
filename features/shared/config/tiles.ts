@@ -365,7 +365,7 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
-    href: "/dashboard/admin/people?view=workforce",
+    href: "/dashboard/admin/employees",
     title: "Workforce View",
     subtitle: "Workforce posture, onboarding, and payroll readiness filters",
     roles: ["owner", "admin"],

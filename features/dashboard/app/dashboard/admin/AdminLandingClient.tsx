@@ -33,7 +33,7 @@ const CANONICAL_ADMIN_ROUTES = [
     nextStep: "Open person workspace and manage sections",
   },
   {
-    href: "/dashboard/admin/people?view=workforce",
+    href: "/dashboard/admin/employees",
     label: "Workforce Readiness View",
     description: "Filtered workforce posture view sourced from canonical People records.",
     nextStep: "Close onboarding/certification gaps",

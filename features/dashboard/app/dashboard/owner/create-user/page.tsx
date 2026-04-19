@@ -21,6 +21,10 @@ type CreatePayload = {
 };
 
 const COPPER = "#C57A4A";
+const PANEL_CLASS =
+  "rounded-2xl border border-[color:var(--metal-border-soft,#334155)] bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.8))] p-4 backdrop-blur-md shadow-[0_22px_60px_rgba(0,0,0,0.72)] sm:p-6";
+const INPUT_CLASS =
+  "w-full rounded-lg border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--metal-border-strong,#64748b)]";
 
 export default function CreateUserPage(): JSX.Element {
   const router = useRouter();
@@ -199,7 +203,7 @@ export default function CreateUserPage(): JSX.Element {
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
-        <div className="space-y-4 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_28px_80px_rgba(0,0,0,0.85)] sm:p-6">
+        <div className={`space-y-4 ${PANEL_CLASS}`}>
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-white">New team member</h2>
             <p className="text-sm text-neutral-400">
@@ -247,7 +251,7 @@ export default function CreateUserPage(): JSX.Element {
                 Full name
               </label>
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="Full name"
                 value={form.full_name ?? ""}
                 onChange={(e) =>
@@ -261,7 +265,7 @@ export default function CreateUserPage(): JSX.Element {
                 Phone
               </label>
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="Phone"
                 value={form.phone ?? ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -273,7 +277,7 @@ export default function CreateUserPage(): JSX.Element {
                 Username <span className="text-red-400">*</span>
               </label>
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="e.g. jsmith"
                 value={form.username}
                 onChange={(e) =>
@@ -290,7 +294,7 @@ export default function CreateUserPage(): JSX.Element {
                 Temporary password <span className="text-red-400">*</span>
               </label>
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="Temporary password"
                 type="password"
                 value={form.password}
@@ -307,7 +311,7 @@ export default function CreateUserPage(): JSX.Element {
                 Role
               </label>
               <select
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 value={form.role ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, role: e.target.value as UserRole })
@@ -340,7 +344,7 @@ export default function CreateUserPage(): JSX.Element {
                 </span>
               </label>
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="Shop ID"
                 value={form.shop_id ?? ""}
                 onChange={(e) =>
@@ -380,7 +384,7 @@ export default function CreateUserPage(): JSX.Element {
         {/* RIGHT: recents + internal reset */}
         <div className="space-y-6">
           {/* recently created */}
-          <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.75)] sm:p-6">
+          <div className={PANEL_CLASS}>
             <h2 className="mb-2 text-lg font-semibold text-white">
               Recently created
             </h2>
@@ -393,7 +397,7 @@ export default function CreateUserPage(): JSX.Element {
                 {recentUsers.map((u) => (
                   <li
                     key={u.username}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-black/60 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/75 px-3 py-2"
                   >
                     <div>
                       <div className="font-medium text-white">
@@ -403,7 +407,7 @@ export default function CreateUserPage(): JSX.Element {
                         @{u.username} • {u.role ?? "mechanic"}
                       </div>
                     </div>
-                    <span className="rounded-full border border-white/16 bg-black/60 px-2 py-0.5 text-[11px] text-neutral-200">
+                    <span className="rounded-full border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/75 px-2 py-0.5 text-[11px] text-neutral-200">
                       temp set
                     </span>
                   </li>
@@ -415,7 +419,7 @@ export default function CreateUserPage(): JSX.Element {
                 Latest person record:{" "}
                 <button
                   type="button"
-                  className="text-orange-300 hover:text-orange-200"
+                  className="text-[var(--accent-copper-soft)] hover:text-[var(--accent-copper)]"
                   onClick={() => router.push(`/dashboard/admin/people/${createdUserId}?from=create-user`)}
                 >
                   Open workspace
@@ -425,7 +429,7 @@ export default function CreateUserPage(): JSX.Element {
           </div>
 
           {/* reset */}
-          <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.75)] sm:p-6">
+          <div className={PANEL_CLASS}>
             <h2 className="mb-2 text-lg font-semibold text-white">
               Reset password (internal)
             </h2>
@@ -436,13 +440,13 @@ export default function CreateUserPage(): JSX.Element {
             </p>
             <div className="space-y-2 text-sm">
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="Username to reset"
                 value={resetUsername}
                 onChange={(e) => setResetUsername(e.target.value)}
               />
               <input
-                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                className={INPUT_CLASS}
                 placeholder="New temporary password"
                 type="password"
                 value={resetPass}
@@ -465,7 +469,7 @@ export default function CreateUserPage(): JSX.Element {
       </div>
 
       {/* PENDING INVITES */}
-      <div className="mt-6 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
+      <div className={`mt-6 ${PANEL_CLASS}`}>
         <h2 className="mb-3 text-lg font-semibold text-white">Pending invites</h2>
         <p className="mb-3 text-xs text-neutral-500">
           These are staff invite candidates (imported or staged). Create the user + send the invite email.
@@ -474,7 +478,7 @@ export default function CreateUserPage(): JSX.Element {
       </div>
 
       {/* USERS LIST (full width, own card) */}
-      <div className="mt-6 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
+      <div className={`mt-6 ${PANEL_CLASS}`}>
         <h2 className="mb-3 text-lg font-semibold text-white">All users</h2>
         <p className="mb-3 text-xs text-neutral-500">
           This is the full list of users for your shop. New accounts appear here automatically.

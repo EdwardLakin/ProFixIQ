@@ -228,7 +228,7 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin/people?view=workforce",
+    href: "/dashboard/admin/employees",
     title: "Workforce View",
     subtitle: "Filtered workforce readiness from People records",
     roles: ["owner", "admin"],
