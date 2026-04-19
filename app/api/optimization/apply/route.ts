@@ -55,6 +55,10 @@ function toNonEmptyString(value: unknown): string | null {
   return v.length > 0 ? v : null;
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function safePayload(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -263,7 +267,8 @@ export async function POST(req: Request) {
 
     if (type === "inspection") {
       const templateRaw = safePayload(payload.inspectionTemplate);
-      const templateId = toNonEmptyString(templateRaw.templateId) ?? opportunity?.targetRefs?.inspectionTemplateId ?? null;
+      const rawTemplateId = toNonEmptyString(templateRaw.templateId) ?? opportunity?.targetRefs?.inspectionTemplateId ?? null;
+      const templateId = rawTemplateId && isUuid(rawTemplateId) ? rawTemplateId : null;
       const menuItemId = toNonEmptyString(payload.menuItemId) ?? opportunity?.targetRefs?.menuItemId ?? undefined;
       const templateName =
         toNonEmptyString(templateRaw.templateName) ||

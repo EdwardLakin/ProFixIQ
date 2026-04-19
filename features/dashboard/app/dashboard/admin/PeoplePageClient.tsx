@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AdminBadge,
   AdminEmptyState,
@@ -58,11 +59,19 @@ function certificationPosture(row: PersonRow) {
 }
 
 export default function PeoplePageClient() {
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<PersonRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on_leave">("all");
   const [actionFilter, setActionFilter] = useState<"all" | "needs_action" | "payroll_issues" | "cert_expiry">("all");
+
+  useEffect(() => {
+    const view = searchParams.get("view");
+    if (view === "workforce") {
+      setActionFilter("needs_action");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     (async () => {

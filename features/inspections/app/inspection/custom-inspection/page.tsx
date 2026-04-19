@@ -745,8 +745,8 @@ export default function CustomBuilderPage() {
   // copper: slightly muted, avoids neon/orange pop
   const COPPER = "rgba(224,174,130,0.88)";
   const COPPER_55 = "rgba(224,174,130,0.46)";
-  const COPPER_20 = "rgba(59,130,246,0.14)";
-  const COPPER_14 = "rgba(59,130,246,0.10)";
+  const COPPER_GLOW_20 = "rgba(224,174,130,0.20)";
+  const COOL_WASH_20 = "rgba(56,189,248,0.10)";
 
   const headerCard =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -781,7 +781,7 @@ export default function CustomBuilderPage() {
   const primaryBtn =
     "rounded-full bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))] " +
     "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black " +
-    `shadow-[0_0_18px_${COPPER_20}] hover:shadow-[0_0_26px_${COPPER_20}] disabled:opacity-60`;
+    `shadow-[0_0_18px_${COPPER_GLOW_20}] hover:shadow-[0_0_26px_${COPPER_GLOW_20}] disabled:opacity-60`;
 
   return (
     <div className="px-4 py-6 text-white">
@@ -791,20 +791,12 @@ export default function CustomBuilderPage() {
           aria-hidden
           className={cx(
             "pointer-events-none fixed inset-0 -z-10",
-            `bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]`,
+            `bg-[radial-gradient(circle_at_top,${COOL_WASH_20},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]`,
           )}
         />
 
         {/* Header */}
         <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
-          <div
-            aria-hidden
-            className={cx(
-              "pointer-events-none absolute inset-x-0 -top-10 h-24",
-              `bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_65%)]`,
-            )}
-          />
-
           <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="text-center md:text-left">
               <h1
@@ -947,14 +939,6 @@ export default function CustomBuilderPage() {
 
         {/* Quick build */}
         <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
-          <div
-            aria-hidden
-            className={cx(
-              "pointer-events-none absolute inset-x-0 -top-10 h-20",
-              `bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]`,
-            )}
-          />
-
           <div className="relative">
             <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
               Quick Build
@@ -1025,14 +1009,6 @@ export default function CustomBuilderPage() {
 
         {/* Prompt build */}
         <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
-          <div
-            aria-hidden
-            className={cx(
-              "pointer-events-none absolute inset-x-0 -top-10 h-20",
-              `bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]`,
-            )}
-          />
-
           <div className="relative">
             <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
               Prompt Build

@@ -195,7 +195,7 @@ export default function PayrollTimeClient() {
           description="Payroll review stays aligned with employee identity/workforce posture."
         />
         <div className="flex flex-wrap items-center gap-3 p-4 text-xs">
-          <Link href="/dashboard/admin/people?view=workforce" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
+          <Link href="/dashboard/admin/employees" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
             Open People & Staff
           </Link>
           <Link href="/dashboard/admin/people" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
