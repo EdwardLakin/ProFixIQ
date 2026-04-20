@@ -1,9 +1,10 @@
-// /app/api/quotes/send-for-approval/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+
+type DB = Database;
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -26,10 +27,16 @@ function toStringArray(x: unknown): string[] | null {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const access = await requireShopScopedApiAccess({
+    requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+  });
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { supabase, profile } = access;
 
   let workOrderId: string | null = null;
   let lineIds: string[] | null = null;
@@ -54,7 +61,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // ✅ Catch the classic “pattern” error early (custom_id passed instead of UUID)
   if (!isUuid(workOrderId)) {
     return NextResponse.json(
       {
@@ -66,7 +72,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // ✅ line ids must also be UUIDs
   const badLineIds = lineIds.filter((id) => !isUuid(id));
   if (badLineIds.length > 0) {
     return NextResponse.json(
@@ -75,6 +80,41 @@ export async function POST(req: Request) {
         detail: { badLineIds },
       },
       { status: 400 },
+    );
+  }
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("id")
+    .eq("id", workOrderId)
+    .eq("shop_id", profile.shop_id)
+    .maybeSingle<Pick<WorkOrderRow, "id">>();
+
+  if (workOrderError) {
+    return NextResponse.json({ error: workOrderError.message }, { status: 400 });
+  }
+
+  if (!workOrder) {
+    return NextResponse.json(
+      { error: "Work order is not accessible in actor shop" },
+      { status: 403 },
+    );
+  }
+
+  const { data: scopedLines, error: scopedLinesError } = await supabase
+    .from("work_order_lines")
+    .select("id")
+    .eq("work_order_id", workOrderId)
+    .in("id", lineIds);
+
+  if (scopedLinesError) {
+    return NextResponse.json({ error: scopedLinesError.message }, { status: 400 });
+  }
+
+  if (!scopedLines || scopedLines.length !== lineIds.length) {
+    return NextResponse.json(
+      { error: "One or more lineIds are not accessible for this work order" },
+      { status: 403 },
     );
   }
 
@@ -99,7 +139,7 @@ export async function POST(req: Request) {
   await logOperationalEvent({
     supabase,
     event: "work_order_sent_for_approval",
-    actorId: user?.id ?? null,
+    actorId: profile.id,
     entityType: "work_order",
     entityId: workOrderId,
     details: {
