@@ -1,12 +1,10 @@
 // app/pay/success/page.tsx
-import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import Link from "next/link";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY ?? "");
 
 function getStr(searchParams: SearchParams, key: string): string | null {
   const v = searchParams[key];
