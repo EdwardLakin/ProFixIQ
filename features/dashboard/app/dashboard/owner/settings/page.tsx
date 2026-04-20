@@ -19,6 +19,10 @@ import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
+import {
+  parseStripeSubscriptionStatus,
+  type StripeSubscriptionStatusWithUnknown,
+} from "@/features/stripe/lib/stripe/subscriptionStatus";
 
 type FileInputChangeEvent = {
   target: {
@@ -55,16 +59,7 @@ type EmailLogRow = {
   metadata?: Record<string, unknown> | null;
 };
 
-type StripeSubStatus =
-  | "incomplete"
-  | "incomplete_expired"
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "canceled"
-  | "unpaid"
-  | "paused"
-  | "unknown";
+type StripeSubStatus = StripeSubscriptionStatusWithUnknown;
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
@@ -96,22 +91,6 @@ const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
 
 
 
-function parseStripeStatus(v: unknown): StripeSubStatus {
-  const s = String(v ?? "").trim().toLowerCase();
-  const allowed: StripeSubStatus[] = [
-    "incomplete",
-    "incomplete_expired",
-    "trialing",
-    "active",
-    "past_due",
-    "canceled",
-    "unpaid",
-    "paused",
-    "unknown",
-  ];
-
-return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
-}
 
 function parsePlan(v: unknown): PlanName {
   const s = String(v ?? "").trim().toLowerCase();
@@ -459,7 +438,7 @@ try {
       .maybeSingle<ShopBillingScope>();
 
     setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
-    setSubStatus(parseStripeStatus(billing?.stripe_subscription_status));
+    setSubStatus(parseStripeSubscriptionStatus(billing?.stripe_subscription_status));
     setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
     setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
 
@@ -1239,7 +1218,7 @@ try {
           onSwitchLocation={(id) => void switchLocation(id)}
           onRefreshEmailLogs={() => void fetchEmailLogs()}
           planLabel={planLabel}
-          parseStripeStatus={parseStripeStatus}
+          parseStripeStatus={parseStripeSubscriptionStatus}
           formatDate={formatDate}
           formatLocationLine={formatLocationLine}
           locationName={locationName}

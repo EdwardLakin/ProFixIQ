@@ -1,22 +1,21 @@
-// features/stripe/api/stripe/checkout/webhook/route.ts
-
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  parseStripeSubscriptionStatus,
+  type StripeSubscriptionStatus,
+} from "@/features/stripe/lib/stripe/subscriptionStatus";
 
 type DB = Database;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
-
-const supabase = createClient<DB>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
-);
+type WebhookContext = {
+  event: Stripe.Event;
+  stripe: Stripe;
+  supabase: ReturnType<typeof createClient<DB>>;
+};
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
@@ -32,25 +31,15 @@ function clampCurrency(v: unknown): "usd" | "cad" | null {
 function isUuid(v: unknown): v is string {
   if (typeof v !== "string") return false;
   const s = v.trim();
-  // RFC4122-ish check
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s,
-  );
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
-function toStripeId(
-  v: unknown,
-  prefix: string,
-): string | null {
-  // string id
+function toStripeId(v: unknown, prefix: string): string | null {
   if (typeof v === "string" && v.startsWith(prefix)) return v;
-
-  // object with id
   if (v && typeof v === "object") {
     const maybeId = (v as { id?: unknown }).id;
     if (typeof maybeId === "string" && maybeId.startsWith(prefix)) return maybeId;
   }
-
   return null;
 }
 
@@ -59,58 +48,57 @@ function unixToIsoOrNull(v: number | null | undefined): string | null {
   return new Date(v * 1000).toISOString();
 }
 
-async function syncShopConnectFlagsByAccountId(accountId: string): Promise<void> {
-  const acct = await stripe.accounts.retrieve(accountId);
+function toShopStripeStatus(v: unknown): StripeSubscriptionStatus | null {
+  const parsed = parseStripeSubscriptionStatus(v);
+  return parsed === "unknown" ? null : parsed;
+}
+
+async function syncShopConnectFlagsByAccountId(ctx: {
+  stripe: Stripe;
+  supabase: ReturnType<typeof createClient<DB>>;
+  accountId: string;
+}): Promise<void> {
+  const acct = await ctx.stripe.accounts.retrieve(ctx.accountId);
   if (!acct) return;
 
   const chargesEnabled = Boolean(acct.charges_enabled);
   const payoutsEnabled = Boolean(acct.payouts_enabled);
   const detailsSubmitted = Boolean(acct.details_submitted);
 
-  const { data: shops, error: sErr } = await supabase
+  const { data: shops, error: sErr } = await ctx.supabase
     .from("shops")
     .select("id, stripe_account_id")
-    .eq("stripe_account_id", accountId);
+    .eq("stripe_account_id", ctx.accountId);
 
   if (sErr || !shops || shops.length === 0) return;
 
   const shopId = shops[0]?.id;
   if (!shopId) return;
 
-  const { error: updErr } = await supabase
+  const { error: updErr } = await ctx.supabase
     .from("shops")
     .update({
       stripe_charges_enabled: chargesEnabled,
       stripe_payouts_enabled: payoutsEnabled,
       stripe_details_submitted: detailsSubmitted,
-      stripe_onboarding_completed:
-        chargesEnabled && payoutsEnabled && detailsSubmitted,
+      stripe_onboarding_completed: chargesEnabled && payoutsEnabled && detailsSubmitted,
     } as DB["public"]["Tables"]["shops"]["Update"])
     .eq("id", shopId);
 
-  if (updErr) console.error("❌ Failed to sync shop connect flags:", updErr.message);
+  if (updErr) console.error("[stripe/webhook] Failed to sync connect flags:", updErr.message);
 }
 
-type StripeSubStatus =
-  | "incomplete"
-  | "incomplete_expired"
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "canceled"
-  | "unpaid"
-  | "paused";
-
 async function syncShopBillingFromSubscription(params: {
+  stripe: Stripe;
+  supabase: ReturnType<typeof createClient<DB>>;
   shopId: string;
   customerId: string | null;
   subscriptionId: string;
 }): Promise<void> {
-  const { shopId, customerId, subscriptionId } = params;
+  const { shopId, customerId, stripe, subscriptionId, supabase } = params;
 
   const sub = await stripe.subscriptions.retrieve(subscriptionId);
-
-  const status = String(sub.status ?? "") as StripeSubStatus;
+  const status = toShopStripeStatus(sub.status);
   const trialEndIso = unixToIsoOrNull(sub.trial_end ?? null);
   const periodEndIso = unixToIsoOrNull(sub.current_period_end ?? null);
 
@@ -125,10 +113,198 @@ async function syncShopBillingFromSubscription(params: {
     } as unknown as DB["public"]["Tables"]["shops"]["Update"])
     .eq("id", shopId);
 
-  if (error) console.error("❌ Failed to sync shop subscription status:", error.message);
+  if (error) console.error("[stripe/webhook] Failed to sync shop subscription:", error.message);
 }
 
-export async function POST(req: Request) {
+async function upsertPaymentFromCheckout(ctx: {
+  supabase: ReturnType<typeof createClient<DB>>;
+  session: Stripe.Checkout.Session;
+}): Promise<void> {
+  const { session, supabase } = ctx;
+
+  const shopId = session.metadata?.shop_id ?? null;
+  const workOrderId = session.metadata?.work_order_id ?? null;
+  const stripeSessionId = session.id;
+
+  if (!shopId || !isNonEmptyString(shopId)) {
+    console.warn("[stripe/webhook] payment session missing shop_id metadata", { sessionId: stripeSessionId });
+    return;
+  }
+
+  const amountTotal = typeof session.amount_total === "number" ? session.amount_total : 0;
+  const currency = clampCurrency(session.currency) ?? "usd";
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("payments")
+    .select("id, status")
+    .eq("stripe_session_id", stripeSessionId)
+    .limit(1)
+    .maybeSingle<{ id: string; status: string | null }>();
+
+  if (existingError) {
+    console.error("[stripe/webhook] Failed checking existing payment:", existingError.message);
+    return;
+  }
+
+  const payload = {
+    shop_id: shopId,
+    work_order_id: workOrderId && isNonEmptyString(workOrderId) ? workOrderId : null,
+    stripe_session_id: stripeSessionId,
+    stripe_payment_intent_id: paymentIntentId,
+    amount_cents: amountTotal,
+    currency,
+    status: "succeeded",
+    paid_at: new Date().toISOString(),
+    metadata: {
+      purpose: session.metadata?.purpose ?? "customer_payment",
+      platform_fee_bps: session.metadata?.platform_fee_bps ?? null,
+      webhook_event_id: session.id,
+    },
+  } as unknown as DB["public"]["Tables"]["payments"]["Insert"];
+
+  if (!existing?.id) {
+    const { error: payErr } = await supabase.from("payments").insert(payload);
+    if (payErr) {
+      const msg = String(payErr.message ?? "").toLowerCase();
+      const isDup = msg.includes("duplicate") || msg.includes("unique") || msg.includes("stripe_session_id");
+      if (!isDup) console.error("[stripe/webhook] Failed to insert payment:", payErr.message);
+    }
+    return;
+  }
+
+  const { error: updateErr } = await supabase
+    .from("payments")
+    .update({
+      status: "succeeded",
+      paid_at: new Date().toISOString(),
+      stripe_payment_intent_id: paymentIntentId,
+    } as DB["public"]["Tables"]["payments"]["Update"])
+    .eq("id", existing.id);
+
+  if (updateErr) {
+    console.error("[stripe/webhook] Failed to update existing payment:", updateErr.message);
+  }
+}
+
+async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
+  const { event, stripe, supabase } = ctx;
+
+  switch (event.type) {
+    case "account.updated": {
+      const acct = event.data.object as Stripe.Account;
+      if (isNonEmptyString(acct.id)) {
+        await syncShopConnectFlagsByAccountId({ stripe, supabase, accountId: acct.id });
+      }
+      return;
+    }
+
+    case "checkout.session.completed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+
+      if (session.mode === "subscription") {
+        const userId = session.metadata?.supabase_user_id ?? session.metadata?.supabaseUserId ?? null;
+        const shopIdRaw = session.metadata?.shop_id ?? null;
+
+        const stripeCustomerId = toStripeId(session.customer, "cus_");
+        const stripeSubscriptionId = toStripeId(session.subscription, "sub_");
+        const checkoutSessionId = session.id;
+
+        if (isNonEmptyString(userId)) {
+          const { error } = await supabase
+            .from("profiles")
+            .update({
+              stripe_checkout_complete: true,
+              stripe_customer_id: stripeCustomerId,
+              stripe_subscription_id: stripeSubscriptionId,
+              stripe_checkout_session_id: checkoutSessionId,
+            } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
+            .eq("id", userId);
+
+          if (error) console.error("[stripe/webhook] Failed to update profile:", error.message);
+        }
+
+        if (isUuid(shopIdRaw)) {
+          const shopId = shopIdRaw;
+
+          const { error } = await supabase
+            .from("shops")
+            .update({
+              stripe_customer_id: stripeCustomerId,
+              stripe_subscription_id: stripeSubscriptionId,
+              stripe_checkout_session_id: checkoutSessionId,
+            } as unknown as DB["public"]["Tables"]["shops"]["Update"])
+            .eq("id", shopId);
+
+          if (error) console.error("[stripe/webhook] Failed to update shop billing ids:", error.message);
+
+          if (stripeSubscriptionId) {
+            await syncShopBillingFromSubscription({
+              stripe,
+              supabase,
+              shopId,
+              customerId: stripeCustomerId,
+              subscriptionId: stripeSubscriptionId,
+            });
+          }
+        }
+
+        return;
+      }
+
+      if (session.mode === "payment") {
+        await upsertPaymentFromCheckout({ supabase, session });
+      }
+      return;
+    }
+
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      const sub = event.data.object as Stripe.Subscription;
+
+      const subscriptionId = String(sub.id ?? "");
+      const customerId = toStripeId(sub.customer, "cus_");
+
+      if (!isNonEmptyString(subscriptionId)) return;
+
+      const filters = [
+        `stripe_subscription_id.eq.${subscriptionId}`,
+        customerId ? `stripe_customer_id.eq.${customerId}` : "",
+      ].filter((x) => x.length > 0);
+
+      const { data: shop, error: sErr } = await supabase
+        .from("shops")
+        .select("id, stripe_subscription_id, stripe_customer_id")
+        .or(filters.join(","))
+        .maybeSingle<{ id: string; stripe_subscription_id: string | null; stripe_customer_id: string | null }>();
+
+      if (sErr || !shop?.id) return;
+
+      const status = toShopStripeStatus(sub.status);
+      const trialEndIso = unixToIsoOrNull(sub.trial_end ?? null);
+      const periodEndIso = unixToIsoOrNull(sub.current_period_end ?? null);
+
+      const { error: updErr } = await supabase
+        .from("shops")
+        .update({
+          stripe_subscription_id: subscriptionId,
+          stripe_customer_id: customerId ?? shop.stripe_customer_id ?? null,
+          stripe_subscription_status: status,
+          stripe_trial_end: trialEndIso,
+          stripe_current_period_end: periodEndIso,
+        } as unknown as DB["public"]["Tables"]["shops"]["Update"])
+        .eq("id", shop.id);
+
+      if (updErr) console.error("[stripe/webhook] Failed to update shop subscription status:", updErr.message);
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+export async function handleStripeWebhook(req: Request): Promise<Response> {
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 
   if (!endpointSecret) {
@@ -146,180 +322,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
+  });
+
+  const supabase = createClient<DB>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+
   let event: Stripe.Event;
   try {
     const rawBody = await req.text();
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("❌ Stripe webhook verification failed:", message);
+    console.error("[stripe/webhook] verification failed:", message);
     return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 });
   }
 
   try {
-    switch (event.type) {
-      case "account.updated": {
-        const acct = event.data.object as Stripe.Account;
-        if (isNonEmptyString(acct.id)) await syncShopConnectFlagsByAccountId(acct.id);
-        break;
-      }
-
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-
-        // SUBSCRIPTIONS (Shop billing)
-        if (session.mode === "subscription") {
-          const userId = session.metadata?.supabaseUserId ?? null;
-          const shopIdRaw = session.metadata?.shop_id ?? null;
-
-          const stripeCustomerId = toStripeId(session.customer, "cus_");
-          const stripeSubscriptionId = toStripeId(session.subscription, "sub_");
-          const checkoutSessionId = session.id;
-
-          // profile update (safe even if shop id is marketing)
-          if (isNonEmptyString(userId)) {
-            const { error } = await supabase
-              .from("profiles")
-              .update({
-                stripe_checkout_complete: true,
-                stripe_customer_id: stripeCustomerId,
-                stripe_subscription_id: stripeSubscriptionId,
-                stripe_checkout_session_id: checkoutSessionId,
-              } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
-              .eq("id", userId);
-
-            if (error) console.error("❌ Failed to update profile:", error.message);
-          }
-
-          // only update shops if the shop id is a real UUID
-          if (isUuid(shopIdRaw)) {
-            const shopId = shopIdRaw;
-
-            const { error } = await supabase
-              .from("shops")
-              .update({
-                stripe_customer_id: stripeCustomerId,
-                stripe_subscription_id: stripeSubscriptionId,
-                stripe_checkout_session_id: checkoutSessionId,
-              } as unknown as DB["public"]["Tables"]["shops"]["Update"])
-              .eq("id", shopId);
-
-            if (error) console.error("❌ Failed to update shop billing ids:", error.message);
-
-            if (stripeSubscriptionId) {
-              await syncShopBillingFromSubscription({
-                shopId,
-                customerId: stripeCustomerId,
-                subscriptionId: stripeSubscriptionId,
-              });
-            }
-          }
-
-          break;
-        }
-
-        // CUSTOMER PAYMENTS (One-time)
-        if (session.mode === "payment") {
-          const shopId = session.metadata?.shop_id ?? null;
-          const workOrderId = session.metadata?.work_order_id ?? null;
-
-          const amountTotal =
-            typeof session.amount_total === "number" ? session.amount_total : null;
-
-          const currency = clampCurrency(session.currency);
-          const stripeSessionId = session.id;
-
-          const paymentIntentId =
-            typeof session.payment_intent === "string" ? session.payment_intent : null;
-
-          if (!shopId || !isNonEmptyString(shopId)) {
-            console.warn("⚠️ payment session missing shop_id metadata", { sessionId: stripeSessionId });
-            break;
-          }
-
-          const insertAmount = amountTotal ?? 0;
-          const insertCurrency = currency ?? "usd";
-
-          const { error: payErr } = await supabase.from("payments").insert({
-            shop_id: shopId,
-            work_order_id: workOrderId && isNonEmptyString(workOrderId) ? workOrderId : null,
-            stripe_session_id: stripeSessionId,
-            stripe_payment_intent_id: paymentIntentId,
-            amount_cents: insertAmount,
-            currency: insertCurrency,
-            status: "succeeded",
-            paid_at: new Date().toISOString(),
-            metadata: {
-              purpose: session.metadata?.purpose ?? "customer_payment",
-              platform_fee_bps: session.metadata?.platform_fee_bps ?? null,
-            },
-          } as unknown as DB["public"]["Tables"]["payments"]["Insert"]);
-
-          if (payErr) {
-            const msg = String(payErr.message ?? "").toLowerCase();
-            const isDup =
-              msg.includes("duplicate") || msg.includes("unique") || msg.includes("stripe_session_id");
-            if (!isDup) console.error("❌ Failed to insert payment:", payErr.message);
-          }
-
-          break;
-        }
-
-        break;
-      }
-
-      // keep shop status correct after trial ends / payment fails / cancel
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-
-        const subscriptionId = String(sub.id ?? "");
-        const customerId = toStripeId(sub.customer, "cus_");
-
-        if (!isNonEmptyString(subscriptionId)) break;
-
-        // find shop by subscription id (preferred) or customer id (fallback)
-        const filters = [
-          `stripe_subscription_id.eq.${subscriptionId}`,
-          customerId ? `stripe_customer_id.eq.${customerId}` : "",
-        ].filter((x) => x.length > 0);
-
-        const { data: shop, error: sErr } = await supabase
-          .from("shops")
-          .select("id, stripe_subscription_id, stripe_customer_id")
-          .or(filters.join(","))
-          .maybeSingle<{ id: string; stripe_subscription_id: string | null; stripe_customer_id: string | null }>();
-
-        if (sErr || !shop?.id) break;
-
-        const status = String(sub.status ?? "") as StripeSubStatus;
-        const trialEndIso = unixToIsoOrNull(sub.trial_end ?? null);
-        const periodEndIso = unixToIsoOrNull(sub.current_period_end ?? null);
-
-        const { error: updErr } = await supabase
-          .from("shops")
-          .update({
-            stripe_subscription_id: subscriptionId,
-            stripe_customer_id: customerId ?? shop.stripe_customer_id ?? null,
-            stripe_subscription_status: status,
-            stripe_trial_end: trialEndIso,
-            stripe_current_period_end: periodEndIso,
-          } as unknown as DB["public"]["Tables"]["shops"]["Update"])
-          .eq("id", shop.id);
-
-        if (updErr) console.error("❌ Failed to update shop subscription status:", updErr.message);
-
-        break;
-      }
-
-      default:
-        break;
-    }
-
+    await processStripeWebhookEvent({ event, stripe, supabase });
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("❌ Webhook processing error:", message);
+    console.error("[stripe/webhook] processing error:", message);
     return NextResponse.json({ error: "Webhook handler failure" }, { status: 500 });
   }
+}
+
+export async function POST(req: Request) {
+  return handleStripeWebhook(req);
 }
