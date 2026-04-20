@@ -71,72 +71,37 @@ export async function POST(req: Request) {
     }
 
     const ownerPinHash = await hashOwnerPin(pin);
-    // Insert shop (seed both address+street for legacy consistency)
-    const shopInsert: DB["public"]["Tables"]["shops"]["Insert"] = {
-      owner_id: user.id,
-      created_by: user.id,
-      business_name: businessName,
-      shop_name: shopName,
-      name: shopName, // keep your existing "name" column in sync
-      street,
-      address: street,
-      city,
-      province,
-      postal_code,
-      country,
-      timezone,
-      owner_pin_hash: ownerPinHash,
-      owner_pin: null,
-      pin: null,
-    };
 
-    const { data: shop, error: shopErr } = await supabase
-      .from("shops")
-      .insert(shopInsert)
-      .select("id")
-      .single<{ id: string }>();
+    const { data: bootstrapRows, error: bootstrapErr } = await supabase.rpc(
+      "bootstrap_owner_atomic",
+      {
+        p_business_name: businessName,
+        p_shop_name: shopName,
+        p_street: street,
+        p_city: city,
+        p_province: province,
+        p_postal_code: postal_code,
+        p_country: country,
+        p_timezone: timezone,
+        p_owner_pin_hash: ownerPinHash,
+      },
+    );
 
-    if (shopErr || !shop) {
+    const bootstrapResult = Array.isArray(bootstrapRows)
+      ? (bootstrapRows as Array<{ shop_id: string | null }>)
+      : [];
+    const shopId = bootstrapResult[0]?.shop_id ?? null;
+    if (bootstrapErr || !shopId) {
       return NextResponse.json(
-        { msg: shopErr?.message ?? "Failed to create shop" },
+        { msg: bootstrapErr?.message ?? "Failed to bootstrap owner" },
         { status: 400 },
       );
     }
 
-    // Seed shop_profiles so country isn't "missing" anywhere
-    const { error: spErr } = await supabase.from("shop_profiles").upsert(
-      {
-        shop_id: shop.id,
-        address_line1: street,
-        city,
-        province,
-        postal_code,
-        country,
-      } as DB["public"]["Tables"]["shop_profiles"]["Insert"],
-      { onConflict: "shop_id" },
-    );
-
-    if (spErr) {
-      return NextResponse.json({ msg: spErr.message }, { status: 400 });
-    }
-
-    // Link profile to shop
-    const { error: profErr } = await supabase
-      .from("profiles")
-      .update({
-        role: "owner",
-        shop_id: shop.id,
-      } as DB["public"]["Tables"]["profiles"]["Update"])
-      .eq("id", user.id);
-
-    if (profErr) {
-      return NextResponse.json({ msg: profErr.message }, { status: 400 });
-    }
-
-    const res = NextResponse.json({ ok: true, shop_id: shop.id }, { status: 200 });
+    const res = NextResponse.json({ ok: true, shop_id: shopId }, { status: 200 });
     return setOwnerPinVerifiedCookie(res, {
       userId: user.id,
-      shopId: shop.id,
+      shopId,
       purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
     });
   } catch (e) {

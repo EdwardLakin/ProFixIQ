@@ -19664,6 +19664,23 @@ export type Database = {
         Args: { tech_id: string; wo_id: string }
         Returns: undefined
       }
+      bootstrap_owner_atomic: {
+        Args: {
+          p_business_name: string
+          p_city: string
+          p_country: string
+          p_owner_pin_hash: string
+          p_postal_code: string
+          p_province: string
+          p_shop_name: string
+          p_street: string
+          p_timezone: string
+        }
+        Returns: {
+          created_shop: boolean
+          shop_id: string
+        }[]
+      }
       can_manage_profile: {
         Args: { target_profile_id: string }
         Returns: boolean
@@ -20104,6 +20121,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      replace_shop_hours_atomic: {
+        Args: { p_hours: Json; p_shop_id: string }
+        Returns: undefined
       }
       reserve_part_request_items_for_line:
         | { Args: { p_work_order_line_id: string }; Returns: undefined }
