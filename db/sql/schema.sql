@@ -6147,10 +6147,6 @@ CREATE POLICY "shops: only read my shop" ON "public"."shops" FOR SELECT TO "auth
 
 
 
-CREATE POLICY "shops_public_select" ON "public"."shops" FOR SELECT USING (true);
-
-
-
 CREATE POLICY "shops_staff_write" ON "public"."shops" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
   WHERE (("p"."id" = "auth"."uid"()) AND ("p"."shop_id" = "shops"."id") AND ("p"."role" = ANY (ARRAY['owner'::"text", 'admin'::"text", 'manager'::"text"])))))) WITH CHECK ((EXISTS ( SELECT 1

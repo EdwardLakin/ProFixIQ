@@ -9,6 +9,7 @@ import { getActiveBrandForRender } from "@/features/branding/server/getActiveBra
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -231,6 +232,12 @@ function pickCustomerPhone(
 
 export async function POST(req: Request) {
   try {
+    const access = await requireShopScopedApiAccess({
+      requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
+      allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    });
+    if (!access.ok) return access.response;
+
     const raw = (await req.json().catch(() => null)) as unknown;
 
     const parsed = parseRequestBody(raw);
@@ -276,6 +283,10 @@ export async function POST(req: Request) {
 
     if (!wo.shop_id) {
       return NextResponse.json({ error: "Work order is missing shop_id" }, { status: 400 });
+    }
+
+    if (wo.shop_id !== access.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const status = String(wo.status ?? "").toLowerCase().replaceAll(" ", "_");

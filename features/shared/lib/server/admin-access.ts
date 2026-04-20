@@ -46,6 +46,7 @@ export async function requireAdminPageAccess(options: AdminPageAccessOptions): P
 
 type ApiAccessOptions = {
   requiredCapability?: CapabilityKey;
+  requiredCapabilities?: CapabilityKey[];
   allowRoles?: CanonicalRole[];
   requireOwnerPin?: boolean;
   ownerPinRequest?: Request;
@@ -86,6 +87,16 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
 
   if (options.requiredCapability && !actor[options.requiredCapability]) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  if (options.requiredCapabilities?.length) {
+    const hasAllRequiredCapabilities = options.requiredCapabilities.every(
+      (capability) => actor[capability],
+    );
+
+    if (!hasAllRequiredCapabilities) {
+      return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    }
   }
 
   if (options.requireOwnerPin) {
