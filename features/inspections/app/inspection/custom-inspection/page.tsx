@@ -739,73 +739,57 @@ export default function CustomBuilderPage() {
   }, [dutyLabel, gridMode, includeTireGrid, includeBatteryGrid, includeGreaseChassis, includeOil, oilEngineType, totalSelected, laborHours]);
 
   /* ------------------------------------------------------------------ */
-  /* THEME: match templates page, but copper instead of orange          */
+  /* Theme alignment with shared dashboard surfaces                      */
   /* ------------------------------------------------------------------ */
 
-  // copper: slightly muted, avoids neon/orange pop
-  const COPPER = "rgba(176,141,112,0.9)";
-  const COPPER_55 = "rgba(176,141,112,0.42)";
-  const COPPER_GLOW_20 = "rgba(176,141,112,0.18)";
-  const COOL_WASH_20 = "rgba(96,165,250,0.12)";
+  const COPPER_45 = "rgba(176,141,112,0.34)";
+  const COPPER_GLOW_16 = "rgba(176,141,112,0.16)";
+  const FOCUS_RING = "rgba(125,211,252,0.38)";
 
   const headerCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-slate-950/75 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,#1f2937))] " +
+    "bg-[color:var(--desktop-panel-bg-soft,rgba(2,6,23,0.78))] shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] backdrop-blur-xl";
 
   const sectionCard =
-    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-slate-950/75 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,#1f2937))] " +
+    "bg-[color:var(--desktop-panel-bg-soft,rgba(2,6,23,0.74))] shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
 
-  // Active: copper border + deep slate wash, not bright
-  const pillActive = `border-[${COPPER_55}] bg-[rgba(15,23,42,0.95)] text-[rgba(248,250,252,0.95)]`;
-  // Inactive: no visible border
-  const pillInactive = "border-transparent bg-transparent text-neutral-400 hover:bg-zinc-900/80";
+  const pillActive = "border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-slate-900/80 text-slate-100";
+  const pillInactive = "border-transparent bg-transparent text-neutral-400 hover:bg-slate-900/60";
 
   const inputBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
-    `focus:ring-[${COPPER_55}]`;
+    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
+    `focus:ring-[${FOCUS_RING}]`;
 
   const selectBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
-    `focus:ring-[${COPPER_55}]`;
+    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
+    `focus:ring-[${FOCUS_RING}]`;
 
   const actionBtn =
-    "rounded-full border border-[color:var(--metal-border-soft,#374151)] " +
-    "bg-slate-950/75 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] " +
-    "text-neutral-100 hover:bg-slate-900/80 " +
-    `hover:border-[${COPPER_55}]`;
+    "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] " +
+    "bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] " +
+    "text-neutral-200 hover:bg-slate-900/80";
 
   const primaryBtn =
-    "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.82),rgba(160,116,82,0.76))] " +
+    "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.72),rgba(160,116,82,0.66))] " +
     "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black " +
-    `shadow-[0_0_18px_${COPPER_GLOW_20}] hover:shadow-[0_0_26px_${COPPER_GLOW_20}] disabled:opacity-60`;
+    `shadow-[0_0_14px_${COPPER_GLOW_16}] hover:shadow-[0_0_18px_${COPPER_GLOW_16}] disabled:opacity-60`;
 
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash (templates-style, but copper) */}
-        <div
-          aria-hidden
-          className={cx(
-            "pointer-events-none fixed inset-0 -z-10",
-            `bg-[radial-gradient(circle_at_top,${COOL_WASH_20},transparent_52%),radial-gradient(circle_at_bottom,rgba(10,15,28,0.97),#020617_80%)]`,
-          )}
-        />
-
         {/* Header */}
         <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="text-center md:text-left">
-              <h1
-                className="text-xl font-bold tracking-[0.22em] uppercase md:text-2xl"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif", color: COPPER }}
-              >
-                Inspection Builder
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Inspections</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">
+                Custom Inspection Builder
               </h1>
-              <p className="mt-1 text-xs text-neutral-300">
+              <p className="mt-1 text-sm text-neutral-400">
                 Quick build, prompt build, or manual selection — all from your master list.
               </p>
             </div>
@@ -816,7 +800,7 @@ export default function CustomBuilderPage() {
                 <span
                   key={c.k}
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-3 py-1 text-[11px]",
+                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-1 text-[11px]",
                     "text-neutral-200",
                   )}
                 >
@@ -864,7 +848,7 @@ export default function CustomBuilderPage() {
           {/* Toggles + corner grid (templates-style pill group) */}
           <div className="relative mt-5 space-y-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-slate-950/70">
+              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))]">
                 <button
                   type="button"
                   onClick={() => setIncludeOil((v) => !v)}
@@ -896,12 +880,12 @@ export default function CustomBuilderPage() {
               </div>
 
               {includeOil && (
-                <div className="flex items-center gap-2 rounded-full border border-neutral-700/80 bg-slate-950/70 px-3 py-1.5">
+                <div className="flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-1.5">
                   <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
                   <select
                     className={cx(
-                      "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
-                      `focus:ring-[${COPPER_55}]`,
+                      "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
+                      `focus:ring-[${FOCUS_RING}]`,
                     )}
                     value={oilEngineType}
                     onChange={(e) => setOilEngineType(e.target.value as EngineType)}
@@ -915,7 +899,7 @@ export default function CustomBuilderPage() {
 
             <div className="flex flex-wrap items-center justify-center gap-2">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
-              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-slate-950/70">
+              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))]">
                 {gridModeButtons.map((opt) => {
                   const active = gridMode === opt.value;
                   return (
@@ -940,7 +924,7 @@ export default function CustomBuilderPage() {
         {/* Quick build */}
         <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
+            <div className="mb-1 text-center text-sm font-semibold text-slate-100">
               Quick Build
             </div>
             <p className="mb-4 text-center text-sm text-slate-400">
@@ -1010,7 +994,7 @@ export default function CustomBuilderPage() {
         {/* Prompt build */}
         <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
+            <div className="mb-1 text-center text-sm font-semibold text-slate-100">
               Prompt Build
             </div>
             <p className="mb-4 text-center text-sm text-slate-400">
@@ -1042,7 +1026,7 @@ export default function CustomBuilderPage() {
                     key={key}
                     type="button"
                     onClick={() => applyAiPreset(key)}
-                    className={cx(actionBtn, "px-3 py-1", active && `border-[${COPPER_55}]`)}
+                    className={cx(actionBtn, "px-3 py-1", active && `border-[${COPPER_45}] text-slate-100`)}
                   >
                     {CVIP_PRESETS[key].label}
                   </button>
@@ -1052,8 +1036,8 @@ export default function CustomBuilderPage() {
 
             <textarea
               className={cx(
-                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/75 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
-                `focus:ring-[${COPPER_55}]`,
+                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+                `focus:ring-[${FOCUS_RING}]`,
               )}
               placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
               value={aiPrompt}
@@ -1099,7 +1083,7 @@ export default function CustomBuilderPage() {
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-semibold text-neutral-100">{sec.title}</div>
-                    <span className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-2 py-0.5 text-[11px] text-neutral-300">
+                    <span className="rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-2 py-0.5 text-[11px] text-neutral-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
@@ -1127,17 +1111,17 @@ export default function CustomBuilderPage() {
                         <label
                           key={label}
                           className={cx(
-                            "flex items-center gap-2 rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-slate-950/70 px-2 py-1 text-sm text-neutral-100",
-                            checked && `border-[${COPPER_55}]`,
+                            "group flex min-h-10 items-center gap-3 rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-2 text-sm text-neutral-100 transition-colors hover:bg-slate-900/60",
+                            checked && `border-[${COPPER_45}]`,
                           )}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggle(sec.title, label)}
-                            className="h-4 w-4 accent-[rgba(200,122,67,0.95)]"
+                            className="h-4 w-4 accent-[rgba(200,122,67,0.85)]"
                           />
-                          <span className="text-xs sm:text-sm">{label}</span>
+                          <span className="text-sm leading-snug text-neutral-200">{label}</span>
                         </label>
                       );
                     })}
