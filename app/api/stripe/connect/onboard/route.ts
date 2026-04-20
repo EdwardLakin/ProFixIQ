@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -52,9 +52,7 @@ function getShopDisplayName(shop: { shop_name?: string | null; name?: string | n
 
 export async function POST() {
   try {
-    const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2022-11-15",
-    });
+    const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
 
     const supabase = createRouteHandlerClient<DB>({ cookies });
 

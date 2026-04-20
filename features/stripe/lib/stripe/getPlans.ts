@@ -1,7 +1,7 @@
 // features/stripe/lib/stripe/getPlans.ts
 "use server";
 
-import Stripe from "stripe";
+import { createStripeClient } from "./client";
 import {
   PLAN_LOOKUP_KEYS,
   PLAN_LIMITS,
@@ -9,9 +9,7 @@ import {
   type PlanKey,
 } from "./constants";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
 
 export type StripePlan = {
   key: PlanKey;

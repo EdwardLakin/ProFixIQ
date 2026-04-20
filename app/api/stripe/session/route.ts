@@ -1,13 +1,11 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
 
 export async function GET(req: Request) {
   try {

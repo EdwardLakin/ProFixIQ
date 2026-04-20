@@ -1,11 +1,9 @@
 //features/stripe/api/stripe/checkout/link-user/route.ts
 
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
   try {

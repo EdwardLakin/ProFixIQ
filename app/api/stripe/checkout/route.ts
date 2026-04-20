@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -110,9 +111,7 @@ async function createCustomerIfMissing(
 
 export async function POST(req: Request) {
   try {
-    const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2022-11-15",
-    });
+    const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
 
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",

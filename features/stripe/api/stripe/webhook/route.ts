@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -322,9 +323,7 @@ export async function handleStripeWebhook(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-  });
+  const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
 
   const supabase = createClient<DB>(
     process.env.NEXT_PUBLIC_SUPABASE_URL,

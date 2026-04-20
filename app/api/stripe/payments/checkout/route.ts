@@ -1,16 +1,14 @@
 //app/api/stripe/payments/checkout/route.ts
 
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { cookies as nextCookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY ?? "");
 
 const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
