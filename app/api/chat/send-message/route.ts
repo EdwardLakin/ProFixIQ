@@ -22,14 +22,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     | {
         conversationId?: string;
         content?: string;
-        senderId?: string;
         metadata?: Record<string, unknown>;
       }
     | null;
 
   const conversationId = body?.conversationId;
   const content = body?.content?.trim() ?? "";
-  const senderId = body?.senderId ?? user.id;
+  const senderId = user.id;
 
   if (!conversationId || !content) {
     return NextResponse.json(
@@ -65,6 +64,17 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   if (partsErr) {
     return NextResponse.json({ error: partsErr.message }, { status: 500 });
+  }
+
+  const allowed =
+    convo.created_by === user.id ||
+    (participants ?? []).some((participant) => participant.user_id === user.id);
+
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "You are not part of this conversation" },
+      { status: 403 },
+    );
   }
 
   // Recipients are all users in conversation except the sender
