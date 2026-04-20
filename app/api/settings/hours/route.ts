@@ -83,20 +83,16 @@ export async function POST(req: Request) {
       };
     });
 
-    const { error: deleteErr } = await access.supabase
-      .from("shop_hours")
-      .delete()
-      .eq("shop_id", shopId);
+    const { error: replaceErr } = await access.supabase.rpc(
+      "replace_shop_hours_atomic",
+      {
+        p_shop_id: shopId,
+        p_hours: normalized,
+      },
+    );
 
-    if (deleteErr) {
-      return NextResponse.json({ error: deleteErr.message }, { status: 500 });
-    }
-
-    if (normalized.length > 0) {
-      const { error: insertErr } = await access.supabase.from("shop_hours").insert(normalized);
-      if (insertErr) {
-        return NextResponse.json({ error: insertErr.message }, { status: 500 });
-      }
+    if (replaceErr) {
+      return NextResponse.json({ error: replaceErr.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
