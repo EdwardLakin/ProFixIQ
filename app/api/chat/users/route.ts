@@ -39,16 +39,22 @@ export async function GET(req: Request) {
   }
 
   const shopId = me.shop_id ?? null;
+  if (!shopId) {
+    return NextResponse.json(
+      { error: "Current user is not associated with a shop" },
+      { status: 403 },
+    );
+  }
 
   // helper to build a profiles query (admin bypasses RLS)
-  const buildQuery = (sameShopOnly: boolean) => {
+  const buildQuery = () => {
     let qry = admin
       .from("profiles")
       .select("id, user_id, full_name, role, email, shop_id, avatar_url")
       .order("full_name", { ascending: true })
-      .limit(MAX_ROWS);
+      .limit(MAX_ROWS)
+      .eq("shop_id", shopId);
 
-    if (sameShopOnly && shopId) qry = qry.eq("shop_id", shopId);
     if (q) {
       qry = qry.or(
         `full_name.ilike.%${q}%,email.ilike.%${q}%,role.ilike.%${q}%`,
@@ -57,26 +63,12 @@ export async function GET(req: Request) {
     return qry;
   };
 
-  // 1) try same-shop first
-  const { data: sameShop, error: sameErr } = await buildQuery(true);
-  if (sameErr) {
+  const { data: list, error: listErr } = await buildQuery();
+  if (listErr) {
     return NextResponse.json(
-      { error: sameErr.message ?? "Failed to load users" },
+      { error: listErr.message ?? "Failed to load users" },
       { status: 500 },
     );
-  }
-
-  // 2) fallback to all if list is too small (e.g., only yourself)
-  let list = sameShop ?? [];
-  if (!list || list.length < 2) {
-    const { data: allUsers, error: allErr } = await buildQuery(false);
-    if (allErr) {
-      return NextResponse.json(
-        { error: allErr.message ?? "Failed to load users" },
-        { status: 500 },
-      );
-    }
-    list = allUsers ?? [];
   }
 
   // normalize id; keep your own row (handy for solo testing)
