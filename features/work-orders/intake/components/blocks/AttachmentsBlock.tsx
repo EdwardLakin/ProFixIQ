@@ -15,7 +15,8 @@ export function AttachmentsBlock(props: {
     <div style={{ display: "grid", gap: 12 }}>
       <label style={{ fontWeight: 800 }}>Attachments (optional)</label>
       <div style={{ fontSize: 13, opacity: 0.75 }}>
-        Add photos/videos/documents (dash lights, leaks, noises). Upload UI can plug in later.
+        Attachments are currently unavailable in intake. Continue the intake flow
+        and add supporting media from the work-order record after intake.
       </div>
 
       {!!attachments.length ? (
@@ -32,10 +33,12 @@ export function AttachmentsBlock(props: {
 
       <button
         type="button"
-        onClick={() => props.onChange(attachments)}
-        style={{ padding: 12, borderRadius: 10 }}
+        disabled
+        aria-disabled="true"
+        title="Intake attachments are not yet available."
+        style={{ padding: 12, borderRadius: 10, opacity: 0.55, cursor: "not-allowed" }}
       >
-        Add attachment (coming soon)
+        Attachment upload unavailable
       </button>
     </div>
   );
