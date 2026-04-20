@@ -106,11 +106,18 @@ export async function POST(req: Request) {
     if (booking.shop_id !== wo.shop_id) return bad("Not allowed", 403);
     if (booking.customer_id !== customer.id) return bad("Not allowed", 403);
 
+    const warnings: string[] = [];
     const alreadySubmitted = Boolean(wo.portal_submitted_at);
     const alreadyFinalized = booking.status === "confirmed" && booking.work_order_id === wo.id;
     if (alreadySubmitted && alreadyFinalized) {
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, replayed: true },
+        {
+          ok: true,
+          workOrderId: wo.id,
+          bookingId: booking.id,
+          partsRequestId: null,
+          replayed: true,
+        },
         { status: 200 },
       );
     }
@@ -163,7 +170,22 @@ export async function POST(req: Request) {
           notes: "Auto-created from portal intake on submit.",
         };
 
-        await supabase.from("work_order_lines").insert(insertLine);
+        const { error: insertErr } = await supabase.from("work_order_lines").insert(insertLine);
+        if (insertErr) {
+          warnings.push("portal_intake_line_insert_failed");
+          console.warn("portal submit: failed to insert intake line", {
+            workOrderId: wo.id,
+            bookingId: booking.id,
+            message: insertErr.message,
+          });
+        }
+      } else if (exErr) {
+        warnings.push("portal_intake_line_check_failed");
+        console.warn("portal submit: failed to verify existing intake line", {
+          workOrderId: wo.id,
+          bookingId: booking.id,
+          message: exErr.message,
+        });
       }
     }
 
@@ -174,9 +196,15 @@ export async function POST(req: Request) {
       .order("created_at", { ascending: true });
 
     if (linesErr) {
-      console.warn("portal submit: failed to load work_order_lines:", linesErr.message);
+      warnings.push("work_order_lines_load_failed");
+      console.warn("portal submit: failed to load work_order_lines", {
+        workOrderId: wo.id,
+        bookingId: booking.id,
+        message: linesErr.message,
+      });
+
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },
+        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
         { status: 200 },
       );
     }
@@ -203,7 +231,7 @@ export async function POST(req: Request) {
 
     if (items.length === 0) {
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },
+        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
         { status: 200 },
       );
     }
@@ -219,15 +247,20 @@ export async function POST(req: Request) {
     const { data: partsRequestId, error: prErr } = await supabase.rpc("create_part_request_with_items", rpcArgs);
 
     if (prErr) {
-      console.warn("portal submit: create_part_request_with_items failed:", prErr.message);
+      warnings.push("parts_request_create_failed");
+      console.warn("portal submit: create_part_request_with_items failed", {
+        workOrderId: wo.id,
+        bookingId: booking.id,
+        message: prErr.message,
+      });
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },
+        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
         { status: 200 },
       );
     }
 
     return NextResponse.json(
-      { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId },
+      { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId, warnings },
       { status: 200 },
     );
   } catch (e: unknown) {
