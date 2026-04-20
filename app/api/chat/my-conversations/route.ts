@@ -4,6 +4,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorConversationIds } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -39,30 +40,14 @@ export async function GET(): Promise<NextResponse> {
 
   const admin = createAdminSupabase();
 
-  const { data: createdConvos, error: createdErr } = await admin
-    .from("conversations")
-    .select("id, created_at, created_by, context_type, context_id, is_group, title")
-    .eq("created_by", user.id);
+  const { ids: convoIds, error: accessErr } = await getActorConversationIds({
+    supabase: admin,
+    actorUserId: user.id,
+  });
 
-  if (createdErr) {
-    return NextResponse.json({ error: createdErr.message }, { status: 500 });
+  if (accessErr) {
+    return NextResponse.json({ error: accessErr }, { status: 500 });
   }
-
-  const { data: partRows, error: partsErr } = await admin
-    .from("conversation_participants")
-    .select("conversation_id, user_id")
-    .eq("user_id", user.id);
-
-  if (partsErr) {
-    return NextResponse.json({ error: partsErr.message }, { status: 500 });
-  }
-
-  const convoIds = Array.from(
-    new Set([
-      ...(createdConvos?.map((c) => c.id) ?? []),
-      ...(partRows?.map((p) => p.conversation_id) ?? []),
-    ]),
-  ).filter(Boolean) as string[];
 
   if (convoIds.length === 0) {
     return NextResponse.json<ConversationPayload[]>([], { status: 200 });

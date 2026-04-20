@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { getActorConversationIds } from "@/features/ai/lib/chat/authorization";
 
 type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -24,35 +25,15 @@ export async function getUserConversations(
 
   const myId = user.id;
 
-  // 2) conversations where I'm a participant
-  const { data: participantRows, error: participantErr } = await supabase
-    .from("conversation_participants")
-    .select("conversation_id")
-    .eq("user_id", myId);
+  const { ids: allConvoIds, error: conversationIdsError } = await getActorConversationIds({
+    supabase,
+    actorUserId: myId,
+  });
 
-  if (participantErr) {
-    console.error("[getUserConversations] participants error:", participantErr);
+  if (conversationIdsError) {
+    console.error("[getUserConversations] ids error:", conversationIdsError);
+    return [];
   }
-
-  const participantIds =
-    participantRows?.map((row) => row.conversation_id).filter(Boolean) ?? [];
-
-  // 3) conversations I created
-  const { data: createdRows, error: createdErr } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("created_by", myId);
-
-  if (createdErr) {
-    console.error("[getUserConversations] created error:", createdErr);
-  }
-
-  const createdIds = createdRows?.map((row) => row.id).filter(Boolean) ?? [];
-
-  // 4) union → final list of convo IDs
-  const allConvoIds = Array.from(
-    new Set<string>([...participantIds, ...createdIds]),
-  );
 
   if (allConvoIds.length === 0) {
     return [];
