@@ -11,6 +11,7 @@ import {
   persistActivationContext,
 } from "@/features/integrations/shopBoost/activationContext";
 import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
 export default function SignUpClient() {
   const supabase = createClientComponentClient<Database>();
@@ -21,6 +22,7 @@ export default function SignUpClient() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const demoId = sp.get("demoId");
   const intakeId = sp.get("intakeId");
@@ -88,38 +90,14 @@ export default function SignUpClient() {
       if (!data?.user) return;
 
       const redirect = sp.get("redirect");
-      const params = new URLSearchParams();
-
-      const priceId = sp.get("priceId");
-      const interval = sp.get("interval");
-      const trial = sp.get("trial");
-      const founding = sp.get("founding");
-      const demoIdParam = sp.get("demoId");
-      const intakeIdParam = sp.get("intakeId");
-
-      if (priceId) params.set("priceId", priceId);
-      if (interval) params.set("interval", interval);
-      if (trial) params.set("trial", trial);
-      if (founding) params.set("founding", founding);
-      if (demoIdParam) params.set("demoId", demoIdParam);
-      if (intakeIdParam) params.set("intakeId", intakeIdParam);
-
-      let onboardingTarget = `/onboarding${
-        params.toString() ? `?${params.toString()}` : ""
-      }`;
-
-      if (activationContext) {
-        onboardingTarget = appendActivationContextToHref(
-          onboardingTarget,
-          activationContext,
-        );
-      }
-
       const destination = redirect
         ? activationContext
           ? appendActivationContextToHref(redirect, activationContext)
           : redirect
-        : onboardingTarget;
+        : await resolvePostAuthDestination({
+            supabase,
+            searchParams: sp,
+          });
 
       router.replace(destination);
     })();
@@ -204,6 +182,32 @@ export default function SignUpClient() {
     setLoading(false);
   };
 
+  const handleResendVerification = async () => {
+    setError("");
+    setNotice("");
+    const resendEmail = email.trim().toLowerCase();
+    if (!resendEmail) {
+      setError("Enter your email first, then resend verification.");
+      return;
+    }
+
+    setResendLoading(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email: resendEmail,
+      options: { emailRedirectTo },
+    });
+
+    if (resendError) {
+      setError(resendError.message || "Failed to resend verification email.");
+      setResendLoading(false);
+      return;
+    }
+
+    setNotice("Verification email sent. Check your inbox and spam folder.");
+    setResendLoading(false);
+  };
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
@@ -250,6 +254,20 @@ export default function SignUpClient() {
 
           {error && <p className="text-sm text-red-500">{error}</p>}
           {notice && <p className="text-sm text-green-400">{notice}</p>}
+
+          <div className="flex flex-wrap gap-3 pt-1 text-xs">
+            <button
+              type="button"
+              disabled={resendLoading || loading}
+              onClick={handleResendVerification}
+              className="text-[var(--accent-copper-light)] underline underline-offset-2 disabled:opacity-60"
+            >
+              {resendLoading ? "Resending..." : "Resend verification"}
+            </button>
+            <a href="/sign-in" className="text-neutral-300 underline underline-offset-2">
+              Already confirmed? Continue to sign in
+            </a>
+          </div>
         </form>
       </div>
     </div>

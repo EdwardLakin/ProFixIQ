@@ -1,22 +1,21 @@
-"use client";
+import { redirect } from "next/navigation";
 
-// app/confirm/page.tsx
-import { Suspense } from "react";
-import ConfirmContent from "./ConfirmContent";
+type ConfirmPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default function Page() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-[60vh] grid place-items-center text-white">
-          <div className="text-center">
-            <p className="text-lg font-semibold">Finishing sign-in…</p>
-            <p className="text-sm text-neutral-400">One moment.</p>
-          </div>
-        </div>
-      }
-    >
-      <ConfirmContent />
-    </Suspense>
-  );
+export default async function ConfirmPage({ searchParams }: ConfirmPageProps) {
+  const resolved = (await searchParams) ?? {};
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(resolved)) {
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, item);
+      continue;
+    }
+    if (typeof value === "string") params.set(key, value);
+  }
+
+  const tail = params.toString();
+  redirect(`/auth/callback${tail ? `?${tail}` : ""}`);
 }

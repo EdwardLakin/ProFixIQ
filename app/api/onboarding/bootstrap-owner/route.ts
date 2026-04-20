@@ -92,8 +92,19 @@ export async function POST(req: Request) {
       : [];
     const shopId = bootstrapResult[0]?.shop_id ?? null;
     if (bootstrapErr || !shopId) {
+      console.error("onboarding.bootstrap_owner_atomic failed", {
+        userId: user.id,
+        bootstrapErr,
+        bootstrapRows,
+      });
+      const sourceMessage = bootstrapErr?.message ?? "";
+      const msg = sourceMessage.toLowerCase().includes("profile")
+        ? "Your profile is missing. Sign out and sign back in, then retry onboarding."
+        : sourceMessage.toLowerCase().includes("ambiguous")
+          ? "Owner setup is temporarily unavailable due to a database mismatch. Please retry in a moment."
+          : sourceMessage || "Failed to bootstrap owner";
       return NextResponse.json(
-        { msg: bootstrapErr?.message ?? "Failed to bootstrap owner" },
+        { msg },
         { status: 400 },
       );
     }
@@ -106,6 +117,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected server error";
+    console.error("onboarding.bootstrap_owner unexpected error", e);
     return NextResponse.json({ msg }, { status: 500 });
   }
 }
