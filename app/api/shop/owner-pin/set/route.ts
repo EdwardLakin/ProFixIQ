@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { getRouteHandlerCookies, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
+import {
+  getRouteHandlerCookies,
+  OWNER_PIN_PURPOSES,
+  setOwnerPinVerifiedCookie,
+} from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 
@@ -75,7 +79,11 @@ export async function POST(req: Request) {
     }
 
     const res = NextResponse.json({ ok: true });
-    return setOwnerPinVerifiedCookie(res, shopId);
+    return setOwnerPinVerifiedCookie(res, {
+      userId: user.id,
+      shopId,
+      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+    });
   } catch (err) {
     console.error("owner-pin.set error", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

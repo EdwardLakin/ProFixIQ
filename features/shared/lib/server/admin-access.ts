@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import type { Database } from "@shared/types/types/supabase";
 import { createServerSupabaseRSC, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { canonicalizeRole, getActorCapabilities, type ActorCapabilities, type CanonicalRole } from "@/features/shared/lib/rbac";
-import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+import { OWNER_PIN_PURPOSES, type OwnerPinPurpose, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { NextResponse } from "next/server";
 
 type DB = Database;
@@ -50,6 +50,7 @@ type ApiAccessOptions = {
   allowRoles?: CanonicalRole[];
   requireOwnerPin?: boolean;
   ownerPinRequest?: Request;
+  ownerPinAllowedPurposes?: OwnerPinPurpose[];
 };
 
 export async function requireShopScopedApiAccess(options: ApiAccessOptions = {}): Promise<
@@ -103,7 +104,11 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
     if (!options.ownerPinRequest) {
       return { ok: false, response: NextResponse.json({ error: "Owner PIN request context missing" }, { status: 500 }) };
     }
-    const pinCheck = await requireOwnerPinVerified(options.ownerPinRequest, supabase as never, profile.shop_id);
+    const pinCheck = await requireOwnerPinVerified(options.ownerPinRequest, supabase as never, {
+      shopId: profile.shop_id,
+      userId: user.id,
+      allowedPurposes: options.ownerPinAllowedPurposes ?? [OWNER_PIN_PURPOSES.PRIVILEGED],
+    });
     if (!pinCheck.ok) return { ok: false, response: pinCheck.response };
   }
 

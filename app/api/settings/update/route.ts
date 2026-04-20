@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
 // Whitelist fields that can be updated from Settings
 const ALLOWED_FIELDS = new Set([
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       allowRoles: ["owner", "admin"],
       requireOwnerPin: true,
       ownerPinRequest: req,
+      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS, OWNER_PIN_PURPOSES.PRIVILEGED],
     });
     if (!access.ok) return access.response;
 

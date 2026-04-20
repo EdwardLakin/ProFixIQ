@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireBrandShopWriteAccess, safeFilePart } from "@/features/branding/server/brand";
-import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { buildLogoPrompt, getOpenAIClient } from "@/features/branding/server/logo-generation";
 
 type DB = Database;
@@ -27,7 +27,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, auth.shopId);
+  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, {
+    shopId: auth.shopId,
+    userId: auth.userId,
+    allowedPurposes: [OWNER_PIN_PURPOSES.BRANDING, OWNER_PIN_PURPOSES.PRIVILEGED],
+  });
   if (!pinCheck.ok) {
     return pinCheck.response;
   }
