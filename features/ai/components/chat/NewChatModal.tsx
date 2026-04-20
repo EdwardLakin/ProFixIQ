@@ -8,7 +8,6 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -85,7 +84,6 @@ export default function NewChatModal({
   isOpen,
   onClose,
   onCreated,
-  created_by,
   context_type = null,
   context_id = null,
   activeConversationId: forcedConversationId = null,
@@ -451,61 +449,43 @@ export default function NewChatModal({
     async (participantIds: string[]): Promise<string | null> => {
       if (activeConvoId) return activeConvoId;
 
-      let creatorId = created_by ?? currentUserId;
-      if (!creatorId) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        creatorId = user?.id ?? null;
-      }
-      if (!creatorId) {
-        toast.error("No authenticated user.");
-        return null;
-      }
+      try {
+        const res = await fetch("/api/chat/start-conversation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            participant_ids: participantIds,
+            context_type,
+            context_id,
+          }),
+        });
 
-      const newId = uuidv4();
-      const { error: convErr } = await supabase.from("conversations").insert({
-        id: newId,
-        created_by: creatorId,
-        context_type,
-        context_id,
-      });
-      if (convErr) {
-        console.error("conversation insert failed:", convErr);
+        const json = (await res.json().catch(() => null)) as
+          | { id?: string; error?: string }
+          | null;
+
+        if (!res.ok || !json?.id) {
+          console.error("conversation create failed:", json?.error ?? `HTTP ${res.status}`);
+          toast.error(json?.error ?? "Could not create conversation");
+          return null;
+        }
+
+        const newId = json.id;
+        setActiveConvoId(newId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LOCAL_ACTIVE_KEY, newId);
+        }
+        onCreated?.(newId);
+        upsertRecent(newId);
+        return newId;
+      } catch (error) {
+        console.error("conversation create failed:", error);
         toast.error("Could not create conversation");
         return null;
       }
-
-      const setIds = new Set(participantIds);
-      setIds.add(creatorId);
-
-      const rows = Array.from(setIds).map((user_id) => ({
-        id: uuidv4(),
-        conversation_id: newId,
-        user_id, // auth UID
-      }));
-
-      const { error: partErr } = await supabase
-        .from("conversation_participants")
-        .insert(rows);
-      if (partErr) {
-        console.error("participants insert failed:", partErr);
-      }
-
-      setActiveConvoId(newId);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_ACTIVE_KEY, newId);
-      }
-      onCreated?.(newId);
-      upsertRecent(newId);
-
-      return newId;
     },
     [
       activeConvoId,
-      created_by,
-      currentUserId,
-      supabase,
       context_type,
       context_id,
       onCreated,
@@ -585,22 +565,26 @@ export default function NewChatModal({
     async (convoId: string) => {
       if (!convoId || recentLabels[convoId]) return;
       try {
-        const { data: parts, error: partsErr } = await supabase
-          .from("conversation_participants")
-          .select("user_id")
-          .eq("conversation_id", convoId);
+        const res = await fetch(
+          `/api/chat/participants?conversationId=${encodeURIComponent(convoId)}`,
+          {
+            method: "GET",
+            credentials: "include",
+          },
+        );
 
-        if (partsErr || !parts?.length) return;
+        if (!res.ok) return;
 
-        const ids = parts.map((p) => p.user_id).filter(Boolean);
-        const { data: profs } = await supabase
-          .from("profiles")
-          .select("full_name,user_id")
-          .in("user_id", ids as string[]);
+        const participants = (await res.json().catch(() => [])) as Array<{
+          user_id: string | null;
+          full_name: string | null;
+        }>;
 
-        const others = (profs ?? [])
-          .filter((p) => p.user_id !== currentUserId)
-          .map((p) => p.full_name || "Unknown");
+        if (!participants.length) return;
+
+        const others = participants
+          .filter((participant) => participant.user_id !== currentUserId)
+          .map((participant) => participant.full_name || "Unknown");
 
         const label =
           others.length <= 2
@@ -612,7 +596,7 @@ export default function NewChatModal({
         // ignore
       }
     },
-    [supabase, currentUserId, recentLabels],
+    [currentUserId, recentLabels],
   );
 
   useEffect(() => {
