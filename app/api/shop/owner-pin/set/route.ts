@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import bcrypt from "bcryptjs";
 import type { Database } from "@shared/types/types/supabase";
 import { getRouteHandlerCookies, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 
 type DB = Database;
 
@@ -11,14 +11,6 @@ type Body = {
   shopId?: string;
   pin?: string;
 };
-
-function normalizePin(pin: string): string {
-  return pin.trim();
-}
-
-function isValidPin(pin: string): boolean {
-  return /^\d{4,8}$/.test(pin);
-}
 
 export async function POST(req: Request) {
   try {
@@ -35,13 +27,13 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const shopId = body.shopId?.trim() ?? "";
-    const pin = normalizePin(body.pin ?? "");
+    const pin = normalizeOwnerPin(body.pin ?? "");
 
     if (!shopId || !pin) {
       return NextResponse.json({ error: "shopId and pin are required" }, { status: 400 });
     }
 
-    if (!isValidPin(pin)) {
+    if (!isValidOwnerPin(pin)) {
       return NextResponse.json(
         { error: "PIN must be 4 to 8 digits" },
         { status: 400 }
@@ -67,7 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Only owner/admin can set PIN" }, { status: 403 });
     }
 
-    const hash = await bcrypt.hash(pin, 10);
+    const hash = await hashOwnerPin(pin);
 
     const { error: updateErr } = await supabase
       .from("shops")

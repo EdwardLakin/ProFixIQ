@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import bcrypt from "bcryptjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
   getRouteHandlerCookies,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
+import { normalizeOwnerPin, verifyOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 
 type DB = Database;
 
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const shopId = body.shopId?.trim() ?? "";
-    const pin = body.pin?.trim() ?? "";
+    const pin = normalizeOwnerPin(body.pin ?? "");
 
     if (!shopId || !pin) {
       return NextResponse.json({ error: "shopId and pin required" }, { status: 400 });
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Owner PIN not set" }, { status: 400 });
     }
 
-    const ok = await bcrypt.compare(pin, shop.owner_pin_hash);
+    const ok = await verifyOwnerPin(pin, shop.owner_pin_hash);
     if (!ok) {
       return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
     }
