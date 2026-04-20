@@ -1,3 +1,5 @@
+// Legacy feature path kept for compatibility with existing imports.
+// Canonical feature path: @/features/stripe/api/stripe/webhook/route
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
