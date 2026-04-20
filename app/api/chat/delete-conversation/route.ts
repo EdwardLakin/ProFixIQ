@@ -4,6 +4,7 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { authorizeConversationLifecycleAction } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -24,26 +25,17 @@ export async function POST(req: Request) {
 
   const admin = createAdminSupabase();
 
-  // make sure the convo exists and user is allowed
-  const { data: convo, error: convoErr } = await admin
-    .from("conversations")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const access = await authorizeConversationLifecycleAction({
+    supabase: admin,
+    conversationId: id,
+    actorUserId: user.id,
+    action: "delete",
+  });
 
-  if (convoErr) {
-    return NextResponse.json({ error: convoErr.message }, { status: 500 });
-  }
-  if (!convo) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  // only creator can delete, adjust if you want participants too
-  if (convo.created_by !== user.id) {
-    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
-  }
-
-  // delete messages first (FKs)
   const { error: msgErr } = await admin
     .from("messages")
     .delete()
@@ -53,7 +45,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msgErr.message }, { status: 500 });
   }
 
-  // delete participants
   const { error: partErr } = await admin
     .from("conversation_participants")
     .delete()
@@ -63,7 +54,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: partErr.message }, { status: 500 });
   }
 
-  // delete conversation
   const { error: delErr } = await admin
     .from("conversations")
     .delete()

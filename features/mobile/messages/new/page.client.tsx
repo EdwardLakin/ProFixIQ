@@ -6,9 +6,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { startConversation } from "@ai/lib/chat/startConversation";
-
-
 
 const ROLE_OPTIONS = [
   { value: "all", label: "All roles" },
@@ -155,13 +152,19 @@ export default function MobileNewMessagePage() {
     setSending(true);
 
     try {
-      // 1) Create conversation via shared helper
-      const res = await startConversation({
-        created_by: currentUserId,
-        participant_ids: selectedIds,
+      // 1) Create conversation via canonical lifecycle API
+      const conversationRes = await fetch("/api/chat/start-conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participant_ids: selectedIds }),
       });
 
-      const conversationId = res.id;
+      const conversationJson = await conversationRes.json().catch(() => ({} as { id?: string; error?: string }));
+      if (!conversationRes.ok || !conversationJson.id) {
+        throw new Error(conversationJson?.error || "Could not start conversation.");
+      }
+
+      const conversationId = conversationJson.id;
 
       // 2) Insert first message via existing API route
       const msgRes = await fetch("/api/chat/send-message", {
