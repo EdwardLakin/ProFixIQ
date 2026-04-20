@@ -28,7 +28,9 @@ export default function SignUpClient() {
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
-    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    if (process.env.NEXT_PUBLIC_SITE_URL) {
+      return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    }
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
     return "http://localhost:3000";
   }, []);
@@ -41,8 +43,8 @@ export default function SignUpClient() {
     const interval = sp.get("interval");
     const trial = sp.get("trial");
     const founding = sp.get("founding");
-    const demoId = sp.get("demoId");
-    const intakeId = sp.get("intakeId");
+    const demoIdParam = sp.get("demoId");
+    const intakeIdParam = sp.get("intakeId");
     const activationContextRaw = sp.get("activationContext");
 
     if (redirect) params.set("redirect", redirect);
@@ -50,12 +52,14 @@ export default function SignUpClient() {
     if (interval) params.set("interval", interval);
     if (trial) params.set("trial", trial);
     if (founding) params.set("founding", founding);
-    if (demoId) params.set("demoId", demoId);
-    if (intakeId) params.set("intakeId", intakeId);
-    if (activationContextRaw) params.set("activationContext", activationContextRaw);
+    if (demoIdParam) params.set("demoId", demoIdParam);
+    if (intakeIdParam) params.set("intakeId", intakeIdParam);
+    if (activationContextRaw) {
+      params.set("activationContext", activationContextRaw);
+    }
 
     const tail = params.toString();
-    return `${origin}/confirm${tail ? `?${tail}` : ""}`;
+    return `${origin}/auth/callback${tail ? `?${tail}` : ""}`;
   }, [origin, sp]);
 
   useEffect(() => {
@@ -66,6 +70,7 @@ export default function SignUpClient() {
   useEffect(() => {
     const sid = sp.get("session_id");
     if (!sid) return;
+
     void (async () => {
       try {
         const res = await fetch(`/api/stripe/session?session_id=${sid}`);
@@ -80,33 +85,43 @@ export default function SignUpClient() {
   useEffect(() => {
     void (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        const redirect = sp.get("redirect");
-        const params = new URLSearchParams();
+      if (!data?.user) return;
 
-        const priceId = sp.get("priceId");
-        const interval = sp.get("interval");
-        const trial = sp.get("trial");
-        const founding = sp.get("founding");
-        const demoId = sp.get("demoId");
-        const intakeId = sp.get("intakeId");
+      const redirect = sp.get("redirect");
+      const params = new URLSearchParams();
 
-        if (priceId) params.set("priceId", priceId);
-        if (interval) params.set("interval", interval);
-        if (trial) params.set("trial", trial);
-        if (founding) params.set("founding", founding);
-        if (demoId) params.set("demoId", demoId);
-        if (intakeId) params.set("intakeId", intakeId);
+      const priceId = sp.get("priceId");
+      const interval = sp.get("interval");
+      const trial = sp.get("trial");
+      const founding = sp.get("founding");
+      const demoIdParam = sp.get("demoId");
+      const intakeIdParam = sp.get("intakeId");
 
-        let onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
-        if (activationContext) onboardingTarget = appendActivationContextToHref(onboardingTarget, activationContext);
-        const destination = redirect
-          ? activationContext
-            ? appendActivationContextToHref(redirect, activationContext)
-            : redirect
-          : onboardingTarget;
-        router.replace(destination);
+      if (priceId) params.set("priceId", priceId);
+      if (interval) params.set("interval", interval);
+      if (trial) params.set("trial", trial);
+      if (founding) params.set("founding", founding);
+      if (demoIdParam) params.set("demoId", demoIdParam);
+      if (intakeIdParam) params.set("intakeId", intakeIdParam);
+
+      let onboardingTarget = `/onboarding${
+        params.toString() ? `?${params.toString()}` : ""
+      }`;
+
+      if (activationContext) {
+        onboardingTarget = appendActivationContextToHref(
+          onboardingTarget,
+          activationContext,
+        );
       }
+
+      const destination = redirect
+        ? activationContext
+          ? appendActivationContextToHref(redirect, activationContext)
+          : redirect
+        : onboardingTarget;
+
+      router.replace(destination);
     })();
   }, [activationContext, router, sp, supabase]);
 
@@ -145,7 +160,7 @@ export default function SignUpClient() {
 
     if (!data.session) {
       setNotice(
-        "Check your email to confirm your account. After confirmation, we’ll continue your selected plan and bring you straight into setup."
+        "Check your email to confirm your account. After confirmation, we’ll continue your selected plan and bring you straight into setup.",
       );
       setLoading(false);
       return;
@@ -158,25 +173,33 @@ export default function SignUpClient() {
     const interval = sp.get("interval");
     const trial = sp.get("trial");
     const founding = sp.get("founding");
-    const demoId = sp.get("demoId");
-    const intakeId = sp.get("intakeId");
+    const demoIdParam = sp.get("demoId");
+    const intakeIdParam = sp.get("intakeId");
 
     if (priceId) params.set("priceId", priceId);
     if (interval) params.set("interval", interval);
     if (trial) params.set("trial", trial);
     if (founding) params.set("founding", founding);
-    if (demoId) params.set("demoId", demoId);
-    if (intakeId) params.set("intakeId", intakeId);
+    if (demoIdParam) params.set("demoId", demoIdParam);
+    if (intakeIdParam) params.set("intakeId", intakeIdParam);
 
-    const onboardingTarget = `/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
+    const onboardingTarget = `/onboarding${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+
     const destination = activationContext
-      ? appendActivationContextToHref(redirect || onboardingTarget, activationContext)
+      ? appendActivationContextToHref(
+          redirect || onboardingTarget,
+          activationContext,
+        )
       : redirect || onboardingTarget;
+
     trackShopBoostEvent("signup_completed", {
       demoId: demoId ?? "unknown",
       intakeId: intakeId ?? undefined,
       source: "signup_form",
     });
+
     await go(destination);
     setLoading(false);
   };
@@ -187,12 +210,14 @@ export default function SignUpClient() {
         <h1 className="mb-6 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           Create Account
         </h1>
+
         {demoId ? (
           <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100">
             Your preview analysis is ready to carry forward.
             {intakeId ? ` Intake: ${intakeId}` : ""}
           </div>
         ) : null}
+
         <form onSubmit={handleSignUp} className="space-y-4">
           <input
             type="email"
@@ -203,6 +228,7 @@ export default function SignUpClient() {
             className="input"
             autoComplete="email"
           />
+
           <input
             type="password"
             placeholder="Password"
@@ -213,6 +239,7 @@ export default function SignUpClient() {
             autoComplete="new-password"
             minLength={6}
           />
+
           <button
             type="submit"
             disabled={loading}
@@ -220,6 +247,7 @@ export default function SignUpClient() {
           >
             {loading ? "Creating Account..." : "Sign Up"}
           </button>
+
           {error && <p className="text-sm text-red-500">{error}</p>}
           {notice && <p className="text-sm text-green-400">{notice}</p>}
         </form>
