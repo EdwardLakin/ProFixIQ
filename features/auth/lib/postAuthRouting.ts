@@ -48,7 +48,7 @@ export async function resolvePostAuthDestination(args: {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("completed_onboarding, shop_id, must_change_password")
+    .select("completed_onboarding, must_change_password")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -56,13 +56,13 @@ export async function resolvePostAuthDestination(args: {
     return "/auth/set-password";
   }
 
-  const hasShop = !!profile?.shop_id;
-  const isOnboarded = !!profile?.completed_onboarding || hasShop;
+  const isOnboarded = profile?.completed_onboarding === true;
 
   if (!isOnboarded) {
     const passthrough = collectPassthroughParams(searchParams);
     const onboardingHref = `/onboarding${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
     const activationContext = parseActivationContextFromSearchParams(searchParams);
+
     return activationContext
       ? appendActivationContextToHref(onboardingHref, activationContext)
       : onboardingHref;
@@ -73,6 +73,7 @@ export async function resolvePostAuthDestination(args: {
   const redirect = searchParams.get("redirect")?.trim();
   const activationContext = parseActivationContextFromSearchParams(searchParams);
   const destination = redirect || defaultDashboardHref;
+
   return activationContext
     ? appendActivationContextToHref(destination, activationContext)
     : destination;

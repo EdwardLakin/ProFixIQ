@@ -18,8 +18,10 @@ export default function AuthCallbackPage() {
       ran.current = true;
 
       try {
-        const url = typeof window !== "undefined" ? window.location.href : "";
-        await supabase.auth.exchangeCodeForSession(url);
+        const code = sp.get("code");
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
       } catch (err) {
         console.warn("auth callback exchangeCodeForSession failed", err);
       }
@@ -33,6 +35,7 @@ export default function AuthCallbackPage() {
       });
 
       router.replace(destination);
+
       setTimeout(() => {
         if (typeof window !== "undefined") {
           const want = new URL(destination, window.location.origin).href;
