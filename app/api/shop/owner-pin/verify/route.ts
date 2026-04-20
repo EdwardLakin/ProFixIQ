@@ -81,16 +81,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    if (!shop.owner_pin_hash) {
-      return NextResponse.json({ error: "Owner PIN not set" }, { status: 400 });
+    const pinConfigured = Boolean(shop.owner_pin_hash);
+
+    if (!pinConfigured) {
+      return NextResponse.json({ error: "Owner PIN not set", pinConfigured: false }, { status: 400 });
     }
 
     const ok = await verifyOwnerPin(pin, shop.owner_pin_hash);
     if (!ok) {
-      return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid PIN", pinConfigured: true }, { status: 401 });
     }
 
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, pinConfigured: true });
     return setOwnerPinVerifiedCookie(res, {
       userId: user.id,
       shopId,

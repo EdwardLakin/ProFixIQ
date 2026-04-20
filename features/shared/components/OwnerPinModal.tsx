@@ -14,6 +14,7 @@ type Props = {
 type VerifyResponse = {
   ok?: boolean;
   error?: string;
+  pinConfigured?: boolean;
 };
 
 function buildExpiryIso(minutes: number) {
@@ -72,7 +73,7 @@ export default function OwnerPinModal({
       return "verified";
     }
 
-    if (json?.error === "Owner PIN not set") {
+    if (json?.pinConfigured === false || json?.error === "Owner PIN not set") {
       setMode("set");
       setError("No owner PIN exists yet. Set one now.");
       return "needs_set";
