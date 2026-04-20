@@ -786,7 +786,10 @@ export default function CustomBuilderPage() {
           <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="text-center md:text-left">
               <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Inspections</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">
+              <h1
+                className="mt-1 text-2xl uppercase tracking-[0.2em] text-slate-100 md:text-3xl"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+              >
                 Custom Inspection Builder
               </h1>
               <p className="mt-1 text-sm text-neutral-400">
