@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,11 @@ function extractToken(
 /* ----------------------------- Route ----------------------------- */
 
 export async function GET() {
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const apiKey = process.env.OPENAI_API_KEY;
 

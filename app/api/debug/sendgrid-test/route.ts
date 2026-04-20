@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { sendDynamicTemplateEmail } from "@/features/email/server/sendDynamicTemplateEmail";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireNonProductionRoute } from "@/features/shared/lib/server/api-route-guard";
 
 type Body = {
   shopId?: string;
@@ -11,6 +13,16 @@ type Body = {
 };
 
 export async function POST(req: Request) {
+  const envGate = requireNonProductionRoute("debug/sendgrid-test");
+  if (!envGate.ok) {
+    return envGate.response;
+  }
+
+  const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
 
@@ -19,10 +31,11 @@ export async function POST(req: Request) {
     const templateKey = body?.templateKey ?? "portal_invite";
 
     if (!shopId || !to) {
-      return NextResponse.json(
-        { error: "shopId and to are required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "shopId and to are required" }, { status: 400 });
+    }
+
+    if (shopId !== access.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     await sendDynamicTemplateEmail({
@@ -73,8 +86,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
