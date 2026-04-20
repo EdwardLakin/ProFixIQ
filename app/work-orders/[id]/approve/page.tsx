@@ -142,7 +142,7 @@ export default function ApproveWorkOrderPage() {
       const approvedLineIds: string[] = Array.from(approved);
       const declinedLineIds: string[] = lines.map((l) => l.id).filter((x) => !approved.has(x));
 
-      const res = await fetch("/work-orders/approval-webhook", {
+      const res = await fetch("/api/quotes/approval-webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
