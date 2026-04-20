@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
 function clamp(v: number): number {
   if (!Number.isFinite(v)) return 30;
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
     allowRoles: ["owner", "admin"],
     requireOwnerPin: true,
     ownerPinRequest: req,
+    ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS, OWNER_PIN_PURPOSES.PRIVILEGED],
   });
   if (!access.ok) return access.response;
 

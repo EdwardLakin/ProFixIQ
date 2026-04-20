@@ -5,7 +5,7 @@ import {
   requireBrandShopWriteAccess,
   normalizeHexColor,
 } from "@/features/branding/server/brand";
-import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
 
@@ -109,7 +109,11 @@ export async function POST(req: Request) {
   const pinCheck = await requireOwnerPinVerified(
     req,
     auth.supabase as never,
-    auth.shopId,
+    {
+      shopId: auth.shopId,
+      userId: auth.userId,
+      allowedPurposes: [OWNER_PIN_PURPOSES.BRANDING, OWNER_PIN_PURPOSES.PRIVILEGED],
+    },
   );
   if (!pinCheck.ok) {
     return pinCheck.response;

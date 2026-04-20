@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireBrandShopWriteAccess } from "@/features/branding/server/brand";
-import { requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
+import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -14,7 +14,11 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, auth.shopId);
+  const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, {
+    shopId: auth.shopId,
+    userId: auth.userId,
+    allowedPurposes: [OWNER_PIN_PURPOSES.BRANDING, OWNER_PIN_PURPOSES.PRIVILEGED],
+  });
   if (!pinCheck.ok) return pinCheck.response;
 
   const body = (await req.json().catch(() => ({}))) as { isFavorite?: boolean };

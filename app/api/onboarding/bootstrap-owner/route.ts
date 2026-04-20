@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
-import { setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
+import { OWNER_PIN_PURPOSES, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
 
@@ -134,7 +134,11 @@ export async function POST(req: Request) {
     }
 
     const res = NextResponse.json({ ok: true, shop_id: shop.id }, { status: 200 });
-    return setOwnerPinVerifiedCookie(res, shop.id);
+    return setOwnerPinVerifiedCookie(res, {
+      userId: user.id,
+      shopId: shop.id,
+      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected server error";
     return NextResponse.json({ msg }, { status: 500 });

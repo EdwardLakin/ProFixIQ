@@ -3,6 +3,8 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
   getRouteHandlerCookies,
+  OWNER_PIN_PURPOSES,
+  type OwnerPinPurpose,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { normalizeOwnerPin, verifyOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
@@ -12,7 +14,10 @@ type DB = Database;
 type Body = {
   shopId?: string;
   pin?: string;
+  purpose?: string;
 };
+
+const OWNER_PIN_PURPOSE_VALUES = new Set<OwnerPinPurpose>(Object.values(OWNER_PIN_PURPOSES));
 
 export async function POST(req: Request) {
   try {
@@ -30,6 +35,10 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Body;
     const shopId = body.shopId?.trim() ?? "";
     const pin = normalizeOwnerPin(body.pin ?? "");
+    const requestedPurpose = (body.purpose ?? "").trim();
+    const purpose = OWNER_PIN_PURPOSE_VALUES.has(requestedPurpose as OwnerPinPurpose)
+      ? (requestedPurpose as OwnerPinPurpose)
+      : OWNER_PIN_PURPOSES.PRIVILEGED;
 
     if (!shopId || !pin) {
       return NextResponse.json({ error: "shopId and pin required" }, { status: 400 });
@@ -65,7 +74,11 @@ export async function POST(req: Request) {
     }
 
     const res = NextResponse.json({ ok: true });
-    return setOwnerPinVerifiedCookie(res, shopId);
+    return setOwnerPinVerifiedCookie(res, {
+      userId: user.id,
+      shopId,
+      purpose,
+    });
   } catch (err) {
     console.error("owner-pin.verify error", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
