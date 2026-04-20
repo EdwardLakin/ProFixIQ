@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
+import { setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
 
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
     const city = cleanStr(raw.city);
     const province = cleanStr(raw.province);
     const postal_code = cleanStr(raw.postal_code);
-    const pin = cleanStr(raw.pin);
+    const pin = normalizeOwnerPin(String(raw.pin ?? ""));
 
     // New NA fields (optional in step 1, but we seed safely)
     const country = NA_COUNTRIES.has(cleanUpper(raw.country))
@@ -60,6 +62,15 @@ export async function POST(req: Request) {
       );
     }
 
+
+    if (!isValidOwnerPin(pin)) {
+      return NextResponse.json(
+        { msg: "PIN must be 4 to 8 digits" },
+        { status: 400 },
+      );
+    }
+
+    const ownerPinHash = await hashOwnerPin(pin);
     // Insert shop (seed both address+street for legacy consistency)
     const shopInsert: DB["public"]["Tables"]["shops"]["Insert"] = {
       owner_id: user.id,
@@ -74,9 +85,9 @@ export async function POST(req: Request) {
       postal_code,
       country,
       timezone,
-      // owner_pin_hash: await hashPin(pin) // optional
-      owner_pin: pin, // you have both owner_pin + pin columns in schema; keep what you use
-      pin, // keep in sync if your app references pin
+      owner_pin_hash: ownerPinHash,
+      owner_pin: null,
+      pin: null,
     };
 
     const { data: shop, error: shopErr } = await supabase
@@ -122,7 +133,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ msg: profErr.message }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, shop_id: shop.id }, { status: 200 });
+    const res = NextResponse.json({ ok: true, shop_id: shop.id }, { status: 200 });
+    return setOwnerPinVerifiedCookie(res, shop.id);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected server error";
     return NextResponse.json({ msg }, { status: 500 });

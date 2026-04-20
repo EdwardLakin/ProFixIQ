@@ -206,8 +206,8 @@ export default function OnboardingPage() {
     }
 
     if (asOwner) {
-      if (!ownerPin || ownerPin.length < 4) {
-        setError("Please provide an Owner PIN (min 4 characters).");
+      if (!/^\d{4,8}$/.test(ownerPin)) {
+        setError("Please provide a 4 to 8 digit Owner PIN.");
         setLoading(false);
         return;
       }
@@ -604,12 +604,15 @@ export default function OnboardingPage() {
                   <div className="space-y-1">
                     <label className="text-xs text-neutral-300">
                       Owner PIN{" "}
-                      <span className="text-neutral-400">(min 4 chars)</span>
+                      <span className="text-neutral-400">(4-8 digits)</span>
                     </label>
                     <input
                       type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={8}
                       value={ownerPin}
-                      onChange={(e) => setOwnerPin(e.target.value)}
+                      onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, ""))}
                       className={fieldClassName}
                       required
                     />
