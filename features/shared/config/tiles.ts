@@ -321,14 +321,6 @@ export const TILES: Tile[] = [
   /* TOOLS                                                                   */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/ai/assistant",
-    title: "AI Assistant",
-    subtitle: "Help & automation",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts"],
-    scopes: ["tech", "all"],
-    section: "Tools",
-  },
-  {
     href: "/dashboard/owner/reports",
     title: "Shop Health",
     subtitle: "AI snapshot & readiness",
