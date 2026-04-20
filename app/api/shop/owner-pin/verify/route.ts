@@ -46,11 +46,28 @@ export async function POST(req: Request) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, shop_id")
+      .select("role, shop_id, completed_onboarding")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile?.shop_id || profile.shop_id !== shopId) {
+    if (!profile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+
+    if (!profile.shop_id) {
+      return NextResponse.json({ error: "No shop linked to your account" }, { status: 409 });
+    }
+
+    const role = String(profile.role ?? "").toLowerCase();
+    if (role !== "owner" && role !== "admin") {
+      return NextResponse.json({ error: "Only owner/admin can unlock owner settings" }, { status: 403 });
+    }
+
+    if (!profile.completed_onboarding) {
+      return NextResponse.json({ error: "Finish onboarding before unlocking owner settings" }, { status: 409 });
+    }
+
+    if (profile.shop_id !== shopId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -81,6 +98,7 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("owner-pin.verify error", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Unexpected server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

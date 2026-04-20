@@ -12,6 +12,7 @@ import {
   persistActivationContext,
 } from "@/features/integrations/shopBoost/activationContext";
 import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 
@@ -136,15 +137,23 @@ export default function OnboardingPage() {
 
       const { data: prof } = await supabase
         .from("profiles")
-        .select("role, full_name, phone, shop_id")
+        .select("role, full_name, phone, shop_id, must_change_password, completed_onboarding")
         .eq("id", user.id)
         .maybeSingle();
 
+      if (prof?.must_change_password) {
+        router.replace("/auth/set-password");
+        return;
+      }
+
       const r = prof?.role ?? null;
 
-      if (prof?.shop_id) {
-        if (isStaffRole(r)) router.replace(staffRedirect[r]);
-        else router.replace("/dashboard");
+      if (prof?.shop_id || prof?.completed_onboarding) {
+        const destination = await resolvePostAuthDestination({
+          supabase,
+          searchParams,
+        });
+        router.replace(destination);
         return;
       }
 
@@ -200,7 +209,7 @@ export default function OnboardingPage() {
       .eq("id", user.id);
 
     if (updateErr) {
-      setError("Failed to update profile.");
+      setError(updateErr.message || "Failed to update profile.");
       setLoading(false);
       return;
     }

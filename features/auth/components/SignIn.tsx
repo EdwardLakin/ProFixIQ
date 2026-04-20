@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import AuthShell from "@/features/auth/components/AuthShell";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -21,6 +22,7 @@ export default function AuthPage() {
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   // Are we in "mobile companion" sign-in mode?
   const isMobileMode =
@@ -66,38 +68,19 @@ export default function AuthPage() {
     }, 60);
   };
 
-  // If already signed in, route to set-password / dashboard / mobile / onboarding
+  // If already signed in, route through canonical post-auth recovery logic.
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (!session?.user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id, must_change_password")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (profile?.must_change_password) {
-        await go("/auth/set-password");
-        return;
-      }
-
-      const hasShop = !!profile?.shop_id;
-      const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-      if (isMobileMode && isOnboarded) {
-        await go("/mobile");
-        return;
-      }
-
-      if (isOnboarded) {
-        const redirectParam = sp.get("redirect");
-        await go(redirectParam || "/dashboard");
-      } else {
-        await go("/onboarding");
-      }
+      const destination = await resolvePostAuthDestination({
+        supabase,
+        searchParams: sp,
+        isMobileMode,
+      });
+      await go(destination);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -136,29 +119,12 @@ export default function AuthPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("completed_onboarding, shop_id, must_change_password")
-      .eq("id", u.user.id)
-      .maybeSingle();
-
-    if (profile?.must_change_password) {
-      await go("/auth/set-password");
-      setLoading(false);
-      return;
-    }
-
-    const hasShop = !!profile?.shop_id;
-    const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-    if (isMobileMode && isOnboarded) {
-      await go("/mobile");
-    } else if (isOnboarded) {
-      const redirectParam = sp.get("redirect");
-      await go(redirectParam || "/dashboard");
-    } else {
-      await go("/onboarding");
-    }
+    const destination = await resolvePostAuthDestination({
+      supabase,
+      searchParams: sp,
+      isMobileMode,
+    });
+    await go(destination);
 
     setLoading(false);
   };
@@ -191,6 +157,32 @@ export default function AuthPage() {
 
     await go("/onboarding");
     setLoading(false);
+  };
+
+  const handleResendVerification = async () => {
+    setError("");
+    setNotice("");
+    const email = identifier.trim().toLowerCase();
+    if (!email.includes("@")) {
+      setError("Enter your full email address to resend verification.");
+      return;
+    }
+
+    setResendLoading(true);
+    const { error: resendErr } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo },
+    });
+
+    if (resendErr) {
+      setError(resendErr.message || "Failed to resend verification email.");
+      setResendLoading(false);
+      return;
+    }
+
+    setNotice("Verification email sent. Check your inbox and spam folder.");
+    setResendLoading(false);
   };
 
   const isSignIn = mode === "sign-in";
@@ -419,6 +411,27 @@ export default function AuthPage() {
               ? "Sign in"
               : "Sign up"}
         </button>
+
+        {!isSignIn ? (
+          <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-neutral-300">
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={loading || resendLoading}
+              className="underline underline-offset-2 disabled:opacity-60"
+            >
+              {resendLoading ? "Resending..." : "Resend verification"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("sign-in")}
+              disabled={loading || resendLoading}
+              className="underline underline-offset-2 disabled:opacity-60"
+            >
+              Already confirmed? Continue to sign in
+            </button>
+          </div>
+        ) : null}
       </form>
 
       {/* Mobile companion deep link */}
