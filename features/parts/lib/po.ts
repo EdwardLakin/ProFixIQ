@@ -6,11 +6,13 @@ export type PoDraft = {
 };
 
 export async function suggestReorder(): Promise<PoDraft[]> {
-  // TODO: compute from low_stock + recent usage
-  return [];
+  throw new Error(
+    "PO reorder suggestions are currently unavailable in production.",
+  );
 }
 
 export async function createPoDraft(_draft: PoDraft): Promise<string> {
-  // TODO: insert into purchase_orders + purchase_order_lines and return id
-  return "TODO-PO-ID";
+  throw new Error(
+    "PO draft creation from this flow is currently unavailable in production.",
+  );
 }
