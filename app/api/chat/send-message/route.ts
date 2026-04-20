@@ -1,9 +1,9 @@
-// app/api/chat/send-message/route.ts
 import { NextResponse } from "next/server";
 import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { authorizeConversationActor } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,6 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const conversationId = body?.conversationId;
   const content = body?.content?.trim() ?? "";
-  const senderId = user.id;
 
   if (!conversationId || !content) {
     return NextResponse.json(
@@ -38,57 +37,24 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const admin = createAdminSupabase();
+  const access = await authorizeConversationActor({
+    supabase: admin,
+    conversationId,
+    actorUserId: user.id,
+  });
 
-  // Confirm conversation exists
-  const { data: convo, error: convoErr } = await admin
-    .from("conversations")
-    .select("id, created_by")
-    .eq("id", conversationId)
-    .maybeSingle();
-
-  if (convoErr) {
-    return NextResponse.json({ error: convoErr.message }, { status: 500 });
-  }
-  if (!convo) {
-    return NextResponse.json(
-      { error: "Conversation not found" },
-      { status: 404 },
-    );
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  // Fetch participants to determine recipients
-  const { data: participants, error: partsErr } = await admin
-    .from("conversation_participants")
-    .select("user_id")
-    .eq("conversation_id", conversationId);
+  const recipients = access.participantUserIds.filter((id) => id !== user.id);
 
-  if (partsErr) {
-    return NextResponse.json({ error: partsErr.message }, { status: 500 });
-  }
-
-  const allowed =
-    convo.created_by === user.id ||
-    (participants ?? []).some((participant) => participant.user_id === user.id);
-
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You are not part of this conversation" },
-      { status: 403 },
-    );
-  }
-
-  // Recipients are all users in conversation except the sender
-  const recipients = (participants ?? [])
-    .map((p) => p.user_id)
-    .filter((id) => id !== senderId);
-
-  // Insert message
   const now = new Date().toISOString();
   const { data: inserted, error: insertErr } = await admin
     .from("messages")
     .insert({
       conversation_id: conversationId,
-      sender_id: senderId,
+      sender_id: user.id,
       recipients,
       content,
       sent_at: now,

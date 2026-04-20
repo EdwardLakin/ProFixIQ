@@ -1,21 +1,17 @@
-// app/api/chat/get-messages/route.ts
 import { NextResponse } from "next/server";
 import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { authorizeConversationActor } from "@/features/ai/lib/chat/authorization";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
-type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
-type ParticipantRow =
-  DB["public"]["Tables"]["conversation_participants"]["Row"];
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request): Promise<NextResponse> {
-  // 1) who is calling
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -37,63 +33,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // 2) use admin so we always see fresh rows
   const admin = createAdminSupabase();
+  const access = await authorizeConversationActor({
+    supabase: admin,
+    conversationId,
+    actorUserId: user.id,
+  });
 
-  // 2a) make sure the conversation exists
-  const { data: convo, error: convoErr } = await admin
-    .from("conversations")
-    .select("*")
-    .eq("id", conversationId)
-    .maybeSingle<ConversationRow>();
-
-  if (convoErr) {
-    return NextResponse.json({ error: convoErr.message }, { status: 500 });
-  }
-  if (!convo) {
-    return NextResponse.json(
-      { error: "Conversation not found" },
-      { status: 404 },
-    );
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  // 2b) load participants
-  const {
-    data: participants,
-    error: partsErr,
-  } = (await admin
-    .from("conversation_participants")
-    .select("*")
-    .eq("conversation_id", conversationId)) as {
-    data: ParticipantRow[] | null;
-    error: { message: string } | null;
-  };
-
-  if (partsErr) {
-    return NextResponse.json({ error: partsErr.message }, { status: 500 });
-  }
-
-  const hasParticipants = (participants?.length ?? 0) > 0;
-
-  // 2c) check access
-  let allowed = convo.created_by === user.id;
-  if (!allowed) {
-    if (hasParticipants) {
-      allowed = (participants ?? []).some((p) => p.user_id === user.id);
-    } else {
-      // convo exists but has no participants yet – let creator in
-      allowed = true;
-    }
-  }
-
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You are not part of this conversation" },
-      { status: 403 },
-    );
-  }
-
-  // 3) fetch messages – ONLY by conversation_id now
   const { data: messages, error: msgErr } = await admin
     .from("messages")
     .select("*")
