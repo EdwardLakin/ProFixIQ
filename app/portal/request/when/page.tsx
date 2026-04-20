@@ -1,7 +1,7 @@
 // app/portal/request/when/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Toaster, toast } from "sonner";
@@ -353,9 +353,16 @@ export default function PortalRequestWhenPage() {
     return out;
   }, [date, shopHours]);
 
+  const startAttemptKeyRef = useRef<string>("");
+
   useEffect(() => {
     setSelectedSlotIso("");
+    startAttemptKeyRef.current = "";
   }, [date]);
+
+  useEffect(() => {
+    startAttemptKeyRef.current = "";
+  }, [selectedSlotIso, vehicleId, visitType]);
 
   const canStart = Boolean(customer?.id && shop?.id && vehicleId && selectedSlotIso);
 
@@ -364,12 +371,17 @@ export default function PortalRequestWhenPage() {
 
     setStarting(true);
     try {
+      if (!startAttemptKeyRef.current) {
+        startAttemptKeyRef.current = crypto.randomUUID();
+      }
+
       // ✅ Matches /api/portal/request/start expectations
       const payload = {
         vehicleId,
         startsAt: selectedSlotIso,
         durationMins: 60,
         visitType,
+        idempotencyKey: startAttemptKeyRef.current,
       };
 
       const r = await postJson<{ workOrderId?: string; bookingId?: string }>(
@@ -389,6 +401,8 @@ export default function PortalRequestWhenPage() {
         toast.error("Start failed: missing work order id or booking id.");
         return;
       }
+
+      startAttemptKeyRef.current = "";
 
       // ✅ Option B: carry bookingId into build page (NOT startsAt)
       router.push(
