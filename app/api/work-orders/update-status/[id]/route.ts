@@ -9,17 +9,16 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-type RouteContext = {
-  params: { id: string };
-};
-
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
   });
   if (!access.ok) return access.response;
 
-  const { id } = context.params;
+  const { id } = params;
 
   if (!id) {
     return NextResponse.json({ error: "Missing ID" }, { status: 400 });
