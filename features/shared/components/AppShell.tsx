@@ -17,6 +17,7 @@ import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
+import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 
 const NON_APP_ROUTES = [
   "/",
@@ -111,11 +112,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
   const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(pathname);
 
-  const showBillingBadge =
-    (subStatus ?? "") === "trialing" ||
-    (subStatus ?? "") === "past_due" ||
-    (subStatus ?? "") === "incomplete" ||
-    (subStatus ?? "") === "unpaid";
+  const showBillingBadge = isBillingAttentionStatus(subStatus);
 
   const billingHref = "/dashboard/owner/settings#billing";
 
