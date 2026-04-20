@@ -202,7 +202,12 @@ export async function createPortalBooking({
     .select("*")
     .single();
 
-  if (insErr || !created) return { ok: false, error: "Failed to create booking", status: 500 };
+  if (insErr || !created) {
+    if (insErr?.code === "23P01") {
+      return { ok: false, error: "This time overlaps an existing booking", status: 409 };
+    }
+    return { ok: false, error: "Failed to create booking", status: 500 };
+  }
 
   const cameFromPortal = !hasExplicitCustomer && !hasInlineCustomerFields;
   if (cameFromPortal && !customerShopId) {

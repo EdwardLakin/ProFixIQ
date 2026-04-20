@@ -115,7 +115,7 @@ export async function POST(req: Request) {
     // Load WO + ensure ownership
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, customer_id, notes")
+      .select("id, shop_id, customer_id, notes, portal_submitted_at")
       .eq("id", workOrderId)
       .maybeSingle();
 
@@ -126,13 +126,23 @@ export async function POST(req: Request) {
     // Load booking + ensure same shop
     const { data: booking, error: bErr } = await supabase
       .from("bookings")
-      .select("id, shop_id, starts_at, ends_at, status")
+      .select("id, shop_id, customer_id, work_order_id, starts_at, ends_at, status")
       .eq("id", bookingId)
       .maybeSingle();
 
     if (bErr) return bad("Failed to load booking", 500);
     if (!booking) return bad("Booking not found", 404);
     if (booking.shop_id !== wo.shop_id) return bad("Not allowed", 403);
+    if (booking.customer_id !== customer.id) return bad("Not allowed", 403);
+
+    const alreadySubmitted = Boolean(wo.portal_submitted_at);
+    const alreadyFinalized = booking.status === "confirmed" && booking.work_order_id === wo.id;
+    if (alreadySubmitted && alreadyFinalized) {
+      return NextResponse.json(
+        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, replayed: true },
+        { status: 200 },
+      );
+    }
 
     // Optional sanity: booking not in the past
     const startT = Date.parse(String(booking.starts_at ?? ""));
@@ -147,6 +157,7 @@ export async function POST(req: Request) {
     const woUpdate: DB["public"]["Tables"]["work_orders"]["Update"] = {
       customer_approval_at: customerAgreedAt,
       customer_approval_signature_url: customerSignatureUrl,
+      portal_submitted_at: wo.portal_submitted_at ?? new Date().toISOString(),
     };
 
     const { error: woUpdErr } = await supabase.from("work_orders").update(woUpdate).eq("id", wo.id);

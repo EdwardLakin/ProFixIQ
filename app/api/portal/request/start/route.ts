@@ -12,10 +12,15 @@ type Body = {
   vehicleId?: string | null;
   visitType: "waiter" | "drop_off";
   notes?: string | null;
+  startsAt?: string | null;
+  durationMins?: number | null;
+  idempotencyKey?: string | null;
+};
 
-  // Selected slot start from the "when" page
-  startsAt?: string | null; // ISO string
-  durationMins?: number | null; // default 60
+type StartRpcRow = {
+  work_order_id: string;
+  booking_id: string;
+  deduped: boolean;
 };
 
 function bad(msg: string, status = 400) {
@@ -31,6 +36,15 @@ function addMinsIso(startIso: string, mins: number): string {
   const d = new Date(startIso);
   d.setMinutes(d.getMinutes() + mins);
   return d.toISOString();
+}
+
+function normalizeIdempotencyKey(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.trim().toLowerCase().slice(0, 120);
+}
+
+function isDuplicateKeyError(err: { code?: string | null; message?: string | null } | null): boolean {
+  return err?.code === "23505" || (err?.message ?? "").toLowerCase().includes("duplicate key");
 }
 
 export async function POST(req: Request) {
@@ -59,16 +73,15 @@ export async function POST(req: Request) {
     const startsAtRaw =
       typeof body.startsAt === "string" ? body.startsAt.trim() : "";
     if (!startsAtRaw) return bad("Missing startsAt (ISO) from selected slot.");
-    if (!isIsoDateString(startsAtRaw))
+    if (!isIsoDateString(startsAtRaw)) {
       return bad("startsAt must be a valid ISO date string.");
+    }
 
     const duration =
-      typeof body.durationMins === "number" &&
-      Number.isFinite(body.durationMins)
+      typeof body.durationMins === "number" && Number.isFinite(body.durationMins)
         ? Math.max(15, Math.min(180, Math.trunc(body.durationMins)))
         : 60;
 
-    // Basic safety: don't allow bookings in the past
     const startsAtDate = new Date(startsAtRaw);
     if (Number.isNaN(startsAtDate.getTime())) return bad("Invalid startsAt");
     if (startsAtDate.getTime() < Date.now() - 60_000) {
@@ -78,7 +91,6 @@ export async function POST(req: Request) {
     const startsAt = startsAtDate.toISOString();
     const endsAt = addMinsIso(startsAt, duration);
 
-    // Portal customer by auth user
     const { data: customer, error: custErr } = await supabase
       .from("customers")
       .select("id, shop_id")
@@ -87,78 +99,106 @@ export async function POST(req: Request) {
 
     if (custErr) return bad(custErr.message, 500);
     if (!customer?.id) return bad("Customer profile not found", 404);
-    if (!customer.shop_id)
+    if (!customer.shop_id) {
       return bad("Customer is not linked to a shop", 400);
-
-    // ✅ Overlap check BEFORE inserting booking (no .or() string parsing)
-    const { data: overlaps, error: ovErr } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("shop_id", customer.shop_id)
-      .lt("starts_at", endsAt)
-      .gt("ends_at", startsAt)
-      .limit(1);
-
-    if (ovErr) return bad("Failed to check availability", 500);
-    if (overlaps && overlaps.length > 0) {
-      return bad("This time overlaps an existing booking", 409);
     }
 
-    // 1) Create work order (draft/request shell)
-    const insertWo: DB["public"]["Tables"]["work_orders"]["Insert"] = {
-      shop_id: customer.shop_id,
-      customer_id: customer.id,
-      vehicle_id: body.vehicleId ?? null,
+    const normalizedKey = normalizeIdempotencyKey(body.idempotencyKey ?? null);
+    const sourceRowId = normalizedKey
+      ? `portal_start:${customer.id}:${normalizedKey}`
+      : null;
 
-      status: "awaiting_approval",
-      approval_state: "pending",
-      is_waiter: visitType === "waiter",
-      scheduled_at: startsAt,
-      notes: (body.notes ?? "").trim() || null,
+    // Fast-path replay: return existing created pair for the same idempotency key.
+    if (sourceRowId) {
+      const { data: existingWo, error: existingWoErr } = await supabase
+        .from("work_orders")
+        .select("id")
+        .eq("shop_id", customer.shop_id)
+        .eq("customer_id", customer.id)
+        .eq("source_row_id", sourceRowId)
+        .maybeSingle();
+
+      if (existingWoErr) return bad("Failed to verify request replay", 500);
+
+      if (existingWo?.id) {
+        const { data: existingBooking, error: existingBookingErr } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("work_order_id", existingWo.id)
+          .maybeSingle();
+
+        if (existingBookingErr) return bad("Failed to verify existing booking", 500);
+        if (existingBooking?.id) {
+          return NextResponse.json(
+            { workOrderId: existingWo.id, bookingId: existingBooking.id, replayed: true },
+            { status: 200 },
+          );
+        }
+      }
+    }
+
+    const rpcPayload = {
+      p_shop_id: customer.shop_id,
+      p_customer_id: customer.id,
+      p_vehicle_id: body.vehicleId ?? null,
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+      p_visit_type: visitType,
+      p_notes: (body.notes ?? "").trim() || null,
+      p_source_row_id: sourceRowId,
     };
 
-    const { data: createdWo, error: woErr } = await supabase
-      .from("work_orders")
-      .insert(insertWo)
-      .select(
-        "id, shop_id, customer_id, vehicle_id, status, approval_state, is_waiter, created_at",
-      )
-      .single();
+    const { data: created, error: createErr } = await (supabase as never as {
+      rpc: (
+        fn: "portal_request_start_atomic",
+        args: typeof rpcPayload,
+      ) => Promise<{ data: StartRpcRow[] | null; error: { code?: string; message?: string } | null }>;
+    }).rpc("portal_request_start_atomic", rpcPayload);
 
-    if (woErr || !createdWo?.id) return bad("Failed to create work order", 500);
+    if (createErr) {
+      if (isDuplicateKeyError(createErr) && sourceRowId) {
+        const { data: fallbackWo } = await supabase
+          .from("work_orders")
+          .select("id")
+          .eq("shop_id", customer.shop_id)
+          .eq("customer_id", customer.id)
+          .eq("source_row_id", sourceRowId)
+          .maybeSingle();
 
-    // 2) Reserve the booking slot now (Option B)
-    const insertBooking: DB["public"]["Tables"]["bookings"]["Insert"] = {
-      shop_id: customer.shop_id,
-      customer_id: customer.id,
-      vehicle_id: body.vehicleId ?? null,
-      work_order_id: createdWo.id,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      status: "pending",
-      notes: (body.notes ?? "").trim() || null,
-    };
+        if (fallbackWo?.id) {
+          const { data: fallbackBooking } = await supabase
+            .from("bookings")
+            .select("id")
+            .eq("work_order_id", fallbackWo.id)
+            .maybeSingle();
 
-    const { data: createdBooking, error: bErr } = await supabase
-      .from("bookings")
-      .insert(insertBooking)
-      .select("id, starts_at, ends_at, status")
-      .single();
+          if (fallbackBooking?.id) {
+            return NextResponse.json(
+              { workOrderId: fallbackWo.id, bookingId: fallbackBooking.id, replayed: true },
+              { status: 200 },
+            );
+          }
+        }
+      }
 
-    if (bErr || !createdBooking?.id) {
-      // Roll back the WO if booking fails
-      await supabase.from("work_orders").delete().eq("id", createdWo.id);
-      return bad(bErr?.message ?? "Failed to create booking", 500);
+      if (createErr.code === "P0001" || createErr.code === "23P01") {
+        return bad(createErr.message || "This time overlaps an existing booking", 409);
+      }
+      return bad(createErr.message || "Failed to start request", 500);
+    }
+
+    const row = Array.isArray(created) ? created[0] : null;
+    if (!row?.work_order_id || !row.booking_id) {
+      return bad("Failed to create work order and booking", 500);
     }
 
     return NextResponse.json(
       {
-        workOrderId: createdWo.id,
-        bookingId: createdBooking.id,
-        workOrder: createdWo,
-        booking: createdBooking,
+        workOrderId: row.work_order_id,
+        bookingId: row.booking_id,
+        replayed: Boolean(row.deduped),
       },
-      { status: 201 },
+      { status: row.deduped ? 200 : 201 },
     );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
