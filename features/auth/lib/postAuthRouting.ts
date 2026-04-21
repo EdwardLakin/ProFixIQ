@@ -18,6 +18,37 @@ const PASSTHROUGH_KEYS = [
   "activationContext",
 ] as const;
 
+const SHOP_BOOST_ACTIVE_OR_ACTIONABLE_STATUSES = new Set([
+  "queued",
+  "pending",
+  "processing",
+  "failed",
+  "blocked",
+  "requires_review",
+  "review_needed",
+]);
+
+const SHOP_BOOST_RECENT_COMPLETED_STATUSES = new Set([
+  "completed",
+  "completed_clean",
+  "completed_with_review",
+  "completed_with_warnings",
+  "ready_for_go_live",
+]);
+
+function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
+  const normalized = String(role ?? "").trim().toLowerCase();
+  return normalized === "owner" || normalized === "admin";
+}
+
+function shouldRouteOwnerToShopBoost(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (!normalized) return true;
+  if (SHOP_BOOST_ACTIVE_OR_ACTIONABLE_STATUSES.has(normalized)) return false;
+  if (SHOP_BOOST_RECENT_COMPLETED_STATUSES.has(normalized)) return false;
+  return false;
+}
+
 function collectPassthroughParams(sp: URLSearchParams | ReadonlyURLSearchParams) {
   const params = new URLSearchParams();
   for (const key of PASSTHROUGH_KEYS) {
@@ -39,6 +70,7 @@ export async function resolvePostAuthDestination(args: {
     isMobileMode = false,
     defaultDashboardHref = "/dashboard",
   } = args;
+  const activationContext = parseActivationContextFromSearchParams(searchParams);
 
   const {
     data: { user },
@@ -48,7 +80,7 @@ export async function resolvePostAuthDestination(args: {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("completed_onboarding, must_change_password")
+    .select("completed_onboarding, must_change_password, role, shop_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -61,17 +93,34 @@ export async function resolvePostAuthDestination(args: {
   if (!isOnboarded) {
     const passthrough = collectPassthroughParams(searchParams);
     const onboardingHref = `/onboarding${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
-    const activationContext = parseActivationContextFromSearchParams(searchParams);
 
     return activationContext
       ? appendActivationContextToHref(onboardingHref, activationContext)
       : onboardingHref;
   }
 
+  if (isShopBoostOrchestratedRole(profile?.role) && profile?.shop_id) {
+    const { data: latestIntake } = await supabase
+      .from("shop_boost_intakes")
+      .select("status")
+      .eq("shop_id", profile.shop_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ status: string | null }>();
+
+    if (shouldRouteOwnerToShopBoost(latestIntake?.status)) {
+      const passthrough = collectPassthroughParams(searchParams);
+      const shopBoostHref = `/onboarding/shop-boost${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
+
+      return activationContext
+        ? appendActivationContextToHref(shopBoostHref, activationContext)
+        : shopBoostHref;
+    }
+  }
+
   if (isMobileMode) return "/mobile";
 
   const redirect = searchParams.get("redirect")?.trim();
-  const activationContext = parseActivationContextFromSearchParams(searchParams);
   const destination = redirect || defaultDashboardHref;
 
   return activationContext
