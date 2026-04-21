@@ -12,6 +12,7 @@ import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 type DB = Database;
 
 type CheckoutPayload = {
+  source?: string;
   planKey?: string;
   priceId?: string;
   shopId?: string | null;
@@ -112,20 +113,21 @@ async function createCustomerIfMissing(
 export async function POST(req: Request) {
   try {
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-
-    const access = await requireShopScopedApiAccess({
-      requiredCapability: "canManageBilling",
-      allowRoles: ["owner", "admin"],
-      requireOwnerPin: true,
-      ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
-    });
-    if (!access.ok) return access.response;
-
     const body = (await req.json().catch(() => null)) as CheckoutPayload | null;
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
+
+    const onboardingHandoffSource = String(body.source ?? "").trim() === "onboarding_shop_boost";
+
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBilling",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: !onboardingHandoffSource,
+      ownerPinRequest: req,
+      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+    });
+    if (!access.ok) return access.response;
 
     const requestedShopId = String(body.shopId ?? access.profile.shop_id).trim();
     if (!requestedShopId || requestedShopId !== access.profile.shop_id) {

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -10,6 +10,10 @@ import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
+import {
+  hasBillingIntentParams,
+  collectPassthroughParams,
+} from "@/features/auth/lib/postAuthRouting";
 
 type DB = Database;
 
@@ -70,6 +74,7 @@ function uuidv4(): string {
 export default function ShopBoostOnboardingPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -91,6 +96,39 @@ export default function ShopBoostOnboardingPage() {
   const [uploadFiles, setUploadFiles] = useState<Partial<Record<ShopBoostUploadDatasetKey, File>>>({});
 
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
+
+  const passthroughParams = collectPassthroughParams(searchParams);
+  const billingIntentExists = hasBillingIntentParams(searchParams);
+  const checkoutPriceId = searchParams.get("priceId");
+  const checkoutTrialEnabled = searchParams.get("trial") === "1";
+  const checkoutFoundingEnabled = searchParams.get("founding") === "1";
+
+  const launchSubscriptionCheckout = async (): Promise<boolean> => {
+    if (!checkoutPriceId) {
+      setError("Missing selected plan. Please restart from pricing.");
+      return false;
+    }
+
+    const response = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "onboarding_shop_boost",
+        priceId: checkoutPriceId,
+        enableTrial: checkoutTrialEnabled,
+        applyFoundingDiscount: checkoutFoundingEnabled,
+      }),
+    });
+
+    const json = (await response.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string; details?: string };
+    if (!response.ok || !json.ok || !json.url) {
+      setError(json.error || json.details || "Failed to start subscription checkout.");
+      return false;
+    }
+
+    window.location.href = json.url;
+    return true;
+  };
 
   // Load profile → shop_id + shop name
   useEffect(() => {
@@ -260,6 +298,14 @@ export default function ShopBoostOnboardingPage() {
         window.localStorage.removeItem(UPLOAD_SESSION_STORAGE_KEY);
       }
 
+      if (billingIntentExists) {
+        const started = await launchSubscriptionCheckout();
+        if (!started) {
+          setStepStatus("error");
+        }
+        return;
+      }
+
       router.replace("/dashboard/operations?setup=shop-boost");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
@@ -290,7 +336,11 @@ export default function ShopBoostOnboardingPage() {
           </p>
           <button
             type="button"
-            onClick={() => router.push("/onboarding")}
+            onClick={() =>
+              router.push(
+                `/onboarding${passthroughParams.toString() ? `?${passthroughParams.toString()}` : ""}`,
+              )
+            }
             className="inline-flex items-center justify-center rounded-md border border-[color:var(--accent-copper,#f97316)] px-4 py-2 text-sm font-medium text-[color:var(--accent-copper-light,#fdba74)] hover:bg-white/5"
           >
             Back to onboarding
