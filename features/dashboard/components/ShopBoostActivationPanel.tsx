@@ -136,6 +136,7 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
+            <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open review queue</Link>
             <Link href="/dashboard" className="rounded-md border border-emerald-300/45 px-2.5 py-1 text-emerald-100 hover:bg-white/5">Open dashboard</Link>
             <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">Download report</Link>
           </div>
@@ -226,13 +227,14 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
           <div className="font-semibold">Go live complete</div>
           <div className="mt-1">Confidence score: {fallbackConfidence}% • What you reviewed: {story?.review_resolved_count ?? 0} • What was ignored: {story?.ignored_count ?? 0}</div>
           <div className="mt-2 flex flex-wrap gap-2">
+            <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open Shop Boost review + actions</Link>
             <Link href="/dashboard" className="rounded-md border border-emerald-300/50 px-2.5 py-1 text-emerald-100 hover:bg-white/5">Enter your system</Link>
             <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">View full migration report</Link>
           </div>
         </div>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Resolve blockers</Link>
+          <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open Shop Boost review queue</Link>
           <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">Download migration report</Link>
         </div>
       )}

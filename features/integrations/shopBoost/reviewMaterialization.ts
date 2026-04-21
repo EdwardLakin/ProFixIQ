@@ -92,6 +92,10 @@ function parseMoney(value: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function sourceExternalId(domain: "customer" | "vehicle" | "work_order", sourceId: string): string {
+  return `import:source:${domain}:${sha1(sourceId).slice(0, 20)}`;
+}
+
 
 async function logReviewAuditEvent(args: {
   supabase: AdminClient;
@@ -135,6 +139,16 @@ async function findCustomerId(args: { supabase: AdminClient; shopId: string; raw
     : "";
 
   if (suggestedCustomerId) return suggestedCustomerId;
+  const sourceCustomerId = pick(raw, [/^customer[_\s-]*id$/, /external customer id/]);
+  if (sourceCustomerId) {
+    const { data } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("external_id", sourceExternalId("customer", sourceCustomerId))
+      .maybeSingle();
+    if (data?.id) return String(data.id);
+  }
 
   const email = normalizeEmail(pick(raw, [/customer email/, /^email$/]));
   if (email) {
@@ -212,7 +226,10 @@ async function materializeVehicle(args: { supabase: AdminClient; item: ReviewIte
   const make = pick(raw, [/^make$/]);
   const model = pick(raw, [/^model$/]);
 
-  const externalId = `import:${item.intake_id}:vehicles:${sha1(`${vin}|${plate}|${unit ?? ""}|${year ?? ""}`).slice(0, 16)}`;
+  const sourceVehicleId = pick(raw, [/^vehicle[_\s-]*id$/, /external vehicle id/]);
+  const externalId = sourceVehicleId
+    ? sourceExternalId("vehicle", sourceVehicleId)
+    : `import:${item.intake_id}:vehicles:${sha1(`${vin}|${plate}|${unit ?? ""}|${year ?? ""}`).slice(0, 16)}`;
 
   let vehicleId: string | null = null;
   const { data: existingByExternal } = await supabase.from("vehicles").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
@@ -273,10 +290,21 @@ async function materializeWorkOrder(args: { supabase: AdminClient; item: ReviewI
   const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
   if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Missing customer dependency for work order." };
 
+  const sourceVehicleId = pick(raw, [/^vehicle[_\s-]*id$/, /external vehicle id/]);
   const vin = lower(pick(raw, [/vin/]));
   const plate = lower(pick(raw, [/plate/, /license/]));
+  const vehicleBySource = sourceVehicleId
+    ? (
+        await supabase
+          .from("vehicles")
+          .select("id")
+          .eq("shop_id", item.shop_id)
+          .eq("external_id", sourceExternalId("vehicle", sourceVehicleId))
+          .maybeSingle()
+      ).data
+    : null;
   const vehicleLookup = [vin ? `vin.eq.${vin}` : null, plate ? `license_plate.eq.${plate}` : null].filter(Boolean).join(",");
-  const vehicle = vehicleLookup
+  const vehicle = vehicleBySource ?? (vehicleLookup
     ? (await supabase
         .from("vehicles")
         .select("id")
@@ -284,7 +312,7 @@ async function materializeWorkOrder(args: { supabase: AdminClient; item: ReviewI
         .or(vehicleLookup)
         .limit(1)
         .maybeSingle()).data
-    : null;
+    : null);
 
   const vehicleId = vehicle?.id ? String(vehicle.id) : null;
   if (!vehicleId) return { status: "failed_materialization", materializedRecord: null, error: "Missing vehicle dependency for work order." };
@@ -303,8 +331,11 @@ async function materializeWorkOrder(args: { supabase: AdminClient; item: ReviewI
   const complaint = pick(raw, [/complaint/, /concern/]);
   const correction = pick(raw, [/correction/, /work performed/, /description/]);
 
+  const sourceWorkOrderId = pick(raw, [/^work[_\s-]*order[_\s-]*id$/, /^wo[_\s-]*id$/, /^ro[_\s-]*id$/, /^invoice[_\s-]*id$/]);
   const fingerprint = sha1([ro ?? "", customerId, vehicleId, String(total ?? ""), lower(correction ?? complaint ?? "")].join("|")).slice(0, 20);
-  const externalId = `import:${item.intake_id}:history:${fingerprint}`;
+  const externalId = sourceWorkOrderId
+    ? sourceExternalId("work_order", sourceWorkOrderId)
+    : `import:${item.intake_id}:history:${fingerprint}`;
 
   let workOrderId: string;
   const woPayload = {
