@@ -8,10 +8,6 @@ import {
 
 export const PASSTHROUGH_KEYS = [
   "redirect",
-  "priceId",
-  "interval",
-  "trial",
-  "founding",
   "session_id",
   "demoId",
   "intakeId",
@@ -56,10 +52,6 @@ export function collectPassthroughParams(sp: URLSearchParams | ReadonlyURLSearch
     if (value) params.set(key, value);
   }
   return params;
-}
-
-export function hasBillingIntentParams(sp: URLSearchParams | ReadonlyURLSearchParams): boolean {
-  return !!sp.get("priceId");
 }
 
 export async function resolvePostAuthDestination(args: {
@@ -113,15 +105,6 @@ export async function resolvePostAuthDestination(args: {
       .maybeSingle<{ status: string | null }>();
 
     if (shouldRouteOwnerToShopBoost(latestIntake?.status)) {
-      const passthrough = collectPassthroughParams(searchParams);
-      const shopBoostHref = `/onboarding/shop-boost${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
-
-      return activationContext
-        ? appendActivationContextToHref(shopBoostHref, activationContext)
-        : shopBoostHref;
-    }
-
-    if (hasBillingIntentParams(searchParams)) {
       const passthrough = collectPassthroughParams(searchParams);
       const shopBoostHref = `/onboarding/shop-boost${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
 

@@ -260,7 +260,7 @@ export default function ShopBoostOnboardingPage() {
         window.localStorage.removeItem(UPLOAD_SESSION_STORAGE_KEY);
       }
 
-      router.replace("/dashboard/operations?setup=shop-boost");
+      router.replace("/dashboard?setup=shop-boost");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
       setError(message);

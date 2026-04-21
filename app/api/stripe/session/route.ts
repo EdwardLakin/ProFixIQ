@@ -9,15 +9,6 @@ const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
 
 export async function GET(req: Request) {
   try {
-    const access = await requireShopScopedApiAccess({
-      requiredCapability: "canManageBilling",
-      allowRoles: ["owner", "admin"],
-      requireOwnerPin: true,
-      ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
-    });
-    if (!access.ok) return access.response;
-
     const url = new URL(req.url);
     const sessionId = (url.searchParams.get("session_id") ?? "").trim();
 
@@ -30,6 +21,31 @@ export async function GET(req: Request) {
     }
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const metadataPurpose = String(session.metadata?.purpose ?? "").trim();
+
+    if (metadataPurpose === "profixiq_acquisition") {
+      let email: string | null = session.customer_details?.email ?? null;
+
+      if (!email && typeof session.customer === "string") {
+        const customer = await stripe.customers.retrieve(session.customer);
+
+        if (customer && !("deleted" in customer)) {
+          email = customer.email ?? null;
+        }
+      }
+
+      return NextResponse.json({ email }, { status: 200 });
+    }
+
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBilling",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: req,
+      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+    });
+    if (!access.ok) return access.response;
+
     const { data: shop } = await access.supabase
       .from("shops")
       .select("id, stripe_customer_id")
@@ -41,7 +57,6 @@ export async function GET(req: Request) {
     }
 
     const metadataShopId = String(session.metadata?.shop_id ?? "").trim();
-    const metadataPurpose = String(session.metadata?.purpose ?? "").trim();
     const sessionCustomer = typeof session.customer === "string" ? session.customer : null;
     const shopCustomer = String(shop.stripe_customer_id ?? "").trim() || null;
 

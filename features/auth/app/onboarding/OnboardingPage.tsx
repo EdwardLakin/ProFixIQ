@@ -625,6 +625,7 @@ export default function OnboardingPage() {
                     </p>
                   </div>
                 )}
+
               </div>
             </section>
 

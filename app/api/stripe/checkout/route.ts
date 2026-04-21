@@ -21,6 +21,8 @@ type CheckoutPayload = {
   enableTrial?: boolean;
   trialDays?: number;
   applyFoundingDiscount?: boolean;
+  demoId?: string | null;
+  intakeId?: string | null;
 };
 
 type ShopScope = Pick<
@@ -118,7 +120,85 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const onboardingHandoffSource = String(body.source ?? "").trim() === "onboarding_shop_boost";
+    const source = String(body.source ?? "").trim();
+    const isAcquisitionCheckout = source === "pricing_cta";
+    const onboardingHandoffSource = source === "onboarding_shop_boost";
+
+    const rawPrice = String(body.priceId ?? body.planKey ?? "").trim();
+    if (!rawPrice) {
+      return NextResponse.json({ error: "Missing price identifier" }, { status: 400 });
+    }
+
+    const priceId = await resolvePriceId(stripe, rawPrice);
+    if (!priceId) {
+      return NextResponse.json(
+        { error: `No active Stripe price found for "${rawPrice}"` },
+        { status: 400 },
+      );
+    }
+
+    const baseUrl = getBaseUrl();
+    const acquisitionSuccessPath = "/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}";
+    const acquisitionCancelPath = "/compare-plans";
+    const successUrl = `${baseUrl}${
+      body.successPath?.startsWith("/")
+        ? body.successPath
+        : isAcquisitionCheckout
+          ? acquisitionSuccessPath
+          : "/dashboard/owner/settings#billing"
+    }`;
+
+    const cancelUrl = `${baseUrl}${
+      body.cancelPath?.startsWith("/")
+        ? body.cancelPath
+        : isAcquisitionCheckout
+          ? acquisitionCancelPath
+          : "/dashboard/owner/settings#billing"
+    }`;
+
+    const enableTrial = body.enableTrial !== false;
+    const trialDays = clampTrialDays(body.trialDays, envTrialDays());
+
+    const couponId = String(process.env.STRIPE_FOUNDING_COUPON_ID ?? "").trim();
+    const applyFoundingDiscount =
+      Boolean(couponId) && body.applyFoundingDiscount !== false;
+
+    if (isAcquisitionCheckout) {
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer_creation: "always",
+        payment_method_types: ["card"],
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        allow_promotion_codes: true,
+        ...(applyFoundingDiscount ? { discounts: [{ coupon: couponId }] } : {}),
+        subscription_data: {
+          ...(enableTrial ? { trial_period_days: trialDays } : {}),
+          metadata: {
+            purpose: "profixiq_acquisition",
+            source: "pricing_cta",
+            founding_discount_applied: applyFoundingDiscount ? "true" : "false",
+            trial_enabled: enableTrial ? "true" : "false",
+            trial_days: enableTrial ? String(trialDays) : "0",
+            demo_id: String(body.demoId ?? "").trim() || "",
+            intake_id: String(body.intakeId ?? "").trim() || "",
+          },
+        },
+        metadata: {
+          purpose: "profixiq_acquisition",
+          source: "pricing_cta",
+          demo_id: String(body.demoId ?? "").trim() || "",
+          intake_id: String(body.intakeId ?? "").trim() || "",
+        },
+        customer_update: {
+          address: "auto",
+          name: "auto",
+        },
+      });
+
+      return NextResponse.json({ ok: true, sessionId: session.id, url: session.url });
+    }
 
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
@@ -132,19 +212,6 @@ export async function POST(req: Request) {
     const requestedShopId = String(body.shopId ?? access.profile.shop_id).trim();
     if (!requestedShopId || requestedShopId !== access.profile.shop_id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const rawPrice = String(body.priceId ?? body.planKey ?? "").trim();
-    if (!rawPrice) {
-      return NextResponse.json({ error: "Missing price identifier" }, { status: 400 });
-    }
-
-    const priceId = await resolvePriceId(stripe, rawPrice);
-    if (!priceId) {
-      return NextResponse.json(
-        { error: `No active Stripe price found for "${rawPrice}"` },
-        { status: 400 },
-      );
     }
 
     const { data: shop, error: shopError } = await access.supabase
@@ -162,26 +229,6 @@ export async function POST(req: Request) {
     }
 
     const customerId = await createCustomerIfMissing(stripe, access.supabase, shop);
-
-    const baseUrl = getBaseUrl();
-    const successUrl = `${baseUrl}${
-      body.successPath?.startsWith("/")
-        ? body.successPath
-        : "/dashboard/owner/settings#billing"
-    }?session_id={CHECKOUT_SESSION_ID}`;
-
-    const cancelUrl = `${baseUrl}${
-      body.cancelPath?.startsWith("/")
-        ? body.cancelPath
-        : "/dashboard/owner/settings#billing"
-    }`;
-
-    const enableTrial = body.enableTrial !== false;
-    const trialDays = clampTrialDays(body.trialDays, envTrialDays());
-
-    const couponId = String(process.env.STRIPE_FOUNDING_COUPON_ID ?? "").trim();
-    const applyFoundingDiscount =
-      Boolean(couponId) && body.applyFoundingDiscount !== false;
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",

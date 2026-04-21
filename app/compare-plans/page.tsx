@@ -7,11 +7,9 @@ import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import {
-  appendActivationContextToHref,
   parseActivationContextFromSearchParams,
   persistActivationContext,
 } from "@/features/integrations/shopBoost/activationContext";
-import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
 import PricingSection from "@/features/shared/components/ui/PricingSection";
 
 type Interval = "monthly" | "yearly";
@@ -21,19 +19,6 @@ export default function ComparePlansPage() {
   const demoId = searchParams.get("demoId");
   const intakeId = searchParams.get("intakeId");
   const activationContext = parseActivationContextFromSearchParams(searchParams);
-  const comparePlansHref = activationContext
-    ? appendActivationContextToHref(
-        `/compare-plans?${new URLSearchParams({
-          ...(demoId ? { demoId } : {}),
-          ...(intakeId ? { intakeId } : {}),
-        }).toString()}`,
-        activationContext,
-      )
-    : `/compare-plans?${new URLSearchParams({
-        ...(demoId ? { demoId } : {}),
-        ...(intakeId ? { intakeId } : {}),
-      }).toString()}`;
-
   useEffect(() => {
     if (!activationContext) return;
     persistActivationContext(activationContext);
@@ -51,9 +36,10 @@ export default function ComparePlansPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          source: "pricing_cta",
           planKey: priceId,
           interval,
-          // Optional attribution for pre-signup Shop Boost analysis.
+          cancelPath: "/compare-plans",
           demoId: demoId ?? null,
           intakeId: intakeId ?? null,
         }),
@@ -62,22 +48,6 @@ export default function ComparePlansPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          const next = comparePlansHref;
-          const signupHref = activationContext
-            ? appendActivationContextToHref(
-                `/signup?redirect=${encodeURIComponent(next)}${demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`,
-                activationContext,
-              )
-            : `/signup?redirect=${encodeURIComponent(next)}${demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`;
-          trackShopBoostEvent("cta_clicked", {
-            demoId: demoId ?? "unknown",
-            intakeId: intakeId ?? undefined,
-            source: "compare_plans_auth_required",
-          });
-          window.location.href = signupHref;
-          return;
-        }
         toast.error(data?.details || data?.error || "Checkout failed");
         return;
       }
@@ -152,30 +122,6 @@ export default function ComparePlansPage() {
               });
             }}
           />
-          {demoId ? (
-            <div className="mt-4">
-              <Link
-                href={
-                  activationContext
-                    ? appendActivationContextToHref(
-                        `/signup?redirect=${encodeURIComponent(comparePlansHref)}&demoId=${encodeURIComponent(demoId)}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`,
-                        activationContext,
-                      )
-                    : `/signup?redirect=${encodeURIComponent(comparePlansHref)}&demoId=${encodeURIComponent(demoId)}${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`
-                }
-                onClick={() =>
-                  trackShopBoostEvent("cta_clicked", {
-                    demoId,
-                    intakeId: intakeId ?? undefined,
-                    source: "compare_plans_signup",
-                  })
-                }
-                className="inline-flex items-center rounded-lg border border-white/15 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-white/[0.08]"
-              >
-                Continue activation via signup
-              </Link>
-            </div>
-          ) : null}
         </div>
 
         <div className="mt-8 rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur-xl">

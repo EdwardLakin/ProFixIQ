@@ -38,9 +38,15 @@ export default function AuthPage() {
   }, []);
 
   const emailRedirectTo = useMemo(() => {
+    const params = new URLSearchParams();
     const redirect = sp.get("redirect");
-    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    return `${origin}/auth/callback${tail}`;
+    const sessionId = sp.get("session_id");
+    const flow = sp.get("flow");
+    if (redirect) params.set("redirect", redirect);
+    if (sessionId) params.set("session_id", sessionId);
+    if (flow) params.set("flow", flow);
+    const tail = params.toString();
+    return `${origin}/auth/callback${tail ? `?${tail}` : ""}`;
   }, [origin, sp]);
 
   const goLanding = () => {
@@ -155,7 +161,12 @@ export default function AuthPage() {
       return;
     }
 
-    await go("/onboarding");
+    const destination = await resolvePostAuthDestination({
+      supabase,
+      searchParams: sp,
+      isMobileMode,
+    });
+    await go(destination);
     setLoading(false);
   };
 
