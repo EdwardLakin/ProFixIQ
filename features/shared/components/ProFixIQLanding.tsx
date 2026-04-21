@@ -51,6 +51,28 @@ export default function ProFixIQLanding() {
     window.location.href = "/";
   };
 
+  const startCheckout = async ({ priceId, interval }: { priceId: string; interval: Interval }) => {
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "pricing_cta",
+        planKey: priceId,
+        interval,
+        enableTrial: true,
+        applyFoundingDiscount: true,
+        cancelPath: "/compare-plans",
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.url) {
+      throw new Error(String(data?.error ?? data?.details ?? "Unable to start checkout"));
+    }
+
+    window.location.href = data.url;
+  };
+
   return (
     <div className="relative min-h-screen text-white">
       <Toaster position="top-center" />
@@ -251,22 +273,10 @@ export default function ProFixIQLanding() {
                 priceId: string;
                 interval: Interval;
               }) => {
-                const params = new URLSearchParams({
-                  priceId,
-                  interval,
-                  trial: "1",
-                  founding: "1",
-                });
-
-                window.location.href = `/signup?${params.toString()}`;
+                await startCheckout({ priceId, interval });
               }}
               onStartFree={() => {
-                const params = new URLSearchParams({
-                  trial: "1",
-                  founding: "1",
-                });
-
-                window.location.href = `/signup?${params.toString()}`;
+                window.location.href = "/compare-plans";
               }}
             />
           </div>

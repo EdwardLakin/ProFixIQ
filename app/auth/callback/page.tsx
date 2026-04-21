@@ -49,10 +49,20 @@ export default function AuthCallbackPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.user) {
-        router.replace("/sign-in");
+        const passthrough = new URLSearchParams();
+        const sessionId = sp.get("session_id")?.trim();
+        const flow = sp.get("flow")?.trim();
+        if (sessionId) passthrough.set("session_id", sessionId);
+        if (flow) passthrough.set("flow", flow);
+        const signInHref = `/sign-in${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
+
+        router.replace(signInHref);
         setTimeout(() => {
-          if (typeof window !== "undefined" && window.location.pathname !== "/sign-in") {
-            window.location.assign("/sign-in");
+          if (typeof window !== "undefined") {
+            const want = new URL(signInHref, window.location.origin).href;
+            if (window.location.href !== want) {
+              window.location.assign(signInHref);
+            }
           }
         }, 100);
         return;

@@ -41,19 +41,15 @@ export default function SignUpClient() {
     const params = new URLSearchParams();
 
     const redirect = sp.get("redirect");
-    const priceId = sp.get("priceId");
-    const interval = sp.get("interval");
-    const trial = sp.get("trial");
-    const founding = sp.get("founding");
+    const sessionId = sp.get("session_id");
+    const flow = sp.get("flow");
     const demoIdParam = sp.get("demoId");
     const intakeIdParam = sp.get("intakeId");
     const activationContextRaw = sp.get("activationContext");
 
     if (redirect) params.set("redirect", redirect);
-    if (priceId) params.set("priceId", priceId);
-    if (interval) params.set("interval", interval);
-    if (trial) params.set("trial", trial);
-    if (founding) params.set("founding", founding);
+    if (sessionId) params.set("session_id", sessionId);
+    if (flow) params.set("flow", flow);
     if (demoIdParam) params.set("demoId", demoIdParam);
     if (intakeIdParam) params.set("intakeId", intakeIdParam);
     if (activationContextRaw) {
@@ -147,17 +143,9 @@ export default function SignUpClient() {
     const redirect = sp.get("redirect");
     const params = new URLSearchParams();
 
-    const priceId = sp.get("priceId");
-    const interval = sp.get("interval");
-    const trial = sp.get("trial");
-    const founding = sp.get("founding");
     const demoIdParam = sp.get("demoId");
     const intakeIdParam = sp.get("intakeId");
 
-    if (priceId) params.set("priceId", priceId);
-    if (interval) params.set("interval", interval);
-    if (trial) params.set("trial", trial);
-    if (founding) params.set("founding", founding);
     if (demoIdParam) params.set("demoId", demoIdParam);
     if (intakeIdParam) params.set("intakeId", intakeIdParam);
 
