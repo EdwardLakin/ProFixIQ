@@ -12,7 +12,10 @@ import {
   persistActivationContext,
 } from "@/features/integrations/shopBoost/activationContext";
 import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
-import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import {
+  collectPassthroughParams,
+  resolvePostAuthDestination,
+} from "@/features/auth/lib/postAuthRouting";
 
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 
@@ -97,13 +100,7 @@ export default function OnboardingPage() {
       try {
         await supabase.auth.exchangeCodeForSession(code);
       } finally {
-        const keepSid = searchParams.get("session_id");
-        const cleanParams = new URLSearchParams();
-        if (keepSid) cleanParams.set("session_id", keepSid);
-        if (demoId) cleanParams.set("demoId", demoId);
-        if (intakeId) cleanParams.set("intakeId", intakeId);
-        const activationContextParam = searchParams.get("activationContext");
-        if (activationContextParam) cleanParams.set("activationContext", activationContextParam);
+        const cleanParams = collectPassthroughParams(searchParams);
         const clean = `/onboarding${cleanParams.toString() ? `?${cleanParams.toString()}` : ""}`;
         router.replace(clean);
         setTimeout(() => router.refresh(), 0);
@@ -288,9 +285,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      const next = new URLSearchParams();
-      if (demoId) next.set("demoId", demoId);
-      if (intakeId) next.set("intakeId", intakeId);
+      const next = collectPassthroughParams(searchParams);
       const baseHref = `/onboarding/shop-boost${next.toString() ? `?${next.toString()}` : ""}`;
       router.replace(activationContext ? appendActivationContextToHref(baseHref, activationContext) : baseHref);
       setLoading(false);
