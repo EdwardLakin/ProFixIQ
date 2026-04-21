@@ -30,6 +30,11 @@ function safeRedirectPath(v: string | null): string | null {
 
 type PortalMode = "customer" | "fleet";
 
+function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
+  const normalized = String(role ?? "").trim().toLowerCase();
+  return normalized === "owner" || normalized === "admin";
+}
+
 async function resolvePortalModeServer(
   supabase: ReturnType<typeof createMiddlewareClient<Database>>,
   userId: string,
@@ -98,23 +103,44 @@ export async function middleware(req: NextRequest) {
     isLegacyPortalConfirm;
 
   let completed = false;
+  let needsShopBoostIntake = false;
   if (session?.user && !isPortal) {
     try {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("completed_onboarding, shop_id")
+        .select("completed_onboarding, shop_id, role")
         .eq("id", session.user.id)
         .limit(1)
         .maybeSingle();
 
       completed = !!profile?.completed_onboarding || !!profile?.shop_id;
+
+      if (profile?.completed_onboarding && profile?.shop_id && isShopBoostOrchestratedRole(profile.role)) {
+        const { data: intake } = await supabase
+          .from("shop_boost_intakes")
+          .select("id")
+          .eq("shop_id", profile.shop_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        needsShopBoostIntake = !intake?.id;
+      }
     } catch {
       completed = false;
+      needsShopBoostIntake = false;
     }
   }
 
   if (pathname === "/" && session?.user) {
-    const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
+    const target = new URL(
+      !completed
+        ? "/onboarding"
+        : needsShopBoostIntake
+          ? "/onboarding/shop-boost"
+          : "/dashboard",
+      req.url,
+    );
     return withSupabaseCookies(res, NextResponse.redirect(target));
   }
 
@@ -134,9 +160,11 @@ export async function middleware(req: NextRequest) {
           ? completed
             ? "/mobile"
             : "/onboarding"
-          : completed
-            ? "/dashboard"
-            : "/onboarding");
+          : !completed
+            ? "/onboarding"
+            : needsShopBoostIntake
+              ? "/onboarding/shop-boost"
+              : "/dashboard");
 
       const target = new URL(to, req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
