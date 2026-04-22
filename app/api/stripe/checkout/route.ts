@@ -190,10 +190,6 @@ export async function POST(req: Request) {
           demo_id: String(body.demoId ?? "").trim() || "",
           intake_id: String(body.intakeId ?? "").trim() || "",
         },
-        customer_update: {
-          address: "auto",
-          name: "auto",
-        },
       });
 
       return NextResponse.json({ ok: true, sessionId: session.id, url: session.url });
