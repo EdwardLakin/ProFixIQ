@@ -60,6 +60,8 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
   if (!row) return null;
   const basics = readIntakeBasics(row);
   const migration = isRecord(basics.migrationProgress) ? basics.migrationProgress : {};
+  const importSummary = isRecord(basics.importSummary) ? basics.importSummary : {};
+  const rowResults = isRecord(importSummary.rowResults) ? importSummary.rowResults : {};
   return {
     currentStep: typeof migration.currentStep === "string" ? migration.currentStep : "queued",
     progressPercent: typeof migration.progressPercent === "number" ? migration.progressPercent : 0,
@@ -73,12 +75,42 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
     resultSummary: isRecord(migration.resultSummary)
       ? (migration.resultSummary as Record<string, unknown>)
       : undefined,
-    total_rows: typeof migration.total_rows === "number" ? migration.total_rows : undefined,
-    processed_rows: typeof migration.processed_rows === "number" ? migration.processed_rows : undefined,
-    success_count: typeof migration.success_count === "number" ? migration.success_count : undefined,
-    review_count: typeof migration.review_count === "number" ? migration.review_count : undefined,
-    failed_count: typeof migration.failed_count === "number" ? migration.failed_count : undefined,
-    ignored_count: typeof migration.ignored_count === "number" ? migration.ignored_count : undefined,
+    total_rows:
+      typeof migration.total_rows === "number"
+        ? migration.total_rows
+        : typeof rowResults.totalRows === "number"
+          ? rowResults.totalRows
+          : undefined,
+    processed_rows:
+      typeof migration.processed_rows === "number"
+        ? migration.processed_rows
+        : typeof rowResults.processedRows === "number"
+          ? rowResults.processedRows
+          : undefined,
+    success_count:
+      typeof migration.success_count === "number"
+        ? migration.success_count
+        : typeof rowResults.successCount === "number"
+          ? rowResults.successCount
+          : undefined,
+    review_count:
+      typeof migration.review_count === "number"
+        ? migration.review_count
+        : typeof rowResults.reviewCount === "number"
+          ? rowResults.reviewCount
+          : undefined,
+    failed_count:
+      typeof migration.failed_count === "number"
+        ? migration.failed_count
+        : typeof rowResults.failedCount === "number"
+          ? rowResults.failedCount
+          : undefined,
+    ignored_count:
+      typeof migration.ignored_count === "number"
+        ? migration.ignored_count
+        : typeof rowResults.ignoredCount === "number"
+          ? rowResults.ignoredCount
+          : undefined,
     integrity: isRecord(migration.integrity) ? (migration.integrity as Record<string, unknown>) : undefined,
     domains: isRecord(migration.domains)
       ? (migration.domains as Record<string, { success: number; review: number; failed: number }>)
@@ -92,6 +124,14 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
       migration.completionState === "READY_FOR_GO_LIVE" ||
       migration.completionState === "NOT_READY"
         ? migration.completionState
+        : importSummary.completionState === "COMPLETED_CLEAN" ||
+            importSummary.completionState === "COMPLETED_WITH_REVIEW" ||
+            importSummary.completionState === "COMPLETED_WITH_WARNINGS" ||
+            importSummary.completionState === "PARTIAL_FAILURE" ||
+            importSummary.completionState === "FAILED" ||
+            importSummary.completionState === "READY_FOR_GO_LIVE" ||
+            importSummary.completionState === "NOT_READY"
+          ? importSummary.completionState
         : undefined,
     migration_story: isMigrationStory(basics.migration_story)
       ? basics.migration_story

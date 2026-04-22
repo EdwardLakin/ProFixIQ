@@ -135,7 +135,7 @@ type InspectionTemplateSuggestionBridgeRef = {
 };
 type IntakeBasics = Record<string, unknown>;
 type CacheCustomerRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "email" | "phone" | "phone_number">;
-type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "vin" | "license_plate">;
+type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "vin" | "license_plate" | "unit_number">;
 type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "email" | "full_name">;
 type RowBucketRow = Pick<DB["public"]["Tables"]["shop_boost_row_results"]["Row"], "match_status" | "review_required" | "error_reason">;
 type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
@@ -157,6 +157,16 @@ function normalizePhone(value: string | null | undefined): string {
   if (!digits) return "";
   if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
   return digits;
+}
+
+function normalizeNameKey(value: string | null | undefined): string {
+  return normalizeText(value ?? "");
+}
+
+function compositeKey(...parts: Array<string | null | undefined>): string {
+  const cleaned = parts.map((part) => String(part ?? "").trim().toLowerCase());
+  if (cleaned.some((part) => !part)) return "";
+  return cleaned.join("|");
 }
 
 function addUniqueMatch(map: Map<string, string>, conflicts: Set<string>, key: string, id: string): void {
@@ -420,23 +430,41 @@ function extractServiceCatalogCandidates(rows: CsvRow[]): {
   >();
 
   for (const row of rows) {
-    const serviceName = pick(row, [/service/, /job name/, /operation/, /^name$/, /menu/]);
+    const serviceCode = pick(row, [/^service[_\s-]*code$/, /^operation[_\s-]*code$/, /^code$/]);
+    const serviceName = pick(row, [/^service[_\s-]*name$/, /service/, /job name/, /operation/, /^name$/, /menu/]);
     const serviceDescription = pick(row, [/description/, /details/, /op description/, /note/]);
-    const laborHours = parseLaborHours(pick(row, [/labor hours/, /hours/, /labor time/, /flat rate/]));
-    const price = parseMoney(pick(row, [/price/, /retail/, /sell/, /menu price/]));
+    const serviceCategory = pick(row, [/^category$/, /department/, /shop department/]);
+    const recommendedKm = pick(row, [/recommended[_\s-]*interval[_\s-]*km$/, /interval km/]);
+    const recommendedMonths = pick(row, [/recommended[_\s-]*interval[_\s-]*months$/, /interval months/]);
+    const laborHours = parseLaborHours(
+      pick(row, [/^default[_\s-]*labor[_\s-]*hours$/, /labor hours/, /hours/, /labor time/, /flat rate/]),
+    );
+    const laborRate = parseMoney(pick(row, [/^default[_\s-]*labor[_\s-]*rate$/, /labor rate/]));
+    const explicitPrice = parseMoney(pick(row, [/price/, /retail/, /sell/, /menu price/]));
+    const price = explicitPrice ?? (laborHours !== null && laborRate !== null ? laborHours * laborRate : null);
 
     if (serviceName) {
       const hasStructuredPricing = price !== null || laborHours !== null;
+      const hasServiceCode = Boolean(serviceCode);
       const confidence = hasStructuredPricing ? 0.9 : 0.68;
       menu.push({
         title: serviceName,
-        description: serviceDescription,
+        description:
+          [
+            serviceDescription,
+            serviceCategory ? `Category: ${serviceCategory}` : null,
+            recommendedKm || recommendedMonths
+              ? `Interval: ${recommendedKm ?? "n/a"} km / ${recommendedMonths ?? "n/a"} months`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" • ") || null,
         price,
         laborHours,
-        confidence,
+        confidence: hasServiceCode ? Math.max(confidence, 0.92) : confidence,
         source: "service_catalog",
         uniqueKey: sha1(
-          `svc|${normalizeText(serviceName)}|${String(price ?? "")}|${String(laborHours ?? "")}`,
+          `svc|${serviceCode ?? normalizeText(serviceName)}|${String(price ?? "")}|${String(laborHours ?? "")}`,
         ).slice(0, 20),
       });
     }
@@ -1020,10 +1048,17 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const customersByPhone = new Map<string, string>();
   const uniqueCustomersByEmail = new Map<string, string>();
   const uniqueCustomersByPhone = new Map<string, string>();
+  const uniqueCustomersByName = new Map<string, string>();
   const conflictingCustomerEmails = new Set<string>();
   const conflictingCustomerPhones = new Set<string>();
+  const conflictingCustomerNames = new Set<string>();
   const vehiclesByVin = new Map<string, string>();
   const vehiclesByPlate = new Map<string, string>();
+  const vehiclesByUnit = new Map<string, string>();
+  const uniqueVehiclesByCustomerUnit = new Map<string, string>();
+  const conflictingVehiclesByCustomerUnit = new Set<string>();
+  const uniqueVehiclesByCustomerPlate = new Map<string, string>();
+  const conflictingVehiclesByCustomerPlate = new Set<string>();
   const customersBySourceId = new Map<string, string>();
   const vehiclesBySourceId = new Map<string, string>();
   const workOrdersBySourceId = new Map<string, string>();
@@ -1034,13 +1069,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   {
     const { data } = await supabase
       .from("customers")
-      .select("id,email,phone,phone_number,external_id,shop_id")
+      .select("id,email,phone,phone_number,name,first_name,last_name,external_id,shop_id")
       .eq("shop_id", shopId)
       .limit(5000);
 
     for (const r of data ?? []) {
       const rec = r as CacheCustomerRow;
       const externalId = String((r as Record<string, unknown>).external_id ?? "");
+      const fullName = String((r as Record<string, unknown>).name ?? "").trim();
+      const fallbackName = `${String((r as Record<string, unknown>).first_name ?? "").trim()} ${String((r as Record<string, unknown>).last_name ?? "").trim()}`.trim();
+      const normalizedName = normalizeNameKey(fullName || fallbackName);
       const email = normalizeEmail(String(rec.email ?? ""));
       const phone = normalizePhone(String(rec.phone ?? rec.phone_number ?? ""));
       const id = String(rec.id ?? "");
@@ -1048,6 +1086,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       if (phone && id) customersByPhone.set(phone, id);
       addUniqueMatch(uniqueCustomersByEmail, conflictingCustomerEmails, email, id);
       addUniqueMatch(uniqueCustomersByPhone, conflictingCustomerPhones, phone, id);
+      addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
       const sourceMatch = externalId.match(/^import:source:customer:([a-f0-9]{20})$/);
       if (sourceMatch?.[1] && id) customersBySourceId.set(sourceMatch[1], id);
     }
@@ -1057,7 +1096,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   {
     const { data } = await supabase
       .from("vehicles")
-      .select("id,vin,license_plate,external_id,shop_id")
+      .select("id,vin,license_plate,unit_number,customer_id,external_id,shop_id")
       .eq("shop_id", shopId)
       .limit(5000);
 
@@ -1065,10 +1104,25 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const rec = r as CacheVehicleRow;
       const vin = lower(String(rec.vin ?? ""));
       const plate = lower(String(rec.license_plate ?? ""));
+      const unit = lower(String(rec.unit_number ?? ""));
       const id = String(rec.id ?? "");
+      const customerId = String((r as Record<string, unknown>).customer_id ?? "");
       const externalId = String((r as Record<string, unknown>).external_id ?? "");
       if (vin && id) vehiclesByVin.set(vin, id);
       if (plate && id) vehiclesByPlate.set(plate, id);
+      if (unit && id) vehiclesByUnit.set(unit, id);
+      addUniqueMatch(
+        uniqueVehiclesByCustomerUnit,
+        conflictingVehiclesByCustomerUnit,
+        compositeKey(customerId, unit),
+        id,
+      );
+      addUniqueMatch(
+        uniqueVehiclesByCustomerPlate,
+        conflictingVehiclesByCustomerPlate,
+        compositeKey(customerId, plate),
+        id,
+      );
       const sourceMatch = externalId.match(/^import:source:vehicle:([a-f0-9]{20})$/);
       if (sourceMatch?.[1] && id) vehiclesBySourceId.set(sourceMatch[1], id);
     }
@@ -1132,13 +1186,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const sourceCustomerKey = sourceCustomerId ? sha1(sourceCustomerId).slice(0, 20) : null;
 
       const email = lower(pick(row, [/^email$/, /e-mail/, /customer email/, /mail/]) ?? "");
-      const phone = lower(pick(row, [/^phone$/, /phone number/, /mobile/, /cell/]) ?? "");
+      const phone =
+        normalizePhone(pick(row, [/^phone[_\s-]*primary$/, /^phone[_\s-]*secondary$/, /^phone$/, /phone number/, /mobile/, /cell/]) ?? "");
 
       const first = pick(row, [/^first/, /first name/]);
       const last = pick(row, [/^last/, /last name/]);
       const name =
-        pick(row, [/^name$/, /customer name/]) ??
+        pick(row, [/^display[_\s-]*name$/, /^company[_\s-]*name$/, /^name$/, /customer name/]) ??
         [first ?? "", last ?? ""].filter(Boolean).join(" ");
+      const normalizedName = normalizeNameKey(name);
 
       const business = pick(row, [/business/, /company/, /fleet/]);
 
@@ -1150,7 +1206,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const existingId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId ? (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone)) : null);
+        (!sourceCustomerId
+          ? (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
+            (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
+            (normalizedName && !conflictingCustomerNames.has(normalizedName) && uniqueCustomersByName.get(normalizedName))
+          : null);
       const bestNameMatch = name
         ? customerNames
             .map((candidate) => ({ id: candidate.id, similarity: nameSimilarity(name, candidate.name) }))
@@ -1231,6 +1291,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           reviewRequired: false,
         });
         if (sourceCustomerKey) customersBySourceId.set(sourceCustomerKey, existingId);
+        if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, existingId);
         continue;
       }
 
@@ -1289,6 +1350,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           if (email) customersByEmail.set(email, id);
           if (phone) customersByPhone.set(phone, id);
           if (sourceCustomerKey) customersBySourceId.set(sourceCustomerKey, id);
+          if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
         }
         rowOutcome.processedRows += 1;
         rowOutcome.successCount += 1;
@@ -1358,10 +1420,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const custEmail = normalizeEmail(pick(row, [/customer email/, /email/]));
       const custPhone = normalizePhone(pick(row, [/customer phone/, /phone/]));
+      const customerNameKey = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
       const customer_id =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
         (!sourceCustomerId
-          ? (custEmail && customersByEmail.get(custEmail)) || (custPhone && customersByPhone.get(custPhone))
+          ? (custEmail && !conflictingCustomerEmails.has(custEmail) && uniqueCustomersByEmail.get(custEmail)) ||
+            (custPhone && !conflictingCustomerPhones.has(custPhone) && uniqueCustomersByPhone.get(custPhone)) ||
+            (customerNameKey && !conflictingCustomerNames.has(customerNameKey) && uniqueCustomersByName.get(customerNameKey))
           : null) ||
         null;
 
@@ -1402,7 +1467,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const existingId =
         (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) ||
-        (!sourceVehicleId ? (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) : null);
+        (!sourceVehicleId
+          ? (customer_id &&
+              unit &&
+              !conflictingVehiclesByCustomerUnit.has(compositeKey(customer_id, lower(unit))) &&
+              uniqueVehiclesByCustomerUnit.get(compositeKey(customer_id, lower(unit)))) ||
+            (vin && vehiclesByVin.get(vin)) ||
+            (customer_id &&
+              plate &&
+              !conflictingVehiclesByCustomerPlate.has(compositeKey(customer_id, plate)) &&
+              uniqueVehiclesByCustomerPlate.get(compositeKey(customer_id, plate))) ||
+            (plate && vehiclesByPlate.get(plate))
+          : null);
 
       if (existingId) {
         await supabase
@@ -1448,6 +1524,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           reviewRequired: false,
         });
         if (sourceVehicleKey) vehiclesBySourceId.set(sourceVehicleKey, existingId);
+        addUniqueMatch(
+          uniqueVehiclesByCustomerUnit,
+          conflictingVehiclesByCustomerUnit,
+          compositeKey(customer_id, unit ? lower(unit) : ""),
+          existingId,
+        );
+        addUniqueMatch(
+          uniqueVehiclesByCustomerPlate,
+          conflictingVehiclesByCustomerPlate,
+          compositeKey(customer_id, plate),
+          existingId,
+        );
         continue;
       }
 
@@ -1476,7 +1564,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         if (id) {
           if (vin) vehiclesByVin.set(vin, id);
           if (plate) vehiclesByPlate.set(plate, id);
+          if (unit) vehiclesByUnit.set(lower(unit), id);
           if (sourceVehicleKey) vehiclesBySourceId.set(sourceVehicleKey, id);
+          addUniqueMatch(
+            uniqueVehiclesByCustomerUnit,
+            conflictingVehiclesByCustomerUnit,
+            compositeKey(customer_id, unit ? lower(unit) : ""),
+            id,
+          );
+          addUniqueMatch(
+            uniqueVehiclesByCustomerPlate,
+            conflictingVehiclesByCustomerPlate,
+            compositeKey(customer_id, plate),
+            id,
+          );
         }
         rowOutcome.processedRows += 1;
         rowOutcome.successCount += 1;
@@ -1573,10 +1674,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       if (!fullName && !email) continue;
 
       const notes = pick(row, [/reason/, /note/, /notes/, /comment/]) ?? "Imported from staff CSV";
+      const externalUserId = pickSourceId(row, [/^external[_\s-]*user[_\s-]*id$/, /^user[_\s-]*id$/, /^employee[_\s-]*id$/]);
 
       // Deterministic-ish external id to prevent duplicates on reruns
-      const external_id = `import:${intakeId}:staff:${i + 1}:${sha1(
-        `${fullName ?? ""}|${email ?? ""}|${role ?? ""}`,
+      const external_id = `import:${intakeId}:staff:${sha1(
+        `${externalUserId ?? ""}|${fullName ?? ""}|${email ?? ""}|${role ?? ""}`,
       ).slice(0, 10)}`;
 
       const { error: staffInsErr } = await supabase.from("staff_invite_suggestions").upsert(
@@ -1613,19 +1715,24 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const sourceVehicleKey = sourceVehicleId ? sha1(sourceVehicleId).slice(0, 20) : null;
 
       const ro =
-        pick(row, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
+        pick(row, [/^invoice[_\s-]*number$/, /^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
+      const invoiceNumber = pick(row, [/^invoice[_\s-]*number$/, /^invoice number$/, /^invoice #$/, /^invoice$/]);
 
       const dateIso =
         parseDateIso(pick(row, [/date/, /service date/, /closed/, /completed/])) ??
         new Date().toISOString();
 
-      const complaint = pick(row, [/complaint/, /concern/]);
+      const complaint = pick(row, [/symptom/, /complaint/, /concern/]);
       const cause = pick(row, [/cause/]);
       const correction = pick(row, [/correction/, /work performed/, /description/]);
 
       const total = parseMoney(pick(row, [/total/, /grand total/, /invoice total/]));
-      const labor = parseMoney(pick(row, [/labor/, /labour/]));
-      const parts = parseMoney(pick(row, [/parts/]));
+      const labor = parseMoney(
+        pick(row, [/^labor[_\s-]*sale$/, /^labor[_\s-]*total$/, /labor sale/, /labor amount/, /^labor$/]),
+      );
+      const parts = parseMoney(
+        pick(row, [/^parts[_\s-]*sale$/, /^parts[_\s-]*total$/, /parts sale/, /parts amount/, /^parts$/]),
+      );
 
       const vin = lower(pick(row, [/vin/]) ?? "");
       const plate = lower(pick(row, [/plate/, /license/]) ?? "");
@@ -1633,17 +1740,27 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const customerEmail = normalizeEmail(pick(row, [/customer email/, /^email$/]));
       const customerPhone = normalizePhone(pick(row, [/customer phone/, /^phone$/]));
       const customerName = pick(row, [/customer name/, /^name$/]) ?? null;
+      const normalizedCustomerName = normalizeNameKey(customerName);
 
       const customer_id =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
         (!sourceCustomerId
-          ? (customerEmail && customersByEmail.get(customerEmail)) || (customerPhone && customersByPhone.get(customerPhone))
+          ? (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
+            (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
+            (normalizedCustomerName &&
+              !conflictingCustomerNames.has(normalizedCustomerName) &&
+              uniqueCustomersByName.get(normalizedCustomerName))
           : null) ||
         null;
 
       const vehicle_id =
         (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) ||
-        (!sourceVehicleId ? (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) : null) ||
+        (!sourceVehicleId
+          ? (vin && vehiclesByVin.get(vin)) ||
+            (plate && vehiclesByPlate.get(plate)) ||
+            (lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "") &&
+              vehiclesByUnit.get(lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "")))
+          : null) ||
         null;
 
       if (!customer_id || !vehicle_id) {
@@ -1825,6 +1942,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             labor,
             parts,
             issuedAt: dateIso,
+            invoiceNumber: invoiceNumber ?? ro,
           });
 
           continue;
@@ -1858,6 +1976,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         labor,
         parts,
         issuedAt: dateIso,
+        invoiceNumber: invoiceNumber ?? ro,
       });
       rowOutcome.processedRows += 1;
       rowOutcome.successCount += 1;
@@ -1894,23 +2013,30 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   if (parsedInvoices.length > 0) {
     for (let i = 0; i < parsedInvoices.length; i += 1) {
       const row = parsedInvoices[i];
-      const sourceInvoiceId = pickSourceId(row, [/^invoice[_\s-]*id$/, /external invoice id/]);
+      const sourceInvoiceId = pickSourceId(row, [/^invoice[_\s-]*id$/, /^invoice[_\s-]*number$/, /external invoice id/]);
       const sourceWorkOrderId = pickSourceId(row, [/^work[_\s-]*order[_\s-]*id$/, /^wo[_\s-]*id$/, /^ro[_\s-]*id$/]);
       const sourceCustomerId = pickSourceId(row, [/^customer[_\s-]*id$/, /external customer id/]);
       const sourceWorkOrderKey = sourceWorkOrderId ? sha1(sourceWorkOrderId).slice(0, 20) : null;
       const sourceCustomerKey = sourceCustomerId ? sha1(sourceCustomerId).slice(0, 20) : null;
-      const invoiceNumber = pick(row, [/^invoice number$/, /^invoice #$/, /^invoice$/, /inv number/]);
+      const invoiceNumber = pick(row, [/^invoice[_\s-]*number$/, /^invoice number$/, /^invoice #$/, /^invoice$/, /inv number/]);
       const ro = pick(row, [/^ro$/, /ro number/, /work order/, /order number/]) ?? null;
       const issuedAt = parseDateIso(pick(row, [/date/, /issued/, /closed/, /completed/])) ?? new Date().toISOString();
       const total = parseMoney(pick(row, [/total/, /grand total/, /invoice total/, /amount due/]));
-      const labor = parseMoney(pick(row, [/labor/, /labour/]));
-      const parts = parseMoney(pick(row, [/parts/]));
+      const labor = parseMoney(
+        pick(row, [/^labor[_\s-]*sale$/, /^labor[_\s-]*total$/, /labor sale/, /labor amount/, /^labor$/]),
+      );
+      const parts = parseMoney(
+        pick(row, [/^parts[_\s-]*sale$/, /^parts[_\s-]*total$/, /parts sale/, /parts amount/, /^parts$/]),
+      );
       const customerEmail = normalizeEmail(pick(row, [/customer email/, /^email$/]));
       const customerPhone = normalizePhone(pick(row, [/customer phone/, /^phone$/]));
+      const customerName = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
       const resolvedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
         (!sourceCustomerId
-          ? (customerEmail && customersByEmail.get(customerEmail)) || (customerPhone && customersByPhone.get(customerPhone))
+          ? (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
+            (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
+            (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName))
           : null) ||
         null;
 
@@ -1972,6 +2098,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         continue;
       }
 
+      const derivedInvoiceExternalId = sourceInvoiceId
+        ? sourceExternalId("invoice", sourceInvoiceId)
+        : invoiceNumber
+          ? sourceExternalId("invoice", invoiceNumber)
+          : null;
+
       await upsertInvoiceIfNeeded({
         supabase,
         shopId,
@@ -1983,7 +2115,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         parts,
         issuedAt,
         invoiceNumber: invoiceNumber ?? null,
-        externalId: sourceInvoiceId ? sourceExternalId("invoice", sourceInvoiceId) : null,
+        externalId: derivedInvoiceExternalId,
       });
 
       rowOutcome.processedRows += 1;
@@ -2034,15 +2166,20 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
+      const sourceVehicleId = pickSourceId(row, [/^vehicle[_\s-]*id$/, /external vehicle id/, /^unit id$/]);
       const sourceCustomerId = pickSourceId(row, [/^customer[_\s-]*id$/, /external customer id/]);
       const sourceCustomerKey = sourceCustomerId ? sha1(sourceCustomerId).slice(0, 20) : null;
       const email = normalizeEmail(pick(row, [/customer email/, /email/]));
       const phone = normalizePhone(pick(row, [/customer phone/, /phone/]));
+      const customerName = normalizeNameKey(
+        pick(row, [/customer name/, /^name$/, /^display[_\s-]*name$/, /^company[_\s-]*name$/]),
+      );
       const matchedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
         (!sourceCustomerId
           ? (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
-            (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone))
+            (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
+            (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName))
           : null) ||
         null;
 
@@ -2052,9 +2189,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const plate = lower(pick(row, [/plate/, /license/, /licence/]) ?? "");
       const unit = pick(row, [/unit/, /unit number/, /truck number/]);
       const year = parseIntSafe(pick(row, [/^year$/, /model year/]));
-      const external_id = `import:${intakeId}:vehicles:${sha1(
-        `${vin}|${plate}|${unit ?? ""}|${year ?? ""}`,
-      ).slice(0, 16)}`;
+      const external_id = sourceVehicleId
+        ? sourceExternalId("vehicle", sourceVehicleId)
+        : `import:${intakeId}:vehicles:${sha1(`${vin}|${plate}|${unit ?? ""}|${year ?? ""}`).slice(0, 16)}`;
 
       const { data: linkedVehicles } = await supabase
         .from("vehicles")
@@ -2071,14 +2208,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   if (historyCsv) {
     const uniqueVehiclesByVin = new Map<string, string>();
     const uniqueVehiclesByPlate = new Map<string, string>();
+    const uniqueVehiclesByUnit = new Map<string, string>();
     const conflictingVehicleVins = new Set<string>();
     const conflictingVehiclePlates = new Set<string>();
+    const conflictingVehicleUnits = new Set<string>();
     const uniqueVehicleByCustomerId = new Map<string, string>();
     const conflictingVehicleCustomers = new Set<string>();
 
     const { data: vehiclesForLinkage } = await supabase
       .from("vehicles")
-      .select("id,vin,license_plate,customer_id")
+      .select("id,vin,license_plate,unit_number,customer_id")
       .eq("shop_id", shopId)
       .limit(5000);
 
@@ -2086,10 +2225,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const vehicleId = String(vehicle.id ?? "");
       const vin = lower(String(vehicle.vin ?? ""));
       const plate = lower(String(vehicle.license_plate ?? ""));
+      const unit = lower(String((vehicle as Record<string, unknown>).unit_number ?? ""));
       const customerId = String(vehicle.customer_id ?? "");
 
       addUniqueMatch(uniqueVehiclesByVin, conflictingVehicleVins, vin, vehicleId);
       addUniqueMatch(uniqueVehiclesByPlate, conflictingVehiclePlates, plate, vehicleId);
+      addUniqueMatch(uniqueVehiclesByUnit, conflictingVehicleUnits, unit, vehicleId);
       addUniqueMatch(uniqueVehicleByCustomerId, conflictingVehicleCustomers, customerId, vehicleId);
     }
 
@@ -2104,6 +2245,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const sourceWorkOrderId = pickSourceId(row, [/^work[_\s-]*order[_\s-]*id$/, /^wo[_\s-]*id$/, /^ro[_\s-]*id$/]);
       const customerEmail = normalizeEmail(pick(row, [/customer email/, /^email$/]));
       const customerPhone = normalizePhone(pick(row, [/customer phone/, /^phone$/]));
+      const customerName = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
       const matchedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
         (!sourceCustomerId
@@ -2112,7 +2254,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
               uniqueCustomersByEmail.get(customerEmail)) ||
             (customerPhone &&
               !conflictingCustomerPhones.has(customerPhone) &&
-              uniqueCustomersByPhone.get(customerPhone))
+              uniqueCustomersByPhone.get(customerPhone)) ||
+            (customerName &&
+              !conflictingCustomerNames.has(customerName) &&
+              uniqueCustomersByName.get(customerName))
           : null) ||
         null;
 
@@ -2128,11 +2273,19 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const complaint = pick(row, [/complaint/, /concern/]);
       const vin = lower(pick(row, [/vin/]) ?? "");
       const plate = lower(pick(row, [/plate/, /license/]) ?? "");
+      const unit = lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "");
       const vehicleIdFromVin =
         vin && !conflictingVehicleVins.has(vin) ? uniqueVehiclesByVin.get(vin) ?? null : null;
       const vehicleIdFromPlate =
         plate && !conflictingVehiclePlates.has(plate) ? uniqueVehiclesByPlate.get(plate) ?? null : null;
-      const matchedVehicleId = (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) || vehicleIdFromVin || vehicleIdFromPlate || null;
+      const vehicleIdFromUnit =
+        unit && !conflictingVehicleUnits.has(unit) ? uniqueVehiclesByUnit.get(unit) ?? null : null;
+      const matchedVehicleId =
+        (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) ||
+        vehicleIdFromVin ||
+        vehicleIdFromPlate ||
+        vehicleIdFromUnit ||
+        null;
       const historyFingerprint = sha1(
         [
           ro ?? "",
@@ -2576,6 +2729,14 @@ async function upsertInvoiceIfNeeded(args: {
         .eq("external_id", externalId)
         .maybeSingle<{ id: string }>()
     : null;
+  const byInvoiceNumber = invoiceNumber
+    ? await supabase
+        .from("invoices")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("invoice_number", invoiceNumber)
+        .maybeSingle<{ id: string }>()
+    : null;
   const byWorkOrder = await supabase
     .from("invoices")
     .select("id")
@@ -2598,7 +2759,7 @@ async function upsertInvoiceIfNeeded(args: {
     metadata: { imported: true, source_intake_id: intakeId },
   };
 
-  const existingId = byExternal?.data?.id ?? byWorkOrder.data?.id ?? null;
+  const existingId = byExternal?.data?.id ?? byInvoiceNumber?.data?.id ?? byWorkOrder.data?.id ?? null;
   if (existingId) {
     await supabase
       .from("invoices")
