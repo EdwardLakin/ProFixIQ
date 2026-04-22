@@ -1196,9 +1196,14 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         [first ?? "", last ?? ""].filter(Boolean).join(" ");
       const normalizedName = normalizeNameKey(name);
 
-      const business = pick(row, [/business/, /company/, /fleet/]);
-
-      const isFleet = !!business || lower(pick(row, [/is fleet/, /fleet\?/]) ?? "") === "true";
+      const customerType = lower(
+        pick(row, [/^customer[_\s-]*type$/, /^type$/, /account type/, /customer class/, /segment/]) ?? "",
+      );
+      const business = pick(row, [/^company[_\s-]*name$/, /^business[_\s-]*name$/, /^company$/, /^business$/]);
+      const isFleet =
+        customerType === "fleet" ||
+        customerType === "commercial" ||
+        lower(pick(row, [/^is[_\s-]*fleet$/, /^fleet\?$/, /^fleet$/]) ?? "") === "true";
 
       const external_id = sourceCustomerId
         ? sourceExternalId("customer", sourceCustomerId)
@@ -1240,7 +1245,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "customers",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet },
+          normalizedPayload: { email, phone, name, business, isFleet, customerType },
           targetDomain: "customer",
           matchStatus: "matched_existing",
           matchConfidence: "medium",
@@ -1279,7 +1284,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "customers",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet, sourceCustomerId },
+          normalizedPayload: { email, phone, name, business, isFleet, customerType, sourceCustomerId },
           targetDomain: "customer",
           matchStatus: "matched_existing",
           matchConfidence: sourceCustomerId || email || phone ? "high" : "medium",
@@ -1315,7 +1320,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "customers",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet },
+          normalizedPayload: { email, phone, name, business, isFleet, customerType },
           targetDomain: "customer",
           matchStatus: "invalid",
           matchConfidence: "low",
@@ -1362,7 +1367,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "customers",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet, sourceCustomerId },
+          normalizedPayload: { email, phone, name, business, isFleet, customerType, sourceCustomerId },
           targetDomain: "customer",
           matchStatus: "created_new",
           matchConfidence: email || phone ? "high" : "medium",
@@ -1389,7 +1394,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "customers",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet },
+          normalizedPayload: { email, phone, name, business, isFleet, customerType },
           targetDomain: "customer",
           matchStatus: "unmatched",
           matchConfidence: "low",
@@ -1655,16 +1660,23 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const row = rows[i];
 
       // Handles messy headers because pick() normalizes keys with lower(trim)
+      const firstName = pick(row, [/^first[_\s-]*name$/, /^first$/]) ?? null;
+      const lastName = pick(row, [/^last[_\s-]*name$/, /^last$/]) ?? null;
+      const displayName = pick(row, [/^display[_\s-]*name$/, /^preferred[_\s-]*name$/]) ?? null;
+      const fallbackJoinedName = [firstName ?? "", lastName ?? ""].filter(Boolean).join(" ").trim();
       const fullName =
         pick(row, [
           /^full[_\s-]*name$/, // Full_Name, full_name, full-name, full name
           /^name$/,
           /employee name/,
           /staff name/,
-        ]) ?? null;
+        ]) ??
+        displayName ??
+        (fallbackJoinedName || null);
 
       const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
       const email = emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
+      const phone = normalizePhone(pick(row, [/^phone$/, /mobile/, /cell/, /phone number/]));
 
       // ✅ ROLE PATCH (use schema enum + mapping, including accounting->admin)
       const roleRaw = pick(row, [/^role$/, /position/, /job/, /title/]);
@@ -1675,6 +1687,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const notes = pick(row, [/reason/, /note/, /notes/, /comment/]) ?? "Imported from staff CSV";
       const externalUserId = pickSourceId(row, [/^external[_\s-]*user[_\s-]*id$/, /^user[_\s-]*id$/, /^employee[_\s-]*id$/]);
+      const normalizedIdentity = normalizeText(email ?? fullName ?? "").replace(/\s+/g, ".");
+      const username = externalUserId ?? (normalizedIdentity || null);
 
       // Deterministic-ish external id to prevent duplicates on reruns
       const external_id = `import:${intakeId}:staff:${sha1(
@@ -1688,6 +1702,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           role,
           full_name: fullName,
           email,
+          phone: phone || null,
+          username,
           count_suggested: 1,
           notes,
           external_id,
