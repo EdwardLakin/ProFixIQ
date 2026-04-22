@@ -197,6 +197,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       : null;
 
   const intakeAge = overview?.intake_created_at ? timeAgo(overview.intake_created_at) : null;
+  const intakeStatus = overview?.intake_status ? String(overview.intake_status) : null;
+  const hasIntakeReport = Boolean(overview?.intake_id);
 
   const narrative = latest?.narrative_summary ?? null;
 
@@ -414,6 +416,21 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               <MetaCard label="Latest snapshot" value={snapshotAge ?? "—"} />
               <MetaCard label="Source" value={overview?.intake_source ? String(overview.intake_source) : "—"} />
             </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
+              <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1">
+                Intake status: {intakeStatus ?? "unknown"}
+              </span>
+              {hasIntakeReport ? (
+                <button
+                  type="button"
+                  onClick={() => window.open(`/api/shop-boost/intakes/${overview?.intake_id}/report`, "_blank", "noopener,noreferrer")}
+                  className="rounded-full border border-white/15 bg-black/25 px-2.5 py-1 transition hover:bg-black/40"
+                >
+                  Open latest intake report JSON
+                </button>
+              ) : null}
+            </div>
           </section>
 
           {/* How to use this */}
@@ -494,6 +511,9 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>Setup checklist (menus, inspections, staff)</h3>
                 <p className={`mt-1 text-xs ${subtleText}`}>
                   Use “Open” to go to the right screen. “Create” now calls the accept-suggestion API.
+                </p>
+                <p className="mt-1 text-xs text-amber-200/90">
+                  Staff CSV imports are staged as invite suggestions first. Staff users are created only after accept.
                 </p>
               </div>
 
