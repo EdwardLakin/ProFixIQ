@@ -1,0 +1,421 @@
+service_code,service_name,category,default_labor_hours,default_labor_rate,taxable,active,shop_department,recommended_interval_km,recommended_interval_months,description,tags
+SVC-0001,Starter Replacement,HVAC,1.2,189.32,true,true,Inspection Lane,,,HD PM template,"inspection, upsell"
+SVC-0002,Differential Service,Inspection,6.0,186.89,false,true,General Service,14394,11,Common menu service,"menu, inspection"
+SVC-0003,Out of Province Inspection,Inspection,1.5,121.3,false,true,Heavy Duty,31477,19,,
+SVC-0004,A/C Performance Check,Brakes,2.3,132.03,true,true,Fleet,37987,8,Legacy canned job from prior system,
+SVC-0005,Spark Plug Replacement,Inspection,5.2,153.96,true,true,Inspection Lane,,8,,inspection
+SVC-0006,Steering Rack Replacement,HVAC,1.0,142.74,true,false,General Service,,,Bundle item,"inspection, menu"
+SVC-0007,Fleet PM A,Driveline,6.6,129.23,false,false,Fleet,,,Common menu service,"upsell, fleet"
+SVC-0008,Fuel System Cleaning,Diagnostics,5.6,171.62,true,true,Heavy Duty,20212,13,Legacy canned job from prior system,
+SVC-0009,Safety Inspection,Diagnostics,7.3,158.88,false,true,Fleet,28879,,Bundle item,
+SVC-0010,Fleet PM C,HVAC,5.5,137.62,false,true,Heavy Duty,37210,8,Bundle item,"inspection, fleet"
+SVC-0011,Front Brake Service,Diagnostics,0.9,145.52,true,true,Inspection Lane,,9,Common menu service,"inspection, menu"
+SVC-0012,Brake Inspection,Inspection,1.5,180.28,false,false,Inspection Lane,,,Common menu service,fleet
+SVC-0013,Spark Plug Replacement,Brakes,5.5,178.71,false,true,Fleet,34676,,,
+SVC-0014,Wheel Alignment,Inspection,1.7,182.53,true,true,Fleet,15338,,Common menu service,"menu, upsell"
+SVC-0015,A/C Performance Check - HD,HVAC,6.7,130.89,false,true,Heavy Duty,,,HD PM template,fleet
+SVC-0016,Oil Change - Standard,Maintenance,6.4,177.6,false,true,General Service,,3,Common menu service,
+SVC-0017,Brake Inspection,Inspection,7.3,154.96,false,true,Heavy Duty,22252,5,Common menu service,
+SVC-0018,Transmission Service,HVAC,7.5,140.5,false,false,Heavy Duty,26953,3,Legacy canned job from prior system,legacy
+SVC-0019,Fleet PM C,HVAC,6.7,151.66,false,false,General Service,,,Common menu service,legacy
+SVC-0020,Transfer Case Service,Diagnostics,4.1,150.96,false,true,General Service,,15,Legacy canned job from prior system,inspection
+SVC-0021,Tire Rotation,Electrical,4.0,131.9,false,true,General Service,,20,Common menu service,inspection
+SVC-0022,Front Brake Service,Brakes,0.6,136.78,false,true,Fleet,20050,,,"fleet, legacy"
+SVC-0023,Starter Replacement - Fleet,Maintenance,0.7,116.69,true,true,Fleet,39886,10,,fleet
+SVC-0024,Engine Diagnostic,Brakes,5.7,150.87,true,true,General Service,,10,HD PM template,legacy
+SVC-0025,Safety Inspection,Inspection,7.4,138.26,true,true,Inspection Lane,30079,12,Legacy canned job from prior system,legacy
+SVC-0026,Battery Test,Maintenance,4.5,118.56,true,true,Fleet,16629,,Common menu service,
+SVC-0027,Safety Inspection,Diagnostics,3.8,144.77,true,true,Heavy Duty,17291,12,,"inspection, legacy"
+SVC-0028,A/C Performance Check - Quick,Inspection,4.3,156.91,true,true,Heavy Duty,27917,22,Common menu service,
+SVC-0029,Fleet PM C,Maintenance,4.9,158.9,false,false,Heavy Duty,,,,"upsell, menu"
+SVC-0030,Out of Province Inspection,Inspection,7.7,136.21,false,true,Heavy Duty,24733,17,,fleet
+SVC-0031,Transmission Service,Driveline,1.0,117.0,true,true,Fleet,21836,7,Legacy canned job from prior system,
+SVC-0032,Starter Replacement,Electrical,0.5,163.5,true,true,Inspection Lane,,,Legacy canned job from prior system,menu
+SVC-0033,Steering Rack Replacement,Inspection,7.1,174.26,true,false,Fleet,,,HD PM template,
+SVC-0034,Transfer Case Service,Engine,1.6,149.97,true,true,Inspection Lane,14580,14,Legacy canned job from prior system,"legacy, upsell"
+SVC-0035,Steering Rack Replacement,Brakes,1.2,116.99,false,true,Inspection Lane,31229,7,Legacy canned job from prior system,
+SVC-0036,Starter Replacement,Inspection,0.7,115.02,true,true,Inspection Lane,,,Bundle item,"legacy, fleet"
+SVC-0037,Suspension Inspection,Electrical,2.8,116.82,false,true,General Service,,,Legacy canned job from prior system,
+SVC-0038,Transmission Service,Electrical,6.5,145.86,true,true,Fleet,9343,20,Bundle item,menu
+SVC-0039,Safety Inspection,Engine,3.4,164.82,false,true,General Service,20421,18,,"fleet, menu"
+SVC-0040,Fleet PM B,Engine,4.6,162.23,false,false,Heavy Duty,,22,Legacy canned job from prior system,fleet
+SVC-0041,Engine Diagnostic,Engine,7.3,150.66,false,true,Heavy Duty,13099,,,
+SVC-0042,Engine Diagnostic,HVAC,2.8,171.58,true,true,General Service,13185,21,HD PM template,upsell
+SVC-0043,Transmission Service,Inspection,2.1,187.13,false,true,General Service,34927,,,menu
+SVC-0044,Differential Service,HVAC,3.7,138.74,true,true,Fleet,34835,,Common menu service,"legacy, upsell"
+SVC-0045,Differential Service,Engine,2.3,177.62,true,true,Heavy Duty,,,Common menu service,
+SVC-0046,Safety Inspection,Engine,0.8,130.46,false,true,Fleet,,24,Legacy canned job from prior system,"upsell, inspection"
+SVC-0047,Transfer Case Service,HVAC,4.2,130.1,false,true,Heavy Duty,7260,24,,"upsell, legacy"
+SVC-0048,Engine Diagnostic,Maintenance,1.7,166.89,true,true,Heavy Duty,17830,5,HD PM template,legacy
+SVC-0049,Rear Brake Service,Inspection,0.4,149.67,true,true,General Service,35802,,HD PM template,
+SVC-0050,Engine Diagnostic - Fleet,HVAC,4.9,135.8,false,true,Fleet,,,Legacy canned job from prior system,fleet
+SVC-0051,A/C Performance Check,Diagnostics,5.3,167.98,false,true,Inspection Lane,,11,Legacy canned job from prior system,
+SVC-0052,A/C Performance Check,Electrical,2.8,139.98,false,true,Fleet,38388,22,HD PM template,"fleet, menu"
+SVC-0053,Battery Test,Engine,1.4,169.18,true,true,General Service,19498,20,Bundle item,"upsell, menu"
+SVC-0054,Fleet PM A,Engine,3.8,185.91,false,true,General Service,11613,,Common menu service,inspection
+SVC-0055,Alternator Replacement,Inspection,0.7,147.8,false,true,Fleet,,,HD PM template,"legacy, fleet"
+SVC-0056,Transmission Service,HVAC,1.4,153.07,true,true,Inspection Lane,,16,Legacy canned job from prior system,
+SVC-0057,A/C Performance Check,Driveline,7.1,173.53,true,true,Heavy Duty,25765,,Common menu service,upsell
+SVC-0058,Battery Test - Standard,Electrical,4.0,120.94,true,true,Inspection Lane,32610,,Common menu service,"upsell, legacy"
+SVC-0059,Spark Plug Replacement,Brakes,6.8,124.57,true,true,Inspection Lane,24225,,,inspection
+SVC-0060,A/C Performance Check,HVAC,6.9,137.0,true,true,General Service,36839,,Common menu service,menu
+SVC-0061,Check Engine Light Scan,Driveline,5.3,184.68,false,true,Heavy Duty,9644,5,Legacy canned job from prior system,
+SVC-0062,Steering Rack Replacement,Electrical,1.9,123.18,true,false,Fleet,,,HD PM template,"legacy, inspection"
+SVC-0063,Tire Rotation,Driveline,6.4,139.13,false,true,General Service,,,,"legacy, inspection"
+SVC-0064,Safety Inspection,Electrical,3.1,188.17,true,true,Inspection Lane,,16,Legacy canned job from prior system,upsell
+SVC-0065,Steering Rack Replacement,HVAC,2.1,116.44,false,true,Fleet,31981,4,Bundle item,"fleet, inspection"
+SVC-0066,Fuel System Cleaning,Diagnostics,6.3,120.96,false,true,General Service,,10,HD PM template,
+SVC-0067,Front Brake Service,Maintenance,6.4,194.19,true,true,General Service,23560,,Legacy canned job from prior system,
+SVC-0068,Suspension Inspection,Inspection,5.7,184.98,false,true,Inspection Lane,14020,12,Bundle item,"upsell, inspection"
+SVC-0069,Battery Test,Electrical,4.1,149.31,true,true,Heavy Duty,,6,HD PM template,menu
+SVC-0070,Wheel Alignment,Driveline,5.0,155.54,false,true,Fleet,,21,Bundle item,fleet
+SVC-0071,Spark Plug Replacement,Driveline,7.8,181.27,false,true,Heavy Duty,,17,Common menu service,
+SVC-0072,Fleet PM C - HD,Electrical,5.0,121.59,true,true,Inspection Lane,28129,,Common menu service,"legacy, fleet"
+SVC-0073,Fleet PM B,Diagnostics,6.4,194.07,true,true,General Service,,24,Bundle item,"upsell, fleet"
+SVC-0074,Safety Inspection,Diagnostics,6.8,153.86,false,true,Heavy Duty,,,Bundle item,legacy
+SVC-0075,Safety Inspection - Premium,Inspection,5.0,193.3,true,true,Fleet,,7,Bundle item,
+SVC-0076,Battery Test,Brakes,3.0,151.27,false,true,Fleet,29601,,Bundle item,
+SVC-0077,Transmission Service,Brakes,2.6,148.8,false,true,General Service,28568,,Common menu service,"legacy, fleet"
+SVC-0078,Fleet PM C,Maintenance,2.6,138.3,true,true,Fleet,29267,,Legacy canned job from prior system,"upsell, fleet"
+SVC-0079,Brake Inspection,Inspection,4.9,190.03,true,false,Fleet,,13,Common menu service,"upsell, fleet"
+SVC-0080,Out of Province Inspection,Driveline,4.9,177.66,false,true,Heavy Duty,,11,HD PM template,fleet
+SVC-0081,Fleet PM B,Engine,8.3,147.67,true,true,Heavy Duty,,9,HD PM template,
+SVC-0082,Fleet PM B,Brakes,5.1,139.12,true,false,Heavy Duty,,6,,
+SVC-0083,Alternator Replacement,Maintenance,4.3,151.09,true,true,Fleet,,,HD PM template,
+SVC-0084,Transmission Service,Driveline,7.9,115.31,true,true,General Service,,16,Bundle item,
+SVC-0085,Steering Rack Replacement - Quick,Electrical,3.4,134.26,true,true,Fleet,,,,"inspection, legacy"
+SVC-0086,Fleet PM B,Inspection,3.8,155.59,false,true,Fleet,,,HD PM template,menu
+SVC-0087,Transfer Case Service,Driveline,8.0,194.23,true,true,Fleet,,5,,menu
+SVC-0088,Steering Rack Replacement,Diagnostics,1.9,149.16,true,false,General Service,27739,,HD PM template,"fleet, inspection"
+SVC-0089,Coolant Flush,Maintenance,2.0,156.85,false,true,Fleet,16851,,,legacy
+SVC-0090,Fleet PM C,HVAC,2.0,160.46,false,true,Heavy Duty,,12,Common menu service,"upsell, fleet"
+SVC-0091,Spark Plug Replacement,Maintenance,5.7,132.69,false,false,Heavy Duty,6388,,,menu
+SVC-0092,Brake Inspection,Maintenance,7.0,127.14,true,true,Fleet,8780,3,Legacy canned job from prior system,"fleet, menu"
+SVC-0093,Fuel System Cleaning,Diagnostics,5.3,166.73,false,true,General Service,19155,,Bundle item,
+SVC-0094,Differential Service,Engine,5.6,178.12,true,true,General Service,,,,"legacy, fleet"
+SVC-0095,Brake Inspection,Diagnostics,1.9,181.59,false,true,Inspection Lane,,11,Common menu service,legacy
+SVC-0096,Rear Brake Service,Brakes,3.1,152.77,true,true,Inspection Lane,38078,,,
+SVC-0097,Fleet PM C,Engine,6.5,170.56,false,true,Heavy Duty,30572,,HD PM template,"menu, fleet"
+SVC-0098,Differential Service,Brakes,8.1,193.99,false,true,General Service,,3,Bundle item,
+SVC-0099,Front Brake Service,Brakes,6.7,156.31,true,true,Inspection Lane,,24,Bundle item,"legacy, upsell"
+SVC-0100,Safety Inspection,Maintenance,2.8,116.59,true,true,Heavy Duty,,,HD PM template,upsell
+SVC-0101,Brake Inspection,Electrical,2.7,129.69,true,true,Inspection Lane,,,Bundle item,
+SVC-0102,Fuel System Cleaning,Brakes,1.0,123.73,false,false,Fleet,5717,,,menu
+SVC-0103,Engine Diagnostic,Electrical,5.1,168.65,true,false,Heavy Duty,,17,Common menu service,upsell
+SVC-0104,Battery Test,HVAC,3.7,181.28,false,true,Inspection Lane,32683,,Bundle item,inspection
+SVC-0105,Alternator Replacement,Engine,4.2,160.49,false,true,Heavy Duty,,,HD PM template,menu
+SVC-0106,Oil Change,Maintenance,0.5,183.32,true,true,Heavy Duty,,,Legacy canned job from prior system,upsell
+SVC-0107,Out of Province Inspection,Maintenance,2.0,162.91,false,true,Heavy Duty,16426,,Bundle item,
+SVC-0108,Transfer Case Service,Driveline,6.8,132.9,true,false,Heavy Duty,,10,Common menu service,
+SVC-0109,Transmission Service,Inspection,5.3,172.81,true,true,Inspection Lane,,8,Bundle item,upsell
+SVC-0110,Fleet PM A,Brakes,5.6,139.0,true,true,Inspection Lane,,,Bundle item,
+SVC-0111,Safety Inspection,HVAC,1.5,175.79,false,false,Inspection Lane,,,HD PM template,"fleet, legacy"
+SVC-0112,Tire Rotation,Engine,2.2,179.25,false,true,Fleet,38124,,Common menu service,
+SVC-0113,Coolant Flush,Inspection,7.0,127.54,false,false,General Service,,,Bundle item,
+SVC-0114,Brake Inspection,Inspection,5.9,151.97,false,true,General Service,5795,,Bundle item,legacy
+SVC-0115,Spark Plug Replacement,HVAC,0.5,170.42,false,true,Inspection Lane,,,Legacy canned job from prior system,"legacy, upsell"
+SVC-0116,Spark Plug Replacement,Inspection,6.6,165.86,false,true,Heavy Duty,10946,,Legacy canned job from prior system,
+SVC-0117,Alternator Replacement,HVAC,8.2,118.8,true,true,Heavy Duty,26555,,,upsell
+SVC-0118,Brake Inspection,Driveline,4.1,127.19,true,true,Heavy Duty,15475,19,,legacy
+SVC-0119,Rear Brake Service,Engine,6.8,136.63,true,false,Inspection Lane,33384,22,Legacy canned job from prior system,
+SVC-0120,Starter Replacement - Premium,HVAC,7.1,132.73,false,true,Heavy Duty,10991,11,,upsell
+SVC-0121,Starter Replacement,HVAC,3.5,127.27,true,true,Heavy Duty,14063,23,Bundle item,
+SVC-0122,Out of Province Inspection,Inspection,3.9,188.23,false,true,Inspection Lane,27772,11,,
+SVC-0123,Safety Inspection,Engine,6.0,165.06,false,false,Heavy Duty,,,HD PM template,"upsell, legacy"
+SVC-0124,Fuel System Cleaning,Driveline,6.9,187.84,false,true,Inspection Lane,,12,Legacy canned job from prior system,upsell
+SVC-0125,Transfer Case Service - Fleet,Brakes,6.7,126.48,false,true,Inspection Lane,9311,8,Legacy canned job from prior system,"upsell, legacy"
+SVC-0126,Fleet PM B,Electrical,8.2,191.84,true,true,General Service,37557,6,HD PM template,
+SVC-0127,Check Engine Light Scan,Maintenance,6.3,172.9,true,false,Inspection Lane,,17,Common menu service,"inspection, upsell"
+SVC-0128,Front Brake Service,Inspection,2.2,115.23,true,true,General Service,,,,
+SVC-0129,Alternator Replacement,Inspection,1.3,177.49,true,false,Heavy Duty,,20,Bundle item,upsell
+SVC-0130,Spark Plug Replacement,Engine,7.5,190.38,true,true,Heavy Duty,,21,,"fleet, legacy"
+SVC-0131,Fuel System Cleaning,Driveline,6.5,190.15,true,true,General Service,,14,,
+SVC-0132,Brake Inspection,Inspection,6.8,193.25,false,true,General Service,,12,,legacy
+SVC-0133,Suspension Inspection,Electrical,3.3,165.4,false,false,Inspection Lane,10863,,HD PM template,
+SVC-0134,Wheel Alignment - Quick,Diagnostics,4.2,124.25,true,true,Inspection Lane,12941,12,,
+SVC-0135,Fuel System Cleaning,Driveline,7.4,188.47,true,false,Heavy Duty,12295,9,Bundle item,"upsell, menu"
+SVC-0136,Battery Test - Premium,Brakes,7.1,130.94,true,true,Fleet,32088,19,Legacy canned job from prior system,inspection
+SVC-0137,Safety Inspection,HVAC,2.3,144.21,true,true,Heavy Duty,,,,fleet
+SVC-0138,Engine Diagnostic,HVAC,3.3,117.39,true,true,General Service,11870,,,legacy
+SVC-0139,Wheel Alignment,Brakes,4.2,154.33,false,true,Fleet,20555,,Bundle item,"upsell, legacy"
+SVC-0140,Fleet PM C,HVAC,6.7,191.12,false,false,Heavy Duty,,,Legacy canned job from prior system,
+SVC-0141,Alternator Replacement,HVAC,5.2,182.4,true,true,Fleet,10990,,Bundle item,"inspection, menu"
+SVC-0142,Fleet PM B,Inspection,3.5,188.48,true,true,General Service,,,Bundle item,legacy
+SVC-0143,Tire Rotation,Electrical,0.6,133.59,false,false,General Service,10554,,,"inspection, legacy"
+SVC-0144,Transfer Case Service,Diagnostics,1.8,172.69,true,false,Heavy Duty,23678,,,"menu, legacy"
+SVC-0145,A/C Performance Check,HVAC,1.6,146.55,false,true,Heavy Duty,21161,,Common menu service,"upsell, inspection"
+SVC-0146,Battery Test,HVAC,4.6,175.87,false,true,Fleet,6402,,HD PM template,
+SVC-0147,Starter Replacement,Brakes,2.7,134.85,true,true,Inspection Lane,,17,Common menu service,inspection
+SVC-0148,Battery Test,Maintenance,1.7,130.85,true,true,Fleet,27181,23,HD PM template,
+SVC-0149,Battery Test,Inspection,2.0,115.87,false,true,Inspection Lane,18222,,Legacy canned job from prior system,"fleet, upsell"
+SVC-0150,Steering Rack Replacement,HVAC,1.4,157.69,false,true,General Service,35325,8,,"inspection, fleet"
+SVC-0151,Alternator Replacement,Inspection,7.9,122.14,false,true,Inspection Lane,14224,,Bundle item,
+SVC-0152,Fleet PM A,Driveline,5.7,175.15,true,true,General Service,36636,17,Bundle item,
+SVC-0153,Battery Test,Brakes,7.7,147.33,false,true,General Service,,,,"menu, legacy"
+SVC-0154,Front Brake Service,HVAC,4.1,153.86,false,false,General Service,26158,20,Legacy canned job from prior system,"legacy, upsell"
+SVC-0155,Fleet PM C - Premium,Driveline,3.1,166.89,true,true,General Service,,14,HD PM template,"menu, fleet"
+SVC-0156,A/C Performance Check,HVAC,7.9,154.45,true,true,Heavy Duty,17921,20,Common menu service,fleet
+SVC-0157,Coolant Flush,Maintenance,1.5,121.44,true,true,Heavy Duty,15050,4,,
+SVC-0158,Front Brake Service,Inspection,4.3,161.66,false,true,Fleet,,,Common menu service,upsell
+SVC-0159,Transmission Service,Driveline,6.0,156.47,true,true,Inspection Lane,,,Common menu service,
+SVC-0160,Fuel System Cleaning,Brakes,8.2,181.83,false,true,Heavy Duty,,17,Common menu service,menu
+SVC-0161,Suspension Inspection,Brakes,4.7,130.45,false,true,Inspection Lane,22771,,Legacy canned job from prior system,
+SVC-0162,Brake Inspection - Premium,Driveline,7.7,125.12,false,true,Heavy Duty,39289,5,HD PM template,
+SVC-0163,Oil Change,Engine,1.9,122.89,true,false,General Service,,6,Bundle item,
+SVC-0164,Steering Rack Replacement,Driveline,0.7,156.0,true,true,Inspection Lane,16074,13,Legacy canned job from prior system,"fleet, legacy"
+SVC-0165,Rear Brake Service,HVAC,5.4,164.66,true,true,General Service,25424,,Legacy canned job from prior system,
+SVC-0166,Fleet PM C,Inspection,3.1,135.23,true,true,Heavy Duty,7477,9,Common menu service,legacy
+SVC-0167,Alternator Replacement,Driveline,4.6,181.02,false,true,Fleet,,,Bundle item,
+SVC-0168,Transmission Service,Brakes,3.5,118.37,true,true,General Service,,5,Legacy canned job from prior system,legacy
+SVC-0169,Check Engine Light Scan,Electrical,5.3,177.16,false,true,General Service,,17,Common menu service,"menu, fleet"
+SVC-0170,Fleet PM C,Inspection,3.3,172.13,true,false,Heavy Duty,,7,,inspection
+SVC-0171,Front Brake Service,Inspection,6.4,186.94,true,false,Fleet,,24,,menu
+SVC-0172,Out of Province Inspection,Driveline,4.2,154.28,true,false,General Service,37516,,,inspection
+SVC-0173,Spark Plug Replacement,Maintenance,7.4,164.36,false,true,Inspection Lane,,18,,"legacy, menu"
+SVC-0174,Differential Service,Engine,0.7,158.62,true,true,Fleet,26878,10,Common menu service,
+SVC-0175,Alternator Replacement,Maintenance,6.9,139.56,false,true,General Service,,,HD PM template,inspection
+SVC-0176,Tire Rotation,Electrical,4.1,138.91,true,true,Heavy Duty,38764,10,,
+SVC-0177,Coolant Flush,Inspection,4.7,170.68,false,true,Inspection Lane,,,HD PM template,
+SVC-0178,Suspension Inspection,Driveline,3.7,182.96,false,true,Heavy Duty,,4,Common menu service,
+SVC-0179,Fleet PM A,Inspection,2.9,115.97,false,true,General Service,25049,,Bundle item,menu
+SVC-0180,Tire Rotation,Driveline,7.0,127.36,true,true,Fleet,,,Bundle item,
+SVC-0181,Differential Service,HVAC,4.5,153.71,true,true,Inspection Lane,20034,12,Common menu service,"fleet, menu"
+SVC-0182,Starter Replacement,Brakes,3.8,194.86,false,true,General Service,,9,HD PM template,"fleet, legacy"
+SVC-0183,Rear Brake Service,HVAC,1.7,130.72,true,true,Inspection Lane,,18,Bundle item,"menu, legacy"
+SVC-0184,A/C Performance Check,Diagnostics,1.4,191.84,true,true,Heavy Duty,30911,24,Bundle item,"legacy, upsell"
+SVC-0185,Alternator Replacement,Diagnostics,4.1,176.66,false,true,Inspection Lane,,,Bundle item,"menu, legacy"
+SVC-0186,Oil Change,Inspection,7.1,156.74,true,true,General Service,32818,9,,
+SVC-0187,Alternator Replacement,Inspection,6.8,133.42,false,true,Inspection Lane,,,Bundle item,"upsell, fleet"
+SVC-0188,Transfer Case Service,Brakes,2.2,174.19,false,true,Fleet,,,Legacy canned job from prior system,
+SVC-0189,Differential Service,Electrical,3.0,167.16,false,true,Heavy Duty,,8,,menu
+SVC-0190,Coolant Flush,Driveline,2.5,183.71,true,true,Inspection Lane,,,Bundle item,
+SVC-0191,Front Brake Service,Diagnostics,8.1,192.61,false,true,Fleet,31943,,HD PM template,
+SVC-0192,Out of Province Inspection,Electrical,0.5,163.29,false,true,Heavy Duty,32086,,Legacy canned job from prior system,menu
+SVC-0193,Coolant Flush,Inspection,3.7,164.58,false,true,Fleet,14034,,Common menu service,
+SVC-0194,Starter Replacement,Electrical,2.1,171.51,true,false,General Service,23208,,,
+SVC-0195,Oil Change,Driveline,5.3,184.59,true,false,Inspection Lane,32256,,Legacy canned job from prior system,"legacy, fleet"
+SVC-0196,Check Engine Light Scan - HD,Maintenance,0.6,179.75,true,false,Fleet,16498,,Common menu service,
+SVC-0197,Alternator Replacement,Maintenance,7.0,130.32,true,true,Heavy Duty,39176,15,,"inspection, upsell"
+SVC-0198,Fleet PM B,Electrical,8.1,186.65,true,true,Fleet,17696,15,,
+SVC-0199,Check Engine Light Scan,Diagnostics,1.4,136.36,false,false,Fleet,6299,3,HD PM template,
+SVC-0200,Brake Inspection,Engine,7.7,178.93,true,false,Fleet,8183,,Bundle item,
+SVC-0201,Coolant Flush,Driveline,7.5,146.29,false,false,Inspection Lane,12459,4,Bundle item,fleet
+SVC-0202,Safety Inspection,Driveline,4.1,120.27,true,true,Inspection Lane,35957,6,Legacy canned job from prior system,
+SVC-0203,Engine Diagnostic - HD,Diagnostics,1.5,121.75,true,true,General Service,,21,,"menu, inspection"
+SVC-0204,Coolant Flush,Engine,0.7,141.03,false,false,General Service,,8,Common menu service,
+SVC-0205,Engine Diagnostic,Engine,7.7,151.4,false,true,Heavy Duty,12188,21,Bundle item,
+SVC-0206,Differential Service,Brakes,5.9,190.65,true,false,Inspection Lane,11030,,Bundle item,"upsell, legacy"
+SVC-0207,Fuel System Cleaning,Driveline,8.4,128.76,false,true,Inspection Lane,27155,19,Common menu service,
+SVC-0208,Steering Rack Replacement,Diagnostics,3.1,166.32,true,true,Fleet,35085,4,Common menu service,"fleet, upsell"
+SVC-0209,Rear Brake Service,Electrical,2.2,163.6,true,true,Heavy Duty,24007,17,,legacy
+SVC-0210,Front Brake Service,Brakes,5.1,143.57,true,true,Fleet,,,HD PM template,
+SVC-0211,Check Engine Light Scan,Inspection,5.0,179.92,true,true,Inspection Lane,5930,18,Legacy canned job from prior system,
+SVC-0212,Front Brake Service,Electrical,3.4,192.58,true,true,General Service,,17,Bundle item,
+SVC-0213,Fuel System Cleaning,Diagnostics,1.0,140.04,true,false,Inspection Lane,,5,Bundle item,"inspection, legacy"
+SVC-0214,Steering Rack Replacement,Diagnostics,1.3,168.0,true,true,Inspection Lane,,8,Legacy canned job from prior system,"legacy, fleet"
+SVC-0215,Engine Diagnostic,Engine,7.8,148.49,false,false,General Service,5593,13,Legacy canned job from prior system,
+SVC-0216,Front Brake Service - Standard,HVAC,3.1,177.52,false,true,General Service,,21,HD PM template,
+SVC-0217,Front Brake Service,HVAC,5.1,173.9,true,true,Fleet,,,,
+SVC-0218,Rear Brake Service - Quick,Driveline,5.4,164.86,true,true,General Service,,,Bundle item,legacy
+SVC-0219,Fleet PM B,Engine,3.0,189.65,true,true,Heavy Duty,,14,HD PM template,
+SVC-0220,A/C Performance Check,Maintenance,5.0,167.66,false,false,Inspection Lane,14349,,HD PM template,menu
+SVC-0221,Fleet PM C,Maintenance,0.6,155.0,true,true,Heavy Duty,17333,8,,"inspection, fleet"
+SVC-0222,Starter Replacement,Electrical,4.4,158.12,true,true,Fleet,10097,,Legacy canned job from prior system,"menu, legacy"
+SVC-0223,A/C Performance Check - HD,Engine,4.0,178.83,true,true,Fleet,8211,6,HD PM template,"inspection, fleet"
+SVC-0224,Fleet PM A,HVAC,6.0,177.62,true,false,Inspection Lane,19507,21,Bundle item,
+SVC-0225,Wheel Alignment - HD,Inspection,3.3,125.15,false,true,Fleet,,,Legacy canned job from prior system,
+SVC-0226,Front Brake Service,HVAC,7.7,121.35,false,false,Heavy Duty,,,Legacy canned job from prior system,"legacy, menu"
+SVC-0227,A/C Performance Check,Electrical,7.2,132.4,true,true,Fleet,24573,,HD PM template,inspection
+SVC-0228,Transmission Service,Engine,5.4,145.39,true,false,General Service,,9,HD PM template,"fleet, inspection"
+SVC-0229,Steering Rack Replacement,Electrical,6.7,119.33,true,true,General Service,,8,,inspection
+SVC-0230,Transfer Case Service,Maintenance,7.9,126.32,true,true,Fleet,,,Common menu service,fleet
+SVC-0231,Transfer Case Service,Diagnostics,4.0,152.94,false,true,Fleet,36556,,Common menu service,upsell
+SVC-0232,Suspension Inspection,Electrical,3.4,151.21,false,true,Fleet,5149,24,,"legacy, menu"
+SVC-0233,Coolant Flush,Diagnostics,5.8,137.58,false,true,Heavy Duty,,,HD PM template,
+SVC-0234,Steering Rack Replacement,Maintenance,2.0,184.76,true,true,General Service,16935,23,,"upsell, legacy"
+SVC-0235,Alternator Replacement,Maintenance,6.6,152.31,false,false,Fleet,9101,,Legacy canned job from prior system,menu
+SVC-0236,Transmission Service - Premium,Maintenance,0.8,119.74,true,true,Fleet,,9,,"menu, fleet"
+SVC-0237,Safety Inspection,HVAC,6.2,116.2,true,false,Heavy Duty,16191,,Legacy canned job from prior system,upsell
+SVC-0238,Rear Brake Service,Inspection,7.6,121.89,true,true,General Service,,15,Legacy canned job from prior system,
+SVC-0239,Wheel Alignment,Brakes,6.9,133.46,true,true,General Service,32504,,,
+SVC-0240,Fuel System Cleaning,Engine,4.3,165.36,false,true,General Service,15187,,Bundle item,menu
+SVC-0241,Brake Inspection,Diagnostics,0.8,136.85,true,true,General Service,12204,24,Legacy canned job from prior system,legacy
+SVC-0242,Engine Diagnostic,Diagnostics,3.4,193.65,false,true,Inspection Lane,,12,Legacy canned job from prior system,
+SVC-0243,Rear Brake Service - Fleet,Maintenance,1.7,149.04,false,false,General Service,,,,legacy
+SVC-0244,Front Brake Service,Diagnostics,8.2,123.23,true,true,Heavy Duty,,3,Bundle item,"inspection, upsell"
+SVC-0245,Spark Plug Replacement,Brakes,3.1,119.81,true,false,Inspection Lane,32885,,Common menu service,"fleet, legacy"
+SVC-0246,Check Engine Light Scan,Electrical,1.7,152.88,true,true,Inspection Lane,10156,,Common menu service,upsell
+SVC-0247,Suspension Inspection,Maintenance,3.0,173.0,true,true,Fleet,25474,,Legacy canned job from prior system,
+SVC-0248,Fuel System Cleaning,HVAC,0.5,128.83,true,true,Inspection Lane,,,HD PM template,
+SVC-0249,Transfer Case Service,Engine,1.5,170.27,true,true,General Service,29288,,Legacy canned job from prior system,menu
+SVC-0250,Fleet PM B,Engine,5.2,174.68,false,true,Heavy Duty,35501,,HD PM template,"menu, upsell"
+SVC-0251,Starter Replacement,Driveline,7.9,137.62,false,true,Heavy Duty,,,Legacy canned job from prior system,"menu, upsell"
+SVC-0252,Wheel Alignment - HD,Driveline,3.7,150.76,true,true,Fleet,35456,21,HD PM template,fleet
+SVC-0253,Starter Replacement,HVAC,0.3,188.55,true,true,Inspection Lane,12973,,Legacy canned job from prior system,fleet
+SVC-0254,Out of Province Inspection,Maintenance,4.0,128.51,false,true,Fleet,27846,11,Legacy canned job from prior system,"upsell, fleet"
+SVC-0255,Wheel Alignment,Maintenance,4.0,143.7,false,true,Fleet,13014,,Common menu service,fleet
+SVC-0256,Engine Diagnostic,Inspection,4.7,184.7,false,false,Inspection Lane,,21,Bundle item,fleet
+SVC-0257,Steering Rack Replacement - Quick,Electrical,1.4,190.44,false,true,Fleet,,,Bundle item,"fleet, legacy"
+SVC-0258,Transfer Case Service,Brakes,4.5,161.77,true,true,Inspection Lane,37108,20,Bundle item,"legacy, fleet"
+SVC-0259,Brake Inspection,Driveline,5.1,147.59,true,true,Inspection Lane,,,Common menu service,"fleet, upsell"
+SVC-0260,Differential Service,Electrical,1.8,163.33,true,true,Fleet,,3,Common menu service,"legacy, inspection"
+SVC-0261,Alternator Replacement,Driveline,6.6,178.15,false,true,General Service,,,HD PM template,
+SVC-0262,Coolant Flush,Engine,4.5,149.62,true,true,General Service,8696,,Legacy canned job from prior system,"upsell, menu"
+SVC-0263,Front Brake Service,Brakes,3.3,151.96,false,false,Fleet,,,Legacy canned job from prior system,
+SVC-0264,Rear Brake Service,Brakes,4.9,157.41,true,true,Inspection Lane,12335,,Legacy canned job from prior system,
+SVC-0265,Check Engine Light Scan,Engine,7.5,127.5,false,true,Fleet,,19,Bundle item,
+SVC-0266,Fleet PM B,Brakes,7.2,180.47,false,true,General Service,35867,22,Bundle item,
+SVC-0267,Tire Rotation,Electrical,4.0,173.69,false,true,Inspection Lane,13968,16,HD PM template,legacy
+SVC-0268,Fleet PM C,HVAC,3.8,152.15,true,true,Heavy Duty,16488,,Legacy canned job from prior system,legacy
+SVC-0269,Fuel System Cleaning,HVAC,2.6,134.47,true,true,Fleet,,,Bundle item,legacy
+SVC-0270,Fuel System Cleaning,Electrical,2.7,133.4,true,true,Inspection Lane,26619,,Bundle item,
+SVC-0271,Tire Rotation,HVAC,1.7,123.17,true,true,Inspection Lane,15545,20,,"fleet, menu"
+SVC-0272,Tire Rotation,HVAC,3.6,160.55,false,true,Fleet,,24,,"fleet, inspection"
+SVC-0273,Fuel System Cleaning - Standard,Diagnostics,1.3,164.57,true,true,Fleet,36198,19,,"inspection, fleet"
+SVC-0274,Oil Change,Engine,6.3,128.98,false,true,Fleet,,,Bundle item,legacy
+SVC-0275,Check Engine Light Scan,HVAC,6.3,186.67,false,false,Inspection Lane,,,Legacy canned job from prior system,fleet
+SVC-0276,Steering Rack Replacement,HVAC,0.5,118.01,false,true,Heavy Duty,,10,Legacy canned job from prior system,inspection
+SVC-0277,Out of Province Inspection,Diagnostics,7.8,137.4,false,false,Inspection Lane,37164,19,,inspection
+SVC-0278,Engine Diagnostic,Maintenance,4.3,185.37,true,true,General Service,,8,Common menu service,
+SVC-0279,Starter Replacement,Inspection,5.0,164.91,false,false,Heavy Duty,,,Common menu service,"menu, legacy"
+SVC-0280,Transfer Case Service,Engine,2.3,191.65,true,true,General Service,,,HD PM template,"menu, legacy"
+SVC-0281,Brake Inspection,Brakes,2.7,164.88,true,true,Heavy Duty,27728,,Legacy canned job from prior system,legacy
+SVC-0282,Battery Test,Electrical,6.1,127.94,false,true,General Service,,24,HD PM template,"fleet, menu"
+SVC-0283,Fuel System Cleaning,Brakes,2.9,116.96,false,false,General Service,,22,Common menu service,"fleet, upsell"
+SVC-0284,Spark Plug Replacement,Electrical,4.2,116.94,false,true,Inspection Lane,16894,10,HD PM template,legacy
+SVC-0285,Transfer Case Service,Driveline,3.4,190.66,false,false,Inspection Lane,34659,20,HD PM template,fleet
+SVC-0286,Wheel Alignment,HVAC,3.0,186.02,false,false,Inspection Lane,38500,22,HD PM template,
+SVC-0287,Coolant Flush,Brakes,1.8,126.71,false,true,Fleet,,,HD PM template,
+SVC-0288,Transmission Service - Standard,Brakes,5.7,158.61,true,true,General Service,,23,Common menu service,
+SVC-0289,A/C Performance Check,Engine,5.0,186.11,false,false,Inspection Lane,11975,24,Bundle item,"inspection, menu"
+SVC-0290,Alternator Replacement,Diagnostics,1.0,160.22,false,true,General Service,7441,,Bundle item,"upsell, legacy"
+SVC-0291,Brake Inspection - Premium,Inspection,8.2,173.29,false,true,General Service,,,,
+SVC-0292,Transmission Service,Diagnostics,0.4,149.18,false,false,Heavy Duty,11229,,,upsell
+SVC-0293,Fuel System Cleaning,Maintenance,1.9,190.35,false,false,Heavy Duty,,,HD PM template,"fleet, inspection"
+SVC-0294,Spark Plug Replacement,Diagnostics,5.6,192.79,true,true,Inspection Lane,15341,3,Common menu service,fleet
+SVC-0295,Differential Service,Brakes,0.4,180.51,false,true,Fleet,33402,,,upsell
+SVC-0296,Out of Province Inspection,HVAC,6.5,136.1,true,true,Heavy Duty,38896,10,HD PM template,menu
+SVC-0297,Spark Plug Replacement,Diagnostics,4.8,138.86,false,false,Inspection Lane,,,Common menu service,"legacy, fleet"
+SVC-0298,Coolant Flush,Driveline,4.3,151.15,false,false,General Service,31800,,Bundle item,fleet
+SVC-0299,Differential Service,Brakes,6.8,136.96,true,true,General Service,24034,9,Bundle item,"menu, fleet"
+SVC-0300,Fuel System Cleaning,HVAC,4.9,129.29,true,true,General Service,,,Bundle item,"menu, fleet"
+SVC-0301,Wheel Alignment,Brakes,7.3,177.1,false,true,Heavy Duty,,,Legacy canned job from prior system,menu
+SVC-0302,Fuel System Cleaning,Engine,4.5,144.49,false,true,Fleet,21620,21,,"inspection, legacy"
+SVC-0303,Rear Brake Service,Diagnostics,1.1,165.56,false,true,Fleet,,19,Common menu service,menu
+SVC-0304,Brake Inspection - Standard,Diagnostics,2.1,136.2,false,true,General Service,28797,,HD PM template,"fleet, upsell"
+SVC-0305,Front Brake Service,HVAC,1.3,140.47,true,false,Heavy Duty,20549,,HD PM template,"upsell, fleet"
+SVC-0306,Alternator Replacement,Brakes,6.0,162.42,true,true,General Service,,,Legacy canned job from prior system,menu
+SVC-0307,Fleet PM A,Diagnostics,8.4,127.97,false,true,Inspection Lane,17503,,,"inspection, upsell"
+SVC-0308,Steering Rack Replacement,Brakes,1.9,182.24,false,true,Inspection Lane,,,Legacy canned job from prior system,upsell
+SVC-0309,Steering Rack Replacement - Fleet,Electrical,3.3,144.86,false,true,Inspection Lane,8858,20,Common menu service,"inspection, fleet"
+SVC-0310,Spark Plug Replacement,Inspection,7.7,115.62,false,false,General Service,14279,,Common menu service,"legacy, upsell"
+SVC-0311,Fleet PM C,Diagnostics,6.1,186.4,true,false,General Service,,,HD PM template,upsell
+SVC-0312,Starter Replacement - Quick,Maintenance,6.2,146.85,false,true,Heavy Duty,17511,,Common menu service,"inspection, fleet"
+SVC-0313,Fleet PM C,HVAC,2.2,130.68,true,false,Inspection Lane,39873,23,Bundle item,
+SVC-0314,Fleet PM A,Brakes,5.5,125.86,true,true,Fleet,15878,,Common menu service,
+SVC-0315,Rear Brake Service,Maintenance,8.3,155.5,false,false,Inspection Lane,17142,,Common menu service,upsell
+SVC-0316,Battery Test,Maintenance,6.9,122.83,true,true,General Service,21169,,,"menu, fleet"
+SVC-0317,Differential Service,Diagnostics,6.4,166.1,false,true,Inspection Lane,,,Common menu service,"fleet, menu"
+SVC-0318,Fleet PM C,Inspection,3.0,124.49,true,true,General Service,28972,8,HD PM template,"upsell, menu"
+SVC-0319,Battery Test,Diagnostics,4.5,123.65,true,false,Inspection Lane,,7,Legacy canned job from prior system,"inspection, legacy"
+SVC-0320,Fuel System Cleaning - Fleet,Inspection,5.8,148.62,true,true,Heavy Duty,,16,,
+SVC-0321,Fleet PM C,HVAC,7.8,151.02,true,true,Inspection Lane,17516,4,HD PM template,
+SVC-0322,Brake Inspection,Inspection,8.1,132.86,false,true,General Service,5325,,,upsell
+SVC-0323,Front Brake Service,Driveline,7.1,136.05,true,true,General Service,,19,Bundle item,
+SVC-0324,Out of Province Inspection,Brakes,1.5,186.99,false,true,Fleet,27103,,,"menu, legacy"
+SVC-0325,Wheel Alignment,Engine,7.1,166.06,true,false,Inspection Lane,25303,,Common menu service,fleet
+SVC-0326,Fleet PM A,Maintenance,5.8,152.0,false,true,General Service,,17,,legacy
+SVC-0327,Front Brake Service,Brakes,5.4,135.85,true,true,General Service,33123,,Bundle item,"inspection, menu"
+SVC-0328,Differential Service,Diagnostics,5.3,132.69,false,true,Heavy Duty,,18,Bundle item,"fleet, inspection"
+SVC-0329,Out of Province Inspection,Maintenance,2.6,157.0,false,false,Inspection Lane,10835,,Bundle item,"inspection, menu"
+SVC-0330,Transfer Case Service,Engine,5.6,154.02,false,true,General Service,,6,,upsell
+SVC-0331,Wheel Alignment,Brakes,4.4,166.75,true,true,Heavy Duty,,4,,menu
+SVC-0332,Differential Service,Maintenance,5.4,134.74,false,false,Heavy Duty,15544,,,fleet
+SVC-0333,Engine Diagnostic,HVAC,3.7,144.54,true,false,Fleet,38432,,Bundle item,
+SVC-0334,Check Engine Light Scan - HD,Inspection,2.0,164.34,true,true,General Service,18438,14,,fleet
+SVC-0335,Engine Diagnostic,Diagnostics,0.3,179.89,false,false,Inspection Lane,,,Bundle item,inspection
+SVC-0336,Differential Service,Diagnostics,7.6,140.02,false,true,Heavy Duty,,22,Common menu service,"fleet, upsell"
+SVC-0337,Fuel System Cleaning,Maintenance,7.6,178.78,true,true,Heavy Duty,21328,,Legacy canned job from prior system,inspection
+SVC-0338,Fleet PM A,Brakes,6.3,182.23,true,true,Inspection Lane,25129,23,HD PM template,
+SVC-0339,Safety Inspection,Maintenance,7.1,179.14,false,true,Inspection Lane,,22,Legacy canned job from prior system,"fleet, menu"
+SVC-0340,Fleet PM C,Engine,4.5,161.63,true,false,Heavy Duty,7513,,HD PM template,
+SVC-0341,Fuel System Cleaning,HVAC,4.4,181.47,false,false,Fleet,,23,Legacy canned job from prior system,"legacy, upsell"
+SVC-0342,Alternator Replacement,HVAC,3.8,189.3,true,true,General Service,10782,,Bundle item,
+SVC-0343,Spark Plug Replacement,Diagnostics,4.5,122.85,false,false,Inspection Lane,36488,,Common menu service,
+SVC-0344,Fleet PM B,Maintenance,6.3,194.61,false,false,General Service,25153,,Bundle item,"inspection, fleet"
+SVC-0345,A/C Performance Check,Diagnostics,7.8,185.54,true,true,Inspection Lane,,12,Legacy canned job from prior system,"legacy, upsell"
+SVC-0346,Safety Inspection,Brakes,6.1,144.7,false,false,General Service,15137,20,Bundle item,"menu, upsell"
+SVC-0347,Steering Rack Replacement,Maintenance,8.0,171.46,false,true,Inspection Lane,,,Bundle item,
+SVC-0348,Engine Diagnostic,Brakes,5.6,136.66,false,true,Heavy Duty,,4,Bundle item,
+SVC-0349,Fleet PM C,HVAC,1.7,164.63,true,true,General Service,33906,15,HD PM template,"fleet, inspection"
+SVC-0350,Transmission Service,Driveline,1.5,139.36,false,false,General Service,10804,12,Bundle item,"menu, legacy"
+SVC-0351,Starter Replacement,Driveline,1.5,159.0,true,false,General Service,25884,12,Common menu service,"upsell, fleet"
+SVC-0352,Out of Province Inspection - Quick,Engine,1.5,124.4,true,true,Heavy Duty,,,Legacy canned job from prior system,"inspection, legacy"
+SVC-0353,Coolant Flush,Electrical,3.1,140.22,true,true,Inspection Lane,,13,Common menu service,"menu, fleet"
+SVC-0354,Front Brake Service - Quick,Inspection,7.2,186.49,false,true,Heavy Duty,33342,11,Bundle item,"legacy, menu"
+SVC-0355,Fuel System Cleaning,Driveline,5.4,194.22,false,true,Inspection Lane,,23,Legacy canned job from prior system,
+SVC-0356,Steering Rack Replacement,Electrical,0.5,153.56,false,true,Fleet,,,HD PM template,upsell
+SVC-0357,Tire Rotation,Maintenance,7.0,141.68,true,true,Inspection Lane,32728,,Bundle item,"fleet, inspection"
+SVC-0358,Safety Inspection,Engine,0.9,120.02,false,false,Fleet,33562,14,Bundle item,upsell
+SVC-0359,Safety Inspection,HVAC,5.4,192.01,true,true,Fleet,29611,3,Common menu service,
+SVC-0360,Engine Diagnostic - HD,Inspection,3.2,168.84,true,true,Heavy Duty,,11,Common menu service,"upsell, fleet"
+SVC-0361,Suspension Inspection,Inspection,3.8,157.43,false,false,Fleet,,10,HD PM template,inspection
+SVC-0362,Battery Test - Fleet,Diagnostics,2.6,166.14,true,true,Fleet,,,Common menu service,
+SVC-0363,Safety Inspection,Diagnostics,4.6,142.91,true,true,Inspection Lane,,3,,
+SVC-0364,Suspension Inspection - HD,Engine,3.2,143.96,true,false,Inspection Lane,,6,Legacy canned job from prior system,fleet
+SVC-0365,Starter Replacement,Diagnostics,0.7,160.1,false,true,Fleet,12687,,HD PM template,"legacy, upsell"
+SVC-0366,Alternator Replacement,Engine,4.7,170.43,false,false,Fleet,,,,upsell
+SVC-0367,Transfer Case Service,HVAC,7.0,169.74,true,true,Fleet,11893,,HD PM template,
+SVC-0368,Coolant Flush,Driveline,8.1,175.52,true,true,Fleet,,6,HD PM template,
+SVC-0369,Spark Plug Replacement,Brakes,6.2,158.15,false,true,Heavy Duty,,23,,
+SVC-0370,Oil Change,Maintenance,4.6,149.33,true,true,General Service,,,HD PM template,
+SVC-0371,Suspension Inspection,Electrical,6.0,116.43,false,false,Inspection Lane,,,Legacy canned job from prior system,
+SVC-0372,Suspension Inspection,Diagnostics,6.1,125.68,false,true,Inspection Lane,36108,,Bundle item,
+SVC-0373,Check Engine Light Scan,HVAC,1.1,189.9,false,false,General Service,,,HD PM template,legacy
+SVC-0374,A/C Performance Check,Maintenance,6.1,126.58,false,true,General Service,,12,HD PM template,
+SVC-0375,Fuel System Cleaning,Inspection,1.2,181.87,true,false,Inspection Lane,37115,,Common menu service,"fleet, menu"
+SVC-0376,Out of Province Inspection,Maintenance,2.4,129.85,true,true,General Service,32255,,HD PM template,"menu, upsell"
+SVC-0377,Tire Rotation,Electrical,2.8,178.81,true,true,Inspection Lane,36000,22,Legacy canned job from prior system,inspection
+SVC-0378,Transfer Case Service,Electrical,0.8,146.71,true,true,Heavy Duty,19505,,,upsell
+SVC-0379,Front Brake Service,Brakes,8.3,162.92,false,true,Fleet,,23,,
+SVC-0380,Out of Province Inspection,Electrical,5.8,181.88,false,false,Heavy Duty,29750,21,Bundle item,inspection
+SVC-0381,Transfer Case Service,Diagnostics,7.8,175.17,true,true,Heavy Duty,,12,HD PM template,menu
+SVC-0382,Engine Diagnostic,Diagnostics,2.8,156.79,false,false,Heavy Duty,32647,3,,fleet
+SVC-0383,Check Engine Light Scan - Quick,Maintenance,5.6,140.84,true,true,Inspection Lane,22256,12,Bundle item,fleet
+SVC-0384,Steering Rack Replacement,Maintenance,4.7,123.17,true,true,General Service,,,Legacy canned job from prior system,"fleet, menu"
+SVC-0385,Oil Change - HD,Maintenance,3.6,180.95,true,true,General Service,,3,Legacy canned job from prior system,inspection
+SVC-0386,Front Brake Service,Electrical,6.7,141.14,false,true,Fleet,,9,Legacy canned job from prior system,"inspection, menu"
+SVC-0387,Wheel Alignment,Brakes,3.8,150.47,true,true,Heavy Duty,8104,16,Common menu service,upsell
+SVC-0388,Fleet PM C,Electrical,5.8,192.4,false,true,Heavy Duty,,,HD PM template,
+SVC-0389,Battery Test,Maintenance,3.5,151.23,true,true,Heavy Duty,35914,22,Common menu service,"inspection, upsell"
+SVC-0390,Fleet PM A,HVAC,3.1,115.99,true,true,Inspection Lane,25273,,HD PM template,"menu, legacy"
+SVC-0391,A/C Performance Check - Standard,Engine,2.1,134.8,true,true,General Service,15595,,Common menu service,legacy
+SVC-0392,Battery Test,Engine,8.2,158.08,true,true,Heavy Duty,,24,HD PM template,inspection
+SVC-0393,Battery Test - Premium,HVAC,2.6,187.84,false,true,General Service,,4,,
+SVC-0394,Spark Plug Replacement,Diagnostics,6.5,148.36,true,true,Inspection Lane,28263,,Legacy canned job from prior system,fleet
+SVC-0395,Engine Diagnostic,Diagnostics,4.8,158.85,true,true,Heavy Duty,,,HD PM template,
+SVC-0396,Transmission Service - Fleet,Engine,0.9,164.39,false,false,Heavy Duty,23600,,Common menu service,"fleet, inspection"
+SVC-0397,Spark Plug Replacement,Engine,0.6,126.25,true,false,General Service,6430,,HD PM template,"inspection, legacy"
+SVC-0398,Starter Replacement,Maintenance,1.0,164.83,false,true,Fleet,,,Bundle item,"upsell, legacy"
+SVC-0399,Suspension Inspection,Inspection,6.6,132.71,true,true,Heavy Duty,21758,3,,fleet
+SVC-0400,Tire Rotation,Diagnostics,4.9,118.52,false,true,Fleet,26821,,Common menu service,upsell
+SVC-0401,Transfer Case Service,Engine,6.8,158.48,false,true,Inspection Lane,24268,20,Common menu service,inspection
+SVC-0402,Wheel Alignment,Inspection,7.6,149.11,true,true,General Service,20619,,HD PM template,
+SVC-0403,Transmission Service,Engine,5.7,156.92,false,true,Fleet,32886,,HD PM template,"menu, upsell"
+SVC-0404,Transmission Service,Maintenance,7.0,187.3,true,true,Fleet,36018,24,Common menu service,"menu, fleet"
+SVC-0405,Starter Replacement,Engine,4.5,174.23,false,true,Heavy Duty,,22,HD PM template,legacy
+SVC-0406,Tire Rotation,HVAC,4.5,137.65,true,true,Fleet,18117,9,HD PM template,
+SVC-0407,Fleet PM A - Premium,HVAC,1.3,171.95,true,true,General Service,,10,Common menu service,"menu, inspection"
+SVC-0408,Engine Diagnostic,Brakes,3.5,147.42,true,false,Heavy Duty,26343,,,
+SVC-0409,Out of Province Inspection,Engine,7.1,119.05,false,false,Heavy Duty,,,Bundle item,legacy
+SVC-0410,Alternator Replacement,Inspection,0.5,154.03,false,true,General Service,28202,9,HD PM template,"fleet, upsell"
+SVC-0411,Check Engine Light Scan,Inspection,5.2,146.03,false,true,Fleet,14350,,Bundle item,"menu, upsell"
+SVC-0412,Battery Test,HVAC,2.1,182.49,false,true,General Service,16334,,Common menu service,menu
+SVC-0413,Safety Inspection,Maintenance,4.5,149.9,false,true,Inspection Lane,23329,3,Legacy canned job from prior system,
+SVC-0414,Alternator Replacement,Maintenance,1.6,134.94,false,false,Fleet,39244,,,legacy
+SVC-0415,Fleet PM B,Diagnostics,1.0,118.84,false,true,Inspection Lane,,17,Bundle item,
+SVC-0416,Steering Rack Replacement,Inspection,7.3,189.92,false,true,General Service,,,HD PM template,
+SVC-0417,Safety Inspection,Driveline,4.8,190.55,false,true,Heavy Duty,19177,,Legacy canned job from prior system,"legacy, upsell"
+SVC-0418,Oil Change,Driveline,8.3,115.77,false,false,General Service,34919,,,
+SVC-0419,Engine Diagnostic,Engine,4.1,136.3,false,false,General Service,,19,,
+SVC-0420,Fleet PM B - Premium,Diagnostics,5.5,160.87,true,true,Fleet,19133,11,HD PM template,"legacy, fleet"

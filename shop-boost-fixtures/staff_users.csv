@@ -1,0 +1,29 @@
+external_user_id,first_name,last_name,display_name,role,email,phone,hire_date,active,hourly_rate,default_labor_rate,certifications,notes,pin_hint,shop_location,tags
+USR-1000,Scarlett,Ramirez,Scarlett Ramirez,Service Manager,scarlettramirez@gmail.com,(752) 553-4192,2024-06-23T13:30,true,,,,,,Calgary North,"fleet, parts"
+USR-1001,Liam,Garcia,Liam Garcia,Advisor,lgarcia@prairiepeakauto.ca,(281) 489-3252,2019-08-06 13:30:28,true,,,"Red Seal, CVIP",Prefers diesel diag,,Calgary South,team-a
+USR-1002,Layla,Martin,Layla Martin,Advisor,layla.martin74@icloud.com,1080132677,2019-12-17 13:30:28,true,,,A/C,,,Fleet Mobile Unit,"team-a, fleet"
+USR-1003,Elijah,Brown,Elijah 'Ace' Brown,Parts,elijah.brown9@gmail.com,+1 624 751 0799,01/11/2025,true,,,Red Seal,,,Fleet Mobile Unit,
+USR-1004,Abigail,Thompson,Abigail Thompson,Owner,athompson@prairiepeakauto.ca,(016) 400-5242,2025-10-04T13:30,true,,,"AMVIC, Diesel Systems",,,Calgary South,
+USR-1005,Noah,Taylor,Noah 'Sparky' Taylor,Parts,noah_taylor@prairiepeakauto.ca,+1 340 608 8356,2026-03-10T13:30,true,,,,Fleet specialist,,Calgary North,"diesel, parts"
+USR-1006,Mila,Martinez,Mila Martinez,Service Manager,milamartinez@prairiepeakauto.ca,,2023-06-13T13:30,false,,,"Red Seal, AMVIC",,last 4 phone,Calgary South,"mobile, advisor"
+USR-1007,Nora,Robinson,Nora 'Ace' Robinson,Lead Technician,norarobinson@example.org,579-868-7277,2021-10-28T13:30,true,48.56,168.59,,,,Calgary North,advisor
+USR-1008,James,Hill,James Hill,Service Manager,james_hill@prairiepeakauto.ca,+1 375 564 6417,2024-04-23T13:30,true,,,ASE G1,Strong on brakes,truck number,Fleet Mobile Unit,
+USR-1009,Zoey,Green,Zoey Green,Service Manager,zoeygreen@gmail.com,+1 628 498 7769,2019-07-05 13:30:28,true,,,"ASE G1, Diesel Systems, AMVIC",Prefers diesel diag,,Calgary North,parts
+USR-1010,Harper,Wright,Harper Wright,Service Manager,hwright@prairiepeakauto.ca,4352408240,2024-02-15T13:30,true,,,"EV Safety, Red Seal, Diesel Systems",,,Calgary North,
+USR-1011,Hudson,Brown,Hudson Brown,Lead Technician,hudson.brown78@shaw.ca,183.242.1024,2019-10-23T13:30,true,35.3,143.18,"Red Seal, AMVIC",,,Calgary North,
+USR-1012,Owen,Williams,Owen Williams,Parts,owen.williams74@gmail.com,671-756-5512,2021-04-12 13:30:28,true,,,"Red Seal, EV Safety",Strong on brakes,birthday month,Fleet Mobile Unit,
+USR-1013,Finn,Walker,Finn Walker,Technician,finn_walker@prairiepeakauto.ca,7558867533,2024-10-10T13:30,true,48.98,145.82,,,,Fleet Mobile Unit,
+USR-1014,James,Wilson,James Wilson,Technician,james.wilson43@prairiepeakauto.ca,(578) 091-3431,2022-04-26T13:30,true,44.57,146.98,"CVIP, A/C",,birthday month,Calgary South,
+USR-1015,Mikayla,Green,Mikayla Green,Advisor,mikayla.green@prairiepeakauto.ca,+1 562 328 5884,2023-04-03T13:30,true,,,"Red Seal, Diesel Systems",,,Calgary South,"parts, fleet"
+USR-1016,Scarlett,Moore,Scarlett Moore,Service Manager,smoore@prairiepeakauto.ca,926-179-6405,2024-07-15T13:30,false,,,"Diesel Systems, CVIP, ASE G1",Strong on brakes,,Calgary South,
+USR-1017,Noah,Rodriguez,Noah Rodriguez,Technician,noahrodriguez@prairiepeakauto.ca,1249985698,2021-07-21T13:30,true,30.28,144.87,A/C,Fleet specialist,last 4 phone,Calgary North,
+USR-1018,Lucas,Miller,Lucas Miller,Technician,lucas.miller72@prairiepeakauto.ca,9402445502,2024-06-05T13:30,true,41.62,120.95,"EV Safety, AMVIC",,,Fleet Mobile Unit,
+USR-1019,Lucas,Perez,Lucas Perez,Parts,lperez@icloud.com,+1 622 683 8851,2025-01-02T13:30,true,,,"A/C, ASE G1, Diesel Systems",,,Calgary North,
+USR-1020,Lucas,Martinez,Lucas Martinez,Technician,lmartinez@prairiepeakauto.ca,199.867.9807,2022-08-03T13:30,true,38.81,171.77,,Prefers diesel diag,,Calgary South,
+USR-1021,Harper,Allen,Harper Allen,Parts,hallen@prairiepeakauto.ca,221.418.8805,2021-12-19,true,,,CVIP,,,Fleet Mobile Unit,
+USR-1022,Wyatt,Williams,Wyatt Williams,Parts,wyattwilliams@shaw.ca,623-924-0758,2022-12-22T13:30,true,,,ASE G1,Needs Friday afternoons off,,Calgary South,
+USR-1023,Noah,Lee,Noah Lee,Lead Technician,noah.lee54@prairiepeakauto.ca,609-539-6218,2025-06-26 13:30:28,true,32.84,170.38,"Red Seal, CVIP, AMVIC",Fleet specialist,last 4 phone,Calgary North,"advisor, fleet"
+USR-1024,Oliver,Taylor,Oliver 'Sparky' Taylor,Advisor,oliver_taylor@prairiepeakauto.ca,+1 544 796 2757,2019-10-31,true,,,,,,Calgary North,advisor
+USR-1025,Mateo,Green,Mateo Green,Lead Technician,mateogreen@prairiepeakauto.ca,1323705895,2019-09-30,true,51.34,159.96,"CVIP, Diesel Systems, EV Safety",,,Calgary North,
+USR-1026,Finn,Adams,Finn Adams,Lead Technician,finn.adams16@outlook.com,9439690784,11/27/2023,true,48.68,137.35,ASE G1,Fleet specialist,truck number,Calgary North,"parts, team-a"
+USR-1027,Edward,Martin,Edward Martin,Parts,edward_martin@outlook.com,983.584.1687,2024-11-10,true,,,"AMVIC, EV Safety, Red Seal",,,Calgary North,"fleet, diesel"

@@ -1,0 +1,11 @@
+vendor_id,vendor_name,account_number,contact_name,email,phone,terms,lead_time_days,supports_returns,address1,city,province,postal_code,notes,tags
+VEND-001,PartsPro West,ACCT-84759,Mikayla Rodriguez,sales1@partsprowest.com,+1 886 883 2242,COD,2,false,386 Aspen Way,Chestermere,SK,,Core returns weekly,oem
+VEND-002,Prairie Auto Supply,ACCT-76668,Avery Nelson,sales2@prairieautosupply.com,028-481-9345,COD,4,false,917 17 Ave SE,Airdrie,AB,T4B2P6,Core returns weekly,"fleet, aftermarket"
+VEND-003,FleetLine Distributors,ACCT-61683,Ava King,sales3@fleetlinedistributors.com,(558) 955-7795 x6614,COD,10,true,259 River Rd,Lethbridge,AB,T2A1A1,After-hours counter access,"oem, fleet"
+VEND-004,NorthStar Truck Parts,ACCT-55228,Mila Young,sales4@northstartruckparts.com,992-518-6958,Net 15,6,true,273 Prairie View,Cochrane,BC,T2A1A1,Core returns weekly,
+VEND-005,Rapid Brake & Wheel,ACCT-49846,Finn Williams,sales5@rapidbrakeandwheel.com,(819) 314-2445,COD,8,true,720 Prairie View,Airdrie,SK,,,
+VEND-006,Western Motor Supply,ACCT-86981,Mason Baker,sales6@westernmotorsupply.com,+1 861 193 0365,Net 30,6,false,523 River Rd,Chestermere,AB,T2A1A1,Special order only,fluids
+VEND-007,Summit Industrial Parts,ACCT-96103,Logan Brown,sales7@summitindustrialparts.com,439-679-5796,COD,8,true,286 Memorial Dr,Chestermere,AB,,,fleet
+VEND-008,OEM Direct,ACCT-77582,Emma Green,sales8@oemdirect.com,929-550-6048,Net 30,9,true,719 River Rd,Edmonton,AB,,After-hours counter access,"oem, fleet"
+VEND-009,RoadReady Fleet,ACCT-48761,Charlotte Torres,sales9@roadreadyfleet.com,7862035039,Net 45,7,false,458 Main St,Okotoks,AB,T4B2P6,After-hours counter access,aftermarket
+VEND-010,AutoValue Local,ACCT-75094,Evelyn Miller,sales10@autovaluelocal.com,(842) 035-0359,Net 30,10,false,482 Centre St,Red Deer,BC,,Core returns weekly,
