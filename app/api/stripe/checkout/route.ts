@@ -254,10 +254,6 @@ export async function POST(req: Request) {
         supabase_user_id: access.profile.id,
         purpose: "profixiq_subscription",
       },
-      customer_update: {
-        address: "auto",
-        name: "auto",
-      },
     });
 
     return NextResponse.json({ ok: true, sessionId: session.id, url: session.url });
