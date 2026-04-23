@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
+import { getRunByShopIntake, summarizeRunJobs } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
 
@@ -46,6 +47,37 @@ export async function GET() {
   }
   if (!intake) return NextResponse.json({ ok: true, intake: null });
 
+  let orchestrator: {
+    runId: string;
+    state: string;
+    activationStatus: string;
+    activationBlockers: unknown;
+    jobs: Record<string, number> | null;
+  } | null = null;
+
+  try {
+    const run = await getRunByShopIntake({
+      shopId: profile.shop_id,
+      intakeId: intake.id,
+    });
+
+    if (run?.id) {
+      orchestrator = {
+        runId: run.id,
+        state: run.state,
+        activationStatus: run.activation_status,
+        activationBlockers: run.activation_blockers ?? [],
+        jobs: await summarizeRunJobs(run.id),
+      };
+    }
+  } catch (orchestratorErr) {
+    console.error("[shop-boost/orchestrator] latest status enrichment failed", {
+      shopId: profile.shop_id,
+      intakeId: intake.id,
+      error: orchestratorErr instanceof Error ? orchestratorErr.message : String(orchestratorErr),
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     intake: {
@@ -54,6 +86,7 @@ export async function GET() {
       createdAt: intake.created_at,
       processedAt: intake.processed_at,
       progress: toIntakeProgress(intake as never),
+      orchestrator,
     },
   });
 }
