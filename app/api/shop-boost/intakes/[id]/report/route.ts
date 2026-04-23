@@ -102,7 +102,14 @@ export async function GET(req: Request, context: RouteContext) {
     .eq("shop_id", profile.shop_id)
     .maybeSingle<IntakeReportRow>();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[shop-boost][intakes/report] failed to load intake", {
+      intakeId: id,
+      shopId: profile.shop_id,
+      error: error.message,
+    });
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
   if (!intake) return NextResponse.json({ ok: false, error: "Intake not found." }, { status: 404 });
 
   const basics = asRecord(intake.intake_basics);
@@ -110,7 +117,7 @@ export async function GET(req: Request, context: RouteContext) {
   const importSummary = asRecord(basics.importSummary);
   const integrity = asRecord(importSummary.integrity ?? migrationProgress.integrity);
 
-  const [{ data: reviewRows }, { data: byDomainRows }] = await Promise.all([
+  const [{ data: reviewRows, error: reviewRowsError }, { data: byDomainRows, error: byDomainRowsError }] = await Promise.all([
     admin
       .from("shop_boost_review_items")
       .select("status,resolution_action")
@@ -122,6 +129,14 @@ export async function GET(req: Request, context: RouteContext) {
       .eq("shop_id", profile.shop_id)
       .eq("intake_id", id),
   ]);
+  if (reviewRowsError || byDomainRowsError) {
+    console.error("[shop-boost][intakes/report] failed to load report aggregates", {
+      intakeId: id,
+      shopId: profile.shop_id,
+      reviewRowsError: reviewRowsError?.message ?? null,
+      byDomainRowsError: byDomainRowsError?.message ?? null,
+    });
+  }
 
   const reviewOutcomes = (reviewRows ?? []).reduce((acc: Record<string, number>, row: ReviewOutcomeRow) => {
     const status = String(row.status ?? "unknown");
