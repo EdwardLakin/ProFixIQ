@@ -1,5 +1,6 @@
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
-import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import { type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import { runShopBoostDomainMaterialize } from "@/features/integrations/shopBoost/orchestrator/materializeHandlers";
 import {
   MATERIALIZE_DOMAINS,
   claimNextRunnableJob,
@@ -15,13 +16,6 @@ import {
   type MaterializeDomain,
 } from "./index";
 
-type DomainJobResult = {
-  domain: MaterializeDomain;
-  completionState: string;
-  rowResults: { success: number; review: number; failed: number };
-  importedCount: number;
-};
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -29,26 +23,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 function asImportSummary(value: unknown): ShopBoostImportSummary | null {
   const rec = asRecord(value);
   return Object.keys(rec).length ? (rec as unknown as ShopBoostImportSummary) : null;
-}
-
-function readDomainResult(summary: ShopBoostImportSummary, domain: MaterializeDomain): DomainJobResult {
-  const byDomain = summary.rowResults.byDomain ?? {};
-  const rowResults = byDomain[domain] ?? { success: 0, review: 0, failed: 0 };
-  const importedCountMap: Record<MaterializeDomain, number> = {
-    customers: Number(summary.customersImported ?? 0),
-    vehicles: Number(summary.vehiclesImported ?? 0),
-    history: Number(summary.workOrdersImported ?? 0),
-    invoices: Number(summary.invoicesImported ?? 0),
-    parts: Number(summary.partsImported ?? 0),
-    staff: Number(summary.canonicalMaterialization.actual.staffSuggestions ?? 0),
-  };
-
-  return {
-    domain,
-    completionState: summary.completionState,
-    rowResults,
-    importedCount: importedCountMap[domain],
-  };
 }
 
 function toRetryableStatus(summary: ShopBoostImportSummary): "succeeded" | "retryable_failed" | "blocked_manual" {
@@ -96,53 +70,17 @@ export async function executeShopBoostRun(args: {
       if (claimed.jobType === "materialize") {
         await markRunRunning(args.runId, "materialize");
         const domain = claimed.domain as MaterializeDomain;
-
-        if (domain === "customers") {
-          latestImportSummary = await runShopBoostImport({
-            shopId: args.shopId,
-            intakeId: args.intakeId,
-            options: { createStaffUsers: false },
-          });
-
-          const domainResult = readDomainResult(latestImportSummary, domain);
-          await markClaimedJobResult({
-            jobId: claimed.id,
-            status: toRetryableStatus(latestImportSummary),
-            result: {
-              mode: "full_import_anchor",
-              ...domainResult,
-              canonicalMaterialization: latestImportSummary.canonicalMaterialization,
-              rowResultsFull: latestImportSummary.rowResults,
-            },
-          });
-        } else {
-          if (!latestImportSummary) {
-            const jobs = await getRunJobs(args.runId);
-            const anchor = jobs.find(
-              (job) => job.job_type === "materialize" && String(job.domain ?? "global") === "customers",
-            );
-            latestImportSummary = asImportSummary(anchor?.result);
-          }
-
-          if (!latestImportSummary) {
-            await markClaimedJobResult({
-              jobId: claimed.id,
-              status: "blocked_manual",
-              errorCode: "MATERIALIZE_ANCHOR_MISSING",
-              errorMessage: "Customers materialize anchor result is required before domain fanout.",
-            });
-          } else {
-            const domainResult = readDomainResult(latestImportSummary, domain);
-            await markClaimedJobResult({
-              jobId: claimed.id,
-              status: toRetryableStatus(latestImportSummary),
-              result: {
-                mode: "derived_from_anchor",
-                ...domainResult,
-              },
-            });
-          }
-        }
+        const materialize = await runShopBoostDomainMaterialize({
+          shopId: args.shopId,
+          intakeId: args.intakeId,
+          domain,
+        });
+        latestImportSummary = materialize.summary;
+        await markClaimedJobResult({
+          jobId: claimed.id,
+          status: toRetryableStatus(materialize.summary),
+          result: materialize.domainResult,
+        });
       }
 
       if (claimed.jobType === "verify") {
@@ -176,6 +114,28 @@ export async function executeShopBoostRun(args: {
           const failedDomains = domainJobs
             .filter((job) => ["retryable_failed", "terminal_failed"].includes(String(job.status)))
             .map((job) => String(job.domain ?? "global"));
+          const domainOutcomes = domainJobs.reduce(
+            (acc: Record<string, { status: string; importedCount: number; rowResults: { success: number; review: number; failed: number } | null }>, job) => {
+              const jobDomain = String(job.domain ?? "global");
+              const result = asRecord(job.result);
+              const rowResultsRecord = asRecord(result.rowResults);
+              const rowResults =
+                Object.keys(rowResultsRecord).length > 0
+                  ? {
+                      success: Number(rowResultsRecord.success ?? 0),
+                      review: Number(rowResultsRecord.review ?? 0),
+                      failed: Number(rowResultsRecord.failed ?? 0),
+                    }
+                  : null;
+              acc[jobDomain] = {
+                status: String(job.status ?? "unknown"),
+                importedCount: Number(result.importedCount ?? 0),
+                rowResults,
+              };
+              return acc;
+            },
+            {},
+          );
 
           const integrityErrors = Array.isArray(latestImportSummary.rowResults.integrityErrors)
             ? latestImportSummary.rowResults.integrityErrors.map((row) => String(row))
@@ -205,6 +165,7 @@ export async function executeShopBoostRun(args: {
                 blocked: blockedDomains,
                 failed: failedDomains,
                 statusCounts: domainStatusCounts,
+                outcomes: domainOutcomes,
               },
               canonicalGaps: latestImportSummary.canonicalMaterialization.gaps,
               completionState: latestImportSummary.completionState,

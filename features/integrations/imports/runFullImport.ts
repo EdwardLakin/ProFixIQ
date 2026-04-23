@@ -41,6 +41,7 @@ type RunArgs = {
    */
   options?: {
     createStaffUsers?: boolean;
+    materializeDomain?: "customers" | "vehicles" | "history" | "invoices" | "parts" | "staff";
   };
 };
 
@@ -163,6 +164,26 @@ type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "v
 type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "email" | "full_name">;
 type RowBucketRow = Pick<DB["public"]["Tables"]["shop_boost_row_results"]["Row"], "match_status" | "review_required" | "error_reason">;
 type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
+type MaterializeDomain = NonNullable<RunArgs["options"]>["materializeDomain"];
+
+function domainSourceFile(domain: MaterializeDomain): string | null {
+  if (domain === "customers") return "customers";
+  if (domain === "vehicles") return "vehicles";
+  if (domain === "history") return "history";
+  if (domain === "invoices") return "invoices";
+  if (domain === "parts") return "parts";
+  return null;
+}
+
+function domainReviewItems(domain: MaterializeDomain): string[] {
+  if (domain === "customers") return ["customer"];
+  if (domain === "vehicles") return ["vehicle"];
+  if (domain === "history") return ["work_order", "history"];
+  if (domain === "invoices") return ["invoice"];
+  if (domain === "parts") return ["part"];
+  if (domain === "staff") return [];
+  return [];
+}
 
 function norm(s: string): string {
   return (s ?? "").trim();
@@ -947,6 +968,14 @@ async function createReviewItem(args: {
 export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImportSummary> {
   const { shopId, intakeId } = args;
   const supabase = createAdminSupabase();
+  const materializeDomain = args.options?.materializeDomain ?? null;
+  const runCustomers = !materializeDomain || materializeDomain === "customers";
+  const runVehicles = !materializeDomain || materializeDomain === "vehicles";
+  const runParts = !materializeDomain || materializeDomain === "parts";
+  const runStaff = !materializeDomain || materializeDomain === "staff";
+  const runHistory = !materializeDomain || materializeDomain === "history";
+  const runInvoices = !materializeDomain || materializeDomain === "invoices";
+  const runLinkagePass = !materializeDomain || materializeDomain === "history";
 
   // 🔒 hard safety gate for any future staff autocreate logic (currently NOT used)
   const createStaffUsers =
@@ -1038,7 +1067,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const parsedHistory = historyCsv ? parseCsv(historyCsv).rows : [];
   const parsedInvoices = invoicesCsvFromManifest ? parseCsv(invoicesCsvFromManifest).rows : [];
   const totalRows =
-    parsedCustomers.length + parsedVehicles.length + parsedParts.length + parsedHistory.length + parsedInvoices.length;
+    (runCustomers ? parsedCustomers.length : 0) +
+    (runVehicles ? parsedVehicles.length : 0) +
+    (runParts ? parsedParts.length : 0) +
+    (runHistory ? parsedHistory.length : 0) +
+    (runInvoices ? parsedInvoices.length : 0);
 
   const rowOutcome = {
     totalRows,
@@ -1067,20 +1100,51 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     },
   };
 
-  await Promise.all([
-    supabase.from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
-    supabase.from("shop_boost_review_items").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
-  ]);
+  if (!materializeDomain) {
+    await Promise.all([
+      supabase.from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
+      supabase.from("shop_boost_review_items").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
+    ]);
+  } else {
+    const sourceFile = domainSourceFile(materializeDomain);
+    if (sourceFile) {
+      await supabase
+        .from("shop_boost_row_results")
+        .delete()
+        .eq("shop_id", shopId)
+        .eq("intake_id", intakeId)
+        .eq("source_file", sourceFile);
+    }
+    const reviewDomains = domainReviewItems(materializeDomain);
+    if (reviewDomains.length > 0) {
+      await supabase
+        .from("shop_boost_review_items")
+        .delete()
+        .eq("shop_id", shopId)
+        .eq("intake_id", intakeId)
+        .in("domain", reviewDomains);
+    }
+  }
 
-  await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
-  const serviceCatalogCsv = await downloadCsv(uploadManifest.serviceCatalog?.path ?? null);
-  const shopBuildSummary = await bridgeOperatingLayerFromCsv({
-    supabase,
-    shopId,
-    intakeId,
-    serviceCatalogCsv,
-    historyCsv,
-  });
+  if (!materializeDomain) {
+    await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
+  }
+  const serviceCatalogCsv = !materializeDomain ? await downloadCsv(uploadManifest.serviceCatalog?.path ?? null) : null;
+  const shopBuildSummary = !materializeDomain
+    ? await bridgeOperatingLayerFromCsv({
+        supabase,
+        shopId,
+        intakeId,
+        serviceCatalogCsv,
+        historyCsv,
+      })
+    : {
+        menuItemsCreated: 0,
+        inspectionTemplatesCreated: 0,
+        linkedMenuToInspection: 0,
+        menuSuggestions: 0,
+        inspectionSuggestions: 0,
+      };
 
   // Build caches (keep light: only key columns)
   const customersByEmail = new Map<string, string>();
@@ -1203,7 +1267,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   let partsPipelineSummary: PartsPipelineSummary | undefined;
 
   // 1) Import customers
-  if (parsedCustomers.length > 0) {
+  if (runCustomers && parsedCustomers.length > 0) {
     const customerNames: Array<{ id: string; name: string }> = [];
     {
       const { data } = await supabase
@@ -1459,7 +1523,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 2) Import vehicles (link to customer if possible)
-  if (parsedVehicles.length > 0) {
+  if (runVehicles && parsedVehicles.length > 0) {
     for (let i = 0; i < parsedVehicles.length; i += 1) {
       const row = parsedVehicles[i];
       const sourceVehicleId = pickSourceId(row, [/^vehicle[_\s-]*id$/, /external vehicle id/, /^unit id$/]);
@@ -1683,7 +1747,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 3) Import parts (staged pipeline with review queue + safe promotion)
-  if (partsCsv) {
+  if (runParts && partsCsv) {
     partsPipelineSummary = await runPartsImportPipeline({
       shopId,
       intakeId,
@@ -1704,7 +1768,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
   // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
   let staffRowsExpected = 0;
-  if (staffCsv) {
+  if (runStaff && staffCsv) {
     const { rows } = parseCsv(staffCsv);
     staffRowsExpected = rows.length;
     await supabase.from("staff_invite_suggestions").delete().eq("shop_id", shopId).eq("intake_id", intakeId);
@@ -1799,7 +1863,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 5) Import history → completed work orders + lines (+ invoices if totals exist)
-  if (parsedHistory.length > 0) {
+  if (runHistory && parsedHistory.length > 0) {
     for (let i = 0; i < parsedHistory.length; i += 1) {
       const row = parsedHistory[i];
       const sourceWorkOrderId = pickSourceId(row, [/^work[_\s-]*order[_\s-]*id$/, /^wo[_\s-]*id$/, /^ro[_\s-]*id$/, /^invoice[_\s-]*id$/]);
@@ -2121,7 +2185,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 6) Import invoice exports (canonical upsert when deterministic keys resolve)
-  if (parsedInvoices.length > 0) {
+  if (runInvoices && parsedInvoices.length > 0) {
     for (let i = 0; i < parsedInvoices.length; i += 1) {
       const row = parsedInvoices[i];
       const sourceInvoiceId = pickSourceId(row, [/^invoice[_\s-]*id$/, /^invoice[_\s-]*number$/, /external invoice id/]);
@@ -2270,7 +2334,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   };
 
   // 7) Post-import linkage pass (safe, idempotent, shop-scoped)
-  if (vehiclesCsv) {
+  if (runLinkagePass && vehiclesCsv) {
     const { rows } = parseCsv(vehiclesCsv);
 
     for (let i = 0; i < rows.length; i += 1) {
@@ -2312,7 +2376,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
-  if (historyCsv) {
+  if (runLinkagePass && historyCsv) {
     const uniqueVehiclesByVin = new Map<string, string>();
     const uniqueVehiclesByPlate = new Map<string, string>();
     const uniqueVehiclesByUnit = new Map<string, string>();
@@ -2492,12 +2556,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
   const integrityErrors: string[] = integrity.integrityErrors;
 
-  const { data: rowBucketRows } = await supabase
+  let rowBucketQuery = supabase
     .from("shop_boost_row_results")
     .select("match_status,review_required,error_reason")
     .eq("shop_id", shopId)
-    .eq("intake_id", intakeId)
-    .limit(100000);
+    .eq("intake_id", intakeId);
+  if (materializeDomain) {
+    const sourceFile = domainSourceFile(materializeDomain);
+    if (sourceFile) rowBucketQuery = rowBucketQuery.eq("source_file", sourceFile);
+  }
+  const { data: rowBucketRows } = await rowBucketQuery.limit(100000);
 
   const outcomeBuckets = {
     materialized: 0,
