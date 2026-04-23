@@ -20,6 +20,7 @@ import {
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
+import { ensureRun, seedRunJobs } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
 
@@ -370,6 +371,51 @@ export async function runShopBoostIntake(
     progressPercent: 5,
     patch: { startedAt: new Date().toISOString(), lastError: null },
   });
+
+  try {
+    const run = await ensureRun({
+      shopId,
+      intakeId,
+      triggerSource: "api",
+      createdBy: user.id,
+    });
+
+    if (run?.id) {
+      await seedRunJobs({
+        runId: run.id,
+        shopId,
+        intakeId,
+      });
+
+      const { data: row } = await supabaseAdmin
+        .from("shop_boost_intakes")
+        .select("intake_basics")
+        .eq("id", intakeId)
+        .maybeSingle<{ intake_basics: unknown }>();
+
+      const existingBasics = isRecord(row?.intake_basics) ? row.intake_basics : {};
+      await supabaseAdmin
+        .from("shop_boost_intakes")
+        .update({
+          intake_basics: ({
+            ...existingBasics,
+            orchestrator: {
+              run_id: run.id,
+              state: run.state,
+              activation_status: run.activation_status,
+              activation_blockers: run.activation_blockers ?? [],
+            },
+          } as unknown) as DB["public"]["Tables"]["shop_boost_intakes"]["Update"]["intake_basics"],
+        })
+        .eq("id", intakeId);
+    }
+  } catch (error) {
+    console.error("[shop-boost/orchestrator] ensure+seed on intake run failed", {
+      shopId,
+      intakeId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   if (mode.deferProcessing) {
     return {

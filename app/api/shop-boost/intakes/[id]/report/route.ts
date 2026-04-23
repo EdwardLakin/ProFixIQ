@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { getRunByShopIntake, summarizeRunJobs } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
@@ -156,6 +157,27 @@ export async function GET(req: Request, context: RouteContext) {
     return acc;
   }, {});
 
+  let orchestrator: Record<string, unknown> | null = null;
+  try {
+    const run = await getRunByShopIntake({ shopId: profile.shop_id, intakeId: intake.id });
+    if (run?.id) {
+      orchestrator = {
+        run_id: run.id,
+        state: run.state,
+        activation_status: run.activation_status,
+        activation_blockers: run.activation_blockers ?? [],
+        activation_snapshot: asRecord(run.activation_snapshot),
+        jobs: await summarizeRunJobs(run.id),
+      };
+    }
+  } catch (orchestratorErr) {
+    console.error("[shop-boost/orchestrator] report enrichment failed", {
+      intakeId: intake.id,
+      shopId: profile.shop_id,
+      error: orchestratorErr instanceof Error ? orchestratorErr.message : String(orchestratorErr),
+    });
+  }
+
   const report = {
     intake_id: intake.id,
     status: intake.status,
@@ -180,6 +202,7 @@ export async function GET(req: Request, context: RouteContext) {
         "Based on your uploaded data and conservative shop patterns. Actual value depends on activation, data cleanup, and team adoption.",
     },
     review_outcomes: reviewOutcomes,
+    orchestrator,
   };
 
   const url = new URL(req.url);
