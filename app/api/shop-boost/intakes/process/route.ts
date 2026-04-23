@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
           partsImported: importSummary.partsImported,
           workOrdersImported: importSummary.workOrdersImported,
           invoicesImported: importSummary.invoicesImported,
+          canonicalMaterialization: importSummary.canonicalMaterialization,
           linkageSummary: importSummary.linkageSummary,
           shopBuildSummary: importSummary.shopBuildSummary,
           partsPipeline: importSummary.partsPipeline ?? null,

@@ -396,6 +396,12 @@ export async function runShopBoostIntake(
           menuSuggestions: 0,
           inspectionSuggestions: 0,
         },
+        canonicalMaterialization: {
+          expected: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staff: 0 },
+          actual: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staffSuggestions: 0, staffCandidates: 0 },
+          gaps: { missingVehicles: false, missingWorkOrders: false, missingInvoices: false, missingStaff: false },
+          status: "ok",
+        },
         rowResults: {
           totalRows: 0,
           processedRows: 0,
@@ -447,6 +453,12 @@ export async function runShopBoostIntake(
       linkedMenuToInspection: 0,
       menuSuggestions: 0,
       inspectionSuggestions: 0,
+    },
+    canonicalMaterialization: {
+      expected: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staff: 0 },
+      actual: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staffSuggestions: 0, staffCandidates: 0 },
+      gaps: { missingVehicles: false, missingWorkOrders: false, missingInvoices: false, missingStaff: false },
+      status: "ok",
     },
     rowResults: {
       totalRows: 0,

@@ -49,9 +49,11 @@ type ShopBoostSuggestionRow = {
 };
 type CanonicalImportStats = {
   staffSuggestions: number;
+  staffCandidates: number;
   customers: number;
-  vehiclesLinked: number;
-  workOrdersLinked: number;
+  vehicles: number;
+  workOrders: number;
+  canonicalStatus: "ok" | "partial" | "unknown";
 };
 
 type Props = {
@@ -171,8 +173,14 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               .limit(60),
             Promise.all([
               supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
-              supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId).not("customer_id", "is", null),
-              supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId).not("customer_id", "is", null),
+              supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+              supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+              supabase.from("staff_invite_candidates").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("source", "shop_boost_import"),
+              supabase
+                .from("shop_boost_intakes")
+                .select("intake_basics")
+                .eq("id", intakeId)
+                .maybeSingle(),
             ]),
           ])
         : [null, null];
@@ -207,11 +215,21 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       setSuggestions(mergedSuggestions);
 
       if (canonicalCounts) {
+        const intakeBasics = canonicalCounts[4].data?.intake_basics as Record<string, unknown> | null;
+        const importSummary = (intakeBasics?.importSummary ?? null) as Record<string, unknown> | null;
+        const canonicalMaterialization = (importSummary?.canonicalMaterialization ?? null) as Record<string, unknown> | null;
+        const canonicalStatus =
+          canonicalMaterialization?.status === "ok" || canonicalMaterialization?.status === "partial"
+            ? canonicalMaterialization.status
+            : "unknown";
+
         setCanonicalStats({
           staffSuggestions: staffFromBase.length,
+          staffCandidates: canonicalCounts[3].count ?? 0,
           customers: canonicalCounts[0].count ?? 0,
-          vehiclesLinked: canonicalCounts[1].count ?? 0,
-          workOrdersLinked: canonicalCounts[2].count ?? 0,
+          vehicles: canonicalCounts[1].count ?? 0,
+          workOrders: canonicalCounts[2].count ?? 0,
+          canonicalStatus,
         });
       } else {
         setCanonicalStats(null);
@@ -501,17 +519,23 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             </div>
             {canonicalStats ? (
               <div className={`mt-3 ${cardInner} p-3`}>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Canonical import linkage</div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Import truth (snapshot vs canonical)</div>
                 <div className="mt-2 grid gap-2 text-xs text-neutral-200 md:grid-cols-4">
                   <div>Customers: <span className="text-neutral-100">{canonicalStats.customers}</span></div>
-                  <div>Vehicles linked: <span className="text-neutral-100">{canonicalStats.vehiclesLinked}</span></div>
-                  <div>Work orders linked: <span className="text-neutral-100">{canonicalStats.workOrdersLinked}</span></div>
-                  <div>Staff invite rows: <span className="text-neutral-100">{canonicalStats.staffSuggestions}</span></div>
+                  <div>Vehicles materialized: <span className="text-neutral-100">{canonicalStats.vehicles}</span></div>
+                  <div>Work orders materialized: <span className="text-neutral-100">{canonicalStats.workOrders}</span></div>
+                  <div>Staff suggestions/candidates: <span className="text-neutral-100">{canonicalStats.staffSuggestions}/{canonicalStats.staffCandidates}</span></div>
+                </div>
+                <div className="mt-2 text-[11px] text-neutral-300">
+                  Snapshot status: <span className="text-neutral-100">{intakeStatus ?? "unknown"}</span> • Canonical materialization:{" "}
+                  <span className={canonicalStats.canonicalStatus === "partial" ? "text-amber-200" : "text-emerald-200"}>
+                    {canonicalStats.canonicalStatus}
+                  </span>
                 </div>
                 {(canonicalStats.customers > 0 &&
-                  (canonicalStats.vehiclesLinked === 0 || canonicalStats.workOrdersLinked === 0)) ? (
+                  (canonicalStats.vehicles === 0 || canonicalStats.workOrders === 0)) ? (
                   <div className="mt-2 text-[11px] text-amber-200">
-                    Snapshot/suggestions can be present even when canonical linkages are incomplete for this intake.
+                    Staged snapshot data can look healthy while canonical graph materialization is still incomplete.
                   </div>
                 ) : null}
               </div>
