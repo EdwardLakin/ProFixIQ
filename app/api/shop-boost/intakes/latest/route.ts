@@ -8,6 +8,7 @@ import {
   getLatestRunAttemptSummary,
   getRunByShopIntake,
   summarizeRunJobs,
+  summarizeRunJobsDetailed,
 } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
@@ -67,6 +68,7 @@ export async function GET() {
 
     if (run?.id) {
       const jobSummary = await summarizeRunJobs(run.id);
+      const jobSummaryDetailed = await summarizeRunJobsDetailed(run.id);
       const lastAttempt = await getLatestRunAttemptSummary(run.id);
       orchestrator = {
         runId: run.id,
@@ -74,10 +76,12 @@ export async function GET() {
         activationStatus: run.activation_status,
         blockers: run.activation_blockers ?? [],
         jobSummary,
+        jobSummaryDetailed,
         lastAttempt,
         state: run.state,
         activationBlockers: run.activation_blockers ?? [],
         jobs: jobSummary,
+        jobsDetailed: jobSummaryDetailed,
         lastError:
           lastAttempt?.status === "failed" || lastAttempt?.errorMessage
             ? {
