@@ -347,7 +347,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, address, city, province, postal_code",
+            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, address, city, province, postal_code",
           )
           .eq("id", customerId)
           .maybeSingle();
@@ -406,10 +406,12 @@ export default function CustomerProfilePage(): JSX.Element {
         let fallbackWosByName: WorkOrder[] = [];
         if ((directWos?.length ?? 0) === 0 && (fallbackWosByVehicle.data?.length ?? 0) === 0) {
           for (const candidate of fallbackWosByNameCandidates) {
-            const byNameRes = await supabase
+            let byNameQuery = supabase
               .from("work_orders")
               .select("*")
-              .ilike("customer_name", candidate)
+              .ilike("customer_name", candidate);
+            if (cust.shop_id) byNameQuery = byNameQuery.eq("shop_id", cust.shop_id);
+            const byNameRes = await byNameQuery
               .order("created_at", { ascending: false })
               .limit(25);
             if (byNameRes.error) throw byNameRes.error;

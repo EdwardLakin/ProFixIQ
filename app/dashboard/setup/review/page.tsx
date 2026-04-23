@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Recommendation = {
   recommendedAction: "link_existing" | "create_new" | "merge_candidate" | "ignore";
@@ -71,6 +72,7 @@ function toResolutionAction(action: Recommendation["recommendedAction"]): "linke
 }
 
 export default function ShopBoostReviewPage() {
+  const router = useRouter();
   const [domain, setDomain] = useState("");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,47 @@ export default function ShopBoostReviewPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | null = null;
+    let delayMs = 5000;
+
+    const pollReadiness = async () => {
+      try {
+        const res = await fetch("/api/shop-boost/intakes/latest", { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as
+          | {
+              ok?: boolean;
+              intake?: { readiness?: { ui_should_route_forward?: boolean } | null } | null;
+            }
+          | null;
+
+        if (!cancelled && json?.ok && json.intake?.readiness?.ui_should_route_forward === true) {
+          router.replace("/dashboard?setup=shop-boost");
+          return;
+        }
+      } catch {
+        delayMs = Math.min(delayMs + 2000, 15000);
+      }
+
+      if (!cancelled) {
+        timer = window.setTimeout(() => {
+          void pollReadiness();
+        }, delayMs);
+      }
+    };
+
+    timer = window.setTimeout(() => {
+      void pollReadiness();
+    }, delayMs);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [router]);
 
   const grouped = useMemo(
     () =>
@@ -224,6 +267,7 @@ export default function ShopBoostReviewPage() {
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
         <p className="mt-1 text-sm text-neutral-300">Resolve migration issues in guided steps with transparent reasoning and confidence-backed actions.</p>
+        <p className="mt-1 text-xs text-amber-200">This page keeps checking readiness in the background and will auto-continue once activation truth flips ready.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
           {Object.entries(grouped).map(([key, count]) => (
             <span key={key} className="rounded-full border border-white/15 px-2 py-1">{key}: {count}</span>

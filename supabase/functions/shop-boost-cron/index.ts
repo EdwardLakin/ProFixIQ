@@ -9,8 +9,8 @@ type ShopBoostIntakeRow = {
 };
 
 type RunResponse =
-  | { ok: true; snapshot: unknown }
-  | { ok: false; snapshot: null; error?: string }
+  | { ok: true; snapshot?: unknown; runsTouched?: number; jobsClaimed?: number; jobsCompleted?: number; jobsFailed?: number; jobsRetried?: number }
+  | { ok: false; error?: string; snapshot?: null }
   | { error: string };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -77,8 +77,8 @@ async function queueAllPendingIntakes(): Promise<{
 
       const json = (await response.json().catch(() => null)) as RunResponse | null;
 
-      // Count only real successes (ok + snapshot present)
-      if (response.ok && json && "ok" in json && json.ok === true && "snapshot" in json && json.snapshot) {
+      // Count success using the internal worker contract (response.ok + ok=true).
+      if (response.ok && json && "ok" in json && json.ok === true) {
         processed += 1;
         continue;
       }

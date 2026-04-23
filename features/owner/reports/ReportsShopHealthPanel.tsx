@@ -68,6 +68,7 @@ type LatestReadiness = {
   verify_status?: string | null;
   blockers?: unknown[];
   ui_should_route_forward?: boolean;
+  canonical_summary?: Record<string, unknown> | null;
 };
 
 const cardBase =
@@ -111,6 +112,15 @@ function hasOk(v: unknown): v is { ok: true } {
   return isRecord(v) && v.ok === true;
 }
 
+function readSummaryCount(summary: Record<string, unknown> | null | undefined, keys: string[]): number {
+  if (!summary) return 0;
+  for (const key of keys) {
+    const value = summary[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
 function isShopBoostRunResp(v: unknown): v is ShopBoostRunResp {
   if (!isRecord(v)) return false;
   if (typeof v.ok !== "boolean") return false;
@@ -145,7 +155,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
     setErr(null);
 
     try {
-      const [latestRes, overviewRes, suggRes] = await Promise.all([
+      const [latestRes, overviewRes] = await Promise.all([
         supabase.from("v_shop_health_latest").select("*").eq("shop_id", shopId).maybeSingle(),
         supabase
           .from("v_shop_boost_overview")
@@ -154,26 +164,54 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
           .order("intake_created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        supabase
-          .from("v_shop_boost_suggestions")
-          .select("*")
-          .eq("shop_id", shopId)
-          .order("created_at", { ascending: false })
-          .limit(60),
       ]);
 
       if (latestRes.error) throw latestRes.error;
       if (overviewRes.error) throw overviewRes.error;
-      if (suggRes.error) throw suggRes.error;
 
       setLatest((latestRes.data as ShopHealthLatestRow | null) ?? null);
       const latestOverview = (overviewRes.data as ShopBoostOverviewRow | null) ?? null;
       setOverview(latestOverview);
 
       const intakeId = latestOverview?.intake_id ?? null;
-      const viewSuggestions = (suggRes.data as ShopBoostSuggestionRow[]) ?? [];
+      const activeSuggestionQuery = supabase
+        .from("v_shop_boost_suggestions")
+        .select("*")
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: false })
+        .limit(60);
 
-      const staffRes = intakeId
+      const suggestionRes = intakeId
+        ? await activeSuggestionQuery.eq("intake_id", intakeId)
+        : await activeSuggestionQuery;
+
+      if (suggestionRes.error) throw suggestionRes.error;
+
+      const fallbackSuggestionRes = intakeId && ((suggestionRes.data?.length ?? 0) === 0)
+        ? await supabase
+            .from("v_shop_boost_suggestions")
+            .select("*")
+            .eq("shop_id", shopId)
+            .order("created_at", { ascending: false })
+            .limit(60)
+        : null;
+
+      if (fallbackSuggestionRes?.error) throw fallbackSuggestionRes.error;
+
+      const viewSuggestions =
+        ((suggestionRes.data?.length ?? 0) > 0
+          ? suggestionRes.data
+          : fallbackSuggestionRes?.data) as ShopBoostSuggestionRow[] | null ?? [];
+
+      const staffBaseQuery = supabase
+        .from("staff_invite_suggestions")
+        .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: false })
+        .limit(160);
+
+      const staffRes = intakeId ? await staffBaseQuery.eq("intake_id", intakeId) : await staffBaseQuery;
+      const fallbackStaffRes = intakeId && ((staffRes.data?.length ?? 0) === 0)
         ? await supabase
             .from("staff_invite_suggestions")
             .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
@@ -182,7 +220,10 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             .limit(160)
         : null;
 
-      const staffRows = staffRes?.error ? [] : staffRes?.data ?? [];
+      if (staffRes?.error) throw staffRes.error;
+      if (fallbackStaffRes?.error) throw fallbackStaffRes.error;
+
+      const staffRows = ((staffRes.data?.length ?? 0) > 0 ? staffRes.data : fallbackStaffRes?.data) ?? [];
       const prioritizedStaffRows = staffRows
         .slice()
         .sort((a, b) => {
@@ -541,7 +582,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </div>
                 <div className="mt-2 text-[11px] text-neutral-300">
                   Snapshot status: <span className="text-neutral-100">{intakeStatus ?? "unknown"}</span> • Canonical materialization:{" "}
-                  <span className={canonicalStats.canonicalStatus === "partial" ? "text-amber-200" : "text-emerald-200"}>
+                  <span className={canonicalStats.canonicalStatus === "ok" ? "text-emerald-200" : "text-amber-200"}>
                     {canonicalStats.canonicalStatus}
                   </span>
                 </div>
@@ -551,6 +592,17 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                     Staged snapshot data can look healthy while canonical graph materialization is still incomplete.
                   </div>
                 ) : null}
+                {latestReadiness ? (() => {
+                  const canonicalSummary = isRecord(latestReadiness.canonical_summary) ? latestReadiness.canonical_summary : null;
+                  const unresolvedLinks = readSummaryCount(canonicalSummary, ["unresolved_link_count", "unlinked_history_rows", "history_without_vehicle_count"]);
+                  const reviewRequired = readSummaryCount(canonicalSummary, ["review_required_count", "pending_review_count", "blocked_review_count"]);
+                  if (unresolvedLinks <= 0 && reviewRequired <= 0) return null;
+                  return (
+                    <div className="mt-2 rounded-md border border-amber-400/40 bg-amber-950/20 p-2 text-[11px] text-amber-100">
+                      Partial linkage detected: {unresolvedLinks} unresolved history/vehicle link(s), {reviewRequired} review-required item(s).
+                    </div>
+                  );
+                })() : null}
                 {latestReadiness ? (
                   <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-neutral-200">
                     <div className="font-medium text-neutral-100">Activation truth states</div>
