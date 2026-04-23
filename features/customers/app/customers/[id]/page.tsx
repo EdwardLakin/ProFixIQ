@@ -397,7 +397,34 @@ export default function CustomerProfilePage(): JSX.Element {
 
         if (fallbackWosByVehicle.error) throw fallbackWosByVehicle.error;
 
-        const allWorkOrders = [...(directWos ?? []), ...(fallbackWosByVehicle.data ?? [])] as WorkOrder[];
+        const fallbackWosByNameCandidates = [
+          cust.business_name,
+          cust.name,
+          [cust.first_name ?? "", cust.last_name ?? ""].filter(Boolean).join(" ").trim(),
+        ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+        let fallbackWosByName: WorkOrder[] = [];
+        if ((directWos?.length ?? 0) === 0 && (fallbackWosByVehicle.data?.length ?? 0) === 0) {
+          for (const candidate of fallbackWosByNameCandidates) {
+            const byNameRes = await supabase
+              .from("work_orders")
+              .select("*")
+              .ilike("customer_name", candidate)
+              .order("created_at", { ascending: false })
+              .limit(25);
+            if (byNameRes.error) throw byNameRes.error;
+            if ((byNameRes.data?.length ?? 0) > 0) {
+              fallbackWosByName = byNameRes.data as WorkOrder[];
+              break;
+            }
+          }
+        }
+
+        const allWorkOrders = [
+          ...(directWos ?? []),
+          ...(fallbackWosByVehicle.data ?? []),
+          ...fallbackWosByName,
+        ] as WorkOrder[];
         const workOrdersById = new Map<string, WorkOrder>();
         for (const wo of allWorkOrders) {
           if (!wo?.id) continue;

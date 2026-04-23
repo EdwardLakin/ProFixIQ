@@ -1254,11 +1254,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const existingId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
-            (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
-            (normalizedName && !conflictingCustomerNames.has(normalizedName) && uniqueCustomersByName.get(normalizedName))
-          : null);
+        (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
+        (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
+        (normalizedName && !conflictingCustomerNames.has(normalizedName) && uniqueCustomersByName.get(normalizedName));
       const bestNameMatch = name
         ? customerNames
             .map((candidate) => ({ id: candidate.id, similarity: nameSimilarity(name, candidate.name) }))
@@ -1526,18 +1524,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const existingId =
         (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) ||
-        (!sourceVehicleId
-          ? (customer_id &&
-              unit &&
-              !conflictingVehiclesByCustomerUnit.has(compositeKey(customer_id, lower(unit))) &&
-              uniqueVehiclesByCustomerUnit.get(compositeKey(customer_id, lower(unit)))) ||
-            (vin && vehiclesByVin.get(vin)) ||
-            (customer_id &&
-              plate &&
-              !conflictingVehiclesByCustomerPlate.has(compositeKey(customer_id, plate)) &&
-              uniqueVehiclesByCustomerPlate.get(compositeKey(customer_id, plate))) ||
-            (plate && vehiclesByPlate.get(plate))
-          : null);
+        ((customer_id &&
+          unit &&
+          !conflictingVehiclesByCustomerUnit.has(compositeKey(customer_id, lower(unit))) &&
+          uniqueVehiclesByCustomerUnit.get(compositeKey(customer_id, lower(unit)))) ||
+          (vin && vehiclesByVin.get(vin)) ||
+          (customer_id &&
+            plate &&
+            !conflictingVehiclesByCustomerPlate.has(compositeKey(customer_id, plate)) &&
+            uniqueVehiclesByCustomerPlate.get(compositeKey(customer_id, plate))) ||
+          (plate && vehiclesByPlate.get(plate)));
 
       if (existingId) {
         await supabase
@@ -1929,7 +1925,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
               .maybeSingle<{ id: string }>()
           ).data;
 
-      if (!woByExternal?.id && vehicle_id && customer_id) {
+      if (vehicle_id && customer_id) {
         await supabase
           .from("vehicles")
           .update({ customer_id } as DB["public"]["Tables"]["vehicles"]["Update"])
@@ -1965,9 +1961,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       let woErr: { message?: string } | null = null;
 
       if (woByExternal?.id) {
+        const woUpdatePayload: DB["public"]["Tables"]["work_orders"]["Update"] = {
+          ...woPayload,
+          vehicle_id: vehicle_id ?? undefined,
+        };
         await supabase
           .from("work_orders")
-          .update(woPayload as DB["public"]["Tables"]["work_orders"]["Update"])
+          .update(woUpdatePayload)
           .eq("id", woByExternal.id);
         woInserted = [{ id: woByExternal.id }];
       } else {
@@ -2144,11 +2144,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const customerName = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
       const resolvedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
-            (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
-            (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName))
-          : null) ||
+        (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
+        (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
+        (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName)) ||
         null;
 
       let workOrderId: string | null =
@@ -2287,11 +2285,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       );
       const matchedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
-            (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
-            (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName))
-          : null) ||
+        (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
+        (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
+        (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName)) ||
         null;
 
       if (!matchedCustomerId) continue;
@@ -2359,17 +2355,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const customerName = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
       const matchedCustomerId =
         (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (customerEmail &&
-              !conflictingCustomerEmails.has(customerEmail) &&
-              uniqueCustomersByEmail.get(customerEmail)) ||
-            (customerPhone &&
-              !conflictingCustomerPhones.has(customerPhone) &&
-              uniqueCustomersByPhone.get(customerPhone)) ||
-            (customerName &&
-              !conflictingCustomerNames.has(customerName) &&
-              uniqueCustomersByName.get(customerName))
-          : null) ||
+        (customerEmail &&
+          !conflictingCustomerEmails.has(customerEmail) &&
+          uniqueCustomersByEmail.get(customerEmail)) ||
+        (customerPhone &&
+          !conflictingCustomerPhones.has(customerPhone) &&
+          uniqueCustomersByPhone.get(customerPhone)) ||
+        (customerName &&
+          !conflictingCustomerNames.has(customerName) &&
+          uniqueCustomersByName.get(customerName)) ||
         null;
 
       if (!matchedCustomerId) continue;
