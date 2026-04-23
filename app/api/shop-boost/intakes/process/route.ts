@@ -4,32 +4,30 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
-import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
+import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
+  claimNextRunnableJob,
   completeAttempt,
+  computeRetryAfter,
   createAttempt,
   ensureRun,
   evaluateActivationRules,
+  getJobAttemptCount,
   getLatestRunAttemptSummary,
+  getRunJobs,
+  markClaimedJobResult,
   markRunRetryable,
   markRunRunning,
   markRunSucceeded,
   seedRunJobs,
   summarizeRunJobs,
-  setJobResult,
-  setJobRunning,
+  type ActivationEvaluationResult,
 } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
 
-type JobType = "profile" | "materialize" | "verify" | "activate";
-const RUN_STATE_BY_JOB: Record<JobType, "profiling" | "materialize" | "verify" | "activate"> = {
-  profile: "profiling",
-  materialize: "materialize",
-  verify: "verify",
-  activate: "activate",
-};
+const MAX_EXECUTOR_PASSES = 12;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -37,6 +35,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asBoolArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)) : [];
+}
+
+function asImportSummary(value: unknown): ShopBoostImportSummary | null {
+  const rec = asRecord(value);
+  if (!Object.keys(rec).length) return null;
+  return rec as unknown as ShopBoostImportSummary;
 }
 
 export async function POST(req: NextRequest) {
@@ -84,8 +88,9 @@ export async function POST(req: NextRequest) {
   }
 
   let runId: string | null = null;
-  let activeJobType: JobType | null = null;
-  const jobIdByType: Partial<Record<JobType, string>> = {};
+  let latestImportSummary: ShopBoostImportSummary | null = null;
+  let latestActivationEval: ActivationEvaluationResult | null = null;
+  const errors: string[] = [];
 
   try {
     const run = await ensureRun({
@@ -96,179 +101,189 @@ export async function POST(req: NextRequest) {
     });
     runId = run?.id ?? null;
 
-    if (runId) {
-      const jobs = await seedRunJobs({ runId, shopId, intakeId: intake.id });
-      for (const job of jobs) {
-        const key = job.job_type as JobType;
-        if (key === "profile" || key === "materialize" || key === "verify" || key === "activate") {
-          jobIdByType[key] = job.id;
-        }
-      }
-      await markRunRunning(runId, "profiling");
+    if (!runId) {
+      throw new Error("Failed to initialize orchestrator run.");
     }
-  } catch (error) {
-    console.error("[shop-boost/orchestrator] process bootstrap failed", {
-      shopId,
+
+    await seedRunJobs({ runId, shopId, intakeId: intake.id });
+    await markRunRunning(runId, "profiling");
+
+    await updateIntakeProgress({
       intakeId: intake.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  await updateIntakeProgress({
-    intakeId: intake.id,
-    status: "processing",
-    currentStep: "parsing_files",
-    progressPercent: 15,
-    patch: { startedAt: new Date().toISOString(), lastError: null },
-  });
-
-  const errors: string[] = [];
-
-  const withAttempt = async <T,>(jobType: JobType, fn: () => Promise<T>): Promise<T> => {
-    if (!runId || !jobIdByType[jobType]) return fn();
-
-    const workerId = `api-shop-boost-process:${jobType}`;
-    activeJobType = jobType;
-    await markRunRunning(runId, RUN_STATE_BY_JOB[jobType]);
-    await setJobRunning({ runId, jobType });
-    const attemptId = await createAttempt({
-      jobId: jobIdByType[jobType] as string,
-      runId,
-      workerId,
+      status: "processing",
+      currentStep: "parsing_files",
+      progressPercent: 15,
+      patch: { startedAt: new Date().toISOString(), lastError: null },
     });
 
-    try {
-      const result = await fn();
-      if (attemptId) {
-        await completeAttempt({
-          attemptId,
-          status: "succeeded",
-          metrics: { completed_at: new Date().toISOString() },
-        });
-      }
-      activeJobType = null;
-      return result;
-    } catch (error) {
-      await setJobResult({
+    for (let pass = 0; pass < MAX_EXECUTOR_PASSES; pass += 1) {
+      const workerId = `api-shop-boost-process:${runId}:pass-${pass + 1}`;
+      const claimed = await claimNextRunnableJob({ runId, workerId });
+      if (!claimed) break;
+
+      const attemptId = await createAttempt({
+        jobId: claimed.id,
         runId,
-        jobType,
-        status: "retryable_failed",
-        errorCode: "PROCESS_STEP_FAILED",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        workerId,
       });
-      if (attemptId) {
-        await completeAttempt({
-          attemptId,
-          status: "failed",
-          errorCode: "PROCESS_STEP_FAILED",
-          errorMessage: error instanceof Error ? error.message : String(error),
-          logs: [
-            {
-              at: new Date().toISOString(),
-              step: jobType,
-              message: error instanceof Error ? error.message : String(error),
+
+      try {
+        if (claimed.jobType === "profile") {
+          await markRunRunning(runId, "profiling");
+          await updateIntakeProgress({ intakeId: intake.id, currentStep: "generating_suggestions", progressPercent: 35 });
+          const snapshot = await buildShopBoostProfile({ shopId, intakeId: intake.id });
+          if (!snapshot) {
+            errors.push("AI snapshot generation failed; import continued.");
+          }
+          await markClaimedJobResult({
+            jobId: claimed.id,
+            status: "succeeded",
+            result: { has_snapshot: Boolean(snapshot) },
+          });
+        }
+
+        if (claimed.jobType === "materialize") {
+          await markRunRunning(runId, "materialize");
+          await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
+          latestImportSummary = await runShopBoostImport({ shopId, intakeId: intake.id, options: { createStaffUsers: false } });
+          await markClaimedJobResult({
+            jobId: claimed.id,
+            status: "succeeded",
+            result: {
+              completionState: latestImportSummary.completionState,
+              rowResults: latestImportSummary.rowResults,
+              canonicalMaterialization: latestImportSummary.canonicalMaterialization,
+              customersImported: latestImportSummary.customersImported,
+              vehiclesImported: latestImportSummary.vehiclesImported,
             },
-          ],
+          });
+        }
+
+        if (claimed.jobType === "verify") {
+          await markRunRunning(runId, "verify");
+
+          if (!latestImportSummary) {
+            const jobs = await getRunJobs(runId);
+            const materialize = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "global");
+            latestImportSummary = asImportSummary(asRecord(materialize?.result));
+          }
+
+          if (!latestImportSummary) {
+            await markClaimedJobResult({
+              jobId: claimed.id,
+              status: "blocked_manual",
+              errorCode: "VERIFY_INPUT_MISSING",
+              errorMessage: "Materialize result is missing for verify job.",
+            });
+          } else {
+            const integrityErrors = asBoolArray(latestImportSummary.rowResults.integrityErrors);
+            const totalRows = Number(latestImportSummary.rowResults.totalRows ?? 0);
+            const pendingReviewCount = Number(latestImportSummary.rowResults.reviewCount ?? 0);
+            const failedCount = Number(latestImportSummary.rowResults.failedCount ?? 0);
+
+            latestActivationEval = await evaluateActivationRules(shopId, {
+              completionState: latestImportSummary.completionState,
+              integrityErrorCount: integrityErrors.length,
+              pendingReviewCount,
+              failedCount,
+              totalRows,
+              canonicalStatus: latestImportSummary.canonicalMaterialization.status,
+              canonicalGaps: latestImportSummary.canonicalMaterialization.gaps,
+              customersImported: latestImportSummary.customersImported,
+              vehiclesImported: latestImportSummary.vehiclesImported,
+            });
+
+            await markClaimedJobResult({
+              jobId: claimed.id,
+              status: "succeeded",
+              result: {
+                blockers: latestActivationEval.blockers,
+                activationStatus: latestActivationEval.activationStatus,
+                snapshot: latestActivationEval.snapshot,
+              },
+            });
+          }
+        }
+
+        if (claimed.jobType === "activate") {
+          await markRunRunning(runId, "activate");
+
+          if (!latestActivationEval) {
+            const jobs = await getRunJobs(runId);
+            const verify = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
+            const verifyResult = asRecord(verify?.result);
+            const verifyStatus = String(verifyResult.activationStatus ?? verifyResult.activation_status ?? "blocked");
+            latestActivationEval = {
+              activationStatus: (verifyStatus as ActivationEvaluationResult["activationStatus"]) ?? "blocked",
+              blockers: Array.isArray(verifyResult.blockers) ? verifyResult.blockers.map((v) => String(v)) : [],
+              snapshot: asRecord(verifyResult.snapshot),
+            };
+          }
+
+          await markClaimedJobResult({
+            jobId: claimed.id,
+            status:
+              latestActivationEval.activationStatus === "blocked" || latestActivationEval.activationStatus === "not_eligible"
+                ? "blocked_manual"
+                : "succeeded",
+            result: {
+              activationStatus: latestActivationEval.activationStatus,
+              blockers: latestActivationEval.blockers,
+              snapshot: latestActivationEval.snapshot,
+            },
+          });
+        }
+
+        if (attemptId) {
+          await completeAttempt({
+            attemptId,
+            status: "succeeded",
+            metrics: { completed_at: new Date().toISOString(), jobType: claimed.jobType },
+          });
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const attempts = await getJobAttemptCount(claimed.id);
+        const retryAfter = computeRetryAfter(attempts);
+
+        await markClaimedJobResult({
+          jobId: claimed.id,
+          status: "retryable_failed",
+          errorCode: "PROCESS_STEP_FAILED",
+          errorMessage: msg,
+          retryAfter,
         });
+
+        if (attemptId) {
+          await completeAttempt({
+            attemptId,
+            status: "failed",
+            errorCode: "PROCESS_STEP_FAILED",
+            errorMessage: msg,
+            logs: [{ at: new Date().toISOString(), step: claimed.jobType, message: msg }],
+          });
+        }
+
+        throw error;
       }
-      activeJobType = null;
-      throw error;
     }
-  };
 
-  try {
-    await updateIntakeProgress({ intakeId: intake.id, currentStep: "generating_suggestions", progressPercent: 35 });
+    const jobs = await getRunJobs(runId);
+    const materializeJob = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "global");
+    const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
 
-    const snapshot = await withAttempt("profile", async () => {
-      const out = await buildShopBoostProfile({ shopId, intakeId: intake.id });
-      if (runId) {
-        await setJobResult({
-          runId,
-          jobType: "profile",
-          status: "succeeded",
-          result: {
-            has_snapshot: Boolean(out),
-          },
-        });
-      }
-      return out;
-    });
+    if (!latestImportSummary) {
+      latestImportSummary = asImportSummary(asRecord(materializeJob?.result));
+    }
 
-    if (!snapshot) errors.push("AI snapshot generation failed; import continued.");
-
-    await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
-
-    const importSummary = await withAttempt("materialize", async () => {
-      const out = await runShopBoostImport({ shopId, intakeId: intake.id, options: { createStaffUsers: false } });
-      if (runId) {
-        await setJobResult({
-          runId,
-          jobType: "materialize",
-          status: "succeeded",
-          result: {
-            completionState: out.completionState,
-            rowResults: out.rowResults,
-            canonicalMaterialization: out.canonicalMaterialization,
-          },
-        });
-      }
-      return out;
-    });
-
-    const integrityErrors = asBoolArray(importSummary.rowResults.integrityErrors);
-    const totalRows = Number(importSummary.rowResults.totalRows ?? 0);
-    const pendingReviewCount = Number(importSummary.rowResults.reviewCount ?? 0);
-    const failedCount = Number(importSummary.rowResults.failedCount ?? 0);
-
-    const activationEval = await withAttempt("verify", async () => {
-      const out = await evaluateActivationRules(shopId, {
-        completionState: importSummary.completionState,
-        integrityErrorCount: integrityErrors.length,
-        pendingReviewCount,
-        failedCount,
-        totalRows,
-        canonicalStatus: importSummary.canonicalMaterialization.status,
-        canonicalGaps: importSummary.canonicalMaterialization.gaps,
-        customersImported: importSummary.customersImported,
-        vehiclesImported: importSummary.vehiclesImported,
-      });
-
-      if (runId) {
-        await setJobResult({
-          runId,
-          jobType: "verify",
-          status: "succeeded",
-          result: {
-            blockers: out.blockers,
-            activationStatus: out.activationStatus,
-            snapshot: out.snapshot,
-          },
-        });
-      }
-      return out;
-    });
-
-    await withAttempt("activate", async () => {
-      if (runId) {
-        await setJobResult({
-          runId,
-          jobType: "activate",
-          status: "succeeded",
-          result: {
-            activationStatus: activationEval.activationStatus,
-            blockers: activationEval.blockers,
-          },
-        });
-      }
-    });
-
-    const completedStatus =
-      importSummary.completionState === "PARTIAL_FAILURE" ||
-      importSummary.completionState === "FAILED" ||
-      importSummary.completionState === "NOT_READY" ||
-      errors.length > 0
-        ? "completed_with_errors"
-        : "completed";
+    if (!latestActivationEval) {
+      const verifyResult = asRecord(verifyJob?.result);
+      latestActivationEval = {
+        activationStatus: String(verifyResult.activationStatus ?? "blocked") as ActivationEvaluationResult["activationStatus"],
+        blockers: Array.isArray(verifyResult.blockers) ? verifyResult.blockers.map((v) => String(v)) : [],
+        snapshot: asRecord(verifyResult.snapshot),
+      };
+    }
 
     const intakeRow = await admin
       .from("shop_boost_intakes")
@@ -277,8 +292,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle<{ intake_basics: unknown }>();
 
     const intakeBasics = asRecord(intakeRow.data?.intake_basics);
-    const jobSummary = runId ? await summarizeRunJobs(runId) : null;
-    const lastAttempt = runId ? await getLatestRunAttemptSummary(runId) : null;
+    const jobSummary = await summarizeRunJobs(runId);
+    const lastAttempt = await getLatestRunAttemptSummary(runId);
     const lastError =
       lastAttempt?.status === "failed" || lastAttempt?.errorMessage
         ? {
@@ -287,18 +302,27 @@ export async function POST(req: NextRequest) {
           }
         : null;
 
+    const completedStatus =
+      !latestImportSummary ||
+      latestImportSummary.completionState === "PARTIAL_FAILURE" ||
+      latestImportSummary.completionState === "FAILED" ||
+      latestImportSummary.completionState === "NOT_READY" ||
+      errors.length > 0
+        ? "completed_with_errors"
+        : "completed";
+
     const orchestratorPatch = {
       run_id: runId,
       state: completedStatus,
-      activation_status: activationEval.activationStatus,
-      activation_blockers: activationEval.blockers,
-      activation_snapshot: activationEval.snapshot,
+      activation_status: latestActivationEval.activationStatus,
+      activation_blockers: latestActivationEval.blockers,
+      activation_snapshot: latestActivationEval.snapshot,
       job_summary: jobSummary,
       last_attempt: lastAttempt,
       last_error: lastError,
       runState: completedStatus,
-      activationStatus: activationEval.activationStatus,
-      blockers: activationEval.blockers,
+      activationStatus: latestActivationEval.activationStatus,
+      blockers: latestActivationEval.blockers,
       jobSummary,
       lastAttempt,
       lastError,
@@ -328,39 +352,41 @@ export async function POST(req: NextRequest) {
         failedAt: null,
         lastError: errors.join(" ") || null,
         orchestrator: orchestratorPatch,
-        resultSummary: {
-          customersImported: importSummary.customersImported,
-          vehiclesImported: importSummary.vehiclesImported,
-          partsImported: importSummary.partsImported,
-          workOrdersImported: importSummary.workOrdersImported,
-          invoicesImported: importSummary.invoicesImported,
-          canonicalMaterialization: importSummary.canonicalMaterialization,
-          linkageSummary: importSummary.linkageSummary,
-          shopBuildSummary: importSummary.shopBuildSummary,
-          partsPipeline: importSummary.partsPipeline ?? null,
-          rowResults: importSummary.rowResults,
-          completionState: importSummary.completionState,
-          activation: {
-            status: activationEval.activationStatus,
-            blockers: activationEval.blockers,
-            snapshot: activationEval.snapshot,
-          },
-        },
+        resultSummary: latestImportSummary
+          ? {
+              customersImported: latestImportSummary.customersImported,
+              vehiclesImported: latestImportSummary.vehiclesImported,
+              partsImported: latestImportSummary.partsImported,
+              workOrdersImported: latestImportSummary.workOrdersImported,
+              invoicesImported: latestImportSummary.invoicesImported,
+              canonicalMaterialization: latestImportSummary.canonicalMaterialization,
+              linkageSummary: latestImportSummary.linkageSummary,
+              shopBuildSummary: latestImportSummary.shopBuildSummary,
+              partsPipeline: latestImportSummary.partsPipeline ?? null,
+              rowResults: latestImportSummary.rowResults,
+              completionState: latestImportSummary.completionState,
+              activation: {
+                status: latestActivationEval.activationStatus,
+                blockers: latestActivationEval.blockers,
+                snapshot: latestActivationEval.snapshot,
+              },
+            }
+          : null,
       },
     });
 
-    if (runId) {
+    if (latestImportSummary) {
       await markRunSucceeded({
         runId,
         metrics: {
-          completionState: importSummary.completionState,
+          completionState: latestImportSummary.completionState,
           completedStatus,
-          rowResults: importSummary.rowResults,
-          canonicalMaterialization: importSummary.canonicalMaterialization,
+          rowResults: latestImportSummary.rowResults,
+          canonicalMaterialization: latestImportSummary.canonicalMaterialization,
         },
-        activationSnapshot: activationEval.snapshot,
-        activationStatus: activationEval.activationStatus,
-        blockers: activationEval.blockers,
+        activationSnapshot: latestActivationEval.snapshot,
+        activationStatus: latestActivationEval.activationStatus,
+        blockers: latestActivationEval.blockers,
       });
     }
 
@@ -368,13 +394,11 @@ export async function POST(req: NextRequest) {
       ok: true,
       intakeId: intake.id,
       status: completedStatus,
-      orchestrator: runId
-        ? {
-            runId,
-            activationStatus: activationEval.activationStatus,
-            activationBlockers: activationEval.blockers,
-          }
-        : null,
+      orchestrator: {
+        runId,
+        activationStatus: latestActivationEval.activationStatus,
+        activationBlockers: latestActivationEval.blockers,
+      },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to process intake";
@@ -390,15 +414,6 @@ export async function POST(req: NextRequest) {
     });
 
     if (runId) {
-      if (activeJobType) {
-        await setJobResult({
-          runId,
-          jobType: activeJobType,
-          status: "retryable_failed",
-          errorCode: "PROCESS_FAILED",
-          errorMessage: msg,
-        });
-      }
       const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await markRunRetryable(runId, "PROCESS_FAILED", msg, retryAt);
     }
