@@ -73,6 +73,30 @@ export type ShopBoostImportSummary = {
     inspectionSuggestions: number;
   };
   partsPipeline?: PartsPipelineSummary;
+  canonicalMaterialization: {
+    expected: {
+      customers: number;
+      vehicles: number;
+      workOrders: number;
+      invoices: number;
+      staff: number;
+    };
+    actual: {
+      customers: number;
+      vehicles: number;
+      workOrders: number;
+      invoices: number;
+      staffSuggestions: number;
+      staffCandidates: number;
+    };
+    gaps: {
+      missingVehicles: boolean;
+      missingWorkOrders: boolean;
+      missingInvoices: boolean;
+      missingStaff: boolean;
+    };
+    status: "ok" | "partial";
+  };
   rowResults: {
     totalRows: number;
     processedRows: number;
@@ -968,6 +992,17 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         },
       },
       shopBuildSummary: emptyShopBuildSummary,
+      canonicalMaterialization: {
+        expected: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staff: 0 },
+        actual: { customers: 0, vehicles: 0, workOrders: 0, invoices: 0, staffSuggestions: 0, staffCandidates: 0 },
+        gaps: {
+          missingVehicles: false,
+          missingWorkOrders: false,
+          missingInvoices: false,
+          missingStaff: false,
+        },
+        status: "partial",
+      },
       rowResults: {
         totalRows: 0,
         processedRows: 0,
@@ -1672,9 +1707,17 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
 
   // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
+  let staffRowsExpected = 0;
   if (staffCsv) {
     const { rows } = parseCsv(staffCsv);
+    staffRowsExpected = rows.length;
     await supabase.from("staff_invite_suggestions").delete().eq("shop_id", shopId).eq("intake_id", intakeId);
+    await supabase
+      .from("staff_invite_candidates")
+      .delete()
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId)
+      .eq("source", "shop_boost_import");
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
@@ -1737,6 +1780,25 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       if (staffInsErr) {
         console.warn("[staff invite suggestions] upsert failed", staffInsErr);
       }
+
+      const { error: candidateInsErr } = await supabase.from("staff_invite_candidates").insert(
+        {
+          shop_id: shopId,
+          intake_id: intakeId,
+          full_name: fullName,
+          email,
+          phone: phone || null,
+          username,
+          role,
+          confidence: 0.75,
+          notes,
+          source: "shop_boost_import",
+          status: "pending",
+        } as DB["public"]["Tables"]["staff_invite_candidates"]["Insert"],
+      );
+      if (candidateInsErr) {
+        console.warn("[staff invite candidates] insert failed", candidateInsErr);
+      }
     }
   }
 
@@ -1798,7 +1860,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         null;
       const vehicle_id = sourceMatchedVehicleId || fallbackVehicleId || null;
 
-      if (!customer_id || !vehicle_id) {
+      if (!customer_id) {
         rowOutcome.processedRows += 1;
         rowOutcome.reviewCount += 1;
         rowOutcome.byDomain.history.review += 1;
@@ -1808,9 +1870,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           intakeId,
           domain: "work_order",
           issueType: "missing_dependency",
-          summary: !customer_id
-            ? "History row skipped because customer could not be matched."
-            : "History row skipped because vehicle could not be matched.",
+          summary: "History row skipped because customer could not be matched.",
           rawPayload: row,
           suggestedMatches: [{ customerEmail, customerPhone, vin, plate }],
         });
@@ -1838,7 +1898,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           targetDomain: "work_order",
           matchStatus: "unmatched",
           matchConfidence: "low",
-          errorReason: !customer_id ? "missing_customer_match" : "missing_vehicle_match",
+          errorReason: "missing_customer_match",
           reviewRequired: true,
         });
         continue;
@@ -1989,6 +2049,21 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       if (!workOrderId) continue;
       if (sourceWorkOrderKey) workOrdersBySourceId.set(sourceWorkOrderKey, workOrderId);
 
+      if (!vehicle_id) {
+        rowOutcome.reviewCount += 1;
+        rowOutcome.byDomain.history.review += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          issueType: "missing_dependency",
+          summary: "History row materialized without a matched vehicle. Customer linkage succeeded.",
+          rawPayload: row,
+          suggestedMatches: [{ customerEmail, customerPhone, vin, plate }],
+        });
+      }
+
       await upsertHistoryLine({
         supabase,
         shopId,
@@ -2036,10 +2111,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           parts,
         },
         targetDomain: "work_order",
-        matchStatus: woByExternal?.id ? "matched_existing" : "created_new",
-        matchConfidence: "high",
+        matchStatus: !vehicle_id ? "partial_match" : woByExternal?.id ? "matched_existing" : "created_new",
+        matchConfidence: !vehicle_id ? "medium" : "high",
         matchDetails: { workOrderId, customerId: customer_id, vehicleId: vehicle_id },
-        reviewRequired: false,
+        errorReason: !vehicle_id ? "missing_vehicle_match" : undefined,
+        reviewRequired: !vehicle_id,
       });
     }
   }
@@ -2508,6 +2584,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     unresolvedWorkOrdersMissingCustomer,
     unresolvedWorkOrdersMissingVehicle,
     unresolvedInvoicesMissingCustomer,
+    staffSuggestionsCount,
+    staffCandidatesCount,
   ] = await Promise.all([
       supabase
         .from("customers")
@@ -2563,7 +2641,63 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         .eq("shop_id", shopId)
         .contains("metadata", { source_intake_id: intakeId })
         .is("customer_id", null),
+      supabase
+        .from("staff_invite_suggestions")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("intake_id", intakeId),
+      supabase
+        .from("staff_invite_candidates")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("intake_id", intakeId)
+        .eq("source", "shop_boost_import"),
     ]);
+
+  const expectedVehicles = parsedVehicles.length;
+  const expectedWorkOrders = parsedHistory.length;
+  const expectedInvoices = parsedInvoices.length;
+  const expectedStaff = staffRowsExpected;
+  const canonicalMaterialization: ShopBoostImportSummary["canonicalMaterialization"] = {
+    expected: {
+      customers: parsedCustomers.length,
+      vehicles: expectedVehicles,
+      workOrders: expectedWorkOrders,
+      invoices: expectedInvoices,
+      staff: expectedStaff,
+    },
+    actual: {
+      customers: customersCount.count ?? 0,
+      vehicles: vehiclesCount.count ?? 0,
+      workOrders: workOrdersCount.count ?? 0,
+      invoices: invoicesCount.count ?? 0,
+      staffSuggestions: staffSuggestionsCount.count ?? 0,
+      staffCandidates: staffCandidatesCount.count ?? 0,
+    },
+    gaps: {
+      missingVehicles: expectedVehicles > 0 && (vehiclesCount.count ?? 0) === 0,
+      missingWorkOrders: expectedWorkOrders > 0 && (workOrdersCount.count ?? 0) === 0,
+      missingInvoices: expectedInvoices > 0 && (invoicesCount.count ?? 0) === 0,
+      missingStaff: expectedStaff > 0 && (staffSuggestionsCount.count ?? 0) === 0,
+    },
+    status: "ok",
+  };
+  canonicalMaterialization.status =
+    canonicalMaterialization.gaps.missingVehicles ||
+    canonicalMaterialization.gaps.missingWorkOrders ||
+    canonicalMaterialization.gaps.missingInvoices ||
+    canonicalMaterialization.gaps.missingStaff
+      ? "partial"
+      : "ok";
+
+  const effectiveCompletionState: ShopBoostImportSummary["completionState"] =
+    canonicalMaterialization.status === "partial" &&
+    (completionState === "COMPLETED_CLEAN" ||
+      completionState === "COMPLETED_WITH_REVIEW" ||
+      completionState === "COMPLETED_WITH_WARNINGS" ||
+      completionState === "READY_FOR_GO_LIVE")
+      ? "NOT_READY"
+      : completionState;
 
   const migrationStory = buildMigrationStory({
     totalRows: rowOutcome.totalRows,
@@ -2619,7 +2753,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             partsPipeline: partsPipelineSummary ?? null,
             shopBuildSummary,
             rowResults: rowOutcome,
-            completionState,
+            completionState: effectiveCompletionState,
+            canonicalMaterialization,
             integrity: { ...integrity, integrity_errors: integrityErrors },
             ignoredCount,
             confidence_score: trustScore,
@@ -2636,7 +2771,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             failed_count: rowOutcome.failedCount,
             ignored_count: ignoredCount,
             domains: rowOutcome.byDomain,
-            completionState,
+            completionState: effectiveCompletionState,
             integrity: { ...integrity, integrity_errors: integrityErrors },
             integrity_errors: integrityErrors,
             row_outcome_buckets: outcomeBuckets,
@@ -2648,7 +2783,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
               pendingReviewCount === 0 &&
               failedReviewCount === 0 &&
               rowOutcome.failedCount === 0 &&
-              outcomeBuckets.mismatch === 0,
+              outcomeBuckets.mismatch === 0 &&
+              canonicalMaterialization.status === "ok",
           },
         },
       } satisfies DB["public"]["Tables"]["shop_boost_intakes"]["Update"],
@@ -2678,8 +2814,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     },
     partsPipeline: partsPipelineSummary,
     shopBuildSummary,
+    canonicalMaterialization,
     rowResults: rowOutcome,
-    completionState,
+    completionState: effectiveCompletionState,
   };
 }
 
