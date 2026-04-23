@@ -245,6 +245,7 @@ export default function ShopBoostOnboardingPage() {
         setError(json.error || "Failed to queue Shop Boost migration.");
         return;
       }
+      const resolvedIntakeId = json.intakeId;
 
       try {
         await fetch("/api/shop-boost/intakes/process", {
@@ -256,11 +257,40 @@ export default function ShopBoostOnboardingPage() {
         // best-effort kickoff; cron/owner retry will continue
       }
 
+      const resolveNextRoute = async (): Promise<string> => {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          try {
+            const latestRes = await fetch("/api/shop-boost/intakes/latest", { cache: "no-store" });
+            const latestJson = (await latestRes.json().catch(() => null)) as
+              | {
+                  ok?: boolean;
+                  intake?: {
+                    id?: string;
+                    status?: string;
+                    readiness?: { ui_should_route_forward?: boolean; blockers?: unknown[]; verify_status?: string | null } | null;
+                  } | null;
+                }
+              | null;
+            const readiness = latestJson?.intake?.readiness;
+            const matchesIntake = latestJson?.intake?.id === resolvedIntakeId;
+            if (matchesIntake && readiness?.ui_should_route_forward) {
+              return "/dashboard?setup=shop-boost";
+            }
+            const settled = matchesIntake && latestJson?.intake?.status !== "processing";
+            if (settled) break;
+          } catch {
+            // keep polling
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        return `/dashboard/setup/review?source=shop-boost&intakeId=${encodeURIComponent(resolvedIntakeId)}`;
+      };
+
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(UPLOAD_SESSION_STORAGE_KEY);
       }
 
-      router.replace("/dashboard?setup=shop-boost");
+      router.replace(await resolveNextRoute());
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error during upload.";
       setError(message);

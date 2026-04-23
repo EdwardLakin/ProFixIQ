@@ -7,6 +7,7 @@ import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
   getLatestRunAttemptSummary,
   getRunByShopIntake,
+  getRunJobs,
   summarizeRunJobs,
   summarizeRunJobsDetailed,
 } from "@/features/integrations/shopBoost/orchestrator";
@@ -67,19 +68,61 @@ export async function GET() {
     });
 
     if (run?.id) {
+      const jobs = await getRunJobs(run.id);
+      const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
+      const activateJob = jobs.find((job) => job.job_type === "activate" && String(job.domain ?? "global") === "global");
+      const verifyResult = asRecord(verifyJob?.result);
+      const domains = asRecord(verifyResult.domains);
+      const canonicalSummary = asRecord(verifyResult.canonicalSummary);
+      const stateModel = asRecord(verifyResult.stateModel);
+      const verifyStatus = String(verifyResult.verifyStatus ?? "partial");
+      const verifyPassed = verifyResult.verifyPassed === true;
+      const activationEligible = run.activation_status === "eligible" || run.activation_status === "activated";
+      const activated = run.activation_status === "activated";
+      const uiShouldRouteForward = verifyPassed && activationEligible;
       const jobSummary = await summarizeRunJobs(run.id);
       const jobSummaryDetailed = await summarizeRunJobsDetailed(run.id);
       const lastAttempt = await getLatestRunAttemptSummary(run.id);
       orchestrator = {
         runId: run.id,
         runState: run.state,
+        verifyStatus,
+        verifyPassed,
         activationStatus: run.activation_status,
         blockers: run.activation_blockers ?? [],
+        canonicalSummary,
+        domainPassCount: Number(domains.passCount ?? 0),
+        domainFailCount: Number(domains.failCount ?? 0),
+        domainPendingCount: Number(domains.pendingCount ?? 0),
+        truthStates: {
+          snapshot_complete: Boolean(verifyJob),
+          import_complete: Boolean(stateModel.import_complete),
+          canonical_ready: Boolean(stateModel.canonical_ready),
+          activation_eligible: activationEligible,
+          activated,
+        },
+        uiShouldRouteForward,
         jobSummary,
         jobSummaryDetailed,
         lastAttempt,
         state: run.state,
         activationBlockers: run.activation_blockers ?? [],
+        verify_result: verifyResult,
+        verify_status: verifyStatus,
+        verify_passed: verifyPassed,
+        canonical_summary: canonicalSummary,
+        domain_pass_count: Number(domains.passCount ?? 0),
+        domain_fail_count: Number(domains.failCount ?? 0),
+        domain_pending_count: Number(domains.pendingCount ?? 0),
+        truth_states: {
+          snapshot_complete: Boolean(verifyJob),
+          import_complete: Boolean(stateModel.import_complete),
+          canonical_ready: Boolean(stateModel.canonical_ready),
+          activation_eligible: activationEligible,
+          activated,
+        },
+        ui_should_route_forward: uiShouldRouteForward,
+        activate_job_status: activateJob?.status ?? null,
         jobs: jobSummary,
         jobsDetailed: jobSummaryDetailed,
         lastError:
@@ -104,7 +147,15 @@ export async function GET() {
       runId: basicsOrchestrator.run_id ?? null,
       runState: basicsOrchestrator.state ?? null,
       activationStatus: basicsOrchestrator.activation_status ?? null,
+      verifyStatus: basicsOrchestrator.verify_status ?? null,
+      verifyPassed: basicsOrchestrator.verify_passed ?? null,
       blockers: basicsOrchestrator.activation_blockers ?? [],
+      canonicalSummary: basicsOrchestrator.canonical_summary ?? null,
+      domainPassCount: basicsOrchestrator.domain_pass_count ?? null,
+      domainFailCount: basicsOrchestrator.domain_fail_count ?? null,
+      domainPendingCount: basicsOrchestrator.domain_pending_count ?? null,
+      truthStates: basicsOrchestrator.truth_states ?? null,
+      uiShouldRouteForward: basicsOrchestrator.ui_should_route_forward ?? null,
       jobSummary: basicsOrchestrator.job_summary ?? null,
       lastAttempt: basicsOrchestrator.last_attempt ?? null,
       state: basicsOrchestrator.state ?? null,
@@ -113,6 +164,9 @@ export async function GET() {
       lastError: basicsOrchestrator.last_error ?? null,
     };
   }
+
+  const orchestratorRecord = asRecord(orchestrator);
+  const truthStates = asRecord(orchestratorRecord.truthStates ?? orchestratorRecord.truth_states);
 
   return NextResponse.json({
     ok: true,
@@ -123,6 +177,23 @@ export async function GET() {
       processedAt: intake.processed_at,
       progress: toIntakeProgress(intake as never),
       orchestrator,
+      readiness: orchestrator
+        ? {
+            snapshot_complete: Boolean(truthStates.snapshot_complete),
+            import_complete: Boolean(truthStates.import_complete),
+            canonical_ready: Boolean(truthStates.canonical_ready),
+            activation_eligible: Boolean(truthStates.activation_eligible),
+            activated: Boolean(truthStates.activated),
+            verify_status: orchestratorRecord.verifyStatus ?? orchestratorRecord.verify_status ?? null,
+            verify_passed: orchestratorRecord.verifyPassed ?? orchestratorRecord.verify_passed ?? null,
+            blockers: orchestratorRecord.blockers ?? orchestratorRecord.activation_blockers ?? [],
+            domain_pass_count: orchestratorRecord.domainPassCount ?? orchestratorRecord.domain_pass_count ?? 0,
+            domain_fail_count: orchestratorRecord.domainFailCount ?? orchestratorRecord.domain_fail_count ?? 0,
+            domain_pending_count: orchestratorRecord.domainPendingCount ?? orchestratorRecord.domain_pending_count ?? 0,
+            canonical_summary: orchestratorRecord.canonicalSummary ?? orchestratorRecord.canonical_summary ?? null,
+            ui_should_route_forward: orchestratorRecord.uiShouldRouteForward ?? orchestratorRecord.ui_should_route_forward ?? false,
+          }
+        : null,
     },
   });
 }

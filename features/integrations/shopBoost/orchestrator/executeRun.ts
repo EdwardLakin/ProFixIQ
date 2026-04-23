@@ -31,6 +31,20 @@ function toRetryableStatus(summary: ShopBoostImportSummary): "succeeded" | "retr
   return "succeeded";
 }
 
+type VerifyOutcomeStatus = "passed" | "failed" | "partial";
+
+function toVerifyOutcomeStatus(params: {
+  domainJobsTotal: number;
+  domainFailed: number;
+  domainPending: number;
+  activationStatus: ActivationEvaluationResult["activationStatus"];
+}): VerifyOutcomeStatus {
+  if (params.domainJobsTotal === 0 || params.domainPending > 0) return "partial";
+  if (params.domainFailed > 0) return "failed";
+  if (params.activationStatus === "blocked" || params.activationStatus === "not_eligible") return "failed";
+  return "passed";
+}
+
 export async function executeShopBoostRun(args: {
   runId: string;
   shopId: string;
@@ -114,6 +128,9 @@ export async function executeShopBoostRun(args: {
           const failedDomains = domainJobs
             .filter((job) => ["retryable_failed", "terminal_failed"].includes(String(job.status)))
             .map((job) => String(job.domain ?? "global"));
+          const pendingDomains = domainJobs
+            .filter((job) => ["queued", "running", "retryable_failed"].includes(String(job.status)))
+            .map((job) => String(job.domain ?? "global"));
           const domainOutcomes = domainJobs.reduce(
             (acc: Record<string, { status: string; importedCount: number; rowResults: { success: number; review: number; failed: number } | null }>, job) => {
               const jobDomain = String(job.domain ?? "global");
@@ -153,19 +170,76 @@ export async function executeShopBoostRun(args: {
             vehiclesImported: latestImportSummary.vehiclesImported,
           });
 
+          const verifyStatus = toVerifyOutcomeStatus({
+            domainJobsTotal: domainJobs.length,
+            domainFailed: blockedDomains.length + failedDomains.length,
+            domainPending: pendingDomains.length,
+            activationStatus: latestActivationEval.activationStatus,
+          });
+          const activationEligible =
+            latestActivationEval.activationStatus === "eligible" || latestActivationEval.activationStatus === "activated";
+          const activated = latestActivationEval.activationStatus === "activated";
+          const verifyBlockers = [
+            ...latestActivationEval.blockers,
+            ...blockedDomains.map((domain) => `Materialize domain ${domain} is blocked.`),
+            ...failedDomains.map((domain) => `Materialize domain ${domain} failed.`),
+            ...pendingDomains.map((domain) => `Materialize domain ${domain} still pending.`),
+          ];
+          const recommendedNextAction =
+            verifyStatus === "passed"
+              ? activated
+                ? "dashboard"
+                : "activate/global"
+              : verifyStatus === "partial"
+                ? "wait_for_materialize"
+                : "review_queue";
+
           await markClaimedJobResult({
             jobId: claimed.id,
             status: "succeeded",
             result: {
+              verifyStatus,
+              verifyPassed: verifyStatus === "passed",
+              nextAction: recommendedNextAction,
               blockers: latestActivationEval.blockers,
               activationStatus: latestActivationEval.activationStatus,
               snapshot: latestActivationEval.snapshot,
+              stateModel: {
+                snapshot_complete: true,
+                import_complete: pendingDomains.length === 0 && blockedDomains.length === 0 && failedDomains.length === 0,
+                canonical_ready: latestImportSummary.canonicalMaterialization.status === "ok",
+                activation_eligible: activationEligible,
+                activated,
+              },
               domains: {
                 required: MATERIALIZE_DOMAINS,
                 blocked: blockedDomains,
                 failed: failedDomains,
+                pending: pendingDomains,
                 statusCounts: domainStatusCounts,
                 outcomes: domainOutcomes,
+                passCount: domainJobs.filter((job) => String(job.status) === "succeeded").length,
+                failCount: blockedDomains.length + failedDomains.length,
+                pendingCount: pendingDomains.length,
+              },
+              canonicalSummary: latestImportSummary.canonicalMaterialization,
+              review: {
+                totalRows: Number(latestImportSummary.rowResults.totalRows ?? 0),
+                pendingReviewCount: Number(latestImportSummary.rowResults.reviewCount ?? 0),
+                pendingReviewRatio:
+                  Number(latestImportSummary.rowResults.totalRows ?? 0) > 0
+                    ? Number(latestImportSummary.rowResults.reviewCount ?? 0) /
+                      Number(latestImportSummary.rowResults.totalRows ?? 0)
+                    : 0,
+              },
+              integrity: {
+                integrityErrorCount: integrityErrors.length,
+                integrityErrors,
+              },
+              activationPolicy: {
+                eligible: activationEligible,
+                blockers: verifyBlockers,
+                activationStatus: latestActivationEval.activationStatus,
               },
               canonicalGaps: latestImportSummary.canonicalMaterialization.gaps,
               completionState: latestImportSummary.completionState,
@@ -176,11 +250,12 @@ export async function executeShopBoostRun(args: {
 
       if (claimed.jobType === "activate") {
         await markRunRunning(args.runId, "activate");
+        const jobs = await getRunJobs(args.runId);
+        const verify = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
+        const verifyResult = asRecord(verify?.result);
+        const verifyPassed = verifyResult.verifyPassed === true;
 
         if (!latestActivationEval) {
-          const jobs = await getRunJobs(args.runId);
-          const verify = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
-          const verifyResult = asRecord(verify?.result);
           const verifyStatus = String(verifyResult.activationStatus ?? verifyResult.activation_status ?? "blocked");
           latestActivationEval = {
             activationStatus: (verifyStatus as ActivationEvaluationResult["activationStatus"]) ?? "blocked",
@@ -192,14 +267,17 @@ export async function executeShopBoostRun(args: {
         await markClaimedJobResult({
           jobId: claimed.id,
           status:
-            latestActivationEval.activationStatus === "blocked" || latestActivationEval.activationStatus === "not_eligible"
+            latestActivationEval.activationStatus === "blocked" ||
+            latestActivationEval.activationStatus === "not_eligible" ||
+            !verifyPassed
               ? "blocked_manual"
               : "succeeded",
           result: {
             activationStatus: latestActivationEval.activationStatus,
-            blockers: latestActivationEval.blockers,
+            blockers: verifyPassed ? latestActivationEval.blockers : ["verify/global did not pass.", ...latestActivationEval.blockers],
             snapshot: latestActivationEval.snapshot,
             source: "verify/global",
+            verifyPassed,
           },
         });
       }

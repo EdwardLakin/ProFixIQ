@@ -59,6 +59,16 @@ type CanonicalImportStats = {
 type Props = {
   shopId: string | null;
 };
+type LatestReadiness = {
+  snapshot_complete: boolean;
+  import_complete: boolean;
+  canonical_ready: boolean;
+  activation_eligible: boolean;
+  activated: boolean;
+  verify_status?: string | null;
+  blockers?: unknown[];
+  ui_should_route_forward?: boolean;
+};
 
 const cardBase =
   "rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur";
@@ -120,6 +130,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const [overview, setOverview] = useState<ShopBoostOverviewRow | null>(null);
   const [suggestions, setSuggestions] = useState<ShopBoostSuggestionRow[]>([]);
   const [canonicalStats, setCanonicalStats] = useState<CanonicalImportStats | null>(null);
+  const [latestReadiness, setLatestReadiness] = useState<LatestReadiness | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -210,6 +221,13 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       setSuggestions(mergedSuggestions);
 
       if (intakeId) {
+        try {
+          const latestRes = await fetch("/api/shop-boost/intakes/latest", { cache: "no-store" });
+          const latestJson = (await latestRes.json().catch(() => null)) as { intake?: { readiness?: LatestReadiness | null } } | null;
+          setLatestReadiness(latestJson?.intake?.readiness ?? null);
+        } catch {
+          setLatestReadiness(null);
+        }
         const canonicalCounts = await Promise.all([
           supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
           supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
@@ -226,6 +244,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
         });
       } else {
         setCanonicalStats(null);
+        setLatestReadiness(null);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load Shop Health.";
@@ -234,6 +253,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       setOverview(null);
       setSuggestions([]);
       setCanonicalStats(null);
+      setLatestReadiness(null);
     } finally {
       setLoading(false);
     }
@@ -529,6 +549,23 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                   (canonicalStats.vehicles === 0 || canonicalStats.workOrders === 0)) ? (
                   <div className="mt-2 text-[11px] text-amber-200">
                     Staged snapshot data can look healthy while canonical graph materialization is still incomplete.
+                  </div>
+                ) : null}
+                {latestReadiness ? (
+                  <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-neutral-200">
+                    <div className="font-medium text-neutral-100">Activation truth states</div>
+                    <div className="mt-1 grid gap-1 md:grid-cols-5">
+                      <div>Snapshot: <span className={latestReadiness.snapshot_complete ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.snapshot_complete ? "complete" : "pending"}</span></div>
+                      <div>Import: <span className={latestReadiness.import_complete ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.import_complete ? "complete" : "pending"}</span></div>
+                      <div>Canonical: <span className={latestReadiness.canonical_ready ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.canonical_ready ? "ready" : "not ready"}</span></div>
+                      <div>Eligible: <span className={latestReadiness.activation_eligible ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.activation_eligible ? "yes" : "no"}</span></div>
+                      <div>Activated: <span className={latestReadiness.activated ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.activated ? "yes" : "no"}</span></div>
+                    </div>
+                    {!latestReadiness.ui_should_route_forward ? (
+                      <div className="mt-1 text-amber-200">
+                        Routing remains in review flow until verify/global passes activation policy.
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
