@@ -117,6 +117,8 @@ export type RunAttemptSummary = {
 };
 
 export type ClaimableJobType = "profile" | "materialize" | "verify" | "activate";
+export type MaterializeDomain = "customers" | "vehicles" | "history" | "invoices" | "parts" | "staff";
+type JobSeedDef = { job_type: ClaimableJobType; domain: string; priority: number };
 export type ClaimedOnboardingJob = {
   id: string;
   runId: string;
@@ -128,12 +130,25 @@ export type ClaimedOnboardingJob = {
   retryAfter: string | null;
 };
 
-const SEED_JOBS = [
+export const MATERIALIZE_DOMAINS: MaterializeDomain[] = [
+  "customers",
+  "vehicles",
+  "history",
+  "invoices",
+  "parts",
+  "staff",
+];
+
+const SEED_JOBS: JobSeedDef[] = [
   { job_type: "profile", domain: "global", priority: 20 },
-  { job_type: "materialize", domain: "global", priority: 40 },
-  { job_type: "verify", domain: "global", priority: 60 },
-  { job_type: "activate", domain: "global", priority: 80 },
-] as const;
+  ...MATERIALIZE_DOMAINS.map((domain, idx) => ({
+    job_type: "materialize" as const,
+    domain,
+    priority: 40 + idx * 5,
+  })),
+  { job_type: "verify", domain: "global", priority: 80 },
+  { job_type: "activate", domain: "global", priority: 100 },
+];
 
 const DEFAULT_RULES: ResolvedActivationRules = {
   min_customer_rows: 1,
@@ -451,11 +466,20 @@ function isReadyForRetry(retryAfter: string | null | undefined): boolean {
   return ts <= Date.now();
 }
 
-function predecessorFor(jobType: ClaimableJobType): ClaimableJobType | null {
-  if (jobType === "profile") return null;
-  if (jobType === "materialize") return "profile";
-  if (jobType === "verify") return "materialize";
-  return "verify";
+function jobKey(jobType: string, domain: string | null | undefined): string {
+  return `${jobType}/${String(domain ?? "global")}`;
+}
+
+function dependenciesFor(jobType: ClaimableJobType, _domain: string): Array<{ jobType: ClaimableJobType; domain: string }> {
+  if (jobType === "profile") return [];
+  if (jobType === "materialize") return [{ jobType: "profile", domain: "global" }];
+  if (jobType === "verify") {
+    return MATERIALIZE_DOMAINS.map((materializeDomain) => ({
+      jobType: "materialize" as const,
+      domain: materializeDomain,
+    }));
+  }
+  return [{ jobType: "verify", domain: "global" }];
 }
 
 export async function getRunJobs(runId: string): Promise<OnboardingJobRow[]> {
@@ -506,24 +530,50 @@ export async function claimNextRunnableJob(args: {
   const jobs = await getRunJobs(args.runId);
   if (!jobs.length) return null;
 
-  const byType = new Map<ClaimableJobType, OnboardingJobRow>();
+  const byKey = new Map<string, OnboardingJobRow>();
   for (const job of jobs) {
-    if (isClaimableJobType(job.job_type) && String(job.domain ?? "global") === "global") {
-      byType.set(job.job_type, job);
+    if (isClaimableJobType(job.job_type)) {
+      byKey.set(jobKey(job.job_type, job.domain), job);
     }
   }
 
   for (const seed of SEED_JOBS) {
-    const job = byType.get(seed.job_type);
-    if (!job) continue;
+    const job = byKey.get(jobKey(seed.job_type, seed.domain));
+    if (!job || !isClaimableJobType(job.job_type)) continue;
     const status = String(job.status ?? "queued");
     if (status !== "queued" && status !== "retryable_failed") continue;
     if (!isReadyForRetry(job.retry_after)) continue;
 
-    const predecessorType = predecessorFor(seed.job_type);
-    if (predecessorType) {
-      const predecessor = byType.get(predecessorType);
-      if (!predecessor || predecessor.status !== "succeeded") continue;
+    const dependencies = dependenciesFor(job.job_type, String(job.domain ?? "global"));
+    let dependencyBlocked = false;
+    let waitingForDependency = false;
+    for (const dep of dependencies) {
+      const predecessor = byKey.get(jobKey(dep.jobType, dep.domain));
+      const predecessorStatus = String(predecessor?.status ?? "missing");
+      if (!predecessor || predecessorStatus === "queued" || predecessorStatus === "running" || predecessorStatus === "retryable_failed") {
+        waitingForDependency = true;
+        break;
+      }
+      if (predecessorStatus !== "succeeded") {
+        dependencyBlocked = true;
+        break;
+      }
+    }
+    if (waitingForDependency) continue;
+    if (dependencyBlocked) {
+      await supabase
+        .from("shop_onboarding_jobs")
+        .update({
+          status: "blocked_manual" satisfies OrchestratorJobStatus,
+          error_code: "DEPENDENCY_BLOCKED",
+          error_message: "One or more predecessor jobs did not succeed.",
+          locked_at: null,
+          locked_by: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id)
+        .in("status", ["queued", "retryable_failed"]);
+      continue;
     }
 
     const maxAttempts = Math.max(1, Number(job.max_attempts ?? 3));
@@ -653,6 +703,45 @@ export async function summarizeRunJobs(runId: string): Promise<Record<string, nu
   }
 
   return summary;
+}
+
+export async function summarizeRunJobsDetailed(runId: string): Promise<{
+  byStatus: Record<string, number>;
+  byDomainStatus: Record<string, Record<string, number>>;
+  domains: {
+    blocked: string[];
+    failed: string[];
+    pending: string[];
+    succeeded: string[];
+  };
+}> {
+  const jobs = await getRunJobs(runId);
+  const byStatus: Record<string, number> = {};
+  const byDomainStatus: Record<string, Record<string, number>> = {};
+  const domains = {
+    blocked: [] as string[],
+    failed: [] as string[],
+    pending: [] as string[],
+    succeeded: [] as string[],
+  };
+
+  for (const job of jobs) {
+    const status = String(job.status ?? "unknown");
+    const domain = String(job.domain ?? "global");
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+
+    const domainSummary = (byDomainStatus[domain] ??= {});
+    domainSummary[status] = (domainSummary[status] ?? 0) + 1;
+
+    if (job.job_type !== "materialize") continue;
+    const domainKey = `${job.job_type}/${domain}`;
+    if (status === "succeeded") domains.succeeded.push(domainKey);
+    else if (status === "blocked_manual") domains.blocked.push(domainKey);
+    else if (status === "terminal_failed" || status === "retryable_failed") domains.failed.push(domainKey);
+    else domains.pending.push(domainKey);
+  }
+
+  return { byStatus, byDomainStatus, domains };
 }
 
 export async function getLatestRunAttemptSummary(runId: string): Promise<RunAttemptSummary | null> {

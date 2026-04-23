@@ -3,38 +3,28 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
-import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import { type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
-  claimNextRunnableJob,
-  completeAttempt,
-  computeRetryAfter,
-  createAttempt,
   ensureRun,
-  evaluateActivationRules,
-  getJobAttemptCount,
   getLatestRunAttemptSummary,
   getRunJobs,
-  markClaimedJobResult,
   markRunRetryable,
   markRunRunning,
   markRunSucceeded,
   seedRunJobs,
   summarizeRunJobs,
+  summarizeRunJobsDetailed,
   type ActivationEvaluationResult,
 } from "@/features/integrations/shopBoost/orchestrator";
+import { executeShopBoostRun } from "@/features/integrations/shopBoost/orchestrator/executeRun";
 
 type DB = Database;
 
-const MAX_EXECUTOR_PASSES = 12;
+const MAX_EXECUTOR_PASSES = 20;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function asBoolArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.map((item) => String(item)) : [];
 }
 
 function asImportSummary(value: unknown): ShopBoostImportSummary | null {
@@ -116,160 +106,22 @@ export async function POST(req: NextRequest) {
       patch: { startedAt: new Date().toISOString(), lastError: null },
     });
 
-    for (let pass = 0; pass < MAX_EXECUTOR_PASSES; pass += 1) {
-      const workerId = `api-shop-boost-process:${runId}:pass-${pass + 1}`;
-      const claimed = await claimNextRunnableJob({ runId, workerId });
-      if (!claimed) break;
-
-      const attemptId = await createAttempt({
-        jobId: claimed.id,
-        runId,
-        workerId,
-      });
-
-      try {
-        if (claimed.jobType === "profile") {
-          await markRunRunning(runId, "profiling");
-          await updateIntakeProgress({ intakeId: intake.id, currentStep: "generating_suggestions", progressPercent: 35 });
-          const snapshot = await buildShopBoostProfile({ shopId, intakeId: intake.id });
-          if (!snapshot) {
-            errors.push("AI snapshot generation failed; import continued.");
-          }
-          await markClaimedJobResult({
-            jobId: claimed.id,
-            status: "succeeded",
-            result: { has_snapshot: Boolean(snapshot) },
-          });
-        }
-
-        if (claimed.jobType === "materialize") {
-          await markRunRunning(runId, "materialize");
-          await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
-          latestImportSummary = await runShopBoostImport({ shopId, intakeId: intake.id, options: { createStaffUsers: false } });
-          await markClaimedJobResult({
-            jobId: claimed.id,
-            status: "succeeded",
-            result: {
-              completionState: latestImportSummary.completionState,
-              rowResults: latestImportSummary.rowResults,
-              canonicalMaterialization: latestImportSummary.canonicalMaterialization,
-              customersImported: latestImportSummary.customersImported,
-              vehiclesImported: latestImportSummary.vehiclesImported,
-            },
-          });
-        }
-
-        if (claimed.jobType === "verify") {
-          await markRunRunning(runId, "verify");
-
-          if (!latestImportSummary) {
-            const jobs = await getRunJobs(runId);
-            const materialize = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "global");
-            latestImportSummary = asImportSummary(asRecord(materialize?.result));
-          }
-
-          if (!latestImportSummary) {
-            await markClaimedJobResult({
-              jobId: claimed.id,
-              status: "blocked_manual",
-              errorCode: "VERIFY_INPUT_MISSING",
-              errorMessage: "Materialize result is missing for verify job.",
-            });
-          } else {
-            const integrityErrors = asBoolArray(latestImportSummary.rowResults.integrityErrors);
-            const totalRows = Number(latestImportSummary.rowResults.totalRows ?? 0);
-            const pendingReviewCount = Number(latestImportSummary.rowResults.reviewCount ?? 0);
-            const failedCount = Number(latestImportSummary.rowResults.failedCount ?? 0);
-
-            latestActivationEval = await evaluateActivationRules(shopId, {
-              completionState: latestImportSummary.completionState,
-              integrityErrorCount: integrityErrors.length,
-              pendingReviewCount,
-              failedCount,
-              totalRows,
-              canonicalStatus: latestImportSummary.canonicalMaterialization.status,
-              canonicalGaps: latestImportSummary.canonicalMaterialization.gaps,
-              customersImported: latestImportSummary.customersImported,
-              vehiclesImported: latestImportSummary.vehiclesImported,
-            });
-
-            await markClaimedJobResult({
-              jobId: claimed.id,
-              status: "succeeded",
-              result: {
-                blockers: latestActivationEval.blockers,
-                activationStatus: latestActivationEval.activationStatus,
-                snapshot: latestActivationEval.snapshot,
-              },
-            });
-          }
-        }
-
-        if (claimed.jobType === "activate") {
-          await markRunRunning(runId, "activate");
-
-          if (!latestActivationEval) {
-            const jobs = await getRunJobs(runId);
-            const verify = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
-            const verifyResult = asRecord(verify?.result);
-            const verifyStatus = String(verifyResult.activationStatus ?? verifyResult.activation_status ?? "blocked");
-            latestActivationEval = {
-              activationStatus: (verifyStatus as ActivationEvaluationResult["activationStatus"]) ?? "blocked",
-              blockers: Array.isArray(verifyResult.blockers) ? verifyResult.blockers.map((v) => String(v)) : [],
-              snapshot: asRecord(verifyResult.snapshot),
-            };
-          }
-
-          await markClaimedJobResult({
-            jobId: claimed.id,
-            status:
-              latestActivationEval.activationStatus === "blocked" || latestActivationEval.activationStatus === "not_eligible"
-                ? "blocked_manual"
-                : "succeeded",
-            result: {
-              activationStatus: latestActivationEval.activationStatus,
-              blockers: latestActivationEval.blockers,
-              snapshot: latestActivationEval.snapshot,
-            },
-          });
-        }
-
-        if (attemptId) {
-          await completeAttempt({
-            attemptId,
-            status: "succeeded",
-            metrics: { completed_at: new Date().toISOString(), jobType: claimed.jobType },
-          });
-        }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        const attempts = await getJobAttemptCount(claimed.id);
-        const retryAfter = computeRetryAfter(attempts);
-
-        await markClaimedJobResult({
-          jobId: claimed.id,
-          status: "retryable_failed",
-          errorCode: "PROCESS_STEP_FAILED",
-          errorMessage: msg,
-          retryAfter,
-        });
-
-        if (attemptId) {
-          await completeAttempt({
-            attemptId,
-            status: "failed",
-            errorCode: "PROCESS_STEP_FAILED",
-            errorMessage: msg,
-            logs: [{ at: new Date().toISOString(), step: claimed.jobType, message: msg }],
-          });
-        }
-
-        throw error;
-      }
-    }
+    await updateIntakeProgress({ intakeId: intake.id, currentStep: "generating_suggestions", progressPercent: 35 });
+    await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
+    const execution = await executeShopBoostRun({
+      runId,
+      shopId,
+      intakeId: intake.id,
+      maxPasses: MAX_EXECUTOR_PASSES,
+      workerPrefix: "api-shop-boost-process",
+      allowImport: true,
+    });
+    latestImportSummary = execution.latestImportSummary;
+    latestActivationEval = execution.latestActivationEval;
+    errors.push(...execution.errors);
 
     const jobs = await getRunJobs(runId);
-    const materializeJob = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "global");
+    const materializeJob = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "customers");
     const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
 
     if (!latestImportSummary) {
@@ -293,6 +145,7 @@ export async function POST(req: NextRequest) {
 
     const intakeBasics = asRecord(intakeRow.data?.intake_basics);
     const jobSummary = await summarizeRunJobs(runId);
+    const jobSummaryDetailed = await summarizeRunJobsDetailed(runId);
     const lastAttempt = await getLatestRunAttemptSummary(runId);
     const lastError =
       lastAttempt?.status === "failed" || lastAttempt?.errorMessage
@@ -318,12 +171,14 @@ export async function POST(req: NextRequest) {
       activation_blockers: latestActivationEval.blockers,
       activation_snapshot: latestActivationEval.snapshot,
       job_summary: jobSummary,
+      job_summary_detailed: jobSummaryDetailed,
       last_attempt: lastAttempt,
       last_error: lastError,
       runState: completedStatus,
       activationStatus: latestActivationEval.activationStatus,
       blockers: latestActivationEval.blockers,
       jobSummary,
+      jobSummaryDetailed,
       lastAttempt,
       lastError,
       updated_at: new Date().toISOString(),
