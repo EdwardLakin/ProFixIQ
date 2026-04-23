@@ -404,6 +404,10 @@ export async function runShopBoostIntake(
               state: run.state,
               activation_status: run.activation_status,
               activation_blockers: run.activation_blockers ?? [],
+              runId: run.id,
+              runState: run.state,
+              activationStatus: run.activation_status,
+              blockers: run.activation_blockers ?? [],
             },
           } as unknown) as DB["public"]["Tables"]["shop_boost_intakes"]["Update"]["intake_basics"],
         })

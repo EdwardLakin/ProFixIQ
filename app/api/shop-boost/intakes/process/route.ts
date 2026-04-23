@@ -11,10 +11,12 @@ import {
   createAttempt,
   ensureRun,
   evaluateActivationRules,
+  getLatestRunAttemptSummary,
   markRunRetryable,
   markRunRunning,
   markRunSucceeded,
   seedRunJobs,
+  summarizeRunJobs,
   setJobResult,
   setJobRunning,
 } from "@/features/integrations/shopBoost/orchestrator";
@@ -22,6 +24,12 @@ import {
 type DB = Database;
 
 type JobType = "profile" | "materialize" | "verify" | "activate";
+const RUN_STATE_BY_JOB: Record<JobType, "profiling" | "materialize" | "verify" | "activate"> = {
+  profile: "profiling",
+  materialize: "materialize",
+  verify: "verify",
+  activate: "activate",
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -76,6 +84,7 @@ export async function POST(req: NextRequest) {
   }
 
   let runId: string | null = null;
+  let activeJobType: JobType | null = null;
   const jobIdByType: Partial<Record<JobType, string>> = {};
 
   try {
@@ -95,7 +104,7 @@ export async function POST(req: NextRequest) {
           jobIdByType[key] = job.id;
         }
       }
-      await markRunRunning(runId);
+      await markRunRunning(runId, "profiling");
     }
   } catch (error) {
     console.error("[shop-boost/orchestrator] process bootstrap failed", {
@@ -119,6 +128,8 @@ export async function POST(req: NextRequest) {
     if (!runId || !jobIdByType[jobType]) return fn();
 
     const workerId = `api-shop-boost-process:${jobType}`;
+    activeJobType = jobType;
+    await markRunRunning(runId, RUN_STATE_BY_JOB[jobType]);
     await setJobRunning({ runId, jobType });
     const attemptId = await createAttempt({
       jobId: jobIdByType[jobType] as string,
@@ -135,8 +146,16 @@ export async function POST(req: NextRequest) {
           metrics: { completed_at: new Date().toISOString() },
         });
       }
+      activeJobType = null;
       return result;
     } catch (error) {
+      await setJobResult({
+        runId,
+        jobType,
+        status: "retryable_failed",
+        errorCode: "PROCESS_STEP_FAILED",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       if (attemptId) {
         await completeAttempt({
           attemptId,
@@ -152,6 +171,7 @@ export async function POST(req: NextRequest) {
           ],
         });
       }
+      activeJobType = null;
       throw error;
     }
   };
@@ -257,12 +277,31 @@ export async function POST(req: NextRequest) {
       .maybeSingle<{ intake_basics: unknown }>();
 
     const intakeBasics = asRecord(intakeRow.data?.intake_basics);
+    const jobSummary = runId ? await summarizeRunJobs(runId) : null;
+    const lastAttempt = runId ? await getLatestRunAttemptSummary(runId) : null;
+    const lastError =
+      lastAttempt?.status === "failed" || lastAttempt?.errorMessage
+        ? {
+            code: lastAttempt?.errorCode ?? null,
+            message: lastAttempt?.errorMessage ?? null,
+          }
+        : null;
+
     const orchestratorPatch = {
       run_id: runId,
       state: completedStatus,
       activation_status: activationEval.activationStatus,
       activation_blockers: activationEval.blockers,
       activation_snapshot: activationEval.snapshot,
+      job_summary: jobSummary,
+      last_attempt: lastAttempt,
+      last_error: lastError,
+      runState: completedStatus,
+      activationStatus: activationEval.activationStatus,
+      blockers: activationEval.blockers,
+      jobSummary,
+      lastAttempt,
+      lastError,
       updated_at: new Date().toISOString(),
     };
 
@@ -351,6 +390,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (runId) {
+      if (activeJobType) {
+        await setJobResult({
+          runId,
+          jobType: activeJobType,
+          status: "retryable_failed",
+          errorCode: "PROCESS_FAILED",
+          errorMessage: msg,
+        });
+      }
       const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await markRunRetryable(runId, "PROCESS_FAILED", msg, retryAt);
     }
