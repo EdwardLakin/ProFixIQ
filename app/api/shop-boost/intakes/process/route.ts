@@ -3,37 +3,24 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
   ensureRun,
-  getLatestRunAttemptSummary,
-  getRunJobs,
-  markRunRetryable,
-  markRunRunning,
-  markRunSucceeded,
   seedRunJobs,
   summarizeRunJobs,
   summarizeRunJobsDetailed,
-  type ActivationEvaluationResult,
 } from "@/features/integrations/shopBoost/orchestrator";
-import { executeShopBoostRun } from "@/features/integrations/shopBoost/orchestrator/executeRun";
+import { triggerShopBoostWorker } from "@/features/integrations/shopBoost/orchestrator/triggerWorker";
 
 type DB = Database;
-
-const MAX_EXECUTOR_PASSES = 20;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function asImportSummary(value: unknown): ShopBoostImportSummary | null {
-  const rec = asRecord(value);
-  if (!Object.keys(rec).length) return null;
-  return rec as unknown as ShopBoostImportSummary;
-}
-
 export async function POST(req: NextRequest) {
+  // Public control-plane route: enqueue/trigger only.
+  // Execution happens in /api/internal/shop-boost/run.
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
   const {
     data: { user },
@@ -77,11 +64,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, intakeId: intake.id, alreadyRunning: true });
   }
 
-  let runId: string | null = null;
-  let latestImportSummary: ShopBoostImportSummary | null = null;
-  let latestActivationEval: ActivationEvaluationResult | null = null;
-  const errors: string[] = [];
-
   try {
     const run = await ensureRun({
       shopId,
@@ -89,53 +71,13 @@ export async function POST(req: NextRequest) {
       triggerSource: "api",
       createdBy: user.id,
     });
-    runId = run?.id ?? null;
-
-    if (!runId) {
+    if (!run?.id) {
       throw new Error("Failed to initialize orchestrator run.");
     }
 
+    const runId = run.id;
+
     await seedRunJobs({ runId, shopId, intakeId: intake.id });
-    await markRunRunning(runId, "profiling");
-
-    await updateIntakeProgress({
-      intakeId: intake.id,
-      status: "processing",
-      currentStep: "parsing_files",
-      progressPercent: 15,
-      patch: { startedAt: new Date().toISOString(), lastError: null },
-    });
-
-    await updateIntakeProgress({ intakeId: intake.id, currentStep: "generating_suggestions", progressPercent: 35 });
-    await updateIntakeProgress({ intakeId: intake.id, currentStep: "materializing_operating_layer", progressPercent: 60 });
-    const execution = await executeShopBoostRun({
-      runId,
-      shopId,
-      intakeId: intake.id,
-      maxPasses: MAX_EXECUTOR_PASSES,
-      workerPrefix: "api-shop-boost-process",
-      allowImport: true,
-    });
-    latestImportSummary = execution.latestImportSummary;
-    latestActivationEval = execution.latestActivationEval;
-    errors.push(...execution.errors);
-
-    const jobs = await getRunJobs(runId);
-    const materializeJob = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "customers");
-    const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
-
-    if (!latestImportSummary) {
-      latestImportSummary = asImportSummary(asRecord(materializeJob?.result));
-    }
-
-    if (!latestActivationEval) {
-      const verifyResult = asRecord(verifyJob?.result);
-      latestActivationEval = {
-        activationStatus: String(verifyResult.activationStatus ?? "blocked") as ActivationEvaluationResult["activationStatus"],
-        blockers: Array.isArray(verifyResult.blockers) ? verifyResult.blockers.map((v) => String(v)) : [],
-        snapshot: asRecord(verifyResult.snapshot),
-      };
-    }
 
     const intakeRow = await admin
       .from("shop_boost_intakes")
@@ -146,41 +88,19 @@ export async function POST(req: NextRequest) {
     const intakeBasics = asRecord(intakeRow.data?.intake_basics);
     const jobSummary = await summarizeRunJobs(runId);
     const jobSummaryDetailed = await summarizeRunJobsDetailed(runId);
-    const lastAttempt = await getLatestRunAttemptSummary(runId);
-    const lastError =
-      lastAttempt?.status === "failed" || lastAttempt?.errorMessage
-        ? {
-            code: lastAttempt?.errorCode ?? null,
-            message: lastAttempt?.errorMessage ?? null,
-          }
-        : null;
-
-    const completedStatus =
-      !latestImportSummary ||
-      latestImportSummary.completionState === "PARTIAL_FAILURE" ||
-      latestImportSummary.completionState === "FAILED" ||
-      latestImportSummary.completionState === "NOT_READY" ||
-      errors.length > 0
-        ? "completed_with_errors"
-        : "completed";
-
     const orchestratorPatch = {
       run_id: runId,
-      state: completedStatus,
-      activation_status: latestActivationEval.activationStatus,
-      activation_blockers: latestActivationEval.blockers,
-      activation_snapshot: latestActivationEval.snapshot,
+      state: "queued",
+      activation_status: run.activation_status,
+      activation_blockers: run.activation_blockers ?? [],
+      activation_snapshot: run.activation_snapshot ?? {},
       job_summary: jobSummary,
       job_summary_detailed: jobSummaryDetailed,
-      last_attempt: lastAttempt,
-      last_error: lastError,
-      runState: completedStatus,
-      activationStatus: latestActivationEval.activationStatus,
-      blockers: latestActivationEval.blockers,
+      runState: "queued",
+      activationStatus: run.activation_status,
+      blockers: run.activation_blockers ?? [],
       jobSummary,
       jobSummaryDetailed,
-      lastAttempt,
-      lastError,
       updated_at: new Date().toISOString(),
     };
 
@@ -193,67 +113,58 @@ export async function POST(req: NextRequest) {
             ...asRecord(intakeBasics.orchestrator),
             ...orchestratorPatch,
           },
-        } as DB["public"]["Tables"]["shop_boost_intakes"]["Update"]["intake_basics"],
+        } as unknown as DB["public"]["Tables"]["shop_boost_intakes"]["Update"]["intake_basics"],
       })
       .eq("id", intake.id);
 
     await updateIntakeProgress({
       intakeId: intake.id,
-      status: completedStatus,
-      currentStep: "completed",
-      progressPercent: 100,
+      status: "processing",
+      currentStep: "queued_for_worker",
+      progressPercent: 12,
       patch: {
-        completedAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: null,
         failedAt: null,
-        lastError: errors.join(" ") || null,
+        lastError: null,
         orchestrator: orchestratorPatch,
-        resultSummary: latestImportSummary
-          ? {
-              customersImported: latestImportSummary.customersImported,
-              vehiclesImported: latestImportSummary.vehiclesImported,
-              partsImported: latestImportSummary.partsImported,
-              workOrdersImported: latestImportSummary.workOrdersImported,
-              invoicesImported: latestImportSummary.invoicesImported,
-              canonicalMaterialization: latestImportSummary.canonicalMaterialization,
-              linkageSummary: latestImportSummary.linkageSummary,
-              shopBuildSummary: latestImportSummary.shopBuildSummary,
-              partsPipeline: latestImportSummary.partsPipeline ?? null,
-              rowResults: latestImportSummary.rowResults,
-              completionState: latestImportSummary.completionState,
-              activation: {
-                status: latestActivationEval.activationStatus,
-                blockers: latestActivationEval.blockers,
-                snapshot: latestActivationEval.snapshot,
-              },
-            }
-          : null,
       },
     });
 
-    if (latestImportSummary) {
-      await markRunSucceeded({
-        runId,
-        metrics: {
-          completionState: latestImportSummary.completionState,
-          completedStatus,
-          rowResults: latestImportSummary.rowResults,
-          canonicalMaterialization: latestImportSummary.canonicalMaterialization,
-        },
-        activationSnapshot: latestActivationEval.snapshot,
-        activationStatus: latestActivationEval.activationStatus,
-        blockers: latestActivationEval.blockers,
-      });
-    }
+    const workerKickoff = await triggerShopBoostWorker({
+      shopId,
+      intakeId: intake.id,
+      runId,
+      runImport: true,
+      maxRuns: 1,
+      maxPasses: 8,
+      triggerSource: "api-process-route",
+    });
 
     return NextResponse.json({
       ok: true,
       intakeId: intake.id,
-      status: completedStatus,
+      queued: true,
+      triggered: workerKickoff.ok,
+      triggerStatus: workerKickoff.ok ? "accepted" : "best_effort_failed",
+      status: "processing",
       orchestrator: {
         runId,
-        activationStatus: latestActivationEval.activationStatus,
-        activationBlockers: latestActivationEval.blockers,
+        activationStatus: run.activation_status,
+        activationBlockers: run.activation_blockers ?? [],
+        jobSummary,
+        jobSummaryDetailed,
       },
+      workerKickoff: workerKickoff.ok
+        ? {
+            statusCode: workerKickoff.statusCode,
+            runsTouched: workerKickoff.response?.runsTouched ?? 0,
+            jobsClaimed: workerKickoff.response?.jobsClaimed ?? 0,
+          }
+        : {
+            statusCode: workerKickoff.statusCode ?? null,
+            error: workerKickoff.error ?? "worker trigger failed",
+          },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to process intake";
@@ -267,11 +178,6 @@ export async function POST(req: NextRequest) {
         lastError: msg,
       },
     });
-
-    if (runId) {
-      const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      await markRunRetryable(runId, "PROCESS_FAILED", msg, retryAt);
-    }
 
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
