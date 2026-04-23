@@ -48,6 +48,16 @@ type IntakeState = {
     integrity?: Record<string, unknown>;
     migration_story?: MigrationStory;
   } | null;
+  readiness?: {
+    snapshot_complete?: boolean;
+    import_complete?: boolean;
+    canonical_ready?: boolean;
+    activation_eligible?: boolean;
+    activated?: boolean;
+    verify_status?: string | null;
+    blockers?: unknown[];
+    ui_should_route_forward?: boolean;
+  } | null;
 };
 
 const ACTIVE_STATUSES = new Set(["queued", "pending", "processing"]);
@@ -81,6 +91,7 @@ function getPanelMode(intake: IntakeState | null): "hidden" | "full" | "summary"
   const trustStatus = intake.progress?.migration_story?.trust_status;
   if (trustStatus && trustStatus !== "READY" && isRecentlyProcessed(intake)) return "full";
   const isCompletedLike =
+    intake.readiness?.ui_should_route_forward === true ||
     completionState === "READY_FOR_GO_LIVE" ||
     completionState === "COMPLETED_CLEAN" ||
     completionState === "COMPLETED_WITH_REVIEW" ||
@@ -222,7 +233,9 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
         </div>
       ) : null}
 
-      {(intake.progress?.completionState === "READY_FOR_GO_LIVE" || story?.trust_status === "READY") ? (
+      {(intake.readiness?.ui_should_route_forward === true ||
+        intake.progress?.completionState === "READY_FOR_GO_LIVE" ||
+        story?.trust_status === "READY") ? (
         <div className="mt-3 rounded-md border border-emerald-300/30 bg-emerald-950/20 p-2 text-xs text-emerald-100">
           <div className="font-semibold">Go live complete</div>
           <div className="mt-1">Confidence score: {fallbackConfidence}% • What you reviewed: {story?.review_resolved_count ?? 0} • What was ignored: {story?.ignored_count ?? 0}</div>

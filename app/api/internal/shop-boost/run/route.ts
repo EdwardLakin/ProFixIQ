@@ -160,6 +160,7 @@ export async function POST(req: NextRequest) {
     const jobs = await getRunJobs(target.runId);
     const materializeJob = jobs.find((job) => job.job_type === "materialize" && String(job.domain ?? "global") === "customers");
     const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
+    const verifyResult = asRecord(verifyJob?.result);
     const latestImportSummary = execution.latestImportSummary ?? asImportSummary(materializeJob?.result);
     const latestActivationEval =
       execution.latestActivationEval ??
@@ -181,6 +182,17 @@ export async function POST(req: NextRequest) {
       Number(jobSummary?.terminal_failed ?? 0) > 0 ||
       Number(jobSummary?.retryable_failed ?? 0) > 0;
 
+    const verifyPassed = verifyResult.verifyPassed === true;
+    const uiShouldRouteForward =
+      verifyPassed && (latestActivationEval.activationStatus === "activated" || latestActivationEval.activationStatus === "eligible");
+    const truthStates = {
+      snapshot_complete: Boolean(verifyJob),
+      import_complete: verifyResult.stateModel && typeof verifyResult.stateModel === "object" ? Boolean(asRecord(verifyResult.stateModel).import_complete) : false,
+      canonical_ready: verifyResult.stateModel && typeof verifyResult.stateModel === "object" ? Boolean(asRecord(verifyResult.stateModel).canonical_ready) : false,
+      activation_eligible: verifyResult.stateModel && typeof verifyResult.stateModel === "object" ? Boolean(asRecord(verifyResult.stateModel).activation_eligible) : false,
+      activated: latestActivationEval.activationStatus === "activated",
+    };
+
     const status = hasPending ? "processing" : hasErrors ? "completed_with_errors" : "completed";
     const progressPercent = hasPending ? 65 : 100;
     await updateIntakeProgress({
@@ -198,12 +210,22 @@ export async function POST(req: NextRequest) {
           activation_status: latestActivationEval.activationStatus,
           activation_blockers: latestActivationEval.blockers,
           activation_snapshot: latestActivationEval.snapshot,
+          verify_result: verifyResult,
+          verify_status: String(verifyResult.verifyStatus ?? "partial"),
+          verify_passed: verifyPassed,
+          truth_states: truthStates,
+          ui_should_route_forward: uiShouldRouteForward,
           job_summary: jobSummary,
           job_summary_detailed: jobSummaryDetailed,
           last_attempt: lastAttempt,
           runState: status,
           activationStatus: latestActivationEval.activationStatus,
           blockers: latestActivationEval.blockers,
+          verifyResult,
+          verifyStatus: String(verifyResult.verifyStatus ?? "partial"),
+          verifyPassed,
+          truthStates,
+          uiShouldRouteForward,
           jobSummary,
           jobSummaryDetailed,
           lastAttempt,

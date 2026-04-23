@@ -6,6 +6,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   getLatestRunAttemptSummary,
   getRunByShopIntake,
+  getRunJobs,
   summarizeRunJobs,
   summarizeRunJobsDetailed,
 } from "@/features/integrations/shopBoost/orchestrator";
@@ -167,14 +168,40 @@ export async function GET(req: Request, context: RouteContext) {
   try {
     const run = await getRunByShopIntake({ shopId: profile.shop_id, intakeId: intake.id });
     if (run?.id) {
+      const jobs = await getRunJobs(run.id);
+      const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
+      const activateJob = jobs.find((job) => job.job_type === "activate" && String(job.domain ?? "global") === "global");
+      const verifyResult = asRecord(verifyJob?.result);
+      const domains = asRecord(verifyResult.domains);
+      const canonicalSummary = asRecord(verifyResult.canonicalSummary);
+      const stateModel = asRecord(verifyResult.stateModel);
+      const verifyStatus = String(verifyResult.verifyStatus ?? "partial");
+      const verifyPassed = verifyResult.verifyPassed === true;
+      const activationEligible = run.activation_status === "eligible" || run.activation_status === "activated";
+      const activated = run.activation_status === "activated";
+      const uiShouldRouteForward = verifyPassed && activationEligible;
       const jobSummary = await summarizeRunJobs(run.id);
       const jobSummaryDetailed = await summarizeRunJobsDetailed(run.id);
       const lastAttempt = await getLatestRunAttemptSummary(run.id);
       orchestrator = {
         runId: run.id,
         runState: run.state,
+        verifyStatus,
+        verifyPassed,
         activationStatus: run.activation_status,
         blockers: run.activation_blockers ?? [],
+        canonicalSummary,
+        domainPassCount: Number(domains.passCount ?? 0),
+        domainFailCount: Number(domains.failCount ?? 0),
+        domainPendingCount: Number(domains.pendingCount ?? 0),
+        truthStates: {
+          snapshot_complete: Boolean(verifyJob),
+          import_complete: Boolean(stateModel.import_complete),
+          canonical_ready: Boolean(stateModel.canonical_ready),
+          activation_eligible: activationEligible,
+          activated,
+        },
+        uiShouldRouteForward,
         jobSummary,
         jobSummaryDetailed,
         lastAttempt,
@@ -183,6 +210,22 @@ export async function GET(req: Request, context: RouteContext) {
         activation_status: run.activation_status,
         activation_blockers: run.activation_blockers ?? [],
         activation_snapshot: asRecord(run.activation_snapshot),
+        verify_result: verifyResult,
+        verify_status: verifyStatus,
+        verify_passed: verifyPassed,
+        canonical_summary: canonicalSummary,
+        domain_pass_count: Number(domains.passCount ?? 0),
+        domain_fail_count: Number(domains.failCount ?? 0),
+        domain_pending_count: Number(domains.pendingCount ?? 0),
+        truth_states: {
+          snapshot_complete: Boolean(verifyJob),
+          import_complete: Boolean(stateModel.import_complete),
+          canonical_ready: Boolean(stateModel.canonical_ready),
+          activation_eligible: activationEligible,
+          activated,
+        },
+        ui_should_route_forward: uiShouldRouteForward,
+        activate_job_status: activateJob?.status ?? null,
         jobs: jobSummary,
         jobsDetailed: jobSummaryDetailed,
         last_error:
@@ -245,6 +288,14 @@ export async function GET(req: Request, context: RouteContext) {
     },
     review_outcomes: reviewOutcomes,
     orchestrator,
+    readiness: {
+      snapshot_complete: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).snapshot_complete : false),
+      import_complete: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).import_complete : false),
+      canonical_ready: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).canonical_ready : false),
+      activation_eligible: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).activation_eligible : false),
+      activated: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).activated : false),
+      ui_should_route_forward: Boolean(asRecord(orchestrator ?? {}).uiShouldRouteForward ?? asRecord(orchestrator ?? {}).ui_should_route_forward ?? false),
+    },
   };
 
   const url = new URL(req.url);
