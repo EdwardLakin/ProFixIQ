@@ -41,6 +41,12 @@ type OnboardingJobRow = {
   domain: string | null;
   status: string;
   idempotency_key: string;
+  priority?: number | null;
+  max_attempts?: number | null;
+  retry_after?: string | null;
+  locked_by?: string | null;
+  locked_at?: string | null;
+  result?: unknown;
 };
 
 type OnboardingAttemptRow = {
@@ -108,6 +114,18 @@ export type RunAttemptSummary = {
   errorMessage: string | null;
   createdAt: string;
   completedAt: string | null;
+};
+
+export type ClaimableJobType = "profile" | "materialize" | "verify" | "activate";
+export type ClaimedOnboardingJob = {
+  id: string;
+  runId: string;
+  jobType: ClaimableJobType;
+  domain: string;
+  status: string;
+  priority: number;
+  maxAttempts: number;
+  retryAfter: string | null;
 };
 
 const SEED_JOBS = [
@@ -420,6 +438,177 @@ export async function setJobResult(args: {
     errorCode: args.errorCode,
     errorMessage: args.errorMessage,
   });
+}
+
+function isClaimableJobType(jobType: string): jobType is ClaimableJobType {
+  return jobType === "profile" || jobType === "materialize" || jobType === "verify" || jobType === "activate";
+}
+
+function isReadyForRetry(retryAfter: string | null | undefined): boolean {
+  if (!retryAfter) return true;
+  const ts = Date.parse(retryAfter);
+  if (!Number.isFinite(ts)) return true;
+  return ts <= Date.now();
+}
+
+function predecessorFor(jobType: ClaimableJobType): ClaimableJobType | null {
+  if (jobType === "profile") return null;
+  if (jobType === "materialize") return "profile";
+  if (jobType === "verify") return "materialize";
+  return "verify";
+}
+
+export async function getRunJobs(runId: string): Promise<OnboardingJobRow[]> {
+  const supabase = adminAny();
+  const { data, error } = await supabase
+    .from("shop_onboarding_jobs")
+    .select("id,run_id,job_type,domain,status,idempotency_key,priority,max_attempts,retry_after,locked_by,locked_at,result")
+    .eq("run_id", runId)
+    .order("priority", { ascending: true });
+
+  if (error) {
+    console.error("[shop-boost/orchestrator] getRunJobs failed", {
+      runId,
+      error: error.message,
+    });
+    return [];
+  }
+  return (data as OnboardingJobRow[]) ?? [];
+}
+
+export async function getJobAttemptCount(jobId: string): Promise<number> {
+  const supabase = adminAny();
+  const { count, error } = await supabase
+    .from("shop_onboarding_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId);
+  if (error) {
+    console.error("[shop-boost/orchestrator] getJobAttemptCount failed", {
+      jobId,
+      error: error.message,
+    });
+    return 0;
+  }
+  return Number(count ?? 0);
+}
+
+export function computeRetryAfter(attemptCount: number, baseSeconds = 45, maxSeconds = 1800): string {
+  const exp = Math.max(0, attemptCount);
+  const seconds = Math.min(maxSeconds, baseSeconds * Math.pow(2, Math.min(exp, 6)));
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+export async function claimNextRunnableJob(args: {
+  runId: string;
+  workerId: string;
+}): Promise<ClaimedOnboardingJob | null> {
+  const supabase = adminAny();
+  const jobs = await getRunJobs(args.runId);
+  if (!jobs.length) return null;
+
+  const byType = new Map<ClaimableJobType, OnboardingJobRow>();
+  for (const job of jobs) {
+    if (isClaimableJobType(job.job_type) && String(job.domain ?? "global") === "global") {
+      byType.set(job.job_type, job);
+    }
+  }
+
+  for (const seed of SEED_JOBS) {
+    const job = byType.get(seed.job_type);
+    if (!job) continue;
+    const status = String(job.status ?? "queued");
+    if (status !== "queued" && status !== "retryable_failed") continue;
+    if (!isReadyForRetry(job.retry_after)) continue;
+
+    const predecessorType = predecessorFor(seed.job_type);
+    if (predecessorType) {
+      const predecessor = byType.get(predecessorType);
+      if (!predecessor || predecessor.status !== "succeeded") continue;
+    }
+
+    const maxAttempts = Math.max(1, Number(job.max_attempts ?? 3));
+    const attempts = await getJobAttemptCount(job.id);
+    if (attempts >= maxAttempts) {
+      await supabase
+        .from("shop_onboarding_jobs")
+        .update({
+          status: "terminal_failed" satisfies OrchestratorJobStatus,
+          error_code: "MAX_ATTEMPTS_EXCEEDED",
+          error_message: `Job exceeded max attempts (${maxAttempts}).`,
+          locked_at: null,
+          locked_by: null,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      continue;
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("shop_onboarding_jobs")
+      .update({
+        status: "running" satisfies OrchestratorJobStatus,
+        started_at: nowIso,
+        locked_at: nowIso,
+        locked_by: args.workerId,
+        retry_after: null,
+        updated_at: nowIso,
+      })
+      .eq("id", job.id)
+      .in("status", ["queued", "retryable_failed"])
+      .select("id,run_id,job_type,domain,status,priority,max_attempts,retry_after")
+      .maybeSingle();
+
+    if (error || !data) continue;
+
+    if (!isClaimableJobType(String(data.job_type))) continue;
+    return {
+      id: String(data.id),
+      runId: String(data.run_id),
+      jobType: data.job_type,
+      domain: String(data.domain ?? "global"),
+      status: String(data.status ?? "running"),
+      priority: Number(data.priority ?? 999),
+      maxAttempts: Math.max(1, Number(data.max_attempts ?? 3)),
+      retryAfter: (data.retry_after as string | null) ?? null,
+    };
+  }
+
+  return null;
+}
+
+export async function markClaimedJobResult(args: {
+  jobId: string;
+  status: Extract<OrchestratorJobStatus, "succeeded" | "retryable_failed" | "blocked_manual" | "terminal_failed">;
+  result?: JsonObj;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  retryAfter?: string | null;
+}): Promise<void> {
+  const supabase = adminAny();
+  const payload: JsonObj = {
+    status: args.status,
+    updated_at: new Date().toISOString(),
+    locked_at: null,
+    locked_by: null,
+    error_code: args.errorCode ?? null,
+    error_message: args.errorMessage ?? null,
+    retry_after: args.retryAfter ?? null,
+  };
+  if (args.result) payload.result = args.result;
+  if (args.status === "succeeded" || args.status === "terminal_failed") {
+    payload.completed_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase.from("shop_onboarding_jobs").update(payload).eq("id", args.jobId);
+  if (error) {
+    console.error("[shop-boost/orchestrator] markClaimedJobResult failed", {
+      jobId: args.jobId,
+      status: args.status,
+      error: error.message,
+    });
+  }
 }
 
 export async function getRunByShopIntake(args: {
