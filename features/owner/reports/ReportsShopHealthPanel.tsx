@@ -168,9 +168,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               .from("staff_invite_suggestions")
               .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
               .eq("shop_id", shopId)
-              .eq("intake_id", intakeId)
               .order("created_at", { ascending: false })
-              .limit(60),
+              .limit(160),
             Promise.all([
               supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
               supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
@@ -187,8 +186,18 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
       if (staffRes?.error) throw staffRes.error;
 
+      const prioritizedStaffRows = (staffRes?.data ?? [])
+        .slice()
+        .sort((a, b) => {
+          const aMatchesIntake = intakeId && a.intake_id === intakeId ? 1 : 0;
+          const bMatchesIntake = intakeId && b.intake_id === intakeId ? 1 : 0;
+          if (aMatchesIntake !== bMatchesIntake) return bMatchesIntake - aMatchesIntake;
+          return new Date(b.created_at ?? "").getTime() - new Date(a.created_at ?? "").getTime();
+        })
+        .slice(0, 60);
+
       const staffFromBase: ShopBoostSuggestionRow[] =
-        (staffRes?.data ?? []).map((row) => ({
+        prioritizedStaffRows.map((row) => ({
           suggestion_type: "staff_invite",
           id: String(row.id),
           shop_id: String(row.shop_id),
