@@ -110,10 +110,12 @@ export default function MobileCustomerProfilePage() {
         let fallbackWosByName: WorkOrder[] = [];
         if ((woRes.data?.length ?? 0) === 0 && (fallbackWosRes.data?.length ?? 0) === 0) {
           for (const candidate of fallbackWosByNameCandidates) {
-            const byNameRes = await supabase
+            let byNameQuery = supabase
               .from("work_orders")
               .select("*")
-              .ilike("customer_name", candidate)
+              .ilike("customer_name", candidate);
+            if (customerRecord?.shop_id) byNameQuery = byNameQuery.eq("shop_id", customerRecord.shop_id);
+            const byNameRes = await byNameQuery
               .order("created_at", { ascending: false })
               .limit(25);
             if (byNameRes.error) throw byNameRes.error;
