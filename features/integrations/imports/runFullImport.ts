@@ -1683,6 +1683,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const firstName = pick(row, [/^first[_\s-]*name$/, /^first$/]) ?? null;
       const lastName = pick(row, [/^last[_\s-]*name$/, /^last$/]) ?? null;
       const displayName = pick(row, [/^display[_\s-]*name$/, /^preferred[_\s-]*name$/]) ?? null;
+      const usernameHint =
+        pick(row, [/^username$/, /^user[_\s-]*name$/, /^login$/, /^employee[_\s-]*login$/, /^tech[_\s-]*code$/]) ??
+        null;
       const fallbackJoinedName = [firstName ?? "", lastName ?? ""].filter(Boolean).join(" ").trim();
       const fullName =
         pick(row, [
@@ -1692,7 +1695,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           /staff name/,
         ]) ??
         displayName ??
-        (fallbackJoinedName || null);
+        (fallbackJoinedName || null) ??
+        usernameHint;
 
       const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
       const email = emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
@@ -1703,12 +1707,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const role = normRole(roleRaw);
 
       // Skip totally empty rows
-      if (!fullName && !email) continue;
+      if (!fullName && !email && !usernameHint) continue;
 
       const notes = pick(row, [/reason/, /note/, /notes/, /comment/]) ?? "Imported from staff CSV";
       const externalUserId = pickSourceId(row, [/^external[_\s-]*user[_\s-]*id$/, /^user[_\s-]*id$/, /^employee[_\s-]*id$/]);
       const normalizedIdentity = normalizeText(email ?? fullName ?? "").replace(/\s+/g, ".");
-      const username = externalUserId ?? (normalizedIdentity || null);
+      const username = externalUserId ?? usernameHint ?? (normalizedIdentity || null);
 
       // Deterministic-ish external id to prevent duplicates on reruns
       const external_id = `import:${intakeId}:staff:${sha1(

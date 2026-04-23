@@ -47,6 +47,12 @@ type ShopBoostSuggestionRow = {
   reason: string | null;
   created_at: string;
 };
+type CanonicalImportStats = {
+  staffSuggestions: number;
+  customers: number;
+  vehiclesLinked: number;
+  workOrdersLinked: number;
+};
 
 type Props = {
   shopId: string | null;
@@ -111,6 +117,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const [latest, setLatest] = useState<ShopHealthLatestRow | null>(null);
   const [overview, setOverview] = useState<ShopBoostOverviewRow | null>(null);
   const [suggestions, setSuggestions] = useState<ShopBoostSuggestionRow[]>([]);
+  const [canonicalStats, setCanonicalStats] = useState<CanonicalImportStats | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -147,14 +154,75 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       if (suggRes.error) throw suggRes.error;
 
       setLatest((latestRes.data as ShopHealthLatestRow | null) ?? null);
-      setOverview((overviewRes.data as ShopBoostOverviewRow | null) ?? null);
-      setSuggestions((suggRes.data as ShopBoostSuggestionRow[]) ?? []);
+      const latestOverview = (overviewRes.data as ShopBoostOverviewRow | null) ?? null;
+      setOverview(latestOverview);
+
+      const intakeId = latestOverview?.intake_id ?? null;
+      const viewSuggestions = (suggRes.data as ShopBoostSuggestionRow[]) ?? [];
+
+      const [staffRes, canonicalCounts] = intakeId
+        ? await Promise.all([
+            supabase
+              .from("staff_invite_suggestions")
+              .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+              .eq("shop_id", shopId)
+              .eq("intake_id", intakeId)
+              .order("created_at", { ascending: false })
+              .limit(60),
+            Promise.all([
+              supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+              supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId).not("customer_id", "is", null),
+              supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId).not("customer_id", "is", null),
+            ]),
+          ])
+        : [null, null];
+
+      if (staffRes?.error) throw staffRes.error;
+
+      const staffFromBase: ShopBoostSuggestionRow[] =
+        (staffRes?.data ?? []).map((row) => ({
+          suggestion_type: "staff_invite",
+          id: String(row.id),
+          shop_id: String(row.shop_id),
+          intake_id: row.intake_id,
+          name: row.full_name ?? row.role ?? "Staff invite",
+          category: row.role ?? null,
+          price_suggestion: null,
+          labor_hours_suggestion: null,
+          confidence: typeof row.confidence === "number" ? row.confidence : null,
+          reason: row.notes ?? null,
+          created_at: row.created_at ?? new Date().toISOString(),
+        })) ?? [];
+
+      const existingStaffIds = new Set(
+        viewSuggestions
+          .filter((row) => row.suggestion_type === "staff_invite")
+          .map((row) => row.id),
+      );
+      const mergedSuggestions = [
+        ...viewSuggestions,
+        ...staffFromBase.filter((row) => !existingStaffIds.has(row.id)),
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setSuggestions(mergedSuggestions);
+
+      if (canonicalCounts) {
+        setCanonicalStats({
+          staffSuggestions: staffFromBase.length,
+          customers: canonicalCounts[0].count ?? 0,
+          vehiclesLinked: canonicalCounts[1].count ?? 0,
+          workOrdersLinked: canonicalCounts[2].count ?? 0,
+        });
+      } else {
+        setCanonicalStats(null);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load Shop Health.";
       setErr(msg);
       setLatest(null);
       setOverview(null);
       setSuggestions([]);
+      setCanonicalStats(null);
     } finally {
       setLoading(false);
     }
@@ -431,6 +499,23 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </button>
               ) : null}
             </div>
+            {canonicalStats ? (
+              <div className={`mt-3 ${cardInner} p-3`}>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Canonical import linkage</div>
+                <div className="mt-2 grid gap-2 text-xs text-neutral-200 md:grid-cols-4">
+                  <div>Customers: <span className="text-neutral-100">{canonicalStats.customers}</span></div>
+                  <div>Vehicles linked: <span className="text-neutral-100">{canonicalStats.vehiclesLinked}</span></div>
+                  <div>Work orders linked: <span className="text-neutral-100">{canonicalStats.workOrdersLinked}</span></div>
+                  <div>Staff invite rows: <span className="text-neutral-100">{canonicalStats.staffSuggestions}</span></div>
+                </div>
+                {(canonicalStats.customers > 0 &&
+                  (canonicalStats.vehiclesLinked === 0 || canonicalStats.workOrdersLinked === 0)) ? (
+                  <div className="mt-2 text-[11px] text-amber-200">
+                    Snapshot/suggestions can be present even when canonical linkages are incomplete for this intake.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           {/* How to use this */}

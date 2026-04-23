@@ -376,7 +376,52 @@ export default function CustomerProfilePage(): JSX.Element {
 
         if (vsErr) throw vsErr;
 
-        const vrows = (vs ?? []) as Vehicle[];
+        const directVehicles = (vs ?? []) as Vehicle[];
+        const directVehicleIds = directVehicles.map((v) => v.id).filter(Boolean);
+
+        const { data: directWos, error: directWoErr } = await supabase
+          .from("work_orders")
+          .select("*")
+          .eq("customer_id", customerId)
+          .order("created_at", { ascending: false });
+
+        if (directWoErr) throw directWoErr;
+
+        const fallbackWosByVehicle = directVehicleIds.length
+          ? await supabase
+              .from("work_orders")
+              .select("*")
+              .in("vehicle_id", directVehicleIds)
+              .order("created_at", { ascending: false })
+          : { data: [], error: null };
+
+        if (fallbackWosByVehicle.error) throw fallbackWosByVehicle.error;
+
+        const allWorkOrders = [...(directWos ?? []), ...(fallbackWosByVehicle.data ?? [])] as WorkOrder[];
+        const workOrdersById = new Map<string, WorkOrder>();
+        for (const wo of allWorkOrders) {
+          if (!wo?.id) continue;
+          workOrdersById.set(wo.id, wo);
+        }
+        const mergedWorkOrders = Array.from(workOrdersById.values()).sort(
+          (a, b) => new Date(String(b.created_at ?? "")).getTime() - new Date(String(a.created_at ?? "")).getTime(),
+        );
+
+        const fallbackVehicleIds = Array.from(
+          new Set(
+            mergedWorkOrders
+              .map((wo) => wo.vehicle_id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0),
+          ),
+        ).filter((id) => !directVehicleIds.includes(id));
+
+        const fallbackVehiclesRes = fallbackVehicleIds.length
+          ? await supabase.from("vehicles").select("*").in("id", fallbackVehicleIds)
+          : { data: [], error: null };
+
+        if (fallbackVehiclesRes.error) throw fallbackVehiclesRes.error;
+
+        const vrows = [...directVehicles, ...((fallbackVehiclesRes.data ?? []) as Vehicle[])];
         setVehicles(vrows);
 
         setSelectedVehicleId((prev) => {
@@ -384,14 +429,7 @@ export default function CustomerProfilePage(): JSX.Element {
           return vrows[0]?.id ?? null;
         });
 
-        const { data: wos, error: woErr } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("customer_id", customerId)
-          .order("created_at", { ascending: false });
-
-        if (woErr) throw woErr;
-        setWorkOrders((wos ?? []) as WorkOrder[]);
+        setWorkOrders(mergedWorkOrders);
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load customer file.";

@@ -83,10 +83,46 @@ export default function MobileCustomerProfilePage() {
         setCustomer(cRes.data ?? null);
 
         if (vRes.error) throw vRes.error;
-        setVehicles(vRes.data ?? []);
+        const directVehicles = vRes.data ?? [];
+        const directVehicleIds = directVehicles.map((v) => v.id).filter(Boolean);
 
         if (woRes.error) throw woRes.error;
-        setWorkOrders(woRes.data ?? []);
+        const fallbackWosRes = directVehicleIds.length
+          ? await supabase
+              .from("work_orders")
+              .select("*")
+              .in("vehicle_id", directVehicleIds)
+              .order("created_at", { ascending: false })
+          : { data: [], error: null };
+
+        if (fallbackWosRes.error) throw fallbackWosRes.error;
+
+        const allWorkOrders = [...(woRes.data ?? []), ...(fallbackWosRes.data ?? [])];
+        const workOrdersById = new Map<string, WorkOrder>();
+        for (const wo of allWorkOrders) {
+          if (!wo?.id) continue;
+          workOrdersById.set(wo.id, wo);
+        }
+        const mergedWorkOrders = Array.from(workOrdersById.values()).sort(
+          (a, b) => new Date(String(b.created_at ?? "")).getTime() - new Date(String(a.created_at ?? "")).getTime(),
+        );
+
+        const fallbackVehicleIds = Array.from(
+          new Set(
+            mergedWorkOrders
+              .map((wo) => wo.vehicle_id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0),
+          ),
+        ).filter((id) => !directVehicleIds.includes(id));
+
+        const fallbackVehiclesRes = fallbackVehicleIds.length
+          ? await supabase.from("vehicles").select("*").in("id", fallbackVehicleIds)
+          : { data: [], error: null };
+
+        if (fallbackVehiclesRes.error) throw fallbackVehiclesRes.error;
+
+        setVehicles([...(directVehicles as Vehicle[]), ...((fallbackVehiclesRes.data ?? []) as Vehicle[])]);
+        setWorkOrders(mergedWorkOrders);
       } catch (e) {
         const msg =
           e instanceof Error ? e.message : "Failed to load customer profile.";
