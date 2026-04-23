@@ -4,9 +4,16 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
-import { getRunByShopIntake, summarizeRunJobs } from "@/features/integrations/shopBoost/orchestrator";
+import {
+  getLatestRunAttemptSummary,
+  getRunByShopIntake,
+  summarizeRunJobs,
+} from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
 
 export async function GET() {
   const supabaseUser = createRouteHandlerClient<DB>({ cookies });
@@ -47,13 +54,10 @@ export async function GET() {
   }
   if (!intake) return NextResponse.json({ ok: true, intake: null });
 
-  let orchestrator: {
-    runId: string;
-    state: string;
-    activationStatus: string;
-    activationBlockers: unknown;
-    jobs: Record<string, number> | null;
-  } | null = null;
+  const basics = asRecord(intake.intake_basics);
+  const basicsOrchestrator = asRecord(basics.orchestrator);
+
+  let orchestrator: Record<string, unknown> | null = null;
 
   try {
     const run = await getRunByShopIntake({
@@ -62,12 +66,25 @@ export async function GET() {
     });
 
     if (run?.id) {
+      const jobSummary = await summarizeRunJobs(run.id);
+      const lastAttempt = await getLatestRunAttemptSummary(run.id);
       orchestrator = {
         runId: run.id,
-        state: run.state,
+        runState: run.state,
         activationStatus: run.activation_status,
+        blockers: run.activation_blockers ?? [],
+        jobSummary,
+        lastAttempt,
+        state: run.state,
         activationBlockers: run.activation_blockers ?? [],
-        jobs: await summarizeRunJobs(run.id),
+        jobs: jobSummary,
+        lastError:
+          lastAttempt?.status === "failed" || lastAttempt?.errorMessage
+            ? {
+                code: lastAttempt?.errorCode ?? null,
+                message: lastAttempt?.errorMessage ?? null,
+              }
+            : null,
       };
     }
   } catch (orchestratorErr) {
@@ -76,6 +93,21 @@ export async function GET() {
       intakeId: intake.id,
       error: orchestratorErr instanceof Error ? orchestratorErr.message : String(orchestratorErr),
     });
+  }
+
+  if (!orchestrator && Object.keys(basicsOrchestrator).length > 0) {
+    orchestrator = {
+      runId: basicsOrchestrator.run_id ?? null,
+      runState: basicsOrchestrator.state ?? null,
+      activationStatus: basicsOrchestrator.activation_status ?? null,
+      blockers: basicsOrchestrator.activation_blockers ?? [],
+      jobSummary: basicsOrchestrator.job_summary ?? null,
+      lastAttempt: basicsOrchestrator.last_attempt ?? null,
+      state: basicsOrchestrator.state ?? null,
+      activationBlockers: basicsOrchestrator.activation_blockers ?? [],
+      jobs: basicsOrchestrator.job_summary ?? null,
+      lastError: basicsOrchestrator.last_error ?? null,
+    };
   }
 
   return NextResponse.json({

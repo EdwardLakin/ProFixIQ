@@ -3,7 +3,11 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { getRunByShopIntake, summarizeRunJobs } from "@/features/integrations/shopBoost/orchestrator";
+import {
+  getLatestRunAttemptSummary,
+  getRunByShopIntake,
+  summarizeRunJobs,
+} from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
@@ -157,17 +161,33 @@ export async function GET(req: Request, context: RouteContext) {
     return acc;
   }, {});
 
+  const legacyOrchestrator = asRecord(basics.orchestrator);
   let orchestrator: Record<string, unknown> | null = null;
   try {
     const run = await getRunByShopIntake({ shopId: profile.shop_id, intakeId: intake.id });
     if (run?.id) {
+      const jobSummary = await summarizeRunJobs(run.id);
+      const lastAttempt = await getLatestRunAttemptSummary(run.id);
       orchestrator = {
+        runId: run.id,
+        runState: run.state,
+        activationStatus: run.activation_status,
+        blockers: run.activation_blockers ?? [],
+        jobSummary,
+        lastAttempt,
         run_id: run.id,
         state: run.state,
         activation_status: run.activation_status,
         activation_blockers: run.activation_blockers ?? [],
         activation_snapshot: asRecord(run.activation_snapshot),
-        jobs: await summarizeRunJobs(run.id),
+        jobs: jobSummary,
+        last_error:
+          lastAttempt?.status === "failed" || lastAttempt?.errorMessage
+            ? {
+                code: lastAttempt?.errorCode ?? null,
+                message: lastAttempt?.errorMessage ?? null,
+              }
+            : null,
       };
     }
   } catch (orchestratorErr) {
@@ -176,6 +196,24 @@ export async function GET(req: Request, context: RouteContext) {
       shopId: profile.shop_id,
       error: orchestratorErr instanceof Error ? orchestratorErr.message : String(orchestratorErr),
     });
+  }
+
+  if (!orchestrator && Object.keys(legacyOrchestrator).length > 0) {
+    orchestrator = {
+      runId: legacyOrchestrator.run_id ?? null,
+      runState: legacyOrchestrator.state ?? null,
+      activationStatus: legacyOrchestrator.activation_status ?? null,
+      blockers: legacyOrchestrator.activation_blockers ?? [],
+      jobSummary: legacyOrchestrator.job_summary ?? null,
+      lastAttempt: legacyOrchestrator.last_attempt ?? null,
+      run_id: legacyOrchestrator.run_id ?? null,
+      state: legacyOrchestrator.state ?? null,
+      activation_status: legacyOrchestrator.activation_status ?? null,
+      activation_blockers: legacyOrchestrator.activation_blockers ?? [],
+      activation_snapshot: asRecord(legacyOrchestrator.activation_snapshot),
+      jobs: legacyOrchestrator.job_summary ?? null,
+      last_error: legacyOrchestrator.last_error ?? null,
+    };
   }
 
   const report = {

@@ -43,6 +43,16 @@ type OnboardingJobRow = {
   idempotency_key: string;
 };
 
+type OnboardingAttemptRow = {
+  id: string;
+  job_id: string;
+  status: string;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
 type ActivationRuleRow = {
   min_customer_rows: number | null;
   min_vehicle_rows: number | null;
@@ -87,6 +97,25 @@ export type ActivationEvaluationResult = {
   blockers: string[];
   snapshot: JsonObj;
 };
+
+export type RunAttemptSummary = {
+  attemptId: string;
+  jobId: string;
+  jobType: string | null;
+  domain: string | null;
+  status: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+const SEED_JOBS = [
+  { job_type: "profile", domain: "global", priority: 20 },
+  { job_type: "materialize", domain: "global", priority: 40 },
+  { job_type: "verify", domain: "global", priority: 60 },
+  { job_type: "activate", domain: "global", priority: 80 },
+] as const;
 
 const DEFAULT_RULES: ResolvedActivationRules = {
   min_customer_rows: 1,
@@ -177,22 +206,7 @@ export async function seedRunJobs(args: {
 }): Promise<OnboardingJobRow[]> {
   const supabase = adminAny();
 
-  const { data: existing } = await supabase
-    .from("shop_onboarding_jobs")
-    .select("id,run_id,job_type,domain,status,idempotency_key")
-    .eq("run_id", args.runId)
-    .limit(20);
-
-  if ((existing?.length ?? 0) > 0) {
-    return (existing as OnboardingJobRow[]) ?? [];
-  }
-
-  const seed = [
-    { job_type: "profile", domain: "global", priority: 20 },
-    { job_type: "materialize", domain: "global", priority: 40 },
-    { job_type: "verify", domain: "global", priority: 60 },
-    { job_type: "activate", domain: "global", priority: 80 },
-  ].map((job) => ({
+  const seed = SEED_JOBS.map((job) => ({
     run_id: args.runId,
     shop_id: args.shopId,
     intake_id: args.intakeId,
@@ -223,12 +237,15 @@ export async function seedRunJobs(args: {
   return (data as OnboardingJobRow[]) ?? [];
 }
 
-export async function markRunRunning(runId: string): Promise<void> {
+export async function markRunRunning(
+  runId: string,
+  state: Extract<OrchestratorRunState, "profiling" | "materialize" | "verify" | "activate"> = "materialize",
+): Promise<void> {
   const supabase = adminAny();
   const { error } = await supabase
     .from("shop_onboarding_runs")
     .update({
-      state: "materialize" satisfies OrchestratorRunState,
+      state: state satisfies OrchestratorRunState,
       started_at: new Date().toISOString(),
       failed_at: null,
       error_code: null,
@@ -447,6 +464,46 @@ export async function summarizeRunJobs(runId: string): Promise<Record<string, nu
   }
 
   return summary;
+}
+
+export async function getLatestRunAttemptSummary(runId: string): Promise<RunAttemptSummary | null> {
+  const supabase = adminAny();
+  const { data, error } = await supabase
+    .from("shop_onboarding_attempts")
+    .select("id,job_id,status,error_code,error_message,created_at,completed_at")
+    .eq("run_id", runId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[shop-boost/orchestrator] getLatestRunAttemptSummary failed", {
+      runId,
+      error: error.message,
+    });
+    return null;
+  }
+
+  const attempt = (data as OnboardingAttemptRow | null) ?? null;
+  if (!attempt?.id) return null;
+
+  const { data: job } = await supabase
+    .from("shop_onboarding_jobs")
+    .select("job_type,domain")
+    .eq("id", attempt.job_id)
+    .maybeSingle<{ job_type: string | null; domain: string | null }>();
+
+  return {
+    attemptId: attempt.id,
+    jobId: attempt.job_id,
+    jobType: job?.job_type ?? null,
+    domain: job?.domain ?? null,
+    status: attempt.status,
+    errorCode: attempt.error_code,
+    errorMessage: attempt.error_message,
+    createdAt: attempt.created_at,
+    completedAt: attempt.completed_at,
+  };
 }
 
 export async function evaluateActivationRules(
