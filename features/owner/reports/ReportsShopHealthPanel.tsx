@@ -162,31 +162,17 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       const intakeId = latestOverview?.intake_id ?? null;
       const viewSuggestions = (suggRes.data as ShopBoostSuggestionRow[]) ?? [];
 
-      const [staffRes, canonicalCounts] = intakeId
-        ? await Promise.all([
-            supabase
-              .from("staff_invite_suggestions")
-              .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
-              .eq("shop_id", shopId)
-              .order("created_at", { ascending: false })
-              .limit(160),
-            Promise.all([
-              supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
-              supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
-              supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
-              supabase.from("staff_invite_candidates").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("intake_id", intakeId).eq("source", "shop_boost_import"),
-              supabase
-                .from("shop_boost_intakes")
-                .select("intake_basics")
-                .eq("id", intakeId)
-                .maybeSingle(),
-            ]),
-          ])
-        : [null, null];
+      const staffRes = intakeId
+        ? await supabase
+            .from("staff_invite_suggestions")
+            .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+            .eq("shop_id", shopId)
+            .order("created_at", { ascending: false })
+            .limit(160)
+        : null;
 
-      if (staffRes?.error) throw staffRes.error;
-
-      const prioritizedStaffRows = (staffRes?.data ?? [])
+      const staffRows = staffRes?.error ? [] : staffRes?.data ?? [];
+      const prioritizedStaffRows = staffRows
         .slice()
         .sort((a, b) => {
           const aMatchesIntake = intakeId && a.intake_id === intakeId ? 1 : 0;
@@ -223,22 +209,20 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
       setSuggestions(mergedSuggestions);
 
-      if (canonicalCounts) {
-        const intakeBasics = canonicalCounts[4].data?.intake_basics as Record<string, unknown> | null;
-        const importSummary = (intakeBasics?.importSummary ?? null) as Record<string, unknown> | null;
-        const canonicalMaterialization = (importSummary?.canonicalMaterialization ?? null) as Record<string, unknown> | null;
-        const canonicalStatus =
-          canonicalMaterialization?.status === "ok" || canonicalMaterialization?.status === "partial"
-            ? canonicalMaterialization.status
-            : "unknown";
-
+      if (intakeId) {
+        const canonicalCounts = await Promise.all([
+          supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+          supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+          supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
+        ]);
+        const hasCanonicalCountError = canonicalCounts.some((res) => Boolean(res.error));
         setCanonicalStats({
           staffSuggestions: staffFromBase.length,
-          staffCandidates: canonicalCounts[3].count ?? 0,
-          customers: canonicalCounts[0].count ?? 0,
-          vehicles: canonicalCounts[1].count ?? 0,
-          workOrders: canonicalCounts[2].count ?? 0,
-          canonicalStatus,
+          staffCandidates: 0,
+          customers: hasCanonicalCountError ? 0 : canonicalCounts[0].count ?? 0,
+          vehicles: hasCanonicalCountError ? 0 : canonicalCounts[1].count ?? 0,
+          workOrders: hasCanonicalCountError ? 0 : canonicalCounts[2].count ?? 0,
+          canonicalStatus: "unknown",
         });
       } else {
         setCanonicalStats(null);

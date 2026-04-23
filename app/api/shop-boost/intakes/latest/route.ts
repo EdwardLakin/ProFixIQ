@@ -37,7 +37,13 @@ export async function GET() {
     .limit(1)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[shop-boost][intakes/latest] failed to load latest intake", {
+      shopId: profile.shop_id,
+      error: error.message,
+    });
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
   if (!intake) return NextResponse.json({ ok: true, intake: null });
 
   return NextResponse.json({
