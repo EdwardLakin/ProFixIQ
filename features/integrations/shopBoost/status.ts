@@ -60,8 +60,11 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
   if (!row) return null;
   const basics = readIntakeBasics(row);
   const migration = isRecord(basics.migrationProgress) ? basics.migrationProgress : {};
+  const migrationResult = isRecord(migration.resultSummary) ? migration.resultSummary : {};
   const importSummary = isRecord(basics.importSummary) ? basics.importSummary : {};
-  const rowResults = isRecord(importSummary.rowResults) ? importSummary.rowResults : {};
+  const rowResults =
+    (isRecord(migrationResult.rowResults) ? migrationResult.rowResults : null) ??
+    (isRecord(importSummary.rowResults) ? importSummary.rowResults : {});
   return {
     currentStep: typeof migration.currentStep === "string" ? migration.currentStep : "queued",
     progressPercent: typeof migration.progressPercent === "number" ? migration.progressPercent : 0,
@@ -124,6 +127,14 @@ export function toIntakeProgress(row: IntakeRow | null): IntakeProgressState | n
       migration.completionState === "READY_FOR_GO_LIVE" ||
       migration.completionState === "NOT_READY"
         ? migration.completionState
+        : migrationResult.completionState === "COMPLETED_CLEAN" ||
+            migrationResult.completionState === "COMPLETED_WITH_REVIEW" ||
+            migrationResult.completionState === "COMPLETED_WITH_WARNINGS" ||
+            migrationResult.completionState === "PARTIAL_FAILURE" ||
+            migrationResult.completionState === "FAILED" ||
+            migrationResult.completionState === "READY_FOR_GO_LIVE" ||
+            migrationResult.completionState === "NOT_READY"
+          ? migrationResult.completionState
         : importSummary.completionState === "COMPLETED_CLEAN" ||
             importSummary.completionState === "COMPLETED_WITH_REVIEW" ||
             importSummary.completionState === "COMPLETED_WITH_WARNINGS" ||

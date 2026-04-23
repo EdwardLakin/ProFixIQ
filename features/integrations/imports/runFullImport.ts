@@ -471,9 +471,13 @@ function extractServiceCatalogCandidates(rows: CsvRow[]): {
 
     const templateName =
       pick(row, [/template/, /inspection name/, /checklist/, /form name/]) ??
-      (pick(row, [/inspection type/, /inspection category/]) || null);
+      (pick(row, [/inspection type/, /inspection category/]) || null) ??
+      (serviceCategory ? `${serviceCategory} Inspection` : null);
     const sectionName = pick(row, [/section/, /group/, /category/]) ?? "General";
-    const itemName = pick(row, [/item/, /checkpoint/, /check item/, /question/, /point/]) ?? null;
+    const itemName =
+      pick(row, [/item/, /checkpoint/, /check item/, /question/, /point/]) ??
+      serviceName ??
+      null;
     const inspectionNote = pick(row, [/inspection note/, /note/, /details/]) ?? null;
     const usageContext = pick(row, [/usage/, /vehicle type/, /applies to/, /context/]) ?? null;
 
@@ -1200,6 +1204,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         pick(row, [/^customer[_\s-]*type$/, /^type$/, /account type/, /customer class/, /segment/]) ?? "",
       );
       const business = pick(row, [/^company[_\s-]*name$/, /^business[_\s-]*name$/, /^company$/, /^business$/]);
+      const address = pick(row, [/^address$/, /^address1$/, /^street$/, /^street address$/]);
+      const city = pick(row, [/^city$/, /town/]);
+      const province = pick(row, [/^province$/, /^state$/, /state\/province/, /region/]);
+      const postalCode = pick(row, [/^postal[_\s-]*code$/, /^zip$/, /^zip[_\s-]*code$/]);
       const isFleet =
         customerType === "fleet" ||
         customerType === "commercial" ||
@@ -1230,6 +1238,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             last_name: last ?? null,
             name: name || null,
             business_name: business ?? null,
+            address: address ?? null,
+            city: city ?? null,
+            province: province ?? null,
+            postal_code: postalCode ?? null,
             source_intake_id: intakeId,
             updated_at: new Date().toISOString(),
           } as DB["public"]["Tables"]["customers"]["Update"])
@@ -1266,6 +1278,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             phone: phone || null,
             phone_number: phone || null,
             business_name: business ?? null,
+            address: address ?? null,
+            city: city ?? null,
+            province: province ?? null,
+            postal_code: postalCode ?? null,
             is_fleet: isFleet,
             shop_id: shopId,
             source_intake_id: intakeId,
@@ -1341,6 +1357,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           phone: phone || null,
           phone_number: phone || null,
           business_name: business ?? null,
+          address: address ?? null,
+          city: city ?? null,
+          province: province ?? null,
+          postal_code: postalCode ?? null,
           is_fleet: isFleet,
           source_intake_id: intakeId,
           external_id,
@@ -1426,14 +1446,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const custEmail = normalizeEmail(pick(row, [/customer email/, /email/]));
       const custPhone = normalizePhone(pick(row, [/customer phone/, /phone/]));
       const customerNameKey = normalizeNameKey(pick(row, [/customer name/, /^name$/, /account name/]));
-      const customer_id =
-        (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (custEmail && !conflictingCustomerEmails.has(custEmail) && uniqueCustomersByEmail.get(custEmail)) ||
-            (custPhone && !conflictingCustomerPhones.has(custPhone) && uniqueCustomersByPhone.get(custPhone)) ||
-            (customerNameKey && !conflictingCustomerNames.has(customerNameKey) && uniqueCustomersByName.get(customerNameKey))
-          : null) ||
+      const sourceMatchedCustomerId = sourceCustomerKey ? customersBySourceId.get(sourceCustomerKey) : null;
+      const fallbackCustomerId =
+        (custEmail && !conflictingCustomerEmails.has(custEmail) && uniqueCustomersByEmail.get(custEmail)) ||
+        (custPhone && !conflictingCustomerPhones.has(custPhone) && uniqueCustomersByPhone.get(custPhone)) ||
+        (customerNameKey && !conflictingCustomerNames.has(customerNameKey) && uniqueCustomersByName.get(customerNameKey)) ||
         null;
+      const customer_id = sourceMatchedCustomerId || fallbackCustomerId || null;
 
       if (!customer_id) {
         rowOutcome.processedRows += 1;
@@ -1655,6 +1674,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
   if (staffCsv) {
     const { rows } = parseCsv(staffCsv);
+    await supabase.from("staff_invite_suggestions").delete().eq("shop_id", shopId).eq("intake_id", intakeId);
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
@@ -1695,7 +1715,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         `${externalUserId ?? ""}|${fullName ?? ""}|${email ?? ""}|${role ?? ""}`,
       ).slice(0, 10)}`;
 
-      const { error: staffInsErr } = await supabase.from("staff_invite_suggestions").upsert(
+      const { error: staffInsErr } = await supabase.from("staff_invite_suggestions").insert(
         {
           shop_id: shopId,
           intake_id: intakeId,
@@ -1708,9 +1728,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           notes,
           external_id,
         } as unknown as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"],
-        {
-          onConflict: "shop_id,external_id",
-        },
       );
 
       if (staffInsErr) {
@@ -1758,26 +1775,24 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const customerName = pick(row, [/customer name/, /^name$/]) ?? null;
       const normalizedCustomerName = normalizeNameKey(customerName);
 
-      const customer_id =
-        (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (!sourceCustomerId
-          ? (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
-            (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
-            (normalizedCustomerName &&
-              !conflictingCustomerNames.has(normalizedCustomerName) &&
-              uniqueCustomersByName.get(normalizedCustomerName))
-          : null) ||
+      const sourceMatchedCustomerId = sourceCustomerKey ? customersBySourceId.get(sourceCustomerKey) : null;
+      const fallbackCustomerId =
+        (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
+        (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
+        (normalizedCustomerName &&
+          !conflictingCustomerNames.has(normalizedCustomerName) &&
+          uniqueCustomersByName.get(normalizedCustomerName)) ||
         null;
+      const customer_id = sourceMatchedCustomerId || fallbackCustomerId || null;
 
-      const vehicle_id =
-        (sourceVehicleKey && vehiclesBySourceId.get(sourceVehicleKey)) ||
-        (!sourceVehicleId
-          ? (vin && vehiclesByVin.get(vin)) ||
-            (plate && vehiclesByPlate.get(plate)) ||
-            (lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "") &&
-              vehiclesByUnit.get(lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "")))
-          : null) ||
+      const rowUnit = lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "");
+      const sourceMatchedVehicleId = sourceVehicleKey ? vehiclesBySourceId.get(sourceVehicleKey) : null;
+      const fallbackVehicleId =
+        (vin && vehiclesByVin.get(vin)) ||
+        (plate && vehiclesByPlate.get(plate)) ||
+        (rowUnit && vehiclesByUnit.get(rowUnit)) ||
         null;
+      const vehicle_id = sourceMatchedVehicleId || fallbackVehicleId || null;
 
       if (!customer_id || !vehicle_id) {
         rowOutcome.processedRows += 1;
