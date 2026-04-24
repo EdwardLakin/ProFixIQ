@@ -1,4 +1,5 @@
 import { WORK_ORDER_RULES_VERSION, type WorkOrderEvidenceSnapshot, type WorkOrderRecommendationDraft } from "./types";
+import { buildCloseoutRiskRecommendations } from "./closeoutRiskRules";
 
 export function buildWorkOrderRecommendationsFromSnapshot(snapshot: WorkOrderEvidenceSnapshot): WorkOrderRecommendationDraft[] {
   const recommendations: WorkOrderRecommendationDraft[] = [];
@@ -147,6 +148,8 @@ export function buildWorkOrderRecommendationsFromSnapshot(snapshot: WorkOrderEvi
       metadata: { rules_version: WORK_ORDER_RULES_VERSION },
     });
   }
+
+  recommendations.push(...buildCloseoutRiskRecommendations(snapshot));
 
   return recommendations;
 }

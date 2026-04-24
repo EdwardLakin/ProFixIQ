@@ -145,6 +145,9 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
   let blockedCount = 0;
   let activeCount = 0;
   let completedCount = 0;
+  let missingCauseCount = 0;
+  let missingCorrectionCount = 0;
+  let missingNotesCount = 0;
 
   for (const line of lines) {
     const status = normalize(line.status);
@@ -160,6 +163,12 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
     if (status === "on_hold" || status === "awaiting_parts" || normalize(line.hold_reason).includes("part")) blockedCount += 1;
     if (status === "active") activeCount += 1;
     if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") completedCount += 1;
+
+    if (normalize(line.line_type) !== "info" && (status === "completed" || status === "ready_to_invoice" || status === "invoiced")) {
+      if (!String(line.cause ?? "").trim()) missingCauseCount += 1;
+      if (!String(line.correction ?? "").trim()) missingCorrectionCount += 1;
+      if (!String(line.notes ?? "").trim()) missingNotesCount += 1;
+    }
   }
 
   const newestInspection = inspections
@@ -329,6 +338,10 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
       inspection_finalized: inspectionFinalized,
       lines_complete: linesComplete,
       approval_resolved: approvalResolved,
+      missing_cause_count: missingCauseCount,
+      missing_correction_count: missingCorrectionCount,
+      missing_notes_count: missingNotesCount,
+      verification_signals_available: true,
       blockers,
     },
     evidence_metadata: {

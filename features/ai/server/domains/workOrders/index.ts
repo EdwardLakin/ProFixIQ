@@ -70,7 +70,8 @@ export async function generateWorkOrderEvidenceAndRecommendations(input: {
       sideEffects: draft.side_effects,
       requiresApproval: draft.requires_approval,
       requiresOwnerPin: false,
-      source: "work_order_rules",
+      source: draft.source ?? "work_order_rules",
+      expiresAt: draft.expires_at ?? null,
       metadata: {
         rules_version: WORK_ORDER_RULES_VERSION,
         ...draft.metadata,
@@ -98,5 +99,6 @@ export type { WorkOrderEvidenceSnapshot, WorkOrderRecommendationDraft } from "./
 export { WORK_ORDER_RULES_VERSION } from "./types";
 export { buildWorkOrderEvidenceSnapshot } from "./buildWorkOrderEvidenceSnapshot";
 export { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommendationRules";
+export { evaluateWorkOrderCloseoutRisk, buildCloseoutRiskRecommendations } from "./closeoutRiskRules";
 
 export * from "./workOrderActionPreviews";

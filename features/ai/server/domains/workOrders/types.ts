@@ -2,6 +2,7 @@ import type { Json } from "@shared/types/types/supabase";
 import type { AiRecommendationPriority, AiRiskTier } from "@/features/ai/server/types";
 
 export const WORK_ORDER_RULES_VERSION = "wo_rules_v1";
+export const WORK_ORDER_CLOSEOUT_RULES_VERSION = "wo_closeout_risk_v1";
 
 export type WorkOrderEvidenceSnapshot = {
   shop_id: string;
@@ -83,6 +84,10 @@ export type WorkOrderEvidenceSnapshot = {
     inspection_finalized: boolean;
     lines_complete: boolean;
     approval_resolved: boolean;
+    missing_cause_count: number;
+    missing_correction_count: number;
+    missing_notes_count: number;
+    verification_signals_available: boolean;
     blockers: string[];
   };
   evidence_metadata: {
@@ -110,5 +115,29 @@ export type WorkOrderRecommendationDraft = {
   };
   side_effects: string[];
   requires_approval: boolean;
+  source?: string;
+  expires_at?: string | null;
   metadata?: Record<string, Json>;
+};
+
+export type WorkOrderCloseoutRisk = {
+  risk_code:
+    | "inspection_incomplete"
+    | "approval_pending"
+    | "job_lines_incomplete"
+    | "waiting_parts"
+    | "active_labor_or_punch"
+    | "invoice_not_ready_or_missing"
+    | "missing_verification_notes"
+    | "stale_work_order_state";
+  title: string;
+  summary: string;
+  severity: AiRiskTier;
+  confidence: number;
+  evidence_refs: string[];
+  missing_data: string[];
+  recommended_next_step: string;
+  blocks_closeout: false;
+  would_block_closeout_future: boolean;
+  rule_version: string;
 };

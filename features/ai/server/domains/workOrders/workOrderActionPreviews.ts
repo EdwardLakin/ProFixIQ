@@ -76,6 +76,46 @@ const RECOMMENDATION_PREVIEW_MAP: Record<string, ActionSpec> = {
     label: "Review closeout readiness",
     description: "Review closeout/invoice readiness with no automatic closeout mutation.",
   },
+  closeout_risk_inspection_incomplete: {
+    actionType: "review_closeout_readiness",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_approval_pending: {
+    actionType: "review_closeout_readiness",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_job_lines_incomplete: {
+    actionType: "review_closeout_readiness",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_waiting_parts: {
+    actionType: "check_parts_status",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_active_labor: {
+    actionType: "review_work_order",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_invoice_not_ready: {
+    actionType: "review_closeout_readiness",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_missing_verification: {
+    actionType: "review_closeout_readiness",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
+  closeout_risk_stale_state: {
+    actionType: "review_work_order",
+    label: "Review closeout risk",
+    description: "Review closeout risk evidence and finish required internal workflow steps.",
+  },
   technician_blocked_or_stale_active_work: {
     actionType: "review_work_order",
     label: "Review work order",
