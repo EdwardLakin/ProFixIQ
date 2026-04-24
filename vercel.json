@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/ai/expire-stale",
+      "schedule": "17 3 * * *"
+    }
+  ]
+}
