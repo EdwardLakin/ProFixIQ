@@ -7,3 +7,4 @@ export * from "./actionApprovals";
 export * from "./actionEvents";
 export * from "./safeActions";
 export * from "./domains/workOrders";
+export * from "./dashboard";

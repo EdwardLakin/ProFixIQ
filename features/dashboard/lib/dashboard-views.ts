@@ -19,6 +19,7 @@ export const DASHBOARD_VIEW_WIDGETS: Record<DashboardView, DashboardWidgetId[]> 
     "tech_load",
     "approval_risk",
     "waiting_parts",
+    "ai_mission_control",
     "live_shop_load",
   ],
   performance: [

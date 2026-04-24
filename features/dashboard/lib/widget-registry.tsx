@@ -17,6 +17,7 @@ import {
   technicianPerformanceWidgetModule,
   waitingPartsWidgetModule,
   workOrderBoardWidgetModule,
+  aiMissionControlWidgetModule,
 } from "@/features/dashboard/widgets/modules";
 import type { DashboardWidgetId } from "@/features/dashboard/types/layout";
 import type { DashboardWidgetModule } from "@/features/dashboard/types/widget";
@@ -33,6 +34,7 @@ export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   techLoadWidgetModule,
   technicianPerformanceWidgetModule,
   waitingPartsWidgetModule,
+  aiMissionControlWidgetModule,
   approvalRiskWidgetModule,
   revenueWatchWidgetModule,
   comebackRiskWidgetModule,

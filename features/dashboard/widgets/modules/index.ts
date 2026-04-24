@@ -16,3 +16,4 @@ export { technicianPerformanceWidgetModule } from "./TechnicianPerformanceWidget
 
 export { liveShopLoadWidgetModule } from "./LiveShopLoadWidgetModule";
 export { optimizationOpportunitiesWidgetModule } from "./OptimizationOpportunitiesWidgetModule";
+export { aiMissionControlWidgetModule } from "./AiMissionControlWidgetModule";

@@ -214,7 +214,7 @@ export default function DashboardWidgetBoard({
 
   const operationTopIds: DashboardWidgetId[] = ["daily_summary", "shop_pulse", "suggested_actions"];
   const operationPrimaryIds: DashboardWidgetId[] = ["work_order_board"];
-  const operationSecondaryIds: DashboardWidgetId[] = ["approval_risk", "waiting_parts"];
+  const operationSecondaryIds: DashboardWidgetId[] = ["approval_risk", "waiting_parts", "ai_mission_control"];
   const operationBusinessIds: DashboardWidgetId[] = ["advisor_queue", "tech_load", "live_shop_load"];
 
   const performanceTopIds: DashboardWidgetId[] = ["stats_overview", "revenue_watch", "reports_performance"];
