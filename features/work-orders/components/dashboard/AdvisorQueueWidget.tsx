@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import WorkOrderAiIndicatorBadge from "@/features/work-orders/components/WorkOrderAiIndicatorBadge";
+import type { WorkOrderRecommendationIndicatorMap } from "@/features/ai/server/domains/workOrders/getWorkOrderRecommendationIndicators";
 
 type DB = Database;
 
@@ -147,6 +149,7 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [linesByWo, setLinesByWo] = useState<Record<string, Line[]>>({});
+  const [indicatorsByWo, setIndicatorsByWo] = useState<WorkOrderRecommendationIndicatorMap>({});
 
   const [activeBucket, setActiveBucket] = useState<Bucket>("ready_to_invoice");
 
@@ -251,6 +254,40 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
   useEffect(() => {
     void load();
   }, [load]);
+
+
+  useEffect(() => {
+    const workOrderIds = workOrders.map((workOrder) => workOrder.id);
+
+    if (workOrderIds.length === 0) {
+      setIndicatorsByWo({});
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/work-orders/ai/indicators", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workOrderIds }),
+        });
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+
+        setIndicatorsByWo(json?.indicators && typeof json.indicators === "object" ? json.indicators as WorkOrderRecommendationIndicatorMap : {});
+      } catch {
+        if (cancelled) return;
+        setIndicatorsByWo({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workOrders]);
 
   const isTech = useMemo(() => {
     const r = String(role ?? "").toLowerCase();
@@ -371,6 +408,7 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
                           {counts.completed} completed
                         </span>
                       </div>
+                      <WorkOrderAiIndicatorBadge indicator={indicatorsByWo[wo.id]} className="mt-2" />
                     </div>
 
                     <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-neutral-200">
