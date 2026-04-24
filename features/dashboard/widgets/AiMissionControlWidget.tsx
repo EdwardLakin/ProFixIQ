@@ -7,6 +7,8 @@ import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fall
 
 type RecommendationItem = {
   id: string;
+  domain: "work_orders" | "shop_boost";
+  domainLabel: "Work order" | "Shop Boost";
   title: string;
   summary: string | null;
   status: "open" | "acknowledged";
@@ -142,6 +144,9 @@ export default function AiMissionControlWidget() {
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase ${riskClass(item.riskTier)}`}>
                     {item.riskTier} risk
                   </span>
+                  <span className="rounded-full border border-cyan-400/30 px-2 py-0.5 text-[10px] uppercase text-cyan-100">
+                    {item.domainLabel}
+                  </span>
                   <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase text-neutral-300">
                     {statusLabel(item.status)}
                   </span>
@@ -152,7 +157,7 @@ export default function AiMissionControlWidget() {
                   <span>{confidenceLabel(item.confidence)}</span>
                   {item.href ? (
                     <Link href={item.href} className="text-[var(--brand-primary)] transition hover:opacity-80">
-                      View work order →
+                      {item.domain === "shop_boost" ? "Open Shop Boost review →" : "View work order →"}
                     </Link>
                   ) : null}
                 </div>

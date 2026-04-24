@@ -2,7 +2,8 @@ import type { AiActorContext, AiRecommendationPriority, AiRecommendationStatus, 
 
 export type AiMissionControlRecommendation = {
   id: string;
-  domain: string;
+  domain: "work_orders" | "shop_boost";
+  domainLabel: "Work order" | "Shop Boost";
   recommendationType: string;
   subjectType: string;
   subjectId: string | null;
@@ -41,6 +42,6 @@ export type AiMissionControlSummary = {
 export type GetAiMissionControlSummaryInput = {
   supabase: AiServerClient;
   actorContext: AiActorContext;
-  domain?: "work_orders";
+  domains?: Array<"work_orders" | "shop_boost">;
   limit?: number;
 };

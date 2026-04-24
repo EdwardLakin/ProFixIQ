@@ -27,7 +27,7 @@ export async function GET() {
       supabase: access.supabase,
       actorContext: actor,
       limit: 5,
-      domain: "work_orders",
+      domains: ["work_orders", "shop_boost"],
     });
 
     return NextResponse.json({ summary });

@@ -8,7 +8,7 @@ import type {
 
 type RecommendationRow = {
   id: string;
-  domain: string;
+  domain: "work_orders" | "shop_boost";
   recommendation_type: string;
   subject_type: string;
   subject_id: string | null;
@@ -77,16 +77,26 @@ function isStale(expiresAt: string | null, nowEpochMs: number): boolean {
   return epoch <= nowEpochMs;
 }
 
+function toDomainLabel(domain: RecommendationRow["domain"]): "Work order" | "Shop Boost" {
+  return domain === "shop_boost" ? "Shop Boost" : "Work order";
+}
+
+function toHref(row: RecommendationRow): string | null {
+  if (row.subject_type === "work_order" && row.subject_id) return `/work-orders/${row.subject_id}`;
+  if (row.domain === "shop_boost") return "/dashboard/setup/review?source=shop-boost";
+  return null;
+}
+
 function toMissionControlRecommendation(
   row: RecommendationRow,
   previewCount: number,
 ): AiMissionControlRecommendation {
   const action = toRecommendedActionSummary(row.recommended_action);
-  const href = row.subject_type === "work_order" && row.subject_id ? `/work-orders/${row.subject_id}` : null;
 
   return {
     id: row.id,
     domain: row.domain,
+    domainLabel: toDomainLabel(row.domain),
     recommendationType: row.recommendation_type,
     subjectType: row.subject_type,
     subjectId: row.subject_id,
@@ -104,7 +114,7 @@ function toMissionControlRecommendation(
     recommendedActionType: action.recommendedActionType,
     recommendedActionLabel: action.recommendedActionLabel,
     previewCount,
-    href,
+    href: toHref(row),
   };
 }
 
@@ -112,13 +122,13 @@ export async function getAiMissionControlSummary(
   input: GetAiMissionControlSummaryInput,
 ): Promise<AiMissionControlSummary> {
   const actor = ensureActorContext(input.actorContext);
-  const domain = input.domain ?? "work_orders";
+  const domains = input.domains?.length ? input.domains : ["work_orders", "shop_boost"];
   const limit = Math.max(3, Math.min(input.limit ?? 5, 20));
 
   const { data, error } = await fromTable(input.supabase, "ai_recommendations")
     .select("id, domain, recommendation_type, subject_type, subject_id, title, summary, status, priority, risk_tier, confidence, missing_data, requires_approval, requires_owner_pin, created_at, expires_at, recommended_action")
     .eq("shop_id", actor.shopId)
-    .eq("domain", domain)
+    .in("domain", domains)
     .in("status", ["open", "acknowledged"])
     .limit(200);
 
