@@ -12,6 +12,10 @@ import {
   type AiServerClient,
   validateRiskTier,
 } from "./types";
+import {
+  type AiOwnerPinProofReference,
+  assertAiOwnerPinProofReference,
+} from "./ownerPinProof";
 import { logAiActionEvent } from "./actionEvents";
 import { AI_ACTION_EVENT_TYPES, type AiActionEventType } from "./eventTypes";
 
@@ -29,6 +33,7 @@ type CreateAiActionPreviewInput = {
   idempotencyKey?: string | null;
   requiresApproval?: boolean;
   requiresOwnerPin?: boolean;
+  ownerPinProofRef?: AiOwnerPinProofReference;
   riskTier: AiRiskTier;
   evidenceSnapshotId?: string | null;
   expiresAt?: string | null;
@@ -53,6 +58,34 @@ function validatePreviewTransition(from: AiActionPreviewStatus, to: AiActionPrev
   }
 }
 
+function withOwnerPinProofRefInMetadata(input: {
+  metadata?: Json;
+  ownerPinProofRef?: AiOwnerPinProofReference;
+  shopId: string;
+  actorId: string;
+  requiresOwnerPin: boolean;
+}): Json {
+  const metadata = normalizeObjectJson(input.metadata) as Record<string, Json>;
+
+  if (!input.ownerPinProofRef) {
+    return metadata;
+  }
+
+  const proofRef = assertAiOwnerPinProofReference(input.ownerPinProofRef, {
+    expectedShopId: input.shopId,
+    expectedActorId: input.actorId,
+  });
+
+  if (!input.requiresOwnerPin) {
+    return metadata;
+  }
+
+  return {
+    ...metadata,
+    ownerPinProofRef: proofRef as unknown as Json,
+  };
+}
+
 export async function createAiActionPreview(
   supabase: AiServerClient,
   actor: AiActorContext,
@@ -61,6 +94,7 @@ export async function createAiActionPreview(
   const ctx = ensureActorContext(actor);
 
   const requiresApproval = input.requiresApproval ?? true;
+  const requiresOwnerPin = input.requiresOwnerPin ?? false;
   const normalizedIntendedMutations = normalizeArrayJson(input.intendedMutations);
   const normalizedSideEffects = normalizeArrayJson(input.sideEffects);
 
@@ -86,12 +120,18 @@ export async function createAiActionPreview(
     compensation_plan: normalizeObjectJson(input.compensationPlan),
     idempotency_key: input.idempotencyKey ?? null,
     requires_approval: requiresApproval,
-    requires_owner_pin: input.requiresOwnerPin ?? false,
+    requires_owner_pin: requiresOwnerPin,
     risk_tier: validateRiskTier(input.riskTier),
     evidence_snapshot_id: input.evidenceSnapshotId ?? null,
     created_by: ctx.actorId,
     expires_at: input.expiresAt ?? null,
-    metadata: normalizeObjectJson(input.metadata),
+    metadata: withOwnerPinProofRefInMetadata({
+      metadata: input.metadata,
+      ownerPinProofRef: input.ownerPinProofRef,
+      shopId: ctx.shopId,
+      actorId: ctx.actorId,
+      requiresOwnerPin,
+    }),
   };
 
   const { data, error } = await fromTable(supabase, "ai_action_previews")
