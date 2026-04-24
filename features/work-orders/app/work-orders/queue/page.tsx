@@ -3,6 +3,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import WorkOrderAiIndicatorBadge from "@/features/work-orders/components/WorkOrderAiIndicatorBadge";
+import type { WorkOrderRecommendationIndicatorMap } from "@/features/ai/server/domains/workOrders/getWorkOrderRecommendationIndicators";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
@@ -80,6 +82,7 @@ export default function QueuePage() {
   // data
   const [workOrders, setWorkOrders] = useState<WO[]>([]);
   const [linesByWo, setLinesByWo] = useState<Record<string, Line[]>>({});
+  const [indicatorsByWo, setIndicatorsByWo] = useState<WorkOrderRecommendationIndicatorMap>({});
 
   // ui state
   const [loading, setLoading] = useState(true);
@@ -194,6 +197,40 @@ export default function QueuePage() {
       setLoading(false);
     })();
   }, [supabase]);
+
+
+  useEffect(() => {
+    const workOrderIds = workOrders.map((wo) => wo.id);
+
+    if (workOrderIds.length === 0) {
+      setIndicatorsByWo({});
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/work-orders/ai/indicators", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workOrderIds }),
+        });
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+
+        setIndicatorsByWo(json?.indicators && typeof json.indicators === "object" ? json.indicators as WorkOrderRecommendationIndicatorMap : {});
+      } catch {
+        if (cancelled) return;
+        setIndicatorsByWo({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workOrders]);
 
   const statuses: RollupStatus[] = [
     "awaiting",
@@ -447,6 +484,7 @@ export default function QueuePage() {
                       {bucketCounts.on_hold} on hold ·{" "}
                       {bucketCounts.completed} completed
                     </div>
+                    <WorkOrderAiIndicatorBadge indicator={indicatorsByWo[wo.id]} className="mt-2" />
                   </div>
 
                   <div className="flex flex-col items-end gap-2">
