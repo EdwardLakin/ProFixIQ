@@ -13,6 +13,7 @@ import {
   validateRiskTier,
 } from "./types";
 import { logAiActionEvent } from "./actionEvents";
+import { AI_ACTION_EVENT_TYPES, type AiActionEventType } from "./eventTypes";
 
 type CreateAiActionPreviewInput = {
   recommendationId?: string | null;
@@ -103,7 +104,7 @@ export async function createAiActionPreview(
   await logAiActionEvent(supabase, ctx, {
     recommendationId: data.recommendation_id,
     actionPreviewId: data.id,
-    eventType: "action_preview.created",
+    eventType: AI_ACTION_EVENT_TYPES.ACTION_PREVIEW_CREATED,
     idempotencyKey: data.idempotency_key,
     payload: {
       action_preview_id: data.id,
@@ -138,7 +139,7 @@ async function updatePreviewStatus(
   actor: AiActorContext,
   previewId: string,
   nextStatus: AiActionPreviewStatus,
-  eventType: "preview.ready" | "preview.cancelled",
+  eventType: AiActionEventType,
   metadata?: Json,
 ): Promise<AiActionPreviewRecord> {
   const ctx = ensureActorContext(actor);
@@ -176,7 +177,7 @@ export async function markAiActionPreviewReady(
   actor: AiActorContext,
   previewId: string,
 ): Promise<AiActionPreviewRecord> {
-  return updatePreviewStatus(supabase, actor, previewId, "ready", "preview.ready");
+  return updatePreviewStatus(supabase, actor, previewId, "ready", AI_ACTION_EVENT_TYPES.ACTION_PREVIEW_READY);
 }
 
 export async function cancelAiActionPreview(
@@ -185,7 +186,7 @@ export async function cancelAiActionPreview(
   previewId: string,
   input?: { reason?: string | null },
 ): Promise<AiActionPreviewRecord> {
-  return updatePreviewStatus(supabase, actor, previewId, "cancelled", "preview.cancelled", {
+  return updatePreviewStatus(supabase, actor, previewId, "cancelled", AI_ACTION_EVENT_TYPES.ACTION_PREVIEW_CANCELLED, {
     cancellation_reason: input?.reason ?? null,
   });
 }

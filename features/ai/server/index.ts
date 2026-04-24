@@ -1,3 +1,4 @@
+export * from "./eventTypes";
 export * from "./types";
 export * from "./evidenceSnapshots";
 export * from "./recommendations";

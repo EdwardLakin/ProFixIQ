@@ -15,6 +15,7 @@ import {
   validateRiskTier,
 } from "./types";
 import { logAiActionEvent } from "./actionEvents";
+import { AI_ACTION_EVENT_TYPES, type AiActionEventType } from "./eventTypes";
 
 const STATUS_TRANSITIONS: Record<AiRecommendationStatus, ReadonlyArray<AiRecommendationStatus>> = {
   open: ["acknowledged", "dismissed", "resolved", "expired", "superseded"],
@@ -108,7 +109,7 @@ export async function createAiRecommendation(
 
   await logAiActionEvent(supabase, ctx, {
     recommendationId: data.id,
-    eventType: "recommendation.created",
+    eventType: AI_ACTION_EVENT_TYPES.RECOMMENDATION_CREATED,
     payload: {
       recommendation_id: data.id,
       title: data.title,
@@ -194,7 +195,7 @@ async function updateRecommendationStatus(
   actor: AiActorContext,
   recommendationId: string,
   nextStatus: AiRecommendationStatus,
-  eventType: "recommendation.acknowledged" | "recommendation.dismissed" | "recommendation.resolved",
+  eventType: AiActionEventType,
   input?: { note?: string | null },
 ): Promise<AiRecommendationRecord> {
   const ctx = ensureActorContext(actor);
@@ -259,7 +260,7 @@ export async function acknowledgeAiRecommendation(
     actor,
     recommendationId,
     "acknowledged",
-    "recommendation.acknowledged",
+    AI_ACTION_EVENT_TYPES.RECOMMENDATION_ACKNOWLEDGED,
     input,
   );
 }
@@ -275,7 +276,7 @@ export async function dismissAiRecommendation(
     actor,
     recommendationId,
     "dismissed",
-    "recommendation.dismissed",
+    AI_ACTION_EVENT_TYPES.RECOMMENDATION_DISMISSED,
     input,
   );
 }
@@ -291,7 +292,7 @@ export async function resolveAiRecommendation(
     actor,
     recommendationId,
     "resolved",
-    "recommendation.resolved",
+    AI_ACTION_EVENT_TYPES.RECOMMENDATION_RESOLVED,
     input,
   );
 }

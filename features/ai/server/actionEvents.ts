@@ -2,12 +2,12 @@ import type { Json } from "@shared/types/types/supabase";
 import {
   type AiActorContext,
   type AiActionEventRecord,
-  type AiActionEventType,
   ensureActorContext,
   fromTable,
   normalizeObjectJson,
   type AiServerClient,
 } from "./types";
+import { assertAiActionEventType, type AiActionEventType } from "./eventTypes";
 
 type LogAiActionEventInput = {
   recommendationId?: string | null;
@@ -27,13 +27,14 @@ export async function logAiActionEvent(
   input: LogAiActionEventInput,
 ): Promise<AiActionEventRecord> {
   const ctx = ensureActorContext(actor);
+  const eventType = assertAiActionEventType(input.eventType);
 
   const insertPayload = {
     shop_id: ctx.shopId,
     recommendation_id: input.recommendationId ?? null,
     action_preview_id: input.actionPreviewId ?? null,
     approval_id: input.approvalId ?? null,
-    event_type: input.eventType,
+    event_type: eventType,
     actor_id: ctx.actorId,
     actor_role: input.actorRole ?? actor.role ?? null,
     source: input.source ?? ctx.source,
