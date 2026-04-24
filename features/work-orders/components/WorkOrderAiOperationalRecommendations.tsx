@@ -53,6 +53,7 @@ type PreviewPayloadRecord = {
 type PreviewRow = {
   id: string;
   recommendation_id: string | null;
+  status: string;
   preview_payload: PreviewPayloadRecord;
   intended_mutations: unknown[];
   affected_records: Array<{ type?: string; id?: string }>;
@@ -62,6 +63,13 @@ type PreviewRow = {
   risk_tier: string;
   evidence_snapshot_id: string | null;
   created_at: string;
+};
+
+type ApprovalRow = {
+  id: string;
+  action_preview_id: string;
+  status: string;
+  requested_at: string;
 };
 
 type AdvisorDraftSection = {
@@ -99,6 +107,7 @@ function parsePreview(raw: unknown): PreviewRow | null {
   return {
     id: value.id,
     recommendation_id: typeof value.recommendation_id === "string" ? value.recommendation_id : null,
+    status: typeof value.status === "string" ? value.status : "draft",
     preview_payload: previewPayload,
     intended_mutations: Array.isArray(value.intended_mutations) ? value.intended_mutations : [],
     affected_records: Array.isArray(value.affected_records) ? (value.affected_records as Array<{ type?: string; id?: string }>) : [],
@@ -120,6 +129,8 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewByRecommendationId, setPreviewByRecommendationId] = useState<Record<string, PreviewRow>>({});
+  const [approvalByPreviewId, setApprovalByPreviewId] = useState<Record<string, ApprovalRow>>({});
+  const [approvalRequestLoadingByPreviewId, setApprovalRequestLoadingByPreviewId] = useState<Record<string, boolean>>({});
   const [advisorDraft, setAdvisorDraft] = useState<AdvisorDraft | null>(null);
   const [advisorDraftLoading, setAdvisorDraftLoading] = useState(false);
   const [advisorDraftRefreshing, setAdvisorDraftRefreshing] = useState(false);
@@ -277,6 +288,55 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
     [workOrderId],
   );
 
+  const onRequestApproval = useCallback(
+    async (preview: PreviewRow) => {
+      if (preview.requires_owner_pin) {
+        toast.info("Owner PIN proof required before approval request.");
+        return;
+      }
+
+      setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.id]: true }));
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/ai/action-previews/${preview.id}/approval-request`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason: "Requested from work order AI operational recommendations UI",
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Failed to request approval.");
+
+        const approval = json?.approval as ApprovalRow | undefined;
+        if (!approval?.id) {
+          throw new Error("Approval request response was invalid.");
+        }
+
+        setApprovalByPreviewId((prev) => ({
+          ...prev,
+          [preview.id]: approval,
+        }));
+
+        if (json?.created === false) {
+          toast.success("Pending approval already exists.");
+        } else {
+          toast.success("Approval request submitted.");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to request approval.";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.id]: false }));
+      }
+    },
+    [],
+  );
+
   const freshnessLabel = useMemo(() => {
     if (!evidence?.freshness_at) return "No evidence snapshot yet";
     return `Evidence freshness: ${new Date(evidence.freshness_at).toLocaleString()}`;
@@ -414,9 +474,46 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                     <p className="mt-1">Side effects: {preview.side_effects.length > 0 ? preview.side_effects.join(" • ") : "No external side effects"}</p>
                     <p className="mt-1">Approval required: {preview.requires_approval ? "Yes" : "No"}</p>
                     <p className="mt-1">Owner PIN required: {preview.requires_owner_pin ? "Yes" : "No"}</p>
+                    <p className="mt-1">Execution blocked: Yes</p>
                     <p className="mt-1">Risk tier: {preview.risk_tier}</p>
                     <p className="mt-1">Execution status: Execution blocked — preview only</p>
                     <p className="mt-1">Evidence snapshot: {preview.evidence_snapshot_id ?? preview.preview_payload.evidence_snapshot_id ?? "Not linked"}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      {(preview.requires_approval || preview.risk_tier === "high" || preview.risk_tier === "critical") ? (
+                        <>
+                          <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[9px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
+                            approval required
+                          </span>
+                          {preview.requires_owner_pin ? (
+                            <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[9px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
+                              owner PIN required
+                            </span>
+                          ) : null}
+                          <span className="rounded-full border border-white/20 px-2 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                            execution blocked
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                    {(preview.status === "ready" || preview.status === "approval_required") &&
+                    (preview.requires_approval || preview.risk_tier === "high" || preview.risk_tier === "critical") ? (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-[rgba(184,115,51,0.5)] px-2 py-1 text-[11px] text-[rgba(184,115,51,0.95)] transition hover:bg-[rgba(184,115,51,0.12)] disabled:opacity-50"
+                          disabled={Boolean(approvalRequestLoadingByPreviewId[preview.id]) || preview.requires_owner_pin}
+                          onClick={() => void onRequestApproval(preview)}
+                        >
+                          {approvalRequestLoadingByPreviewId[preview.id] ? "Requesting approval…" : "Request approval"}
+                        </button>
+                        {preview.requires_owner_pin ? (
+                          <p className="mt-1 text-[10px] text-muted-foreground">Owner PIN proof required before approval request.</p>
+                        ) : null}
+                        {approvalByPreviewId[preview.id]?.status === "pending" ? (
+                          <p className="mt-1 text-[10px] text-[rgba(184,115,51,0.95)]">Pending approval request exists.</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </article>

@@ -1,6 +1,7 @@
 import type { Json } from "@shared/types/types/supabase";
 import {
   type AiActionApprovalRecord,
+  type AiActionPreviewStatus,
   type AiActionApprovalStatus,
   type AiActionPreviewRecord,
   type AiActorContext,
@@ -69,6 +70,205 @@ function withOwnerPinProofRefInMetadata(input: {
   return {
     ...metadata,
     ownerPinProofRef: proofRef as unknown as Json,
+  };
+}
+
+const APPROVAL_REQUEST_ELIGIBLE_PREVIEW_STATUSES: ReadonlySet<AiActionPreviewStatus> = new Set([
+  "ready",
+  "approval_required",
+]);
+
+const APPROVAL_REQUEST_TERMINAL_PREVIEW_STATUSES: ReadonlySet<AiActionPreviewStatus> = new Set([
+  "approved",
+  "rejected",
+  "expired",
+  "executed",
+  "cancelled",
+  "failed",
+]);
+
+function parseApprovalHintFromPreview(preview: AiActionPreviewRecord): { requiresApproval: boolean } {
+  if (preview.requires_approval) {
+    return { requiresApproval: true };
+  }
+
+  if (preview.risk_tier === "high" || preview.risk_tier === "critical") {
+    return { requiresApproval: true };
+  }
+
+  const previewPayload = normalizeObjectJson(preview.preview_payload) as Record<string, Json>;
+  if (previewPayload.requires_approval === true) {
+    return { requiresApproval: true };
+  }
+
+  const metadata = normalizeObjectJson(preview.metadata) as Record<string, Json>;
+  if (metadata.approval_required === true || metadata.requires_approval === true) {
+    return { requiresApproval: true };
+  }
+
+  return { requiresApproval: false };
+}
+
+export type RequestAiActionPreviewApprovalResult = {
+  approval: AiActionApprovalRecord;
+  preview: AiActionPreviewRecord;
+  created: boolean;
+  executionBlocked: true;
+  warnings: string[];
+};
+
+export async function requestAiActionPreviewApproval(
+  supabase: AiServerClient,
+  actor: AiActorContext,
+  input: {
+    previewId: string;
+    ownerPinProofRef?: AiOwnerPinProofReference;
+    reason?: string | null;
+    expiresAt?: string | null;
+  },
+): Promise<RequestAiActionPreviewApprovalResult> {
+  const ctx = ensureActorContext(actor);
+  const preview = await getAiActionPreview(supabase, ctx, input.previewId);
+  if (!preview) throw new Error("action preview not found");
+
+  if (APPROVAL_REQUEST_TERMINAL_PREVIEW_STATUSES.has(preview.status)) {
+    throw new Error("action preview is in a terminal state");
+  }
+  if (!APPROVAL_REQUEST_ELIGIBLE_PREVIEW_STATUSES.has(preview.status)) {
+    throw new Error(`action preview status ${preview.status} cannot request approval`);
+  }
+
+  const approvalHint = parseApprovalHintFromPreview(preview);
+  if (!approvalHint.requiresApproval) {
+    throw new Error("action preview does not require approval");
+  }
+
+  let ownerPinProofRef: AiOwnerPinProofReference | null = null;
+  if (input.ownerPinProofRef) {
+    try {
+      ownerPinProofRef = assertAiOwnerPinProofReference(input.ownerPinProofRef, {
+        expectedShopId: ctx.shopId,
+        expectedActorId: ctx.actorId,
+      });
+    } catch {
+      await logAiActionEvent(supabase, ctx, {
+        recommendationId: preview.recommendation_id,
+        actionPreviewId: preview.id,
+        eventType: AI_ACTION_EVENT_TYPES.OWNER_PIN_PROOF_INVALID,
+        payload: {
+          action_preview_id: preview.id,
+          approval_request_only: true,
+        },
+      });
+      throw new Error("invalid owner PIN proof reference");
+    }
+  }
+
+  if (preview.requires_owner_pin && !ownerPinProofRef) {
+    await logAiActionEvent(supabase, ctx, {
+      recommendationId: preview.recommendation_id,
+      actionPreviewId: preview.id,
+      eventType: AI_ACTION_EVENT_TYPES.OWNER_PIN_PROOF_MISSING,
+      payload: {
+        action_preview_id: preview.id,
+        approval_request_only: true,
+      },
+    });
+    throw new Error("owner PIN proof is required before requesting approval");
+  }
+
+  const { data: existingPending, error: existingPendingError } = await fromTable(supabase, "ai_action_approvals")
+    .select("*")
+    .eq("shop_id", ctx.shopId)
+    .eq("action_preview_id", preview.id)
+    .eq("status", "pending")
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<AiActionApprovalRecord>();
+
+  if (existingPendingError) throw new Error(existingPendingError.message);
+  if (existingPending) {
+    return {
+      approval: existingPending,
+      preview,
+      created: false,
+      executionBlocked: true,
+      warnings: [],
+    };
+  }
+
+  const now = new Date().toISOString();
+  const expiresAt = input.expiresAt ?? null;
+  if (expiresAt && Number.isNaN(Date.parse(expiresAt))) {
+    throw new Error("invalid expiresAt");
+  }
+
+  const metadata = withOwnerPinProofRefInMetadata({
+    metadata: {
+      requestedByActorId: ctx.actorId,
+      requestedAt: now,
+      reason: input.reason ?? null,
+      approvalRequestOnly: true,
+      executionBlocked: true,
+    },
+    ownerPinProofRef: ownerPinProofRef ?? undefined,
+    shopId: ctx.shopId,
+    actorId: ctx.actorId,
+    ownerPinRequired: preview.requires_owner_pin,
+  });
+
+  const { data: approval, error: insertError } = await fromTable(supabase, "ai_action_approvals")
+    .insert({
+      shop_id: ctx.shopId,
+      action_preview_id: preview.id,
+      status: "pending",
+      requested_by: ctx.actorId,
+      owner_pin_required: preview.requires_owner_pin,
+      owner_pin_verified: false,
+      owner_pin_verification_ref: ownerPinProofRef?.verificationRef ?? null,
+      expires_at: expiresAt,
+      metadata,
+    })
+    .select("*")
+    .single<AiActionApprovalRecord>();
+
+  if (insertError) throw new Error(insertError.message);
+
+  if (ownerPinProofRef) {
+    await logAiActionEvent(supabase, ctx, {
+      recommendationId: preview.recommendation_id,
+      actionPreviewId: preview.id,
+      approvalId: approval.id,
+      eventType: AI_ACTION_EVENT_TYPES.OWNER_PIN_PROOF_ATTACHED,
+      payload: {
+        action_preview_id: preview.id,
+        approval_id: approval.id,
+        proof_purpose: ownerPinProofRef.purpose,
+      },
+    });
+  }
+
+  await logAiActionEvent(supabase, ctx, {
+    recommendationId: preview.recommendation_id,
+    actionPreviewId: preview.id,
+    approvalId: approval.id,
+    eventType: AI_ACTION_EVENT_TYPES.ACTION_APPROVAL_REQUESTED,
+    payload: {
+      action_preview_id: preview.id,
+      approval_id: approval.id,
+      approval_request_only: true,
+      execution_blocked: true,
+      owner_pin_required: preview.requires_owner_pin,
+      reason: input.reason ?? null,
+    },
+  });
+
+  return {
+    approval,
+    preview,
+    created: true,
+    executionBlocked: true,
+    warnings: [],
   };
 }
 
