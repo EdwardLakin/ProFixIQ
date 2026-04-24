@@ -10,6 +10,8 @@ import { buildWorkOrderEvidenceSnapshot } from "./buildWorkOrderEvidenceSnapshot
 import { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommendationRules";
 import { createWorkOrderPartsDelayEvidenceSnapshot } from "./partsDelayEvidence";
 import { buildPartsDelayRecommendations } from "./partsDelayRules";
+import { createWorkOrderTechnicianDispatchEvidenceSnapshot } from "./technicianDispatchEvidence";
+import { buildTechnicianDispatchRecommendations } from "./technicianDispatchRules";
 import { WORK_ORDER_RULES_VERSION } from "./types";
 
 type DB = Database;
@@ -46,7 +48,18 @@ export async function generateWorkOrderEvidenceAndRecommendations(input: {
     evidenceSnapshotId: partsDelayEvidenceRecord.id,
   });
 
-  const drafts = [...operationalDrafts, ...partsDelayDrafts];
+  const { evidence: technicianDispatchEvidenceRecord, snapshot: technicianDispatchSnapshot } = await createWorkOrderTechnicianDispatchEvidenceSnapshot({
+    supabase,
+    actor,
+    workOrderId,
+  });
+
+  const technicianDispatchDrafts = buildTechnicianDispatchRecommendations({
+    evidence: technicianDispatchSnapshot,
+    evidenceSnapshotId: technicianDispatchEvidenceRecord.id,
+  });
+
+  const drafts = [...operationalDrafts, ...partsDelayDrafts, ...technicianDispatchDrafts];
   const existing = await listAiRecommendationsForSubject(supabase, actor, {
     subjectType: "work_order",
     subjectId: workOrderId,
@@ -121,3 +134,6 @@ export { evaluateWorkOrderCloseoutRisk, buildCloseoutRiskRecommendations } from 
 export * from "./workOrderActionPreviews";
 
 export * from "./advisorExplanationDrafts";
+
+export { buildWorkOrderTechnicianDispatchEvidence, createWorkOrderTechnicianDispatchEvidenceSnapshot } from "./technicianDispatchEvidence";
+export { evaluateWorkOrderTechnicianDispatchRisk, buildTechnicianDispatchRecommendations } from "./technicianDispatchRules";

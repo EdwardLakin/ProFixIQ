@@ -317,6 +317,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
             const previewBusy = previewLoadingId === item.id;
             const isCloseoutRisk = item.recommendation_type.startsWith("closeout_risk_");
             const isPartsDelay = item.recommendation_type.startsWith("parts_delay_");
+            const isDispatchReview = item.recommendation_type.startsWith("technician_dispatch_");
             const severityLabel = `severity ${item.risk_tier}`;
             const recommendedNextStep = item.recommended_action?.details ?? item.recommended_action?.label ?? "Review work order";
 
@@ -334,6 +335,11 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                       Parts delay review
                     </span>
                   ) : null}
+                  {isDispatchReview ? (
+                    <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
+                      Dispatch review
+                    </span>
+                  ) : null}
                   <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
                   <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{severityLabel}</span>
                   {item.status === "acknowledged" ? (
@@ -346,6 +352,9 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                 ) : null}
                 {isPartsDelay ? (
                   <p className="mt-1 text-[10px] text-[rgba(184,115,51,0.95)]">Advisory only — internal parts-delay review, no execution.</p>
+                ) : null}
+                {isDispatchReview ? (
+                  <p className="mt-1 text-[10px] text-[rgba(184,115,51,0.95)]">Advisory only — internal dispatch review, no assignment/schedule/labor mutation.</p>
                 ) : null}
                 <div className="mt-1 text-[10px] text-muted-foreground">
                   Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {recommendedNextStep}

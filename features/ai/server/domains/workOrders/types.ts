@@ -163,6 +163,74 @@ export type WorkOrderPartsDelayRisk = {
   rule_version: string;
 };
 
+
+export type WorkOrderTechnicianDispatchEvidence = {
+  workOrderId: string;
+  shopId: string;
+  generatedAt: string;
+  lineCount: number;
+  actionableLineCount: number;
+  unassignedActionableLineCount: number;
+  assignedTechnicianIds: string[];
+  activeTechnicianIds: string[];
+  activeLaborSegmentCount: number;
+  staleActiveLaborCount: number;
+  highPriorityLineCount: number;
+  urgentPriorityLineCount: number;
+  blockedLineCount: number;
+  waitingLineCount: number;
+  scheduleDataAvailable: boolean;
+  timeOffDataAvailable: boolean;
+  certificationDataAvailable: boolean;
+  laborHistoryAvailable: boolean;
+  technicianLoadAvailable: boolean;
+  unavailableAssignedTechCount: number | null;
+  overloadedTechCount: number | null;
+  certRelevantLineCount: number;
+  assignedWithoutActiveCertCount: number | null;
+  missingData: string[];
+  sourceRefs: Array<Record<string, string | null>>;
+  confidence: number;
+};
+
+export type TechnicianDispatchCandidateSummary = {
+  technicianId: string;
+  assignedActionableCount: number;
+  activeLaborCount: number;
+  hasOpenShift: boolean | null;
+  hasApprovedTimeOffNow: boolean | null;
+  activeCertificationCount: number | null;
+};
+
+export type WorkOrderTechnicianDispatchSignal = {
+  code: string;
+  severity: AiRiskTier;
+  count: number;
+  confidence: number;
+  evidence_refs: string[];
+  missing_data: string[];
+};
+
+export type WorkOrderTechnicianDispatchRisk = {
+  risk_code:
+    | "unassigned_actionable_lines"
+    | "high_priority_unassigned"
+    | "assigned_tech_unavailable"
+    | "active_labor_stale"
+    | "overloaded_technician_review"
+    | "certification_review_needed"
+    | "blocked_line_dispatch_review"
+    | "dispatch_state_unknown";
+  title: string;
+  summary: string;
+  severity: AiRiskTier;
+  confidence: number;
+  evidence_refs: string[];
+  missing_data: string[];
+  recommended_next_step: string;
+  advisory_only: true;
+  rule_version: string;
+};
 export type WorkOrderCloseoutRisk = {
   risk_code:
     | "inspection_incomplete"
