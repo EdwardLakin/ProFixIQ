@@ -93,13 +93,18 @@ export default function AiMissionControlWidget() {
       subtitle="Evidence-backed recommendations from active shop work."
       compact
       rightSlot={
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200 transition hover:bg-black/40"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/ai-recommendations" className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20">
+            View all
+          </Link>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200 transition hover:bg-black/40"
+          >
+            Refresh
+          </button>
+        </div>
       }
     >
       {loading ? (
