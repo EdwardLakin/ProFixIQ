@@ -64,6 +64,25 @@ type PreviewRow = {
   created_at: string;
 };
 
+type AdvisorDraftSection = {
+  heading: string;
+  bullets: string[];
+};
+
+type AdvisorDraft = {
+  title: string;
+  audience: "internal_advisor";
+  advisoryOnly: true;
+  evidenceSnapshotId: string;
+  recommendationId: string | null;
+  workOrderId: string;
+  sections: AdvisorDraftSection[];
+  missingData: string[];
+  confidence: number;
+  warnings: string[];
+  prohibitedActions: string[];
+};
+
 function isPreviewableRecommendation(item: RecommendationRow): boolean {
   return item.risk_tier !== "critical";
 }
@@ -101,6 +120,9 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewByRecommendationId, setPreviewByRecommendationId] = useState<Record<string, PreviewRow>>({});
+  const [advisorDraft, setAdvisorDraft] = useState<AdvisorDraft | null>(null);
+  const [advisorDraftLoading, setAdvisorDraftLoading] = useState(false);
+  const [advisorDraftRefreshing, setAdvisorDraftRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +133,19 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
       if (!res.ok) throw new Error(json?.error ?? "Failed to load operational recommendations.");
       setRecommendations(Array.isArray(json.recommendations) ? json.recommendations : []);
       setEvidence(json.evidenceSnapshot ?? null);
+
+      setAdvisorDraftLoading(true);
+      try {
+        const draftRes = await fetch(`/api/work-orders/${workOrderId}/ai/advisor-draft`, { cache: "no-store" });
+        const draftJson = await draftRes.json();
+        if (draftRes.ok && draftJson?.draft) {
+          setAdvisorDraft(draftJson.draft as AdvisorDraft);
+        } else {
+          setAdvisorDraft(null);
+        }
+      } finally {
+        setAdvisorDraftLoading(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load operational recommendations.");
     } finally {
@@ -138,6 +173,25 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
       toast.error(message);
     } finally {
       setRefreshing(false);
+    }
+  }, [workOrderId]);
+
+  const onGenerateAdvisorDraft = useCallback(async () => {
+    setAdvisorDraftRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/work-orders/${workOrderId}/ai/advisor-draft`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to generate advisor explanation draft.");
+      if (!json?.draft) throw new Error("Advisor draft response was invalid.");
+      setAdvisorDraft(json.draft as AdvisorDraft);
+      toast.success("Internal advisor draft generated.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate advisor explanation draft.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setAdvisorDraftRefreshing(false);
     }
   }, [workOrderId]);
 
@@ -351,6 +405,74 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
           })}
         </div>
       ) : null}
+
+      <div className={cn(PANEL_VARIANTS.passive, "mt-2 p-2")}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-medium text-foreground">Advisor explanation draft</p>
+            <p className="text-[10px] text-muted-foreground">Internal-only, advisory-only explanation prep from evidence snapshots.</p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md border border-[rgba(184,115,51,0.5)] px-2 py-1 text-[11px] text-[rgba(184,115,51,0.95)] transition hover:bg-[rgba(184,115,51,0.12)] disabled:opacity-50"
+            onClick={() => void onGenerateAdvisorDraft()}
+            disabled={advisorDraftRefreshing}
+          >
+            {advisorDraftRefreshing ? "Generating draft…" : "Generate advisor draft"}
+          </button>
+        </div>
+
+        {advisorDraftLoading ? <p className="mt-2 text-[10px] text-muted-foreground">Loading advisor draft…</p> : null}
+
+        {advisorDraft ? (
+          <div className="mt-2 rounded-md border border-white/10 bg-white/[0.02] p-2 text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 uppercase tracking-wide text-[9px] text-[rgba(184,115,51,0.95)]">internal-only</span>
+              <span className="rounded-full border border-white/20 px-2 py-0.5 uppercase tracking-wide text-[9px] text-muted-foreground">advisory-only</span>
+            </div>
+            <p className="mt-1 text-[11px] font-medium text-foreground">{advisorDraft.title}</p>
+            <p className="mt-1">Confidence: {advisorDraft.confidence.toFixed(2)} • Missing data: {advisorDraft.missingData.length}</p>
+            <p className="mt-1">Evidence snapshot: {advisorDraft.evidenceSnapshotId}{advisorDraft.recommendationId ? ` • Recommendation: ${advisorDraft.recommendationId}` : ""}</p>
+
+            <div className="mt-2 space-y-2">
+              {advisorDraft.sections.map((section) => (
+                <div key={section.heading}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">{section.heading}</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {section.bullets.map((bullet, idx) => (
+                      <li key={`${section.heading}:${idx}`}>{bullet}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            {advisorDraft.warnings.length > 0 ? (
+              <div className="mt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Warnings</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {advisorDraft.warnings.map((warning, idx) => (
+                    <li key={`warning:${idx}`}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {advisorDraft.prohibitedActions.length > 0 ? (
+              <div className="mt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Do not do</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {advisorDraft.prohibitedActions.map((item, idx) => (
+                    <li key={`prohibit:${idx}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-[10px] text-muted-foreground">No advisor draft yet. Generate one for internal review.</p>
+        )}
+      </div>
 
       <p className="mt-2 text-[10px] text-muted-foreground">{freshnessLabel} • Generated by work order rules.</p>
     </section>
