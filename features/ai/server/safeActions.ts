@@ -1,5 +1,6 @@
 import type { Json } from "@shared/types/types/supabase";
 import type { AiActionPreviewRecord, AiActorContext, AiRiskTier } from "./types";
+import type { AiOwnerPinProofReference } from "./ownerPinProof";
 import { createAiActionPreview, getAiActionPreview } from "./actionPreviews";
 import type { AiServerClient } from "./types";
 
@@ -37,6 +38,7 @@ export async function buildAiActionPreview(
     evidenceSnapshotId?: string | null;
     requiresOwnerPin?: boolean;
     metadata?: Json;
+    ownerPinProofRef?: AiOwnerPinProofReference;
   },
 ): Promise<AiActionPreviewRecord> {
   return createAiActionPreview(supabase, actor, {
@@ -56,6 +58,7 @@ export async function buildAiActionPreview(
     requiresApproval: true,
     requiresOwnerPin: input.requiresOwnerPin ?? (input.riskTier === "high" || input.riskTier === "critical"),
     metadata: input.metadata,
+    ownerPinProofRef: input.ownerPinProofRef,
   });
 }
 
@@ -77,7 +80,7 @@ export function requireAiActionApproval(input: {
 export async function assertAiActionCanExecute(
   supabase: AiServerClient,
   actor: AiActorContext,
-  input: { actionPreviewId: string },
+  input: { actionPreviewId: string; ownerPinProofRef?: AiOwnerPinProofReference },
 ): Promise<SafeActionExecutionGuard> {
   await getAiActionPreview(supabase, actor, input.actionPreviewId);
 
