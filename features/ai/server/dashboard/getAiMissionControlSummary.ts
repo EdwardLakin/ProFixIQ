@@ -27,6 +27,7 @@ type RecommendationRow = {
 };
 
 type PreviewCountRow = {
+  id: string;
   recommendation_id: string | null;
 };
 
@@ -146,10 +147,11 @@ export async function getAiMissionControlSummary(
 
   const recommendationIds = rows.map((row) => row.id);
   const previewCountByRecommendation = new Map<string, number>();
+  const previewIds: string[] = [];
 
   if (recommendationIds.length > 0) {
     const { data: previewCounts, error: previewError } = await fromTable(input.supabase, "ai_action_previews")
-      .select("recommendation_id")
+      .select("id, recommendation_id")
       .eq("shop_id", actor.shopId)
       .eq("status", "ready")
       .in("recommendation_id", recommendationIds);
@@ -157,9 +159,23 @@ export async function getAiMissionControlSummary(
     if (!previewError) {
       for (const row of (previewCounts ?? []) as PreviewCountRow[]) {
         if (!row.recommendation_id) continue;
+        previewIds.push(row.id);
         const previous = previewCountByRecommendation.get(row.recommendation_id) ?? 0;
         previewCountByRecommendation.set(row.recommendation_id, previous + 1);
       }
+    }
+  }
+
+  let pendingApprovalCount = 0;
+  if (previewIds.length > 0) {
+    const { data: pendingApprovals, error: approvalsError } = await fromTable(input.supabase, "ai_action_approvals")
+      .select("id")
+      .eq("shop_id", actor.shopId)
+      .eq("status", "pending")
+      .in("action_preview_id", previewIds);
+
+    if (!approvalsError) {
+      pendingApprovalCount = (pendingApprovals ?? []).length;
     }
   }
 
@@ -199,6 +215,7 @@ export async function getAiMissionControlSummary(
     missingDataCount: missingDataRecommendations.length,
     workOrdersNeedingAttention,
     totalPreviewCount,
+    pendingApprovalCount,
     recommendations,
     generatedAt: new Date().toISOString(),
   };

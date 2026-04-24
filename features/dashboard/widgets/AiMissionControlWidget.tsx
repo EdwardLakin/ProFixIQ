@@ -31,6 +31,7 @@ type MissionControlSummary = {
   missingDataCount: number;
   workOrdersNeedingAttention: number;
   totalPreviewCount: number;
+  pendingApprovalCount: number;
   recommendations: RecommendationItem[];
   generatedAt: string;
 };
@@ -97,6 +98,11 @@ export default function AiMissionControlWidget() {
           <Link href="/dashboard/ai-recommendations" className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20">
             View all
           </Link>
+          {summary && summary.pendingApprovalCount > 0 ? (
+            <Link href="/dashboard/ai-approvals" className="rounded-full border border-amber-400/35 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100 transition hover:bg-amber-500/20">
+              Approval inbox
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => void load()}
@@ -137,6 +143,7 @@ export default function AiMissionControlWidget() {
             <Metric label="Missing data" value={String(summary.missingDataCount)} />
             <Metric label="Stale" value={String(summary.staleCount)} />
             <Metric label="Preview-ready" value={String(summary.totalPreviewCount)} />
+            <Metric label="Pending approvals" value={String(summary.pendingApprovalCount)} />
           </div>
 
           <div className="space-y-2">
