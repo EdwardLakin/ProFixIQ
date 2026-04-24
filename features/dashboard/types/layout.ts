@@ -14,7 +14,8 @@ export type DashboardWidgetId =
   | "work_order_board"
   | "bookings"
   | "advisor_queue"
-  | "optimization_opportunities";
+  | "optimization_opportunities"
+  | "ai_mission_control";
 
 export type DashboardCountState = {
   appointments: number;

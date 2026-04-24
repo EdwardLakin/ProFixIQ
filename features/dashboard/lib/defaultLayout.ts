@@ -23,6 +23,7 @@ const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
   { id: "work_order_board", x: 0, y: 3, w: 8, h: 6 },
   { id: "approval_risk", x: 8, y: 3, w: 4, h: 3 },
   { id: "waiting_parts", x: 8, y: 6, w: 4, h: 3 },
+  { id: "ai_mission_control", x: 0, y: 18, w: 4, h: 3 },
   { id: "comeback_risk", x: 8, y: 9, w: 4, h: 3, hidden: true },
 
   { id: "advisor_queue", x: 0, y: 9, w: 4, h: 3 },
@@ -35,7 +36,7 @@ const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
 
   { id: "live_shop_load", x: 4, y: 15, w: 4, h: 3, hidden: true },
   { id: "tech_performance", x: 8, y: 15, w: 4, h: 3, hidden: true },
-  { id: "optimization_opportunities", x: 0, y: 18, w: 6, h: 3, hidden: true },
+  { id: "optimization_opportunities", x: 4, y: 18, w: 6, h: 3, hidden: true },
 ];
 
 export function buildDefaultDashboardLayout(

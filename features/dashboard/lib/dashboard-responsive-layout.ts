@@ -26,6 +26,7 @@ export const DASHBOARD_WIDGET_RESPONSIVE_META: Record<DashboardWidgetId, Dashboa
   tech_load: { mode: "standard", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 12.5, compactMinHeightRem: 10 },
   approval_risk: { mode: "signal", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 12, compactMinHeightRem: 9.5 },
   waiting_parts: { mode: "signal", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 12, compactMinHeightRem: 9.5 },
+  ai_mission_control: { mode: "feature", span: { desktop: 1, laptop: 1, tablet: 2, mobile: 1 }, preferredMinHeightRem: 14, compactMinHeightRem: 10.5 },
   live_shop_load: { mode: "standard", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 12.5, compactMinHeightRem: 10 },
   stats_overview: { mode: "signal", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 11.5, compactMinHeightRem: 9.5 },
   revenue_watch: { mode: "signal", span: { desktop: 1, laptop: 1, tablet: 1, mobile: 1 }, preferredMinHeightRem: 11.5, compactMinHeightRem: 9.5 },
