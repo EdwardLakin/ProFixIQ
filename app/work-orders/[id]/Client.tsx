@@ -20,6 +20,7 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
+import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
@@ -1326,6 +1327,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                 Refreshing work order data…
               </div>
             ) : null}
+            <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
               <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
