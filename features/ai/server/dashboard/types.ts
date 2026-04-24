@@ -35,6 +35,7 @@ export type AiMissionControlSummary = {
   missingDataCount: number;
   workOrdersNeedingAttention: number;
   totalPreviewCount: number;
+  pendingApprovalCount: number;
   recommendations: AiMissionControlRecommendation[];
   generatedAt: string;
 };

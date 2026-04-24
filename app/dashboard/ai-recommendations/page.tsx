@@ -1,5 +1,6 @@
 import AiRecommendationsReviewClient from "@/features/ai/components/AiRecommendationsReviewClient";
 import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import Link from "next/link";
 
 export default async function AiRecommendationsPage() {
   await requireAdminPageAccess({ allow: ["owner", "admin", "manager", "advisor"] });
@@ -10,6 +11,11 @@ export default async function AiRecommendationsPage() {
         <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">AI Review Center</p>
         <h1 className="mt-1 text-3xl font-semibold text-white">AI Recommendations</h1>
         <p className="mt-1 text-sm text-neutral-300">Evidence-backed operating signals awaiting review</p>
+        <div className="mt-3">
+          <Link href="/dashboard/ai-approvals" className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20">
+            Approval inbox
+          </Link>
+        </div>
       </section>
       <AiRecommendationsReviewClient />
     </main>
