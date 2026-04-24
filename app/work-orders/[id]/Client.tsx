@@ -21,6 +21,7 @@ import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
+import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
@@ -1327,6 +1328,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 Refreshing work order data…
               </div>
             ) : null}
+            <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
             <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
 
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
