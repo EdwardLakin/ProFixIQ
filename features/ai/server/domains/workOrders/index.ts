@@ -137,3 +137,5 @@ export * from "./advisorExplanationDrafts";
 
 export { buildWorkOrderTechnicianDispatchEvidence, createWorkOrderTechnicianDispatchEvidenceSnapshot } from "./technicianDispatchEvidence";
 export { evaluateWorkOrderTechnicianDispatchRisk, buildTechnicianDispatchRecommendations } from "./technicianDispatchRules";
+
+export { getWorkOrderCloseoutGatePreview } from "./getWorkOrderCloseoutGatePreview";
