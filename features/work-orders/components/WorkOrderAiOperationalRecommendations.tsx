@@ -17,6 +17,13 @@ type RecommendationRow = {
   status: string;
   recommended_action: {
     label?: string;
+    details?: string;
+  } | null;
+  recommendation_type: string;
+  metadata?: {
+    risk_code?: string;
+    advisory_only?: boolean;
+    blocks_closeout?: boolean;
   } | null;
   missing_data: string[] | null;
   created_at: string;
@@ -254,20 +261,30 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
             const preview = previewByRecommendationId[item.id];
             const previewable = isPreviewableRecommendation(item);
             const previewBusy = previewLoadingId === item.id;
+            const isCloseoutRisk = item.recommendation_type.startsWith("closeout_risk_");
+            const severityLabel = `severity ${item.risk_tier}`;
 
             return (
               <article key={item.id} className={cn(PANEL_VARIANTS.passive, "p-2")}>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  {isCloseoutRisk ? (
+                    <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
+                      Closeout review
+                    </span>
+                  ) : null}
                   <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
-                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">risk {item.risk_tier}</span>
+                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{severityLabel}</span>
                   {item.status === "acknowledged" ? (
                     <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">acknowledged</span>
                   ) : null}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{item.summary ?? "Operational review suggested."}</p>
+                {isCloseoutRisk ? (
+                  <p className="mt-1 text-[10px] text-[rgba(184,115,51,0.95)]">Advisory only — does not block closeout yet.</p>
+                ) : null}
                 <div className="mt-1 text-[10px] text-muted-foreground">
-                  Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {item.recommended_action?.label ?? "Review work order"}
+                  Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {item.recommended_action?.details ?? item.recommended_action?.label ?? "Review work order"}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1">
                   {previewable ? (
