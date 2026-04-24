@@ -8,6 +8,8 @@ import {
 } from "@/features/ai/server";
 import { buildWorkOrderEvidenceSnapshot } from "./buildWorkOrderEvidenceSnapshot";
 import { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommendationRules";
+import { createWorkOrderPartsDelayEvidenceSnapshot } from "./partsDelayEvidence";
+import { buildPartsDelayRecommendations } from "./partsDelayRules";
 import { WORK_ORDER_RULES_VERSION } from "./types";
 
 type DB = Database;
@@ -31,7 +33,20 @@ export async function generateWorkOrderEvidenceAndRecommendations(input: {
     workOrderId,
   });
 
-  const drafts = buildWorkOrderRecommendationsFromSnapshot(snapshot);
+  const operationalDrafts = buildWorkOrderRecommendationsFromSnapshot(snapshot);
+
+  const { evidence: partsDelayEvidenceRecord, snapshot: partsDelaySnapshot } = await createWorkOrderPartsDelayEvidenceSnapshot({
+    supabase,
+    actor,
+    workOrderId,
+  });
+
+  const partsDelayDrafts = buildPartsDelayRecommendations({
+    evidence: partsDelaySnapshot,
+    evidenceSnapshotId: partsDelayEvidenceRecord.id,
+  });
+
+  const drafts = [...operationalDrafts, ...partsDelayDrafts];
   const existing = await listAiRecommendationsForSubject(supabase, actor, {
     subjectType: "work_order",
     subjectId: workOrderId,
@@ -64,7 +79,7 @@ export async function generateWorkOrderEvidenceAndRecommendations(input: {
       priority: draft.priority,
       confidence: draft.confidence,
       riskTier: draft.risk_tier,
-      evidenceSnapshotId: evidence.id,
+      evidenceSnapshotId: draft.evidence_snapshot_id ?? evidence.id,
       missingData: draft.missing_data,
       recommendedAction: draft.recommended_action,
       sideEffects: draft.side_effects,
@@ -99,6 +114,8 @@ export type { WorkOrderEvidenceSnapshot, WorkOrderRecommendationDraft } from "./
 export { WORK_ORDER_RULES_VERSION } from "./types";
 export { buildWorkOrderEvidenceSnapshot } from "./buildWorkOrderEvidenceSnapshot";
 export { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommendationRules";
+export { buildWorkOrderPartsDelayEvidence, createWorkOrderPartsDelayEvidenceSnapshot } from "./partsDelayEvidence";
+export { evaluateWorkOrderPartsDelayRisk, buildPartsDelayRecommendations } from "./partsDelayRules";
 export { evaluateWorkOrderCloseoutRisk, buildCloseoutRiskRecommendations } from "./closeoutRiskRules";
 
 export * from "./workOrderActionPreviews";

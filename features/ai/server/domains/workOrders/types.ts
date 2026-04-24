@@ -118,6 +118,49 @@ export type WorkOrderRecommendationDraft = {
   source?: string;
   expires_at?: string | null;
   metadata?: Record<string, Json>;
+  evidence_snapshot_id?: string;
+};
+
+export type WorkOrderPartsDelayEvidence = {
+  workOrderId: string;
+  shopId: string;
+  generatedAt: string;
+  partsLinked: boolean;
+  requestedPartsCount: number;
+  allocatedPartsCount: number;
+  receivedPartsCount: number;
+  unavailablePartsCount: number;
+  waitingPartsCount: number;
+  backorderedPartsCount: number | null;
+  unknownAvailabilityCount: number;
+  openPurchaseOrderCount: number;
+  overduePurchaseOrderCount: number;
+  etaMissingCount: number;
+  stalePartsRequestCount: number;
+  vendorReliabilityAvailable: boolean;
+  linePartSignalsDetected: boolean;
+  missingData: string[];
+  sourceRefs: Array<Record<string, string | null>>;
+  confidence: number;
+};
+
+export type WorkOrderPartsDelayRisk = {
+  risk_code:
+    | "parts_waiting_on_unavailable_items"
+    | "parts_eta_missing"
+    | "parts_po_overdue"
+    | "parts_allocation_incomplete"
+    | "parts_request_stale"
+    | "parts_state_unknown";
+  title: string;
+  summary: string;
+  severity: AiRiskTier;
+  confidence: number;
+  evidence_refs: string[];
+  missing_data: string[];
+  recommended_next_step: string;
+  advisory_only: true;
+  rule_version: string;
 };
 
 export type WorkOrderCloseoutRisk = {

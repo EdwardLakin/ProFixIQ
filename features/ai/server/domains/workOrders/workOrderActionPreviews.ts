@@ -7,7 +7,9 @@ export type WorkOrderPreviewActionType =
   | "complete_inspection_review"
   | "review_closeout_readiness"
   | "advisor_review_needed"
-  | "priority_escalation_review";
+  | "priority_escalation_review"
+  | "review_parts_delay"
+  | "confirm_po_receiving_status";
 
 export type WorkOrderRecommendationPreviewability =
   | { previewable: true; actionType: WorkOrderPreviewActionType }
@@ -120,6 +122,36 @@ const RECOMMENDATION_PREVIEW_MAP: Record<string, ActionSpec> = {
     actionType: "review_work_order",
     label: "Review work order",
     description: "Review active technician dispatch and stale activity signals.",
+  },
+  parts_delay_unavailable_items: {
+    actionType: "review_parts_delay",
+    label: "Parts delay review",
+    description: "Review unavailable or unresolved parts signals with no ordering or inventory mutation.",
+  },
+  parts_delay_eta_missing: {
+    actionType: "review_parts_delay",
+    label: "Parts delay review",
+    description: "Review missing ETA signals and update internal tracking only.",
+  },
+  parts_delay_po_overdue: {
+    actionType: "confirm_po_receiving_status",
+    label: "Confirm PO receiving status",
+    description: "Review overdue PO and receiving status without sending messages or mutating records.",
+  },
+  parts_delay_allocation_incomplete: {
+    actionType: "check_parts_status",
+    label: "Check parts status",
+    description: "Review allocation and receiving completeness before promising completion.",
+  },
+  parts_delay_request_stale: {
+    actionType: "review_parts_delay",
+    label: "Parts delay review",
+    description: "Review stale parts-request state internally; no external actions.",
+  },
+  parts_delay_state_unknown: {
+    actionType: "review_parts_delay",
+    label: "Parts delay review",
+    description: "Review missing parts linkage and clarify internal parts status.",
   },
   priority_escalation_candidate: {
     actionType: "priority_escalation_review",
