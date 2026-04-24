@@ -9,7 +9,11 @@ export type WorkOrderPreviewActionType =
   | "advisor_review_needed"
   | "priority_escalation_review"
   | "review_parts_delay"
-  | "confirm_po_receiving_status";
+  | "confirm_po_receiving_status"
+  | "review_technician_dispatch"
+  | "review_assignment"
+  | "confirm_technician_availability"
+  | "review_active_labor_state";
 
 export type WorkOrderRecommendationPreviewability =
   | { previewable: true; actionType: WorkOrderPreviewActionType }
@@ -152,6 +156,47 @@ const RECOMMENDATION_PREVIEW_MAP: Record<string, ActionSpec> = {
     actionType: "review_parts_delay",
     label: "Parts delay review",
     description: "Review missing parts linkage and clarify internal parts status.",
+  },
+
+  technician_dispatch_unassigned_lines: {
+    actionType: "review_technician_dispatch",
+    label: "Dispatch review",
+    description: "Review unassigned actionable lines with dispatch/advisor workflow only.",
+  },
+  technician_dispatch_high_priority_unassigned: {
+    actionType: "review_assignment",
+    label: "Dispatch review",
+    description: "Review high-priority unassigned work with no assignment mutation.",
+  },
+  technician_dispatch_unavailable_assignee: {
+    actionType: "confirm_technician_availability",
+    label: "Dispatch review",
+    description: "Confirm assigned technician availability using existing scheduling workflow.",
+  },
+  technician_dispatch_stale_active_labor: {
+    actionType: "review_active_labor_state",
+    label: "Dispatch review",
+    description: "Review stale active labor/punch state with no labor mutation.",
+  },
+  technician_dispatch_overload_review: {
+    actionType: "review_technician_dispatch",
+    label: "Dispatch review",
+    description: "Review potential technician overload using current assignment view.",
+  },
+  technician_dispatch_certification_review: {
+    actionType: "review_technician_dispatch",
+    label: "Dispatch review",
+    description: "Review certification/skill fit internally; do not auto-assign.",
+  },
+  technician_dispatch_blocked_line_review: {
+    actionType: "review_technician_dispatch",
+    label: "Dispatch review",
+    description: "Review blocked or waiting lines with advisor/dispatch coordination.",
+  },
+  technician_dispatch_state_unknown: {
+    actionType: "review_technician_dispatch",
+    label: "Dispatch review",
+    description: "Review incomplete dispatch signals before taking any manual action.",
   },
   priority_escalation_candidate: {
     actionType: "priority_escalation_review",
