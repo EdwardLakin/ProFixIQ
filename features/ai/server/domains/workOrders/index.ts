@@ -102,3 +102,5 @@ export { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommenda
 export { evaluateWorkOrderCloseoutRisk, buildCloseoutRiskRecommendations } from "./closeoutRiskRules";
 
 export * from "./workOrderActionPreviews";
+
+export * from "./advisorExplanationDrafts";
