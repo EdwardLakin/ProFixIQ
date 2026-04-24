@@ -12,6 +12,7 @@ import type { RepairLine } from "@ai/lib/parseRepairOutput";
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
+import WorkOrderCloseoutGatePreview from "@/features/work-orders/components/WorkOrderCloseoutGatePreview";
 
 type DB = Database;
 
@@ -894,6 +895,8 @@ export default function InvoicePreviewPageClient({
             ) : null}
           </div>
         </div>
+
+        <WorkOrderCloseoutGatePreview workOrderId={workOrderId} />
 
         {/* Review issues panel */}
         {!reviewOk ? (

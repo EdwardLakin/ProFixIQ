@@ -343,7 +343,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   }, [evidence?.freshness_at]);
 
   return (
-    <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+    <section id="ai-operational-recommendations" className={cn(PANEL_VARIANTS.secondary, "p-2")}>
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">AI operational recommendations</h2>
