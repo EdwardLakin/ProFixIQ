@@ -24,6 +24,7 @@ const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
   { id: "approval_risk", x: 8, y: 3, w: 4, h: 3 },
   { id: "waiting_parts", x: 8, y: 6, w: 4, h: 3 },
   { id: "ai_mission_control", x: 0, y: 18, w: 4, h: 3 },
+  { id: "ai_operations_observability", x: 8, y: 18, w: 4, h: 3, hidden: true },
   { id: "comeback_risk", x: 8, y: 9, w: 4, h: 3, hidden: true },
 
   { id: "advisor_queue", x: 0, y: 9, w: 4, h: 3 },
