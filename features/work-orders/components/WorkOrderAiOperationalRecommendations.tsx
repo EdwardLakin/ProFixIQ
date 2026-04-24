@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@shared/lib/utils";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
+
+type RecommendationLifecycleAction = "acknowledge" | "dismiss" | "resolve";
 
 type RecommendationRow = {
   id: string;
@@ -33,6 +36,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   const [error, setError] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationRow[]>([]);
   const [evidence, setEvidence] = useState<EvidenceRow | null>(null);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,12 +67,61 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
       if (!res.ok) throw new Error(json?.error ?? "Failed to generate operational recommendations.");
       setRecommendations(Array.isArray(json.recommendations) ? json.recommendations : []);
       setEvidence(json.evidenceSnapshot ?? null);
+      toast.success("Operational recommendations refreshed.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate operational recommendations.");
+      const message = err instanceof Error ? err.message : "Failed to generate operational recommendations.";
+      setError(message);
+      toast.error(message);
     } finally {
       setRefreshing(false);
     }
   }, [workOrderId]);
+
+  const onLifecycleAction = useCallback(
+    async (recommendationId: string, action: RecommendationLifecycleAction) => {
+      const actionKey = `${recommendationId}:${action}`;
+      setActiveAction(actionKey);
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/work-orders/${workOrderId}/ai/recommendations/${recommendationId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action }),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Failed to update recommendation.");
+
+        const updated = json?.recommendation as RecommendationRow | undefined;
+        if (!updated?.id) throw new Error("Updated recommendation response was invalid.");
+
+        setRecommendations((prev) => {
+          if (updated.status === "dismissed" || updated.status === "resolved") {
+            return prev.filter((item) => item.id !== updated.id);
+          }
+          return prev.map((item) => (item.id === updated.id ? updated : item));
+        });
+
+        if (action === "acknowledge") {
+          toast.success("Recommendation acknowledged.");
+        } else if (action === "dismiss") {
+          toast.success("Recommendation dismissed.");
+        } else {
+          toast.success("Recommendation marked resolved.");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to update recommendation.";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setActiveAction(null);
+      }
+    },
+    [workOrderId],
+  );
 
   const freshnessLabel = useMemo(() => {
     if (!evidence?.freshness_at) return "No evidence snapshot yet";
@@ -76,7 +129,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   }, [evidence?.freshness_at]);
 
   return (
-    <section className={cn(PANEL_VARIANTS.secondary, "p-2")}> 
+    <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">AI operational recommendations</h2>
@@ -103,19 +156,51 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
 
       {!loading && !error && recommendations.length > 0 ? (
         <div className="mt-2 space-y-2">
-          {recommendations.map((item) => (
-            <article key={item.id} className={cn(PANEL_VARIANTS.passive, "p-2")}> 
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-foreground">{item.title}</p>
-                <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
-                <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">risk {item.risk_tier}</span>
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">{item.summary ?? "Operational review suggested."}</p>
-              <div className="mt-1 text-[10px] text-muted-foreground">
-                Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {item.recommended_action?.label ?? "Review work order"}
-              </div>
-            </article>
-          ))}
+          {recommendations.map((item) => {
+            const isRowBusy = activeAction?.startsWith(`${item.id}:`) ?? false;
+            return (
+              <article key={item.id} className={cn(PANEL_VARIANTS.passive, "p-2")}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
+                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">risk {item.risk_tier}</span>
+                  {item.status === "acknowledged" ? (
+                    <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">acknowledged</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">{item.summary ?? "Operational review suggested."}</p>
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {item.recommended_action?.label ?? "Review work order"}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    disabled={isRowBusy || item.status === "acknowledged"}
+                    onClick={() => void onLifecycleAction(item.id, "acknowledge")}
+                  >
+                    {activeAction === `${item.id}:acknowledge` ? "Acknowledging…" : "Acknowledge"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    disabled={isRowBusy}
+                    onClick={() => void onLifecycleAction(item.id, "dismiss")}
+                  >
+                    {activeAction === `${item.id}:dismiss` ? "Dismissing…" : "Dismiss"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    disabled={isRowBusy}
+                    onClick={() => void onLifecycleAction(item.id, "resolve")}
+                  >
+                    {activeAction === `${item.id}:resolve` ? "Resolving…" : "Mark resolved"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : null}
 
