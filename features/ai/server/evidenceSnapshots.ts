@@ -11,6 +11,7 @@ import {
   validateConfidence,
 } from "./types";
 import { logAiActionEvent } from "./actionEvents";
+import { AI_ACTION_EVENT_TYPES } from "./eventTypes";
 
 type CreateAiEvidenceSnapshotInput = {
   subjectType: string;
@@ -55,7 +56,7 @@ export async function createAiEvidenceSnapshot(
   if (error) throw new Error(error.message);
 
   await logAiActionEvent(supabase, ctx, {
-    eventType: "evidence.created",
+    eventType: AI_ACTION_EVENT_TYPES.EVIDENCE_SNAPSHOT_CREATED,
     payload: {
       evidence_snapshot_id: data.id,
       domain: data.domain,

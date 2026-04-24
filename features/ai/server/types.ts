@@ -33,20 +33,7 @@ export type AiActionApprovalStatus =
   | "expired"
   | "cancelled";
 
-export type AiActionEventType =
-  | "evidence.created"
-  | "recommendation.created"
-  | "recommendation.acknowledged"
-  | "recommendation.dismissed"
-  | "recommendation.resolved"
-  | "preview.created"
-  | "preview.ready"
-  | "preview.cancelled"
-  | "action_preview.created"
-  | "action_preview.blocked_execution"
-  | "approval.requested"
-  | "approval.approved"
-  | "approval.rejected";
+export type { AiActionEventType } from "./eventTypes";
 
 export type AiActorSource = "system" | "planner" | "ops" | "manual";
 

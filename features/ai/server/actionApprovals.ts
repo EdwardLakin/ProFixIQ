@@ -11,6 +11,7 @@ import {
 } from "./types";
 import { getAiActionPreview } from "./actionPreviews";
 import { logAiActionEvent } from "./actionEvents";
+import { AI_ACTION_EVENT_TYPES } from "./eventTypes";
 
 function validateApprovalTransition(from: AiActionApprovalStatus, to: AiActionApprovalStatus) {
   const map: Record<AiActionApprovalStatus, ReadonlyArray<AiActionApprovalStatus>> = {
@@ -80,7 +81,7 @@ export async function requestAiActionApproval(
     recommendationId: preview.recommendation_id,
     actionPreviewId: preview.id,
     approvalId: data.id,
-    eventType: "approval.requested",
+    eventType: AI_ACTION_EVENT_TYPES.ACTION_APPROVAL_REQUESTED,
     payload: {
       action_preview_id: preview.id,
       approval_id: data.id,
@@ -148,7 +149,10 @@ async function decideAiActionApproval(
     recommendationId: preview.recommendation_id,
     actionPreviewId: preview.id,
     approvalId: data.id,
-    eventType: input.status === "approved" ? "approval.approved" : "approval.rejected",
+    eventType:
+      input.status === "approved"
+        ? AI_ACTION_EVENT_TYPES.ACTION_APPROVAL_APPROVED
+        : AI_ACTION_EVENT_TYPES.ACTION_APPROVAL_REJECTED,
     payload: {
       action_preview_id: preview.id,
       approval_id: data.id,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiActionPreview, getAiRecommendation, logAiActionEvent, type AiActionPreviewRecord } from "@/features/ai/server";
+import { AI_ACTION_EVENT_TYPES } from "@/features/ai/server/eventTypes";
 import {
   buildWorkOrderActionPreviewPayload,
   buildWorkOrderPreviewIdempotencyKey,
@@ -247,7 +248,7 @@ export async function POST(
     await logAiActionEvent(access.supabase, actor, {
       recommendationId,
       actionPreviewId: preview.id,
-      eventType: "action_preview.blocked_execution",
+      eventType: AI_ACTION_EVENT_TYPES.ACTION_PREVIEW_BLOCKED_EXECUTION,
       idempotencyKey,
       payload: {
         reason: BLOCKED_REASON,
