@@ -30,6 +30,61 @@ type EvidenceRow = {
   created_at: string;
 };
 
+type PreviewPayloadRecord = {
+  label?: string;
+  description?: string;
+  affected_records?: Array<{ type?: string; id?: string }>;
+  intended_mutations?: unknown[];
+  side_effects?: string[];
+  requires_approval?: boolean;
+  requires_owner_pin?: boolean;
+  risk_tier?: string;
+  blocked_execution_reason?: string;
+  evidence_snapshot_id?: string | null;
+};
+
+type PreviewRow = {
+  id: string;
+  recommendation_id: string | null;
+  preview_payload: PreviewPayloadRecord;
+  intended_mutations: unknown[];
+  affected_records: Array<{ type?: string; id?: string }>;
+  side_effects: string[];
+  requires_approval: boolean;
+  requires_owner_pin: boolean;
+  risk_tier: string;
+  evidence_snapshot_id: string | null;
+  created_at: string;
+};
+
+function isPreviewableRecommendation(item: RecommendationRow): boolean {
+  return item.risk_tier !== "critical";
+}
+
+function parsePreview(raw: unknown): PreviewRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.id !== "string") return null;
+
+  const previewPayload = value.preview_payload && typeof value.preview_payload === "object"
+    ? (value.preview_payload as PreviewPayloadRecord)
+    : {};
+
+  return {
+    id: value.id,
+    recommendation_id: typeof value.recommendation_id === "string" ? value.recommendation_id : null,
+    preview_payload: previewPayload,
+    intended_mutations: Array.isArray(value.intended_mutations) ? value.intended_mutations : [],
+    affected_records: Array.isArray(value.affected_records) ? (value.affected_records as Array<{ type?: string; id?: string }>) : [],
+    side_effects: Array.isArray(value.side_effects) ? (value.side_effects as string[]) : [],
+    requires_approval: Boolean(value.requires_approval),
+    requires_owner_pin: Boolean(value.requires_owner_pin),
+    risk_tier: typeof value.risk_tier === "string" ? value.risk_tier : "low",
+    evidence_snapshot_id: typeof value.evidence_snapshot_id === "string" ? value.evidence_snapshot_id : null,
+    created_at: typeof value.created_at === "string" ? value.created_at : "",
+  };
+}
+
 export default function WorkOrderAiOperationalRecommendations({ workOrderId }: { workOrderId: string }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,6 +92,8 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
   const [recommendations, setRecommendations] = useState<RecommendationRow[]>([]);
   const [evidence, setEvidence] = useState<EvidenceRow | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewByRecommendationId, setPreviewByRecommendationId] = useState<Record<string, PreviewRow>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,12 +155,16 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         const updated = json?.recommendation as RecommendationRow | undefined;
         if (!updated?.id) throw new Error("Updated recommendation response was invalid.");
 
-        setRecommendations((prev) => {
-          if (updated.status === "dismissed" || updated.status === "resolved") {
-            return prev.filter((item) => item.id !== updated.id);
-          }
-          return prev.map((item) => (item.id === updated.id ? updated : item));
-        });
+        if (updated.status === "dismissed" || updated.status === "resolved") {
+          setRecommendations((prev) => prev.filter((item) => item.id !== updated.id));
+          setPreviewByRecommendationId((current) => {
+            const copy = { ...current };
+            delete copy[updated.id];
+            return copy;
+          });
+        } else {
+          setRecommendations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        }
 
         if (action === "acknowledge") {
           toast.success("Recommendation acknowledged.");
@@ -118,6 +179,38 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         toast.error(message);
       } finally {
         setActiveAction(null);
+      }
+    },
+    [workOrderId],
+  );
+
+  const onPreviewAction = useCallback(
+    async (recommendationId: string) => {
+      setPreviewLoadingId(recommendationId);
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/work-orders/${workOrderId}/ai/recommendations/${recommendationId}/preview`, {
+          method: "POST",
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Failed to generate action preview.");
+
+        const parsed = parsePreview(json?.preview);
+        if (!parsed) throw new Error("Preview response was invalid.");
+
+        setPreviewByRecommendationId((prev) => ({
+          ...prev,
+          [recommendationId]: parsed,
+        }));
+
+        toast.success("Action preview generated.");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to generate action preview.";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setPreviewLoadingId(null);
       }
     },
     [workOrderId],
@@ -158,6 +251,10 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         <div className="mt-2 space-y-2">
           {recommendations.map((item) => {
             const isRowBusy = activeAction?.startsWith(`${item.id}:`) ?? false;
+            const preview = previewByRecommendationId[item.id];
+            const previewable = isPreviewableRecommendation(item);
+            const previewBusy = previewLoadingId === item.id;
+
             return (
               <article key={item.id} className={cn(PANEL_VARIANTS.passive, "p-2")}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -173,6 +270,18 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                   Confidence: {typeof item.confidence === "number" ? item.confidence.toFixed(2) : "—"} • Missing data: {item.missing_data?.length ?? 0} • Next: {item.recommended_action?.label ?? "Review work order"}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1">
+                  {previewable ? (
+                    <button
+                      type="button"
+                      className="rounded-md border border-[rgba(184,115,51,0.5)] px-2 py-1 text-[11px] text-[rgba(184,115,51,0.95)] transition hover:bg-[rgba(184,115,51,0.12)] disabled:opacity-50"
+                      disabled={previewBusy}
+                      onClick={() => void onPreviewAction(item.id)}
+                    >
+                      {previewBusy ? "Generating preview…" : "Preview action"}
+                    </button>
+                  ) : (
+                    <span className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-muted-foreground">Preview unavailable for critical-risk recommendation</span>
+                  )}
                   <button
                     type="button"
                     className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
@@ -198,6 +307,28 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                     {activeAction === `${item.id}:resolve` ? "Resolving…" : "Mark resolved"}
                   </button>
                 </div>
+
+                {preview ? (
+                  <div className="mt-2 rounded-md border border-white/10 bg-white/[0.02] p-2 text-[10px] text-muted-foreground">
+                    <div className="text-[11px] font-medium text-foreground">{preview.preview_payload.label ?? "Action preview"}</div>
+                    <p className="mt-1">{preview.preview_payload.description ?? "Preview generated for operational review."}</p>
+                    <p className="mt-1">Affected records: {preview.affected_records.length}</p>
+                    {preview.affected_records.length > 0 ? (
+                      <ul className="mt-1 list-disc pl-4">
+                        {preview.affected_records.map((record, idx) => (
+                          <li key={`${preview.id}:record:${idx}`}>{record.type ?? "record"}: {record.id ?? "—"}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <p className="mt-1">Intended mutations: {preview.intended_mutations.length > 0 ? String(preview.intended_mutations.length) : "None — preview only"}</p>
+                    <p className="mt-1">Side effects: {preview.side_effects.length > 0 ? preview.side_effects.join(" • ") : "No external side effects"}</p>
+                    <p className="mt-1">Approval required: {preview.requires_approval ? "Yes" : "No"}</p>
+                    <p className="mt-1">Owner PIN required: {preview.requires_owner_pin ? "Yes" : "No"}</p>
+                    <p className="mt-1">Risk tier: {preview.risk_tier}</p>
+                    <p className="mt-1">Execution status: Execution blocked — preview only</p>
+                    <p className="mt-1">Evidence snapshot: {preview.evidence_snapshot_id ?? preview.preview_payload.evidence_snapshot_id ?? "Not linked"}</p>
+                  </div>
+                ) : null}
               </article>
             );
           })}

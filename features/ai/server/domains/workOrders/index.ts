@@ -98,3 +98,5 @@ export type { WorkOrderEvidenceSnapshot, WorkOrderRecommendationDraft } from "./
 export { WORK_ORDER_RULES_VERSION } from "./types";
 export { buildWorkOrderEvidenceSnapshot } from "./buildWorkOrderEvidenceSnapshot";
 export { buildWorkOrderRecommendationsFromSnapshot } from "./workOrderRecommendationRules";
+
+export * from "./workOrderActionPreviews";

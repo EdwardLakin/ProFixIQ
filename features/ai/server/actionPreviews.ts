@@ -103,7 +103,7 @@ export async function createAiActionPreview(
   await logAiActionEvent(supabase, ctx, {
     recommendationId: data.recommendation_id,
     actionPreviewId: data.id,
-    eventType: "preview.created",
+    eventType: "action_preview.created",
     idempotencyKey: data.idempotency_key,
     payload: {
       action_preview_id: data.id,

@@ -42,6 +42,8 @@ export type AiActionEventType =
   | "preview.created"
   | "preview.ready"
   | "preview.cancelled"
+  | "action_preview.created"
+  | "action_preview.blocked_execution"
   | "approval.requested"
   | "approval.approved"
   | "approval.rejected";
