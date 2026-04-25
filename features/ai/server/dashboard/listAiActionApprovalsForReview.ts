@@ -76,6 +76,7 @@ type ApprovalRow = {
 type PreviewRow = {
   id: string;
   recommendation_id: string | null;
+  action_type: string;
   domain: string;
   subject_type: string;
   subject_id: string | null;
@@ -124,6 +125,24 @@ function toApprovalStatus(status: string): AiApprovalInboxStatus | null {
   return null;
 }
 
+const SENSITIVE_PREVIEW_TEXT_PATTERN = /\b(token|secret|owner[_\s-]?pin|pin|hash|proof|owner[_\s-]?pin[_\s-]?verification[_\s-]?ref|ownerPinProofRef)\b/i;
+
+function looksLikeBlob(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length > 280) return true;
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) return true;
+  return false;
+}
+
+function safePreviewText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (SENSITIVE_PREVIEW_TEXT_PATTERN.test(trimmed)) return null;
+  if (looksLikeBlob(trimmed)) return null;
+  return trimmed;
+}
+
 function parsePreviewPayload(value: Json): { label: string | null; description: string | null; ownerPinProofAttached: boolean } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { label: null, description: null, ownerPinProofAttached: false };
@@ -131,10 +150,18 @@ function parsePreviewPayload(value: Json): { label: string | null; description: 
 
   const payload = value as Record<string, unknown>;
   return {
-    label: typeof payload.label === "string" ? payload.label : null,
-    description: typeof payload.description === "string" ? payload.description : null,
+    label: safePreviewText(payload.label),
+    description: safePreviewText(payload.description),
     ownerPinProofAttached: false,
   };
+}
+
+function fallbackInboxTitle(preview: PreviewRow): string {
+  return `Review ${preview.domain} ${preview.action_type} action`;
+}
+
+function fallbackInboxDescription(preview: PreviewRow): string {
+  return `Review-only ${preview.status} request for ${preview.subject_type}.`;
 }
 
 function hasOwnerPinProofRef(value: Json): boolean {
@@ -201,7 +228,7 @@ export async function listAiActionApprovalsForReview(
   const previewsById = new Map<string, PreviewRow>();
   if (previewIds.length > 0) {
     const { data: previewData, error: previewError } = await fromTable(input.supabase, "ai_action_previews")
-      .select("id, recommendation_id, domain, subject_type, subject_id, status, requires_approval, risk_tier, preview_payload")
+      .select("id, recommendation_id, action_type, domain, subject_type, subject_id, status, requires_approval, risk_tier, preview_payload")
       .eq("shop_id", actor.shopId)
       .in("id", previewIds);
 
@@ -259,8 +286,8 @@ export async function listAiActionApprovalsForReview(
       const recommendation = preview.recommendation_id ? recommendationsById.get(preview.recommendation_id) : undefined;
       const previewPayload = parsePreviewPayload(preview.preview_payload);
 
-      const title = recommendation?.title ?? previewPayload.label ?? `${preview.domain} ${preview.subject_type} preview`;
-      const description = recommendation?.summary ?? previewPayload.description ?? "Review-only action preview request.";
+      const title = recommendation?.title ?? previewPayload.label ?? fallbackInboxTitle(preview);
+      const description = recommendation?.summary ?? previewPayload.description ?? fallbackInboxDescription(preview);
 
       const inboxRow: AiApprovalInboxRow = {
         id: row.id,
