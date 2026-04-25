@@ -64,7 +64,7 @@ type Props = {
   checkoutLoading: boolean;
   portalLoading: boolean;
   cancelLoading: boolean;
-  plan: "starter" | "pro" | "enterprise" | "unlimited" | "unknown";
+  plan: "starter" | "pro" | "unlimited" | "unknown";
   seatsUsed: number;
   seatsLimit: number | null;
   orgId: string | null;
@@ -89,7 +89,7 @@ type Props = {
   onCreateOrganization: () => void;
   onSwitchLocation: (id: string) => void;
   onRefreshEmailLogs: () => void;
-  planLabel: (p: "starter" | "pro" | "enterprise" | "unlimited" | "unknown") => string;
+  planLabel: (p: "starter" | "pro" | "unlimited" | "unknown") => string;
   parseStripeStatus: (v: unknown) => StripeSubStatus;
   formatDate: (iso: string | null | undefined) => string;
   formatLocationLine: (s: { city: string | null; province: string | null }) => string;

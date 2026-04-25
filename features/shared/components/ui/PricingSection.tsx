@@ -49,7 +49,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
   const plans: PricingPlan[] = useMemo(
     () => [
       {
-        key: "starter10",
+        key: "starter",
         title: "Starter",
         desc: "Perfect for smaller teams getting started — technician-first inspections, quotes, approvals, and customer transparency.",
         priceLabel: "$299 / month",
@@ -65,7 +65,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
         cta: "Start free trial",
       },
       {
-        key: "pro50",
+        key: "pro",
         title: "Pro",
         desc: "Best for most HD or mixed shops — everything you need to run the shop with less screen time and faster approvals.",
         priceLabel: "$399 / month",

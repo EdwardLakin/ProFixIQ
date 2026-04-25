@@ -6,6 +6,7 @@ import {
   type StripeSubscriptionStatus,
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { PLAN_LOOKUP_KEYS } from "@/features/stripe/lib/stripe/constants";
+import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
 import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
 
 type DB = Database;
@@ -16,8 +17,6 @@ type ProfileStripeArtifacts = {
   stripe_subscription_id: string | null;
   stripe_checkout_session_id: string | null;
 };
-
-type CanonicalPlan = "starter" | "pro" | "enterprise" | "unlimited";
 
 function unixToIsoOrNull(v: number | null | undefined): string | null {
   if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null;
@@ -32,8 +31,8 @@ function toShopStripeStatus(v: unknown): StripeSubscriptionStatus | null {
 function planFromLookupKey(lookupKey: string | null | undefined): CanonicalPlan | null {
   const normalized = String(lookupKey ?? "").trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized === PLAN_LOOKUP_KEYS.starter10) return "starter";
-  if (normalized === PLAN_LOOKUP_KEYS.pro50) return "pro";
+  if (normalized === PLAN_LOOKUP_KEYS.starter) return "starter";
+  if (normalized === PLAN_LOOKUP_KEYS.pro) return "pro";
   if (normalized === PLAN_LOOKUP_KEYS.unlimited) return "unlimited";
   return null;
 }
@@ -51,7 +50,6 @@ function planFromPriceNickname(nickname: string | null | undefined): CanonicalPl
   const normalized = String(nickname ?? "").trim().toLowerCase();
   if (!normalized) return null;
   if (normalized.includes("starter")) return "starter";
-  if (normalized.includes("enterprise")) return "enterprise";
   if (normalized.includes("unlimited")) return "unlimited";
   if (normalized.includes("pro")) return "pro";
   return null;
@@ -77,7 +75,7 @@ export function toCanonicalShopBillingUpdate(args: {
   checkoutSessionId?: string | null;
 }): DB["public"]["Tables"]["shops"]["Update"] {
   const { customerId, subscription, checkoutSessionId } = args;
-  const resolvedPlan = resolveCanonicalPlanFromSubscription(subscription);
+  const resolvedPlan = normalizeCanonicalPlan(resolveCanonicalPlanFromSubscription(subscription));
   return {
     stripe_customer_id: customerId,
     stripe_subscription_id: subscription.id,

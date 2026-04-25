@@ -19,7 +19,7 @@ export type StripePlan = {
   lookupKey: string;
 };
 
-const DISPLAY_ORDER: PlanKey[] = ["starter10", "pro50", "unlimited"];
+const DISPLAY_ORDER: PlanKey[] = ["starter", "pro", "unlimited"];
 
 export async function getStripePlans(): Promise<StripePlan[]> {
   const lookupKeys = DISPLAY_ORDER.map((k) => PLAN_LOOKUP_KEYS[k]);

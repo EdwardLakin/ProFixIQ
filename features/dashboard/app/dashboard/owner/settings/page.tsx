@@ -33,6 +33,7 @@ import {
   parseStripeSubscriptionStatus,
   type StripeSubscriptionStatusWithUnknown,
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
+import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
 
 type FileInputChangeEvent = {
   target: {
@@ -123,14 +124,13 @@ type ShopLocationRow = Pick<
   organization_id?: string | null;
 };
 
-type PlanName = "starter" | "pro" | "enterprise" | "unlimited" | "unknown";
+type PlanName = CanonicalPlan | "unknown";
 
 // ✅ These are your seat caps.
 // Starter & Pro limited. Everything else unlimited.
 const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
   starter: 10,
   pro: 50,
-  enterprise: null,
   unlimited: null,
 };
 
@@ -138,12 +138,8 @@ const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
 
 
 function parsePlan(v: unknown): PlanName {
-  const s = String(v ?? "").trim().toLowerCase();
-  if (s === "starter") return "starter";
-  if (s === "pro") return "pro";
-  if (s === "enterprise") return "enterprise";
-  if (s === "unlimited") return "unlimited";
-  return "unknown";
+  const canonical = normalizeCanonicalPlan(v);
+  return canonical ?? "unknown";
 }
 
 function planLabel(p: PlanName): string {

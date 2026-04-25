@@ -10,6 +10,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
+import { PLAN_LOOKUP_KEYS, type PlanKey } from "@/features/stripe/lib/stripe/constants";
+import { normalizeCanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
 
 type DB = Database;
 
@@ -28,27 +30,19 @@ type CheckoutPayload = {
   intakeId?: string | null;
 };
 
-type CanonicalPlanKey = "starter10" | "pro50" | "unlimited";
-
-const PLAN_PRICE_ENV_BY_KEY: Record<CanonicalPlanKey, string> = {
-  starter10: "STRIPE_PRICE_STARTER_MONTHLY",
-  pro50: "STRIPE_PRICE_PRO_MONTHLY",
+const PLAN_PRICE_ENV_BY_KEY: Record<PlanKey, string> = {
+  starter: "STRIPE_PRICE_STARTER_MONTHLY",
+  pro: "STRIPE_PRICE_PRO_MONTHLY",
   unlimited: "STRIPE_PRICE_UNLIMITED_MONTHLY",
 };
 
-const PLAN_ALIASES: Record<string, CanonicalPlanKey> = {
-  starter: "starter10",
-  starter10: "starter10",
-  pro: "pro50",
-  pro50: "pro50",
-  unlimited: "unlimited",
+const LOOKUP_KEY_TO_PLAN: Record<string, PlanKey> = {
+  [PLAN_LOOKUP_KEYS.starter]: "starter",
+  [PLAN_LOOKUP_KEYS.pro]: "pro",
+  [PLAN_LOOKUP_KEYS.unlimited]: "unlimited",
 };
 
-function normalizePlanKey(value: string): CanonicalPlanKey | null {
-  return PLAN_ALIASES[value.trim().toLowerCase()] ?? null;
-}
-
-function resolveConfiguredPriceIdFromPlan(planKey: CanonicalPlanKey): string {
+function resolveConfiguredPriceIdFromPlan(planKey: PlanKey): string {
   const envName = PLAN_PRICE_ENV_BY_KEY[planKey];
   const configured = String(process.env[envName] ?? "").trim();
   if (!configured) {
@@ -170,7 +164,7 @@ export async function POST(req: Request) {
     const onboardingHandoffSource = source === "onboarding_shop_boost";
 
     const rawPlanKey = String(body.planKey ?? "").trim();
-    const normalizedPlanKey = normalizePlanKey(rawPlanKey);
+    const normalizedPlanKey = normalizeCanonicalPlan(rawPlanKey);
     const rawPriceInput = String(body.priceId ?? "").trim();
 
     if (!rawPriceInput && !normalizedPlanKey && !rawPlanKey) {
@@ -183,7 +177,10 @@ export async function POST(req: Request) {
       priceId = resolveConfiguredPriceIdFromPlan(normalizedPlanKey);
     } else {
       const directOrLookup = rawPriceInput || rawPlanKey;
-      const resolvedPriceId = await resolvePriceId(stripe, directOrLookup);
+      const canonicalFromLookup = LOOKUP_KEY_TO_PLAN[directOrLookup.trim()] ?? null;
+      const resolvedPriceId = canonicalFromLookup
+        ? resolveConfiguredPriceIdFromPlan(canonicalFromLookup)
+        : await resolvePriceId(stripe, directOrLookup);
       if (!resolvedPriceId) {
         return NextResponse.json(
           { error: `No active Stripe price found for "${directOrLookup}"` },
