@@ -9,6 +9,14 @@ import {
 } from "@/features/integrations/shopBoost/migrationReliability";
 import { buildMigrationStory } from "@/features/integrations/shopBoost/migrationStory";
 import { toResolutionAction, type RecommendedAction } from "@/features/integrations/shopBoost/reviewGuidance";
+import {
+  decideCustomerResolution,
+  findDeterministicCustomerMatch,
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
+  sourceExternalId,
+  type CustomerResolutionType,
+} from "@/features/integrations/shopBoost/customerResolution";
 
 type DB = Database;
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -36,6 +44,14 @@ type ReviewItemRow = {
 
 type MaterializeResult = {
   status: ReviewStatus;
+  domain?: string;
+  action?: ResolutionAction;
+  resolutionType?: CustomerResolutionType | "applied" | "skipped";
+  matchedRecordId?: string | null;
+  createdRecordId?: string | null;
+  updatedRecordId?: string | null;
+  blockingReason?: string | null;
+  errorReason?: string | null;
   materializedRecord: Record<string, unknown> | null;
   error: string | null;
 };
@@ -61,14 +77,6 @@ function lower(value: unknown): string {
   return norm(value).toLowerCase();
 }
 
-function normalizeEmail(value: unknown): string {
-  return lower(value);
-}
-
-function normalizePhone(value: unknown): string {
-  return norm(value).replace(/[^0-9]/g, "");
-}
-
 function sha1(value: string): string {
   return createHash("sha1").update(value).digest("hex");
 }
@@ -92,11 +100,6 @@ function parseMoney(value: string | null): number | null {
   const n = Number(standardized);
   return Number.isFinite(n) ? n : null;
 }
-
-function sourceExternalId(domain: "customer" | "vehicle" | "work_order", sourceId: string): string {
-  return `import:source:${domain}:${sha1(sourceId).slice(0, 20)}`;
-}
-
 
 async function logReviewAuditEvent(args: {
   supabase: AdminClient;
@@ -158,16 +161,16 @@ async function findCustomerId(args: {
     if (data?.id) return String(data.id);
   }
 
-  const email = normalizeEmail(pick(payload, [/customer email/, /^email$/]));
+  const email = normalizeCustomerEmail(pick(payload, [/customer email/, /^email$/]));
   if (email) {
     const { data } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("email", email).limit(1).maybeSingle();
     if (data?.id) return String(data.id);
   }
 
-  const phone = normalizePhone(pick(payload, [/customer phone/, /^phone$/]));
+  const phone = normalizeCustomerPhone(pick(payload, [/customer phone/, /^phone$/]));
   if (phone) {
     const { data } = await supabase.from("customers").select("id,phone,phone_number").eq("shop_id", shopId).limit(3000);
-    const matched = ((data ?? []) as CustomerPhoneLookupRow[]).find((item) => normalizePhone(item.phone ?? item.phone_number) === phone);
+    const matched = ((data ?? []) as CustomerPhoneLookupRow[]).find((item) => normalizeCustomerPhone(item.phone ?? item.phone_number) === phone);
     if (matched?.id) return String(matched.id);
   }
 
@@ -176,12 +179,27 @@ async function findCustomerId(args: {
 
 async function materializeCustomer(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
   const { supabase, item, resolutionAction } = args;
-  if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
+  if (resolutionAction === "ignored") {
+    return {
+      status: "materialized",
+      domain: "customer",
+      action: resolutionAction,
+      resolutionType: "applied",
+      matchedRecordId: null,
+      createdRecordId: null,
+      updatedRecordId: null,
+      blockingReason: null,
+      errorReason: null,
+      materializedRecord: { ignored: true },
+      error: null,
+    };
+  }
 
   const raw = item.raw_payload ?? {};
   const normalized = item.normalized_payload ?? {};
-  const email = normalizeEmail(pick(raw, [/^email$/, /customer email/]));
-  const phone = normalizePhone(pick(raw, [/^phone$/, /customer phone/, /mobile/]));
+  const sourceCustomerId = pick({ ...raw, ...normalized }, [/^customer[_\s-]*id$/, /external customer id/]);
+  const email = normalizeCustomerEmail(pick(raw, [/^email$/, /customer email/]));
+  const phone = normalizeCustomerPhone(pick(raw, [/^phone$/, /customer phone/, /mobile/]));
   const first = pick(raw, [/^first/, /first name/]);
   const last = pick(raw, [/^last/, /last name/]);
   const name = pick(raw, [/^name$/, /customer name/]) ?? [first ?? "", last ?? ""].filter(Boolean).join(" ");
@@ -189,34 +207,130 @@ async function materializeCustomer(args: { supabase: AdminClient; item: ReviewIt
 
   const externalId = `import:${item.intake_id}:customers:${sha1(`${email}|${phone}|${name}|${business ?? ""}`).slice(0, 16)}`;
 
-  let customerId: string | null = null;
-  if (resolutionAction === "linked_to_existing") {
-    customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, normalized, suggested: item.suggested_matches });
-    if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Unable to locate selected existing customer." };
+  const suggested = item.suggested_matches;
+  const explicitCandidateId = typeof suggested === "object" && suggested
+    ? String((suggested as Record<string, unknown>).customerId ?? (suggested as Record<string, unknown>).id ?? "")
+    : "";
 
-    await supabase.from("customers").update({ source_intake_id: item.intake_id, external_id: externalId }).eq("id", customerId).eq("shop_id", item.shop_id);
-  } else {
-    const { data: existing } = await supabase.from("customers").select("id").eq("shop_id", item.shop_id).eq("external_id", externalId).maybeSingle();
-    customerId = existing?.id ?? null;
+  const deterministicMatch = await findDeterministicCustomerMatch({
+    supabase,
+    shopId: item.shop_id,
+    sourceCustomerId,
+    email,
+    phone,
+  });
+
+  const decision = decideCustomerResolution({
+    context: "review",
+    resolutionAction: resolutionAction === "linked_to_existing" ? "linked_to_existing" : "created_new",
+    deterministicMatch,
+    explicitCandidateId,
+  });
+
+  if (
+    decision.resolutionType === "matched_existing_by_external_id" ||
+    decision.resolutionType === "matched_existing_by_email" ||
+    decision.resolutionType === "matched_existing_by_phone" ||
+    decision.resolutionType === "updated_existing_customer"
+  ) {
+    const customerId = decision.matchedRecordId;
     if (!customerId) {
-      const { data: inserted, error } = await supabase.from("customers").insert({
-        shop_id: item.shop_id,
-        first_name: first ?? null,
-        last_name: last ?? null,
-        name: name || null,
-        email: email || null,
-        phone: phone || null,
-        phone_number: phone || null,
-        business_name: business ?? null,
-        source_intake_id: item.intake_id,
-        external_id: externalId,
-      }).select("id").limit(1).maybeSingle();
-      if (error || !inserted?.id) return { status: "failed_materialization", materializedRecord: null, error: error?.message ?? "Failed to create customer." };
-      customerId = String(inserted.id);
+      return {
+        status: "failed_materialization",
+        domain: "customer",
+        action: resolutionAction,
+        resolutionType: "unresolved",
+        matchedRecordId: null,
+        createdRecordId: null,
+        updatedRecordId: null,
+        blockingReason: "no_match_for_update",
+        errorReason: "Unable to locate selected existing customer.",
+        materializedRecord: null,
+        error: "Unable to locate selected existing customer.",
+      };
     }
+    await supabase.from("customers").update({ source_intake_id: item.intake_id, external_id: externalId }).eq("id", customerId).eq("shop_id", item.shop_id);
+    return {
+      status: "materialized",
+      domain: "customer",
+      action: resolutionAction,
+      resolutionType: decision.resolutionType,
+      matchedRecordId: customerId,
+      createdRecordId: null,
+      updatedRecordId: customerId,
+      blockingReason: null,
+      errorReason: null,
+      materializedRecord: { domain: "customer", customerId, resolutionType: decision.resolutionType },
+      error: null,
+    };
   }
 
-  return { status: "materialized", materializedRecord: { domain: "customer", customerId }, error: null };
+  if (decision.resolutionType === "blocked_duplicate_conflict" || decision.resolutionType === "merge_candidate_requires_confirmation") {
+    const message = decision.resolutionType === "blocked_duplicate_conflict"
+      ? "Create blocked: deterministic duplicate evidence exists for this shop."
+      : "Unable to locate selected existing customer.";
+    return {
+      status: "failed_materialization",
+      domain: "customer",
+      action: resolutionAction,
+      resolutionType: decision.resolutionType,
+      matchedRecordId: decision.matchedRecordId,
+      createdRecordId: null,
+      updatedRecordId: null,
+      blockingReason: decision.blockingReason,
+      errorReason: message,
+      materializedRecord: {
+        domain: "customer",
+        resolutionType: decision.resolutionType,
+        matchedRecordId: decision.matchedRecordId,
+        blockingReason: decision.blockingReason,
+      },
+      error: message,
+    };
+  }
+
+  const { data: inserted, error } = await supabase.from("customers").insert({
+    shop_id: item.shop_id,
+    first_name: first ?? null,
+    last_name: last ?? null,
+    name: name || null,
+    email: email || null,
+    phone: phone || null,
+    phone_number: phone || null,
+    business_name: business ?? null,
+    source_intake_id: item.intake_id,
+    external_id: externalId,
+  }).select("id").limit(1).maybeSingle();
+  if (error || !inserted?.id) {
+    return {
+      status: "failed_materialization",
+      domain: "customer",
+      action: resolutionAction,
+      resolutionType: "unresolved",
+      matchedRecordId: null,
+      createdRecordId: null,
+      updatedRecordId: null,
+      blockingReason: null,
+      errorReason: error?.message ?? "Failed to create customer.",
+      materializedRecord: null,
+      error: error?.message ?? "Failed to create customer.",
+    };
+  }
+
+  const customerId = String(inserted.id);
+  return {
+    status: "materialized",
+    domain: "customer",
+    action: resolutionAction,
+    resolutionType: "created_new_customer",
+    matchedRecordId: null,
+    createdRecordId: customerId,
+    updatedRecordId: null,
+    blockingReason: null,
+    errorReason: null,
+    materializedRecord: { domain: "customer", customerId, resolutionType: "created_new_customer" },
+    error: null,
+  };
 }
 
 async function materializeVehicle(args: { supabase: AdminClient; item: ReviewItemRow; resolutionAction: ResolutionAction; }): Promise<MaterializeResult> {
@@ -605,7 +719,25 @@ export async function resolveAndMaterializeReviewItem(args: {
   confirmHighRiskAction?: boolean;
   ignoreReasonCode?: IgnoreReasonCode;
   ignoreNote?: string | null;
-}): Promise<{ ok: boolean; item: ReviewItemRow | null; materializedRecord: Record<string, unknown> | null; error?: string; }> {
+}): Promise<{
+  ok: boolean;
+  item: ReviewItemRow | null;
+  materializedRecord: Record<string, unknown> | null;
+  appliedResult: {
+    reviewItemId: string;
+    domain: string | null;
+    action: ResolutionAction;
+    status: ReviewStatus | string | null;
+    resolutionType: string | null;
+    materializedRecord: Record<string, unknown> | null;
+    matchedRecordId: string | null;
+    createdRecordId: string | null;
+    updatedRecordId: string | null;
+    blockingReason: string | null;
+    errorReason: string | null;
+  };
+  error?: string;
+}> {
   const supabase = createAdminSupabase();
 
   const { data: item } = await supabase
@@ -615,7 +747,27 @@ export async function resolveAndMaterializeReviewItem(args: {
     .eq("id", args.reviewItemId)
     .maybeSingle();
 
-  if (!item) return { ok: false, item: null, materializedRecord: null, error: "Review item not found." };
+  if (!item) {
+    return {
+      ok: false,
+      item: null,
+      materializedRecord: null,
+      appliedResult: {
+        reviewItemId: args.reviewItemId,
+        domain: null,
+        action: args.resolutionAction,
+        status: null,
+        resolutionType: "unresolved",
+        materializedRecord: null,
+        matchedRecordId: null,
+        createdRecordId: null,
+        updatedRecordId: null,
+        blockingReason: "review_item_not_found",
+        errorReason: "Review item not found.",
+      },
+      error: "Review item not found.",
+    };
+  }
 
   const riskCheck: HighRiskCheckResult = {
     highRiskAction:
@@ -631,6 +783,19 @@ export async function resolveAndMaterializeReviewItem(args: {
       ok: false,
       item: item as ReviewItemRow,
       materializedRecord: null,
+      appliedResult: {
+        reviewItemId: item.id,
+        domain: item.domain,
+        action: args.resolutionAction,
+        status: item.status,
+        resolutionType: "merge_candidate_requires_confirmation",
+        materializedRecord: null,
+        matchedRecordId: null,
+        createdRecordId: null,
+        updatedRecordId: null,
+        blockingReason: "high_risk_confirmation_required",
+        errorReason: "High-risk action requires explicit confirmation before applying.",
+      },
       error: "High-risk action requires explicit confirmation before applying.",
     };
   }
@@ -708,6 +873,19 @@ export async function resolveAndMaterializeReviewItem(args: {
     ok: materialized.status === "materialized" || materialized.status === "ignored",
     item: updatedItem ?? null,
     materializedRecord: materialized.materializedRecord,
+    appliedResult: {
+      reviewItemId: item.id,
+      domain: updatedItem?.domain ?? item.domain,
+      action: args.resolutionAction,
+      status: updatedItem?.status ?? materialized.status,
+      resolutionType: materialized.resolutionType ?? null,
+      materializedRecord: materialized.materializedRecord ?? null,
+      matchedRecordId: materialized.matchedRecordId ?? null,
+      createdRecordId: materialized.createdRecordId ?? null,
+      updatedRecordId: materialized.updatedRecordId ?? null,
+      blockingReason: materialized.blockingReason ?? null,
+      errorReason: materialized.errorReason ?? materialized.error ?? null,
+    },
     ...(materialized.error ? { error: materialized.error } : {}),
   };
 }

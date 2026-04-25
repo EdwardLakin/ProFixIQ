@@ -17,6 +17,12 @@ import {
 } from "@/features/integrations/shopBoost/migrationReliability";
 import { buildMigrationStory } from "@/features/integrations/shopBoost/migrationStory";
 import { deriveReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
+import {
+  decideCustomerResolution,
+  normalizeCustomerEmail as normalizeEmail,
+  normalizeCustomerPhone as normalizePhone,
+  sourceCustomerKey,
+} from "@/features/integrations/shopBoost/customerResolution";
 
 type DB = Database;
 
@@ -162,7 +168,6 @@ type IntakeBasics = Record<string, unknown>;
 type CacheCustomerRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "email" | "phone" | "phone_number">;
 type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "vin" | "license_plate" | "unit_number">;
 type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "email" | "full_name">;
-type RowBucketRow = Pick<DB["public"]["Tables"]["shop_boost_row_results"]["Row"], "match_status" | "review_required" | "error_reason">;
 type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
 type MaterializeDomain = NonNullable<RunArgs["options"]>["materializeDomain"];
 
@@ -191,17 +196,6 @@ function norm(s: string): string {
 
 function lower(s: string): string {
   return norm(s).toLowerCase();
-}
-
-function normalizeEmail(value: string | null | undefined): string {
-  return String(value ?? "").trim().toLowerCase();
-}
-
-function normalizePhone(value: string | null | undefined): string {
-  const digits = String(value ?? "").replace(/\D+/g, "");
-  if (!digits) return "";
-  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
-  return digits;
 }
 
 function normalizeNameKey(value: string | null | undefined): string {
@@ -253,22 +247,6 @@ function confidenceScore(confidence: MatchConfidence): number {
   if (confidence === "high") return 1;
   if (confidence === "medium") return 0.65;
   return 0.3;
-}
-
-function toTokens(value: string): Set<string> {
-  return new Set(
-    normalizeText(value)
-      .split(" ")
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2),
-  );
-}
-
-function nameSimilarity(a: string | null | undefined, b: string | null | undefined): number {
-  const ta = toTokens(a ?? "");
-  const tb = toTokens(b ?? "");
-  if (ta.size === 0 || tb.size === 0) return 0;
-  return jaccardSimilarity(ta, tb);
 }
 
 // ✅ ROLE PATCH (only change)
@@ -1324,25 +1302,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
   // 1) Import customers
   if (runCustomers && parsedCustomers.length > 0) {
-    const customerNames: Array<{ id: string; name: string }> = [];
-    {
-      const { data } = await supabase
-        .from("customers")
-        .select("id,name,first_name,last_name")
-        .eq("shop_id", shopId)
-        .limit(5000);
-      for (const item of data ?? []) {
-        const candidateName =
-          String((item as Record<string, unknown>).name ?? "") ||
-          `${String((item as Record<string, unknown>).first_name ?? "")} ${String((item as Record<string, unknown>).last_name ?? "")}`.trim();
-        if (candidateName) customerNames.push({ id: String((item as Record<string, unknown>).id ?? ""), name: candidateName });
-      }
-    }
-
     for (let i = 0; i < parsedCustomers.length; i += 1) {
       const row = parsedCustomers[i];
       const sourceCustomerId = pickSourceId(row, [/^customer[_\s-]*id$/, /external customer id/, /^id$/]);
-      const sourceCustomerKey = sourceCustomerId ? sha1(sourceCustomerId).slice(0, 20) : null;
+      const sourceCustomerLookupKey = sourceCustomerKey(sourceCustomerId);
 
       const email = lower(pick(row, [/^email$/, /e-mail/, /customer email/, /mail/]) ?? "");
       const phone =
@@ -1372,55 +1335,23 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         ? sourceExternalId("customer", sourceCustomerId)
         : `import:${intakeId}:customers:${sha1(`${email}|${phone}|${name}|${business ?? ""}`).slice(0, 16)}`;
 
-      const existingId =
-        (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ||
-        (email && !conflictingCustomerEmails.has(email) && uniqueCustomersByEmail.get(email)) ||
-        (phone && !conflictingCustomerPhones.has(phone) && uniqueCustomersByPhone.get(phone)) ||
-        (normalizedName && !conflictingCustomerNames.has(normalizedName) && uniqueCustomersByName.get(normalizedName));
-      const bestNameMatch = name
-        ? customerNames
-            .map((candidate) => ({ id: candidate.id, similarity: nameSimilarity(name, candidate.name) }))
-            .sort((a, b) => b.similarity - a.similarity)[0]
-        : null;
+      const deterministicExternalId = sourceCustomerLookupKey ? customersBySourceId.get(sourceCustomerLookupKey) ?? null : null;
+      const deterministicEmailId = email && !conflictingCustomerEmails.has(email) ? uniqueCustomersByEmail.get(email) ?? null : null;
+      const deterministicPhoneId = phone && !conflictingCustomerPhones.has(phone) ? uniqueCustomersByPhone.get(phone) ?? null : null;
+      const decision = decideCustomerResolution({
+        context: "import",
+        resolutionAction: "created_new",
+        deterministicMatch: deterministicExternalId
+          ? { resolutionType: "matched_existing_by_external_id", customerId: deterministicExternalId }
+          : deterministicEmailId
+            ? { resolutionType: "matched_existing_by_email", customerId: deterministicEmailId }
+            : deterministicPhoneId
+              ? { resolutionType: "matched_existing_by_phone", customerId: deterministicPhoneId }
+              : null,
+      });
 
-      if (!sourceCustomerId && !existingId && bestNameMatch && bestNameMatch.similarity >= 0.85) {
-        await supabase
-          .from("customers")
-          .update({
-            first_name: first ?? null,
-            last_name: last ?? null,
-            name: name || null,
-            business_name: business ?? null,
-            address: address ?? null,
-            city: city ?? null,
-            province: province ?? null,
-            postal_code: postalCode ?? null,
-            source_intake_id: intakeId,
-            updated_at: new Date().toISOString(),
-          } as DB["public"]["Tables"]["customers"]["Update"])
-          .eq("id", bestNameMatch.id);
-
-        rowOutcome.processedRows += 1;
-        rowOutcome.successCount += 1;
-        rowOutcome.byDomain.customers.success += 1;
-        await insertRowResult({
-          supabase,
-          shopId,
-          intakeId,
-          sourceFile: "customers",
-          sourceRowIndex: i + 1,
-          rawPayload: row,
-          normalizedPayload: { email, phone, name, business, isFleet, customerType },
-          targetDomain: "customer",
-          matchStatus: "matched_existing",
-          matchConfidence: "medium",
-          matchDetails: { customerId: bestNameMatch.id, strategy: "name_similarity", similarity: bestNameMatch.similarity },
-          reviewRequired: false,
-        });
-        continue;
-      }
-
-      if (existingId) {
+      if (decision.matchedRecordId) {
+        const existingId = decision.matchedRecordId;
         await supabase
           .from("customers")
           .update({
@@ -1459,12 +1390,18 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           matchConfidence: sourceCustomerId || email || phone ? "high" : "medium",
           matchDetails: {
             customerId: existingId,
-            strategy: sourceCustomerId ? "customer_id" : email ? "email" : "phone",
+            strategy:
+              decision.resolutionType === "matched_existing_by_external_id"
+                ? "customer_id"
+                : decision.resolutionType === "matched_existing_by_email"
+                  ? "email"
+                  : "phone",
             sourceCustomerId,
+            resolutionType: decision.resolutionType,
           },
           reviewRequired: false,
         });
-        if (sourceCustomerKey) customersBySourceId.set(sourceCustomerKey, existingId);
+        if (sourceCustomerLookupKey) customersBySourceId.set(sourceCustomerLookupKey, existingId);
         if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, existingId);
         continue;
       }
@@ -1527,7 +1464,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         if (id) {
           if (email) customersByEmail.set(email, id);
           if (phone) customersByPhone.set(phone, id);
-          if (sourceCustomerKey) customersBySourceId.set(sourceCustomerKey, id);
+          if (sourceCustomerLookupKey) customersBySourceId.set(sourceCustomerLookupKey, id);
           if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
         }
         rowOutcome.processedRows += 1;
@@ -1544,10 +1481,82 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           targetDomain: "customer",
           matchStatus: "created_new",
           matchConfidence: email || phone ? "high" : "medium",
-          matchDetails: { customerId: id ?? null },
+          matchDetails: { customerId: id ?? null, resolutionType: "created_new_customer" },
           reviewRequired: false,
         });
       } else {
+        const deterministicFallback = await (async () => {
+          if (sourceCustomerId) {
+            const { data } = await supabase
+              .from("customers")
+              .select("id")
+              .eq("shop_id", shopId)
+              .eq("external_id", sourceExternalId("customer", sourceCustomerId))
+              .maybeSingle();
+            if (data?.id) return { id: String(data.id), strategy: "customer_id" as const };
+          }
+          if (email) {
+            const { data } = await supabase
+              .from("customers")
+              .select("id")
+              .eq("shop_id", shopId)
+              .eq("email", email)
+              .maybeSingle();
+            if (data?.id) return { id: String(data.id), strategy: "email" as const };
+          }
+          if (phone) {
+            const { data } = await supabase.from("customers").select("id,phone,phone_number").eq("shop_id", shopId).limit(3000);
+            const matched = (data ?? []).find((candidate) => normalizePhone((candidate as Record<string, unknown>).phone ?? (candidate as Record<string, unknown>).phone_number) === phone);
+            if ((matched as Record<string, unknown> | undefined)?.id) return { id: String((matched as Record<string, unknown>).id), strategy: "phone" as const };
+          }
+          return null;
+        })();
+        if (deterministicFallback?.id) {
+          await supabase
+            .from("customers")
+            .update({
+              first_name: first ?? null,
+              last_name: last ?? null,
+              name: name || null,
+              email: email || null,
+              phone: phone || null,
+              phone_number: phone || null,
+              business_name: business ?? null,
+              address: address ?? null,
+              city: city ?? null,
+              province: province ?? null,
+              postal_code: postalCode ?? null,
+              is_fleet: isFleet,
+              shop_id: shopId,
+              source_intake_id: intakeId,
+              external_id,
+              updated_at: new Date().toISOString(),
+            } as DB["public"]["Tables"]["customers"]["Update"])
+            .eq("id", deterministicFallback.id);
+          rowOutcome.processedRows += 1;
+          rowOutcome.successCount += 1;
+          rowOutcome.byDomain.customers.success += 1;
+          await insertRowResult({
+            supabase,
+            shopId,
+            intakeId,
+            sourceFile: "customers",
+            sourceRowIndex: i + 1,
+            rawPayload: row,
+            normalizedPayload: { email, phone, name, business, isFleet, customerType, sourceCustomerId },
+            targetDomain: "customer",
+            matchStatus: "matched_existing",
+            matchConfidence: "high",
+            matchDetails: {
+              customerId: deterministicFallback.id,
+              strategy: deterministicFallback.strategy,
+              resolutionType: deterministicFallback.strategy === "email" ? "matched_existing_by_email" : deterministicFallback.strategy === "phone" ? "matched_existing_by_phone" : "matched_existing_by_external_id",
+              recoveredFromInsertConflict: true,
+            },
+            reviewRequired: false,
+          });
+          continue;
+        }
         rowOutcome.processedRows += 1;
         rowOutcome.failedCount += 1;
         rowOutcome.byDomain.customers.failed += 1;
@@ -2668,36 +2677,63 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
   const integrityErrors: string[] = integrity.integrityErrors;
 
-  let rowBucketQuery = supabase
+  const sourceFileFilter = materializeDomain ? domainSourceFile(materializeDomain) : null;
+  let totalCountQuery = supabase
     .from("shop_boost_row_results")
-    .select("match_status,review_required,error_reason")
+    .select("id", { count: "exact", head: true })
     .eq("shop_id", shopId)
     .eq("intake_id", intakeId);
-  if (materializeDomain) {
-    const sourceFile = domainSourceFile(materializeDomain);
-    if (sourceFile) rowBucketQuery = rowBucketQuery.eq("source_file", sourceFile);
+  let reviewCountQuery = supabase
+    .from("shop_boost_row_results")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .eq("review_required", true);
+  let failedCountQuery = supabase
+    .from("shop_boost_row_results")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .eq("review_required", false)
+    .or("error_reason.not.is.null,match_status.eq.invalid");
+  let linkedCountQuery = supabase
+    .from("shop_boost_row_results")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .eq("review_required", false)
+    .is("error_reason", null)
+    .in("match_status", ["matched_existing", "partial_match"]);
+  if (sourceFileFilter) {
+    totalCountQuery = totalCountQuery.eq("source_file", sourceFileFilter);
+    reviewCountQuery = reviewCountQuery.eq("source_file", sourceFileFilter);
+    failedCountQuery = failedCountQuery.eq("source_file", sourceFileFilter);
+    linkedCountQuery = linkedCountQuery.eq("source_file", sourceFileFilter);
   }
-  const { data: rowBucketRows } = await rowBucketQuery.limit(100000);
+  const [totalRowCountResp, reviewRequiredResp, failedResp, linkedResp] = await Promise.all([
+    totalCountQuery,
+    reviewCountQuery,
+    failedCountQuery,
+    linkedCountQuery,
+  ]);
+  const totalRowCount = Number(totalRowCountResp.count ?? 0);
+  const reviewRequiredCount = Number(reviewRequiredResp.count ?? 0);
+  const failedBucketCount = Number(failedResp.count ?? 0);
+  const linkedCount = Number(linkedResp.count ?? 0);
+  const materializedCount = Math.max(0, totalRowCount - reviewRequiredCount - failedBucketCount - linkedCount);
 
   const outcomeBuckets = {
     materialized: 0,
     linked: 0,
-    ignored: ignoredCount,
-    review_required: 0,
-    failed: 0,
+    ignored: 0,
+    review_required: reviewRequiredCount,
+    failed: failedBucketCount,
     total_counted: 0,
     total_input: totalRows,
     mismatch: 0,
   };
-  for (const row of (rowBucketRows ?? []) as RowBucketRow[]) {
-    const status = String(row.match_status ?? "");
-    const reviewRequired = Boolean(row.review_required);
-    const hasError = Boolean(row.error_reason);
-    if (reviewRequired) outcomeBuckets.review_required += 1;
-    else if (hasError || status === "invalid") outcomeBuckets.failed += 1;
-    else if (status === "matched_existing" || status === "partial_match") outcomeBuckets.linked += 1;
-    else outcomeBuckets.materialized += 1;
-  }
+  outcomeBuckets.materialized = materializedCount;
+  outcomeBuckets.linked = linkedCount;
   outcomeBuckets.total_counted =
     outcomeBuckets.materialized +
     outcomeBuckets.linked +
