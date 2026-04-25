@@ -56,6 +56,46 @@ type Guidance = {
   high_risk_actions_count?: number;
 };
 
+type ResetCounts = {
+  intakes: number;
+  reviewItems: number;
+  rowResults: number;
+  reviewAuditEvents: number;
+  integrityReports: number;
+  importFiles: number;
+  importRows: number;
+  staffInviteSuggestions: number;
+  staffInviteCandidates: number;
+  provenance: Record<"customer" | "vehicle" | "work_order" | "work_order_line" | "invoice", number>;
+  legacyTagged: {
+    customers: number;
+    vehicles: number;
+    workOrders: number;
+    workOrderLines: number;
+    invoices: number;
+  };
+};
+
+type ResetPreviewResponse = {
+  ok?: boolean;
+  error?: string;
+  intakeId?: string | null;
+  expectedConfirmationText?: string;
+  counts?: ResetCounts;
+};
+
+type ResetExecuteResponse = {
+  ok?: boolean;
+  error?: string;
+  expectedConfirmationText?: string;
+  previewCounts?: ResetCounts;
+  deletedCounts?: Record<string, number>;
+  notes?: {
+    deletedUsingStrongProvenance?: Record<string, number>;
+    legacyTaggedNotDeleted?: Record<string, number>;
+  };
+};
+
 const domains = ["", "customer", "vehicle", "part", "work_order", "invoice", "history"];
 
 function actionLabel(action: Recommendation["recommendedAction"]): string {
@@ -84,6 +124,16 @@ export default function ShopBoostReviewPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reprocessBusy, setReprocessBusy] = useState<null | "failed" | "unresolved" | "updated_matches">(null);
   const [confirmRiskById, setConfirmRiskById] = useState<Record<string, boolean>>({});
+  const [resetIntakeId, setResetIntakeId] = useState("");
+  const [resetPreview, setResetPreview] = useState<ResetPreviewResponse | null>(null);
+  const [resetExecute, setResetExecute] = useState<ResetExecuteResponse | null>(null);
+  const [resetFeedback, setResetFeedback] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetExecuting, setResetExecuting] = useState(false);
+  const [resetAllowed, setResetAllowed] = useState(false);
+  const [resetPermissionChecked, setResetPermissionChecked] = useState(false);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [dryRunComplete, setDryRunComplete] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,6 +151,39 @@ export default function ShopBoostReviewPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const activeIntake = items[0]?.intake_id ?? "";
+    if (!resetIntakeId && activeIntake) {
+      setResetIntakeId(activeIntake);
+    }
+  }, [items, resetIntakeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const intakeId = resetIntakeId || items[0]?.intake_id;
+      if (!intakeId) {
+        setResetPermissionChecked(true);
+        setResetAllowed(false);
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ scope: "intake", intakeId });
+        const res = await fetch(`/api/shop-boost/import-reset?${params.toString()}`, { cache: "no-store" });
+        if (cancelled) return;
+        setResetAllowed(res.ok);
+      } catch {
+        if (cancelled) return;
+        setResetAllowed(false);
+      } finally {
+        if (!cancelled) setResetPermissionChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, resetIntakeId]);
 
 
   useEffect(() => {
@@ -262,6 +345,104 @@ export default function ShopBoostReviewPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]));
   };
 
+  const loadResetPreview = async () => {
+    if (!resetIntakeId.trim()) {
+      setResetFeedback("Select or enter an intake ID first.");
+      return;
+    }
+    setResetLoading(true);
+    setResetFeedback(null);
+    setResetExecute(null);
+    setDryRunComplete(false);
+    try {
+      const params = new URLSearchParams({ scope: "intake", intakeId: resetIntakeId.trim() });
+      const res = await fetch(`/api/shop-boost/import-reset?${params.toString()}`, { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as ResetPreviewResponse;
+      if (!res.ok || !json.ok) {
+        setResetPreview(null);
+        setResetFeedback(json.error ?? "Failed to load reset preview.");
+        return;
+      }
+      setResetPreview(json);
+      setConfirmationText("");
+      setResetFeedback("Preview loaded. Run dry-run to write a preview audit event, then execute only if needed.");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const runResetDryRun = async () => {
+    if (!resetPreview?.expectedConfirmationText || !resetIntakeId.trim()) {
+      setResetFeedback("Load preview first.");
+      return;
+    }
+    setResetLoading(true);
+    setResetFeedback(null);
+    try {
+      const res = await fetch("/api/shop-boost/import-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "intake",
+          intakeId: resetIntakeId.trim(),
+          dryRun: true,
+          confirmationText: resetPreview.expectedConfirmationText,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as ResetPreviewResponse;
+      if (!res.ok || !json.ok) {
+        setResetFeedback(json.error ?? "Dry-run failed.");
+        return;
+      }
+      setDryRunComplete(true);
+      setResetPreview(json);
+      setResetFeedback("Dry-run recorded. Review counts and enter confirmation text to execute.");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const executeReset = async () => {
+    if (!resetPreview?.expectedConfirmationText || !resetIntakeId.trim()) {
+      setResetFeedback("Load preview first.");
+      return;
+    }
+    setResetExecuting(true);
+    setResetFeedback(null);
+    try {
+      const res = await fetch("/api/shop-boost/import-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "intake",
+          intakeId: resetIntakeId.trim(),
+          dryRun: false,
+          confirmationText,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as ResetExecuteResponse;
+      if (!res.ok || !json.ok) {
+        setResetExecute(null);
+        setResetFeedback(json.error ?? "Reset execute failed.");
+        if (json.expectedConfirmationText) {
+          setResetPreview((prev) => ({
+            ...prev,
+            expectedConfirmationText: json.expectedConfirmationText,
+          }));
+        }
+        return;
+      }
+      setResetExecute(json);
+      setResetFeedback("Import reset completed. Review deleted counts and legacy counts below.");
+      await load();
+    } finally {
+      setResetExecuting(false);
+    }
+  };
+
+  const previewCounts = resetPreview?.counts;
+  const confirmationMatches = confirmationText.trim() === (resetPreview?.expectedConfirmationText ?? "");
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -309,6 +490,136 @@ export default function ShopBoostReviewPage() {
           <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
         </div>
       </div>
+
+      {resetPermissionChecked && resetAllowed ? (
+        <section className="rounded-xl border border-rose-400/30 bg-rose-950/15 p-4 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-rose-100">Shop Boost operations • intake import reset</h2>
+            <p className="mt-1 text-xs text-neutral-200">
+              Scoped reset for a single intake only. This uses provenance-backed deletion for imported records and does not expose any global shop wipe action.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1.7fr_1fr]">
+            <div>
+              <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Intake scope (required)</label>
+              <input
+                value={resetIntakeId}
+                onChange={(e) => {
+                  setResetIntakeId(e.target.value);
+                  setResetPreview(null);
+                  setResetExecute(null);
+                  setDryRunComplete(false);
+                  setConfirmationText("");
+                }}
+                placeholder="Paste intake UUID"
+                className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div className="flex items-end">
+              <button className="w-full rounded border border-amber-300/40 px-3 py-2 text-xs text-amber-100" onClick={() => void loadResetPreview()} disabled={resetLoading || resetExecuting}>
+                {resetLoading ? "Loading preview…" : "Load exact preview counts"}
+              </button>
+            </div>
+          </div>
+
+          {previewCounts ? (
+            <div className="space-y-3 rounded-lg border border-white/15 bg-black/30 p-3">
+              <div className="grid gap-3 md:grid-cols-2 text-xs">
+                <div className="rounded-md border border-emerald-300/35 bg-emerald-950/20 p-2">
+                  <div className="font-semibold text-emerald-100">Safe provenance-backed deletion</div>
+                  <ul className="mt-1 space-y-1 text-neutral-200">
+                    <li>Customers: {previewCounts.provenance.customer}</li>
+                    <li>Vehicles: {previewCounts.provenance.vehicle}</li>
+                    <li>Work orders: {previewCounts.provenance.work_order}</li>
+                    <li>Work order lines: {previewCounts.provenance.work_order_line}</li>
+                    <li>Invoices: {previewCounts.provenance.invoice}</li>
+                  </ul>
+                </div>
+                <div className="rounded-md border border-amber-300/35 bg-amber-950/20 p-2">
+                  <div className="font-semibold text-amber-100">Legacy-tagged counts (not auto-deleted)</div>
+                  <ul className="mt-1 space-y-1 text-neutral-200">
+                    <li>Customers: {previewCounts.legacyTagged.customers}</li>
+                    <li>Vehicles: {previewCounts.legacyTagged.vehicles}</li>
+                    <li>Work orders: {previewCounts.legacyTagged.workOrders}</li>
+                    <li>Work order lines: {previewCounts.legacyTagged.workOrderLines}</li>
+                    <li>Invoices: {previewCounts.legacyTagged.invoices}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="grid gap-2 text-xs md:grid-cols-2">
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Intake rows: {previewCounts.intakes}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Review items: {previewCounts.reviewItems}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Row results: {previewCounts.rowResults}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Review audit events: {previewCounts.reviewAuditEvents}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Integrity reports: {previewCounts.integrityReports}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Import files: {previewCounts.importFiles}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Import rows: {previewCounts.importRows}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Staff invite suggestions: {previewCounts.staffInviteSuggestions}</div>
+                <div className="rounded-md border border-white/10 p-2 text-neutral-200">Staff invite candidates: {previewCounts.staffInviteCandidates}</div>
+              </div>
+
+              <div className="rounded-md border border-white/15 bg-black/40 p-2 text-xs text-neutral-200">
+                <div className="font-semibold text-white">Required confirmation text</div>
+                <div className="mt-1 break-all font-mono text-[11px]">{resetPreview?.expectedConfirmationText}</div>
+                <button
+                  type="button"
+                  className="mt-2 rounded border border-white/20 px-2 py-1 text-[11px] text-neutral-100"
+                  onClick={() => setConfirmationText(resetPreview?.expectedConfirmationText ?? "")}
+                >
+                  Use expected text
+                </button>
+              </div>
+
+              <input
+                value={confirmationText}
+                onChange={(e) => setConfirmationText(e.target.value)}
+                placeholder="Type exact confirmation text to enable execute"
+                className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
+              />
+
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  className="rounded border border-sky-300/40 px-2 py-1 text-sky-100"
+                  onClick={() => void runResetDryRun()}
+                  disabled={resetLoading || resetExecuting}
+                >
+                  {resetLoading ? "Running dry-run…" : dryRunComplete ? "Dry-run completed ✓" : "Run dry-run preview"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-rose-300/40 px-2 py-1 text-rose-100 disabled:opacity-60"
+                  onClick={() => void executeReset()}
+                  disabled={!dryRunComplete || !confirmationMatches || resetExecuting}
+                >
+                  {resetExecuting ? "Executing reset…" : "Execute intake reset"}
+                </button>
+              </div>
+
+              <p className="text-[11px] text-neutral-400">
+                Execute is locked until dry-run is completed and confirmation text exactly matches. No global delete-all-shop action is surfaced here.
+              </p>
+            </div>
+          ) : null}
+
+          {resetExecute?.deletedCounts ? (
+            <div className="rounded-lg border border-emerald-300/30 bg-emerald-950/20 p-3 text-xs text-emerald-100">
+              <div className="font-semibold">Audit result • deleted counts</div>
+              <pre className="mt-2 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-[11px] text-neutral-100">{JSON.stringify(resetExecute.deletedCounts, null, 2)}</pre>
+              {resetExecute.notes?.legacyTaggedNotDeleted ? (
+                <div className="mt-2 text-amber-100">
+                  Legacy-tagged records still not auto-deleted:
+                  <pre className="mt-1 overflow-auto rounded border border-amber-300/25 bg-black/40 p-2 text-[11px] text-neutral-100">{JSON.stringify(resetExecute.notes.legacyTaggedNotDeleted, null, 2)}</pre>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {resetFeedback ? <div className="rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-xs text-sky-100">{resetFeedback}</div> : null}
+        </section>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         {[
