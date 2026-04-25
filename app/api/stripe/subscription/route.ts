@@ -28,6 +28,7 @@ type NormalizedSubscriptionPayload = {
   cancel_at_period_end: boolean;
   canceled_at: string | null;
   current_period_end: string | null;
+  trial_end: string | null;
   linkage_needed?: boolean;
   linkage_state?: "unlinked_subscription";
   linked_customer_id?: string | null;
@@ -56,6 +57,7 @@ function normalizeSubscription(subscription: Stripe.Subscription): NormalizedSub
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
     canceled_at: unixToIsoOrNull(subscription.canceled_at ?? null),
     current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
+    trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
   };
 }
 
@@ -66,6 +68,7 @@ function normalizeShopFallback(shop: ShopStripeScope): NormalizedSubscriptionPay
     cancel_at_period_end: false,
     canceled_at: null,
     current_period_end: shop.stripe_current_period_end ?? null,
+    trial_end: shop.stripe_trial_end ?? null,
   };
 }
 

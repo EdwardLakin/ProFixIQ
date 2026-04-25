@@ -82,8 +82,19 @@ type StripeSubscriptionApiResponse = {
   cancel_at_period_end?: boolean;
   canceled_at?: string | null;
   current_period_end?: string | null;
+  trial_end?: string | null;
+  linkage_needed?: boolean;
+  linkage_state?: "unlinked_subscription";
+  linked_customer_id?: string | null;
+  linked_subscription_id?: string | null;
   error?: string;
 };
+
+type BillingDisplayStatus =
+  | StripeSubStatus
+  | "linkage_needed"
+  | "subscription_found_not_linked"
+  | "sync_needed";
 
 type OrgScope = Pick<
   Database["public"]["Tables"]["organizations"]["Row"],
@@ -184,6 +195,7 @@ export default function OwnerSettingsPage() {
 
   // Billing status (for badge deep-link)
   const [subStatus, setSubStatus] = useState<StripeSubStatus>("unknown");
+  const [billingDisplayStatus, setBillingDisplayStatus] = useState<BillingDisplayStatus>("unknown");
   const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
@@ -335,14 +347,17 @@ export default function OwnerSettingsPage() {
     async (sid: string) => {
       const { data: billing } = await supabase
         .from("shops")
-        .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
+        .select("plan, stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
         .eq("id", sid)
-        .maybeSingle<ShopBillingScope>();
+        .maybeSingle<
+          ShopBillingScope & Pick<Database["public"]["Tables"]["shops"]["Row"], "plan">
+        >();
 
       setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
-      setSubStatus(parseStripeSubscriptionStatus(billing?.stripe_subscription_status));
-      setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
-      setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
+      const planSignal = parsePlan((billing?.plan as string | null) ?? null);
+      const shopStatus = parseStripeSubscriptionStatus(billing?.stripe_subscription_status);
+      const shopTrialEnd = (billing?.stripe_trial_end as string | null) ?? null;
+      const shopPeriodEnd = (billing?.stripe_current_period_end as string | null) ?? null;
 
       try {
         const res = await fetch("/api/stripe/subscription", {
@@ -352,19 +367,44 @@ export default function OwnerSettingsPage() {
         const j = (await res.json().catch(() => ({}))) as StripeSubscriptionApiResponse;
 
         if (!res.ok) {
+          setSubStatus(shopStatus);
+          setTrialEndIso(shopTrialEnd);
+          setPeriodEndIso(shopPeriodEnd);
+          setBillingDisplayStatus(planSignal !== "unknown" && shopStatus === "unknown" ? "sync_needed" : shopStatus);
           setCancelAtPeriodEnd(false);
           return;
         }
 
+        const canonicalStatus = parseStripeSubscriptionStatus(j.status);
+        setSubStatus(canonicalStatus);
         setCancelAtPeriodEnd(Boolean(j.cancel_at_period_end));
 
-        if (j.status) {
-          setSubStatus(parseStripeSubscriptionStatus(j.status));
+        if (j.trial_end !== undefined) {
+          setTrialEndIso(j.trial_end ?? null);
+        } else {
+          setTrialEndIso(shopTrialEnd);
         }
         if (j.current_period_end !== undefined) {
           setPeriodEndIso(j.current_period_end ?? null);
+        } else {
+          setPeriodEndIso(shopPeriodEnd);
         }
+
+        if (j.linkage_needed) {
+          setBillingDisplayStatus(
+            j.linked_subscription_id ? "subscription_found_not_linked" : "linkage_needed",
+          );
+          return;
+        }
+
+        setBillingDisplayStatus(
+          canonicalStatus === "unknown" && planSignal !== "unknown" ? "sync_needed" : canonicalStatus,
+        );
       } catch {
+        setSubStatus(shopStatus);
+        setTrialEndIso(shopTrialEnd);
+        setPeriodEndIso(shopPeriodEnd);
+        setBillingDisplayStatus(planSignal !== "unknown" && shopStatus === "unknown" ? "sync_needed" : shopStatus);
         setCancelAtPeriodEnd(false);
       }
     },
@@ -428,7 +468,7 @@ export default function OwnerSettingsPage() {
     if (error) toast.error(error.message);
 
     // ✅ Plan + seats (Plan comes from shops.plan)
-    const resolvedPlan = parsePlan((shop as { plan?: unknown } | null)?.plan ?? "starter");
+    const resolvedPlan = parsePlan((shop as { plan?: unknown } | null)?.plan);
     setPlan(resolvedPlan);
     setSeatsLimit(planSeatLimit(resolvedPlan));
 
@@ -1052,6 +1092,30 @@ try {
     const base =
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
 
+    if (billingDisplayStatus === "linkage_needed") {
+      return (
+        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+          Linkage needed
+        </span>
+      );
+    }
+
+    if (billingDisplayStatus === "subscription_found_not_linked") {
+      return (
+        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+          Subscription found, link required
+        </span>
+      );
+    }
+
+    if (billingDisplayStatus === "sync_needed") {
+      return (
+        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+          Sync needed
+        </span>
+      );
+    }
+
     if (subStatus === "trialing") {
       const label =
         typeof trialDaysLeft === "number"
@@ -1099,7 +1163,7 @@ try {
 
     return (
       <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
-        Status: {String(subStatus).toUpperCase()}
+        Status: {String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
       </span>
     );
   })();
@@ -1124,7 +1188,10 @@ try {
         <div className="grid gap-3 md:grid-cols-4">
           <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
           <OwnerSettingsStat label="Seats" value={seatLimitLabel} />
-          <OwnerSettingsStat label="Billing" value={String(subStatus).toUpperCase()} />
+          <OwnerSettingsStat
+            label="Billing"
+            value={String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
+          />
           <OwnerSettingsStat
             label="Stripe"
             value={stripeAccountId ? "Connected" : "Not connected"}
@@ -1296,6 +1363,7 @@ try {
           canManageBilling={canManageBilling}
           billingPill={billingPill}
           subStatus={subStatus}
+          billingDisplayStatus={billingDisplayStatus}
           stripeAccountId={stripeAccountId}
           trialEndIso={trialEndIso}
           periodEndIso={periodEndIso}
