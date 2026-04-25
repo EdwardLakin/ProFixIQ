@@ -33,6 +33,7 @@ type NormalizedSubscriptionPayload = {
   linkage_state?: "unlinked_subscription";
   linked_customer_id?: string | null;
   linked_subscription_id?: string | null;
+  linked_checkout_session_id?: string | null;
 };
 
 function mustEnv(name: string): string {
@@ -128,18 +129,19 @@ async function findUnlinkedSubscriptionEvidence(args: {
   supabase: SupabaseClient<DB>;
   userId: string;
   shop: ShopStripeScope;
-}): Promise<{ customerId: string | null; subscriptionId: string | null } | null> {
+}): Promise<{ customerId: string | null; subscriptionId: string | null; checkoutSessionId: string | null } | null> {
   const { stripe, supabase, userId, shop } = args;
   const profile = await getProfileStripeArtifacts(supabase, userId);
   if (!profile) return null;
 
   const profileCustomerId = String(profile.stripe_customer_id ?? "").trim() || null;
   const profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim() || null;
+  const profileCheckoutSessionId = String(profile.stripe_checkout_session_id ?? "").trim() || null;
 
   const canonicalCustomerId = String(shop.stripe_customer_id ?? "").trim() || null;
   const canonicalSubscriptionId = String(shop.stripe_subscription_id ?? "").trim() || null;
 
-  if (!profileCustomerId && !profileSubscriptionId) return null;
+  if (!profileCustomerId && !profileSubscriptionId && !profileCheckoutSessionId) return null;
 
   if (
     profileCustomerId &&
@@ -159,6 +161,7 @@ async function findUnlinkedSubscriptionEvidence(args: {
     return {
       customerId: profileCustomerId ?? subscriptionCustomerId,
       subscriptionId: sub.id,
+      checkoutSessionId: profileCheckoutSessionId,
     };
   }
 
@@ -170,9 +173,22 @@ async function findUnlinkedSubscriptionEvidence(args: {
     });
     const latest = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null;
     if (latest) {
-      return { customerId: profileCustomerId, subscriptionId: latest.id };
+      return { customerId: profileCustomerId, subscriptionId: latest.id, checkoutSessionId: profileCheckoutSessionId };
     }
-    return { customerId: profileCustomerId, subscriptionId: null };
+    return { customerId: profileCustomerId, subscriptionId: null, checkoutSessionId: profileCheckoutSessionId };
+  }
+
+  if (profileCheckoutSessionId) {
+    const session = await stripe.checkout.sessions.retrieve(profileCheckoutSessionId);
+    const customerId =
+      typeof session.customer === "string" ? session.customer : null;
+    const subscriptionId =
+      typeof session.subscription === "string" ? session.subscription : null;
+    return {
+      customerId,
+      subscriptionId,
+      checkoutSessionId: profileCheckoutSessionId,
+    };
   }
 
   return null;
@@ -246,6 +262,7 @@ export async function GET() {
           linkage_state: "unlinked_subscription",
           linked_customer_id: unlinked.customerId,
           linked_subscription_id: unlinked.subscriptionId,
+          linked_checkout_session_id: unlinked.checkoutSessionId,
         } satisfies NormalizedSubscriptionPayload);
       }
 
@@ -309,6 +326,7 @@ export async function POST(req: Request) {
             linkage_state: "unlinked_subscription",
             linked_customer_id: unlinked.customerId,
             linked_subscription_id: unlinked.subscriptionId,
+            linked_checkout_session_id: unlinked.checkoutSessionId,
           },
           { status: 409 },
         );

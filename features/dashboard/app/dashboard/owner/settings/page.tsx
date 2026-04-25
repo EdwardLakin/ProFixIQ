@@ -1017,6 +1017,17 @@ try {
   };
 
   const manageSubscription = async () => {
+    if (
+      billingDisplayStatus === "linkage_needed" ||
+      billingDisplayStatus === "subscription_found_not_linked" ||
+      billingDisplayStatus === "sync_needed"
+    ) {
+      toast.warning(
+        "Billing linkage is still syncing. Please refresh in a moment instead of starting a new subscription.",
+      );
+      return;
+    }
+
     const managedStatuses = new Set<StripeSubStatus>([
       "trialing",
       "active",

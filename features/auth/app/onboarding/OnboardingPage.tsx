@@ -122,7 +122,7 @@ export default function OnboardingPage() {
       const sid = searchParams.get("session_id");
       if (sid) {
         try {
-          await fetch("/api/stripe/link-user", {
+          await fetch("/api/stripe/checkout/link-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId: sid }),
@@ -242,6 +242,7 @@ export default function OnboardingPage() {
           pin: ownerPin,
           country,
           timezone,
+          stripe_checkout_session_id: searchParams.get("session_id"),
         }),
       });
 

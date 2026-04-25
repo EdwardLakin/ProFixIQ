@@ -223,7 +223,10 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
       const session = event.data.object as Stripe.Checkout.Session;
 
       if (session.mode === "subscription") {
-        const userId = session.metadata?.supabase_user_id ?? session.metadata?.supabaseUserId ?? null;
+        const userId =
+          session.metadata?.supabase_user_id ??
+          session.metadata?.supabaseUserId ??
+          (isUuid(session.client_reference_id) ? session.client_reference_id : null);
         const shopIdRaw = session.metadata?.shop_id ?? null;
 
         const stripeCustomerId = toStripeId(session.customer, "cus_");
@@ -245,6 +248,14 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
         }
 
         let resolvedShopId: string | null = isUuid(shopIdRaw) ? shopIdRaw : null;
+
+        if (!resolvedShopId && stripeSubscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+          const subscriptionShopId = String(subscription.metadata?.shop_id ?? "").trim();
+          if (isUuid(subscriptionShopId)) {
+            resolvedShopId = subscriptionShopId;
+          }
+        }
 
         if (!resolvedShopId && isUuid(userId)) {
           const { data: profile } = await supabase
