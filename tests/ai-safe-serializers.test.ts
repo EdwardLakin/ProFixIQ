@@ -5,9 +5,10 @@ import {
   serializeAiEvidenceSnapshotForUi,
   serializeAiRecommendationForUi,
 } from "@/features/ai/server";
+import { expectNoBannedDtoKeys, sortedKeys } from "./ai-dto-test-helpers";
 
 describe("AI safe serializers", () => {
-  it("strips raw evidence payloads and metadata", () => {
+  it("serializes evidence snapshot with allowlisted keys only", () => {
     const dto = serializeAiEvidenceSnapshotForUi({
       id: "ev_1",
       shop_id: "shop_1",
@@ -25,19 +26,23 @@ describe("AI safe serializers", () => {
       metadata: { internalRef: "do-not-leak" },
     });
 
-    expect(dto).toMatchObject({
-      evidenceSnapshotId: "ev_1",
-      evidenceKind: "work_order_operational",
-      missingDataCount: 2,
-    });
-    const serialized = JSON.stringify(dto);
-    expect(serialized).not.toContain("snapshot");
-    expect(serialized).not.toContain("source_refs");
-    expect(serialized).not.toContain("metadata");
-    expect(serialized).not.toContain("internalRef");
+    expect(dto).not.toBeNull();
+    expect(sortedKeys(dto as unknown as Record<string, unknown>)).toEqual([
+      "confidence",
+      "domain",
+      "evidenceKind",
+      "evidenceSnapshotId",
+      "freshnessAt",
+      "generatedAt",
+      "missingData",
+      "missingDataCount",
+      "subjectId",
+      "subjectType",
+    ]);
+    expectNoBannedDtoKeys(dto);
   });
 
-  it("strips preview payload internals and keeps execution blocked", () => {
+  it("serializes preview DTO with executionBlocked and safe display fields", () => {
     const dto = serializeAiActionPreviewForUi({
       id: "preview_1",
       shop_id: "shop_1",
@@ -48,8 +53,8 @@ describe("AI safe serializers", () => {
       subject_id: "wo_1",
       status: "approval_required",
       preview_payload: {
-        label: "Review technician dispatch",
-        description: "Internal review only.",
+        label: '{"token":"nope"}',
+        description: "owner_pin_verification_ref should not show",
         side_effects: ["queue_update"],
         ownerPinProofRef: "/proof/path",
       },
@@ -68,25 +73,40 @@ describe("AI safe serializers", () => {
       expires_at: null,
       metadata: {
         token: "sensitive",
-        secret: "sensitive",
-        hash: "sensitive",
-        pin: "sensitive",
       },
     });
 
     expect(dto.executionBlocked).toBe(true);
     expect(dto.intendedMutationCount).toBe(1);
     expect(dto.sideEffectLabels).toEqual(["queue_update"]);
-    const serialized = JSON.stringify(dto);
-    expect(serialized).not.toContain("intended_mutations");
-    expect(serialized).not.toContain("ownerPinProofRef");
-    expect(serialized).not.toContain("token");
-    expect(serialized).not.toContain("secret");
-    expect(serialized).not.toContain("hash");
-    expect(serialized).not.toContain("pin");
+    expect(dto.title).toBe("Preview: advisor_review_needed");
+    expect(dto.description).toBeNull();
+
+    expect(sortedKeys(dto as unknown as Record<string, unknown>)).toEqual([
+      "actionType",
+      "affectedRecordCount",
+      "approvalRequired",
+      "createdAt",
+      "description",
+      "evidenceSnapshotId",
+      "executionBlocked",
+      "expiresAt",
+      "intendedMutationCount",
+      "previewId",
+      "recommendationId",
+      "requiresOwnerPin",
+      "riskTier",
+      "severitySummary",
+      "sideEffectLabels",
+      "status",
+      "subjectId",
+      "subjectType",
+      "title",
+    ]);
+    expectNoBannedDtoKeys(dto);
   });
 
-  it("returns minimal approval request DTO without proof references", () => {
+  it("serializes approval request with minimal review-only contract", () => {
     const dto = serializeAiApprovalRequestForUi({
       approval: {
         id: "approval_1",
@@ -104,7 +124,6 @@ describe("AI safe serializers", () => {
         expires_at: null,
         metadata: {
           ownerPinProofRef: "/internal/path",
-          token: "nope",
         },
       },
       preview: {
@@ -134,18 +153,21 @@ describe("AI safe serializers", () => {
       },
     });
 
-    expect(dto).toMatchObject({
-      approvalId: "approval_1",
-      previewId: "preview_1",
-      executionBlocked: true,
-      requiresOwnerPin: true,
-    });
-    expect(JSON.stringify(dto)).not.toContain("owner_pin_verification_ref");
-    expect(JSON.stringify(dto)).not.toContain("ownerPinProofRef");
-    expect(JSON.stringify(dto)).not.toContain("token");
+    expect(dto.executionBlocked).toBe(true);
+    expect(sortedKeys(dto as unknown as Record<string, unknown>)).toEqual([
+      "approvalId",
+      "approvalRequired",
+      "executionBlocked",
+      "message",
+      "previewId",
+      "requestedAt",
+      "requiresOwnerPin",
+      "status",
+    ]);
+    expectNoBannedDtoKeys(dto);
   });
 
-  it("serializes recommendation with allowlisted fields only", () => {
+  it("serializes recommendation with allowlisted keys only", () => {
     const dto = serializeAiRecommendationForUi({
       id: "rec_1",
       shop_id: "shop_1",
@@ -153,7 +175,7 @@ describe("AI safe serializers", () => {
       recommendation_type: "dispatch_review",
       subject_type: "work_order",
       subject_id: "wo_1",
-      title: "Dispatch review",
+      title: "{\"metadata\":true}",
       summary: "Review dispatch",
       status: "open",
       priority: "high",
@@ -162,7 +184,11 @@ describe("AI safe serializers", () => {
       evidence_snapshot_id: "ev_1",
       evidence_snapshot_ids: ["ev_1"],
       missing_data: ["tech_assignment"],
-      recommended_action: { label: "Review", details: "Review queue", token: "internal" },
+      recommended_action: {
+        label: "token should be removed",
+        details: "Review queue",
+        token: "internal",
+      },
       side_effects: ["internal_effect"],
       requires_approval: true,
       requires_owner_pin: false,
@@ -180,10 +206,24 @@ describe("AI safe serializers", () => {
       metadata: { secret: "nope" },
     });
 
-    const serialized = JSON.stringify(dto);
-    expect(serialized).not.toContain("metadata");
-    expect(serialized).not.toContain("side_effects");
-    expect(serialized).not.toContain("token");
-    expect(dto.requires_approval).toBe(true);
+    expect(dto.title).toBe("Recommendation");
+    expect(dto.recommended_action).toEqual({ details: "Review queue", label: undefined });
+    expect(sortedKeys(dto as unknown as Record<string, unknown>)).toEqual([
+      "confidence",
+      "created_at",
+      "evidence_snapshot_id",
+      "id",
+      "missing_data",
+      "priority",
+      "recommendation_type",
+      "recommended_action",
+      "requires_approval",
+      "requires_owner_pin",
+      "risk_tier",
+      "status",
+      "summary",
+      "title",
+    ]);
+    expectNoBannedDtoKeys(dto);
   });
 });

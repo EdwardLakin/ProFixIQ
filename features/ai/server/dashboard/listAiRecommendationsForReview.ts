@@ -1,5 +1,6 @@
 import type { Json } from "@shared/types/types/supabase";
 import { ensureActorContext, fromTable, type AiActorContext, type AiRecommendationStatus, type AiServerClient } from "@/features/ai/server/types";
+import { sanitizeDisplayText } from "@/features/ai/server/safeDisplay";
 
 export type AiReviewDomainFilter = "all" | "work_orders" | "shop_boost";
 export type AiReviewStatusFilter = AiRecommendationStatus | "all";
@@ -306,8 +307,8 @@ export async function listAiRecommendationsForReview(
       domain: row.domain,
       subjectType: row.subject_type,
       subjectId: row.subject_id,
-      title: row.title,
-      summary: row.summary,
+      title: sanitizeDisplayText(row.title, "Recommendation"),
+      summary: row.summary ? sanitizeDisplayText(row.summary, "") || null : null,
       status: row.status,
       priority: row.priority,
       riskTier: row.risk_tier,

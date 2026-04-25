@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as types from "@/features/ai/server/types";
 import { listAiRecommendationsForReview } from "./listAiRecommendationsForReview";
+import { expectNoBannedDtoKeys, sortedKeys } from "../../../../tests/ai-dto-test-helpers";
 
 const ACTOR = { shopId: "shop_1", actorId: "actor_1", source: "manual" as const };
 
@@ -132,6 +133,33 @@ describe("listAiRecommendationsForReview", () => {
     expect(urgent.recommendedActionType).toBe("advisor_review_needed");
     expect((urgent as unknown as Record<string, unknown>).recommended_action).toBeUndefined();
     expect((urgent as unknown as Record<string, unknown>).snapshot).toBeUndefined();
+    expect(sortedKeys(urgent as unknown as Record<string, unknown>)).toEqual([
+      "confidence",
+      "createdAt",
+      "domain",
+      "expiresAt",
+      "hasPreview",
+      "id",
+      "missingDataCount",
+      "pendingApprovalCount",
+      "previewStatus",
+      "priority",
+      "recommendationType",
+      "recommendedActionType",
+      "requiresApproval",
+      "riskTier",
+      "source",
+      "status",
+      "subjectId",
+      "subjectType",
+      "summary",
+      "targetHref",
+      "targetLabel",
+      "title",
+      "updatedAt",
+    ]);
+    expectNoBannedDtoKeys(urgent);
+    expectNoBannedDtoKeys(result);
   });
 
   it("filters by domain and requires approval", async () => {

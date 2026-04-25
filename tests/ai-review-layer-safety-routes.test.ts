@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+import { expectNoBannedDtoKeys } from "./ai-dto-test-helpers";
 
 const requireShopScopedApiAccessMock = vi.fn();
 const listAiEvidenceSnapshotsForSubjectMock = vi.fn();
@@ -72,15 +73,45 @@ vi.mock("../app/api/work-orders/[id]/_lib/reviewWorkOrder", () => ({
   reviewWorkOrder: reviewWorkOrderMock,
 }));
 
-function createScopedSupabase(workOrderExists = true) {
-  return {
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
+function createScopedSupabase(workOrderExists = true, previewRows: Record<string, unknown>[] = []) {
+  const eqByTable = (table: string, row: Record<string, unknown>) => {
+    if (table === "work_orders") {
+      return {
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({ data: workOrderExists ? row : null, error: null })),
+        })),
+      };
+    }
+
+    if (table === "ai_action_previews") {
+      return {
         eq: vi.fn(() => ({
           eq: vi.fn(() => ({
-            maybeSingle: vi.fn(async () => ({ data: workOrderExists ? { id: "wo_1", shop_id: "shop_1" } : null, error: null })),
+            maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(async () => ({ data: previewRows, error: null })),
+              })),
+            })),
           })),
         })),
+      };
+    }
+
+    return {
+      eq: vi.fn(() => ({
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    };
+  };
+
+  return {
+    from: vi.fn((table: string) => ({
+      select: vi.fn(() => ({
+        eq: vi.fn((column: string, value: string) => {
+          const row = column === "id" && value ? { id: value, shop_id: "shop_1" } : { id: "wo_1", shop_id: "shop_1" };
+          return eqByTable(table, row);
+        }),
       })),
     })),
   };
@@ -142,6 +173,59 @@ describe("review-layer route safe contracts", () => {
     expect(serialized).not.toContain("\"snapshot\":");
     expect(serialized).not.toContain("metadata");
     expect(serialized).toContain("evidenceSnapshotId");
+    expectNoBannedDtoKeys(json);
+  });
+
+  it("preview GET happy path returns serialized previews only with executionBlocked true", async () => {
+    const previewRows = [{
+      id: "preview_1",
+      shop_id: "shop_1",
+      recommendation_id: "rec_1",
+      domain: "work_orders",
+      action_type: "advisor_review_needed",
+      subject_type: "work_order",
+      subject_id: "wo_1",
+      status: "approval_required",
+      preview_payload: {
+        label: "Review technician dispatch",
+        description: "metadata payload should not leak",
+        ownerPinProofRef: "/proof/path",
+        token: "secret",
+      },
+      intended_mutations: [{ op: "update", raw: true }],
+      affected_records: [{ id: "wo_1", record: true }],
+      side_effects: ["queue_update"],
+      requires_approval: true,
+      requires_owner_pin: true,
+      risk_tier: "high",
+      evidence_snapshot_id: "ev_1",
+      created_at: "2026-04-24T00:00:00.000Z",
+      updated_at: "2026-04-24T00:00:00.000Z",
+      expires_at: null,
+      metadata: { snapshot: { hidden: true } },
+    }];
+    requireShopScopedApiAccessMock.mockResolvedValueOnce({
+      ok: true,
+      profile: { id: "actor_1", role: "manager", shop_id: "shop_1" },
+      supabase: createScopedSupabase(true, previewRows),
+    });
+    getAiRecommendationMock.mockResolvedValue({
+      id: "rec_1",
+      shop_id: "shop_1",
+      domain: "work_orders",
+      subject_type: "work_order",
+      subject_id: "wo_1",
+    });
+
+    const { GET } = await import("../app/api/work-orders/[id]/ai/recommendations/[recommendationId]/preview/route");
+    const response = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "wo_1", recommendationId: "rec_1" }),
+    });
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as Record<string, unknown>;
+    expect(json.executionBlocked).toBe(true);
+    expectNoBannedDtoKeys(json);
   });
 
   it("preview route GET/POST omit raw preview payload internals", async () => {
@@ -177,6 +261,7 @@ describe("review-layer route safe contracts", () => {
     });
     const getJson = await getResponse.json() as Record<string, unknown>;
     expect(JSON.stringify(getJson)).not.toContain("preview_payload");
+    expectNoBannedDtoKeys(getJson);
 
     const postResponse = await POST(new Request("http://localhost", { method: "POST" }), {
       params: Promise.resolve({ id: "wo_1", recommendationId: "rec_1" }),
@@ -186,7 +271,7 @@ describe("review-layer route safe contracts", () => {
     expect(serialized).not.toContain("intended_mutations");
     expect(serialized).not.toContain("ownerPinProofRef");
     expect(serialized).not.toContain("side_effects\":[{");
-    expect(postJson.executionBlocked).toBe(true);
+    expectNoBannedDtoKeys(postJson);
   });
 
   it("approval-request route returns minimal DTO and hides owner pin proof refs", async () => {
@@ -219,6 +304,7 @@ describe("review-layer route safe contracts", () => {
     expect(serialized).not.toContain("metadata");
     expect(serialized).toContain("approvalId");
     expect((json.approval as { executionBlocked?: boolean }).executionBlocked).toBe(true);
+    expectNoBannedDtoKeys(json);
   });
 
   it("shop boost recommendations POST omits raw evidence snapshot payload", async () => {
@@ -252,6 +338,7 @@ describe("review-layer route safe contracts", () => {
     expect(serialized).not.toContain("importPayload");
     expect(serialized).not.toContain("materializationPayload");
     expect(serialized).toContain("evidenceSnapshotId");
+    expectNoBannedDtoKeys(json);
   });
 
   it("legacy ai-review rejects unauthenticated and cross-shop access", async () => {
@@ -308,6 +395,7 @@ describe("review-layer route safe contracts", () => {
     const json = await response.json() as Record<string, unknown>;
     expect(response.status).toBe(200);
     expect(json.executionBlocked).toBe(true);
+    expectNoBannedDtoKeys(json);
   });
 
   it("work-order recommendation lifecycle PATCH returns serialized recommendation only", async () => {
@@ -388,6 +476,7 @@ describe("review-layer route safe contracts", () => {
     expect((json.recommendation as { id?: string; status?: string; recommendation_type?: string }).id).toBe("rec_1");
     expect((json.recommendation as { status?: string }).status).toBe("acknowledged");
     expect((json.recommendation as { recommendation_type?: string }).recommendation_type).toBe("dispatch_review");
+    expectNoBannedDtoKeys(json);
   });
 
   it("work-order recommendation lifecycle PATCH keeps shop scoping and recommendation ownership checks", async () => {
