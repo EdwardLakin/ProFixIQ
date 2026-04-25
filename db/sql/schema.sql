@@ -40,10 +40,9 @@ ALTER TYPE "public"."job_type_enum" OWNER TO "postgres";
 
 
 CREATE TYPE "public"."plan_t" AS ENUM (
-    'free',
-    'diy',
+    'starter',
     'pro',
-    'pro_plus'
+    'unlimited'
 );
 
 
@@ -2593,7 +2592,7 @@ CREATE TABLE IF NOT EXISTS "public"."shops" (
     "geo_lng" numeric,
     "images" "text"[] DEFAULT '{}'::"text"[],
     "rating" numeric,
-    CONSTRAINT "shops_plan_check" CHECK (("plan" = ANY (ARRAY['free'::"text", 'diy'::"text", 'pro'::"text", 'pro_plus'::"text"]))),
+    CONSTRAINT "shops_plan_check" CHECK (("plan" = ANY (ARRAY['starter'::"text", 'pro'::"text", 'unlimited'::"text"]))),
     CONSTRAINT "shops_rating_check" CHECK ((("rating" >= (0)::numeric) AND ("rating" <= (5)::numeric)))
 );
 

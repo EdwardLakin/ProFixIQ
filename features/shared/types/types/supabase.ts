@@ -20382,7 +20382,7 @@ export type Database = {
         | "fulfilled"
         | "rejected"
         | "cancelled"
-      plan_t: "free" | "diy" | "pro" | "pro_plus"
+      plan_t: "starter" | "pro" | "unlimited"
       publication_status:
         | "draft"
         | "queued"
@@ -20729,7 +20729,7 @@ export const Constants = {
         "rejected",
         "cancelled",
       ],
-      plan_t: ["free", "diy", "pro", "pro_plus"],
+      plan_t: ["starter", "pro", "unlimited"],
       publication_status: [
         "draft",
         "queued",
