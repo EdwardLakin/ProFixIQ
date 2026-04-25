@@ -24,6 +24,7 @@ type ReviewItemRow = {
   status: string;
   summary: string;
   raw_payload: Record<string, unknown>;
+  normalized_payload?: Record<string, unknown>;
   suggested_matches: unknown;
   resolution_action: ResolutionAction | null;
   materialized_at: string | null;
@@ -132,14 +133,21 @@ async function logReviewAuditEvent(args: {
   });
 }
 
-async function findCustomerId(args: { supabase: AdminClient; shopId: string; raw: Record<string, unknown>; suggested: unknown; }): Promise<string | null> {
-  const { supabase, shopId, raw, suggested } = args;
+async function findCustomerId(args: {
+  supabase: AdminClient;
+  shopId: string;
+  raw: Record<string, unknown>;
+  normalized?: Record<string, unknown>;
+  suggested: unknown;
+}): Promise<string | null> {
+  const { supabase, shopId, raw, normalized, suggested } = args;
+  const payload = { ...(raw ?? {}), ...(normalized ?? {}) };
   const suggestedCustomerId = typeof suggested === "object" && suggested && "customerId" in (suggested as Record<string, unknown>)
     ? String((suggested as Record<string, unknown>).customerId ?? "")
     : "";
 
   if (suggestedCustomerId) return suggestedCustomerId;
-  const sourceCustomerId = pick(raw, [/^customer[_\s-]*id$/, /external customer id/]);
+  const sourceCustomerId = pick(payload, [/^customer[_\s-]*id$/, /external customer id/]);
   if (sourceCustomerId) {
     const { data } = await supabase
       .from("customers")
@@ -150,13 +158,13 @@ async function findCustomerId(args: { supabase: AdminClient; shopId: string; raw
     if (data?.id) return String(data.id);
   }
 
-  const email = normalizeEmail(pick(raw, [/customer email/, /^email$/]));
+  const email = normalizeEmail(pick(payload, [/customer email/, /^email$/]));
   if (email) {
     const { data } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("email", email).limit(1).maybeSingle();
     if (data?.id) return String(data.id);
   }
 
-  const phone = normalizePhone(pick(raw, [/customer phone/, /^phone$/]));
+  const phone = normalizePhone(pick(payload, [/customer phone/, /^phone$/]));
   if (phone) {
     const { data } = await supabase.from("customers").select("id,phone,phone_number").eq("shop_id", shopId).limit(3000);
     const matched = ((data ?? []) as CustomerPhoneLookupRow[]).find((item) => normalizePhone(item.phone ?? item.phone_number) === phone);
@@ -171,6 +179,7 @@ async function materializeCustomer(args: { supabase: AdminClient; item: ReviewIt
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
   const raw = item.raw_payload ?? {};
+  const normalized = item.normalized_payload ?? {};
   const email = normalizeEmail(pick(raw, [/^email$/, /customer email/]));
   const phone = normalizePhone(pick(raw, [/^phone$/, /customer phone/, /mobile/]));
   const first = pick(raw, [/^first/, /first name/]);
@@ -182,7 +191,7 @@ async function materializeCustomer(args: { supabase: AdminClient; item: ReviewIt
 
   let customerId: string | null = null;
   if (resolutionAction === "linked_to_existing") {
-    customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+    customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, normalized, suggested: item.suggested_matches });
     if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Unable to locate selected existing customer." };
 
     await supabase.from("customers").update({ source_intake_id: item.intake_id, external_id: externalId }).eq("id", customerId).eq("shop_id", item.shop_id);
@@ -215,7 +224,8 @@ async function materializeVehicle(args: { supabase: AdminClient; item: ReviewIte
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
   const raw = item.raw_payload ?? {};
-  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+  const normalized = item.normalized_payload ?? {};
+  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, normalized, suggested: item.suggested_matches });
   if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Customer dependency is still unresolved for this vehicle." };
 
   const vin = lower(pick(raw, [/^vin$/, /vehicle vin/]));
@@ -287,7 +297,8 @@ async function materializeWorkOrder(args: { supabase: AdminClient; item: ReviewI
   if (resolutionAction === "ignored") return { status: "materialized", materializedRecord: { ignored: true }, error: null };
 
   const raw = item.raw_payload ?? {};
-  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, suggested: item.suggested_matches });
+  const normalized = item.normalized_payload ?? {};
+  const customerId = await findCustomerId({ supabase, shopId: item.shop_id, raw, normalized, suggested: item.suggested_matches });
   if (!customerId) return { status: "failed_materialization", materializedRecord: null, error: "Missing customer dependency for work order." };
 
   const sourceVehicleId = pick(raw, [/^vehicle[_\s-]*id$/, /external vehicle id/]);
@@ -599,7 +610,7 @@ export async function resolveAndMaterializeReviewItem(args: {
 
   const { data: item } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,normalized_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("shop_id", args.shopId)
     .eq("id", args.reviewItemId)
     .maybeSingle();
@@ -688,7 +699,7 @@ export async function resolveAndMaterializeReviewItem(args: {
 
   const { data: updatedItem } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,normalized_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("id", item.id)
     .eq("shop_id", args.shopId)
     .maybeSingle();
@@ -705,7 +716,7 @@ async function replayDependentRows(args: { supabase: AdminClient; shopId: string
   const { supabase, shopId, intakeId } = args;
   const { data: replayCandidates } = await supabase
     .from("shop_boost_review_items")
-    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
+    .select("id,shop_id,intake_id,domain,issue_type,status,summary,raw_payload,normalized_payload,suggested_matches,resolution_action,materialized_at,materialization_error,recommended_action,recommendation_reason,recommendation_confidence")
     .eq("shop_id", shopId)
     .eq("intake_id", intakeId)
     .eq("issue_type", "missing_dependency")

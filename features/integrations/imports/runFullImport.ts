@@ -334,15 +334,40 @@ function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
     return out.map((s) => s.trim());
   };
 
-  const header = splitLine(lines[0]).map((h) => h.trim());
+  const normalizeHeader = (header: string): string =>
+    header
+      .replace(/^\uFEFF/, "")
+      .trim()
+      .replace(/^"(.*)"$/, "$1")
+      .trim();
+
+  const headerAliases = (header: string): string[] => {
+    const normalized = normalizeHeader(header);
+    if (!normalized) return [];
+    const canonical = normalized
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_");
+    const spaced = canonical.replace(/_/g, " ").trim();
+    return Array.from(new Set([normalized, canonical, spaced].filter(Boolean)));
+  };
+
+  const header = splitLine(lines[0]).map((h) => normalizeHeader(h));
   const rows: CsvRow[] = [];
 
   for (let i = 1; i < lines.length; i += 1) {
     const cols = splitLine(lines[i]);
     const rec: CsvRow = {};
     for (let c = 0; c < header.length; c += 1) {
-      const key = header[c] || `col_${c + 1}`;
-      rec[key] = cols[c] ?? "";
+      const rawKey = header[c] || `col_${c + 1}`;
+      const value = cols[c] ?? "";
+      const aliases = headerAliases(rawKey);
+      if (aliases.length === 0) {
+        rec[`col_${c + 1}`] = value;
+      } else {
+        for (const alias of aliases) rec[alias] = value;
+      }
     }
     rows.push(rec);
   }
@@ -802,6 +827,37 @@ function pickSourceId(row: CsvRow, patterns: RegExp[]): string | null {
   if (!raw) return null;
   const normalized = raw.trim();
   return normalized.length ? normalized : null;
+}
+
+function hasCustomerIdHeader(row: CsvRow): boolean {
+  return Object.keys(row).some((key) => {
+    const normalized = key
+      .replace(/^\uFEFF/, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return normalized === "customer id" || normalized === "customer external id";
+  });
+}
+
+function classifyDeterministicCustomerMiss(args: {
+  sourceCustomerId: string | null;
+  sourceMatchedCustomerId: string | null;
+  row: CsvRow;
+  fallbackCustomerId: string | null;
+}): "external_customer_id_not_found" | "customer_external_id_not_persisted" | "csv_alias_parse_miss" | "missing_customer_match" {
+  if (args.sourceCustomerId && !args.sourceMatchedCustomerId) {
+    return "customer_external_id_not_persisted";
+  }
+  if (!args.sourceCustomerId && hasCustomerIdHeader(args.row)) {
+    return "csv_alias_parse_miss";
+  }
+  if (!args.sourceCustomerId && args.fallbackCustomerId) {
+    return "external_customer_id_not_found";
+  }
+  return "missing_customer_match";
 }
 
 function sourceExternalId(domain: "customer" | "vehicle" | "work_order" | "invoice", sourceId: string): string {
@@ -1550,6 +1606,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         (customerNameKey && !conflictingCustomerNames.has(customerNameKey) && uniqueCustomersByName.get(customerNameKey)) ||
         null;
       const customer_id = sourceMatchedCustomerId || fallbackCustomerId || null;
+      const deterministicMissReason = classifyDeterministicCustomerMiss({
+        sourceCustomerId,
+        sourceMatchedCustomerId: sourceMatchedCustomerId ?? null,
+        row,
+        fallbackCustomerId: fallbackCustomerId ?? null,
+      });
 
       if (!customer_id) {
         rowOutcome.processedRows += 1;
@@ -1561,9 +1623,21 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           intakeId,
           domain: "vehicle",
           issueType: "missing_dependency",
-          summary: "Vehicle could not be imported because customer was not confidently matched.",
+          summary: `Vehicle could not be imported because customer linkage failed (${deterministicMissReason}).`,
           rawPayload: row,
-          suggestedMatches: [{ customerEmail: custEmail || null, customerPhone: custPhone || null }],
+          normalizedPayload: {
+            sourceCustomerId,
+            sourceMatchedCustomerId,
+            fallbackCustomerId,
+            deterministicMissReason,
+          },
+          blockingReason: deterministicMissReason,
+          suggestedMatches: [{
+            customerEmail: custEmail || null,
+            customerPhone: custPhone || null,
+            sourceCustomerId: sourceCustomerId ?? null,
+            sourceMatchedCustomerId: sourceMatchedCustomerId ?? null,
+          }],
         });
         await insertRowResult({
           supabase,
@@ -1572,11 +1646,24 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           sourceFile: "vehicles",
           sourceRowIndex: i + 1,
           rawPayload: row,
-          normalizedPayload: { vin, plate, unit, year, make, model, custEmail, custPhone },
+          normalizedPayload: {
+            vin,
+            plate,
+            unit,
+            year,
+            make,
+            model,
+            custEmail,
+            custPhone,
+            sourceCustomerId,
+            sourceMatchedCustomerId,
+            fallbackCustomerId,
+            deterministicMissReason,
+          },
           targetDomain: "vehicle",
           matchStatus: "unmatched",
           matchConfidence: "low",
-          errorReason: "missing_customer_match",
+          errorReason: deterministicMissReason,
           reviewRequired: true,
         });
         continue;
@@ -1910,6 +1997,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           uniqueCustomersByName.get(normalizedCustomerName)) ||
         null;
       const customer_id = sourceMatchedCustomerId || fallbackCustomerId || null;
+      const deterministicMissReason = classifyDeterministicCustomerMiss({
+        sourceCustomerId,
+        sourceMatchedCustomerId: sourceMatchedCustomerId ?? null,
+        row,
+        fallbackCustomerId: fallbackCustomerId ?? null,
+      });
 
       const rowUnit = lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "");
       const sourceMatchedVehicleId = sourceVehicleKey ? vehiclesBySourceId.get(sourceVehicleKey) : null;
@@ -1930,9 +2023,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           intakeId,
           domain: "work_order",
           issueType: "missing_dependency",
-          summary: "History row skipped because customer could not be matched.",
+          summary: `History row skipped because customer linkage failed (${deterministicMissReason}).`,
           rawPayload: row,
-          suggestedMatches: [{ customerEmail, customerPhone, vin, plate }],
+          normalizedPayload: {
+            sourceCustomerId,
+            sourceMatchedCustomerId,
+            fallbackCustomerId,
+            deterministicMissReason,
+          },
+          blockingReason: deterministicMissReason,
+          suggestedMatches: [{ customerEmail, customerPhone, vin, plate, sourceCustomerId }],
         });
         await insertRowResult({
           supabase,
@@ -1958,7 +2058,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           targetDomain: "work_order",
           matchStatus: "unmatched",
           matchConfidence: "low",
-          errorReason: "missing_customer_match",
+          errorReason: deterministicMissReason,
           reviewRequired: true,
         });
         continue;
@@ -2212,6 +2312,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
         (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName)) ||
         null;
+      const deterministicCustomerMissReason = classifyDeterministicCustomerMiss({
+        sourceCustomerId,
+        sourceMatchedCustomerId: (sourceCustomerKey && customersBySourceId.get(sourceCustomerKey)) ?? null,
+        row,
+        fallbackCustomerId:
+          (customerEmail && !conflictingCustomerEmails.has(customerEmail) && uniqueCustomersByEmail.get(customerEmail)) ||
+          (customerPhone && !conflictingCustomerPhones.has(customerPhone) && uniqueCustomersByPhone.get(customerPhone)) ||
+          (customerName && !conflictingCustomerNames.has(customerName) && uniqueCustomersByName.get(customerName)) ||
+          null,
+      });
 
       let workOrderId: string | null =
         (sourceWorkOrderKey && workOrdersBySourceId.get(sourceWorkOrderKey)) || null;
@@ -2239,8 +2349,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           issueType: "missing_dependency",
           summary: !workOrderId
             ? "Invoice row staged for review because work order linkage was unresolved."
-            : "Invoice row staged for review because customer linkage was unresolved.",
+            : `Invoice row staged for review because customer linkage failed (${deterministicCustomerMissReason}).`,
           rawPayload: row,
+          blockingReason: !workOrderId ? "missing_work_order_match" : deterministicCustomerMissReason,
           suggestedMatches: [{ sourceInvoiceId, sourceWorkOrderId, sourceCustomerId, invoiceNumber, ro }],
         });
         await insertRowResult({
@@ -2258,6 +2369,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
             ro,
             workOrderId,
             resolvedCustomerId,
+            deterministicCustomerMissReason,
             total,
             labor,
             parts,
@@ -2265,7 +2377,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           targetDomain: "invoice",
           matchStatus: "unmatched",
           matchConfidence: "low",
-          errorReason: !workOrderId ? "missing_work_order_match" : "missing_customer_match",
+          errorReason: !workOrderId ? "missing_work_order_match" : deterministicCustomerMissReason,
           reviewRequired: true,
         });
         continue;
