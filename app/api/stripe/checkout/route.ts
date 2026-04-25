@@ -25,6 +25,38 @@ type CheckoutPayload = {
   intakeId?: string | null;
 };
 
+type CanonicalPlanKey = "starter10" | "pro50" | "unlimited";
+
+const PLAN_PRICE_ENV_BY_KEY: Record<CanonicalPlanKey, string> = {
+  starter10: "STRIPE_PRICE_STARTER_MONTHLY",
+  pro50: "STRIPE_PRICE_PRO_MONTHLY",
+  unlimited: "STRIPE_PRICE_UNLIMITED_MONTHLY",
+};
+
+const PLAN_ALIASES: Record<string, CanonicalPlanKey> = {
+  starter: "starter10",
+  starter10: "starter10",
+  pro: "pro50",
+  pro50: "pro50",
+  unlimited: "unlimited",
+};
+
+function normalizePlanKey(value: string): CanonicalPlanKey | null {
+  return PLAN_ALIASES[value.trim().toLowerCase()] ?? null;
+}
+
+function resolveConfiguredPriceIdFromPlan(planKey: CanonicalPlanKey): string {
+  const envName = PLAN_PRICE_ENV_BY_KEY[planKey];
+  const configured = String(process.env[envName] ?? "").trim();
+  if (!configured) {
+    throw new Error(`Missing required env: ${envName}`);
+  }
+  if (!configured.startsWith("price_")) {
+    throw new Error(`Invalid Stripe price ID in ${envName}`);
+  }
+  return configured;
+}
+
 type ShopScope = Pick<
   DB["public"]["Tables"]["shops"]["Row"],
   "id" | "email" | "shop_name" | "name" | "stripe_customer_id"
@@ -124,17 +156,28 @@ export async function POST(req: Request) {
     const isAcquisitionCheckout = source === "pricing_cta";
     const onboardingHandoffSource = source === "onboarding_shop_boost";
 
-    const rawPrice = String(body.priceId ?? body.planKey ?? "").trim();
-    if (!rawPrice) {
+    const rawPlanKey = String(body.planKey ?? "").trim();
+    const normalizedPlanKey = normalizePlanKey(rawPlanKey);
+    const rawPriceInput = String(body.priceId ?? "").trim();
+
+    if (!rawPriceInput && !normalizedPlanKey && !rawPlanKey) {
       return NextResponse.json({ error: "Missing price identifier" }, { status: 400 });
     }
 
-    const priceId = await resolvePriceId(stripe, rawPrice);
-    if (!priceId) {
-      return NextResponse.json(
-        { error: `No active Stripe price found for "${rawPrice}"` },
-        { status: 400 },
-      );
+    let priceId = "";
+
+    if (normalizedPlanKey) {
+      priceId = resolveConfiguredPriceIdFromPlan(normalizedPlanKey);
+    } else {
+      const directOrLookup = rawPriceInput || rawPlanKey;
+      const resolvedPriceId = await resolvePriceId(stripe, directOrLookup);
+      if (!resolvedPriceId) {
+        return NextResponse.json(
+          { error: `No active Stripe price found for "${directOrLookup}"` },
+          { status: 400 },
+        );
+      }
+      priceId = resolvedPriceId;
     }
 
     const baseUrl = getBaseUrl();

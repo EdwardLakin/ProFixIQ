@@ -51,13 +51,13 @@ export default function ProFixIQLanding() {
     window.location.href = "/";
   };
 
-  const startCheckout = async ({ priceId, interval }: { priceId: string; interval: Interval }) => {
+  const startCheckout = async ({ planKey, interval }: { planKey: string; interval: Interval }) => {
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source: "pricing_cta",
-        planKey: priceId,
+        planKey,
         interval,
         enableTrial: true,
         applyFoundingDiscount: true,
@@ -267,13 +267,13 @@ export default function ProFixIQLanding() {
                     <div className="mt-10">
             <PricingSection
               onCheckout={async ({
-                priceId,
+                planKey,
                 interval,
               }: {
-                priceId: string;
+                planKey: string;
                 interval: Interval;
               }) => {
-                await startCheckout({ priceId, interval });
+                await startCheckout({ planKey, interval });
               }}
               onStartFree={() => {
                 window.location.href = "/compare-plans";

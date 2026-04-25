@@ -25,10 +25,10 @@ export default function ComparePlansPage() {
   }, [activationContext]);
 
   const handleCheckout = async ({
-    priceId,
+    planKey,
     interval,
   }: {
-    priceId: string;
+    planKey: string;
     interval: Interval;
   }) => {
     try {
@@ -37,7 +37,7 @@ export default function ComparePlansPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source: "pricing_cta",
-          planKey: priceId,
+          planKey,
           interval,
           cancelPath: "/compare-plans",
           demoId: demoId ?? null,
