@@ -57,12 +57,12 @@ type IntakeState = {
     verify_status?: string | null;
     blockers?: unknown[];
     ui_should_route_forward?: boolean;
+    canonical_summary?: Record<string, unknown> | null;
   } | null;
 };
 
-const ACTIVE_STATUSES = new Set(["queued", "pending", "processing"]);
-const ACTIONABLE_STATUSES = new Set(["failed", "blocked", "requires_review", "review_needed"]);
-const RECENT_COMPLETED_DAYS = 14;
+const ACTIVE_STATUSES = new Set(["queued", "pending", "processing", "running"]);
+const ACTIONABLE_STATUSES = new Set(["failed", "blocked", "requires_review", "review_needed", "partial_failure", "not_ready"]);
 
 function fmtStep(step: string | undefined): string {
   if (!step) return "Queued";
@@ -76,29 +76,134 @@ const statusTone: Record<MigrationStory["trust_status"], string> = {
   BLOCKED: "border-rose-400/35 bg-rose-950/25 text-rose-100",
 };
 
-function isRecentlyProcessed(intake: IntakeState): boolean {
-  const ts = intake.processedAt ?? intake.createdAt;
-  if (!ts) return false;
-  const ageMs = Date.now() - new Date(ts).getTime();
-  return Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= RECENT_COMPLETED_DAYS * 24 * 60 * 60 * 1000;
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function getPanelMode(intake: IntakeState | null): "hidden" | "full" | "summary" {
-  if (!intake) return "hidden";
-  if (ACTIVE_STATUSES.has(intake.status) || ACTIONABLE_STATUSES.has(intake.status)) return "full";
+function asNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
 
-  const completionState = intake.progress?.completionState;
+function buildVisibilityModel(intake: IntakeState | null) {
+  if (!intake) {
+    return {
+      shouldShow: false,
+      statusTone: "good" as const,
+      headline: "Ready",
+      explanation: "",
+      pendingReviewCount: 0,
+      failedCount: 0,
+      integrityErrors: [] as string[],
+      materialization: { customers: 0, vehicles: 0, workOrders: 0 },
+      flags: {
+        importPending: false,
+        canonicalNotReady: false,
+        activationNotReady: false,
+        unresolvedReview: false,
+        hasIntegrityIssues: false,
+        materializationGap: false,
+      },
+    };
+  }
+
+  const canonicalSummary = asRecord(
+    intake.readiness?.canonical_summary ??
+      intake.progress?.resultSummary?.canonicalSummary ??
+      intake.progress?.integrity?.canonicalSummary,
+  );
+  const expected = asRecord(canonicalSummary.expected);
+  const actual = asRecord(canonicalSummary.actual);
+  const gaps = asRecord(canonicalSummary.gaps);
+
+  const status = String(intake.status ?? "").toLowerCase();
+  const completionState = String(intake.progress?.completionState ?? "").toUpperCase();
+  const verifyStatus = String(intake.readiness?.verify_status ?? "").toLowerCase();
   const trustStatus = intake.progress?.migration_story?.trust_status;
-  if (trustStatus && trustStatus !== "READY" && isRecentlyProcessed(intake)) return "full";
-  const isCompletedLike =
-    intake.readiness?.ui_should_route_forward === true ||
-    completionState === "READY_FOR_GO_LIVE" ||
-    completionState === "COMPLETED_CLEAN" ||
-    completionState === "COMPLETED_WITH_REVIEW" ||
-    completionState === "COMPLETED_WITH_WARNINGS" ||
-    trustStatus === "READY";
 
-  return isCompletedLike && isRecentlyProcessed(intake) ? "summary" : "hidden";
+  const pendingReviewCount = asNumber(intake.progress?.review_count);
+  const failedCount = asNumber(intake.progress?.failed_count);
+  const integrityRecord = asRecord(intake.progress?.integrity);
+  const integrityErrors = Array.isArray(integrityRecord.integrityErrors)
+    ? integrityRecord.integrityErrors.map((item) => String(item))
+    : [];
+
+  const vehiclesExpected = asNumber(expected.vehicles);
+  const workOrdersExpected = asNumber(expected.workOrders);
+  const customersMaterialized = asNumber(actual.customers);
+  const vehiclesMaterialized = asNumber(actual.vehicles);
+  const workOrdersMaterialized = asNumber(actual.workOrders);
+
+  const importPending =
+    ACTIVE_STATUSES.has(status) ||
+    verifyStatus === "pending" ||
+    verifyStatus === "partial" ||
+    completionState === "NOT_READY" ||
+    completionState === "PARTIAL_FAILURE";
+  const canonicalNotReady = intake.readiness?.canonical_ready === false || String(canonicalSummary.status ?? "").toLowerCase() === "not_ready";
+  const activationNotReady = intake.readiness?.activation_eligible === false || intake.readiness?.ui_should_route_forward === false;
+  const unresolvedReview = pendingReviewCount > 0 || ACTIONABLE_STATUSES.has(status) || trustStatus === "NEEDS REVIEW" || trustStatus === "BLOCKED";
+  const hasIntegrityIssues = integrityErrors.length > 0 || failedCount > 0;
+  const materializationGap =
+    (vehiclesExpected > 0 && vehiclesMaterialized === 0) ||
+    (workOrdersExpected > 0 && workOrdersMaterialized === 0) ||
+    gaps.missingVehicles === true ||
+    gaps.missingWorkOrders === true;
+
+  const shouldShow =
+    importPending ||
+    canonicalNotReady ||
+    activationNotReady ||
+    unresolvedReview ||
+    hasIntegrityIssues ||
+    materializationGap;
+
+  const statusTone =
+    hasIntegrityIssues || trustStatus === "BLOCKED"
+      ? "critical"
+      : unresolvedReview || canonicalNotReady || materializationGap || importPending || activationNotReady
+        ? "attention"
+        : "good";
+
+  let headline = "Ready for go-live";
+  if (hasIntegrityIssues || trustStatus === "BLOCKED") headline = "Blocking issues detected";
+  else if (unresolvedReview) headline = "Review needed";
+  else if (importPending) headline = "Import pending";
+  else if (canonicalNotReady || materializationGap || activationNotReady) headline = "Not ready";
+
+  let explanation = "Import and canonicalization are healthy. No operator action needed.";
+  if (hasIntegrityIssues) explanation = "Integrity or failed materialization issues require action before activation.";
+  else if (unresolvedReview) explanation = "Unresolved review items are preventing safe canonical activation.";
+  else if (importPending) explanation = "Import/canonicalization is still running or incomplete.";
+  else if (materializationGap) explanation = "Canonical entities are missing expected materialized records.";
+  else if (canonicalNotReady || activationNotReady) explanation = "Canonical readiness checks have not passed yet.";
+
+  return {
+    shouldShow,
+    statusTone,
+    headline,
+    explanation,
+    pendingReviewCount,
+    failedCount,
+    integrityErrors,
+    materialization: {
+      customers: customersMaterialized,
+      vehicles: vehiclesMaterialized,
+      workOrders: workOrdersMaterialized,
+    },
+    flags: {
+      importPending,
+      canonicalNotReady,
+      activationNotReady,
+      unresolvedReview,
+      hasIntegrityIssues,
+      materializationGap,
+    },
+  };
 }
 
 export default function ShopBoostActivationPanel({ eligible = false }: { eligible?: boolean }) {
@@ -127,42 +232,30 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
   }, [intake, loadStatus]);
 
   const percent = useMemo(() => Math.max(0, Math.min(100, intake?.progress?.progressPercent ?? 0)), [intake?.progress?.progressPercent]);
-  const mode = useMemo(() => getPanelMode(intake), [intake]);
+  const visibility = useMemo(() => buildVisibilityModel(intake), [intake]);
 
-  if (!eligible || loading || !intake || mode === "hidden") return null;
+  if (!eligible || loading || !intake || !visibility.shouldShow) return null;
 
   const domains = intake.progress?.domainSummaries ?? {};
   const story = intake.progress?.migration_story;
   const fallbackConfidence = story ? Math.round(story.confidence_score * 100) : 0;
 
-  if (mode === "summary") {
-    return (
-      <section className="mb-2.5 rounded-xl border border-emerald-300/30 bg-[linear-gradient(140deg,rgba(10,26,18,0.65),rgba(7,12,25,0.84))] p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-emerald-200/75">Shop Boost Summary</p>
-            <h3 className="text-sm font-semibold text-emerald-100">Recent migration completion</h3>
-            <p className="mt-1 text-xs text-emerald-100/80">
-              Completed {fmtStep(intake.progress?.completionState ?? intake.status)} with confidence {fallbackConfidence}%.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open review queue</Link>
-            <Link href="/dashboard" className="rounded-md border border-emerald-300/45 px-2.5 py-1 text-emerald-100 hover:bg-white/5">Open dashboard</Link>
-            <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">Download report</Link>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className="mb-2.5 rounded-xl border border-[var(--brand-accent,#E39A6E)]/30 bg-[linear-gradient(140deg,rgba(22,12,8,0.72),rgba(7,12,25,0.86))] p-3">
+    <section
+      className={`mb-2.5 rounded-xl border p-3 ${
+        visibility.statusTone === "critical"
+          ? "border-rose-400/35 bg-[linear-gradient(140deg,rgba(52,10,20,0.72),rgba(7,12,25,0.9))]"
+          : "border-[var(--brand-accent,#E39A6E)]/30 bg-[linear-gradient(140deg,rgba(22,12,8,0.72),rgba(7,12,25,0.86))]"
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-neutral-400">Shop Boost Trust Panel</p>
-          <h3 className="text-sm font-semibold text-neutral-100">Migration Mission Control</h3>
-          <p className="mt-1 text-xs text-neutral-300">Status: <span className="font-medium text-neutral-100">{fmtStep(intake.progress?.currentStep ?? intake.status)}</span></p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-neutral-400">Shop Boost Operational Status</p>
+          <h3 className="text-sm font-semibold text-neutral-100">{visibility.headline}</h3>
+          <p className="mt-1 text-xs text-neutral-300">{visibility.explanation}</p>
+          <p className="mt-1 text-xs text-neutral-400">
+            Current stage: <span className="font-medium text-neutral-100">{fmtStep(intake.progress?.currentStep ?? intake.status)}</span>
+          </p>
         </div>
         <div className="rounded-md border border-white/15 bg-black/30 px-3 py-2 text-xs text-neutral-200">
           <div>Confidence Score: <span className="font-semibold">{fallbackConfidence}%</span></div>
@@ -171,6 +264,27 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
       </div>
 
       <div className="mt-3 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--brand-accent,#E39A6E)] transition-all" style={{ width: `${percent}%` }} /></div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
+          <div className="font-medium text-neutral-100">Materialized</div>
+          <div>
+            Customers: {visibility.materialization.customers.toLocaleString()} • Vehicles: {visibility.materialization.vehicles.toLocaleString()} • Work orders:{" "}
+            {visibility.materialization.workOrders.toLocaleString()}
+          </div>
+        </div>
+        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
+          <div className="font-medium text-neutral-100">Review pressure</div>
+          <div>{visibility.pendingReviewCount.toLocaleString()} unresolved • {visibility.failedCount.toLocaleString()} failed</div>
+        </div>
+        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
+          <div className="font-medium text-neutral-100">Readiness truth</div>
+          <div>
+            Import: {visibility.flags.importPending ? "Pending" : "Complete"} • Canonical: {visibility.flags.canonicalNotReady ? "Not ready" : "Ready"} • Activation:{" "}
+            {visibility.flags.activationNotReady ? "Not ready" : "Ready"}
+          </div>
+        </div>
+      </div>
 
       {story ? (
         <>
@@ -233,24 +347,28 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
         </div>
       ) : null}
 
-      {(intake.readiness?.ui_should_route_forward === true ||
-        intake.progress?.completionState === "READY_FOR_GO_LIVE" ||
-        story?.trust_status === "READY") ? (
-        <div className="mt-3 rounded-md border border-emerald-300/30 bg-emerald-950/20 p-2 text-xs text-emerald-100">
-          <div className="font-semibold">Go live complete</div>
-          <div className="mt-1">Confidence score: {fallbackConfidence}% • What you reviewed: {story?.review_resolved_count ?? 0} • What was ignored: {story?.ignored_count ?? 0}</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open Shop Boost review + actions</Link>
-            <Link href="/dashboard" className="rounded-md border border-emerald-300/50 px-2.5 py-1 text-emerald-100 hover:bg-white/5">Enter your system</Link>
-            <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">View full migration report</Link>
-          </div>
+      {visibility.integrityErrors.length > 0 ? (
+        <div className="mt-3 rounded-md border border-rose-400/35 bg-rose-950/25 p-2 text-xs text-rose-100">
+          <div className="font-semibold">Integrity blockers</div>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {visibility.integrityErrors.slice(0, 5).map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
         </div>
-      ) : (
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">Open Shop Boost review queue</Link>
-          <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">Download migration report</Link>
-        </div>
-      )}
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <Link href="/dashboard/setup/review" className="rounded-md border border-amber-300/35 px-2.5 py-1 text-amber-100 hover:bg-white/5">
+          {visibility.flags.unresolvedReview ? "Open guided review" : "Resume import review"}
+        </Link>
+        <Link href="/dashboard/owner/reports" className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
+          Open Shop Health
+        </Link>
+        <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
+          Download migration report
+        </Link>
+      </div>
 
       {intake.progress?.lastError ? <p className="mt-2 text-xs text-amber-300">{intake.progress.lastError}</p> : null}
     </section>
