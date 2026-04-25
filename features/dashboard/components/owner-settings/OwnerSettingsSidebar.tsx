@@ -16,6 +16,12 @@ type StripeSubStatus =
   | "paused"
   | "unknown";
 
+type BillingDisplayStatus =
+  | StripeSubStatus
+  | "linkage_needed"
+  | "subscription_found_not_linked"
+  | "sync_needed";
+
 type ShopLocationRow = {
   id: string;
   shop_name?: string | null;
@@ -46,6 +52,7 @@ type Props = {
   canManageBilling: boolean;
   billingPill: React.ReactNode;
   subStatus: StripeSubStatus;
+  billingDisplayStatus: BillingDisplayStatus;
   stripeAccountId: string | null;
   trialEndIso: string | null;
   periodEndIso: string | null;
@@ -92,6 +99,7 @@ export default function OwnerSettingsSidebar({
   canManageBilling,
   billingPill,
   subStatus,
+  billingDisplayStatus,
   stripeAccountId,
   trialEndIso,
   periodEndIso,
@@ -152,7 +160,10 @@ export default function OwnerSettingsSidebar({
         action={<div className="flex items-center gap-2">{billingPill}</div>}
       >
         <div className="grid gap-2">
-          <OwnerSettingsStat label="Status" value={String(subStatus).toUpperCase()} />
+          <OwnerSettingsStat
+            label="Status"
+            value={String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
+          />
           <OwnerSettingsStat
             label="Stripe Connect"
             value={stripeAccountId ? "Connected" : "Not connected"}
