@@ -9,6 +9,15 @@ import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/features/shared/components/ui/dialog";
+import { Button } from "@shared/components/ui/Button";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/OwnerSettingsHeader";
 import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
@@ -19,6 +28,7 @@ import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   parseStripeSubscriptionStatus,
   type StripeSubscriptionStatusWithUnknown,
@@ -65,6 +75,15 @@ type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
   "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end" | "stripe_account_id"
 >;
+
+type StripeSubscriptionApiResponse = {
+  success?: boolean;
+  status?: string | null;
+  cancel_at_period_end?: boolean;
+  canceled_at?: string | null;
+  current_period_end?: string | null;
+  error?: string;
+};
 
 type OrgScope = Pick<
   Database["public"]["Tables"]["organizations"]["Row"],
@@ -171,6 +190,10 @@ export default function OwnerSettingsPage() {
   const [connectLoading, setConnectLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
+  const [canManageBilling, setCanManageBilling] = useState(false);
 
   const trialDaysLeft = daysUntil(trialEndIso);
   const periodDaysLeft = daysUntil(periodEndIso);
@@ -308,6 +331,46 @@ export default function OwnerSettingsPage() {
     }
   };
 
+  const refreshBillingState = useCallback(
+    async (sid: string) => {
+      const { data: billing } = await supabase
+        .from("shops")
+        .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
+        .eq("id", sid)
+        .maybeSingle<ShopBillingScope>();
+
+      setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
+      setSubStatus(parseStripeSubscriptionStatus(billing?.stripe_subscription_status));
+      setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
+      setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
+
+      try {
+        const res = await fetch("/api/stripe/subscription", {
+          method: "GET",
+          cache: "no-store",
+        });
+        const j = (await res.json().catch(() => ({}))) as StripeSubscriptionApiResponse;
+
+        if (!res.ok) {
+          setCancelAtPeriodEnd(false);
+          return;
+        }
+
+        setCancelAtPeriodEnd(Boolean(j.cancel_at_period_end));
+
+        if (j.status) {
+          setSubStatus(parseStripeSubscriptionStatus(j.status));
+        }
+        if (j.current_period_end !== undefined) {
+          setPeriodEndIso(j.current_period_end ?? null);
+        }
+      } catch {
+        setCancelAtPeriodEnd(false);
+      }
+    },
+    [supabase],
+  );
+
   const fetchSettings = useCallback(async () => {
     setLoading(true);
 
@@ -325,7 +388,7 @@ export default function OwnerSettingsPage() {
 
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("shop_id, organization_id, full_name, email, avatar_url")
+      .select("shop_id, organization_id, full_name, email, avatar_url, role")
       .eq("id", uid)
       .maybeSingle<{
         shop_id: string | null;
@@ -333,6 +396,7 @@ export default function OwnerSettingsPage() {
         full_name: string | null;
         email: string | null;
         avatar_url: string | null;
+        role: string | null;
       }>();
 
     if (profErr) {
@@ -349,6 +413,7 @@ export default function OwnerSettingsPage() {
     setOwnerName(profile.full_name ?? "");
     setOwnerEmail(profile.email ?? "");
     setOwnerAvatarUrl(profile.avatar_url ?? null);
+    setCanManageBilling(getActorCapabilities({ role: profile.role }).canManageBilling);
 
     const sid = profile.shop_id;
     setShopId(sid);
@@ -430,17 +495,7 @@ try {
       setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
     }
 
-    // billing fields
-    const { data: billing } = await supabase
-      .from("shops")
-      .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
-      .eq("id", sid)
-      .maybeSingle<ShopBillingScope>();
-
-    setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
-    setSubStatus(parseStripeSubscriptionStatus(billing?.stripe_subscription_status));
-    setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
-    setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
+    await refreshBillingState(sid);
 
     // pricing validity days
     try {
@@ -542,7 +597,7 @@ try {
     }
 
     setLoading(false);
-  }, [supabase, fetchEmailLogs]);
+  }, [supabase, fetchEmailLogs, refreshBillingState]);
 
   // initial load
   useEffect(() => {
@@ -921,6 +976,40 @@ try {
     }
   };
 
+  const confirmCancelSubscription = async () => {
+    if (!shopId) return;
+    if (!guardUnlock()) return;
+
+    try {
+      setCancelLoading(true);
+      const res = await fetch("/api/stripe/subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const j = (await res.json().catch(() => ({}))) as StripeSubscriptionApiResponse;
+
+      if (!res.ok) {
+        toast.error(j?.error || "Failed to schedule cancellation.");
+        return;
+      }
+
+      setCancelAtPeriodEnd(Boolean(j.cancel_at_period_end));
+      if (j.status) {
+        setSubStatus(parseStripeSubscriptionStatus(j.status));
+      }
+      if (j.current_period_end !== undefined) {
+        setPeriodEndIso(j.current_period_end ?? null);
+      }
+      setCancelDialogOpen(false);
+
+      await refreshBillingState(shopId);
+      toast.success("Cancellation scheduled for the end of the current billing period.");
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
 
   const lockOwnerSettings = async () => {
     const res = await fetch("/api/shop/owner-pin/clear", { method: "POST" });
@@ -1185,14 +1274,17 @@ try {
         <OwnerSettingsSidebar
           shopId={shopId}
           isUnlocked={isUnlocked}
+          canManageBilling={canManageBilling}
           billingPill={billingPill}
           subStatus={subStatus}
           stripeAccountId={stripeAccountId}
           trialEndIso={trialEndIso}
           periodEndIso={periodEndIso}
+          cancelAtPeriodEnd={cancelAtPeriodEnd}
           connectLoading={connectLoading}
           checkoutLoading={checkoutLoading}
           portalLoading={portalLoading}
+          cancelLoading={cancelLoading}
           plan={plan}
           seatsUsed={seatsUsed}
           seatsLimit={seatsLimit}
@@ -1214,6 +1306,7 @@ try {
           onOpenStripeConnect={openStripeConnect}
           onStartSubscriptionCheckout={startSubscriptionCheckout}
           onOpenStripePortal={openStripePortal}
+          onRequestCancelSubscription={() => setCancelDialogOpen(true)}
           onCreateOrganization={() => router.push("/dashboard/owner/organization/create")}
           onSwitchLocation={(id) => void switchLocation(id)}
           onRefreshEmailLogs={() => void fetchEmailLogs()}
@@ -1224,6 +1317,42 @@ try {
           locationName={locationName}
         />
       </div>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="border-white/15 bg-neutral-950/95 text-neutral-100">
+          <DialogHeader>
+            <DialogTitle>Cancel subscription</DialogTitle>
+            <DialogDescription className="text-neutral-300">
+              You are currently on the {planLabel(plan)} plan.
+              {" "}Cancellation is scheduled for the end of your current billing period by default.
+              {" "}Your access and seats remain active until that date.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-300">
+            After the period ends, paid subscription features stop renewing for this location
+            until you subscribe again.
+            {periodEndIso ? ` Current period end: ${formatDate(periodEndIso)}.` : ""}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelLoading}
+            >
+              Keep subscription
+            </Button>
+            <Button
+              onClick={() => void confirmCancelSubscription()}
+              disabled={cancelLoading}
+              className="bg-red-600 text-white hover:bg-red-500"
+            >
+              {cancelLoading ? "Scheduling..." : "Cancel at period end"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <OwnerPinModal
         shopId={shopId}
