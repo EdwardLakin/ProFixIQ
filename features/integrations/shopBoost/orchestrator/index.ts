@@ -55,7 +55,7 @@ type OnboardingAttemptRow = {
   status: string;
   error_code: string | null;
   error_message: string | null;
-  created_at: string;
+  started_at: string;
   completed_at: string | null;
 };
 
@@ -114,6 +114,12 @@ export type RunAttemptSummary = {
   errorMessage: string | null;
   createdAt: string;
   completedAt: string | null;
+};
+
+export type RunAttemptSummaryDiagnostics = {
+  code: "RUN_ATTEMPT_SUMMARY_QUERY_FAILED";
+  message: string;
+  hint?: string;
 };
 
 export type ClaimableJobType = "profile" | "materialize" | "verify" | "activate";
@@ -745,12 +751,19 @@ export async function summarizeRunJobsDetailed(runId: string): Promise<{
 }
 
 export async function getLatestRunAttemptSummary(runId: string): Promise<RunAttemptSummary | null> {
+  const { summary } = await getLatestRunAttemptSummaryWithDiagnostics(runId);
+  return summary;
+}
+
+export async function getLatestRunAttemptSummaryWithDiagnostics(
+  runId: string,
+): Promise<{ summary: RunAttemptSummary | null; diagnostics: RunAttemptSummaryDiagnostics | null }> {
   const supabase = adminAny();
   const { data, error } = await supabase
     .from("shop_onboarding_attempts")
-    .select("id,job_id,status,error_code,error_message,created_at,completed_at")
+    .select("id,job_id,status,error_code,error_message,started_at,completed_at")
     .eq("run_id", runId)
-    .order("created_at", { ascending: false })
+    .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -759,11 +772,21 @@ export async function getLatestRunAttemptSummary(runId: string): Promise<RunAtte
       runId,
       error: error.message,
     });
-    return null;
+    return {
+      summary: null,
+      diagnostics: {
+        code: "RUN_ATTEMPT_SUMMARY_QUERY_FAILED",
+        message: error.message,
+        hint:
+          error.message.includes("shop_onboarding_attempts.created_at")
+            ? "shop_onboarding_attempts uses started_at (not created_at) for attempt timestamps."
+            : undefined,
+      },
+    };
   }
 
   const attempt = (data as OnboardingAttemptRow | null) ?? null;
-  if (!attempt?.id) return null;
+  if (!attempt?.id) return { summary: null, diagnostics: null };
 
   const { data: job } = await supabase
     .from("shop_onboarding_jobs")
@@ -772,15 +795,18 @@ export async function getLatestRunAttemptSummary(runId: string): Promise<RunAtte
     .maybeSingle<{ job_type: string | null; domain: string | null }>();
 
   return {
-    attemptId: attempt.id,
-    jobId: attempt.job_id,
-    jobType: job?.job_type ?? null,
-    domain: job?.domain ?? null,
-    status: attempt.status,
-    errorCode: attempt.error_code,
-    errorMessage: attempt.error_message,
-    createdAt: attempt.created_at,
-    completedAt: attempt.completed_at,
+    summary: {
+      attemptId: attempt.id,
+      jobId: attempt.job_id,
+      jobType: job?.job_type ?? null,
+      domain: job?.domain ?? null,
+      status: attempt.status,
+      errorCode: attempt.error_code,
+      errorMessage: attempt.error_message,
+      createdAt: attempt.started_at,
+      completedAt: attempt.completed_at,
+    },
+    diagnostics: null,
   };
 }
 
