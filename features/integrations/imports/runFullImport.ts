@@ -170,6 +170,32 @@ type CacheVehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "v
 type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "email" | "full_name">;
 type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
 type MaterializeDomain = NonNullable<RunArgs["options"]>["materializeDomain"];
+type ProvenanceDomain = "customer" | "vehicle" | "work_order" | "work_order_line" | "invoice";
+
+async function recordImportCreatedArtifact(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  domain: ProvenanceDomain;
+  recordId: string | null | undefined;
+}): Promise<void> {
+  if (!args.recordId) return;
+  const { error } = await (args.supabase as any).from("shop_boost_import_provenance").insert({
+    shop_id: args.shopId,
+    intake_id: args.intakeId,
+    domain: args.domain,
+    record_id: args.recordId,
+  });
+  if (error) {
+    console.warn("[shop-boost] failed to record import provenance", {
+      shopId: args.shopId,
+      intakeId: args.intakeId,
+      domain: args.domain,
+      recordId: args.recordId,
+      error: error.message,
+    });
+  }
+}
 
 function domainSourceFile(domain: MaterializeDomain): string | null {
   if (domain === "customers") return "customers";
@@ -1466,6 +1492,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           if (phone) customersByPhone.set(phone, id);
           if (sourceCustomerLookupKey) customersBySourceId.set(sourceCustomerLookupKey, id);
           if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
+          await recordImportCreatedArtifact({
+            supabase,
+            shopId,
+            intakeId,
+            domain: "customer",
+            recordId: id,
+          });
         }
         rowOutcome.processedRows += 1;
         rowOutcome.successCount += 1;
@@ -1781,6 +1814,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           if (plate) vehiclesByPlate.set(plate, id);
           if (unit) vehiclesByUnit.set(lower(unit), id);
           if (sourceVehicleKey) vehiclesBySourceId.set(sourceVehicleKey, id);
+          await recordImportCreatedArtifact({
+            supabase,
+            shopId,
+            intakeId,
+            domain: "vehicle",
+            recordId: id,
+          });
           addUniqueMatch(
             uniqueVehiclesByCustomerUnit,
             conflictingVehiclesByCustomerUnit,
@@ -2220,6 +2260,15 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const workOrderId = (woInserted ?? [])[0]?.id as string | undefined;
       if (!workOrderId) continue;
+      if (!woByExternal?.id) {
+        await recordImportCreatedArtifact({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          recordId: workOrderId,
+        });
+      }
       if (sourceWorkOrderKey) workOrdersBySourceId.set(sourceWorkOrderKey, workOrderId);
 
       if (!vehicle_id) {
@@ -3083,6 +3132,13 @@ async function upsertHistoryLine(args: {
   }
 
   await supabase.from("work_order_lines").insert(payload);
+  await recordImportCreatedArtifact({
+    supabase,
+    shopId,
+    intakeId,
+    domain: "work_order_line",
+    recordId: payload.id,
+  });
 }
 
 async function upsertInvoiceIfNeeded(args: {
@@ -3151,9 +3207,22 @@ async function upsertInvoiceIfNeeded(args: {
     return;
   }
 
-  await supabase.from("invoices").insert({
-    shop_id: shopId,
-    work_order_id: workOrderId,
-    ...payload,
-  } as DB["public"]["Tables"]["invoices"]["Insert"]);
+  const inserted = await supabase
+    .from("invoices")
+    .insert({
+      shop_id: shopId,
+      work_order_id: workOrderId,
+      ...payload,
+    } as DB["public"]["Tables"]["invoices"]["Insert"])
+    .select("id")
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  await recordImportCreatedArtifact({
+    supabase,
+    shopId,
+    intakeId,
+    domain: "invoice",
+    recordId: inserted.data?.id ?? null,
+  });
 }
