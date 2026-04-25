@@ -6,6 +6,7 @@ import {
   dismissAiRecommendation,
   getAiRecommendation,
   resolveAiRecommendation,
+  serializeAiRecommendationForUi,
 } from "@/features/ai/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -135,7 +136,10 @@ export async function PATCH(
       updated = await resolveAiRecommendation(access.supabase, actor, recommendationId, { note: body.note });
     }
 
-    return NextResponse.json({ recommendation: updated });
+    return NextResponse.json({
+      recommendation: serializeAiRecommendationForUi(updated),
+      executionBlocked: true,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update recommendation";
 

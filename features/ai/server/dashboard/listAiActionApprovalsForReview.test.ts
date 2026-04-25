@@ -87,6 +87,7 @@ function mockFromTable() {
                 {
                   id: "preview_work_order",
                   recommendation_id: "rec_work_order",
+                  action_type: "advisor_review_needed",
                   domain: "work_orders",
                   subject_type: "work_order",
                   subject_id: "WO-42",
@@ -102,6 +103,7 @@ function mockFromTable() {
                 {
                   id: "preview_shop_boost",
                   recommendation_id: "rec_shop_boost",
+                  action_type: "shop_boost_review",
                   domain: "shop_boost",
                   subject_type: "shop_boost_activation",
                   subject_id: null,
@@ -234,5 +236,212 @@ describe("listAiActionApprovalsForReview", () => {
 
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.id).toBe("approval_approved");
+  });
+
+  it("falls back to deterministic safe copy when preview payload fields are unsafe", async () => {
+    vi.spyOn(types, "fromTable").mockImplementation((_, table: string) => {
+      if (table === "ai_action_approvals") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                eq: async () => ({
+                  data: [
+                    {
+                      id: "approval_unsafe_preview",
+                      action_preview_id: "preview_unsafe",
+                      status: "pending",
+                      owner_pin_required: false,
+                      owner_pin_verification_ref: null,
+                      requested_at: "2026-04-24T12:00:00.000Z",
+                      requested_by: "actor_2",
+                      decided_at: null,
+                      decided_by: null,
+                      metadata: {},
+                    },
+                  ],
+                  error: null,
+                }),
+                then(resolve: (value: { data: unknown[]; error: null }) => void) {
+                  resolve({
+                    data: [
+                      {
+                        id: "approval_unsafe_preview",
+                        action_preview_id: "preview_unsafe",
+                        status: "pending",
+                        owner_pin_required: false,
+                        owner_pin_verification_ref: null,
+                        requested_at: "2026-04-24T12:00:00.000Z",
+                        requested_by: "actor_2",
+                        decided_at: null,
+                        decided_by: null,
+                        metadata: {},
+                      },
+                    ],
+                    error: null,
+                  });
+                },
+              }),
+            }),
+          }),
+        } as never;
+      }
+
+      if (table === "ai_action_previews") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({
+                data: [
+                  {
+                    id: "preview_unsafe",
+                    recommendation_id: null,
+                    action_type: "advisor_review_needed",
+                    domain: "work_orders",
+                    subject_type: "work_order",
+                    subject_id: "WO-77",
+                    status: "approval_required",
+                    requires_approval: true,
+                    risk_tier: "high",
+                    preview_payload: {
+                      label: "secret token abc",
+                      description: { nested: "bad" },
+                    },
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        } as never;
+      }
+
+      if (table === "ai_recommendations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({ data: [], error: null }),
+            }),
+          }),
+        } as never;
+      }
+
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({ data: [], error: null }),
+            }),
+          }),
+        } as never;
+      }
+
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const result = await listAiActionApprovalsForReview({
+      supabase: {} as never,
+      actorContext: ACTOR,
+      filters: { status: "all" },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    const row = result.rows[0];
+    expect(row?.title).toBe("Review work_orders advisor_review_needed action");
+    expect(row?.description).toBe("Review-only approval_required request for work_order.");
+    expect(row?.title).not.toContain("secret token abc");
+  });
+
+  it("rejects json/blob-looking preview description strings and falls back", async () => {
+    vi.spyOn(types, "fromTable").mockImplementation((_, table: string) => {
+      if (table === "ai_action_approvals") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                eq: async () => ({
+                  data: [{
+                    id: "approval_blob_preview",
+                    action_preview_id: "preview_blob",
+                    status: "pending",
+                    owner_pin_required: false,
+                    owner_pin_verification_ref: null,
+                    requested_at: "2026-04-24T12:00:00.000Z",
+                    requested_by: "actor_2",
+                    decided_at: null,
+                    decided_by: null,
+                    metadata: {},
+                  }],
+                  error: null,
+                }),
+                then(resolve: (value: { data: unknown[]; error: null }) => void) {
+                  resolve({
+                    data: [{
+                      id: "approval_blob_preview",
+                      action_preview_id: "preview_blob",
+                      status: "pending",
+                      owner_pin_required: false,
+                      owner_pin_verification_ref: null,
+                      requested_at: "2026-04-24T12:00:00.000Z",
+                      requested_by: "actor_2",
+                      decided_at: null,
+                      decided_by: null,
+                      metadata: {},
+                    }],
+                    error: null,
+                  });
+                },
+              }),
+            }),
+          }),
+        } as never;
+      }
+      if (table === "ai_action_previews") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({
+                data: [{
+                  id: "preview_blob",
+                  recommendation_id: null,
+                  action_type: "advisor_review_needed",
+                  domain: "work_orders",
+                  subject_type: "work_order",
+                  subject_id: "WO-77",
+                  status: "approval_required",
+                  requires_approval: true,
+                  risk_tier: "high",
+                  preview_payload: {
+                    label: "Safe heading",
+                    description: "{\"raw\":\"secret\",\"token\":\"abc\"}",
+                  },
+                }],
+                error: null,
+              }),
+            }),
+          }),
+        } as never;
+      }
+      if (table === "ai_recommendations" || table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({ data: [], error: null }),
+            }),
+          }),
+        } as never;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const result = await listAiActionApprovalsForReview({
+      supabase: {} as never,
+      actorContext: ACTOR,
+      filters: { status: "all" },
+    });
+
+    expect(result.rows[0]?.title).toBe("Safe heading");
+    expect(result.rows[0]?.description).toBe("Review-only approval_required request for work_order.");
+    expect(result.rows[0]?.description).not.toContain("token");
   });
 });
