@@ -15,6 +15,14 @@ type ProfileStripeArtifacts = {
   stripe_checkout_session_id: string | null;
 };
 
+const MANAGED_SUBSCRIPTION_STATUSES = new Set([
+  "trialing",
+  "active",
+  "past_due",
+  "unpaid",
+  "paused",
+]);
+
 function unixToIsoOrNull(v: number | null | undefined): string | null {
   if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null;
   return new Date(v * 1000).toISOString();
@@ -105,10 +113,19 @@ export async function reconcileShopBillingFromUser(params: {
     const list = await stripe.subscriptions.list({
       customer: customerId,
       status: "all",
-      limit: 10,
+      limit: 20,
     });
-    const sorted = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
-    subscriptionId = sorted[0]?.id ?? "";
+    const managed = list.data.filter((sub) =>
+      MANAGED_SUBSCRIPTION_STATUSES.has(String(sub.status ?? "").trim().toLowerCase()),
+    );
+
+    if (managed.length === 1) {
+      subscriptionId = managed[0]?.id ?? "";
+    } else if (managed.length === 0) {
+      return { linked: false, reason: "no_subscription_found" };
+    } else {
+      return { linked: false, reason: "ambiguous_customer_subscriptions" };
+    }
   }
 
   if (!subscriptionId) {
