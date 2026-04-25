@@ -148,6 +148,10 @@ export default function OwnerSettingsSidebar({
     subStatus === "incomplete" ||
     subStatus === "paused" ||
     subStatus === "canceled";
+  const isLinkageState =
+    billingDisplayStatus === "linkage_needed" ||
+    billingDisplayStatus === "subscription_found_not_linked" ||
+    billingDisplayStatus === "sync_needed";
   const manageSubscriptionLoading = hasManagedSubscription ? portalLoading : checkoutLoading;
 
   return (
@@ -193,18 +197,22 @@ export default function OwnerSettingsSidebar({
             <Button
               variant="secondary"
               onClick={onStartSubscriptionCheckout}
-              disabled={!isUnlocked || manageSubscriptionLoading}
+              disabled={!isUnlocked || manageSubscriptionLoading || isLinkageState}
             >
               {manageSubscriptionLoading
                 ? hasManagedSubscription
                   ? "Opening portal..."
                   : "Opening checkout..."
+                : isLinkageState
+                  ? "Subscription sync pending"
                 : hasManagedSubscription
                   ? "Manage subscription"
                   : "Start subscription"}
             </Button>
             <p className="text-[11px] text-neutral-500">
-              {hasManagedSubscription
+              {isLinkageState
+                ? "An existing Stripe subscription was detected but must finish linking before checkout or portal actions."
+                : hasManagedSubscription
                 ? "Open Stripe billing portal to manage an existing subscription."
                 : "Start checkout to create a new ProFixIQ subscription for this location."}
             </p>

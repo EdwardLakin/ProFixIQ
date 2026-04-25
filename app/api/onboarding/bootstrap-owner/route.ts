@@ -6,7 +6,10 @@ import type { Database } from "@shared/types/types/supabase";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 import { OWNER_PIN_PURPOSES, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
+import {
+  reconcileShopBillingFromCheckoutSession,
+  reconcileShopBillingFromUser,
+} from "@/features/stripe/lib/server/canonical-shop-billing";
 
 type DB = Database;
 
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
       ? cleanUpper(raw.country)
       : "US";
     const timezone = cleanStr(raw.timezone) || "America/New_York";
+    const stripeCheckoutSessionId = cleanStr(raw.stripe_checkout_session_id);
 
     if (!businessName || !street || !city || !province || !postal_code || !pin) {
       return NextResponse.json(
@@ -114,6 +118,15 @@ export async function POST(req: Request) {
     if (process.env.STRIPE_SECRET_KEY?.trim()) {
       try {
         const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
+        if (stripeCheckoutSessionId) {
+          await reconcileShopBillingFromCheckoutSession({
+            stripe,
+            supabase,
+            userId: user.id,
+            shopId,
+            sessionId: stripeCheckoutSessionId,
+          });
+        }
         await reconcileShopBillingFromUser({
           stripe,
           supabase,

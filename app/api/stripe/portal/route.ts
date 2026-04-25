@@ -99,8 +99,9 @@ export async function POST(req: Request) {
       const profile = await getProfileStripeArtifacts(access.supabase, access.profile.id);
       const profileCustomerId = String(profile?.stripe_customer_id ?? "").trim();
       const profileSubscriptionId = String(profile?.stripe_subscription_id ?? "").trim();
+      const profileCheckoutSessionId = String(profile?.stripe_checkout_session_id ?? "").trim();
 
-      if (profileCustomerId || profileSubscriptionId) {
+      if (profileCustomerId || profileSubscriptionId || profileCheckoutSessionId) {
         return NextResponse.json(
           {
             error: "Billing linkage is required before opening the portal.",
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
             linkage_state: "unlinked_subscription",
             linked_customer_id: profileCustomerId || null,
             linked_subscription_id: profileSubscriptionId || null,
+            linked_checkout_session_id: profileCheckoutSessionId || null,
           },
           { status: 409 },
         );

@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -145,9 +147,19 @@ async function createCustomerIfMissing(
   return customer.id;
 }
 
+function isUuid(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  const s = v.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
 export async function POST(req: Request) {
   try {
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const body = (await req.json().catch(() => null)) as CheckoutPayload | null;
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -206,6 +218,9 @@ export async function POST(req: Request) {
     const couponId = String(process.env.STRIPE_FOUNDING_COUPON_ID ?? "").trim();
     const requestedMetadataShopId = String(body.shopId ?? "").trim();
     const requestedMetadataUserId = String(body.supabaseUserId ?? "").trim();
+    const metadataSupabaseUserId = requestedMetadataUserId || String(user?.id ?? "").trim();
+    const metadataPurpose = isAcquisitionCheckout ? "profixiq_acquisition" : "profixiq_subscription";
+    const metadataSource = source || (isAcquisitionCheckout ? "pricing_cta" : "owner_settings");
 
     const applyFoundingDiscount =
       Boolean(couponId) && body.applyFoundingDiscount !== false;
@@ -218,28 +233,29 @@ export async function POST(req: Request) {
         success_url: successUrl,
         cancel_url: cancelUrl,
         allow_promotion_codes: true,
+        ...(isUuid(metadataSupabaseUserId) ? { client_reference_id: metadataSupabaseUserId } : {}),
         ...(applyFoundingDiscount ? { discounts: [{ coupon: couponId }] } : {}),
         subscription_data: {
           ...(enableTrial ? { trial_period_days: trialDays } : {}),
           metadata: {
-            purpose: "profixiq_acquisition",
-            source: "pricing_cta",
+            purpose: metadataPurpose,
+            source: metadataSource,
             founding_discount_applied: applyFoundingDiscount ? "true" : "false",
             trial_enabled: enableTrial ? "true" : "false",
             trial_days: enableTrial ? String(trialDays) : "0",
             demo_id: String(body.demoId ?? "").trim() || "",
             intake_id: String(body.intakeId ?? "").trim() || "",
             shop_id: requestedMetadataShopId || "",
-            supabase_user_id: requestedMetadataUserId || "",
+            supabase_user_id: metadataSupabaseUserId || "",
           },
         },
         metadata: {
-          purpose: "profixiq_acquisition",
-          source: "pricing_cta",
+          purpose: metadataPurpose,
+          source: metadataSource,
           demo_id: String(body.demoId ?? "").trim() || "",
           intake_id: String(body.intakeId ?? "").trim() || "",
           shop_id: requestedMetadataShopId || "",
-          supabase_user_id: requestedMetadataUserId || "",
+          supabase_user_id: metadataSupabaseUserId || "",
         },
       });
 
@@ -290,7 +306,8 @@ export async function POST(req: Request) {
         metadata: {
           shop_id: shop.id,
           supabase_user_id: access.profile.id,
-          purpose: "profixiq_subscription",
+          purpose: metadataPurpose,
+          source: metadataSource,
           founding_discount_applied: applyFoundingDiscount ? "true" : "false",
           trial_enabled: enableTrial ? "true" : "false",
           trial_days: enableTrial ? String(trialDays) : "0",
@@ -299,7 +316,8 @@ export async function POST(req: Request) {
       metadata: {
         shop_id: shop.id,
         supabase_user_id: access.profile.id,
-        purpose: "profixiq_subscription",
+        purpose: metadataPurpose,
+        source: metadataSource,
       },
     });
 

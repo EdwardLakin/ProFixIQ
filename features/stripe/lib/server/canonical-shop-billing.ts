@@ -12,6 +12,7 @@ type ProfileStripeArtifacts = {
   shop_id: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  stripe_checkout_session_id: string | null;
 };
 
 function unixToIsoOrNull(v: number | null | undefined): string | null {
@@ -30,7 +31,7 @@ export async function getProfileStripeArtifacts(
 ): Promise<ProfileStripeArtifacts | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("shop_id, stripe_customer_id, stripe_subscription_id")
+    .select("shop_id, stripe_customer_id, stripe_subscription_id, stripe_checkout_session_id")
     .eq("id", userId)
     .maybeSingle<ProfileStripeArtifacts>();
 
@@ -79,8 +80,19 @@ export async function reconcileShopBillingFromUser(params: {
   const profile = await getProfileStripeArtifacts(supabase, userId);
   if (!profile) return { linked: false, reason: "profile_not_found" };
 
-  const profileCustomerId = String(profile.stripe_customer_id ?? "").trim();
-  const profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim();
+  let profileCustomerId = String(profile.stripe_customer_id ?? "").trim();
+  let profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim();
+  const profileCheckoutSessionId = String(profile.stripe_checkout_session_id ?? "").trim();
+
+  if (!profileCustomerId && !profileSubscriptionId && profileCheckoutSessionId) {
+    const checkoutSession = await stripe.checkout.sessions.retrieve(profileCheckoutSessionId);
+    if (checkoutSession.mode === "subscription") {
+      profileCustomerId =
+        (typeof checkoutSession.customer === "string" ? checkoutSession.customer : "") || "";
+      profileSubscriptionId =
+        (typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : "") || "";
+    }
+  }
 
   if (!profileCustomerId && !profileSubscriptionId) {
     return { linked: false, reason: "no_profile_stripe_artifacts" };
@@ -136,4 +148,87 @@ export async function reconcileShopBillingFromUser(params: {
   });
 
   return { linked: true };
+}
+
+export async function reconcileShopBillingFromCheckoutSession(params: {
+  stripe: Stripe;
+  supabase: SupabaseClient<DB>;
+  userId: string;
+  shopId: string;
+  sessionId: string;
+}): Promise<{ linked: boolean; reason?: string }> {
+  const { stripe, supabase, userId, shopId, sessionId } = params;
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId.startsWith("cs_")) {
+    return { linked: false, reason: "invalid_checkout_session_id" };
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(trimmedSessionId);
+  if (session.mode !== "subscription") {
+    return { linked: false, reason: "not_subscription_checkout" };
+  }
+
+  const sessionCustomerId =
+    typeof session.customer === "string" ? session.customer : null;
+  const sessionSubscriptionId =
+    typeof session.subscription === "string" ? session.subscription : null;
+
+  if (!sessionCustomerId && !sessionSubscriptionId) {
+    return { linked: false, reason: "session_missing_billing_artifacts" };
+  }
+
+  const metadataUserId = String(session.metadata?.supabase_user_id ?? "").trim();
+  if (metadataUserId && metadataUserId !== userId) {
+    return { linked: false, reason: "session_user_mismatch" };
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      stripe_checkout_complete: true,
+      stripe_checkout_session_id: session.id,
+      stripe_customer_id: sessionCustomerId,
+      stripe_subscription_id: sessionSubscriptionId,
+    } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
+    .eq("id", userId);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (sessionCustomerId) {
+    await stripe.customers.update(sessionCustomerId, {
+      metadata: {
+        shop_id: shopId,
+        supabase_user_id: userId,
+        source: "profixiq",
+      },
+    });
+  }
+
+  if (sessionSubscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(sessionSubscriptionId);
+    await stripe.subscriptions.update(sessionSubscriptionId, {
+      metadata: {
+        ...(subscription.metadata ?? {}),
+        shop_id: shopId,
+        supabase_user_id: userId,
+        source: "profixiq",
+      },
+    });
+  }
+
+  if (sessionSubscriptionId) {
+    await syncCanonicalShopBilling({
+      stripe,
+      supabase,
+      shopId,
+      customerId: sessionCustomerId,
+      subscriptionId: sessionSubscriptionId,
+      checkoutSessionId: session.id,
+    });
+    return { linked: true };
+  }
+
+  return { linked: false, reason: "no_subscription_found" };
 }

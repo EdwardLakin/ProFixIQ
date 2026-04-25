@@ -145,9 +145,13 @@ export default function SignUpClient() {
 
     const demoIdParam = sp.get("demoId");
     const intakeIdParam = sp.get("intakeId");
+    const sessionIdParam = sp.get("session_id");
+    const flowParam = sp.get("flow");
 
     if (demoIdParam) params.set("demoId", demoIdParam);
     if (intakeIdParam) params.set("intakeId", intakeIdParam);
+    if (sessionIdParam) params.set("session_id", sessionIdParam);
+    if (flowParam) params.set("flow", flowParam);
 
     const onboardingTarget = `/onboarding${
       params.toString() ? `?${params.toString()}` : ""
