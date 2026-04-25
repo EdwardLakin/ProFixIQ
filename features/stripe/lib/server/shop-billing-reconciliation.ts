@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { toCanonicalShopBillingUpdate } from "@/features/stripe/lib/server/canonical-shop-billing";
+import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
 
 type DB = Database;
 
@@ -15,14 +16,6 @@ type ShopBillingRow = Pick<
   | "stripe_current_period_end"
   | "plan"
 >;
-
-const MANAGED_SUBSCRIPTION_STATUSES = new Set([
-  "trialing",
-  "active",
-  "past_due",
-  "unpaid",
-  "paused",
-]);
 
 export type ShopBillingReconciliationState =
   | "updated"
@@ -42,6 +35,24 @@ export type ShopBillingReconciliationResult = {
   derived_plan: string | null;
   update_applied: boolean;
   reason?: string;
+  all_customer_subscription_ids: string[];
+  subscription_diagnostics: Array<{
+    subscription_id: string;
+    status: string;
+    customer_id: string | null;
+    livemode: boolean;
+    metadata_shop_id: string | null;
+    excluded_reasons: string[];
+  }>;
+  has_any_customer_subscriptions: boolean;
+  subscriptions_exist_but_none_managed: boolean;
+  customer_exists_in_stripe: boolean;
+  customer_deleted_in_stripe: boolean;
+  customer_lookup_error: string | null;
+  likely_mode_mismatch: boolean;
+  stripe_mode: "live" | "test" | "unknown";
+  customer_mode: "live" | "test" | "unknown";
+  hydration_strategy: "managed_filter" | "single_hydratable_subscription" | "none";
 };
 
 function normalizeText(value: unknown): string | null {
@@ -93,6 +104,17 @@ export async function reconcileCanonicalShopBillingByShopId(params: {
       derived_plan: null,
       update_applied: false,
       reason: "shop_not_found",
+      all_customer_subscription_ids: [],
+      subscription_diagnostics: [],
+      has_any_customer_subscriptions: false,
+      subscriptions_exist_but_none_managed: false,
+      customer_exists_in_stripe: false,
+      customer_deleted_in_stripe: false,
+      customer_lookup_error: null,
+      likely_mode_mismatch: false,
+      stripe_mode: "unknown",
+      customer_mode: "unknown",
+      hydration_strategy: "none",
     };
   }
 
@@ -107,6 +129,17 @@ export async function reconcileCanonicalShopBillingByShopId(params: {
       derived_plan: null,
       update_applied: false,
       reason: "missing_customer_id",
+      all_customer_subscription_ids: [],
+      subscription_diagnostics: [],
+      has_any_customer_subscriptions: false,
+      subscriptions_exist_but_none_managed: false,
+      customer_exists_in_stripe: false,
+      customer_deleted_in_stripe: false,
+      customer_lookup_error: null,
+      likely_mode_mismatch: false,
+      stripe_mode: "unknown",
+      customer_mode: "unknown",
+      hydration_strategy: "none",
     };
   }
 
@@ -121,48 +154,101 @@ export async function reconcileCanonicalShopBillingByShopId(params: {
       derived_plan: null,
       update_applied: false,
       reason: "customer_id_mismatch",
+      all_customer_subscription_ids: [],
+      subscription_diagnostics: [],
+      has_any_customer_subscriptions: false,
+      subscriptions_exist_but_none_managed: false,
+      customer_exists_in_stripe: false,
+      customer_deleted_in_stripe: false,
+      customer_lookup_error: null,
+      likely_mode_mismatch: false,
+      stripe_mode: "unknown",
+      customer_mode: "unknown",
+      hydration_strategy: "none",
     };
   }
 
-  const subscriptionList = await stripe.subscriptions.list({
-    customer: stripeCustomerId,
-    status: "all",
-    limit: 20,
+  const diagnostics = await collectCustomerSubscriptionDiagnostics({
+    stripe,
+    customerId: stripeCustomerId,
   });
+  let linkedSubscriptionMismatchDiagnostic: ShopBillingReconciliationResult["subscription_diagnostics"] = [];
+  const linkedSubscriptionId = normalizeText(shop.stripe_subscription_id);
+  if (linkedSubscriptionId) {
+    try {
+      const linkedSubscription = await stripe.subscriptions.retrieve(linkedSubscriptionId);
+      const linkedCustomerId =
+        typeof linkedSubscription.customer === "string"
+          ? linkedSubscription.customer
+          : String(linkedSubscription.customer?.id ?? "").trim() || null;
+      const linkedMetadataShopId = String(linkedSubscription.metadata?.shop_id ?? "").trim() || null;
+      const customerMatches = linkedCustomerId === stripeCustomerId;
+      const metadataMatches = !linkedMetadataShopId || linkedMetadataShopId === shop.id;
+      if (!customerMatches || !metadataMatches) {
+        linkedSubscriptionMismatchDiagnostic = [
+          {
+            subscription_id: linkedSubscription.id,
+            status: String(linkedSubscription.status ?? "").trim().toLowerCase() || "unknown",
+            customer_id: linkedCustomerId,
+            livemode: Boolean(linkedSubscription.livemode),
+            metadata_shop_id: linkedMetadataShopId,
+            excluded_reasons: ["subscription_id_mismatch_with_shop_customer_or_metadata"],
+          },
+        ];
+      }
+    } catch {
+      // Best-effort diagnostics only.
+    }
+  }
 
-  const qualifying = subscriptionList.data.filter((subscription) =>
-    MANAGED_SUBSCRIPTION_STATUSES.has(String(subscription.status ?? "").trim().toLowerCase()),
-  );
+  const qualifyingIds = diagnostics.managed_subscription_ids;
 
-  const qualifyingIds = qualifying.map((subscription) => subscription.id);
+  let chosenSubscriptionId: string | null = null;
+  let hydrationStrategy: ShopBillingReconciliationResult["hydration_strategy"] = "none";
 
-  if (qualifying.length === 0) {
+  if (qualifyingIds.length === 1) {
+    chosenSubscriptionId = qualifyingIds[0] ?? null;
+    hydrationStrategy = "managed_filter";
+  } else if (qualifyingIds.length === 0 && diagnostics.single_hydratable_subscription_id) {
+    chosenSubscriptionId = diagnostics.single_hydratable_subscription_id;
+    hydrationStrategy = "single_hydratable_subscription";
+  }
+
+  if (!chosenSubscriptionId) {
     return {
-      state: "no_subscription_found",
+      state:
+        qualifyingIds.length > 1
+          ? "ambiguous_customer_subscriptions"
+          : "no_subscription_found",
       shop_id: shop.id,
       stripe_customer_id: stripeCustomerId,
       qualifying_subscription_ids: qualifyingIds,
       chosen_subscription_id: null,
       derived_plan: null,
       update_applied: false,
-      reason: "no_subscription_found",
+      reason:
+        qualifyingIds.length > 1
+          ? "ambiguous_customer_subscriptions"
+          : diagnostics.no_subscriptions_found
+            ? "customer_has_no_subscriptions"
+            : diagnostics.subscriptions_exist_but_none_managed
+              ? "subscriptions_exist_but_none_managed"
+              : "no_subscription_found",
+      all_customer_subscription_ids: diagnostics.all_subscription_ids,
+      subscription_diagnostics: [...linkedSubscriptionMismatchDiagnostic, ...diagnostics.subscription_diagnostics],
+      has_any_customer_subscriptions: !diagnostics.no_subscriptions_found,
+      subscriptions_exist_but_none_managed: diagnostics.subscriptions_exist_but_none_managed,
+      customer_exists_in_stripe: diagnostics.customer.customer_exists,
+      customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+      customer_lookup_error: diagnostics.customer.customer_lookup_error,
+      likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+      stripe_mode: diagnostics.customer.stripe_mode,
+      customer_mode: diagnostics.customer.customer_mode,
+      hydration_strategy: "none",
     };
   }
 
-  if (qualifying.length > 1) {
-    return {
-      state: "ambiguous_customer_subscriptions",
-      shop_id: shop.id,
-      stripe_customer_id: stripeCustomerId,
-      qualifying_subscription_ids: qualifyingIds,
-      chosen_subscription_id: null,
-      derived_plan: null,
-      update_applied: false,
-      reason: "ambiguous_customer_subscriptions",
-    };
-  }
-
-  const chosen = qualifying[0];
+  const chosen = await stripe.subscriptions.retrieve(chosenSubscriptionId);
 
   const canonicalUpdate = toCanonicalShopBillingUpdate({
     customerId: stripeCustomerId,
@@ -192,5 +278,16 @@ export async function reconcileCanonicalShopBillingByShopId(params: {
     derived_plan: normalizeText(canonicalUpdate.plan),
     update_applied: shouldWrite,
     reason: sameState ? "already_hydrated" : shouldWrite ? "canonical_shop_billing_updated" : "dry_run",
+    all_customer_subscription_ids: diagnostics.all_subscription_ids,
+    subscription_diagnostics: [...linkedSubscriptionMismatchDiagnostic, ...diagnostics.subscription_diagnostics],
+    has_any_customer_subscriptions: !diagnostics.no_subscriptions_found,
+    subscriptions_exist_but_none_managed: diagnostics.subscriptions_exist_but_none_managed,
+    customer_exists_in_stripe: diagnostics.customer.customer_exists,
+    customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+    customer_lookup_error: diagnostics.customer.customer_lookup_error,
+    likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+    stripe_mode: diagnostics.customer.stripe_mode,
+    customer_mode: diagnostics.customer.customer_mode,
+    hydration_strategy: hydrationStrategy,
   };
 }
