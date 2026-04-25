@@ -12,18 +12,21 @@ export type ReviewKind = "ai_review" | "invoice_review";
 type Args = {
   supabase: SupabaseClient<DB>;
   workOrderId: string;
+  shopId: string;
   kind: ReviewKind;
 };
 
 export async function reviewWorkOrder({
   supabase,
   workOrderId,
+  shopId,
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("*")
     .eq("id", workOrderId)
+    .eq("shop_id", shopId)
     .maybeSingle();
 
   if (woErr) throw woErr;
@@ -38,7 +41,8 @@ export async function reviewWorkOrder({
   const { data: lines, error: lnErr } = await supabase
     .from("work_order_lines")
     .select("*")
-    .eq("work_order_id", wo.id);
+    .eq("work_order_id", wo.id)
+    .eq("shop_id", shopId);
 
   if (lnErr) throw lnErr;
 
@@ -101,6 +105,7 @@ export async function reviewWorkOrder({
       .from("customers")
       .select("email")
       .eq("id", wo.customer_id)
+      .eq("shop_id", shopId)
       .maybeSingle();
 
     if (cErr) throw cErr;
@@ -120,6 +125,7 @@ export async function reviewWorkOrder({
           .from("vehicles")
           .select("id, year, make, model")
           .eq("id", wo.vehicle_id)
+          .eq("shop_id", shopId)
           .maybeSingle();
         vehicle = vehicleRow ?? null;
       }

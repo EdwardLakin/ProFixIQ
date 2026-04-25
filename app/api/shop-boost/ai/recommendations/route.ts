@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { listAiRecommendationsForSubject } from "@/features/ai/server";
+import {
+  listAiRecommendationsForSubject,
+  serializeAiEvidenceSnapshotForUi,
+  serializeAiRecommendationForUi,
+} from "@/features/ai/server";
 import { generateShopBoostPostActivationEvidenceAndRecommendations } from "@/features/ai/server/domains/shopBoost";
 
 function isUuid(value: string | null | undefined): value is string {
@@ -34,7 +38,9 @@ export async function GET(req: Request) {
     limit: 100,
   });
 
-  const recommendations = rows.filter((row) => row.status === "open" || row.status === "acknowledged");
+  const recommendations = rows
+    .filter((row) => row.status === "open" || row.status === "acknowledged")
+    .map(serializeAiRecommendationForUi);
   return NextResponse.json({ recommendations });
 }
 
@@ -64,5 +70,11 @@ export async function POST(req: Request) {
     sourceRunId: body.sourceRunId?.trim() || null,
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    evidenceSnapshot: serializeAiEvidenceSnapshotForUi(result.evidenceSnapshot),
+    recommendations: result.recommendations.map(serializeAiRecommendationForUi),
+    skippedDuplicates: result.skippedDuplicates,
+    missingData: result.missingData,
+    warnings: result.warnings,
+  });
 }

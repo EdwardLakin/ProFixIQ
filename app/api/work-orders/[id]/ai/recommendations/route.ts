@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { listAiEvidenceSnapshotsForSubject, listAiRecommendationsForSubject } from "@/features/ai/server";
+import {
+  listAiEvidenceSnapshotsForSubject,
+  listAiRecommendationsForSubject,
+  serializeAiEvidenceSnapshotForUi,
+  serializeAiRecommendationForUi,
+} from "@/features/ai/server";
 import { generateWorkOrderEvidenceAndRecommendations } from "@/features/ai/server/domains/workOrders";
 
 type DB = Database;
@@ -70,10 +75,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const latestEvidence = evidenceSnapshots[0] ?? null;
 
   return NextResponse.json({
-    evidenceSnapshot: latestEvidence,
-    recommendations: openRecommendations,
+    evidenceSnapshot: serializeAiEvidenceSnapshotForUi(latestEvidence),
+    recommendations: openRecommendations.map(serializeAiRecommendationForUi),
     skippedDuplicates: [],
-    missingData: Array.isArray(latestEvidence?.missing_data) ? latestEvidence.missing_data : [],
+    missingData: serializeAiEvidenceSnapshotForUi(latestEvidence)?.missingData ?? [],
     warnings: [],
   });
 }
@@ -114,5 +119,11 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     workOrderId: id,
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    evidenceSnapshot: serializeAiEvidenceSnapshotForUi(result.evidenceSnapshot),
+    recommendations: result.recommendations.map(serializeAiRecommendationForUi),
+    skippedDuplicates: result.skippedDuplicates,
+    missingData: result.missingData,
+    warnings: result.warnings,
+  });
 }

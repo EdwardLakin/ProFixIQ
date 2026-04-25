@@ -35,9 +35,24 @@ export async function POST(
   }
 
   try {
+    const { data: scopedWorkOrder, error: scopedWorkOrderError } = await supabase
+      .from("work_orders")
+      .select("shop_id")
+      .eq("id", woId)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    if (scopedWorkOrderError) throw scopedWorkOrderError;
+    if (!scopedWorkOrder?.shop_id) {
+      return NextResponse.json(
+        { ok: false, issues: [{ kind: "missing_wo", message: "WO not found" }] },
+        { status: 404 },
+      );
+    }
+
     const result = await reviewWorkOrder({
       supabase,
       workOrderId: woId,
+      shopId: scopedWorkOrder.shop_id,
       kind: "invoice_review",
     });
 

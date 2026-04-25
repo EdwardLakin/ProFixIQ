@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAiActionPreview, getAiRecommendation, logAiActionEvent, type AiActionPreviewRecord } from "@/features/ai/server";
+import {
+  createAiActionPreview,
+  getAiRecommendation,
+  logAiActionEvent,
+  serializeAiActionPreviewForUi,
+  type AiActionPreviewRecord,
+} from "@/features/ai/server";
 import { AI_ACTION_EVENT_TYPES } from "@/features/ai/server/eventTypes";
 import {
   buildWorkOrderActionPreviewPayload,
@@ -120,8 +126,8 @@ export async function GET(
     });
 
     return NextResponse.json({
-      preview: previews[0] ?? null,
-      previews,
+      preview: previews[0] ? serializeAiActionPreviewForUi(previews[0]) : null,
+      previews: previews.map(serializeAiActionPreviewForUi),
       executionBlocked: true,
       blockedReason: BLOCKED_REASON,
       warnings: [BLOCKED_REASON],
@@ -257,7 +263,7 @@ export async function POST(
     });
 
     return NextResponse.json({
-      preview,
+      preview: serializeAiActionPreviewForUi(preview),
       executionBlocked: true,
       blockedReason: BLOCKED_REASON,
       warnings: normalizePreviewWarnings(payload),
