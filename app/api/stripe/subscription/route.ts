@@ -13,6 +13,7 @@ import {
   resolveCanonicalPlanFromSubscription,
   toCanonicalShopBillingUpdate,
 } from "@/features/stripe/lib/server/canonical-shop-billing";
+import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
 
 type DB = Database;
 
@@ -50,14 +51,70 @@ type NormalizedSubscriptionPayload = {
   matching_subscription_ids?: string[];
   managed_subscription_ids?: string[];
   resolved_subscription_id?: string | null;
+  all_customer_subscription_ids?: string[];
+  subscription_diagnostics?: Array<{
+    subscription_id: string;
+    status: string;
+    customer_id: string | null;
+    livemode: boolean;
+    metadata_shop_id: string | null;
+    excluded_reasons: string[];
+  }>;
+  customer_exists_in_stripe?: boolean;
+  customer_deleted_in_stripe?: boolean;
+  customer_lookup_error?: string | null;
+  likely_mode_mismatch?: boolean;
+  stripe_mode?: "live" | "test" | "unknown";
+  customer_mode?: "live" | "test" | "unknown";
+  hydration_strategy?: "managed_filter" | "single_hydratable_subscription" | "none";
 };
 
 type CanonicalSubscriptionResolution =
-  | { state: "resolved"; subscription: Stripe.Subscription; metadataMatches: boolean; managedSubscriptionIds: string[] }
-  | { state: "no_subscription_found"; managedSubscriptionIds: string[] }
-  | { state: "ambiguous_customer_subscriptions"; subscriptionIds: string[] };
-
-const MANAGED_SUBSCRIPTION_STATUSES = new Set(["trialing", "active", "past_due", "unpaid", "paused"]);
+  | {
+      state: "resolved";
+      subscription: Stripe.Subscription;
+      metadataMatches: boolean;
+      managedSubscriptionIds: string[];
+      allSubscriptionIds: string[];
+      subscriptionDiagnostics: NormalizedSubscriptionPayload["subscription_diagnostics"];
+      customerDiagnostics: {
+        customer_exists_in_stripe: boolean;
+        customer_deleted_in_stripe: boolean;
+        customer_lookup_error: string | null;
+        likely_mode_mismatch: boolean;
+        stripe_mode: "live" | "test" | "unknown";
+        customer_mode: "live" | "test" | "unknown";
+      };
+      hydrationStrategy: "managed_filter" | "single_hydratable_subscription";
+    }
+  | {
+      state: "no_subscription_found";
+      managedSubscriptionIds: string[];
+      allSubscriptionIds: string[];
+      subscriptionDiagnostics: NormalizedSubscriptionPayload["subscription_diagnostics"];
+      customerDiagnostics: {
+        customer_exists_in_stripe: boolean;
+        customer_deleted_in_stripe: boolean;
+        customer_lookup_error: string | null;
+        likely_mode_mismatch: boolean;
+        stripe_mode: "live" | "test" | "unknown";
+        customer_mode: "live" | "test" | "unknown";
+      };
+    }
+  | {
+      state: "ambiguous_customer_subscriptions";
+      subscriptionIds: string[];
+      allSubscriptionIds: string[];
+      subscriptionDiagnostics: NormalizedSubscriptionPayload["subscription_diagnostics"];
+      customerDiagnostics: {
+        customer_exists_in_stripe: boolean;
+        customer_deleted_in_stripe: boolean;
+        customer_lookup_error: string | null;
+        likely_mode_mismatch: boolean;
+        stripe_mode: "live" | "test" | "unknown";
+        customer_mode: "live" | "test" | "unknown";
+      };
+    };
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -113,49 +170,149 @@ async function findCanonicalSubscription(
 ): Promise<CanonicalSubscriptionResolution> {
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
   const customerId = String(shop.stripe_customer_id ?? "").trim();
+  let linkedSubscriptionMismatchDiagnostic: NormalizedSubscriptionPayload["subscription_diagnostics"] = [];
 
   if (subscriptionId) {
-    const byId = await stripe.subscriptions.retrieve(subscriptionId);
-    if (subscriptionMetadataMatchesShop(byId, shop)) {
-      return { state: "resolved", subscription: byId, metadataMatches: true, managedSubscriptionIds: [byId.id] };
+    try {
+      const byId = await stripe.subscriptions.retrieve(subscriptionId);
+      if (subscriptionMetadataMatchesShop(byId, shop)) {
+        return {
+          state: "resolved",
+          subscription: byId,
+          metadataMatches: true,
+          managedSubscriptionIds: [byId.id],
+          allSubscriptionIds: [byId.id],
+          subscriptionDiagnostics: [
+            {
+              subscription_id: byId.id,
+              status: String(byId.status ?? "").trim().toLowerCase() || "unknown",
+              customer_id:
+                typeof byId.customer === "string" ? byId.customer : String(byId.customer?.id ?? "") || null,
+              livemode: Boolean(byId.livemode),
+              metadata_shop_id: String(byId.metadata?.shop_id ?? "").trim() || null,
+              excluded_reasons: [],
+            },
+          ],
+          customerDiagnostics: {
+            customer_exists_in_stripe: true,
+            customer_deleted_in_stripe: false,
+            customer_lookup_error: null,
+            likely_mode_mismatch: false,
+            stripe_mode: byId.livemode ? "live" : "test",
+            customer_mode: "unknown",
+          },
+          hydrationStrategy: "managed_filter",
+        };
+      }
+      linkedSubscriptionMismatchDiagnostic = [
+        {
+          subscription_id: byId.id,
+          status: String(byId.status ?? "").trim().toLowerCase() || "unknown",
+          customer_id: typeof byId.customer === "string" ? byId.customer : String(byId.customer?.id ?? "") || null,
+          livemode: Boolean(byId.livemode),
+          metadata_shop_id: String(byId.metadata?.shop_id ?? "").trim() || null,
+          excluded_reasons: ["subscription_id_mismatch_with_shop_customer_or_metadata"],
+        },
+      ];
+    } catch {
+      // Ignore retrieve failures and continue with deterministic customer-based diagnostics.
     }
   }
 
-  if (!customerId) return { state: "no_subscription_found", managedSubscriptionIds: [] };
-
-  const list = await stripe.subscriptions.list({
-    customer: customerId,
-    status: "all",
-    limit: 20,
-  });
-
-  if (!Array.isArray(list.data) || list.data.length === 0) {
-    return { state: "no_subscription_found", managedSubscriptionIds: [] };
-  }
-
-  const managed = list.data.filter(
-    (subscription) =>
-      MANAGED_SUBSCRIPTION_STATUSES.has(String(subscription.status ?? "").trim().toLowerCase()),
-  );
-
-  const managedSubscriptionIds = managed.map((subscription) => subscription.id);
-
-  if (managed.length === 1) {
+  if (!customerId) {
     return {
-      state: "resolved",
-      subscription: managed[0],
-      metadataMatches: subscriptionMetadataMatchesShop(managed[0], shop),
-      managedSubscriptionIds,
+      state: "no_subscription_found",
+      managedSubscriptionIds: [],
+      allSubscriptionIds: [],
+      subscriptionDiagnostics: [],
+      customerDiagnostics: {
+        customer_exists_in_stripe: false,
+        customer_deleted_in_stripe: false,
+        customer_lookup_error: null,
+        likely_mode_mismatch: false,
+        stripe_mode: "unknown",
+        customer_mode: "unknown",
+      },
     };
   }
 
-  if (managed.length === 0) {
-    return { state: "no_subscription_found", managedSubscriptionIds: [] };
+  const diagnostics = await collectCustomerSubscriptionDiagnostics({
+    stripe,
+    customerId,
+  });
+
+  if (diagnostics.managed_subscription_ids.length === 1) {
+    const managedSub = await stripe.subscriptions.retrieve(diagnostics.managed_subscription_ids[0]!);
+    return {
+      state: "resolved",
+      subscription: managedSub,
+      metadataMatches: subscriptionMetadataMatchesShop(managedSub, shop),
+      managedSubscriptionIds: diagnostics.managed_subscription_ids,
+      allSubscriptionIds: diagnostics.all_subscription_ids,
+      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      customerDiagnostics: {
+        customer_exists_in_stripe: diagnostics.customer.customer_exists,
+        customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+        customer_lookup_error: diagnostics.customer.customer_lookup_error,
+        likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+        stripe_mode: diagnostics.customer.stripe_mode,
+        customer_mode: diagnostics.customer.customer_mode,
+      },
+      hydrationStrategy: "managed_filter",
+    };
+  }
+
+  if (diagnostics.managed_subscription_ids.length === 0 && diagnostics.single_hydratable_subscription_id) {
+    const hydratableSub = await stripe.subscriptions.retrieve(diagnostics.single_hydratable_subscription_id);
+    return {
+      state: "resolved",
+      subscription: hydratableSub,
+      metadataMatches: subscriptionMetadataMatchesShop(hydratableSub, shop),
+      managedSubscriptionIds: diagnostics.managed_subscription_ids,
+      allSubscriptionIds: diagnostics.all_subscription_ids,
+      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      customerDiagnostics: {
+        customer_exists_in_stripe: diagnostics.customer.customer_exists,
+        customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+        customer_lookup_error: diagnostics.customer.customer_lookup_error,
+        likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+        stripe_mode: diagnostics.customer.stripe_mode,
+        customer_mode: diagnostics.customer.customer_mode,
+      },
+      hydrationStrategy: "single_hydratable_subscription",
+    };
+  }
+
+  if (diagnostics.managed_subscription_ids.length > 1) {
+    return {
+      state: "ambiguous_customer_subscriptions",
+      subscriptionIds: diagnostics.managed_subscription_ids,
+      allSubscriptionIds: diagnostics.all_subscription_ids,
+      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      customerDiagnostics: {
+        customer_exists_in_stripe: diagnostics.customer.customer_exists,
+        customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+        customer_lookup_error: diagnostics.customer.customer_lookup_error,
+        likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+        stripe_mode: diagnostics.customer.stripe_mode,
+        customer_mode: diagnostics.customer.customer_mode,
+      },
+    };
   }
 
   return {
-    state: "ambiguous_customer_subscriptions",
-    subscriptionIds: managedSubscriptionIds,
+    state: "no_subscription_found",
+    managedSubscriptionIds: diagnostics.managed_subscription_ids,
+    allSubscriptionIds: diagnostics.all_subscription_ids,
+    subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+    customerDiagnostics: {
+      customer_exists_in_stripe: diagnostics.customer.customer_exists,
+      customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
+      customer_lookup_error: diagnostics.customer.customer_lookup_error,
+      likely_mode_mismatch: diagnostics.customer.likely_mode_mismatch,
+      stripe_mode: diagnostics.customer.stripe_mode,
+      customer_mode: diagnostics.customer.customer_mode,
+    },
   };
 }
 
@@ -295,6 +452,15 @@ export async function GET() {
         matching_subscription_ids: [resolution.subscription.id],
         managed_subscription_ids: resolution.managedSubscriptionIds,
         resolved_subscription_id: resolution.subscription.id,
+        all_customer_subscription_ids: resolution.allSubscriptionIds,
+        subscription_diagnostics: resolution.subscriptionDiagnostics,
+        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        stripe_mode: resolution.customerDiagnostics.stripe_mode,
+        customer_mode: resolution.customerDiagnostics.customer_mode,
+        hydration_strategy: resolution.hydrationStrategy,
       } satisfies NormalizedSubscriptionPayload);
     }
 
@@ -311,6 +477,15 @@ export async function GET() {
         matching_subscription_ids: [],
         managed_subscription_ids: resolution.subscriptionIds,
         resolved_subscription_id: null,
+        all_customer_subscription_ids: resolution.allSubscriptionIds,
+        subscription_diagnostics: resolution.subscriptionDiagnostics,
+        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        stripe_mode: resolution.customerDiagnostics.stripe_mode,
+        customer_mode: resolution.customerDiagnostics.customer_mode,
+        hydration_strategy: "none",
       } satisfies NormalizedSubscriptionPayload);
     }
 
@@ -335,6 +510,15 @@ export async function GET() {
           matching_subscription_ids: unlinked.subscriptionId ? [unlinked.subscriptionId] : [],
           managed_subscription_ids: resolution.managedSubscriptionIds,
           resolved_subscription_id: null,
+          all_customer_subscription_ids: resolution.allSubscriptionIds,
+          subscription_diagnostics: resolution.subscriptionDiagnostics,
+          customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
+          customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
+          customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
+          likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+          stripe_mode: resolution.customerDiagnostics.stripe_mode,
+          customer_mode: resolution.customerDiagnostics.customer_mode,
+          hydration_strategy: "none",
         } satisfies NormalizedSubscriptionPayload);
       }
 
@@ -350,6 +534,15 @@ export async function GET() {
         matching_subscription_ids: [],
         managed_subscription_ids: resolution.managedSubscriptionIds,
         resolved_subscription_id: null,
+        all_customer_subscription_ids: resolution.allSubscriptionIds,
+        subscription_diagnostics: resolution.subscriptionDiagnostics,
+        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        stripe_mode: resolution.customerDiagnostics.stripe_mode,
+        customer_mode: resolution.customerDiagnostics.customer_mode,
+        hydration_strategy: "none",
       } satisfies NormalizedSubscriptionPayload);
     }
 

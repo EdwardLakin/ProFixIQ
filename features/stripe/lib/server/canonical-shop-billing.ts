@@ -6,6 +6,7 @@ import {
   type StripeSubscriptionStatus,
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { PLAN_LOOKUP_KEYS } from "@/features/stripe/lib/stripe/constants";
+import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
 
 type DB = Database;
 
@@ -15,14 +16,6 @@ type ProfileStripeArtifacts = {
   stripe_subscription_id: string | null;
   stripe_checkout_session_id: string | null;
 };
-
-const MANAGED_SUBSCRIPTION_STATUSES = new Set([
-  "trialing",
-  "active",
-  "past_due",
-  "unpaid",
-  "paused",
-]);
 
 type CanonicalPlan = "starter" | "pro" | "enterprise" | "unlimited";
 
@@ -172,18 +165,16 @@ export async function reconcileShopBillingFromUser(params: {
   let subscriptionId = profileSubscriptionId;
 
   if (!subscriptionId && customerId) {
-    const list = await stripe.subscriptions.list({
-      customer: customerId,
-      status: "all",
-      limit: 20,
+    const diagnostics = await collectCustomerSubscriptionDiagnostics({
+      stripe,
+      customerId,
     });
-    const managed = list.data.filter((sub) =>
-      MANAGED_SUBSCRIPTION_STATUSES.has(String(sub.status ?? "").trim().toLowerCase()),
-    );
 
-    if (managed.length === 1) {
-      subscriptionId = managed[0]?.id ?? "";
-    } else if (managed.length === 0) {
+    if (diagnostics.managed_subscription_ids.length === 1) {
+      subscriptionId = diagnostics.managed_subscription_ids[0] ?? "";
+    } else if (diagnostics.managed_subscription_ids.length === 0 && diagnostics.single_hydratable_subscription_id) {
+      subscriptionId = diagnostics.single_hydratable_subscription_id;
+    } else if (diagnostics.managed_subscription_ids.length === 0) {
       return { linked: false, reason: "no_subscription_found" };
     } else {
       return { linked: false, reason: "ambiguous_customer_subscriptions" };
