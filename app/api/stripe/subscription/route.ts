@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
+import { getProfileStripeArtifacts } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 type DB = Database;
 
@@ -27,6 +28,10 @@ type NormalizedSubscriptionPayload = {
   cancel_at_period_end: boolean;
   canceled_at: string | null;
   current_period_end: string | null;
+  linkage_needed?: boolean;
+  linkage_state?: "unlinked_subscription";
+  linked_customer_id?: string | null;
+  linked_subscription_id?: string | null;
 };
 
 function mustEnv(name: string): string {
@@ -115,14 +120,75 @@ async function findCanonicalSubscription(
   return sorted[0] ?? null;
 }
 
+async function findUnlinkedSubscriptionEvidence(args: {
+  stripe: Stripe;
+  supabase: SupabaseClient<DB>;
+  userId: string;
+  shop: ShopStripeScope;
+}): Promise<{ customerId: string | null; subscriptionId: string | null } | null> {
+  const { stripe, supabase, userId, shop } = args;
+  const profile = await getProfileStripeArtifacts(supabase, userId);
+  if (!profile) return null;
+
+  const profileCustomerId = String(profile.stripe_customer_id ?? "").trim() || null;
+  const profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim() || null;
+
+  const canonicalCustomerId = String(shop.stripe_customer_id ?? "").trim() || null;
+  const canonicalSubscriptionId = String(shop.stripe_subscription_id ?? "").trim() || null;
+
+  if (!profileCustomerId && !profileSubscriptionId) return null;
+
+  if (
+    profileCustomerId &&
+    canonicalCustomerId &&
+    profileCustomerId === canonicalCustomerId &&
+    profileSubscriptionId &&
+    canonicalSubscriptionId &&
+    profileSubscriptionId === canonicalSubscriptionId
+  ) {
+    return null;
+  }
+
+  if (profileSubscriptionId) {
+    const sub = await stripe.subscriptions.retrieve(profileSubscriptionId);
+    const subscriptionCustomerId =
+      typeof sub.customer === "string" ? sub.customer : String(sub.customer?.id ?? "").trim() || null;
+    return {
+      customerId: profileCustomerId ?? subscriptionCustomerId,
+      subscriptionId: sub.id,
+    };
+  }
+
+  if (profileCustomerId) {
+    const list = await stripe.subscriptions.list({
+      customer: profileCustomerId,
+      status: "all",
+      limit: 5,
+    });
+    const latest = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null;
+    if (latest) {
+      return { customerId: profileCustomerId, subscriptionId: latest.id };
+    }
+    return { customerId: profileCustomerId, subscriptionId: null };
+  }
+
+  return null;
+}
+
 async function syncShopSubscription(
   supabase: SupabaseClient<DB>,
   shopId: string,
   subscription: Stripe.Subscription,
 ) {
+  const stripeCustomerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : String(subscription.customer?.id ?? "").trim() || null;
+
   const { error } = await supabase
     .from("shops")
     .update({
+      stripe_customer_id: stripeCustomerId,
       stripe_subscription_id: subscription.id,
       stripe_subscription_status: String(subscription.status ?? "").trim() || null,
       stripe_current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
@@ -163,6 +229,23 @@ export async function GET() {
     const canonicalSubscription = await findCanonicalSubscription(stripe, shop);
 
     if (!canonicalSubscription) {
+      const unlinked = await findUnlinkedSubscriptionEvidence({
+        stripe,
+        supabase: access.supabase,
+        userId: access.profile.id,
+        shop,
+      });
+
+      if (unlinked) {
+        return NextResponse.json({
+          ...normalizeShopFallback(shop),
+          linkage_needed: true,
+          linkage_state: "unlinked_subscription",
+          linked_customer_id: unlinked.customerId,
+          linked_subscription_id: unlinked.subscriptionId,
+        } satisfies NormalizedSubscriptionPayload);
+      }
+
       return NextResponse.json(normalizeShopFallback(shop));
     }
 
@@ -207,6 +290,27 @@ export async function POST(req: Request) {
     const canonicalSubscription = await findCanonicalSubscription(stripe, shop);
 
     if (!canonicalSubscription) {
+      const unlinked = await findUnlinkedSubscriptionEvidence({
+        stripe,
+        supabase: access.supabase,
+        userId: access.profile.id,
+        shop,
+      });
+
+      if (unlinked) {
+        return NextResponse.json(
+          {
+            error: "Billing linkage is required before managing this subscription.",
+            ...normalizeShopFallback(shop),
+            linkage_needed: true,
+            linkage_state: "unlinked_subscription",
+            linked_customer_id: unlinked.customerId,
+            linked_subscription_id: unlinked.subscriptionId,
+          },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json(
         {
           error: "No active or trialing subscription was found for this shop.",

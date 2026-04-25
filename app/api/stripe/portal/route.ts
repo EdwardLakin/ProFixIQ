@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
+import { getProfileStripeArtifacts } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 type DB = Database;
 
@@ -92,6 +93,25 @@ export async function POST(req: Request) {
 
     if (!shop) {
       return NextResponse.json({ error: "Shop not found." }, { status: 404 });
+    }
+
+    if (!String(shop.stripe_customer_id ?? "").trim()) {
+      const profile = await getProfileStripeArtifacts(access.supabase, access.profile.id);
+      const profileCustomerId = String(profile?.stripe_customer_id ?? "").trim();
+      const profileSubscriptionId = String(profile?.stripe_subscription_id ?? "").trim();
+
+      if (profileCustomerId || profileSubscriptionId) {
+        return NextResponse.json(
+          {
+            error: "Billing linkage is required before opening the portal.",
+            linkage_needed: true,
+            linkage_state: "unlinked_subscription",
+            linked_customer_id: profileCustomerId || null,
+            linked_subscription_id: profileSubscriptionId || null,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const customerId = await createCustomerIfMissing(stripe, access.supabase, shop);

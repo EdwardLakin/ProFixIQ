@@ -1,54 +1,125 @@
-//features/stripe/api/stripe/checkout/link-user/route.ts
-
 import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import type { Database } from "@shared/types/types/supabase";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
-const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
+type DB = Database;
 
-export async function POST(req: Request) {
+function toStripeId(v: unknown, prefix: string): string | null {
+  if (typeof v === "string" && v.startsWith(prefix)) return v;
+  if (v && typeof v === "object") {
+    const maybeId = (v as { id?: unknown }).id;
+    if (typeof maybeId === "string" && maybeId.startsWith(prefix)) return maybeId;
+  }
+  return null;
+}
+
+export async function handleStripeCheckoutLinkUser(req: Request) {
   try {
-    const body = await req.json();
-    const { sessionId, userId } = body as {
-      sessionId?: string;
-      userId?: string;
-    };
-
-    console.log("📩 Received request to link user:", { sessionId, userId });
-
-    if (!sessionId || !userId) {
-      console.warn("⚠️ Missing sessionId or userId in request body");
-      return NextResponse.json(
-        { error: "Missing sessionId or userId" },
-        { status: 400 },
-      );
+    if (!process.env.STRIPE_SECRET_KEY?.trim()) {
+      return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!session || !session.customer) {
-      console.error("❌ No Stripe customer found in session:", sessionId);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => null)) as { sessionId?: string } | null;
+    const sessionId = String(body?.sessionId ?? "").trim();
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
+    }
+
+    const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription"],
+    });
+
+    const customerId = toStripeId(session.customer, "cus_");
+    const subscriptionId = toStripeId(session.subscription, "sub_");
+
+    if (!customerId && !subscriptionId) {
       return NextResponse.json(
-        { error: "No customer found in session" },
+        { error: "No Stripe billing artifacts found in checkout session" },
         { status: 404 },
       );
     }
 
-    const updated = await stripe.customers.update(session.customer.toString(), {
-      metadata: { supabaseUserId: userId },
-    });
+    if (customerId) {
+      await stripe.customers.update(customerId, {
+        metadata: {
+          supabase_user_id: user.id,
+          supabaseUserId: user.id,
+          source: "profixiq",
+        },
+      });
+    }
 
-    console.log("✅ Successfully linked Stripe customer to userId:", {
-      customerId: updated.id,
-      userId,
-    });
+    if (subscriptionId) {
+      const currentSub =
+        typeof session.subscription === "object" && session.subscription
+          ? session.subscription
+          : await stripe.subscriptions.retrieve(subscriptionId);
 
-    return NextResponse.json({ success: true });
+      await stripe.subscriptions.update(subscriptionId, {
+        metadata: {
+          ...(currentSub.metadata ?? {}),
+          supabase_user_id: user.id,
+          source: "profixiq",
+        },
+      });
+    }
+
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        stripe_checkout_complete: true,
+        stripe_checkout_session_id: sessionId,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+      } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
+      .eq("id", user.id);
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    if (profile?.shop_id) {
+      await reconcileShopBillingFromUser({
+        stripe,
+        supabase,
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      customerId,
+      subscriptionId,
+      shopLinked: Boolean(profile?.shop_id),
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("❌ Stripe Link User Error:", message);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    console.error("[stripe/checkout/link-user] error", err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function POST(req: Request) {
+  return handleStripeCheckoutLinkUser(req);
 }

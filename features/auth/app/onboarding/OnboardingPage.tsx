@@ -125,7 +125,7 @@ export default function OnboardingPage() {
           await fetch("/api/stripe/link-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId: sid, userId: user.id }),
+            body: JSON.stringify({ sessionId: sid }),
           });
         } catch {
           //
