@@ -30,11 +30,19 @@ type NormalizedSubscriptionPayload = {
   current_period_end: string | null;
   trial_end: string | null;
   linkage_needed?: boolean;
-  linkage_state?: "unlinked_subscription";
+  linkage_state?: "unlinked_subscription" | "no_subscription_found" | "ambiguous_customer_subscriptions";
   linked_customer_id?: string | null;
   linked_subscription_id?: string | null;
   linked_checkout_session_id?: string | null;
+  managed_subscription_ids?: string[];
 };
+
+type CanonicalSubscriptionResolution =
+  | { state: "resolved"; subscription: Stripe.Subscription }
+  | { state: "no_subscription_found" }
+  | { state: "ambiguous_customer_subscriptions"; subscriptionIds: string[] };
+
+const MANAGED_SUBSCRIPTION_STATUSES = new Set(["trialing", "active", "past_due", "unpaid", "paused"]);
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -73,55 +81,61 @@ function normalizeShopFallback(shop: ShopStripeScope): NormalizedSubscriptionPay
   };
 }
 
+function subscriptionMatchesShop(subscription: Stripe.Subscription, shop: ShopStripeScope): boolean {
+  const customerId = String(shop.stripe_customer_id ?? "").trim();
+  const subscriptionCustomerId =
+    typeof subscription.customer === "string" ? subscription.customer : String(subscription.customer?.id ?? "").trim();
+  const metadataShopId = String(subscription.metadata?.shop_id ?? "").trim();
+  const customerMatches = !customerId || subscriptionCustomerId === customerId;
+  const metadataMatches = metadataShopId === "" || metadataShopId === shop.id;
+  return customerMatches && metadataMatches;
+}
+
 async function findCanonicalSubscription(
   stripe: Stripe,
   shop: ShopStripeScope,
-): Promise<Stripe.Subscription | null> {
+): Promise<CanonicalSubscriptionResolution> {
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
   const customerId = String(shop.stripe_customer_id ?? "").trim();
 
   if (subscriptionId) {
     const byId = await stripe.subscriptions.retrieve(subscriptionId);
-    const subscriptionCustomerId =
-      typeof byId.customer === "string" ? byId.customer : String(byId.customer?.id ?? "").trim();
-    const metadataShopId = String(byId.metadata?.shop_id ?? "").trim();
-
-    const customerMatches = !customerId || (subscriptionCustomerId && subscriptionCustomerId === customerId);
-    const metadataMatches = metadataShopId === "" || metadataShopId === shop.id;
-
-    if (customerMatches && metadataMatches) {
-      return byId;
+    if (subscriptionMatchesShop(byId, shop)) {
+      return { state: "resolved", subscription: byId };
     }
   }
 
-  if (!customerId) return null;
+  if (!customerId) return { state: "no_subscription_found" };
 
   const list = await stripe.subscriptions.list({
     customer: customerId,
     status: "all",
-    limit: 10,
+    limit: 20,
   });
 
   if (!Array.isArray(list.data) || list.data.length === 0) {
-    return null;
+    return { state: "no_subscription_found" };
   }
 
-  const preferredStatuses = new Set(["trialing", "active", "past_due", "unpaid", "paused"]);
-  const sorted = [...list.data].sort((a, b) => {
-    const aPreferred = preferredStatuses.has(String(a.status ?? ""));
-    const bPreferred = preferredStatuses.has(String(b.status ?? ""));
-    if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
-    return (b.created ?? 0) - (a.created ?? 0);
-  });
+  const managed = list.data.filter(
+    (subscription) =>
+      MANAGED_SUBSCRIPTION_STATUSES.has(String(subscription.status ?? "").trim().toLowerCase()) &&
+      subscriptionMatchesShop(subscription, shop),
+  );
 
-  for (const subscription of sorted) {
-    const metadataShopId = String(subscription.metadata?.shop_id ?? "").trim();
-    if (!metadataShopId || metadataShopId === shop.id) {
-      return subscription;
-    }
+  if (managed.length === 1) {
+    return { state: "resolved", subscription: managed[0] };
   }
 
-  return sorted[0] ?? null;
+  if (managed.length === 0) {
+    return { state: "no_subscription_found" };
+  }
+
+  const subscriptionIds = managed.map((subscription) => subscription.id);
+  return {
+    state: "ambiguous_customer_subscriptions",
+    subscriptionIds,
+  };
 }
 
 async function findUnlinkedSubscriptionEvidence(args: {
@@ -245,9 +259,26 @@ export async function GET() {
       return NextResponse.json({ error: "Shop not found." }, { status: 404 });
     }
 
-    const canonicalSubscription = await findCanonicalSubscription(stripe, shop);
+    const resolution = await findCanonicalSubscription(stripe, shop);
 
-    if (!canonicalSubscription) {
+    if (resolution.state === "resolved") {
+      await syncShopSubscription(access.supabase, shop.id, resolution.subscription);
+      return NextResponse.json(normalizeSubscription(resolution.subscription));
+    }
+
+    if (resolution.state === "ambiguous_customer_subscriptions") {
+      return NextResponse.json({
+        ...normalizeShopFallback(shop),
+        linkage_needed: true,
+        linkage_state: "ambiguous_customer_subscriptions",
+        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_subscription_id: null,
+        linked_checkout_session_id: null,
+        managed_subscription_ids: resolution.subscriptionIds,
+      } satisfies NormalizedSubscriptionPayload);
+    }
+
+    if (resolution.state === "no_subscription_found") {
       const unlinked = await findUnlinkedSubscriptionEvidence({
         stripe,
         supabase: access.supabase,
@@ -266,12 +297,17 @@ export async function GET() {
         } satisfies NormalizedSubscriptionPayload);
       }
 
-      return NextResponse.json(normalizeShopFallback(shop));
+      return NextResponse.json({
+        ...normalizeShopFallback(shop),
+        linkage_needed: true,
+        linkage_state: "no_subscription_found",
+        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_subscription_id: null,
+        linked_checkout_session_id: null,
+      } satisfies NormalizedSubscriptionPayload);
     }
 
-    await syncShopSubscription(access.supabase, shop.id, canonicalSubscription);
-
-    return NextResponse.json(normalizeSubscription(canonicalSubscription));
+    return NextResponse.json(normalizeShopFallback(shop));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to resolve subscription.";
     console.error("[stripe/subscription:get] error", error);
@@ -307,9 +343,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Shop not found." }, { status: 404 });
     }
 
-    const canonicalSubscription = await findCanonicalSubscription(stripe, shop);
+    const resolution = await findCanonicalSubscription(stripe, shop);
 
-    if (!canonicalSubscription) {
+    if (resolution.state !== "resolved") {
       const unlinked = await findUnlinkedSubscriptionEvidence({
         stripe,
         supabase: access.supabase,
@@ -332,13 +368,37 @@ export async function POST(req: Request) {
         );
       }
 
+      if (resolution.state === "ambiguous_customer_subscriptions") {
+        return NextResponse.json(
+          {
+            error: "Multiple current managed subscriptions were found for this customer.",
+            ...normalizeShopFallback(shop),
+            linkage_needed: true,
+            linkage_state: "ambiguous_customer_subscriptions",
+            linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+            linked_subscription_id: null,
+            linked_checkout_session_id: null,
+            managed_subscription_ids: resolution.subscriptionIds,
+          },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json(
         {
           error: "No active or trialing subscription was found for this shop.",
+          ...normalizeShopFallback(shop),
+          linkage_needed: true,
+          linkage_state: "no_subscription_found",
+          linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+          linked_subscription_id: null,
+          linked_checkout_session_id: null,
         },
-        { status: 400 },
+        { status: 409 },
       );
     }
+
+    const canonicalSubscription = resolution.subscription;
 
     if (canonicalSubscription.status !== "active" && canonicalSubscription.status !== "trialing") {
       return NextResponse.json(
