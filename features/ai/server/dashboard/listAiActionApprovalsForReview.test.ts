@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as types from "@/features/ai/server/types";
 import { listAiActionApprovalsForReview } from "./listAiActionApprovalsForReview";
+import { expectNoBannedDtoKeys, sortedKeys } from "../../../../tests/ai-dto-test-helpers";
 
 const ACTOR = { shopId: "shop_1", actorId: "actor_1", source: "manual" as const };
 
@@ -207,6 +208,31 @@ describe("listAiActionApprovalsForReview", () => {
     expect(first.owner_pin_verification_ref).toBeUndefined();
     expect(first.snapshot).toBeUndefined();
     expect(first.executionBlocked).toBe(true);
+    expect(sortedKeys(first)).toEqual([
+      "approvalRequired",
+      "decidedAt",
+      "decidedByLabel",
+      "description",
+      "domain",
+      "executionBlocked",
+      "id",
+      "ownerPinProofAttached",
+      "ownerPinRequired",
+      "previewId",
+      "previewStatus",
+      "recommendationId",
+      "recommendationStatus",
+      "requestedAt",
+      "requestedByLabel",
+      "riskLevel",
+      "status",
+      "subjectHref",
+      "subjectId",
+      "subjectType",
+      "title",
+    ]);
+    expectNoBannedDtoKeys(first);
+    expectNoBannedDtoKeys(result);
   });
 
   it("returns summary counts and supports domain + risk filters", async () => {

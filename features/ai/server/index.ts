@@ -8,6 +8,7 @@ export * from "./actionEvents";
 export * from "./safeActions";
 export * from "./ownerPinProof";
 export * from "./serializers";
+export * from "./safeDisplay";
 export * from "./domains/workOrders";
 export * from "./dashboard";
 export * from "./maintenance";

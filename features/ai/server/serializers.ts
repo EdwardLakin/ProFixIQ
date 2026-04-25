@@ -1,4 +1,5 @@
 import { normalizeArrayJson, normalizeObjectJson, type AiActionApprovalRecord, type AiActionPreviewRecord, type AiEvidenceSnapshotRecord, type AiRecommendationRecord } from "./types";
+import { sanitizeDisplayText } from "./safeDisplay";
 
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -79,16 +80,16 @@ export function serializeAiRecommendationForUi(recommendation: AiRecommendationR
 
   return {
     id: recommendation.id,
-    title: recommendation.title,
-    summary: recommendation.summary ?? null,
+    title: sanitizeDisplayText(recommendation.title, "Recommendation"),
+    summary: recommendation.summary ? sanitizeDisplayText(recommendation.summary, "") || null : null,
     priority: recommendation.priority,
     confidence: typeof recommendation.confidence === "number" ? recommendation.confidence : null,
     risk_tier: recommendation.risk_tier,
     status: recommendation.status,
     recommendation_type: recommendation.recommendation_type,
     recommended_action: {
-      label: typeof recommendedAction.label === "string" ? recommendedAction.label : undefined,
-      details: typeof recommendedAction.details === "string" ? recommendedAction.details : undefined,
+      label: sanitizeDisplayText(recommendedAction.label, "") || undefined,
+      details: sanitizeDisplayText(recommendedAction.details, "") || undefined,
     },
     missing_data: normalizeStringArray(recommendation.missing_data),
     created_at: recommendation.created_at,
@@ -126,13 +127,9 @@ export function serializeAiActionPreviewForUi(preview: AiActionPreviewRecord): A
   const persistedLabels = normalizeSideEffectLabels(preview.side_effects);
   const sideEffectLabels = persistedLabels.length > 0 ? persistedLabels : payloadLabels;
 
-  const title =
-    (typeof previewPayload.label === "string" && previewPayload.label.trim().length > 0 ? previewPayload.label.trim() : null)
-    ?? `Preview: ${preview.action_type}`;
+  const title = sanitizeDisplayText(previewPayload.label, `Preview: ${preview.action_type}`);
 
-  const description = typeof previewPayload.description === "string" && previewPayload.description.trim().length > 0
-    ? previewPayload.description.trim()
-    : null;
+  const description = sanitizeDisplayText(previewPayload.description, "") || null;
 
   return {
     previewId: preview.id,

@@ -1,5 +1,6 @@
 import type { Json } from "@shared/types/types/supabase";
 import { ensureActorContext, fromTable, type AiActorContext, type AiServerClient } from "@/features/ai/server/types";
+import { sanitizeDisplayText } from "@/features/ai/server/safeDisplay";
 
 export type AiApprovalInboxStatus = "pending" | "approved" | "rejected" | "expired";
 export type AiApprovalInboxDomainFilter = "all" | "work_orders" | "shop_boost";
@@ -125,22 +126,8 @@ function toApprovalStatus(status: string): AiApprovalInboxStatus | null {
   return null;
 }
 
-const SENSITIVE_PREVIEW_TEXT_PATTERN = /\b(token|secret|owner[_\s-]?pin|pin|hash|proof|owner[_\s-]?pin[_\s-]?verification[_\s-]?ref|ownerPinProofRef)\b/i;
-
-function looksLikeBlob(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length > 280) return true;
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) return true;
-  return false;
-}
-
 function safePreviewText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (SENSITIVE_PREVIEW_TEXT_PATTERN.test(trimmed)) return null;
-  if (looksLikeBlob(trimmed)) return null;
-  return trimmed;
+  return sanitizeDisplayText(value, "") || null;
 }
 
 function parsePreviewPayload(value: Json): { label: string | null; description: string | null; ownerPinProofAttached: boolean } {
@@ -286,8 +273,14 @@ export async function listAiActionApprovalsForReview(
       const recommendation = preview.recommendation_id ? recommendationsById.get(preview.recommendation_id) : undefined;
       const previewPayload = parsePreviewPayload(preview.preview_payload);
 
-      const title = recommendation?.title ?? previewPayload.label ?? fallbackInboxTitle(preview);
-      const description = recommendation?.summary ?? previewPayload.description ?? fallbackInboxDescription(preview);
+      const title = sanitizeDisplayText(
+        recommendation?.title ?? previewPayload.label,
+        fallbackInboxTitle(preview),
+      );
+      const description = sanitizeDisplayText(
+        recommendation?.summary ?? previewPayload.description,
+        fallbackInboxDescription(preview),
+      );
 
       const inboxRow: AiApprovalInboxRow = {
         id: row.id,
