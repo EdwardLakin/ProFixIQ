@@ -62,7 +62,7 @@ async function countSuggestions(input: {
       .eq("shop_id", input.shopId)
       .eq("intake_id", input.intakeId),
     input.supabase
-      .from("staff_invite_suggestions")
+      .from("v_staff_invites_common")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .eq("intake_id", input.intakeId),
@@ -70,7 +70,16 @@ async function countSuggestions(input: {
 
   if (menu.error) throw new Error(menu.error.message);
   if (inspection.error) throw new Error(inspection.error.message);
-  if (staff.error) throw new Error(staff.error.message);
+  let staffCount = staff.count ?? 0;
+  if (staff.error) {
+    const { count: candidateCount, error: candidateError } = await input.supabase
+      .from("staff_invite_candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", input.shopId)
+      .eq("intake_id", input.intakeId);
+    if (candidateError) throw new Error(candidateError.message);
+    staffCount = candidateCount ?? 0;
+  }
 
   const menuRows = menu.data ?? [];
   const inspectionRows = inspection.data ?? [];
@@ -81,7 +90,7 @@ async function countSuggestions(input: {
   return {
     menuCount: menu.count ?? 0,
     inspectionCount: inspection.count ?? 0,
-    staffCount: staff.count ?? 0,
+    staffCount,
     menuHigh,
     inspectionHigh,
   };
@@ -170,7 +179,7 @@ export function buildShopBoostAiEvidence(input: {
       { table: "shop_boost_intakes", field: "intake_basics.importSummary" },
       { table: "menu_item_suggestions", id: input.intake.id, field: "intake_id" },
       { table: "inspection_template_suggestions", id: input.intake.id, field: "intake_id" },
-      { table: "staff_invite_suggestions", id: input.intake.id, field: "intake_id" },
+      { table: "v_staff_invites_common", id: input.intake.id, field: "intake_id" },
     ],
     missingData,
   };

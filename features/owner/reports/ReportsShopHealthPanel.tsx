@@ -47,6 +47,15 @@ type ShopBoostSuggestionRow = {
   reason: string | null;
   created_at: string;
 };
+
+type StaffInviteCommonRow = Pick<
+  Database["public"]["Views"]["v_staff_invites_common"]["Row"],
+  "id" | "intake_id" | "shop_id" | "name" | "full_name" | "role" | "notes" | "confidence" | "created_at" | "source_type" | "status"
+>;
+type StaffInviteCandidateRow = Pick<
+  Database["public"]["Tables"]["staff_invite_candidates"]["Row"],
+  "id" | "intake_id" | "shop_id" | "full_name" | "role" | "notes" | "confidence" | "created_at"
+>;
 type CanonicalImportStats = {
   staffSuggestions: number;
   staffCandidates: number;
@@ -203,28 +212,86 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
           ? suggestionRes.data
           : fallbackSuggestionRes?.data) as ShopBoostSuggestionRow[] | null ?? [];
 
-      const staffBaseQuery = supabase
-        .from("staff_invite_suggestions")
-        .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+      const staffCommonBaseQuery = supabase
+        .from("v_staff_invites_common")
+        .select("id,intake_id,shop_id,name,full_name,role,notes,confidence,created_at,source_type,status")
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(160);
 
-      const staffRes = intakeId ? await staffBaseQuery.eq("intake_id", intakeId) : await staffBaseQuery;
-      const fallbackStaffRes = intakeId && ((staffRes.data?.length ?? 0) === 0)
-        ? await supabase
-            .from("staff_invite_suggestions")
-            .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
-            .eq("shop_id", shopId)
-            .order("created_at", { ascending: false })
-            .limit(160)
-        : null;
+      const staffCommonRes = intakeId
+        ? await staffCommonBaseQuery.eq("intake_id", intakeId)
+        : await staffCommonBaseQuery;
+      const fallbackStaffCommonRes =
+        intakeId && ((staffCommonRes.data?.length ?? 0) === 0) && !staffCommonRes.error
+          ? await supabase
+              .from("v_staff_invites_common")
+              .select("id,intake_id,shop_id,name,full_name,role,notes,confidence,created_at,source_type,status")
+              .eq("shop_id", shopId)
+              .order("created_at", { ascending: false })
+              .limit(160)
+          : null;
 
-      if (staffRes?.error) throw staffRes.error;
-      if (fallbackStaffRes?.error) throw fallbackStaffRes.error;
+      let staffCommonRows: StaffInviteCommonRow[] = [];
+      if (!staffCommonRes.error) {
+        staffCommonRows =
+          ((staffCommonRes.data?.length ?? 0) > 0 ? staffCommonRes.data : fallbackStaffCommonRes?.data) ?? [];
+      }
+      if (fallbackStaffCommonRes?.error) throw fallbackStaffCommonRes.error;
 
-      const staffRows = ((staffRes.data?.length ?? 0) > 0 ? staffRes.data : fallbackStaffRes?.data) ?? [];
-      const prioritizedStaffRows = staffRows
+      const shouldFallbackToCandidates = Boolean(staffCommonRes.error) || staffCommonRows.length === 0;
+      let staffCandidateRows: StaffInviteCandidateRow[] = [];
+      if (shouldFallbackToCandidates) {
+        const staffCandidateBaseQuery = supabase
+          .from("staff_invite_candidates")
+          .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+          .eq("shop_id", shopId)
+          .order("created_at", { ascending: false })
+          .limit(160);
+
+        const staffCandidateRes = intakeId
+          ? await staffCandidateBaseQuery.eq("intake_id", intakeId)
+          : await staffCandidateBaseQuery;
+        const fallbackStaffCandidateRes =
+          intakeId && ((staffCandidateRes.data?.length ?? 0) === 0)
+            ? await supabase
+                .from("staff_invite_candidates")
+                .select("id,intake_id,shop_id,full_name,role,notes,confidence,created_at")
+                .eq("shop_id", shopId)
+                .order("created_at", { ascending: false })
+                .limit(160)
+            : null;
+        if (staffCandidateRes.error) throw staffCandidateRes.error;
+        if (fallbackStaffCandidateRes?.error) throw fallbackStaffCandidateRes.error;
+        staffCandidateRows =
+          ((staffCandidateRes.data?.length ?? 0) > 0 ? staffCandidateRes.data : fallbackStaffCandidateRes?.data) ?? [];
+      }
+
+      const prioritizedStaffRows = (staffCommonRows.length > 0
+        ? staffCommonRows.map((row) => ({
+            id: row.id,
+            intake_id: row.intake_id,
+            shop_id: row.shop_id,
+            name: row.name,
+            full_name: row.full_name,
+            role: row.role,
+            notes: row.notes,
+            confidence: row.confidence,
+            created_at: row.created_at,
+            source_type: row.source_type,
+          }))
+        : staffCandidateRows.map((row) => ({
+            id: row.id,
+            intake_id: row.intake_id,
+            shop_id: row.shop_id,
+            name: row.full_name,
+            full_name: row.full_name,
+            role: row.role,
+            notes: row.notes,
+            confidence: row.confidence,
+            created_at: row.created_at,
+            source_type: "candidate",
+          })))
         .slice()
         .sort((a, b) => {
           const aMatchesIntake = intakeId && a.intake_id === intakeId ? 1 : 0;
@@ -237,10 +304,10 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       const staffFromBase: ShopBoostSuggestionRow[] =
         prioritizedStaffRows.map((row) => ({
           suggestion_type: "staff_invite",
-          id: String(row.id),
-          shop_id: String(row.shop_id),
+          id: String(row.id ?? `${row.source_type ?? "staff"}-${row.intake_id ?? "none"}-${row.full_name ?? "unknown"}`),
+          shop_id: String(row.shop_id ?? shopId),
           intake_id: row.intake_id,
-          name: row.full_name ?? row.role ?? "Staff invite",
+          name: row.name ?? row.full_name ?? row.role ?? "Staff invite",
           category: row.role ?? null,
           price_suggestion: null,
           labor_hours_suggestion: null,
@@ -277,7 +344,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
         const hasCanonicalCountError = canonicalCounts.some((res) => Boolean(res.error));
         setCanonicalStats({
           staffSuggestions: staffFromBase.length,
-          staffCandidates: 0,
+          staffCandidates: prioritizedStaffRows.filter((row) => row.source_type === "candidate").length,
           customers: hasCanonicalCountError ? 0 : canonicalCounts[0].count ?? 0,
           vehicles: hasCanonicalCountError ? 0 : canonicalCounts[1].count ?? 0,
           workOrders: hasCanonicalCountError ? 0 : canonicalCounts[2].count ?? 0,
