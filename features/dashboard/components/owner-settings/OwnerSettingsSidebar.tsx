@@ -20,6 +20,9 @@ type BillingDisplayStatus =
   | StripeSubStatus
   | "linkage_needed"
   | "subscription_found_not_linked"
+  | "ambiguous_customer_subscriptions"
+  | "no_subscription_found"
+  | "metadata_mismatch"
   | "sync_needed";
 
 type ShopLocationRow = {
@@ -151,6 +154,8 @@ export default function OwnerSettingsSidebar({
   const isLinkageState =
     billingDisplayStatus === "linkage_needed" ||
     billingDisplayStatus === "subscription_found_not_linked" ||
+    billingDisplayStatus === "ambiguous_customer_subscriptions" ||
+    billingDisplayStatus === "no_subscription_found" ||
     billingDisplayStatus === "sync_needed";
   const manageSubscriptionLoading = hasManagedSubscription ? portalLoading : checkoutLoading;
 
