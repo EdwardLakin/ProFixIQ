@@ -49,19 +49,21 @@ export async function PATCH(req: Request, context: RouteContext) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ ok: false, error: result.error ?? "Materialization failed.", item: result.item }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: result.error ?? "Materialization failed.",
+        item: result.item,
+        appliedResult: result.appliedResult,
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({
     ok: true,
     item: result.item,
     materializedRecord: result.materializedRecord,
-    appliedResult: {
-      reviewItemId: result.item?.id ?? id,
-      domain: result.item?.domain ?? null,
-      status: result.item?.status ?? null,
-      resolutionAction: result.item?.resolution_action ?? body.resolution_action ?? "ignored",
-      materializedRecord: result.materializedRecord ?? null,
-    },
+    appliedResult: result.appliedResult,
   });
 }
