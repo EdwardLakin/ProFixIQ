@@ -52,5 +52,16 @@ export async function PATCH(req: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: result.error ?? "Materialization failed.", item: result.item }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, item: result.item, materializedRecord: result.materializedRecord });
+  return NextResponse.json({
+    ok: true,
+    item: result.item,
+    materializedRecord: result.materializedRecord,
+    appliedResult: {
+      reviewItemId: result.item?.id ?? id,
+      domain: result.item?.domain ?? null,
+      status: result.item?.status ?? null,
+      resolutionAction: result.item?.resolution_action ?? body.resolution_action ?? "ignored",
+      materializedRecord: result.materializedRecord ?? null,
+    },
+  });
 }
