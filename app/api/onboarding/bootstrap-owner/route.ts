@@ -5,6 +5,8 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 import { OWNER_PIN_PURPOSES, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 type DB = Database;
 
@@ -107,6 +109,24 @@ export async function POST(req: Request) {
         { msg },
         { status: 400 },
       );
+    }
+
+    if (process.env.STRIPE_SECRET_KEY?.trim()) {
+      try {
+        const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
+        await reconcileShopBillingFromUser({
+          stripe,
+          supabase,
+          userId: user.id,
+          shopId,
+        });
+      } catch (billingLinkErr) {
+        console.error("onboarding.bootstrap_owner billing reconciliation failed", {
+          userId: user.id,
+          shopId,
+          error: billingLinkErr,
+        });
+      }
     }
 
     const res = NextResponse.json({ ok: true, shop_id: shopId }, { status: 200 });

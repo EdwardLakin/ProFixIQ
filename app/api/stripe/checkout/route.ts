@@ -16,6 +16,7 @@ type CheckoutPayload = {
   planKey?: string;
   priceId?: string;
   shopId?: string | null;
+  supabaseUserId?: string | null;
   successPath?: string;
   cancelPath?: string;
   enableTrial?: boolean;
@@ -203,6 +204,9 @@ export async function POST(req: Request) {
     const trialDays = clampTrialDays(body.trialDays, envTrialDays());
 
     const couponId = String(process.env.STRIPE_FOUNDING_COUPON_ID ?? "").trim();
+    const requestedMetadataShopId = String(body.shopId ?? "").trim();
+    const requestedMetadataUserId = String(body.supabaseUserId ?? "").trim();
+
     const applyFoundingDiscount =
       Boolean(couponId) && body.applyFoundingDiscount !== false;
 
@@ -225,6 +229,8 @@ export async function POST(req: Request) {
             trial_days: enableTrial ? String(trialDays) : "0",
             demo_id: String(body.demoId ?? "").trim() || "",
             intake_id: String(body.intakeId ?? "").trim() || "",
+            shop_id: requestedMetadataShopId || "",
+            supabase_user_id: requestedMetadataUserId || "",
           },
         },
         metadata: {
@@ -232,6 +238,8 @@ export async function POST(req: Request) {
           source: "pricing_cta",
           demo_id: String(body.demoId ?? "").trim() || "",
           intake_id: String(body.intakeId ?? "").trim() || "",
+          shop_id: requestedMetadataShopId || "",
+          supabase_user_id: requestedMetadataUserId || "",
         },
       });
 

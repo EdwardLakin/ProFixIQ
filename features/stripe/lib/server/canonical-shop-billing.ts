@@ -1,0 +1,139 @@
+import Stripe from "stripe";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+import {
+  parseStripeSubscriptionStatus,
+  type StripeSubscriptionStatus,
+} from "@/features/stripe/lib/stripe/subscriptionStatus";
+
+type DB = Database;
+
+type ProfileStripeArtifacts = {
+  shop_id: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+};
+
+function unixToIsoOrNull(v: number | null | undefined): string | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null;
+  return new Date(v * 1000).toISOString();
+}
+
+function toShopStripeStatus(v: unknown): StripeSubscriptionStatus | null {
+  const parsed = parseStripeSubscriptionStatus(v);
+  return parsed === "unknown" ? null : parsed;
+}
+
+export async function getProfileStripeArtifacts(
+  supabase: SupabaseClient<DB>,
+  userId: string,
+): Promise<ProfileStripeArtifacts | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("shop_id, stripe_customer_id, stripe_subscription_id")
+    .eq("id", userId)
+    .maybeSingle<ProfileStripeArtifacts>();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? null;
+}
+
+export async function syncCanonicalShopBilling(params: {
+  stripe: Stripe;
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  customerId: string | null;
+  subscriptionId: string;
+  checkoutSessionId?: string | null;
+}): Promise<void> {
+  const { stripe, supabase, shopId, customerId, subscriptionId, checkoutSessionId } = params;
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+
+  const { error } = await supabase
+    .from("shops")
+    .update({
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      stripe_subscription_status: toShopStripeStatus(sub.status),
+      stripe_trial_end: unixToIsoOrNull(sub.trial_end ?? null),
+      stripe_current_period_end: unixToIsoOrNull(sub.current_period_end ?? null),
+      ...(checkoutSessionId ? { stripe_checkout_session_id: checkoutSessionId } : {}),
+    } as unknown as DB["public"]["Tables"]["shops"]["Update"])
+    .eq("id", shopId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function reconcileShopBillingFromUser(params: {
+  stripe: Stripe;
+  supabase: SupabaseClient<DB>;
+  userId: string;
+  shopId: string;
+}): Promise<{ linked: boolean; reason?: string }> {
+  const { stripe, supabase, userId, shopId } = params;
+  const profile = await getProfileStripeArtifacts(supabase, userId);
+  if (!profile) return { linked: false, reason: "profile_not_found" };
+
+  const profileCustomerId = String(profile.stripe_customer_id ?? "").trim();
+  const profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim();
+
+  if (!profileCustomerId && !profileSubscriptionId) {
+    return { linked: false, reason: "no_profile_stripe_artifacts" };
+  }
+
+  let customerId = profileCustomerId || null;
+  let subscriptionId = profileSubscriptionId;
+
+  if (!subscriptionId && customerId) {
+    const list = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 10,
+    });
+    const sorted = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+    subscriptionId = sorted[0]?.id ?? "";
+  }
+
+  if (!subscriptionId) {
+    return { linked: false, reason: "no_subscription_found" };
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  customerId =
+    customerId ||
+    (typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null);
+
+  if (customerId) {
+    await stripe.customers.update(customerId, {
+      metadata: {
+        shop_id: shopId,
+        supabase_user_id: userId,
+        source: "profixiq",
+      },
+    });
+  }
+
+  await stripe.subscriptions.update(subscriptionId, {
+    metadata: {
+      ...(subscription.metadata ?? {}),
+      shop_id: shopId,
+      supabase_user_id: userId,
+      source: "profixiq",
+    },
+  });
+
+  await syncCanonicalShopBilling({
+    stripe,
+    supabase,
+    shopId,
+    customerId,
+    subscriptionId,
+  });
+
+  return { linked: true };
+}
