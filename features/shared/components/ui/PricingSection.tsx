@@ -5,7 +5,7 @@
 import type { FC } from "react";
 import { useMemo, useState } from "react";
 import { Check, Sparkles, Timer } from "lucide-react";
-import { PRICE_IDS, type PlanKey } from "@/features/stripe/lib/stripe/constants";
+import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -14,7 +14,7 @@ import { PRICE_IDS, type PlanKey } from "@/features/stripe/lib/stripe/constants"
 export type BillingInterval = "monthly" | "yearly";
 
 export type CheckoutPayload = {
-  priceId: string;
+  planKey: PlanKey;
   interval: BillingInterval;
 };
 
@@ -101,15 +101,13 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
     [],
   );
 
-  const pickPriceId = (key: PlanKey) => PRICE_IDS[key].monthly;
-
   async function handlePlanClick(key: PlanKey): Promise<void> {
     if (busyKey) return;
     setBusyKey(key);
 
     try {
       await onCheckout({
-        priceId: pickPriceId(key),
+        planKey: key,
         interval,
       });
     } catch (err) {
