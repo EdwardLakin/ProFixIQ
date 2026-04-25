@@ -712,6 +712,19 @@ export async function resolveAndMaterializeReviewItem(args: {
   };
 }
 
+type ReviewMaterializationOutcome = {
+  id: string;
+  ok: boolean;
+  error?: string;
+  appliedResult?: {
+    reviewItemId: string;
+    domain: ReviewItemRow["domain"] | null;
+    status: ReviewItemRow["status"] | null;
+    resolutionAction: ResolutionAction;
+    materializedRecord: Record<string, unknown> | null;
+  };
+};
+
 async function replayDependentRows(args: { supabase: AdminClient; shopId: string; intakeId: string; }): Promise<void> {
   const { supabase, shopId, intakeId } = args;
   const { data: replayCandidates } = await supabase
@@ -783,7 +796,7 @@ export async function applyHighConfidenceRecommendations(args: {
   userId: string;
   intakeId?: string;
   threshold?: number;
-}): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
+}): Promise<ReviewMaterializationOutcome[]> {
   const supabase = createAdminSupabase();
   const threshold = Math.max(0, Math.min(0.99, args.threshold ?? 0.85));
 
@@ -800,7 +813,7 @@ export async function applyHighConfidenceRecommendations(args: {
   if (args.intakeId) query = query.eq("intake_id", args.intakeId);
   const { data } = await query;
 
-  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  const results: ReviewMaterializationOutcome[] = [];
   for (const row of (data ?? []) as ReviewItemActionRow[]) {
     const confidence = Number(row.recommendation_confidence ?? 0);
     if (confidence < 0.85) continue;
@@ -816,7 +829,18 @@ export async function applyHighConfidenceRecommendations(args: {
       resolutionAction: action,
       ignoreReasonCode: action === "ignored" ? "other" : undefined,
     });
-    results.push({ id: String(row.id), ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+    results.push({
+      id: String(row.id),
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      appliedResult: {
+        reviewItemId: result.item?.id ?? String(row.id),
+        domain: result.item?.domain ?? null,
+        status: result.item?.status ?? null,
+        resolutionAction: action,
+        materializedRecord: result.materializedRecord ?? null,
+      },
+    });
   }
 
   return results;
@@ -828,7 +852,7 @@ export async function reprocessReviewItems(args: {
   intakeId?: string;
   mode: "failed" | "unresolved" | "updated_matches";
   reprocessReason?: string;
-}): Promise<{ resetCount: number; results: Array<{ id: string; ok: boolean; error?: string }> }> {
+}): Promise<{ resetCount: number; results: ReviewMaterializationOutcome[] }> {
   const supabase = createAdminSupabase();
   let statuses: string[] = [];
   if (args.mode === "failed") statuses = ["failed_materialization"];
@@ -868,7 +892,7 @@ export async function reprocessReviewItems(args: {
     });
   }
 
-  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  const results: ReviewMaterializationOutcome[] = [];
   for (const row of (candidates ?? []) as ReviewItemCandidateRow[]) {
     const recommended = toRecommendedAction(row.recommended_action);
     const action = toResolutionAction(recommended);
@@ -879,7 +903,18 @@ export async function reprocessReviewItems(args: {
       resolutionAction: action,
       ignoreReasonCode: action === "ignored" ? "other" : undefined,
     });
-    results.push({ id: String(row.id), ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+    results.push({
+      id: String(row.id),
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      appliedResult: {
+        reviewItemId: result.item?.id ?? String(row.id),
+        domain: result.item?.domain ?? null,
+        status: result.item?.status ?? null,
+        resolutionAction: action,
+        materializedRecord: result.materializedRecord ?? null,
+      },
+    });
   }
 
   return { resetCount: ids.length, results };
@@ -892,8 +927,8 @@ export async function bulkResolveReviewItems(args: {
   resolutionAction: ResolutionAction;
   ignoreReasonCode?: IgnoreReasonCode;
   ignoreNote?: string | null;
-}): Promise<Array<{ id: string; ok: boolean; error?: string }>> {
-  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+}): Promise<ReviewMaterializationOutcome[]> {
+  const results: ReviewMaterializationOutcome[] = [];
   for (const id of args.reviewItemIds) {
     const result = await resolveAndMaterializeReviewItem({
       reviewItemId: id,
@@ -903,7 +938,18 @@ export async function bulkResolveReviewItems(args: {
       ignoreReasonCode: args.ignoreReasonCode,
       ignoreNote: args.ignoreNote,
     });
-    results.push({ id, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+    results.push({
+      id,
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      appliedResult: {
+        reviewItemId: result.item?.id ?? id,
+        domain: result.item?.domain ?? null,
+        status: result.item?.status ?? null,
+        resolutionAction: args.resolutionAction,
+        materializedRecord: result.materializedRecord ?? null,
+      },
+    });
   }
   return results;
 }
