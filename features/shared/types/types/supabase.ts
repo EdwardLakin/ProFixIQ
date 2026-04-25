@@ -10763,6 +10763,137 @@ export type Database = {
           },
         ]
       }
+      shop_boost_import_provenance: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          intake_id: string
+          record_id: string
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          intake_id: string
+          record_id: string
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          intake_id?: string
+          record_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_import_provenance_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_provenance_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_provenance_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_provenance_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_boost_import_reset_audit_events: {
+        Row: {
+          actor_user_id: string
+          confirmation_text: string
+          created_at: string
+          deleted_counts: Json
+          id: string
+          intake_id: string | null
+          mode: string
+          preview_counts: Json
+          scope: string
+          shop_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          confirmation_text: string
+          created_at?: string
+          deleted_counts?: Json
+          id?: string
+          intake_id?: string | null
+          mode: string
+          preview_counts?: Json
+          scope: string
+          shop_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          confirmation_text?: string
+          created_at?: string
+          deleted_counts?: Json
+          id?: string
+          intake_id?: string | null
+          mode?: string
+          preview_counts?: Json
+          scope?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_import_reset_audit_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_reset_audit_events_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_reset_audit_events_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_reset_audit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_import_reset_audit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_boost_intakes: {
         Row: {
           created_at: string
