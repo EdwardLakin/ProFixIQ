@@ -96,6 +96,8 @@ type ResetExecuteResponse = {
   };
 };
 
+type ResetPrecheckState = "checking" | "ready" | "blocked";
+
 const domains = ["", "customer", "vehicle", "part", "work_order", "invoice", "history"];
 
 function actionLabel(action: Recommendation["recommendedAction"]): string {
@@ -132,6 +134,8 @@ export default function ShopBoostReviewPage() {
   const [resetExecuting, setResetExecuting] = useState(false);
   const [resetAllowed, setResetAllowed] = useState(false);
   const [resetPermissionChecked, setResetPermissionChecked] = useState(false);
+  const [resetPrecheckState, setResetPrecheckState] = useState<ResetPrecheckState>("checking");
+  const [resetBlockedReason, setResetBlockedReason] = useState<string | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [dryRunComplete, setDryRunComplete] = useState(false);
 
@@ -166,16 +170,32 @@ export default function ShopBoostReviewPage() {
       if (!intakeId) {
         setResetPermissionChecked(true);
         setResetAllowed(false);
+        setResetPrecheckState("blocked");
+        setResetBlockedReason("No intake is currently selected. Load review items first, then target a specific intake ID.");
         return;
       }
+      setResetPermissionChecked(false);
+      setResetPrecheckState("checking");
+      setResetBlockedReason(null);
       try {
         const params = new URLSearchParams({ scope: "intake", intakeId });
         const res = await fetch(`/api/shop-boost/import-reset?${params.toString()}`, { cache: "no-store" });
         if (cancelled) return;
-        setResetAllowed(res.ok);
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        const allowed = res.ok && json.ok === true;
+        setResetAllowed(allowed);
+        if (allowed) {
+          setResetPrecheckState("ready");
+          setResetBlockedReason(null);
+        } else {
+          setResetPrecheckState("blocked");
+          setResetBlockedReason(json.error ?? "Reset precheck failed. Owner/admin role and valid intake scope are required.");
+        }
       } catch {
         if (cancelled) return;
         setResetAllowed(false);
+        setResetPrecheckState("blocked");
+        setResetBlockedReason("Reset precheck request failed. Check your session/permissions and retry.");
       } finally {
         if (!cancelled) setResetPermissionChecked(true);
       }
@@ -442,20 +462,21 @@ export default function ShopBoostReviewPage() {
 
   const previewCounts = resetPreview?.counts;
   const confirmationMatches = confirmationText.trim() === (resetPreview?.expectedConfirmationText ?? "");
+  const disableResetActions = !resetAllowed || resetPrecheckState !== "ready";
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
         <p className="mt-1 text-sm text-neutral-300">Resolve migration issues in guided steps with transparent reasoning and confidence-backed actions.</p>
-        <p className="mt-1 text-xs text-amber-200">This page keeps checking readiness in the background and will auto-continue once activation truth flips ready.</p>
+        <p className="mt-1 text-xs text-neutral-400">This page keeps checking readiness in the background and will auto-continue once activation truth flips ready.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
           {Object.entries(grouped).map(([key, count]) => (
             <span key={key} className="rounded-full border border-white/15 px-2 py-1">{key}: {count}</span>
           ))}
         </div>
         {guidance ? (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-amber-400/35 bg-amber-950/20 text-amber-100"}`}>
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-white/15 bg-black/30 text-neutral-100"}`}>
             {guidance.is_operational_ready ? "READY_FOR_GO_LIVE: You can start using ProFixIQ now." : "NOT_READY: Complete required actions before go-live."}
             <div className="mt-1 text-xs text-neutral-200">Blockers: {guidance.operational_blockers_count} • Non-blocking issues: {guidance.non_blocking_issues_count} • High-risk actions: {guidance.high_risk_actions_count ?? 0}</div>
             {(guidance.integrity_errors ?? []).length > 0 ? <div className="mt-1 text-xs text-rose-200">Integrity issues: {(guidance.integrity_errors ?? []).join(" • ")}</div> : null}
@@ -491,13 +512,21 @@ export default function ShopBoostReviewPage() {
         </div>
       </div>
 
-      {resetPermissionChecked && resetAllowed ? (
-        <section className="rounded-xl border border-rose-400/30 bg-rose-950/15 p-4 space-y-3">
+      <section className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
           <div>
-            <h2 className="text-sm font-semibold text-rose-100">Shop Boost operations • intake import reset</h2>
+            <h2 className="text-sm font-semibold text-white">Reset this intake</h2>
             <p className="mt-1 text-xs text-neutral-200">
               Scoped reset for a single intake only. This uses provenance-backed deletion for imported records and does not expose any global shop wipe action.
             </p>
+          </div>
+          <div className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs text-neutral-200">
+            {!resetPermissionChecked || resetPrecheckState === "checking" ? (
+              <span>Checking reset prerequisites…</span>
+            ) : resetPrecheckState === "ready" ? (
+              <span className="text-emerald-200">Precheck passed: owner/admin access confirmed and intake scope is valid.</span>
+            ) : (
+              <span className="text-amber-200">Reset unavailable: {resetBlockedReason ?? "Unknown precheck failure."}</span>
+            )}
           </div>
 
           <div className="grid gap-3 md:grid-cols-[1.7fr_1fr]">
@@ -517,7 +546,7 @@ export default function ShopBoostReviewPage() {
               />
             </div>
             <div className="flex items-end">
-              <button className="w-full rounded border border-amber-300/40 px-3 py-2 text-xs text-amber-100" onClick={() => void loadResetPreview()} disabled={resetLoading || resetExecuting}>
+              <button className="w-full rounded border border-sky-300/40 px-3 py-2 text-xs text-sky-100 disabled:opacity-60" onClick={() => void loadResetPreview()} disabled={resetLoading || resetExecuting || disableResetActions}>
                 {resetLoading ? "Loading preview…" : "Load exact preview counts"}
               </button>
             </div>
@@ -536,8 +565,8 @@ export default function ShopBoostReviewPage() {
                     <li>Invoices: {previewCounts.provenance.invoice}</li>
                   </ul>
                 </div>
-                <div className="rounded-md border border-amber-300/35 bg-amber-950/20 p-2">
-                  <div className="font-semibold text-amber-100">Legacy-tagged counts (not auto-deleted)</div>
+                <div className="rounded-md border border-cyan-300/30 bg-cyan-950/15 p-2">
+                  <div className="font-semibold text-cyan-100">Legacy-tagged counts (not auto-deleted)</div>
                   <ul className="mt-1 space-y-1 text-neutral-200">
                     <li>Customers: {previewCounts.legacyTagged.customers}</li>
                     <li>Vehicles: {previewCounts.legacyTagged.vehicles}</li>
@@ -584,7 +613,7 @@ export default function ShopBoostReviewPage() {
                   type="button"
                   className="rounded border border-sky-300/40 px-2 py-1 text-sky-100"
                   onClick={() => void runResetDryRun()}
-                  disabled={resetLoading || resetExecuting}
+                  disabled={resetLoading || resetExecuting || disableResetActions}
                 >
                   {resetLoading ? "Running dry-run…" : dryRunComplete ? "Dry-run completed ✓" : "Run dry-run preview"}
                 </button>
@@ -592,7 +621,7 @@ export default function ShopBoostReviewPage() {
                   type="button"
                   className="rounded border border-rose-300/40 px-2 py-1 text-rose-100 disabled:opacity-60"
                   onClick={() => void executeReset()}
-                  disabled={!dryRunComplete || !confirmationMatches || resetExecuting}
+                  disabled={!dryRunComplete || !confirmationMatches || resetExecuting || disableResetActions}
                 >
                   {resetExecuting ? "Executing reset…" : "Execute intake reset"}
                 </button>
@@ -609,9 +638,9 @@ export default function ShopBoostReviewPage() {
               <div className="font-semibold">Audit result • deleted counts</div>
               <pre className="mt-2 overflow-auto rounded border border-white/10 bg-black/40 p-2 text-[11px] text-neutral-100">{JSON.stringify(resetExecute.deletedCounts, null, 2)}</pre>
               {resetExecute.notes?.legacyTaggedNotDeleted ? (
-                <div className="mt-2 text-amber-100">
+                <div className="mt-2 text-cyan-100">
                   Legacy-tagged records still not auto-deleted:
-                  <pre className="mt-1 overflow-auto rounded border border-amber-300/25 bg-black/40 p-2 text-[11px] text-neutral-100">{JSON.stringify(resetExecute.notes.legacyTaggedNotDeleted, null, 2)}</pre>
+                  <pre className="mt-1 overflow-auto rounded border border-cyan-300/25 bg-black/40 p-2 text-[11px] text-neutral-100">{JSON.stringify(resetExecute.notes.legacyTaggedNotDeleted, null, 2)}</pre>
                 </div>
               ) : null}
             </div>
@@ -619,7 +648,6 @@ export default function ShopBoostReviewPage() {
 
           {resetFeedback ? <div className="rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-xs text-sky-100">{resetFeedback}</div> : null}
         </section>
-      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         {[
