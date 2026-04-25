@@ -1518,6 +1518,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           reviewRequired: false,
         });
       } else {
+        const duplicateConflict = /customers_shop_email_uq|duplicate key value/i.test(error.message);
         const deterministicFallback = await (async () => {
           if (sourceCustomerId) {
             const { data } = await supabase
@@ -1587,6 +1588,58 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
               recoveredFromInsertConflict: true,
             },
             reviewRequired: false,
+          });
+          continue;
+        }
+        if (duplicateConflict) {
+          const duplicateEvidenceFilter = [
+            email ? `email.eq.${email}` : null,
+            phone ? `phone.eq.${phone}` : null,
+            phone ? `phone_number.eq.${phone}` : null,
+            sourceCustomerId ? `external_id.eq.${sourceExternalId("customer", sourceCustomerId)}` : null,
+          ]
+            .filter(Boolean)
+            .join(",");
+          const { data: duplicateCandidates } = await supabase
+            .from("customers")
+            .select("id,email,phone,phone_number,external_id")
+            .eq("shop_id", shopId)
+            .or(duplicateEvidenceFilter || "id.is.null")
+            .limit(25);
+          const candidateIds = Array.from(
+            new Set((duplicateCandidates ?? []).map((candidate) => String((candidate as Record<string, unknown>).id ?? "")).filter(Boolean)),
+          );
+          const hasSingleDeterministicCandidate = candidateIds.length === 1;
+          rowOutcome.processedRows += 1;
+          rowOutcome.reviewCount += 1;
+          rowOutcome.byDomain.customers.review += 1;
+          await createReviewItem({
+            supabase,
+            shopId,
+            intakeId,
+            domain: "customer",
+            issueType: hasSingleDeterministicCandidate ? "conflict" : "duplicate_candidate",
+            summary: hasSingleDeterministicCandidate
+              ? "Customer create collided with an existing deterministic duplicate; link/update existing record."
+              : "Customer create collided with multiple duplicate candidates; merge review is required before materialization.",
+            rawPayload: row,
+            normalizedPayload: { email, phone, name, business, isFleet, customerType, sourceCustomerId, candidateIds },
+            blockingReason: hasSingleDeterministicCandidate ? "blocked_duplicate_conflict" : "merge_review_required",
+            suggestedMatches: candidateIds.map((id) => ({ id })),
+          });
+          await insertRowResult({
+            supabase,
+            shopId,
+            intakeId,
+            sourceFile: "customers",
+            sourceRowIndex: i + 1,
+            rawPayload: row,
+            normalizedPayload: { email, phone, name, business, isFleet, customerType, sourceCustomerId, candidateIds },
+            targetDomain: "customer",
+            matchStatus: "partial_match",
+            matchConfidence: "medium",
+            errorReason: hasSingleDeterministicCandidate ? "blocked_duplicate_conflict" : "merge_review_required",
+            reviewRequired: true,
           });
           continue;
         }
@@ -2778,7 +2831,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     review_required: reviewRequiredCount,
     failed: failedBucketCount,
     total_counted: 0,
-    total_input: totalRows,
+    total_input: totalRowCount,
     mismatch: 0,
   };
   outcomeBuckets.materialized = materializedCount;
@@ -2789,10 +2842,10 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     outcomeBuckets.ignored +
     outcomeBuckets.review_required +
     outcomeBuckets.failed;
-  outcomeBuckets.mismatch = Math.max(0, outcomeBuckets.total_input - outcomeBuckets.total_counted);
+  outcomeBuckets.mismatch = Math.abs(outcomeBuckets.total_input - outcomeBuckets.total_counted);
   if (outcomeBuckets.mismatch !== 0) {
     integrityErrors.push(
-      `Row outcome mismatch detected: input=${outcomeBuckets.total_input}, bucketed=${outcomeBuckets.total_counted}, mismatch=${outcomeBuckets.mismatch}.`,
+      `Row outcome mismatch detected: input=${outcomeBuckets.total_input}, bucketed=${outcomeBuckets.total_counted}, mismatch=${outcomeBuckets.mismatch}. Source file rows evaluated=${totalRows}.`,
     );
   }
   rowOutcome.integrityErrors = integrityErrors;

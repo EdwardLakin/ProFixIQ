@@ -25,6 +25,22 @@ type ReviewListItem = ReviewItemRow & {
   recommendation_explanation: string;
   decision_transparency: ReviewDecisionTransparency;
 };
+type ReviewCountsSummary = {
+  domain_counts: Record<string, number>;
+  status_counts: Record<string, number>;
+  unresolved_total: number;
+  blockers_total: number;
+  row_accounting: {
+    total_input: number;
+    materialized: number;
+    linked: number;
+    ignored: number;
+    review_required: number;
+    failed: number;
+    total_counted: number;
+    mismatch: number;
+  };
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -149,6 +165,81 @@ export async function GET(req: Request) {
     };
   });
 
+  const intakeId = String(items[0]?.intake_id ?? "");
+  const knownStatuses = ["pending", "failed_materialization", "materialized", "ignored", "resolved"] as const;
+  const knownDomains = ["customer", "vehicle", "work_order", "history", "invoice", "part"] as const;
+  const countByStatusPromises = knownStatuses.map((state) =>
+    admin
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId)
+      .eq("status", state),
+  );
+  const countByDomainPromises = knownDomains.map((value) =>
+    admin
+      .from("shop_boost_review_items")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId)
+      .eq("domain", value),
+  );
+  const [statusCountRows, domainCountRows, rowResultsTotal, reviewRequiredCount, failedCount, linkedCount] = await Promise.all([
+    Promise.all(countByStatusPromises),
+    Promise.all(countByDomainPromises),
+    admin
+      .from("shop_boost_row_results")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId),
+    admin
+      .from("shop_boost_row_results")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId)
+      .eq("review_required", true),
+    admin
+      .from("shop_boost_row_results")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId)
+      .eq("review_required", false)
+      .or("error_reason.not.is.null,match_status.eq.invalid"),
+    admin
+      .from("shop_boost_row_results")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", profile.shop_id)
+      .eq("intake_id", intakeId)
+      .eq("review_required", false)
+      .is("error_reason", null)
+      .in("match_status", ["matched_existing", "partial_match"]),
+  ]);
+  const statusCounts = knownStatuses.reduce<Record<string, number>>((acc, key, idx) => {
+    acc[key] = Number(statusCountRows[idx]?.count ?? 0);
+    return acc;
+  }, {});
+  const domainCounts = knownDomains.reduce<Record<string, number>>((acc, key, idx) => {
+    acc[key] = Number(domainCountRows[idx]?.count ?? 0);
+    return acc;
+  }, {});
+  const totalInput = Number(rowResultsTotal.count ?? 0);
+  const reviewRequired = Number(reviewRequiredCount.count ?? 0);
+  const failed = Number(failedCount.count ?? 0);
+  const linked = Number(linkedCount.count ?? 0);
+  const ignored = statusCounts.ignored ?? 0;
+  const materialized = Math.max(0, totalInput - reviewRequired - failed - linked - ignored);
+  const totalCounted = materialized + linked + ignored + reviewRequired + failed;
+  const rowAccounting = {
+    total_input: totalInput,
+    materialized,
+    linked,
+    ignored,
+    review_required: reviewRequired,
+    failed,
+    total_counted: totalCounted,
+    mismatch: Math.max(0, totalInput - totalCounted),
+  };
+
   const unresolved = items.filter((item) => item.status === "pending" || item.status === "failed_materialization");
   const blockers = unresolved.filter((item) => Boolean(item.blocking_reason)).length;
   const highRiskActions = items.filter((item) => Boolean(asRecord(item.materialized_record).high_risk_action)).length;
@@ -179,10 +270,17 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     items,
+    summary: {
+      domain_counts: domainCounts,
+      status_counts: statusCounts,
+      unresolved_total: (statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0),
+      blockers_total: blockers,
+      row_accounting: rowAccounting,
+    } satisfies ReviewCountsSummary,
     guidance: {
-      is_operational_ready: blockers === 0 && integrityErrors.length === 0,
+      is_operational_ready: ((statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0)) === 0 && integrityErrors.length === 0,
       operational_blockers_count: blockers,
-      non_blocking_issues_count: Math.max(0, unresolved.length - blockers),
+      non_blocking_issues_count: Math.max(0, ((statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0)) - blockers),
       high_risk_actions_count: highRiskActions,
       integrity_errors: integrityErrors,
     },

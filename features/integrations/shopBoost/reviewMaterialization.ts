@@ -208,9 +208,15 @@ async function materializeCustomer(args: { supabase: AdminClient; item: ReviewIt
   const externalId = `import:${item.intake_id}:customers:${sha1(`${email}|${phone}|${name}|${business ?? ""}`).slice(0, 16)}`;
 
   const suggested = item.suggested_matches;
-  const explicitCandidateId = typeof suggested === "object" && suggested
-    ? String((suggested as Record<string, unknown>).customerId ?? (suggested as Record<string, unknown>).id ?? "")
-    : "";
+  const explicitCandidateId = Array.isArray(suggested)
+    ? String(
+        (suggested.find((candidate) => typeof candidate === "object" && candidate && ("customerId" in (candidate as Record<string, unknown>) || "id" in (candidate as Record<string, unknown>))) as Record<string, unknown> | undefined)?.customerId ??
+          (suggested.find((candidate) => typeof candidate === "object" && candidate && ("customerId" in (candidate as Record<string, unknown>) || "id" in (candidate as Record<string, unknown>))) as Record<string, unknown> | undefined)?.id ??
+          "",
+      )
+    : typeof suggested === "object" && suggested
+      ? String((suggested as Record<string, unknown>).customerId ?? (suggested as Record<string, unknown>).id ?? "")
+      : "";
 
   const deterministicMatch = await findDeterministicCustomerMatch({
     supabase,
@@ -302,6 +308,53 @@ async function materializeCustomer(args: { supabase: AdminClient; item: ReviewIt
     external_id: externalId,
   }).select("id").limit(1).maybeSingle();
   if (error || !inserted?.id) {
+    const duplicateConflict = /customers_shop_email_uq|duplicate key value/i.test(error?.message ?? "");
+    if (duplicateConflict) {
+      const recoveredMatch = await findDeterministicCustomerMatch({
+        supabase,
+        shopId: item.shop_id,
+        sourceCustomerId,
+        email,
+        phone,
+      });
+      if (recoveredMatch?.customerId) {
+        return {
+          status: "failed_materialization",
+          domain: "customer",
+          action: resolutionAction,
+          resolutionType: "blocked_duplicate_conflict",
+          matchedRecordId: recoveredMatch.customerId,
+          createdRecordId: null,
+          updatedRecordId: null,
+          blockingReason: "deterministic_duplicate_exists",
+          errorReason: "Create blocked: deterministic duplicate evidence exists for this shop.",
+          materializedRecord: {
+            domain: "customer",
+            resolutionType: "blocked_duplicate_conflict",
+            matchedRecordId: recoveredMatch.customerId,
+            blockingReason: "deterministic_duplicate_exists",
+          },
+          error: "Create blocked: deterministic duplicate evidence exists for this shop.",
+        };
+      }
+      return {
+        status: "failed_materialization",
+        domain: "customer",
+        action: resolutionAction,
+        resolutionType: "merge_candidate_requires_confirmation",
+        matchedRecordId: null,
+        createdRecordId: null,
+        updatedRecordId: null,
+        blockingReason: "merge_review_required",
+        errorReason: "Create blocked: duplicate evidence requires merge review before materialization.",
+        materializedRecord: {
+          domain: "customer",
+          resolutionType: "merge_candidate_requires_confirmation",
+          blockingReason: "merge_review_required",
+        },
+        error: "Create blocked: duplicate evidence requires merge review before materialization.",
+      };
+    }
     return {
       status: "failed_materialization",
       domain: "customer",

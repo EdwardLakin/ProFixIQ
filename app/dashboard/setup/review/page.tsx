@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 type Recommendation = {
   recommendedAction: "link_existing" | "create_new" | "merge_candidate" | "ignore";
@@ -54,6 +56,22 @@ type Guidance = {
   non_blocking_issues_count: number;
   integrity_errors?: string[];
   high_risk_actions_count?: number;
+};
+type ReviewSummary = {
+  domain_counts: Record<string, number>;
+  status_counts: Record<string, number>;
+  unresolved_total: number;
+  blockers_total: number;
+  row_accounting: {
+    total_input: number;
+    materialized: number;
+    linked: number;
+    ignored: number;
+    review_required: number;
+    failed: number;
+    total_counted: number;
+    mismatch: number;
+  };
 };
 
 type ResetCounts = {
@@ -115,8 +133,10 @@ function toResolutionAction(action: Recommendation["recommendedAction"]): "linke
 
 export default function ShopBoostReviewPage() {
   const router = useRouter();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [domain, setDomain] = useState("");
   const [items, setItems] = useState<ReviewItem[]>([]);
+  const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("pending");
   const [ignoreReason, setIgnoreReason] = useState("duplicate");
@@ -138,6 +158,8 @@ export default function ShopBoostReviewPage() {
   const [resetBlockedReason, setResetBlockedReason] = useState<string | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [dryRunComplete, setDryRunComplete] = useState(false);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [activeIntakeId, setActiveIntakeId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,8 +167,13 @@ export default function ShopBoostReviewPage() {
     if (domain) params.set("domain", domain);
     if (statusFilter) params.set("status", statusFilter);
     const res = await fetch(`/api/shop-boost/review-items?${params.toString()}`, { cache: "no-store" });
-    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: ReviewItem[]; guidance?: Guidance };
-    setItems(json.ok ? json.items ?? [] : []);
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: ReviewItem[]; guidance?: Guidance; summary?: ReviewSummary };
+    const nextItems = json.ok ? json.items ?? [] : [];
+    setItems(nextItems);
+    if (nextItems[0]?.intake_id) {
+      setActiveIntakeId((prev) => prev || nextItems[0].intake_id);
+    }
+    setSummary(json.summary ?? null);
     setGuidance(json.guidance ?? null);
     setSelectedIds([]);
     setLoading(false);
@@ -157,16 +184,53 @@ export default function ShopBoostReviewPage() {
   }, [load]);
 
   useEffect(() => {
-    const activeIntake = items[0]?.intake_id ?? "";
-    if (!resetIntakeId && activeIntake) {
-      setResetIntakeId(activeIntake);
+    if (!resetIntakeId && activeIntakeId) {
+      setResetIntakeId(activeIntakeId);
     }
-  }, [items, resetIntakeId]);
+  }, [activeIntakeId, resetIntakeId]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const intakeId = resetIntakeId || items[0]?.intake_id;
+      const auth = await supabase.auth.getUser();
+      const userId = auth.data.user?.id;
+      if (!userId) {
+        if (!cancelled) setViewerRole(null);
+        return;
+      }
+      const { data } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle<{ role: string | null }>();
+      if (!cancelled) setViewerRole(data?.role ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/shop-boost/intakes/latest", { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as { ok?: boolean; intake?: { id?: string | null } | null } | null;
+        const intakeId = String(json?.intake?.id ?? "").trim();
+        if (!cancelled && intakeId) setActiveIntakeId(intakeId);
+      } catch {
+        // no-op: keep existing intake fallback from loaded review rows
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const intakeId = resetIntakeId || activeIntakeId || items[0]?.intake_id;
       if (!intakeId) {
         setResetPermissionChecked(true);
         setResetAllowed(false);
@@ -203,7 +267,7 @@ export default function ShopBoostReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [items, resetIntakeId]);
+  }, [activeIntakeId, items, resetIntakeId]);
 
 
   useEffect(() => {
@@ -247,13 +311,10 @@ export default function ShopBoostReviewPage() {
   }, [router]);
 
   const grouped = useMemo(
-    () =>
-      items.reduce<Record<string, number>>((acc, item) => {
-        acc[item.domain] = (acc[item.domain] ?? 0) + 1;
-        return acc;
-      }, {}),
-    [items],
+    () => summary?.domain_counts ?? {},
+    [summary],
   );
+  const isOwnerOrAdmin = viewerRole === "owner" || viewerRole === "admin";
 
   const isHighRiskItem = (item: ReviewItem, action: "linked_to_existing" | "created_new" | "ignored") =>
     action === "linked_to_existing" && item.recommendation.recommendedAction === "merge_candidate";
@@ -465,7 +526,13 @@ export default function ShopBoostReviewPage() {
   const disableResetActions = !resetAllowed || resetPrecheckState !== "ready";
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      style={{
+        ["--dashboard-shell-bg" as string]:
+          "radial-gradient(1200px_640px_at_14%_-8%, color-mix(in srgb, #38bdf8 8%, transparent), transparent 62%), radial-gradient(1100px_700px_at_100%_100%, rgba(2,6,23,0.52), transparent 64%), linear-gradient(180deg, var(--theme-app-bg, #050910) 0%, var(--theme-app-bg, #050910) 100%)",
+      }}
+    >
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
         <p className="mt-1 text-sm text-neutral-300">Resolve migration issues in guided steps with transparent reasoning and confidence-backed actions.</p>
@@ -475,6 +542,11 @@ export default function ShopBoostReviewPage() {
             <span key={key} className="rounded-full border border-white/15 px-2 py-1">{key}: {count}</span>
           ))}
         </div>
+        {summary ? (
+          <div className="mt-3 rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-xs text-neutral-200">
+            Intake truth: input {summary.row_accounting.total_input} • bucketed {summary.row_accounting.total_counted} • mismatch {summary.row_accounting.mismatch}
+          </div>
+        ) : null}
         {guidance ? (
           <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-white/15 bg-black/30 text-neutral-100"}`}>
             {guidance.is_operational_ready ? "READY_FOR_GO_LIVE: You can start using ProFixIQ now." : "NOT_READY: Complete required actions before go-live."}
@@ -485,38 +557,12 @@ export default function ShopBoostReviewPage() {
         {feedback ? <div className="mt-3 rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">{feedback}</div> : null}
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by domain</label>
-            <select value={domain} onChange={(e) => setDomain(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
-              {domains.map((d) => <option key={d || "all"} value={d}>{d || "all domains"}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by status</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
-              <option value="pending">pending</option>
-              <option value="failed_materialization">failed materialization</option>
-              <option value="materialized">materialized</option>
-              <option value="ignored">ignored</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid gap-2 md:grid-cols-3 text-xs">
-          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply HIGH confidence only (≥85%)</button>
-          <button className="rounded border border-amber-300/40 px-2 py-1 text-amber-100" onClick={() => void runReprocess("failed")} disabled={reprocessBusy !== null}>{reprocessBusy === "failed" ? "Re-running…" : "Re-run failed items"}</button>
-          <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void runReprocess("unresolved")} disabled={reprocessBusy !== null}>{reprocessBusy === "unresolved" ? "Re-running…" : "Re-run unresolved items"}</button>
-          <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
-        </div>
-      </div>
-
-      <section className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+      {isOwnerOrAdmin ? (
+        <section className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-white">Reset this intake</h2>
             <p className="mt-1 text-xs text-neutral-200">
-              Scoped reset for a single intake only. This uses provenance-backed deletion for imported records and does not expose any global shop wipe action.
+              Owner/admin only. Scoped reset for a single intake only. This uses provenance-backed deletion for imported records and does not expose any global shop wipe action.
             </p>
           </div>
           <div className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs text-neutral-200">
@@ -648,6 +694,38 @@ export default function ShopBoostReviewPage() {
 
           {resetFeedback ? <div className="rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-xs text-sky-100">{resetFeedback}</div> : null}
         </section>
+      ) : (
+        <section className="rounded-xl border border-white/10 bg-black/20 p-4">
+          <div className="text-xs text-neutral-300">Intake reset controls are visible to owner/admin roles only.</div>
+        </section>
+      )}
+
+      <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by domain</label>
+            <select value={domain} onChange={(e) => setDomain(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+              {domains.map((d) => <option key={d || "all"} value={d}>{d || "all domains"}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-[0.16em] text-neutral-400">Filter by status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+              <option value="pending">pending</option>
+              <option value="failed_materialization">failed materialization</option>
+              <option value="materialized">materialized</option>
+              <option value="ignored">ignored</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3 text-xs">
+          <button className="rounded border border-emerald-300/40 px-2 py-1 text-emerald-100" onClick={() => void applyAllHighConfidence()}>Apply HIGH confidence only (≥85%)</button>
+          <button className="rounded border border-amber-300/40 px-2 py-1 text-amber-100" onClick={() => void runReprocess("failed")} disabled={reprocessBusy !== null}>{reprocessBusy === "failed" ? "Re-running…" : "Re-run failed items"}</button>
+          <button className="rounded border border-white/25 px-2 py-1 text-neutral-200" onClick={() => void runReprocess("unresolved")} disabled={reprocessBusy !== null}>{reprocessBusy === "unresolved" ? "Re-running…" : "Re-run unresolved items"}</button>
+          <button className="rounded border border-sky-300/40 px-2 py-1 text-sky-100 md:col-span-3" onClick={() => void runReprocess("updated_matches")} disabled={reprocessBusy !== null}>{reprocessBusy === "updated_matches" ? "Re-running…" : "Re-run with updated matches"}</button>
+        </div>
+      </div>
 
       <div className="grid gap-3 md:grid-cols-3">
         {[
