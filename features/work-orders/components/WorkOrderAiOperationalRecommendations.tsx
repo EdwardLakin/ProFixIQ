@@ -30,46 +30,42 @@ type RecommendationRow = {
 };
 
 type EvidenceRow = {
-  id: string;
-  freshness_at: string | null;
+  evidenceSnapshotId: string;
+  freshnessAt: string | null;
   confidence: number | null;
-  missing_data: string[] | null;
-  created_at: string;
-};
-
-type PreviewPayloadRecord = {
-  label?: string;
-  description?: string;
-  affected_records?: Array<{ type?: string; id?: string }>;
-  intended_mutations?: unknown[];
-  side_effects?: string[];
-  requires_approval?: boolean;
-  requires_owner_pin?: boolean;
-  risk_tier?: string;
-  blocked_execution_reason?: string;
-  evidence_snapshot_id?: string | null;
+  missingData: string[];
+  generatedAt: string;
 };
 
 type PreviewRow = {
-  id: string;
-  recommendation_id: string | null;
+  previewId: string;
+  recommendationId: string | null;
+  actionType: string;
   status: string;
-  preview_payload: PreviewPayloadRecord;
-  intended_mutations: unknown[];
-  affected_records: Array<{ type?: string; id?: string }>;
-  side_effects: string[];
-  requires_approval: boolean;
-  requires_owner_pin: boolean;
-  risk_tier: string;
-  evidence_snapshot_id: string | null;
-  created_at: string;
+  title: string;
+  description: string | null;
+  approvalRequired: boolean;
+  requiresOwnerPin: boolean;
+  executionBlocked: true;
+  riskTier: string;
+  severitySummary: string;
+  affectedRecordCount: number;
+  intendedMutationCount: number;
+  sideEffectLabels: string[];
+  createdAt: string;
+  expiresAt: string | null;
+  evidenceSnapshotId: string | null;
 };
 
 type ApprovalRow = {
-  id: string;
-  action_preview_id: string;
+  approvalId: string;
+  previewId: string;
   status: string;
-  requested_at: string;
+  requestedAt: string;
+  approvalRequired: boolean;
+  requiresOwnerPin: boolean;
+  executionBlocked: true;
+  message: string;
 };
 
 type AdvisorDraftSection = {
@@ -98,25 +94,26 @@ function isPreviewableRecommendation(item: RecommendationRow): boolean {
 function parsePreview(raw: unknown): PreviewRow | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
-  if (typeof value.id !== "string") return null;
-
-  const previewPayload = value.preview_payload && typeof value.preview_payload === "object"
-    ? (value.preview_payload as PreviewPayloadRecord)
-    : {};
+  if (typeof value.previewId !== "string") return null;
 
   return {
-    id: value.id,
-    recommendation_id: typeof value.recommendation_id === "string" ? value.recommendation_id : null,
+    previewId: value.previewId,
+    recommendationId: typeof value.recommendationId === "string" ? value.recommendationId : null,
+    actionType: typeof value.actionType === "string" ? value.actionType : "unknown",
     status: typeof value.status === "string" ? value.status : "draft",
-    preview_payload: previewPayload,
-    intended_mutations: Array.isArray(value.intended_mutations) ? value.intended_mutations : [],
-    affected_records: Array.isArray(value.affected_records) ? (value.affected_records as Array<{ type?: string; id?: string }>) : [],
-    side_effects: Array.isArray(value.side_effects) ? (value.side_effects as string[]) : [],
-    requires_approval: Boolean(value.requires_approval),
-    requires_owner_pin: Boolean(value.requires_owner_pin),
-    risk_tier: typeof value.risk_tier === "string" ? value.risk_tier : "low",
-    evidence_snapshot_id: typeof value.evidence_snapshot_id === "string" ? value.evidence_snapshot_id : null,
-    created_at: typeof value.created_at === "string" ? value.created_at : "",
+    title: typeof value.title === "string" ? value.title : "Action preview",
+    description: typeof value.description === "string" ? value.description : null,
+    approvalRequired: Boolean(value.approvalRequired),
+    requiresOwnerPin: Boolean(value.requiresOwnerPin),
+    executionBlocked: true,
+    riskTier: typeof value.riskTier === "string" ? value.riskTier : "low",
+    severitySummary: typeof value.severitySummary === "string" ? value.severitySummary : "severity:low",
+    affectedRecordCount: typeof value.affectedRecordCount === "number" ? value.affectedRecordCount : 0,
+    intendedMutationCount: typeof value.intendedMutationCount === "number" ? value.intendedMutationCount : 0,
+    sideEffectLabels: Array.isArray(value.sideEffectLabels) ? (value.sideEffectLabels.filter((item): item is string => typeof item === "string")) : [],
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : "",
+    expiresAt: typeof value.expiresAt === "string" ? value.expiresAt : null,
+    evidenceSnapshotId: typeof value.evidenceSnapshotId === "string" ? value.evidenceSnapshotId : null,
   };
 }
 
@@ -290,16 +287,16 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
 
   const onRequestApproval = useCallback(
     async (preview: PreviewRow) => {
-      if (preview.requires_owner_pin) {
+      if (preview.requiresOwnerPin) {
         toast.info("Owner PIN proof required before approval request.");
         return;
       }
 
-      setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.id]: true }));
+      setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.previewId]: true }));
       setError(null);
 
       try {
-        const res = await fetch(`/api/ai/action-previews/${preview.id}/approval-request`, {
+        const res = await fetch(`/api/ai/action-previews/${preview.previewId}/approval-request`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -312,13 +309,13 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         if (!res.ok) throw new Error(json?.error ?? "Failed to request approval.");
 
         const approval = json?.approval as ApprovalRow | undefined;
-        if (!approval?.id) {
+        if (!approval?.approvalId) {
           throw new Error("Approval request response was invalid.");
         }
 
         setApprovalByPreviewId((prev) => ({
           ...prev,
-          [preview.id]: approval,
+          [preview.previewId]: approval,
         }));
 
         if (json?.created === false) {
@@ -331,16 +328,16 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         setError(message);
         toast.error(message);
       } finally {
-        setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.id]: false }));
+        setApprovalRequestLoadingByPreviewId((prev) => ({ ...prev, [preview.previewId]: false }));
       }
     },
     [],
   );
 
   const freshnessLabel = useMemo(() => {
-    if (!evidence?.freshness_at) return "No evidence snapshot yet";
-    return `Evidence freshness: ${new Date(evidence.freshness_at).toLocaleString()}`;
-  }, [evidence?.freshness_at]);
+    if (!evidence?.freshnessAt) return "No evidence snapshot yet";
+    return `Evidence freshness: ${new Date(evidence.freshnessAt).toLocaleString()}`;
+  }, [evidence?.freshnessAt]);
 
   return (
     <section id="ai-operational-recommendations" className={cn(PANEL_VARIANTS.secondary, "p-2")}>
@@ -460,31 +457,25 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
 
                 {preview ? (
                   <div className="mt-2 rounded-md border border-white/10 bg-white/[0.02] p-2 text-[10px] text-muted-foreground">
-                    <div className="text-[11px] font-medium text-foreground">{preview.preview_payload.label ?? "Action preview"}</div>
-                    <p className="mt-1">{preview.preview_payload.description ?? "Preview generated for operational review."}</p>
-                    <p className="mt-1">Affected records: {preview.affected_records.length}</p>
-                    {preview.affected_records.length > 0 ? (
-                      <ul className="mt-1 list-disc pl-4">
-                        {preview.affected_records.map((record, idx) => (
-                          <li key={`${preview.id}:record:${idx}`}>{record.type ?? "record"}: {record.id ?? "—"}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <p className="mt-1">Intended mutations: {preview.intended_mutations.length > 0 ? String(preview.intended_mutations.length) : "None — preview only"}</p>
-                    <p className="mt-1">Side effects: {preview.side_effects.length > 0 ? preview.side_effects.join(" • ") : "No external side effects"}</p>
-                    <p className="mt-1">Approval required: {preview.requires_approval ? "Yes" : "No"}</p>
-                    <p className="mt-1">Owner PIN required: {preview.requires_owner_pin ? "Yes" : "No"}</p>
+                    <div className="text-[11px] font-medium text-foreground">{preview.title}</div>
+                    <p className="mt-1">{preview.description ?? "Preview generated for operational review."}</p>
+                    <p className="mt-1">Action type: {preview.actionType}</p>
+                    <p className="mt-1">Affected records: {preview.affectedRecordCount}</p>
+                    <p className="mt-1">Intended mutations: {preview.intendedMutationCount > 0 ? String(preview.intendedMutationCount) : "None — preview only"}</p>
+                    <p className="mt-1">Side effects: {preview.sideEffectLabels.length > 0 ? preview.sideEffectLabels.join(" • ") : "No external side effects"}</p>
+                    <p className="mt-1">Approval required: {preview.approvalRequired ? "Yes" : "No"}</p>
+                    <p className="mt-1">Owner PIN required: {preview.requiresOwnerPin ? "Yes" : "No"}</p>
                     <p className="mt-1">Execution blocked: Yes</p>
-                    <p className="mt-1">Risk tier: {preview.risk_tier}</p>
+                    <p className="mt-1">Risk tier: {preview.riskTier}</p>
                     <p className="mt-1">Execution status: Execution blocked — preview only</p>
-                    <p className="mt-1">Evidence snapshot: {preview.evidence_snapshot_id ?? preview.preview_payload.evidence_snapshot_id ?? "Not linked"}</p>
+                    <p className="mt-1">Evidence snapshot: {preview.evidenceSnapshotId ?? "Not linked"}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1">
-                      {(preview.requires_approval || preview.risk_tier === "high" || preview.risk_tier === "critical") ? (
+                      {(preview.approvalRequired || preview.riskTier === "high" || preview.riskTier === "critical") ? (
                         <>
                           <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[9px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
                             approval required
                           </span>
-                          {preview.requires_owner_pin ? (
+                          {preview.requiresOwnerPin ? (
                             <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[9px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">
                               owner PIN required
                             </span>
@@ -496,20 +487,20 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                       ) : null}
                     </div>
                     {(preview.status === "ready" || preview.status === "approval_required") &&
-                    (preview.requires_approval || preview.risk_tier === "high" || preview.risk_tier === "critical") ? (
+                    (preview.approvalRequired || preview.riskTier === "high" || preview.riskTier === "critical") ? (
                       <div className="mt-2">
                         <button
                           type="button"
                           className="rounded-md border border-[rgba(184,115,51,0.5)] px-2 py-1 text-[11px] text-[rgba(184,115,51,0.95)] transition hover:bg-[rgba(184,115,51,0.12)] disabled:opacity-50"
-                          disabled={Boolean(approvalRequestLoadingByPreviewId[preview.id]) || preview.requires_owner_pin}
+                          disabled={Boolean(approvalRequestLoadingByPreviewId[preview.previewId]) || preview.requiresOwnerPin}
                           onClick={() => void onRequestApproval(preview)}
                         >
-                          {approvalRequestLoadingByPreviewId[preview.id] ? "Requesting approval…" : "Request approval"}
+                          {approvalRequestLoadingByPreviewId[preview.previewId] ? "Requesting approval…" : "Request approval"}
                         </button>
-                        {preview.requires_owner_pin ? (
+                        {preview.requiresOwnerPin ? (
                           <p className="mt-1 text-[10px] text-muted-foreground">Owner PIN proof required before approval request.</p>
                         ) : null}
-                        {approvalByPreviewId[preview.id]?.status === "pending" ? (
+                        {approvalByPreviewId[preview.previewId]?.status === "pending" ? (
                           <p className="mt-1 text-[10px] text-[rgba(184,115,51,0.95)]">Pending approval request exists.</p>
                         ) : null}
                       </div>

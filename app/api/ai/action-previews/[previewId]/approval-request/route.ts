@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requestAiActionPreviewApproval } from "@/features/ai/server";
+import { requestAiActionPreviewApproval, serializeAiApprovalRequestForUi } from "@/features/ai/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type ApprovalRequestBody = {
@@ -86,7 +86,16 @@ export async function POST(
       expiresAt: parsedBody.expiresAt,
     });
 
-    return NextResponse.json(result, { status: result.created ? 201 : 200 });
+    return NextResponse.json(
+      {
+        approval: serializeAiApprovalRequestForUi({
+          approval: result.approval,
+          preview: result.preview,
+        }),
+        created: result.created,
+      },
+      { status: result.created ? 201 : 200 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to request approval";
     return NextResponse.json({ error: message }, { status: mapStatusFromError(message) });

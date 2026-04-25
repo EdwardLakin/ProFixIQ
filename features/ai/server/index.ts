@@ -7,6 +7,7 @@ export * from "./actionApprovals";
 export * from "./actionEvents";
 export * from "./safeActions";
 export * from "./ownerPinProof";
+export * from "./serializers";
 export * from "./domains/workOrders";
 export * from "./dashboard";
 export * from "./maintenance";

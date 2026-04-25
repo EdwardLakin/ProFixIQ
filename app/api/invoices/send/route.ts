@@ -300,6 +300,7 @@ export async function POST(req: Request) {
     const review = await reviewWorkOrder({
       supabase: supabaseAdmin,
       workOrderId,
+      shopId: wo.shop_id,
       kind: "invoice_review",
     });
 
