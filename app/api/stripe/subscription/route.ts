@@ -8,7 +8,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
-import { getProfileStripeArtifacts } from "@/features/stripe/lib/server/canonical-shop-billing";
+import {
+  getProfileStripeArtifacts,
+  resolveCanonicalPlanFromSubscription,
+  toCanonicalShopBillingUpdate,
+} from "@/features/stripe/lib/server/canonical-shop-billing";
 
 type DB = Database;
 
@@ -29,17 +33,28 @@ type NormalizedSubscriptionPayload = {
   canceled_at: string | null;
   current_period_end: string | null;
   trial_end: string | null;
+  resolved_plan?: string | null;
   linkage_needed?: boolean;
-  linkage_state?: "unlinked_subscription" | "no_subscription_found" | "ambiguous_customer_subscriptions";
+  linkage_state?:
+    | "no_subscription_found"
+    | "ambiguous_customer_subscriptions"
+    | "subscription_found_not_linked"
+    | "metadata_mismatch"
+    | "sync_needed"
+    | "linked_and_synced";
+  sync_performed?: boolean;
+  sync_skipped_reason?: string | null;
   linked_customer_id?: string | null;
   linked_subscription_id?: string | null;
   linked_checkout_session_id?: string | null;
+  matching_subscription_ids?: string[];
   managed_subscription_ids?: string[];
+  resolved_subscription_id?: string | null;
 };
 
 type CanonicalSubscriptionResolution =
-  | { state: "resolved"; subscription: Stripe.Subscription }
-  | { state: "no_subscription_found" }
+  | { state: "resolved"; subscription: Stripe.Subscription; metadataMatches: boolean; managedSubscriptionIds: string[] }
+  | { state: "no_subscription_found"; managedSubscriptionIds: string[] }
   | { state: "ambiguous_customer_subscriptions"; subscriptionIds: string[] };
 
 const MANAGED_SUBSCRIPTION_STATUSES = new Set(["trialing", "active", "past_due", "unpaid", "paused"]);
@@ -67,6 +82,7 @@ function normalizeSubscription(subscription: Stripe.Subscription): NormalizedSub
     canceled_at: unixToIsoOrNull(subscription.canceled_at ?? null),
     current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
     trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
+    resolved_plan: resolveCanonicalPlanFromSubscription(subscription),
   };
 }
 
@@ -81,7 +97,7 @@ function normalizeShopFallback(shop: ShopStripeScope): NormalizedSubscriptionPay
   };
 }
 
-function subscriptionMatchesShop(subscription: Stripe.Subscription, shop: ShopStripeScope): boolean {
+function subscriptionMetadataMatchesShop(subscription: Stripe.Subscription, shop: ShopStripeScope): boolean {
   const customerId = String(shop.stripe_customer_id ?? "").trim();
   const subscriptionCustomerId =
     typeof subscription.customer === "string" ? subscription.customer : String(subscription.customer?.id ?? "").trim();
@@ -100,12 +116,12 @@ async function findCanonicalSubscription(
 
   if (subscriptionId) {
     const byId = await stripe.subscriptions.retrieve(subscriptionId);
-    if (subscriptionMatchesShop(byId, shop)) {
-      return { state: "resolved", subscription: byId };
+    if (subscriptionMetadataMatchesShop(byId, shop)) {
+      return { state: "resolved", subscription: byId, metadataMatches: true, managedSubscriptionIds: [byId.id] };
     }
   }
 
-  if (!customerId) return { state: "no_subscription_found" };
+  if (!customerId) return { state: "no_subscription_found", managedSubscriptionIds: [] };
 
   const list = await stripe.subscriptions.list({
     customer: customerId,
@@ -114,27 +130,32 @@ async function findCanonicalSubscription(
   });
 
   if (!Array.isArray(list.data) || list.data.length === 0) {
-    return { state: "no_subscription_found" };
+    return { state: "no_subscription_found", managedSubscriptionIds: [] };
   }
 
   const managed = list.data.filter(
     (subscription) =>
-      MANAGED_SUBSCRIPTION_STATUSES.has(String(subscription.status ?? "").trim().toLowerCase()) &&
-      subscriptionMatchesShop(subscription, shop),
+      MANAGED_SUBSCRIPTION_STATUSES.has(String(subscription.status ?? "").trim().toLowerCase()),
   );
 
+  const managedSubscriptionIds = managed.map((subscription) => subscription.id);
+
   if (managed.length === 1) {
-    return { state: "resolved", subscription: managed[0] };
+    return {
+      state: "resolved",
+      subscription: managed[0],
+      metadataMatches: subscriptionMetadataMatchesShop(managed[0], shop),
+      managedSubscriptionIds,
+    };
   }
 
   if (managed.length === 0) {
-    return { state: "no_subscription_found" };
+    return { state: "no_subscription_found", managedSubscriptionIds: [] };
   }
 
-  const subscriptionIds = managed.map((subscription) => subscription.id);
   return {
     state: "ambiguous_customer_subscriptions",
-    subscriptionIds,
+    subscriptionIds: managedSubscriptionIds,
   };
 }
 
@@ -220,13 +241,12 @@ async function syncShopSubscription(
 
   const { error } = await supabase
     .from("shops")
-    .update({
-      stripe_customer_id: stripeCustomerId,
-      stripe_subscription_id: subscription.id,
-      stripe_subscription_status: String(subscription.status ?? "").trim() || null,
-      stripe_current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
-      stripe_trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
-    } as DB["public"]["Tables"]["shops"]["Update"])
+    .update(
+      toCanonicalShopBillingUpdate({
+        customerId: stripeCustomerId,
+        subscription,
+      }),
+    )
     .eq("id", shopId);
 
   if (error) {
@@ -263,7 +283,19 @@ export async function GET() {
 
     if (resolution.state === "resolved") {
       await syncShopSubscription(access.supabase, shop.id, resolution.subscription);
-      return NextResponse.json(normalizeSubscription(resolution.subscription));
+      return NextResponse.json({
+        ...normalizeSubscription(resolution.subscription),
+        linkage_needed: false,
+        linkage_state: resolution.metadataMatches ? "linked_and_synced" : "metadata_mismatch",
+        sync_performed: true,
+        sync_skipped_reason: null,
+        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_subscription_id: resolution.subscription.id,
+        linked_checkout_session_id: null,
+        matching_subscription_ids: [resolution.subscription.id],
+        managed_subscription_ids: resolution.managedSubscriptionIds,
+        resolved_subscription_id: resolution.subscription.id,
+      } satisfies NormalizedSubscriptionPayload);
     }
 
     if (resolution.state === "ambiguous_customer_subscriptions") {
@@ -271,10 +303,14 @@ export async function GET() {
         ...normalizeShopFallback(shop),
         linkage_needed: true,
         linkage_state: "ambiguous_customer_subscriptions",
+        sync_performed: false,
+        sync_skipped_reason: "ambiguous_customer_subscriptions",
         linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
         linked_subscription_id: null,
         linked_checkout_session_id: null,
+        matching_subscription_ids: [],
         managed_subscription_ids: resolution.subscriptionIds,
+        resolved_subscription_id: null,
       } satisfies NormalizedSubscriptionPayload);
     }
 
@@ -290,10 +326,15 @@ export async function GET() {
         return NextResponse.json({
           ...normalizeShopFallback(shop),
           linkage_needed: true,
-          linkage_state: "unlinked_subscription",
+          linkage_state: "subscription_found_not_linked",
+          sync_performed: false,
+          sync_skipped_reason: "no_customer_subscription_match",
           linked_customer_id: unlinked.customerId,
           linked_subscription_id: unlinked.subscriptionId,
           linked_checkout_session_id: unlinked.checkoutSessionId,
+          matching_subscription_ids: unlinked.subscriptionId ? [unlinked.subscriptionId] : [],
+          managed_subscription_ids: resolution.managedSubscriptionIds,
+          resolved_subscription_id: null,
         } satisfies NormalizedSubscriptionPayload);
       }
 
@@ -301,9 +342,14 @@ export async function GET() {
         ...normalizeShopFallback(shop),
         linkage_needed: true,
         linkage_state: "no_subscription_found",
+        sync_performed: false,
+        sync_skipped_reason: "no_subscription_found",
         linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
         linked_subscription_id: null,
         linked_checkout_session_id: null,
+        matching_subscription_ids: [],
+        managed_subscription_ids: resolution.managedSubscriptionIds,
+        resolved_subscription_id: null,
       } satisfies NormalizedSubscriptionPayload);
     }
 
@@ -359,7 +405,7 @@ export async function POST(req: Request) {
             error: "Billing linkage is required before managing this subscription.",
             ...normalizeShopFallback(shop),
             linkage_needed: true,
-            linkage_state: "unlinked_subscription",
+            linkage_state: "subscription_found_not_linked",
             linked_customer_id: unlinked.customerId,
             linked_subscription_id: unlinked.subscriptionId,
             linked_checkout_session_id: unlinked.checkoutSessionId,

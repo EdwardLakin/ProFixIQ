@@ -83,8 +83,20 @@ type StripeSubscriptionApiResponse = {
   canceled_at?: string | null;
   current_period_end?: string | null;
   trial_end?: string | null;
+  resolved_plan?: string | null;
   linkage_needed?: boolean;
-  linkage_state?: "unlinked_subscription";
+  linkage_state?:
+    | "no_subscription_found"
+    | "ambiguous_customer_subscriptions"
+    | "subscription_found_not_linked"
+    | "metadata_mismatch"
+    | "sync_needed"
+    | "linked_and_synced";
+  sync_performed?: boolean;
+  sync_skipped_reason?: string | null;
+  matching_subscription_ids?: string[];
+  managed_subscription_ids?: string[];
+  resolved_subscription_id?: string | null;
   linked_customer_id?: string | null;
   linked_subscription_id?: string | null;
   error?: string;
@@ -94,6 +106,9 @@ type BillingDisplayStatus =
   | StripeSubStatus
   | "linkage_needed"
   | "subscription_found_not_linked"
+  | "ambiguous_customer_subscriptions"
+  | "no_subscription_found"
+  | "metadata_mismatch"
   | "sync_needed";
 
 type OrgScope = Pick<
@@ -391,14 +406,30 @@ export default function OwnerSettingsPage() {
         }
 
         if (j.linkage_needed) {
-          setBillingDisplayStatus(
-            j.linked_subscription_id ? "subscription_found_not_linked" : "linkage_needed",
-          );
+          if (j.linkage_state === "ambiguous_customer_subscriptions") {
+            setBillingDisplayStatus("ambiguous_customer_subscriptions");
+            return;
+          }
+          if (j.linkage_state === "no_subscription_found") {
+            setBillingDisplayStatus("no_subscription_found");
+            return;
+          }
+          setBillingDisplayStatus("subscription_found_not_linked");
           return;
         }
 
+        const resolvedPlan = parsePlan(j.resolved_plan);
+        if (resolvedPlan !== "unknown") {
+          setPlan(resolvedPlan);
+          setSeatsLimit(planSeatLimit(resolvedPlan));
+        }
+
         setBillingDisplayStatus(
-          canonicalStatus === "unknown" && planSignal !== "unknown" ? "sync_needed" : canonicalStatus,
+          j.linkage_state === "metadata_mismatch"
+            ? "metadata_mismatch"
+            : canonicalStatus === "unknown" && planSignal !== "unknown"
+              ? "sync_needed"
+              : canonicalStatus,
         );
       } catch {
         setSubStatus(shopStatus);
@@ -1018,13 +1049,33 @@ try {
 
   const manageSubscription = async () => {
     if (
-      billingDisplayStatus === "linkage_needed" ||
       billingDisplayStatus === "subscription_found_not_linked" ||
+      billingDisplayStatus === "ambiguous_customer_subscriptions" ||
+      billingDisplayStatus === "no_subscription_found" ||
+      billingDisplayStatus === "metadata_mismatch" ||
       billingDisplayStatus === "sync_needed"
     ) {
-      toast.warning(
-        "Billing linkage is still syncing. Please refresh in a moment instead of starting a new subscription.",
-      );
+      if (billingDisplayStatus === "subscription_found_not_linked") {
+        toast.warning(
+          "A Stripe subscription was found but is not linked to this shop yet. Refresh Billing & Stripe before retrying.",
+        );
+      } else if (billingDisplayStatus === "ambiguous_customer_subscriptions") {
+        toast.warning(
+          "Multiple managed subscriptions were found for this Stripe customer. Resolve linkage before continuing.",
+        );
+      } else if (billingDisplayStatus === "no_subscription_found") {
+        toast.warning(
+          "No managed subscription is linked to this shop yet. Start checkout only if this location truly has no subscription.",
+        );
+      } else if (billingDisplayStatus === "metadata_mismatch") {
+        toast.warning(
+          "Billing was reconciled using a deterministic customer match. Refresh to confirm linked status.",
+        );
+      } else {
+        toast.warning(
+          "Billing linkage is still syncing. Please refresh in a moment instead of starting a new subscription.",
+        );
+      }
       return;
     }
 
@@ -1115,6 +1166,30 @@ try {
       return (
         <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
           Subscription found, link required
+        </span>
+      );
+    }
+
+    if (billingDisplayStatus === "ambiguous_customer_subscriptions") {
+      return (
+        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+          Ambiguous subscriptions
+        </span>
+      );
+    }
+
+    if (billingDisplayStatus === "no_subscription_found") {
+      return (
+        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+          No subscription found
+        </span>
+      );
+    }
+
+    if (billingDisplayStatus === "metadata_mismatch") {
+      return (
+        <span className={`${base} border-emerald-500/30 bg-emerald-950/20 text-emerald-100`}>
+          Reconciled from customer
         </span>
       );
     }
