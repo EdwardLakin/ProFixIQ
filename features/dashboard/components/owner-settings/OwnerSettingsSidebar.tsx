@@ -132,6 +132,15 @@ export default function OwnerSettingsSidebar({
   locationName,
 }: Props) {
   const isCancelableStatus = subStatus === "active" || subStatus === "trialing";
+  const hasManagedSubscription =
+    subStatus === "active" ||
+    subStatus === "trialing" ||
+    subStatus === "past_due" ||
+    subStatus === "unpaid" ||
+    subStatus === "incomplete" ||
+    subStatus === "paused" ||
+    subStatus === "canceled";
+  const manageSubscriptionLoading = hasManagedSubscription ? portalLoading : checkoutLoading;
 
   return (
     <div className="space-y-5 lg:sticky lg:top-20">
@@ -173,12 +182,20 @@ export default function OwnerSettingsSidebar({
             <Button
               variant="secondary"
               onClick={onStartSubscriptionCheckout}
-              disabled={!isUnlocked || checkoutLoading}
+              disabled={!isUnlocked || manageSubscriptionLoading}
             >
-              {checkoutLoading ? "Opening checkout..." : "Manage subscription"}
+              {manageSubscriptionLoading
+                ? hasManagedSubscription
+                  ? "Opening portal..."
+                  : "Opening checkout..."
+                : hasManagedSubscription
+                  ? "Manage subscription"
+                  : "Start subscription"}
             </Button>
             <p className="text-[11px] text-neutral-500">
-              Start or update the ProFixIQ subscription for this location.
+              {hasManagedSubscription
+                ? "Open Stripe billing portal to manage an existing subscription."
+                : "Start checkout to create a new ProFixIQ subscription for this location."}
             </p>
 
             <Button

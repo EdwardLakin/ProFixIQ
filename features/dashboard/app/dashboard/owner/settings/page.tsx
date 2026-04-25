@@ -976,6 +976,25 @@ try {
     }
   };
 
+  const manageSubscription = async () => {
+    const managedStatuses = new Set<StripeSubStatus>([
+      "trialing",
+      "active",
+      "past_due",
+      "unpaid",
+      "incomplete",
+      "canceled",
+      "paused",
+    ]);
+
+    if (managedStatuses.has(subStatus)) {
+      await openStripePortal();
+      return;
+    }
+
+    await startSubscriptionCheckout();
+  };
+
   const confirmCancelSubscription = async () => {
     if (!shopId) return;
     if (!guardUnlock()) return;
@@ -1304,7 +1323,7 @@ try {
           emailLogs={emailLogs}
           emailLogsLoading={emailLogsLoading}
           onOpenStripeConnect={openStripeConnect}
-          onStartSubscriptionCheckout={startSubscriptionCheckout}
+          onStartSubscriptionCheckout={manageSubscription}
           onOpenStripePortal={openStripePortal}
           onRequestCancelSubscription={() => setCancelDialogOpen(true)}
           onCreateOrganization={() => router.push("/dashboard/owner/organization/create")}
