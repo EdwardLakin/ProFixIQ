@@ -13,6 +13,28 @@ import {
 } from "@/features/integrations/shopBoost/orchestrator";
 
 type DB = Database;
+
+
+type OrchestratorDiagnostic = {
+  source: string;
+  message: string;
+};
+
+async function safeOrchestratorQuery<T>(
+  source: string,
+  diagnostics: OrchestratorDiagnostic[],
+  fn: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    diagnostics.push({ source, message });
+    console.error(`[shop-boost/orchestrator] ${source} failed`, { error: message });
+    return fallback;
+  }
+}
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -37,19 +59,20 @@ export async function GET() {
   if (!profile?.shop_id) {
     return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
   }
+  const shopId = profile.shop_id as string;
 
   const admin = createAdminSupabase();
   const { data: intake, error } = await admin
     .from("shop_boost_intakes")
     .select("id,shop_id,status,processed_at,created_at,intake_basics")
-    .eq("shop_id", profile.shop_id)
+    .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) {
     console.error("[shop-boost][intakes/latest] failed to load latest intake", {
-      shopId: profile.shop_id,
+      shopId,
       error: error.message,
     });
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -60,15 +83,22 @@ export async function GET() {
   const basicsOrchestrator = asRecord(basics.orchestrator);
 
   let orchestrator: Record<string, unknown> | null = null;
+  const orchestratorDiagnostics: OrchestratorDiagnostic[] = [];
 
   try {
-    const run = await getRunByShopIntake({
-      shopId: profile.shop_id,
-      intakeId: intake.id,
-    });
+    const run = await safeOrchestratorQuery(
+      "getRunByShopIntake",
+      orchestratorDiagnostics,
+      () =>
+        getRunByShopIntake({
+          shopId,
+          intakeId: intake.id,
+        }),
+      null,
+    );
 
     if (run?.id) {
-      const jobs = await getRunJobs(run.id);
+      const jobs = await safeOrchestratorQuery("getRunJobs", orchestratorDiagnostics, () => getRunJobs(run.id), []);
       const verifyJob = jobs.find((job) => job.job_type === "verify" && String(job.domain ?? "global") === "global");
       const activateJob = jobs.find((job) => job.job_type === "activate" && String(job.domain ?? "global") === "global");
       const verifyResult = asRecord(verifyJob?.result);
@@ -80,9 +110,28 @@ export async function GET() {
       const activationEligible = run.activation_status === "eligible" || run.activation_status === "activated";
       const activated = run.activation_status === "activated";
       const uiShouldRouteForward = verifyPassed && activationEligible;
-      const jobSummary = await summarizeRunJobs(run.id);
-      const jobSummaryDetailed = await summarizeRunJobsDetailed(run.id);
-      const lastAttempt = await getLatestRunAttemptSummary(run.id);
+      const jobSummary = await safeOrchestratorQuery("summarizeRunJobs", orchestratorDiagnostics, () => summarizeRunJobs(run.id), null);
+      const jobSummaryDetailed = await safeOrchestratorQuery(
+        "summarizeRunJobsDetailed",
+        orchestratorDiagnostics,
+        () => summarizeRunJobsDetailed(run.id),
+        {
+          byStatus: {},
+          byDomainStatus: {},
+          domains: {
+            blocked: [],
+            failed: [],
+            pending: [],
+            succeeded: [],
+          },
+        },
+      );
+      const lastAttempt = await safeOrchestratorQuery(
+        "getLatestRunAttemptSummary",
+        orchestratorDiagnostics,
+        () => getLatestRunAttemptSummary(run.id),
+        null,
+      );
       orchestrator = {
         runId: run.id,
         runState: run.state,
@@ -136,7 +185,7 @@ export async function GET() {
     }
   } catch (orchestratorErr) {
     console.error("[shop-boost/orchestrator] latest status enrichment failed", {
-      shopId: profile.shop_id,
+      shopId,
       intakeId: intake.id,
       error: orchestratorErr instanceof Error ? orchestratorErr.message : String(orchestratorErr),
     });
@@ -170,6 +219,9 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    diagnostics: {
+      orchestrator: orchestratorDiagnostics,
+    },
     intake: {
       id: intake.id,
       status: intake.status,

@@ -288,20 +288,58 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const admin = createAdminSupabase();
-    await validateScope({ admin, shopId: access.profile.shop_id as string, scope, intakeId });
-    const counts = await collectCounts({ admin, shopId: access.profile.shop_id as string, scope, intakeId });
-    return NextResponse.json({
-      ok: true,
-      scope,
-      shopId: access.profile.shop_id,
-      intakeId,
-      expectedConfirmationText: buildExpectedConfirmation(scope, access.profile.shop_id as string, intakeId),
-      counts,
-      safety: {
-        strongDeletionUsesProvenance: true,
-        legacyTaggingCanBeAmbiguous: true,
-      },
-    });
+    const shopId = access.profile.shop_id as string;
+    const expectedConfirmationText = buildExpectedConfirmation(scope, shopId, intakeId);
+    await validateScope({ admin, shopId, scope, intakeId });
+
+    try {
+      const counts = await collectCounts({ admin, shopId, scope, intakeId });
+      return NextResponse.json({
+        ok: true,
+        scope,
+        shopId,
+        intakeId,
+        expectedConfirmationText,
+        counts,
+        safety: {
+          strongDeletionUsesProvenance: true,
+          legacyTaggingCanBeAmbiguous: true,
+        },
+        diagnostics: {
+          degraded: false,
+          errors: [],
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load reset preview";
+      console.error("[shop-boost/import-reset] preview collection failed", {
+        shopId,
+        scope,
+        intakeId,
+        error: message,
+      });
+      return NextResponse.json({
+        ok: true,
+        scope,
+        shopId,
+        intakeId,
+        expectedConfirmationText,
+        counts: null,
+        safety: {
+          strongDeletionUsesProvenance: true,
+          legacyTaggingCanBeAmbiguous: true,
+        },
+        diagnostics: {
+          degraded: true,
+          errors: [
+            {
+              source: "collectCounts",
+              message,
+            },
+          ],
+        },
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load reset preview";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

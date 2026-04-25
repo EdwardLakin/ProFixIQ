@@ -55,7 +55,7 @@ type OnboardingAttemptRow = {
   status: string;
   error_code: string | null;
   error_message: string | null;
-  created_at: string;
+  started_at: string;
   completed_at: string | null;
 };
 
@@ -748,9 +748,9 @@ export async function getLatestRunAttemptSummary(runId: string): Promise<RunAtte
   const supabase = adminAny();
   const { data, error } = await supabase
     .from("shop_onboarding_attempts")
-    .select("id,job_id,status,error_code,error_message,created_at,completed_at")
+    .select("id,job_id,status,error_code,error_message,started_at,completed_at")
     .eq("run_id", runId)
-    .order("created_at", { ascending: false })
+    .order("started_at", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
 
@@ -779,7 +779,7 @@ export async function getLatestRunAttemptSummary(runId: string): Promise<RunAtte
     status: attempt.status,
     errorCode: attempt.error_code,
     errorMessage: attempt.error_message,
-    createdAt: attempt.created_at,
+    createdAt: attempt.started_at,
     completedAt: attempt.completed_at,
   };
 }
