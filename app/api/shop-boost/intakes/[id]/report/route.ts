@@ -13,18 +13,12 @@ import {
 
 type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
-type ReviewOutcomeRow = Pick<
-  DB["public"]["Tables"]["shop_boost_review_items"]["Row"],
-  "status" | "resolution_action"
->;
-type DomainAggregationRow = Pick<
-  DB["public"]["Tables"]["shop_boost_row_results"]["Row"],
-  "target_domain" | "review_required" | "error_reason"
->;
 type IntakeReportRow = Pick<
   DB["public"]["Tables"]["shop_boost_intakes"]["Row"],
   "id" | "shop_id" | "status" | "created_at" | "processed_at" | "intake_basics"
 >;
+const REPORT_DOMAINS = ["customer", "vehicle", "work_order", "history", "invoice", "part"] as const;
+const REPORT_STATUSES = ["pending", "failed_materialization", "materialized", "ignored", "resolved"] as const;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -124,42 +118,93 @@ export async function GET(req: Request, context: RouteContext) {
   const importSummary = asRecord(basics.importSummary);
   const integrity = asRecord(importSummary.integrity ?? migrationProgress.integrity);
 
-  const [{ data: reviewRows, error: reviewRowsError }, { data: byDomainRows, error: byDomainRowsError }] = await Promise.all([
-    admin
-      .from("shop_boost_review_items")
-      .select("status,resolution_action")
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", id),
-    admin
-      .from("shop_boost_row_results")
-      .select("target_domain,review_required,error_reason")
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", id),
+  const [reviewStatusCounts, reviewActionCounts, domainProcessedCounts, domainReviewCounts, domainFailedCounts] = await Promise.all([
+    Promise.all(
+      REPORT_STATUSES.map((status) =>
+        admin
+          .from("shop_boost_review_items")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", profile.shop_id)
+          .eq("intake_id", id)
+          .eq("status", status),
+      ),
+    ),
+    Promise.all(
+      ["linked_to_existing", "created_new", "ignored"].map((action) =>
+        admin
+          .from("shop_boost_review_items")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", profile.shop_id)
+          .eq("intake_id", id)
+          .eq("resolution_action", action),
+      ),
+    ),
+    Promise.all(
+      REPORT_DOMAINS.map((domain) =>
+        admin
+          .from("shop_boost_row_results")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", profile.shop_id)
+          .eq("intake_id", id)
+          .eq("target_domain", domain),
+      ),
+    ),
+    Promise.all(
+      REPORT_DOMAINS.map((domain) =>
+        admin
+          .from("shop_boost_row_results")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", profile.shop_id)
+          .eq("intake_id", id)
+          .eq("target_domain", domain)
+          .eq("review_required", true),
+      ),
+    ),
+    Promise.all(
+      REPORT_DOMAINS.map((domain) =>
+        admin
+          .from("shop_boost_row_results")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", profile.shop_id)
+          .eq("intake_id", id)
+          .eq("target_domain", domain)
+          .or("error_reason.not.is.null,match_status.eq.invalid"),
+      ),
+    ),
   ]);
-  if (reviewRowsError || byDomainRowsError) {
+  if (
+    reviewStatusCounts.some((row) => row.error) ||
+    reviewActionCounts.some((row) => row.error) ||
+    domainProcessedCounts.some((row) => row.error) ||
+    domainReviewCounts.some((row) => row.error) ||
+    domainFailedCounts.some((row) => row.error)
+  ) {
     console.error("[shop-boost][intakes/report] failed to load report aggregates", {
       intakeId: id,
       shopId: profile.shop_id,
-      reviewRowsError: reviewRowsError?.message ?? null,
-      byDomainRowsError: byDomainRowsError?.message ?? null,
+      reviewRowsError: reviewStatusCounts.find((row) => row.error)?.error?.message ?? null,
+      byDomainRowsError: domainProcessedCounts.find((row) => row.error)?.error?.message ?? null,
     });
   }
 
-  const reviewOutcomes = (reviewRows ?? []).reduce((acc: Record<string, number>, row: ReviewOutcomeRow) => {
-    const status = String(row.status ?? "unknown");
-    acc[`status:${status}`] = (acc[`status:${status}`] ?? 0) + 1;
-    const action = String(row.resolution_action ?? "none");
-    acc[`action:${action}`] = (acc[`action:${action}`] ?? 0) + 1;
+  const reviewOutcomes = REPORT_STATUSES.reduce((acc: Record<string, number>, status, index) => {
+    acc[`status:${status}`] = Number(reviewStatusCounts[index]?.count ?? 0);
     return acc;
   }, {});
+  (["linked_to_existing", "created_new", "ignored"] as const).forEach((action, index) => {
+    reviewOutcomes[`action:${action}`] = Number(reviewActionCounts[index]?.count ?? 0);
+  });
+  reviewOutcomes["action:none"] = Math.max(
+    0,
+    (reviewOutcomes["status:pending"] ?? 0) - (reviewOutcomes["action:linked_to_existing"] ?? 0) - (reviewOutcomes["action:created_new"] ?? 0) - (reviewOutcomes["action:ignored"] ?? 0),
+  );
 
-  const domainSummaries = (byDomainRows ?? []).reduce((acc: Record<string, { review: number; failed: number; processed: number }>, row: DomainAggregationRow) => {
-    const key = String(row.target_domain ?? "unknown");
-    const next = acc[key] ?? { review: 0, failed: 0, processed: 0 };
-    next.processed += 1;
-    if (row.review_required) next.review += 1;
-    if (row.error_reason) next.failed += 1;
-    acc[key] = next;
+  const domainSummaries = REPORT_DOMAINS.reduce((acc: Record<string, { review: number; failed: number; processed: number }>, domain, index) => {
+    acc[domain] = {
+      processed: Number(domainProcessedCounts[index]?.count ?? 0),
+      review: Number(domainReviewCounts[index]?.count ?? 0),
+      failed: Number(domainFailedCounts[index]?.count ?? 0),
+    };
     return acc;
   }, {});
 
