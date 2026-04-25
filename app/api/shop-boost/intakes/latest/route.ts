@@ -5,7 +5,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
-  getLatestRunAttemptSummary,
+  getLatestRunAttemptSummaryWithDiagnostics,
   getRunByShopIntake,
   getRunJobs,
   summarizeRunJobs,
@@ -60,6 +60,7 @@ export async function GET() {
   const basicsOrchestrator = asRecord(basics.orchestrator);
 
   let orchestrator: Record<string, unknown> | null = null;
+  const diagnostics: Array<{ scope: string; code: string; message: string; hint?: string }> = [];
 
   try {
     const run = await getRunByShopIntake({
@@ -82,7 +83,15 @@ export async function GET() {
       const uiShouldRouteForward = verifyPassed && activationEligible;
       const jobSummary = await summarizeRunJobs(run.id);
       const jobSummaryDetailed = await summarizeRunJobsDetailed(run.id);
-      const lastAttempt = await getLatestRunAttemptSummary(run.id);
+      const { summary: lastAttempt, diagnostics: attemptDiagnostics } = await getLatestRunAttemptSummaryWithDiagnostics(run.id);
+      if (attemptDiagnostics) {
+        diagnostics.push({
+          scope: "orchestrator.lastAttempt",
+          code: attemptDiagnostics.code,
+          message: attemptDiagnostics.message,
+          hint: attemptDiagnostics.hint,
+        });
+      }
       orchestrator = {
         runId: run.id,
         runState: run.state,
@@ -170,6 +179,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    diagnostics,
     intake: {
       id: intake.id,
       status: intake.status,
