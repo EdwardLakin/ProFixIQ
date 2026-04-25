@@ -43,14 +43,17 @@ type EmailLogRow = {
 type Props = {
   shopId: string | null;
   isUnlocked: boolean;
+  canManageBilling: boolean;
   billingPill: React.ReactNode;
   subStatus: StripeSubStatus;
   stripeAccountId: string | null;
   trialEndIso: string | null;
   periodEndIso: string | null;
+  cancelAtPeriodEnd: boolean;
   connectLoading: boolean;
   checkoutLoading: boolean;
   portalLoading: boolean;
+  cancelLoading: boolean;
   plan: "starter" | "pro" | "enterprise" | "unlimited" | "unknown";
   seatsUsed: number;
   seatsLimit: number | null;
@@ -72,6 +75,7 @@ type Props = {
   onOpenStripeConnect: () => void;
   onStartSubscriptionCheckout: () => void;
   onOpenStripePortal: () => void;
+  onRequestCancelSubscription: () => void;
   onCreateOrganization: () => void;
   onSwitchLocation: (id: string) => void;
   onRefreshEmailLogs: () => void;
@@ -85,14 +89,17 @@ type Props = {
 export default function OwnerSettingsSidebar({
   shopId,
   isUnlocked,
+  canManageBilling,
   billingPill,
   subStatus,
   stripeAccountId,
   trialEndIso,
   periodEndIso,
+  cancelAtPeriodEnd,
   connectLoading,
   checkoutLoading,
   portalLoading,
+  cancelLoading,
   plan,
   seatsUsed,
   seatsLimit,
@@ -114,6 +121,7 @@ export default function OwnerSettingsSidebar({
   onOpenStripeConnect,
   onStartSubscriptionCheckout,
   onOpenStripePortal,
+  onRequestCancelSubscription,
   onCreateOrganization,
   onSwitchLocation,
   onRefreshEmailLogs,
@@ -123,6 +131,8 @@ export default function OwnerSettingsSidebar({
   formatLocationLine,
   locationName,
 }: Props) {
+  const isCancelableStatus = subStatus === "active" || subStatus === "trialing";
+
   return (
     <div className="space-y-5 lg:sticky lg:top-20">
       <OwnerSettingsPanel
@@ -181,6 +191,33 @@ export default function OwnerSettingsSidebar({
             <p className="text-[11px] text-neutral-500">
               Review invoices, payment methods, and subscription billing history.
             </p>
+
+            {canManageBilling && isCancelableStatus ? (
+              cancelAtPeriodEnd ? (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  <p>
+                    Cancellation takes effect at the end of the current billing period.
+                    {periodEndIso
+                      ? ` Your subscription will end on ${formatDate(periodEndIso)}.`
+                      : ""}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={onRequestCancelSubscription}
+                    disabled={!isUnlocked || cancelLoading}
+                    className="border-red-400/40 text-red-100 hover:bg-red-950/25"
+                  >
+                    {cancelLoading ? "Scheduling cancellation..." : "Cancel subscription"}
+                  </Button>
+                  <p className="text-[11px] text-neutral-500">
+                    Schedule cancellation at period end. Access stays active until then.
+                  </p>
+                </>
+              )
+            ) : null}
           </div>
         </div>
       </OwnerSettingsPanel>
