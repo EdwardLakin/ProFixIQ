@@ -52,7 +52,8 @@ export async function getShopSeatLimitSnapshot(
   const { count: activeUsers, error: countErr } = await admin
     .from("profiles")
     .select("id", { count: "exact", head: true })
-    .eq("shop_id", shopId);
+    .eq("shop_id", shopId)
+    .eq("is_active", true);
 
   if (countErr) {
     throw new Error(`Failed to count active shop users: ${countErr.message}`);
