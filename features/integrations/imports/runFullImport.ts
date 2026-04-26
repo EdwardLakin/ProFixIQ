@@ -962,7 +962,21 @@ async function downloadCsv(path: string | null): Promise<string | null> {
   const supabase = createAdminSupabase();
   const { data, error } = await supabase.storage.from(SHOP_IMPORT_BUCKET).download(path);
   if (error || !data) return null;
-  return data.text();
+  return decodeStorageDownloadToText(data);
+}
+
+async function decodeStorageDownloadToText(data: unknown): Promise<string | null> {
+  if (typeof data === "string") return data;
+  if (data && typeof (data as { text?: unknown }).text === "function") {
+    return (data as { text: () => Promise<string> }).text();
+  }
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(data);
+  }
+  return null;
 }
 
 async function stageSupplementalUploads(args: {
