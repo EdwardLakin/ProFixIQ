@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { assertShopHasAvailableSeat } from "@/features/shared/lib/server/shop-seat-limit";
 import {
   buildShopUsernameNamespace,
   normalizeProvisioningUsername,
@@ -51,6 +52,9 @@ export async function POST(req: Request) {
 
     // Always force the creator's shop_id to preserve tenant boundaries.
     const effectiveShopId = access.profile.shop_id;
+    if (!effectiveShopId) {
+      return NextResponse.json({ error: "Profile for current user not found." }, { status: 403 });
+    }
 
     // build service client to actually create auth user
     const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
@@ -93,6 +97,13 @@ export async function POST(req: Request) {
         { error: "A user with this username already exists in this shop." },
         { status: 400 }
       );
+    }
+
+    try {
+      await assertShopHasAvailableSeat(serviceSupabase, effectiveShopId);
+    } catch (seatErr) {
+      const msg = seatErr instanceof Error ? seatErr.message : "Shop user limit reached for your current plan.";
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     // Username-only auth still signs in as username@local.profix-internal.
@@ -146,6 +157,12 @@ export async function POST(req: Request) {
       );
 
     if (profileErr) {
+      if (String(profileErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
+        return NextResponse.json(
+          { error: "Shop user limit reached for your current plan." },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: `Profile upsert failed: ${profileErr.message}` },
         { status: 400 }
