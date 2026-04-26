@@ -12,6 +12,20 @@ type ReviewItemRow = DB["public"]["Tables"]["shop_boost_review_items"]["Row"];
 type IntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
+async function decodeStorageDownloadToText(data: unknown): Promise<string | null> {
+  if (typeof data === "string") return data;
+  if (data && typeof (data as { text?: unknown }).text === "function") {
+    return await (data as { text: () => Promise<string> }).text();
+  }
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(data);
+  }
+  return null;
+}
+
 const shouldRunReplay =
   process.env.RUN_SHOP_BOOST_REPLAY_TEST === "true" &&
   !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -78,10 +92,12 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
       const { data, error: downloadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).download(target.path);
       expect(downloadError, `${target.domain} pre-import download failed for ${target.path}`).toBeNull();
       expect(data, `${target.domain} pre-import download missing data for ${target.path}`).toBeTruthy();
-      const csvText = await data!.text();
-      expect(csvText.trim().length, `${target.domain} pre-import download was empty for ${target.path}`).toBeGreaterThan(0);
+      const csvText = await decodeStorageDownloadToText(data);
+      expect(csvText, `${target.domain} pre-import download could not be decoded for ${target.path}`).toBeTruthy();
+      const decodedCsvText = csvText ?? "";
+      expect(decodedCsvText.trim().length, `${target.domain} pre-import download was empty for ${target.path}`).toBeGreaterThan(0);
       expect(
-        target.expectedHeaders.some((header) => csvText.includes(header)),
+        target.expectedHeaders.some((header) => decodedCsvText.includes(header)),
         `${target.domain} pre-import download missing expected header (${target.expectedHeaders.join(" or ")})`,
       ).toBe(true);
     }
