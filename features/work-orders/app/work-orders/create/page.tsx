@@ -197,6 +197,18 @@ const strOrNull = (v: string | null | undefined) => {
   return t ? t : null;
 };
 
+const normalizeEmail = (v: string | null | undefined): string | null => {
+  const email = strOrNull(v);
+  return email ? email.toLowerCase() : null;
+};
+
+const normalizePhone = (v: string | null | undefined): string | null => {
+  const raw = strOrNull(v);
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits || raw;
+};
+
 const numOrNull = (v: string | number | null | undefined) => {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -675,8 +687,8 @@ useEffect(() => {
     business_name: strOrNull(c.business_name ?? null),
     first_name: strOrNull(c.first_name),
     last_name: strOrNull(c.last_name),
-    phone: strOrNull(c.phone),
-    email: strOrNull(c.email),
+    phone: normalizePhone(c.phone),
+    email: normalizeEmail(c.email),
     address: strOrNull(c.address),
     city: strOrNull(c.city),
     province: strOrNull(c.province),
@@ -869,24 +881,106 @@ useEffect(() => {
   ]);
 
   async function ensureCustomer(shopId: string): Promise<CustomerRowWithBusiness> {
+    const normalizedEmail = normalizeEmail(customer.email);
+    const normalizedPhone = normalizePhone(customer.phone);
+
+    const customerPatch: Partial<CustomerRowWithBusiness> = {};
+    if (strOrNull(customer.first_name)) customerPatch.first_name = strOrNull(customer.first_name);
+    if (strOrNull(customer.last_name)) customerPatch.last_name = strOrNull(customer.last_name);
+    if (strOrNull(customer.business_name ?? null)) customerPatch.business_name = strOrNull(customer.business_name ?? null);
+    if (normalizedEmail) customerPatch.email = normalizedEmail;
+    if (normalizedPhone) customerPatch.phone = normalizedPhone;
+    if (strOrNull(customer.address)) customerPatch.address = strOrNull(customer.address);
+    if (strOrNull(customer.city)) customerPatch.city = strOrNull(customer.city);
+    if (strOrNull(customer.province)) customerPatch.province = strOrNull(customer.province);
+    if (strOrNull(customer.postal_code)) customerPatch.postal_code = strOrNull(customer.postal_code);
+
     if (customerId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("customers")
         .select("*")
         .eq("id", customerId)
+        .eq("shop_id", shopId)
         .single();
-      if (data) return data as CustomerRowWithBusiness;
+      if (error) throw error;
+      if (data) {
+        const row = data as CustomerRowWithBusiness;
+        const needsPatch =
+          (normalizedEmail && !row.email) ||
+          (normalizedPhone && !row.phone) ||
+          (strOrNull(customer.first_name) && !row.first_name) ||
+          (strOrNull(customer.last_name) && !row.last_name) ||
+          (strOrNull(customer.business_name ?? null) && !row.business_name) ||
+          (strOrNull(customer.address) && !row.address) ||
+          (strOrNull(customer.city) && !row.city) ||
+          (strOrNull(customer.province) && !row.province) ||
+          (strOrNull(customer.postal_code) && !row.postal_code);
+
+        if (!needsPatch) return row;
+
+        const { data: patched, error: patchErr } = await supabase
+          .from("customers")
+          .update(customerPatch)
+          .eq("id", row.id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
+
+        if (patchErr) throw patchErr;
+        return (patched ?? row) as CustomerRowWithBusiness;
+      }
     }
 
-    let q = supabase.from("customers").select("*").eq("shop_id", shopId).limit(1);
+    if (normalizedEmail) {
+      const { data: foundByEmail, error: emailErr } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("shop_id", shopId)
+        .eq("email", normalizedEmail)
+        .limit(1);
 
-    if (customer.phone) q = q.ilike("phone", customer.phone);
-    else if (customer.email) q = q.ilike("email", customer.email);
+      if (emailErr) throw emailErr;
+      if (foundByEmail?.length) {
+        const row = foundByEmail[0] as CustomerRowWithBusiness;
+        setCustomerId(row.id);
 
-    const { data: found } = await q;
-    if (found?.length) {
-      setCustomerId(found[0].id);
-      return found[0] as CustomerRowWithBusiness;
+        const { data: patched, error: patchErr } = await supabase
+          .from("customers")
+          .update(customerPatch)
+          .eq("id", row.id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
+
+        if (patchErr) throw patchErr;
+        return (patched ?? row) as CustomerRowWithBusiness;
+      }
+    }
+
+    if (normalizedPhone) {
+      const { data: foundByPhone, error: phoneErr } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("shop_id", shopId)
+        .eq("phone", normalizedPhone)
+        .limit(1);
+
+      if (phoneErr) throw phoneErr;
+      if (foundByPhone?.length) {
+        const row = foundByPhone[0] as CustomerRowWithBusiness;
+        setCustomerId(row.id);
+
+        const { data: patched, error: patchErr } = await supabase
+          .from("customers")
+          .update(customerPatch)
+          .eq("id", row.id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
+
+        if (patchErr) throw patchErr;
+        return (patched ?? row) as CustomerRowWithBusiness;
+      }
     }
 
     const { data: inserted, error: insErr } = await supabase
