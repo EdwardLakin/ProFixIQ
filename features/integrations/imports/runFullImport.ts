@@ -121,6 +121,7 @@ export type ShopBoostImportSummary = {
       total_input: number;
       mismatch: number;
     };
+    domainDiagnostics?: DomainDiagnosticsMap;
     byDomain: Record<string, { success: number; review: number; failed: number }>;
   };
   completionState: CompletionState;
@@ -189,6 +190,39 @@ type CanonicalLifecycleStage =
   | "review_required"
   | "failed"
   | "skipped";
+
+type DomainDiagnostics = {
+  uploaded: number;
+  parsed: number;
+  normalized: number;
+  deterministic_identity: number;
+  linked_existing: number;
+  materialized_new: number;
+  review_required: number;
+  failed: number;
+  skipped: number;
+  mismatch: number;
+};
+
+type DomainDiagnosticsMap = Record<
+  "customers" | "vehicles" | "history" | "invoices" | "parts" | "vendors",
+  DomainDiagnostics
+>;
+
+function createDomainDiagnostics(uploaded: number): DomainDiagnostics {
+  return {
+    uploaded,
+    parsed: uploaded,
+    normalized: 0,
+    deterministic_identity: 0,
+    linked_existing: 0,
+    materialized_new: 0,
+    review_required: 0,
+    failed: 0,
+    skipped: 0,
+    mismatch: 0,
+  };
+}
 
 async function recordImportCreatedArtifact(args: {
   supabase: ReturnType<typeof createAdminSupabase>;
@@ -991,6 +1025,14 @@ function classifyLifecycleStage(args: {
   return "normalized";
 }
 
+function markDomainOutcome(diagnostics: DomainDiagnostics, stage: CanonicalLifecycleStage): void {
+  if (stage === "linked_existing") diagnostics.linked_existing += 1;
+  else if (stage === "materialized_new") diagnostics.materialized_new += 1;
+  else if (stage === "review_required") diagnostics.review_required += 1;
+  else if (stage === "failed") diagnostics.failed += 1;
+  else if (stage === "skipped") diagnostics.skipped += 1;
+}
+
 async function insertRowResult(args: {
   supabase: ReturnType<typeof createAdminSupabase>;
   shopId: string;
@@ -1005,7 +1047,21 @@ async function insertRowResult(args: {
   matchDetails?: Record<string, unknown> | null;
   errorReason?: string | null;
   reviewRequired: boolean;
+  domainDiagnostics?: DomainDiagnostics;
+  deterministicResolved?: boolean;
 }): Promise<void> {
+  if (args.domainDiagnostics) {
+    args.domainDiagnostics.normalized += 1;
+    if (args.deterministicResolved) args.domainDiagnostics.deterministic_identity += 1;
+  }
+  const lifecycleStage = classifyLifecycleStage({
+    matchStatus: args.matchStatus,
+    reviewRequired: args.reviewRequired,
+    errorReason: args.errorReason ?? null,
+  });
+  if (args.domainDiagnostics) {
+    markDomainOutcome(args.domainDiagnostics, lifecycleStage);
+  }
   const cluster = buildClusterDescriptor({
     domain: args.targetDomain,
     rawPayload: args.rawPayload,
@@ -1023,11 +1079,7 @@ async function insertRowResult(args: {
     match_confidence: confidenceScore(args.matchConfidence),
     match_details: {
       resolution_order: DETERMINISTIC_LINKAGE_ORDER,
-      lifecycle_stage: classifyLifecycleStage({
-        matchStatus: args.matchStatus,
-        reviewRequired: args.reviewRequired,
-        errorReason: args.errorReason ?? null,
-      }),
+      lifecycle_stage: lifecycleStage,
       reason_code: args.errorReason ?? null,
       ...(args.matchDetails ?? {}),
     },
@@ -1178,13 +1230,14 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     ? (intakeBasics.uploadManifest as UploadManifestRecord)
     : {};
 
-  const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv, invoicesCsvFromManifest] = await Promise.all([
+  const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv, invoicesCsvFromManifest, vendorsCsv] = await Promise.all([
     downloadCsv(intakeRow.customers_file_path ?? null),
     downloadCsv(intakeRow.vehicles_file_path ?? null),
     downloadCsv(intakeRow.parts_file_path ?? null),
     downloadCsv(intakeRow.history_file_path ?? null),
     downloadCsv(intakeRow.staff_file_path ?? null),
     downloadCsv(uploadManifest.invoices?.path ?? null),
+    downloadCsv(uploadManifest.vendors?.path ?? null),
   ]);
 
   const parsedCustomers = customersCsv ? parseCsv(customersCsv).rows : [];
@@ -1192,6 +1245,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const parsedParts = partsCsv ? parseCsv(partsCsv).rows : [];
   const parsedHistory = historyCsv ? parseCsv(historyCsv).rows : [];
   const parsedInvoices = invoicesCsvFromManifest ? parseCsv(invoicesCsvFromManifest).rows : [];
+  const parsedVendors = vendorsCsv ? parseCsv(vendorsCsv).rows : [];
   const totalRows =
     (runCustomers ? parsedCustomers.length : 0) +
     (runVehicles ? parsedVehicles.length : 0) +
@@ -1199,7 +1253,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     (runHistory ? parsedHistory.length : 0) +
     (runInvoices ? parsedInvoices.length : 0);
 
-  const rowOutcome = {
+  const rowOutcome: ShopBoostImportSummary["rowResults"] = {
     totalRows,
     processedRows: 0,
     successCount: 0,
@@ -1217,6 +1271,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       total_input: totalRows,
       mismatch: 0,
     },
+    domainDiagnostics: undefined,
     byDomain: {
       customers: { success: 0, review: 0, failed: 0 },
       vehicles: { success: 0, review: 0, failed: 0 },
@@ -1224,6 +1279,14 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       history: { success: 0, review: 0, failed: 0 },
       invoices: { success: 0, review: 0, failed: 0 },
     },
+  };
+  const domainDiagnostics: DomainDiagnosticsMap = {
+    customers: createDomainDiagnostics(runCustomers ? parsedCustomers.length : 0),
+    vehicles: createDomainDiagnostics(runVehicles ? parsedVehicles.length : 0),
+    history: createDomainDiagnostics(runHistory ? parsedHistory.length : 0),
+    invoices: createDomainDiagnostics(runInvoices ? parsedInvoices.length : 0),
+    parts: createDomainDiagnostics(runParts ? parsedParts.length : 0),
+    vendors: createDomainDiagnostics(parsedVendors.length),
   };
 
   if (!materializeDomain) {
@@ -1390,6 +1453,30 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     }
   }
 
+  const registerCustomerIndexes = (args: {
+    customerId: string;
+    sourceCustomerId?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    normalizedName?: string | null;
+  }): void => {
+    const id = args.customerId;
+    if (!id) return;
+    const email = normalizeEmail(args.email ?? "");
+    const phone = normalizePhone(args.phone ?? "");
+    const normalizedName = normalizeNameKey(args.normalizedName ?? "");
+    if (email) {
+      customersByEmail.set(email, id);
+      addUniqueMatch(uniqueCustomersByEmail, conflictingCustomerEmails, email, id);
+    }
+    if (phone) {
+      customersByPhone.set(phone, id);
+      addUniqueMatch(uniqueCustomersByPhone, conflictingCustomerPhones, phone, id);
+    }
+    if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
+    rememberSourceLinkedId(customersBySourceId, args.sourceCustomerId, id);
+  };
+
   let partsPipelineSummary: PartsPipelineSummary | undefined;
 
   // 1) Import customers
@@ -1406,7 +1493,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const name =
         pick(row, [/^display[_\s-]*name$/, /^company[_\s-]*name$/, /^name$/, /customer name/]) ??
         [first ?? "", last ?? ""].filter(Boolean).join(" ");
-      const normalizedName = normalizeNameKey(name);
 
       const customerType = lower(
         pick(row, [/^customer[_\s-]*type$/, /^type$/, /account type/, /customer class/, /segment/]) ?? "",
@@ -1491,8 +1577,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           },
           reviewRequired: false,
         });
-        rememberSourceLinkedId(customersBySourceId, sourceCustomerId, existingId);
-        if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, existingId);
+        registerCustomerIndexes({
+          customerId: existingId,
+          sourceCustomerId,
+          email,
+          phone,
+          normalizedName: name,
+        });
         continue;
       }
 
@@ -1552,10 +1643,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       if (!error) {
         const id = (inserted ?? [])[0]?.id as string | undefined;
         if (id) {
-          if (email) customersByEmail.set(email, id);
-          if (phone) customersByPhone.set(phone, id);
-          rememberSourceLinkedId(customersBySourceId, sourceCustomerId, id);
-          if (normalizedName) addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
+          registerCustomerIndexes({
+            customerId: id,
+            sourceCustomerId,
+            email,
+            phone,
+            normalizedName: name,
+          });
           await recordImportCreatedArtifact({
             supabase,
             shopId,
@@ -1631,6 +1725,13 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
               updated_at: new Date().toISOString(),
             } as DB["public"]["Tables"]["customers"]["Update"])
             .eq("id", deterministicFallback.id);
+          registerCustomerIndexes({
+            customerId: deterministicFallback.id,
+            sourceCustomerId,
+            email,
+            phone,
+            normalizedName: name,
+          });
           rowOutcome.processedRows += 1;
           rowOutcome.successCount += 1;
           rowOutcome.byDomain.customers.success += 1;
@@ -2373,7 +2474,37 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       }
 
       const workOrderId = (woInserted ?? [])[0]?.id as string | undefined;
-      if (!workOrderId) continue;
+      if (!workOrderId) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.failedCount += 1;
+        rowOutcome.byDomain.history.failed += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          issueType: "conflict",
+          summary: "History row did not return a work order id after materialization attempt.",
+          rawPayload: row,
+          normalizedPayload: { ro, sourceWorkOrderId, external_id, customer_id, vehicle_id },
+          blockingReason: "work_order_id_missing_after_write",
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "history",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { ro, sourceWorkOrderId, customer_id, vehicle_id, external_id },
+          targetDomain: "work_order",
+          matchStatus: "invalid",
+          matchConfidence: "low",
+          errorReason: "work_order_id_missing_after_write",
+          reviewRequired: true,
+        });
+        continue;
+      }
       if (!woByExternal?.id) {
         await recordImportCreatedArtifact({
           supabase,
@@ -2975,6 +3106,66 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   }
   rowOutcome.integrityErrors = integrityErrors;
   rowOutcome.outcomeBuckets = outcomeBuckets;
+  rowOutcome.domainDiagnostics = domainDiagnostics;
+
+  const { data: lifecycleRows } = await supabase
+    .from("shop_boost_row_results")
+    .select("source_file,match_status,review_required,error_reason,match_details")
+    .eq("shop_id", shopId)
+    .eq("intake_id", intakeId)
+    .limit(100000);
+
+  const domainBySourceFile: Record<string, keyof DomainDiagnosticsMap> = {
+    customers: "customers",
+    vehicles: "vehicles",
+    history: "history",
+    invoices: "invoices",
+    parts: "parts",
+    vendors: "vendors",
+  };
+
+  for (const row of lifecycleRows ?? []) {
+    const sourceFile = String((row as Record<string, unknown>).source_file ?? "");
+    const mappedDomain = domainBySourceFile[sourceFile];
+    if (!mappedDomain) continue;
+    const diagnostics = domainDiagnostics[mappedDomain];
+    diagnostics.normalized += 1;
+    const matchStatus = String((row as Record<string, unknown>).match_status ?? "");
+    const reviewRequired = Boolean((row as Record<string, unknown>).review_required);
+    const errorReason = String((row as Record<string, unknown>).error_reason ?? "") || null;
+    const matchDetails = (row as Record<string, unknown>).match_details;
+    const hasDeterministicSignal =
+      (isRecord(matchDetails) && typeof matchDetails.strategy === "string") ||
+      (isRecord(matchDetails) && typeof matchDetails.resolutionType === "string");
+    if (hasDeterministicSignal) diagnostics.deterministic_identity += 1;
+    const stage = classifyLifecycleStage({
+      matchStatus: matchStatus as MatchStatus,
+      reviewRequired,
+      errorReason,
+    });
+    markDomainOutcome(diagnostics, stage);
+  }
+
+  if (partsPipelineSummary) {
+    const partsDiagnostics = domainDiagnostics.parts;
+    partsDiagnostics.uploaded = partsPipelineSummary.rawRows;
+    partsDiagnostics.parsed = partsPipelineSummary.rawRows;
+    partsDiagnostics.normalized = Math.max(partsDiagnostics.normalized, partsPipelineSummary.normalizedRows);
+    partsDiagnostics.deterministic_identity = Math.max(partsDiagnostics.deterministic_identity, partsPipelineSummary.matchedRows);
+    partsDiagnostics.materialized_new = Math.max(partsDiagnostics.materialized_new, partsPipelineSummary.promotedRows);
+    partsDiagnostics.review_required = Math.max(partsDiagnostics.review_required, partsPipelineSummary.ambiguousRows);
+    partsDiagnostics.failed = Math.max(partsDiagnostics.failed, partsPipelineSummary.rejectedRows);
+  }
+
+  for (const diagnostics of Object.values(domainDiagnostics)) {
+    const bucketed =
+      diagnostics.linked_existing +
+      diagnostics.materialized_new +
+      diagnostics.review_required +
+      diagnostics.failed +
+      diagnostics.skipped;
+    diagnostics.mismatch = Math.abs(diagnostics.parsed - bucketed);
+  }
 
   const { data: keyFixRows } = await supabase
     .from("shop_boost_review_items")

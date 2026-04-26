@@ -108,15 +108,40 @@ function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
     return out.map((s) => s.trim());
   };
 
-  const header = splitLine(lines[0]).map((h) => h.trim());
+  const normalizeHeader = (header: string): string =>
+    header
+      .replace(/^\uFEFF/, "")
+      .trim()
+      .replace(/^"(.*)"$/, "$1")
+      .trim();
+
+  const headerAliases = (header: string): string[] => {
+    const normalized = normalizeHeader(header);
+    if (!normalized) return [];
+    const canonical = normalized
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_");
+    const spaced = canonical.replace(/_/g, " ").trim();
+    return Array.from(new Set([normalized, canonical, spaced].filter(Boolean)));
+  };
+
+  const header = splitLine(lines[0]).map((h) => normalizeHeader(h));
   const rows: CsvRow[] = [];
 
   for (let i = 1; i < lines.length; i += 1) {
     const cols = splitLine(lines[i]);
     const rec: CsvRow = {};
     for (let c = 0; c < header.length; c += 1) {
-      const key = header[c] || `col_${c + 1}`;
-      rec[key] = cols[c] ?? "";
+      const rawKey = header[c] || `col_${c + 1}`;
+      const value = cols[c] ?? "";
+      const aliases = headerAliases(rawKey);
+      if (aliases.length === 0) {
+        rec[`col_${c + 1}`] = value;
+      } else {
+        for (const alias of aliases) rec[alias] = value;
+      }
     }
     rows.push(rec);
   }
