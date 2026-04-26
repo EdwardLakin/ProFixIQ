@@ -2799,6 +2799,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         importSource: "history",
         sourceInvoiceStatus,
         sourcePaymentStatus,
+        sourceRowIndex: i + 1,
       });
       if (!invoiceUpsert.ok) {
         rowOutcome.processedRows += 1;
@@ -2997,6 +2998,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         importSource: "invoices",
         sourceInvoiceStatus,
         sourcePaymentStatus,
+        sourceRowIndex: i + 1,
       });
       if (!invoiceUpsert.ok) {
         rowOutcome.processedRows += 1;
@@ -3776,11 +3778,9 @@ async function upsertHistoryLine(args: {
     cause: cause ?? null,
     correction: correction ?? null,
     description: correction ?? complaint ?? "Imported history line",
-    status: "awaiting",
+    status: "completed",
     line_type: "info",
-    punchable: false,
     labor_time: normalizedLaborTime,
-    job_type: "repair",
     line_no: rowIndex,
     source_intake_id: intakeId,
     external_id,
@@ -3840,6 +3840,7 @@ async function upsertInvoiceIfNeeded(args: {
   importSource?: "history" | "invoices";
   sourceInvoiceStatus?: string | null;
   sourcePaymentStatus?: string | null;
+  sourceRowIndex?: number | null;
 }): Promise<{ ok: boolean; invoiceId: string | null; errorReason: string | null; action: "created" | "updated" | "skipped_no_amount" }> {
   const {
     supabase,
@@ -3856,6 +3857,7 @@ async function upsertInvoiceIfNeeded(args: {
     importSource,
     sourceInvoiceStatus,
     sourcePaymentStatus,
+    sourceRowIndex,
   } = args;
 
   const hasMoney = (total ?? 0) > 0 || (labor ?? 0) > 0 || (parts ?? 0) > 0;
@@ -3886,13 +3888,13 @@ async function upsertInvoiceIfNeeded(args: {
 
   const payload = {
     customer_id,
-    status: "open",
+    status: "paid",
     subtotal: Math.max(0, (labor ?? 0) + (parts ?? 0)),
     labor_cost: labor ?? 0,
     parts_cost: parts ?? 0,
     total: total ?? Math.max(0, (labor ?? 0) + (parts ?? 0)),
     issued_at: issuedAt,
-    paid_at: null,
+    paid_at: issuedAt,
     invoice_number: invoiceNumber ?? `IMP-${workOrderId.slice(0, 8)}`,
     currency: "USD",
     metadata: {
@@ -3903,6 +3905,7 @@ async function upsertInvoiceIfNeeded(args: {
       source_invoice_status: sourceInvoiceStatus ?? null,
       source_payment_status: sourcePaymentStatus ?? null,
       source_file: importSource ?? null,
+      source_row_index: sourceRowIndex ?? null,
       ...(externalId ? { source_external_id: externalId } : {}),
     },
   };
