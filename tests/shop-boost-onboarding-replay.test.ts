@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
-import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
+import { SHOP_IMPORT_BUCKET, runShopBoostImport } from "@/features/integrations/imports/runFullImport";
 import type { Database } from "@shared/types/types/supabase";
 import { SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE } from "./fixtures/shop-boost-onboarding-replay.fixture";
 
@@ -38,25 +38,53 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
     const vehiclesPath = `${storageRoot}/vehicles.csv`;
     const historyPath = `${storageRoot}/history.csv`;
     const invoicesPath = `${storageRoot}/invoices.csv`;
+    const uploadTargets = [
+      {
+        domain: "customers",
+        path: customersPath,
+        csv: SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.customersCsv,
+        expectedHeaders: ["Customer ID"],
+      },
+      {
+        domain: "vehicles",
+        path: vehiclesPath,
+        csv: SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.vehiclesCsv,
+        expectedHeaders: ["VIN"],
+      },
+      {
+        domain: "history",
+        path: historyPath,
+        csv: SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.historyCsv,
+        expectedHeaders: ["Work Order", "RO ID"],
+      },
+      {
+        domain: "invoices",
+        path: invoicesPath,
+        csv: SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.invoicesCsv,
+        expectedHeaders: ["Invoice"],
+      },
+    ] as const;
 
-    await Promise.all([
-      supabase!.storage.from("shop-imports").upload(customersPath, SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.customersCsv, {
+    for (const target of uploadTargets) {
+      expect(target.csv.trim().length, `${target.domain} fixture CSV must be non-empty`).toBeGreaterThan(0);
+      const { error: uploadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).upload(target.path, target.csv, {
         contentType: "text/csv",
         upsert: true,
-      }),
-      supabase!.storage.from("shop-imports").upload(vehiclesPath, SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.vehiclesCsv, {
-        contentType: "text/csv",
-        upsert: true,
-      }),
-      supabase!.storage.from("shop-imports").upload(historyPath, SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.historyCsv, {
-        contentType: "text/csv",
-        upsert: true,
-      }),
-      supabase!.storage.from("shop-imports").upload(invoicesPath, SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.invoicesCsv, {
-        contentType: "text/csv",
-        upsert: true,
-      }),
-    ]);
+      });
+      expect(uploadError, `${target.domain} upload failed for ${target.path}`).toBeNull();
+    }
+
+    for (const target of uploadTargets) {
+      const { data, error: downloadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).download(target.path);
+      expect(downloadError, `${target.domain} pre-import download failed for ${target.path}`).toBeNull();
+      expect(data, `${target.domain} pre-import download missing data for ${target.path}`).toBeTruthy();
+      const csvText = await data!.text();
+      expect(csvText.trim().length, `${target.domain} pre-import download was empty for ${target.path}`).toBeGreaterThan(0);
+      expect(
+        target.expectedHeaders.some((header) => csvText.includes(header)),
+        `${target.domain} pre-import download missing expected header (${target.expectedHeaders.join(" or ")})`,
+      ).toBe(true);
+    }
 
     const { error: intakeError } = await supabase!.from("shop_boost_intakes").insert({
       id: intakeId,
@@ -229,10 +257,13 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
   it("does not report READY_FOR_GO_LIVE when files exist but zero rows are processed", async () => {
     const emptyIntakeId = randomUUID();
     const emptyCustomersPath = `${storageRoot}/empty-customers.csv`;
-    await supabase!.storage.from("shop-imports").upload(emptyCustomersPath, "Customer ID,Email\n", {
+    const emptyCustomersCsv = "Customer ID,Email\n";
+    expect(emptyCustomersCsv.trim().length).toBeGreaterThan(0);
+    const { error: emptyUploadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).upload(emptyCustomersPath, emptyCustomersCsv, {
       contentType: "text/csv",
       upsert: true,
     });
+    expect(emptyUploadError).toBeNull();
 
     const { error: emptyIntakeErr } = await supabase!.from("shop_boost_intakes").insert({
       id: emptyIntakeId,
