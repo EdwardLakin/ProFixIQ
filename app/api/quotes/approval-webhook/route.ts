@@ -63,24 +63,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data: customer, error: customerErr } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle<{ id: string }>();
-
-  if (customerErr || !customer?.id) {
-    return NextResponse.json(
-      { error: "Customer account not found for this user" } satisfies Json,
-      { status: 404 },
-    );
-  }
-
-  const { data: workOrder, error: woErr } = await supabase
+  const { data: rawWorkOrder, error: woErr } = await supabase
     .from("work_orders")
     .select("id, shop_id, customer_id, approval_state, status, customer_approval_at, customer_approved_by")
     .eq("id", workOrderId)
-    .eq("customer_id", customer.id)
     .maybeSingle<{
       id: string;
       shop_id: string | null;
@@ -91,7 +77,42 @@ export async function POST(req: Request) {
       customer_approved_by: string | null;
     }>();
 
-  if (woErr || !workOrder) {
+  if (woErr || !rawWorkOrder) {
+    return NextResponse.json({ error: "Work order not found" } satisfies Json, { status: 404 });
+  }
+
+  const { data: customer, error: customerErr } = await supabase
+    .from("customers")
+    .select("id, shop_id")
+    .eq("user_id", user.id)
+    .maybeSingle<{ id: string; shop_id: string | null }>();
+
+  const workOrder = rawWorkOrder;
+
+  let requesterIsShopStaff = false;
+  if (!customer?.id) {
+    const { data: requesterProfile, error: requesterProfileErr } = await supabase
+      .from("profiles")
+      .select("shop_id, role")
+      .eq("user_id", user.id)
+      .maybeSingle<{ shop_id: string | null; role: string | null }>();
+
+    if (!requesterProfileErr && requesterProfile?.shop_id && workOrder.shop_id) {
+      const role = (requesterProfile.role ?? "").toLowerCase();
+      const canActForShop =
+        role === "owner" || role === "admin" || role === "manager" || role === "advisor";
+      requesterIsShopStaff = canActForShop && requesterProfile.shop_id === workOrder.shop_id;
+    }
+  }
+
+  if (customerErr || (!customer?.id && !requesterIsShopStaff)) {
+    return NextResponse.json(
+      { error: "Customer account not found for this user" } satisfies Json,
+      { status: 404 },
+    );
+  }
+
+  if (customer?.id && workOrder.customer_id !== customer.id) {
     return NextResponse.json(
       { error: "Work order not found for this customer" } satisfies Json,
       { status: 404 },
@@ -158,7 +179,7 @@ export async function POST(req: Request) {
         ? "queued"
         : (workOrder.status ?? "queued");
 
-    const { error: woUpdateErr } = await supabase
+    let woUpdateQuery = supabase
       .from("work_orders")
       .update({
         customer_approval_at: approvedAt,
@@ -169,8 +190,13 @@ export async function POST(req: Request) {
         approval_state: "approved",
         status: nextStatus,
       })
-      .eq("id", workOrderId)
-      .eq("customer_id", customer.id);
+      .eq("id", workOrderId);
+
+    if (customer?.id) {
+      woUpdateQuery = woUpdateQuery.eq("customer_id", customer.id);
+    }
+
+    const { error: woUpdateErr } = await woUpdateQuery;
 
     if (woUpdateErr) throw new Error(woUpdateErr.message);
 
