@@ -14,15 +14,46 @@ type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
 async function decodeStorageDownloadToText(data: unknown): Promise<string | null> {
   if (typeof data === "string") return data;
+
   if (data && typeof (data as { text?: unknown }).text === "function") {
     return await (data as { text: () => Promise<string> }).text();
   }
+
+  if (data && typeof (data as { arrayBuffer?: unknown }).arrayBuffer === "function") {
+    const buffer = await (data as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
+    return new TextDecoder().decode(buffer);
+  }
+
   if (data instanceof ArrayBuffer) {
     return new TextDecoder().decode(data);
   }
+
   if (ArrayBuffer.isView(data)) {
     return new TextDecoder().decode(data);
   }
+
+  if (typeof FileReader !== "undefined" && data && data.constructor?.name === "Blob") {
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsText(data as Blob);
+    });
+  }
+
+  if (data && typeof data === "object") {
+    const maybeBuffer = (data as { buffer?: unknown }).buffer;
+    if (maybeBuffer instanceof ArrayBuffer) {
+      return new TextDecoder().decode(maybeBuffer);
+    }
+
+    try {
+      return await new Response(data as BodyInit).text();
+    } catch {
+      return null;
+    }
+  }
+
   return null;
 }
 
@@ -81,7 +112,8 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
 
     for (const target of uploadTargets) {
       expect(target.csv.trim().length, `${target.domain} fixture CSV must be non-empty`).toBeGreaterThan(0);
-      const { error: uploadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).upload(target.path, target.csv, {
+      const uploadBody = Buffer.from(target.csv, "utf8");
+      const { error: uploadError } = await supabase!.storage.from(SHOP_IMPORT_BUCKET).upload(target.path, uploadBody, {
         contentType: "text/csv",
         upsert: true,
       });

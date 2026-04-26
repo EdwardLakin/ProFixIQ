@@ -1049,15 +1049,46 @@ function normalizeImportStoragePath(path: string | null | undefined): string | n
 
 async function decodeStorageDownloadToText(data: unknown): Promise<string | null> {
   if (typeof data === "string") return data;
+
   if (data && typeof (data as { text?: unknown }).text === "function") {
-    return (data as { text: () => Promise<string> }).text();
+    return await (data as { text: () => Promise<string> }).text();
   }
+
+  if (data && typeof (data as { arrayBuffer?: unknown }).arrayBuffer === "function") {
+    const buffer = await (data as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
+    return new TextDecoder().decode(buffer);
+  }
+
   if (data instanceof ArrayBuffer) {
     return new TextDecoder().decode(data);
   }
+
   if (ArrayBuffer.isView(data)) {
     return new TextDecoder().decode(data);
   }
+
+  if (typeof FileReader !== "undefined" && data && typeof data === "object" && data.constructor?.name === "Blob") {
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsText(data as Blob);
+    });
+  }
+
+  if (data && typeof data === "object") {
+    const maybeBuffer = (data as { buffer?: unknown }).buffer;
+    if (maybeBuffer instanceof ArrayBuffer) {
+      return new TextDecoder().decode(maybeBuffer);
+    }
+
+    try {
+      return await new Response(data as BodyInit).text();
+    } catch {
+      return null;
+    }
+  }
+
   return null;
 }
 
