@@ -184,9 +184,12 @@ type CanonicalLifecycleStage =
   | "uploaded"
   | "parsed"
   | "normalized"
-  | "deterministic_identity"
+  | "identity_generated"
+  | "dependency_resolved"
   | "linked_existing"
   | "materialized_new"
+  | "updated_existing"
+  | "materialized_partial"
   | "review_required"
   | "failed"
   | "skipped";
@@ -195,6 +198,10 @@ type DomainDiagnostics = {
   uploaded: number;
   parsed: number;
   normalized: number;
+  identity_generated: number;
+  dependency_resolved: number;
+  updated_existing: number;
+  materialized_partial: number;
   deterministic_identity: number;
   linked_existing: number;
   materialized_new: number;
@@ -214,6 +221,10 @@ function createDomainDiagnostics(uploaded: number): DomainDiagnostics {
     uploaded,
     parsed: uploaded,
     normalized: 0,
+    identity_generated: 0,
+    dependency_resolved: 0,
+    updated_existing: 0,
+    materialized_partial: 0,
     deterministic_identity: 0,
     linked_existing: 0,
     materialized_new: 0,
@@ -1028,6 +1039,8 @@ function classifyLifecycleStage(args: {
 function markDomainOutcome(diagnostics: DomainDiagnostics, stage: CanonicalLifecycleStage): void {
   if (stage === "linked_existing") diagnostics.linked_existing += 1;
   else if (stage === "materialized_new") diagnostics.materialized_new += 1;
+  else if (stage === "updated_existing") diagnostics.updated_existing += 1;
+  else if (stage === "materialized_partial") diagnostics.materialized_partial += 1;
   else if (stage === "review_required") diagnostics.review_required += 1;
   else if (stage === "failed") diagnostics.failed += 1;
   else if (stage === "skipped") diagnostics.skipped += 1;
@@ -1047,18 +1060,25 @@ async function insertRowResult(args: {
   matchDetails?: Record<string, unknown> | null;
   errorReason?: string | null;
   reviewRequired: boolean;
+  lifecycleStageOverride?: CanonicalLifecycleStage;
   domainDiagnostics?: DomainDiagnostics;
   deterministicResolved?: boolean;
 }): Promise<void> {
   if (args.domainDiagnostics) {
     args.domainDiagnostics.normalized += 1;
-    if (args.deterministicResolved) args.domainDiagnostics.deterministic_identity += 1;
+    if (args.deterministicResolved) {
+      args.domainDiagnostics.identity_generated += 1;
+      args.domainDiagnostics.deterministic_identity += 1;
+      args.domainDiagnostics.dependency_resolved += 1;
+    }
   }
-  const lifecycleStage = classifyLifecycleStage({
-    matchStatus: args.matchStatus,
-    reviewRequired: args.reviewRequired,
-    errorReason: args.errorReason ?? null,
-  });
+  const lifecycleStage =
+    args.lifecycleStageOverride ??
+    classifyLifecycleStage({
+      matchStatus: args.matchStatus,
+      reviewRequired: args.reviewRequired,
+      errorReason: args.errorReason ?? null,
+    });
   if (args.domainDiagnostics) {
     markDomainOutcome(args.domainDiagnostics, lifecycleStage);
   }
@@ -2270,10 +2290,24 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
 
       const rowUnit = lower(pick(row, [/unit/, /unit number/, /truck number/]) ?? "");
       const sourceMatchedVehicleId = resolveSourceLinkedId(vehiclesBySourceId, sourceVehicleId);
+      const customerScopedUnitVehicleId =
+        customer_id &&
+        rowUnit &&
+        !conflictingVehiclesByCustomerUnit.has(compositeKey(customer_id, rowUnit))
+          ? uniqueVehiclesByCustomerUnit.get(compositeKey(customer_id, rowUnit))
+          : null;
+      const customerScopedPlateVehicleId =
+        customer_id &&
+        plate &&
+        !conflictingVehiclesByCustomerPlate.has(compositeKey(customer_id, plate))
+          ? uniqueVehiclesByCustomerPlate.get(compositeKey(customer_id, plate))
+          : null;
       const fallbackVehicleId =
+        customerScopedUnitVehicleId ||
+        customerScopedPlateVehicleId ||
         (vin && vehiclesByVin.get(vin)) ||
-        (plate && vehiclesByPlate.get(plate)) ||
         (rowUnit && vehiclesByUnit.get(rowUnit)) ||
+        (plate && vehiclesByPlate.get(plate)) ||
         null;
       const vehicle_id = sourceMatchedVehicleId || fallbackVehicleId || null;
 
@@ -2431,45 +2465,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           errorReason: woErr.message ?? "unknown_error",
           reviewRequired: true,
         });
-        if (ro) {
-          const { data: existingWo } = await supabase
-            .from("work_orders")
-            .select("id")
-            .eq("shop_id", shopId)
-            .eq("custom_id", ro)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle<{ id: string }>();
-
-          if (!existingWo?.id) continue;
-
-          await upsertHistoryLine({
-            supabase,
-            shopId,
-            intakeId,
-            workOrderId: existingWo.id,
-            rowIndex: i + 1,
-            complaint,
-            cause,
-            correction,
-            vehicle_id,
-          });
-
-          await upsertInvoiceIfNeeded({
-            supabase,
-            shopId,
-            intakeId,
-            workOrderId: existingWo.id,
-            customer_id,
-            total,
-            labor,
-            parts,
-            issuedAt: dateIso,
-            invoiceNumber: invoiceNumber ?? ro,
-          });
-
-          continue;
-        }
         continue;
       }
 
@@ -2531,7 +2526,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         });
       }
 
-      await upsertHistoryLine({
+      const historyLineUpsert = await upsertHistoryLine({
         supabase,
         shopId,
         intakeId,
@@ -2542,6 +2537,39 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         correction,
         vehicle_id,
       });
+      if (!historyLineUpsert.ok) {
+        rowOutcome.processedRows += 1;
+        rowOutcome.failedCount += 1;
+        rowOutcome.byDomain.history.failed += 1;
+        await createReviewItem({
+          supabase,
+          shopId,
+          intakeId,
+          domain: "work_order",
+          issueType: "conflict",
+          summary: `History line materialization failed: ${historyLineUpsert.errorReason ?? "unknown error"}`,
+          rawPayload: row,
+          normalizedPayload: { ro, workOrderId, complaint, cause, correction, vehicle_id },
+          blockingReason: "work_order_line_write_failed",
+        });
+        await insertRowResult({
+          supabase,
+          shopId,
+          intakeId,
+          sourceFile: "history",
+          sourceRowIndex: i + 1,
+          rawPayload: row,
+          normalizedPayload: { ro, dateIso, customer_id, vehicle_id, workOrderId, total, labor, parts },
+          targetDomain: "work_order",
+          matchStatus: "partial_match",
+          matchConfidence: "medium",
+          matchDetails: { workOrderId, customerId: customer_id, vehicleId: vehicle_id },
+          errorReason: "work_order_line_write_failed",
+          reviewRequired: true,
+          lifecycleStageOverride: "materialized_partial",
+        });
+        continue;
+      }
 
       const invoiceUpsert = await upsertInvoiceIfNeeded({
         supabase,
@@ -2577,10 +2605,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           rawPayload: row,
           normalizedPayload: { ro, dateIso, customer_id, vehicle_id, total, labor, parts },
           targetDomain: "invoice",
-          matchStatus: "invalid",
-          matchConfidence: "low",
+          matchStatus: "partial_match",
+          matchConfidence: "medium",
           errorReason: "invoice_write_failed",
           reviewRequired: true,
+          lifecycleStageOverride: "materialized_partial",
         });
         continue;
       }
@@ -2609,9 +2638,23 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         targetDomain: "work_order",
         matchStatus: !vehicle_id ? "partial_match" : woByExternal?.id ? "matched_existing" : "created_new",
         matchConfidence: !vehicle_id ? "medium" : "high",
-        matchDetails: { workOrderId, customerId: customer_id, vehicleId: vehicle_id },
+        matchDetails: {
+          workOrderId,
+          customerId: customer_id,
+          vehicleId: vehicle_id,
+          historyLineId: historyLineUpsert.lineId,
+          invoiceId: invoiceUpsert.invoiceId,
+          invoiceAction: invoiceUpsert.action,
+          lineAction: historyLineUpsert.action,
+        },
         errorReason: !vehicle_id ? "missing_vehicle_match" : undefined,
         reviewRequired: !vehicle_id,
+        lifecycleStageOverride:
+          !vehicle_id
+            ? "materialized_partial"
+            : woByExternal?.id
+              ? "updated_existing"
+              : "materialized_new",
       });
     }
   }
@@ -2773,8 +2816,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       }
 
       rowOutcome.processedRows += 1;
-      rowOutcome.successCount += 1;
-      rowOutcome.byDomain.invoices.success += 1;
+      const invoiceWasMaterialized = invoiceUpsert.action === "created" || invoiceUpsert.action === "updated";
+      if (invoiceWasMaterialized) {
+        rowOutcome.successCount += 1;
+        rowOutcome.byDomain.invoices.success += 1;
+      }
       await insertRowResult({
         supabase,
         shopId,
@@ -2795,14 +2841,27 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           parts,
         },
         targetDomain: "invoice",
-        matchStatus: "created_new",
+        matchStatus:
+          invoiceUpsert.action === "updated"
+            ? "matched_existing"
+            : invoiceUpsert.action === "created"
+              ? "created_new"
+              : "ignored",
         matchConfidence: sourceWorkOrderId || sourceCustomerId ? "high" : "medium",
         matchDetails: {
           workOrderId,
           customerId: resolvedCustomerId,
           strategy: sourceWorkOrderId || sourceCustomerId ? "stable_ids" : "fallback",
+          invoiceId: invoiceUpsert.invoiceId,
+          invoiceAction: invoiceUpsert.action,
         },
         reviewRequired: false,
+        lifecycleStageOverride:
+          invoiceUpsert.action === "updated"
+            ? "updated_existing"
+            : invoiceUpsert.action === "created"
+              ? "materialized_new"
+              : "skipped",
       });
     }
   }
@@ -3137,12 +3196,22 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     const hasDeterministicSignal =
       (isRecord(matchDetails) && typeof matchDetails.strategy === "string") ||
       (isRecord(matchDetails) && typeof matchDetails.resolutionType === "string");
-    if (hasDeterministicSignal) diagnostics.deterministic_identity += 1;
-    const stage = classifyLifecycleStage({
-      matchStatus: matchStatus as MatchStatus,
-      reviewRequired,
-      errorReason,
-    });
+    if (hasDeterministicSignal) {
+      diagnostics.identity_generated += 1;
+      diagnostics.deterministic_identity += 1;
+      diagnostics.dependency_resolved += 1;
+    }
+    const lifecycleStageFromRow =
+      isRecord(matchDetails) && typeof matchDetails.lifecycle_stage === "string"
+        ? (matchDetails.lifecycle_stage as CanonicalLifecycleStage)
+        : null;
+    const stage =
+      lifecycleStageFromRow ??
+      classifyLifecycleStage({
+        matchStatus: matchStatus as MatchStatus,
+        reviewRequired,
+        errorReason,
+      });
     markDomainOutcome(diagnostics, stage);
   }
 
@@ -3151,6 +3220,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     partsDiagnostics.uploaded = partsPipelineSummary.rawRows;
     partsDiagnostics.parsed = partsPipelineSummary.rawRows;
     partsDiagnostics.normalized = Math.max(partsDiagnostics.normalized, partsPipelineSummary.normalizedRows);
+    partsDiagnostics.identity_generated = Math.max(partsDiagnostics.identity_generated, partsPipelineSummary.matchedRows);
+    partsDiagnostics.dependency_resolved = Math.max(partsDiagnostics.dependency_resolved, partsPipelineSummary.matchedRows);
     partsDiagnostics.deterministic_identity = Math.max(partsDiagnostics.deterministic_identity, partsPipelineSummary.matchedRows);
     partsDiagnostics.materialized_new = Math.max(partsDiagnostics.materialized_new, partsPipelineSummary.promotedRows);
     partsDiagnostics.review_required = Math.max(partsDiagnostics.review_required, partsPipelineSummary.ambiguousRows);
@@ -3161,6 +3232,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     const bucketed =
       diagnostics.linked_existing +
       diagnostics.materialized_new +
+      diagnostics.updated_existing +
+      diagnostics.materialized_partial +
       diagnostics.review_required +
       diagnostics.failed +
       diagnostics.skipped;
@@ -3458,7 +3531,7 @@ async function upsertHistoryLine(args: {
   cause: string | null;
   correction: string | null;
   vehicle_id: string | null;
-}): Promise<void> {
+}): Promise<{ ok: boolean; lineId: string | null; action: "created" | "updated"; errorReason: string | null }> {
   const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id } =
     args;
 
@@ -3493,21 +3566,29 @@ async function upsertHistoryLine(args: {
     .maybeSingle<{ id: string }>();
 
   if (existing?.id) {
-    await supabase
+    const updateResult = await supabase
       .from("work_order_lines")
       .update(payload as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", existing.id);
-    return;
+    if (updateResult.error) {
+      return { ok: false, lineId: existing.id, action: "updated", errorReason: updateResult.error.message ?? "line_update_failed" };
+    }
+    return { ok: true, lineId: existing.id, action: "updated", errorReason: null };
   }
 
-  await supabase.from("work_order_lines").insert(payload);
+  const inserted = await supabase.from("work_order_lines").insert(payload).select("id").limit(1).maybeSingle<{ id: string }>();
+  if (inserted.error) {
+    return { ok: false, lineId: null, action: "created", errorReason: inserted.error.message ?? "line_insert_failed" };
+  }
+  const insertedId = inserted.data?.id ?? null;
   await recordImportCreatedArtifact({
     supabase,
     shopId,
     intakeId,
     domain: "work_order_line",
-    recordId: payload.id,
+    recordId: insertedId,
   });
+  return { ok: true, lineId: insertedId, action: "created", errorReason: null };
 }
 
 async function upsertInvoiceIfNeeded(args: {
@@ -3522,11 +3603,11 @@ async function upsertInvoiceIfNeeded(args: {
   issuedAt: string | null;
   invoiceNumber?: string | null;
   externalId?: string | null;
-}): Promise<{ ok: boolean; invoiceId: string | null; errorReason: string | null }> {
+}): Promise<{ ok: boolean; invoiceId: string | null; errorReason: string | null; action: "created" | "updated" | "skipped_no_amount" }> {
   const { supabase, shopId, intakeId, workOrderId, customer_id, total, labor, parts, issuedAt, invoiceNumber, externalId } = args;
 
   const hasMoney = (total ?? 0) > 0 || (labor ?? 0) > 0 || (parts ?? 0) > 0;
-  if (!hasMoney) return { ok: true, invoiceId: null, errorReason: null };
+  if (!hasMoney) return { ok: true, invoiceId: null, errorReason: null, action: "skipped_no_amount" };
 
   const byExternal = externalId
     ? await supabase
@@ -3577,6 +3658,7 @@ async function upsertInvoiceIfNeeded(args: {
       ok: !updateResult.error,
       invoiceId: existingId,
       errorReason: updateResult.error?.message ?? null,
+      action: "updated",
     };
   }
 
@@ -3592,7 +3674,7 @@ async function upsertInvoiceIfNeeded(args: {
     .maybeSingle<{ id: string }>();
 
   if (inserted.error) {
-    return { ok: false, invoiceId: null, errorReason: inserted.error.message ?? "invoice_insert_failed" };
+    return { ok: false, invoiceId: null, errorReason: inserted.error.message ?? "invoice_insert_failed", action: "created" };
   }
 
   await recordImportCreatedArtifact({
@@ -3602,5 +3684,5 @@ async function upsertInvoiceIfNeeded(args: {
     domain: "invoice",
     recordId: inserted.data?.id ?? null,
   });
-  return { ok: true, invoiceId: inserted.data?.id ?? null, errorReason: null };
+  return { ok: true, invoiceId: inserted.data?.id ?? null, errorReason: null, action: "created" };
 }
