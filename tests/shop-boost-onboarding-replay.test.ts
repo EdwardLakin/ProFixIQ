@@ -192,14 +192,16 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
 
     const { data: lines } = await supabase!
       .from("work_order_lines")
-      .select("id,work_order_id,description,complaint,cause,correction,status,line_type,punchable,labor_time,source_intake_id")
+      .select("id,work_order_id,description,complaint,cause,correction,status,line_type,punchable,punched_in_at,punched_out_at,labor_time,source_intake_id")
       .eq("shop_id", shopId)
       .eq("work_order_id", workOrderId as string)
       .eq("source_intake_id", intakeId);
     expect((lines?.length ?? 0) >= 1).toBe(true);
-    expect(lines?.[0]?.status).toBe("awaiting");
+    expect(lines?.[0]?.status).toBe("completed");
     expect(lines?.[0]?.line_type).toBe("info");
-    expect(lines?.[0]?.punchable).toBe(false);
+    expect(lines?.[0]?.punchable).not.toBe(true);
+    expect(lines?.[0]?.punched_in_at).toBeNull();
+    expect(lines?.[0]?.punched_out_at).toBeNull();
 
     const { data: invoices } = await supabase!
       .from("invoices")
@@ -210,8 +212,8 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
     expect(invoices?.length).toBe(1);
     expect(invoices?.[0]?.customer_id).toBe(canonicalCustomerId);
     expect(invoices?.[0]?.total).toBe(275);
-    expect(invoices?.[0]?.status).toBe("open");
-    expect(invoices?.[0]?.paid_at).toBeNull();
+    expect(invoices?.[0]?.status).toBe("paid");
+    expect(invoices?.[0]?.paid_at).toBeTruthy();
     expect((invoices?.[0]?.metadata as Record<string, unknown> | null)?.imported_history).toBe(true);
     expect((invoices?.[0]?.metadata as Record<string, unknown> | null)?.imported_assumed_paid).toBe(true);
     expect((invoices?.[0]?.metadata as Record<string, unknown> | null)?.source_invoice_status).toBe("closed");
