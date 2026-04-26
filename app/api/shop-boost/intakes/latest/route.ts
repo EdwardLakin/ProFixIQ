@@ -184,11 +184,7 @@ export async function GET() {
   const orchestratorRecord = asRecord(orchestrator);
   const truthStates = asRecord(orchestratorRecord.truthStates ?? orchestratorRecord.truth_states);
   const canonicalReadyFromRun = Boolean(truthStates.canonical_ready);
-  const canonicalReadyFromRows =
-    canonicalTruth.rowCounts.total > 0 &&
-    canonicalTruth.rowCounts.unresolved === 0 &&
-    canonicalTruth.rowCounts.failed === 0 &&
-    canonicalTruth.rowCounts.mismatch === 0;
+  const canonicalReadyFromRows = canonicalTruth.readiness === "ready";
   const canonicalReady = canonicalReadyFromRun && canonicalReadyFromRows;
 
   return NextResponse.json({
@@ -204,6 +200,8 @@ export async function GET() {
       canonicalTruth,
       readiness: orchestrator
         ? {
+            canonical_readiness: canonicalTruth.readiness,
+            integrity_flags: canonicalTruth.integrityFlags,
             snapshot_complete: Boolean(truthStates.snapshot_complete),
             import_complete: Boolean(truthStates.import_complete),
             canonical_ready: canonicalReady,
@@ -219,6 +217,8 @@ export async function GET() {
             ui_should_route_forward: Boolean(orchestratorRecord.uiShouldRouteForward ?? orchestratorRecord.ui_should_route_forward ?? false) && canonicalReady,
           }
         : {
+            canonical_readiness: canonicalTruth.readiness,
+            integrity_flags: canonicalTruth.integrityFlags,
             snapshot_complete: false,
             import_complete: false,
             canonical_ready: canonicalReadyFromRows,

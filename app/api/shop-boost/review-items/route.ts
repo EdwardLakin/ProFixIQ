@@ -29,6 +29,9 @@ type ReviewListItem = ReviewItemRow & {
 type ReviewCountsSummary = {
   intake_id: string | null;
   domain_counts: Record<string, number>;
+  lifecycle: readonly string[];
+  by_domain_lifecycle: Record<string, unknown>;
+  reason_counts: Record<string, number>;
   status_counts: Record<string, number>;
   unresolved_total: number;
   blockers_total: number;
@@ -141,6 +144,9 @@ export async function GET(req: Request) {
       summary: {
         intake_id: null,
         domain_counts: { customer: 0, vehicle: 0, work_order: 0, history: 0, invoice: 0, part: 0 },
+        lifecycle: [],
+        by_domain_lifecycle: {},
+        reason_counts: {},
         status_counts: { pending: 0, failed_materialization: 0, materialized: 0, ignored: 0, resolved: 0 },
         unresolved_total: 0,
         blockers_total: 0,
@@ -250,11 +256,11 @@ export async function GET(req: Request) {
   }
 
   const state =
-    canonicalTruth.rowCounts.total === 0
+    canonicalTruth.readiness === "empty"
       ? "empty_reset"
-      : canonicalTruth.rowCounts.unresolved > 0
+      : canonicalTruth.readiness === "review_required"
         ? "review_required"
-        : canonicalTruth.rowCounts.failed > 0 || canonicalTruth.rowCounts.mismatch > 0
+        : canonicalTruth.readiness === "blocked"
           ? "failed_inconsistent"
           : "complete";
 
@@ -265,6 +271,9 @@ export async function GET(req: Request) {
     summary: {
       intake_id: resolvedIntakeId,
       domain_counts: canonicalTruth.domainCounts,
+      lifecycle: canonicalTruth.lifecycle,
+      by_domain_lifecycle: canonicalTruth.byDomain,
+      reason_counts: canonicalTruth.reasons,
       status_counts: {
         pending: canonicalTruth.review.pending,
         failed_materialization: canonicalTruth.review.failedMaterialization,
@@ -295,6 +304,8 @@ export async function GET(req: Request) {
       high_risk_actions_count: highRiskActions,
       integrity_errors: integrityErrors,
       materialized_entities: canonicalTruth.materializedEntities,
+      canonical_readiness: canonicalTruth.readiness,
+      integrity_flags: canonicalTruth.integrityFlags,
     },
   });
 }
