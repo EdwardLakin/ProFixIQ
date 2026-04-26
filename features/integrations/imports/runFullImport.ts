@@ -2455,6 +2455,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const ro =
         pick(row, [/^invoice[_\s-]*number$/, /^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
       const invoiceNumber = pick(row, [/^invoice[_\s-]*number$/, /^invoice number$/, /^invoice #$/, /^invoice$/]);
+      const sourceInvoiceStatus = pick(row, [/invoice status/, /^status$/, /closed status/, /document status/]);
+      const sourcePaymentStatus = pick(row, [/payment status/, /paid status/, /balance status/, /ar status/]);
 
       const dateIso =
         parseDateIso(pick(row, [/date/, /service date/, /closed/, /completed/])) ??
@@ -2794,6 +2796,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         parts,
         issuedAt: dateIso,
         invoiceNumber: invoiceNumber ?? ro,
+        importSource: "history",
+        sourceInvoiceStatus,
+        sourcePaymentStatus,
       });
       if (!invoiceUpsert.ok) {
         rowOutcome.processedRows += 1;
@@ -2881,6 +2886,8 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const sourceWorkOrderKeys = sourceIdentityHashes(sourceWorkOrderId);
       const invoiceNumber = pick(row, [/^invoice[_\s-]*number$/, /^invoice number$/, /^invoice #$/, /^invoice$/, /inv number/]);
       const ro = pick(row, [/^ro$/, /ro number/, /work order/, /order number/]) ?? null;
+      const sourceInvoiceStatus = pick(row, [/invoice status/, /^status$/, /closed status/, /document status/]);
+      const sourcePaymentStatus = pick(row, [/payment status/, /paid status/, /balance status/, /ar status/]);
       const issuedAt = parseDateIso(pick(row, [/date/, /issued/, /closed/, /completed/])) ?? new Date().toISOString();
       const total = parseMoney(pick(row, [/total/, /grand total/, /invoice total/, /amount due/]));
       const labor = parseMoney(
@@ -2987,6 +2994,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         issuedAt,
         invoiceNumber: invoiceNumber ?? null,
         externalId: derivedInvoiceExternalId,
+        importSource: "invoices",
+        sourceInvoiceStatus,
+        sourcePaymentStatus,
       });
       if (!invoiceUpsert.ok) {
         rowOutcome.processedRows += 1;
@@ -3755,7 +3765,8 @@ async function upsertHistoryLine(args: {
     args;
 
   const external_id = `import:${intakeId}:wol:${workOrderId}:${rowIndex}`;
-  const hasCompletedLaborTime = typeof laborTimeHours === "number" && Number.isFinite(laborTimeHours) && laborTimeHours > 0;
+  const normalizedLaborTime =
+    typeof laborTimeHours === "number" && Number.isFinite(laborTimeHours) && laborTimeHours > 0 ? laborTimeHours : null;
 
   const payload = {
     shop_id: shopId,
@@ -3765,8 +3776,10 @@ async function upsertHistoryLine(args: {
     cause: cause ?? null,
     correction: correction ?? null,
     description: correction ?? complaint ?? "Imported history line",
-    status: hasCompletedLaborTime ? "completed" : "awaiting",
-    labor_time: hasCompletedLaborTime ? laborTimeHours : null,
+    status: "awaiting",
+    line_type: "info",
+    punchable: false,
+    labor_time: normalizedLaborTime,
     job_type: "repair",
     line_no: rowIndex,
     source_intake_id: intakeId,
@@ -3824,8 +3837,26 @@ async function upsertInvoiceIfNeeded(args: {
   issuedAt: string | null;
   invoiceNumber?: string | null;
   externalId?: string | null;
+  importSource?: "history" | "invoices";
+  sourceInvoiceStatus?: string | null;
+  sourcePaymentStatus?: string | null;
 }): Promise<{ ok: boolean; invoiceId: string | null; errorReason: string | null; action: "created" | "updated" | "skipped_no_amount" }> {
-  const { supabase, shopId, intakeId, workOrderId, customer_id, total, labor, parts, issuedAt, invoiceNumber, externalId } = args;
+  const {
+    supabase,
+    shopId,
+    intakeId,
+    workOrderId,
+    customer_id,
+    total,
+    labor,
+    parts,
+    issuedAt,
+    invoiceNumber,
+    externalId,
+    importSource,
+    sourceInvoiceStatus,
+    sourcePaymentStatus,
+  } = args;
 
   const hasMoney = (total ?? 0) > 0 || (labor ?? 0) > 0 || (parts ?? 0) > 0;
   if (!hasMoney) return { ok: true, invoiceId: null, errorReason: null, action: "skipped_no_amount" };
@@ -3855,18 +3886,23 @@ async function upsertInvoiceIfNeeded(args: {
 
   const payload = {
     customer_id,
-    status: "paid",
+    status: "open",
     subtotal: Math.max(0, (labor ?? 0) + (parts ?? 0)),
     labor_cost: labor ?? 0,
     parts_cost: parts ?? 0,
     total: total ?? Math.max(0, (labor ?? 0) + (parts ?? 0)),
     issued_at: issuedAt,
-    paid_at: issuedAt,
+    paid_at: null,
     invoice_number: invoiceNumber ?? `IMP-${workOrderId.slice(0, 8)}`,
     currency: "USD",
     metadata: {
       imported: true,
+      imported_history: true,
+      imported_assumed_paid: true,
       source_intake_id: intakeId,
+      source_invoice_status: sourceInvoiceStatus ?? null,
+      source_payment_status: sourcePaymentStatus ?? null,
+      source_file: importSource ?? null,
       ...(externalId ? { source_external_id: externalId } : {}),
     },
   };
