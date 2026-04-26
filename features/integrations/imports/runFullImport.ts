@@ -2160,19 +2160,33 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
           (plate && vehiclesByPlate.get(plate)));
 
       if (existingId) {
+        const { data: existingVehicle } = await supabase
+          .from("vehicles")
+          .select("vin,license_plate,unit_number,year,make,model,mileage,engine_hours")
+          .eq("id", existingId)
+          .maybeSingle<{
+            vin: string | null;
+            license_plate: string | null;
+            unit_number: string | null;
+            year: number | null;
+            make: string | null;
+            model: string | null;
+            mileage: string | null;
+            engine_hours: number | null;
+          }>();
         await supabase
           .from("vehicles")
           .update({
             shop_id: shopId,
             customer_id,
-            vin: vin || null,
-            license_plate: plate || null,
-            unit_number: unit ?? null,
-            year: year ?? null,
-            make: make ?? null,
-            model: model ?? null,
-            mileage: mileage ?? null,
-            engine_hours: engineHours ?? null,
+            vin: vin || existingVehicle?.vin || null,
+            license_plate: plate || existingVehicle?.license_plate || null,
+            unit_number: unit ?? existingVehicle?.unit_number ?? null,
+            year: year ?? existingVehicle?.year ?? null,
+            make: make ?? existingVehicle?.make ?? null,
+            model: model ?? existingVehicle?.model ?? null,
+            mileage: mileage ?? existingVehicle?.mileage ?? null,
+            engine_hours: engineHours ?? existingVehicle?.engine_hours ?? null,
             source_intake_id: intakeId,
             external_id,
             import_confidence: 0.75,
@@ -2457,6 +2471,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       const parts = parseMoney(
         pick(row, [/^parts[_\s-]*sale$/, /^parts[_\s-]*total$/, /parts sale/, /parts amount/, /^parts$/]),
       );
+      const laborTimeHours = parseLaborHours(
+        pick(row, [/^labor[_\s-]*(hours|hrs|time)$/, /labor hours?/, /labor hrs?/, /flat rate hours?/]),
+      );
 
       const vin = lower(pick(row, [/vin/]) ?? "");
       const plate = lower(pick(row, [/plate/, /license/]) ?? "");
@@ -2730,6 +2747,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         cause,
         correction,
         vehicle_id,
+        laborTimeHours,
       });
       if (!historyLineUpsert.ok) {
         rowOutcome.processedRows += 1;
@@ -3731,11 +3749,13 @@ async function upsertHistoryLine(args: {
   cause: string | null;
   correction: string | null;
   vehicle_id: string | null;
+  laborTimeHours: number | null;
 }): Promise<{ ok: boolean; lineId: string | null; action: "created" | "updated"; errorReason: string | null }> {
-  const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id } =
+  const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id, laborTimeHours } =
     args;
 
   const external_id = `import:${intakeId}:wol:${workOrderId}:${rowIndex}`;
+  const hasCompletedLaborTime = typeof laborTimeHours === "number" && Number.isFinite(laborTimeHours) && laborTimeHours > 0;
 
   const payload = {
     shop_id: shopId,
@@ -3745,7 +3765,8 @@ async function upsertHistoryLine(args: {
     cause: cause ?? null,
     correction: correction ?? null,
     description: correction ?? complaint ?? "Imported history line",
-    status: "completed",
+    status: hasCompletedLaborTime ? "completed" : "awaiting",
+    labor_time: hasCompletedLaborTime ? laborTimeHours : null,
     job_type: "repair",
     line_no: rowIndex,
     source_intake_id: intakeId,
@@ -3814,7 +3835,7 @@ async function upsertInvoiceIfNeeded(args: {
         .from("invoices")
         .select("id")
         .eq("shop_id", shopId)
-        .eq("external_id", externalId)
+        .contains("metadata", { source_external_id: externalId })
         .maybeSingle<{ id: string }>()
     : null;
   const byInvoiceNumber = invoiceNumber
@@ -3843,8 +3864,11 @@ async function upsertInvoiceIfNeeded(args: {
     paid_at: issuedAt,
     invoice_number: invoiceNumber ?? `IMP-${workOrderId.slice(0, 8)}`,
     currency: "USD",
-    external_id: externalId ?? null,
-    metadata: { imported: true, source_intake_id: intakeId },
+    metadata: {
+      imported: true,
+      source_intake_id: intakeId,
+      ...(externalId ? { source_external_id: externalId } : {}),
+    },
   };
 
   const existingId = byExternal?.data?.id ?? byInvoiceNumber?.data?.id ?? byWorkOrder.data?.id ?? null;

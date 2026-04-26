@@ -9,8 +9,8 @@ VEH-001,CUST-001,1FTFW1E50PFA00001,PLT-901,U-9,2020,Ford,F-150,CASEY.DRIVER@EXAM
 ,CUST-001, , plt-901 , u-9 ,2020,Ford,F-150,casey.driver@example.com,(555)111-2222,Casey Driver
 ,,2HGES16555H000002,UNKNOWN-PLATE,U-404,2019,Honda,Civic,,,
 `,
-  historyCsv: `RO ID,Customer ID,Vehicle ID,Invoice Number,Service Date,Complaint,Cause,Correction,Total,Labor Total,Parts Total,Customer Email,Customer Phone,VIN,License Plate,Unit Number,Customer Name
-WO-001,CUST-001,VEH-001,INV-1001,2025-02-10,No start,Battery failed,Replaced battery,250.00,150.00,100.00, casey.driver@example.com ,5551112222,1FTFW1E50PFA00001,PLT-901,U-9,Casey Driver
+  historyCsv: `RO ID,Customer ID,Vehicle ID,Invoice Number,Service Date,Complaint,Cause,Correction,Total,Labor Total,Labor Hours,Parts Total,Customer Email,Customer Phone,VIN,License Plate,Unit Number,Customer Name
+WO-001,CUST-001,VEH-001,INV-1001,2025-02-10,No start,Battery failed,Replaced battery,250.00,150.00,1.5,100.00, casey.driver@example.com ,5551112222,1FTFW1E50PFA00001,PLT-901,U-9,Casey Driver
 `,
   invoicesCsv: `Invoice ID,Work Order ID,Customer ID,Invoice Number,Date,Total,Labor Total,Parts Total,Customer Email,Customer Phone,RO
 INV-1001,WO-001,CUST-001,INV-1001,2025-02-10,275.00,175.00,100.00,CASEY.DRIVER@EXAMPLE.COM,(555) 111-2222,RO-1001
