@@ -8,6 +8,11 @@ import UsersList from "@/features/admin/components/UsersList";
 import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  buildShopUsernameNamespace,
+  buildUsernameSuggestions,
+  normalizeProvisioningUsername,
+} from "@/features/users/lib/username";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
@@ -60,6 +65,8 @@ export default function CreateUserPage(): JSX.Element {
 
   // creator’s shop id (for auto-fill)
   const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
+  const [creatorShopName, setCreatorShopName] = useState<string | null>(null);
+  const [usernameTouched, setUsernameTouched] = useState(false);
 
   // load current user's shop_id once
   useEffect(() => {
@@ -79,6 +86,15 @@ export default function CreateUserPage(): JSX.Element {
       setCreatorShopId(shopId);
 
       if (shopId) {
+        const { data: shop } = await supabase
+          .from("shops")
+          .select("name, shop_name")
+          .eq("id", shopId)
+          .maybeSingle<{ name: string | null; shop_name: string | null }>();
+
+        const displayName = (shop?.shop_name ?? "").trim() || (shop?.name ?? "").trim() || null;
+        setCreatorShopName(displayName);
+
         setForm((prev) => ({
           ...prev,
           shop_id: shopId,
@@ -89,6 +105,21 @@ export default function CreateUserPage(): JSX.Element {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (usernameTouched) return;
+
+    const [firstSuggestion] = buildUsernameSuggestions({
+      shopName: creatorShopName,
+      fullName: form.full_name,
+    });
+    if (!firstSuggestion) return;
+
+    setForm((prev) => {
+      if ((prev.username ?? "").trim().length > 0) return prev;
+      return { ...prev, username: firstSuggestion };
+    });
+  }, [creatorShopName, form.full_name, usernameTouched]);
+
   async function submit(): Promise<void> {
     setSubmitting(true);
     setError(null);
@@ -98,7 +129,10 @@ export default function CreateUserPage(): JSX.Element {
 
     try {
       const body: CreatePayload = {
-        username: form.username.trim().toLowerCase(),
+        username: normalizeProvisioningUsername(
+          form.username.trim(),
+          buildShopUsernameNamespace(creatorShopName),
+        ),
         password: form.password.trim(),
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
@@ -149,6 +183,7 @@ export default function CreateUserPage(): JSX.Element {
         phone: "",
         shop_id: body.shop_id ?? creatorShopId ?? null,
       }));
+      setUsernameTouched(false);
 
       // refresh list below
       setListRefreshKey((k) => k + 1);
@@ -278,14 +313,15 @@ export default function CreateUserPage(): JSX.Element {
               </label>
               <input
                 className={INPUT_CLASS}
-                placeholder="e.g. jsmith"
+                placeholder="e.g. ProFixLucas"
                 value={form.username}
-                onChange={(e) =>
-                  setForm({ ...form, username: e.target.value })
-                }
+                onChange={(e) => {
+                  setUsernameTouched(true);
+                  setForm({ ...form, username: e.target.value });
+                }}
               />
               <p className="text-[11px] text-neutral-500">
-                Use lowercase letters / numbers only. This becomes their login.
+                Username is normalized to letters/numbers and shop-prefixed for collision-safe login.
               </p>
             </div>
 

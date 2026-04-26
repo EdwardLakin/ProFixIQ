@@ -6,6 +6,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  buildShopUsernameNamespace,
+  normalizeProvisioningUsername,
+  withShopUsernameSuffix,
+} from "@/features/users/lib/username";
 
 type Body = {
   username: string;
@@ -28,16 +33,12 @@ export async function POST(req: Request) {
   try {
     const raw = (await req.json()) as Partial<Body>;
 
-    const username = (raw.username ?? "").trim().toLowerCase();
     const password = (raw.password ?? "").trim();
     const full_name = (raw.full_name ?? null) || null;
     const requestedRole = (raw.role ?? null) || null;
     const phone = (raw.phone ?? null) || null;
     const inputEmail = (raw.email ?? "").trim().toLowerCase();
 
-    if (!username) {
-      return NextResponse.json({ error: "Username is required." }, { status: 400 });
-    }
     if (!password) {
       return NextResponse.json({ error: "Temporary password is required." }, { status: 400 });
     }
@@ -51,17 +52,34 @@ export async function POST(req: Request) {
     // Always force the creator's shop_id to preserve tenant boundaries.
     const effectiveShopId = access.profile.shop_id;
 
-    // 4) build service client to actually create auth user
+    // build service client to actually create auth user
     const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
     const service = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
     const serviceSupabase = createClient<Database>(url, service);
 
-    // 5) ensure username is unique
-    const { data: existingProfile, error: existingErr } = await serviceSupabase
+    const { data: shop } = await serviceSupabase
+      .from("shops")
+      .select("name, shop_name")
+      .eq("id", effectiveShopId)
+      .maybeSingle<{ name: string | null; shop_name: string | null }>();
+
+    const shopDisplayName = (shop?.shop_name ?? "").trim() || (shop?.name ?? "").trim() || "shop";
+    const shopNamespace = buildShopUsernameNamespace(shopDisplayName);
+    const requestedUsername = String(raw.username ?? "").trim();
+
+    if (!requestedUsername) {
+      return NextResponse.json({ error: "Username is required." }, { status: 400 });
+    }
+
+    const username = normalizeProvisioningUsername(requestedUsername, shopNamespace);
+
+    // ensure username is unique inside the current shop only
+    const { data: sameShopProfiles, error: existingErr } = await serviceSupabase
       .from("profiles")
       .select("id, username")
-      .eq("username", username)
-      .maybeSingle();
+      .eq("shop_id", effectiveShopId)
+      .ilike("username", username)
+      .limit(1);
 
     if (existingErr) {
       return NextResponse.json(
@@ -70,18 +88,19 @@ export async function POST(req: Request) {
       );
     }
 
-    if (existingProfile) {
+    if ((sameShopProfiles ?? []).length > 0) {
       return NextResponse.json(
-        { error: "That username is already in use. Pick a different one." },
+        { error: "A user with this username already exists in this shop." },
         { status: 400 }
       );
     }
 
-    // 6) real email or synthetic
+    // Username-only auth still signs in as username@local.profix-internal.
+    // We enforce a shop namespace in username normalization so this backing identity remains collision-safe.
     const syntheticEmail = `${username}@local.profix-internal`;
     const email = inputEmail || syntheticEmail;
 
-    // 7) create auth user with service client
+    // create auth user with service client
     const { data: created, error: createErr } = await serviceSupabase.auth.admin.createUser({
       email,
       password,
@@ -96,15 +115,16 @@ export async function POST(req: Request) {
     });
 
     if (createErr || !created?.user) {
-      return NextResponse.json(
-        { error: createErr?.message ?? "Failed to create user." },
-        { status: 400 }
-      );
+      const safeMessage = createErr?.message?.toLowerCase().includes("already been registered")
+        ? "Unable to provision this username. Try the suggested shop-prefixed username."
+        : (createErr?.message ?? "Failed to create user.");
+
+      return NextResponse.json({ error: safeMessage }, { status: 400 });
     }
 
     const newUserId = created.user.id;
 
-    // 8) upsert profile for the new user
+    // upsert profile for the new user
     const { error: profileErr } = await serviceSupabase
       .from("profiles")
       .upsert(
@@ -114,7 +134,7 @@ export async function POST(req: Request) {
           full_name,
           phone,
           role: requestedRole,
-          shop_id: effectiveShopId, // force caller's shop
+          shop_id: effectiveShopId,
           shop_name: null,
           username,
           must_change_password: true,
@@ -157,6 +177,7 @@ export async function POST(req: Request) {
       ok: true,
       user_id: newUserId,
       username,
+      suggested_alternate_username: withShopUsernameSuffix(username, 1),
       email,
       must_change_password: true,
       shop_id: effectiveShopId,

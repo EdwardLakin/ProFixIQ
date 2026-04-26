@@ -34,15 +34,12 @@ export async function POST(req: Request) {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .select("id, shop_id")
-    .eq("username", username.toLowerCase())
+    .eq("shop_id", access.profile.shop_id)
+    .ilike("username", username.toLowerCase())
     .maybeSingle();
 
   if (profileErr || !profile) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-
-  if (profile.shop_id !== access.profile.shop_id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { error: updateErr } = await supabase.auth.admin.updateUserById(profile.id, {
