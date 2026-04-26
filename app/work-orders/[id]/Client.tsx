@@ -48,6 +48,7 @@ type WorkOrderQuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
+type WorkOrderShopRateRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "labor_rate">;
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
@@ -190,6 +191,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
+  const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
 
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
@@ -470,6 +472,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setQuoteLines([]);
             setVehicle(null);
             setCustomer(null);
+            setShopLaborRate(null);
             setAllocsByLine({});
             setStagedPartsByLine({});
             setLineTechsByLine({});
@@ -498,7 +501,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes] = await Promise.all([
+        const [linesRes, quoteRes, vehRes, custRes, shopRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -523,6 +526,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                 .eq("id", woRow.customer_id)
                 .maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
+          woRow.shop_id
+            ? supabase
+                .from("shops")
+                .select("labor_rate")
+                .eq("id", woRow.shop_id)
+                .maybeSingle<WorkOrderShopRateRow>()
+            : Promise.resolve({ data: null, error: null } as const),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -538,6 +548,13 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
+
+        if (shopRes?.error) throw shopRes.error;
+        setShopLaborRate(
+          typeof shopRes?.data?.labor_rate === "number" && Number.isFinite(shopRes.data.labor_rate)
+            ? shopRes.data.labor_rate
+            : null,
+        );
 
         // allocations + line techs
         if (lineRows.length) {
@@ -623,6 +640,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setQuoteLines,
       setVehicle,
       setCustomer,
+      setShopLaborRate,
       fetchLatestReview,
       loadedOnce,
       setReviewChecked,
@@ -802,6 +820,57 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     return m;
   }, [quoteLines]);
+
+  const pricingByLine = useMemo(() => {
+    const toNum = (value: unknown): number | null => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string") {
+        const n = Number(value);
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    };
+
+    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number }> = {};
+    for (const line of lines) {
+      const quoteCandidates = activeQuotesByLine[line.id] ?? [];
+      const quote = quoteCandidates[quoteCandidates.length - 1];
+
+      const lineHours = toNum(line.labor_time) ?? 0;
+      const quotedHours = toNum(quote?.est_labor_hours) ?? toNum(quote?.labor_hours);
+      const effectiveHours = quotedHours ?? lineHours;
+
+      const quotedLaborTotal = toNum(quote?.labor_total);
+      const laborTotal = quotedLaborTotal ?? effectiveHours * (shopLaborRate ?? 0);
+
+      const stagedPartsTotal = (stagedPartsByLine[line.id] ?? []).reduce((sum, part) => {
+        const total = toNum(part.total_price);
+        if (total != null) return sum + total;
+        return sum + (toNum(part.quantity) ?? 0) * (toNum(part.unit_price) ?? 0);
+      }, 0);
+
+      const allocPartsTotal = (allocsByLine[line.id] ?? []).reduce((sum, part) => {
+        const allocPart = part as AllocationRow & {
+          total_price?: number | null;
+          quantity?: number | null;
+          unit_price?: number | null;
+        };
+        const total = toNum(allocPart.total_price);
+        if (total != null) return sum + total;
+        return (
+          sum +
+          (toNum(allocPart.quantity) ?? 0) *
+            ((toNum(allocPart.unit_price) ?? toNum(part.unit_cost)) ?? 0)
+        );
+      }, 0);
+
+      const partsTotal = toNum(quote?.parts_total) ?? stagedPartsTotal + allocPartsTotal;
+      const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? laborTotal + partsTotal;
+
+      byLine[line.id] = { laborTotal, partsTotal, lineTotal };
+    }
+    return byLine;
+  }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);
 
   const isPendingApprovalLine = (l: WorkOrderLine) => {
     const a = (l.approval_state ?? "").toLowerCase();
@@ -1811,6 +1880,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                             : undefined
                         }
                         onAddPart={() => setPartsLineId(ln.id)}
+                        pricing={pricingByLine[ln.id] ?? null}
                         reviewOk={reviewOk}
                         reviewIssues={reviewIssuesByLine[ln.id] ?? []}
                         canDelete={canDeleteLine}
