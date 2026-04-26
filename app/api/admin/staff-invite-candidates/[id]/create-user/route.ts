@@ -6,6 +6,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { sendUserInviteEmail } from "@/features/email/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { assertShopHasAvailableSeat } from "@/features/shared/lib/server/shop-seat-limit";
 
 type DB = Database;
 
@@ -123,6 +124,13 @@ export async function POST(_req: NextRequest, context: unknown) {
       );
     }
 
+    try {
+      await assertShopHasAvailableSeat(admin, shopId);
+    } catch (seatErr) {
+      const msg = seatErr instanceof Error ? seatErr.message : "Shop user limit reached for your current plan.";
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+
     const tempPassword = makeTempPassword(14);
 
     const { data: createdUser, error: createUserErr } =
@@ -168,6 +176,12 @@ export async function POST(_req: NextRequest, context: unknown) {
       .upsert(profileInsert, { onConflict: "id" });
 
     if (profileInsertErr) {
+      if (String(profileInsertErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
+        return NextResponse.json(
+          { error: "Shop user limit reached for your current plan." },
+          { status: 400 },
+        );
+      }
       await admin
         .from("staff_invite_candidates")
         .update({
