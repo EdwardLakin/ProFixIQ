@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
 import { confidenceLabelFromScore, deriveReviewRecommendation, type RecommendedAction, type ReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
 type DB = Database;
@@ -26,6 +27,7 @@ type ReviewListItem = ReviewItemRow & {
   decision_transparency: ReviewDecisionTransparency;
 };
 type ReviewCountsSummary = {
+  intake_id: string | null;
   domain_counts: Record<string, number>;
   status_counts: Record<string, number>;
   unresolved_total: number;
@@ -114,12 +116,61 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const domain = url.searchParams.get("domain");
   const status = url.searchParams.get("status") ?? "pending";
+  const requestedIntakeId = String(url.searchParams.get("intakeId") ?? "").trim();
 
   const admin = createAdminSupabase();
+
+  const resolvedIntakeId = requestedIntakeId
+    ? requestedIntakeId
+    : String(
+        (
+          await admin
+            .from("shop_boost_intakes")
+            .select("id")
+            .eq("shop_id", profile.shop_id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle<{ id: string }>()
+        ).data?.id ?? "",
+      );
+
+  if (!resolvedIntakeId) {
+    return NextResponse.json({
+      ok: true,
+      items: [],
+      summary: {
+        intake_id: null,
+        domain_counts: { customer: 0, vehicle: 0, work_order: 0, history: 0, invoice: 0, part: 0 },
+        status_counts: { pending: 0, failed_materialization: 0, materialized: 0, ignored: 0, resolved: 0 },
+        unresolved_total: 0,
+        blockers_total: 0,
+        row_accounting: {
+          total_input: 0,
+          materialized: 0,
+          linked: 0,
+          ignored: 0,
+          review_required: 0,
+          failed: 0,
+          total_counted: 0,
+          mismatch: 0,
+        },
+      } satisfies ReviewCountsSummary,
+      guidance: {
+        state: "empty_reset",
+        is_operational_ready: false,
+        operational_blockers_count: 0,
+        non_blocking_issues_count: 0,
+        high_risk_actions_count: 0,
+        integrity_errors: [],
+      },
+    });
+  }
+
   let query = admin
     .from("shop_boost_review_items")
     .select("id,intake_id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at,recommended_action,recommendation_reason,recommendation_confidence,candidate_targets,recommendation_seen_at,recommendation_followed")
     .eq("shop_id", profile.shop_id)
+    .eq("intake_id", resolvedIntakeId)
     .order("created_at", { ascending: false })
     .limit(250);
 
@@ -165,80 +216,11 @@ export async function GET(req: Request) {
     };
   });
 
-  const intakeId = String(items[0]?.intake_id ?? "");
-  const knownStatuses = ["pending", "failed_materialization", "materialized", "ignored", "resolved"] as const;
-  const knownDomains = ["customer", "vehicle", "work_order", "history", "invoice", "part"] as const;
-  const countByStatusPromises = knownStatuses.map((state) =>
-    admin
-      .from("shop_boost_review_items")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId)
-      .eq("status", state),
-  );
-  const countByDomainPromises = knownDomains.map((value) =>
-    admin
-      .from("shop_boost_review_items")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId)
-      .eq("domain", value),
-  );
-  const [statusCountRows, domainCountRows, rowResultsTotal, reviewRequiredCount, failedCount, linkedCount] = await Promise.all([
-    Promise.all(countByStatusPromises),
-    Promise.all(countByDomainPromises),
-    admin
-      .from("shop_boost_row_results")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId),
-    admin
-      .from("shop_boost_row_results")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId)
-      .eq("review_required", true),
-    admin
-      .from("shop_boost_row_results")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId)
-      .eq("review_required", false)
-      .or("error_reason.not.is.null,match_status.eq.invalid"),
-    admin
-      .from("shop_boost_row_results")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", profile.shop_id)
-      .eq("intake_id", intakeId)
-      .eq("review_required", false)
-      .is("error_reason", null)
-      .in("match_status", ["matched_existing", "partial_match"]),
-  ]);
-  const statusCounts = knownStatuses.reduce<Record<string, number>>((acc, key, idx) => {
-    acc[key] = Number(statusCountRows[idx]?.count ?? 0);
-    return acc;
-  }, {});
-  const domainCounts = knownDomains.reduce<Record<string, number>>((acc, key, idx) => {
-    acc[key] = Number(domainCountRows[idx]?.count ?? 0);
-    return acc;
-  }, {});
-  const totalInput = Number(rowResultsTotal.count ?? 0);
-  const reviewRequired = Number(reviewRequiredCount.count ?? 0);
-  const failed = Number(failedCount.count ?? 0);
-  const linked = Number(linkedCount.count ?? 0);
-  const ignored = statusCounts.ignored ?? 0;
-  const materialized = Math.max(0, totalInput - reviewRequired - failed - linked - ignored);
-  const totalCounted = materialized + linked + ignored + reviewRequired + failed;
-  const rowAccounting = {
-    total_input: totalInput,
-    materialized,
-    linked,
-    ignored,
-    review_required: reviewRequired,
-    failed,
-    total_counted: totalCounted,
-    mismatch: Math.max(0, totalInput - totalCounted),
-  };
+  const canonicalTruth = await buildCanonicalIntakeTruth({
+    admin: admin as any,
+    shopId: profile.shop_id,
+    intakeId: resolvedIntakeId,
+  });
 
   const unresolved = items.filter((item) => item.status === "pending" || item.status === "failed_materialization");
   const blockers = unresolved.filter((item) => Boolean(item.blocking_reason)).length;
@@ -248,7 +230,7 @@ export async function GET(req: Request) {
     .from("shop_boost_intakes")
     .select("intake_basics")
     .eq("shop_id", profile.shop_id)
-    .eq("id", String(items[0]?.intake_id ?? ""))
+    .eq("id", resolvedIntakeId)
     .maybeSingle();
   const migration = asRecord(asRecord(intake?.intake_basics).migrationProgress);
   const integrity = asRecord(migration.integrity);
@@ -267,22 +249,52 @@ export async function GET(req: Request) {
       .is("recommendation_seen_at", null);
   }
 
+  const state =
+    canonicalTruth.rowCounts.total === 0
+      ? "empty_reset"
+      : canonicalTruth.rowCounts.unresolved > 0
+        ? "review_required"
+        : canonicalTruth.rowCounts.failed > 0 || canonicalTruth.rowCounts.mismatch > 0
+          ? "failed_inconsistent"
+          : "complete";
+
   return NextResponse.json({
     ok: true,
+    intakeId: resolvedIntakeId,
     items,
     summary: {
-      domain_counts: domainCounts,
-      status_counts: statusCounts,
-      unresolved_total: (statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0),
+      intake_id: resolvedIntakeId,
+      domain_counts: canonicalTruth.domainCounts,
+      status_counts: {
+        pending: canonicalTruth.review.pending,
+        failed_materialization: canonicalTruth.review.failedMaterialization,
+        materialized: canonicalTruth.review.materialized,
+        ignored: canonicalTruth.review.ignored,
+        resolved: canonicalTruth.review.resolved,
+      },
+      unresolved_total: canonicalTruth.review.pending + canonicalTruth.review.failedMaterialization,
       blockers_total: blockers,
-      row_accounting: rowAccounting,
+      row_accounting: {
+        total_input: canonicalTruth.rowCounts.total,
+        materialized: canonicalTruth.rowCounts.materialized,
+        linked: canonicalTruth.rowCounts.linked,
+        ignored: canonicalTruth.rowCounts.ignored,
+        review_required: canonicalTruth.rowCounts.unresolved,
+        failed: canonicalTruth.rowCounts.failed,
+        total_counted: canonicalTruth.rowCounts.totalCounted,
+        mismatch: canonicalTruth.rowCounts.mismatch,
+      },
     } satisfies ReviewCountsSummary,
     guidance: {
-      is_operational_ready: ((statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0)) === 0 && integrityErrors.length === 0,
+      state,
+      is_operational_ready:
+        state === "complete" &&
+        integrityErrors.length === 0,
       operational_blockers_count: blockers,
-      non_blocking_issues_count: Math.max(0, ((statusCounts.pending ?? 0) + (statusCounts.failed_materialization ?? 0)) - blockers),
+      non_blocking_issues_count: Math.max(0, canonicalTruth.rowCounts.unresolved - blockers),
       high_risk_actions_count: highRiskActions,
       integrity_errors: integrityErrors,
+      materialized_entities: canonicalTruth.materializedEntities,
     },
   });
 }

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
 import {
   getLatestRunAttemptSummary,
   getRunByShopIntake,
@@ -117,6 +118,11 @@ export async function GET(req: Request, context: RouteContext) {
   const migrationProgress = asRecord(basics.migrationProgress);
   const importSummary = asRecord(basics.importSummary);
   const integrity = asRecord(importSummary.integrity ?? migrationProgress.integrity);
+  const canonicalTruth = await buildCanonicalIntakeTruth({
+    admin: admin as any,
+    shopId: profile.shop_id,
+    intakeId: id,
+  });
 
   const [reviewStatusCounts, reviewActionCounts, domainProcessedCounts, domainReviewCounts, domainFailedCounts] = await Promise.all([
     Promise.all(
@@ -323,8 +329,8 @@ export async function GET(req: Request, context: RouteContext) {
     roi_summary: asRecord(migrationProgress.roi ?? basics.roi_summary),
     impact_comparison: asRecord(migrationProgress.impactComparison ?? basics.impact_comparison),
     blockers: {
-      review_queue: asNumber(importSummary.reviewQueueCount ?? migrationProgress.reviewQueueCount),
-      likely_blockers: asNumber(importSummary.blockerCount ?? migrationProgress.blockerCount),
+      review_queue: canonicalTruth.rowCounts.unresolved,
+      likely_blockers: canonicalTruth.rowCounts.failed + canonicalTruth.rowCounts.mismatch,
     },
     trust_statement: {
       confidence_score: asNumber(migrationProgress.confidenceScore ?? basics.confidence_score),
@@ -332,6 +338,7 @@ export async function GET(req: Request, context: RouteContext) {
         "Based on your uploaded data and conservative shop patterns. Actual value depends on activation, data cleanup, and team adoption.",
     },
     review_outcomes: reviewOutcomes,
+    canonical_truth: canonicalTruth,
     orchestrator,
     readiness: {
       snapshot_complete: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).snapshot_complete : false),

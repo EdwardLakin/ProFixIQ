@@ -51,6 +51,7 @@ type ReviewItem = {
 };
 
 type Guidance = {
+  state?: "empty_reset" | "import_uploaded" | "materialization_running" | "review_required" | "complete" | "failed_inconsistent";
   is_operational_ready: boolean;
   operational_blockers_count: number;
   non_blocking_issues_count: number;
@@ -166,6 +167,7 @@ export default function ShopBoostReviewPage() {
     const params = new URLSearchParams();
     if (domain) params.set("domain", domain);
     if (statusFilter) params.set("status", statusFilter);
+    if (activeIntakeId) params.set("intakeId", activeIntakeId);
     const res = await fetch(`/api/shop-boost/review-items?${params.toString()}`, { cache: "no-store" });
     const json = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: ReviewItem[]; guidance?: Guidance; summary?: ReviewSummary };
     const nextItems = json.ok ? json.items ?? [] : [];
@@ -177,7 +179,7 @@ export default function ShopBoostReviewPage() {
     setGuidance(json.guidance ?? null);
     setSelectedIds([]);
     setLoading(false);
-  }, [domain, statusFilter]);
+  }, [activeIntakeId, domain, statusFilter]);
 
   useEffect(() => {
     void load();
@@ -530,7 +532,7 @@ export default function ShopBoostReviewPage() {
       className="space-y-4"
       style={{
         ["--dashboard-shell-bg" as string]:
-          "radial-gradient(1200px_640px_at_14%_-8%, color-mix(in srgb, #38bdf8 8%, transparent), transparent 62%), radial-gradient(1100px_700px_at_100%_100%, rgba(2,6,23,0.52), transparent 64%), linear-gradient(180deg, var(--theme-app-bg, #050910) 0%, var(--theme-app-bg, #050910) 100%)",
+          "radial-gradient(1200px_640px_at_14%_-8%, color-mix(in srgb, #22d3ee 10%, transparent), transparent 62%), radial-gradient(1100px_700px_at_100%_100%, rgba(2,6,23,0.52), transparent 64%), linear-gradient(180deg, var(--theme-app-bg, #050910) 0%, var(--theme-app-bg, #050910) 100%)",
       }}
     >
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -548,8 +550,8 @@ export default function ShopBoostReviewPage() {
           </div>
         ) : null}
         {guidance ? (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/30 text-emerald-100" : "border-white/15 bg-black/30 text-neutral-100"}`}>
-            {guidance.is_operational_ready ? "READY_FOR_GO_LIVE: You can start using ProFixIQ now." : "NOT_READY: Complete required actions before go-live."}
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${guidance.is_operational_ready ? "border-emerald-400/35 bg-emerald-950/20 text-emerald-100" : "border-cyan-300/25 bg-cyan-950/10 text-neutral-100"}`}>
+            {guidance.is_operational_ready ? "READY_FOR_GO_LIVE: canonical intake truth is complete." : `State: ${String(guidance.state ?? "review_required").toUpperCase()}`}
             <div className="mt-1 text-xs text-neutral-200">Blockers: {guidance.operational_blockers_count} • Non-blocking issues: {guidance.non_blocking_issues_count} • High-risk actions: {guidance.high_risk_actions_count ?? 0}</div>
             {(guidance.integrity_errors ?? []).length > 0 ? <div className="mt-1 text-xs text-rose-200">Integrity issues: {(guidance.integrity_errors ?? []).join(" • ")}</div> : null}
           </div>
