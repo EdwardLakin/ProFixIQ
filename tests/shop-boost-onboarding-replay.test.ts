@@ -25,8 +25,10 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
     : null;
 
   const shopId = process.env.SHOP_BOOST_REPLAY_SHOP_ID as string;
-  const intakeId = `replay-${randomUUID()}`;
-  const storageRoot = `replays/${shopId}/${intakeId}`;
+  const replayRunId = randomUUID();
+  const replayLabel = `replay-${replayRunId}`;
+  const intakeId = replayRunId;
+  const storageRoot = `replays/${shopId}/${replayLabel}`;
 
   beforeAll(async () => {
     const customersPath = `${storageRoot}/customers.csv`;
