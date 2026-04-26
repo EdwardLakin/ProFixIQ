@@ -129,7 +129,7 @@ export type ShopBoostImportSummary = {
 
 type CsvRow = Record<string, string>;
 type RowDomain = "customer" | "vehicle" | "part" | "work_order" | "invoice" | "history";
-type MatchStatus = "matched_existing" | "created_new" | "partial_match" | "unmatched" | "invalid";
+type MatchStatus = "matched_existing" | "created_new" | "partial_match" | "unmatched" | "invalid" | "ignored";
 type MatchConfidence = "high" | "medium" | "low";
 type UploadManifestRecord = Partial<
   Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
@@ -171,6 +171,25 @@ type CacheProfileRow = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "e
 type KeyFixRow = Pick<DB["public"]["Tables"]["shop_boost_review_items"]["Row"], "domain" | "issue_type" | "status" | "resolution_action">;
 type MaterializeDomain = NonNullable<RunArgs["options"]>["materializeDomain"];
 type ProvenanceDomain = "customer" | "vehicle" | "work_order" | "work_order_line" | "invoice";
+
+const DETERMINISTIC_LINKAGE_ORDER = [
+  "exact_source_or_external_id",
+  "exact_shop_scoped_canonical_identifier",
+  "durable_dependency_linkage",
+  "explicit_review",
+  "safe_fallback_logic",
+] as const;
+
+type CanonicalLifecycleStage =
+  | "uploaded"
+  | "parsed"
+  | "normalized"
+  | "deterministic_identity"
+  | "linked_existing"
+  | "materialized_new"
+  | "review_required"
+  | "failed"
+  | "skipped";
 
 async function recordImportCreatedArtifact(args: {
   supabase: ReturnType<typeof createAdminSupabase>;
@@ -934,6 +953,19 @@ async function stageSupplementalUploads(args: {
   }
 }
 
+function classifyLifecycleStage(args: {
+  matchStatus: MatchStatus;
+  reviewRequired: boolean;
+  errorReason?: string | null;
+}): CanonicalLifecycleStage {
+  if (args.matchStatus === "ignored") return "skipped";
+  if (args.reviewRequired) return "review_required";
+  if (args.matchStatus === "created_new") return "materialized_new";
+  if (args.matchStatus === "matched_existing" || args.matchStatus === "partial_match") return "linked_existing";
+  if (args.matchStatus === "invalid" || args.errorReason) return "failed";
+  return "normalized";
+}
+
 async function insertRowResult(args: {
   supabase: ReturnType<typeof createAdminSupabase>;
   shopId: string;
@@ -964,7 +996,16 @@ async function insertRowResult(args: {
     target_domain: args.targetDomain,
     match_status: args.matchStatus,
     match_confidence: confidenceScore(args.matchConfidence),
-    match_details: args.matchDetails ?? {},
+    match_details: {
+      resolution_order: DETERMINISTIC_LINKAGE_ORDER,
+      lifecycle_stage: classifyLifecycleStage({
+        matchStatus: args.matchStatus,
+        reviewRequired: args.reviewRequired,
+        errorReason: args.errorReason ?? null,
+      }),
+      reason_code: args.errorReason ?? null,
+      ...(args.matchDetails ?? {}),
+    },
     cluster_key: cluster.clusterKey,
     cluster_confidence: cluster.confidence,
     error_reason: args.errorReason ?? null,

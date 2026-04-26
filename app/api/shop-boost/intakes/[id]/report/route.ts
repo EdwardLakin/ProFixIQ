@@ -18,8 +18,6 @@ type IntakeReportRow = Pick<
   DB["public"]["Tables"]["shop_boost_intakes"]["Row"],
   "id" | "shop_id" | "status" | "created_at" | "processed_at" | "intake_basics"
 >;
-const REPORT_DOMAINS = ["customer", "vehicle", "work_order", "history", "invoice", "part"] as const;
-const REPORT_STATUSES = ["pending", "failed_materialization", "materialized", "ignored", "resolved"] as const;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -124,95 +122,40 @@ export async function GET(req: Request, context: RouteContext) {
     intakeId: id,
   });
 
-  const [reviewStatusCounts, reviewActionCounts, domainProcessedCounts, domainReviewCounts, domainFailedCounts] = await Promise.all([
-    Promise.all(
-      REPORT_STATUSES.map((status) =>
-        admin
-          .from("shop_boost_review_items")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", profile.shop_id)
-          .eq("intake_id", id)
-          .eq("status", status),
-      ),
-    ),
-    Promise.all(
-      ["linked_to_existing", "created_new", "ignored"].map((action) =>
-        admin
-          .from("shop_boost_review_items")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", profile.shop_id)
-          .eq("intake_id", id)
-          .eq("resolution_action", action),
-      ),
-    ),
-    Promise.all(
-      REPORT_DOMAINS.map((domain) =>
-        admin
-          .from("shop_boost_row_results")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", profile.shop_id)
-          .eq("intake_id", id)
-          .eq("target_domain", domain),
-      ),
-    ),
-    Promise.all(
-      REPORT_DOMAINS.map((domain) =>
-        admin
-          .from("shop_boost_row_results")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", profile.shop_id)
-          .eq("intake_id", id)
-          .eq("target_domain", domain)
-          .eq("review_required", true),
-      ),
-    ),
-    Promise.all(
-      REPORT_DOMAINS.map((domain) =>
-        admin
-          .from("shop_boost_row_results")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", profile.shop_id)
-          .eq("intake_id", id)
-          .eq("target_domain", domain)
-          .or("error_reason.not.is.null,match_status.eq.invalid"),
-      ),
-    ),
-  ]);
-  if (
-    reviewStatusCounts.some((row) => row.error) ||
-    reviewActionCounts.some((row) => row.error) ||
-    domainProcessedCounts.some((row) => row.error) ||
-    domainReviewCounts.some((row) => row.error) ||
-    domainFailedCounts.some((row) => row.error)
-  ) {
-    console.error("[shop-boost][intakes/report] failed to load report aggregates", {
-      intakeId: id,
-      shopId: profile.shop_id,
-      reviewRowsError: reviewStatusCounts.find((row) => row.error)?.error?.message ?? null,
-      byDomainRowsError: domainProcessedCounts.find((row) => row.error)?.error?.message ?? null,
-    });
-  }
-
-  const reviewOutcomes = REPORT_STATUSES.reduce((acc: Record<string, number>, status, index) => {
-    acc[`status:${status}`] = Number(reviewStatusCounts[index]?.count ?? 0);
-    return acc;
-  }, {});
-  (["linked_to_existing", "created_new", "ignored"] as const).forEach((action, index) => {
-    reviewOutcomes[`action:${action}`] = Number(reviewActionCounts[index]?.count ?? 0);
-  });
+  const reviewOutcomes: Record<string, number> = {
+    "status:pending": canonicalTruth.review.pending,
+    "status:failed_materialization": canonicalTruth.review.failedMaterialization,
+    "status:materialized": canonicalTruth.review.materialized,
+    "status:ignored": canonicalTruth.review.ignored,
+    "status:resolved": canonicalTruth.review.resolved,
+    "action:linked_to_existing": canonicalTruth.rowCounts.linked,
+    "action:created_new": canonicalTruth.rowCounts.materialized,
+    "action:ignored": canonicalTruth.rowCounts.ignored,
+  };
   reviewOutcomes["action:none"] = Math.max(
     0,
-    (reviewOutcomes["status:pending"] ?? 0) - (reviewOutcomes["action:linked_to_existing"] ?? 0) - (reviewOutcomes["action:created_new"] ?? 0) - (reviewOutcomes["action:ignored"] ?? 0),
+    reviewOutcomes["status:pending"] -
+      reviewOutcomes["action:linked_to_existing"] -
+      reviewOutcomes["action:created_new"] -
+      reviewOutcomes["action:ignored"],
   );
 
-  const domainSummaries = REPORT_DOMAINS.reduce((acc: Record<string, { review: number; failed: number; processed: number }>, domain, index) => {
-    acc[domain] = {
-      processed: Number(domainProcessedCounts[index]?.count ?? 0),
-      review: Number(domainReviewCounts[index]?.count ?? 0),
-      failed: Number(domainFailedCounts[index]?.count ?? 0),
-    };
-    return acc;
-  }, {});
+  const domainSummaries = Object.fromEntries(
+    Object.entries(canonicalTruth.byDomain).map(([domain, value]) => [
+      domain,
+      {
+        processed: value.parsed,
+        review: value.reviewRequired,
+        failed: value.failed,
+        deterministic_identity: value.deterministicIdentity,
+        linked_existing: value.linkedExisting,
+        materialized_new: value.materializedNew,
+        skipped: value.skipped,
+        mismatch: value.mismatch,
+        reasons: value.reasons,
+      },
+    ]),
+  );
 
   const legacyOrchestrator = asRecord(basics.orchestrator);
   let orchestrator: Record<string, unknown> | null = null;
@@ -343,7 +286,9 @@ export async function GET(req: Request, context: RouteContext) {
     readiness: {
       snapshot_complete: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).snapshot_complete : false),
       import_complete: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).import_complete : false),
-      canonical_ready: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).canonical_ready : false),
+      canonical_readiness: canonicalTruth.readiness,
+      canonical_ready: canonicalTruth.readiness === "ready",
+      integrity_flags: canonicalTruth.integrityFlags,
       activation_eligible: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).activation_eligible : false),
       activated: Boolean(asRecord(orchestrator ?? {}).truthStates ? asRecord(asRecord(orchestrator ?? {}).truthStates).activated : false),
       ui_should_route_forward: Boolean(asRecord(orchestrator ?? {}).uiShouldRouteForward ?? asRecord(orchestrator ?? {}).ui_should_route_forward ?? false),
