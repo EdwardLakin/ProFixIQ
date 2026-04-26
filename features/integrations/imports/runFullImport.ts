@@ -230,7 +230,7 @@ type DomainDiagnosticsMap = Record<
 function createDomainDiagnostics(uploaded: number): DomainDiagnostics {
   return {
     uploaded,
-    parsed: uploaded,
+    parsed: 0,
     normalized: 0,
     identity_generated: 0,
     dependency_resolved: 0,
@@ -1016,10 +1016,35 @@ function rememberSourceLinkedId(map: Map<string, string>, sourceId: string | nul
 
 async function downloadCsv(path: string | null): Promise<string | null> {
   if (!path) return null;
+  const normalizedPath = normalizeImportStoragePath(path);
+  if (!normalizedPath) return null;
   const supabase = createAdminSupabase();
-  const { data, error } = await supabase.storage.from(SHOP_IMPORT_BUCKET).download(path);
+  const { data, error } = await supabase.storage.from(SHOP_IMPORT_BUCKET).download(normalizedPath);
   if (error || !data) return null;
   return decodeStorageDownloadToText(data);
+}
+
+function normalizeImportStoragePath(path: string | null | undefined): string | null {
+  const raw = String(path ?? "").trim();
+  if (!raw) return null;
+
+  const stripBucketPrefix = (value: string): string => value.replace(/^\/+/, "").replace(/^shop-imports\//, "");
+
+  const fromStorageUrl = (value: string): string | null => {
+    try {
+      const parsed = new URL(value);
+      const pathname = parsed.pathname ?? "";
+      const bucketPathMatch = pathname.match(/\/object\/(?:public\/|sign\/)?shop-imports\/(.+)$/i);
+      if (!bucketPathMatch?.[1]) return null;
+      return decodeURIComponent(bucketPathMatch[1]);
+    } catch {
+      return null;
+    }
+  };
+
+  const fromUrl = fromStorageUrl(raw);
+  if (fromUrl) return stripBucketPrefix(fromUrl);
+  return stripBucketPrefix(raw);
 }
 
 async function decodeStorageDownloadToText(data: unknown): Promise<string | null> {
@@ -1034,6 +1059,63 @@ async function decodeStorageDownloadToText(data: unknown): Promise<string | null
     return new TextDecoder().decode(data);
   }
   return null;
+}
+
+type DomainCsvLoadResult = {
+  path: string | null;
+  discovered: boolean;
+  csv: string | null;
+  rows: CsvRow[];
+  downloadError: string | null;
+  parseError: string | null;
+};
+
+async function loadDomainCsv(path: string | null): Promise<DomainCsvLoadResult> {
+  const discovered = Boolean(firstNonEmptyPath(path));
+  if (!discovered) {
+    return {
+      path: null,
+      discovered: false,
+      csv: null,
+      rows: [],
+      downloadError: null,
+      parseError: null,
+    };
+  }
+
+  const normalizedPath = normalizeImportStoragePath(path);
+  const csv = await downloadCsv(path);
+  if (!csv) {
+    return {
+      path: normalizedPath,
+      discovered: true,
+      csv: null,
+      rows: [],
+      downloadError: `download_failed_or_empty:${normalizedPath ?? String(path ?? "").trim()}`,
+      parseError: null,
+    };
+  }
+
+  try {
+    const parsed = parseCsv(csv);
+    return {
+      path: normalizedPath,
+      discovered: true,
+      csv,
+      rows: parsed.rows,
+      downloadError: null,
+      parseError: null,
+    };
+  } catch (error) {
+    return {
+      path: normalizedPath,
+      discovered: true,
+      csv,
+      rows: [],
+      downloadError: null,
+      parseError: `parse_failed:${error instanceof Error ? error.message : "unknown_error"}`,
+    };
+  }
 }
 
 async function stageSupplementalUploads(args: {
@@ -1322,22 +1404,35 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     : {};
   const resolvedFiles = resolveImportFilePaths({ intakeRow, uploadManifest });
 
-  const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv, invoicesCsvFromManifest, vendorsCsv] = await Promise.all([
-    downloadCsv(resolvedFiles.customersPath),
-    downloadCsv(resolvedFiles.vehiclesPath),
-    downloadCsv(resolvedFiles.partsPath),
-    downloadCsv(resolvedFiles.historyPath),
-    downloadCsv(resolvedFiles.staffPath),
-    downloadCsv(resolvedFiles.invoicesPath),
-    downloadCsv(resolvedFiles.vendorsPath),
+  const [
+    customersCsvResult,
+    vehiclesCsvResult,
+    partsCsvResult,
+    historyCsvResult,
+    staffCsvResult,
+    invoicesCsvResult,
+    vendorsCsvResult,
+  ] = await Promise.all([
+    loadDomainCsv(resolvedFiles.customersPath),
+    loadDomainCsv(resolvedFiles.vehiclesPath),
+    loadDomainCsv(resolvedFiles.partsPath),
+    loadDomainCsv(resolvedFiles.historyPath),
+    loadDomainCsv(resolvedFiles.staffPath),
+    loadDomainCsv(resolvedFiles.invoicesPath),
+    loadDomainCsv(resolvedFiles.vendorsPath),
   ]);
 
-  const parsedCustomers = customersCsv ? parseCsv(customersCsv).rows : [];
-  const parsedVehicles = vehiclesCsv ? parseCsv(vehiclesCsv).rows : [];
-  const parsedParts = partsCsv ? parseCsv(partsCsv).rows : [];
-  const parsedHistory = historyCsv ? parseCsv(historyCsv).rows : [];
-  const parsedInvoices = invoicesCsvFromManifest ? parseCsv(invoicesCsvFromManifest).rows : [];
-  const parsedVendors = vendorsCsv ? parseCsv(vendorsCsv).rows : [];
+  const vehiclesCsv = vehiclesCsvResult.csv;
+  const partsCsv = partsCsvResult.csv;
+  const historyCsv = historyCsvResult.csv;
+  const staffCsv = staffCsvResult.csv;
+
+  const parsedCustomers = customersCsvResult.rows;
+  const parsedVehicles = vehiclesCsvResult.rows;
+  const parsedParts = partsCsvResult.rows;
+  const parsedHistory = historyCsvResult.rows;
+  const parsedInvoices = invoicesCsvResult.rows;
+  const parsedVendors = vendorsCsvResult.rows;
   const totalRows =
     (runCustomers ? parsedCustomers.length : 0) +
     (runVehicles ? parsedVehicles.length : 0) +
@@ -1373,17 +1468,41 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     },
   };
   const domainDiagnostics: DomainDiagnosticsMap = {
-    customers: createDomainDiagnostics(runCustomers ? parsedCustomers.length : 0),
-    vehicles: createDomainDiagnostics(runVehicles ? parsedVehicles.length : 0),
-    history: createDomainDiagnostics(runHistory ? parsedHistory.length : 0),
-    invoices: createDomainDiagnostics(runInvoices ? parsedInvoices.length : 0),
-    parts: createDomainDiagnostics(runParts ? parsedParts.length : 0),
-    vendors: createDomainDiagnostics(parsedVendors.length),
+    customers: createDomainDiagnostics(customersCsvResult.discovered ? 1 : 0),
+    vehicles: createDomainDiagnostics(vehiclesCsvResult.discovered ? 1 : 0),
+    history: createDomainDiagnostics(historyCsvResult.discovered ? 1 : 0),
+    invoices: createDomainDiagnostics(invoicesCsvResult.discovered ? 1 : 0),
+    parts: createDomainDiagnostics(partsCsvResult.discovered ? 1 : 0),
+    vendors: createDomainDiagnostics(vendorsCsvResult.discovered ? 1 : 0),
   };
+  domainDiagnostics.customers.parsed = runCustomers ? parsedCustomers.length : 0;
+  domainDiagnostics.vehicles.parsed = runVehicles ? parsedVehicles.length : 0;
+  domainDiagnostics.history.parsed = runHistory ? parsedHistory.length : 0;
+  domainDiagnostics.invoices.parsed = runInvoices ? parsedInvoices.length : 0;
+  domainDiagnostics.parts.parsed = runParts ? parsedParts.length : 0;
+  domainDiagnostics.vendors.parsed = parsedVendors.length;
+
+  const importFileLoadFailures: string[] = [
+    customersCsvResult.downloadError ? `customers:${customersCsvResult.downloadError}` : null,
+    customersCsvResult.parseError ? `customers:${customersCsvResult.parseError}` : null,
+    vehiclesCsvResult.downloadError ? `vehicles:${vehiclesCsvResult.downloadError}` : null,
+    vehiclesCsvResult.parseError ? `vehicles:${vehiclesCsvResult.parseError}` : null,
+    historyCsvResult.downloadError ? `history:${historyCsvResult.downloadError}` : null,
+    historyCsvResult.parseError ? `history:${historyCsvResult.parseError}` : null,
+    invoicesCsvResult.downloadError ? `invoices:${invoicesCsvResult.downloadError}` : null,
+    invoicesCsvResult.parseError ? `invoices:${invoicesCsvResult.parseError}` : null,
+    partsCsvResult.downloadError ? `parts:${partsCsvResult.downloadError}` : null,
+    partsCsvResult.parseError ? `parts:${partsCsvResult.parseError}` : null,
+    vendorsCsvResult.downloadError ? `vendors:${vendorsCsvResult.downloadError}` : null,
+    vendorsCsvResult.parseError ? `vendors:${vendorsCsvResult.parseError}` : null,
+  ].filter((value): value is string => Boolean(value));
 
   const declaredDirectImportDomains = resolvedFiles.declaredUploadDomains.filter((domain) =>
     ["customers", "vehicles", "parts", "history", "invoices"].includes(domain),
   );
+  if (importFileLoadFailures.length > 0) {
+    rowOutcome.integrityErrors?.push(...importFileLoadFailures);
+  }
   if (!materializeDomain) {
     await Promise.all([
       supabase.from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
@@ -3167,7 +3286,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const reviewResolvedCount = reviewCounts[3].count ?? 0;
   rowOutcome.ignoredCount = ignoredCount;
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
-  const integrityErrors: string[] = integrity.integrityErrors;
+  const integrityErrors: string[] = [...(rowOutcome.integrityErrors ?? []), ...integrity.integrityErrors];
   if (declaredDirectImportDomains.length > 0 && rowOutcome.totalRows === 0) {
     integrityErrors.push(
       `import_input_empty_or_unreadable: declared_domains=${declaredDirectImportDomains.join(",")} processed_rows=0`,
