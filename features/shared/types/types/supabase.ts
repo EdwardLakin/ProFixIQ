@@ -21085,7 +21085,12 @@ export type Database = {
         Args: { p_work_order_line_id: string }
         Returns: undefined
       }
-      plan_user_limit: { Args: { p_plan: string }; Returns: number }
+      plan_user_limit:
+        | { Args: { p_plan: string }; Returns: number }
+        | {
+            Args: { p_plan: string; p_stripe_subscription_status?: string }
+            Returns: number
+          }
       portal_approve_line: { Args: { p_line_id: string }; Returns: undefined }
       portal_approve_part_request_item: {
         Args: { p_item_id: string }
@@ -21443,7 +21448,7 @@ export type Database = {
         | "fulfilled"
         | "rejected"
         | "cancelled"
-      plan_t: "starter" | "pro" | "unlimited"
+      plan_t: "free" | "diy" | "pro" | "pro_plus"
       publication_status:
         | "draft"
         | "queued"
@@ -21790,7 +21795,7 @@ export const Constants = {
         "rejected",
         "cancelled",
       ],
-      plan_t: ["starter", "pro", "unlimited"],
+      plan_t: ["free", "diy", "pro", "pro_plus"],
       publication_status: [
         "draft",
         "queued",
