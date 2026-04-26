@@ -59,7 +59,7 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
       id: intakeId,
       shop_id: shopId,
       questionnaire: {},
-      status: "uploaded",
+      status: "pending",
       source: "shop_boost_replay_test",
       customers_file_path: customersPath,
       vehicles_file_path: vehiclesPath,
