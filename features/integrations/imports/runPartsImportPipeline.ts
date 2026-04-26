@@ -76,8 +76,7 @@ function normalizeText(s: string | null | undefined): string {
 function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
   const lines = csv
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length);
+    .filter((l) => l.trim().length);
 
   if (lines.length < 2) return { header: [], rows: [] };
 
@@ -89,6 +88,11 @@ function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
     for (let i = 0; i < line.length; i += 1) {
       const ch = line[i];
       if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+          continue;
+        }
         inQuotes = !inQuotes;
         continue;
       }
