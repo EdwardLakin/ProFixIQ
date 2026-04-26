@@ -25,7 +25,7 @@ import {
 
 type DB = Database;
 
-const SHOP_IMPORT_BUCKET = "shop-imports";
+export const SHOP_IMPORT_BUCKET = "shop-imports";
 
 type IntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"] & {
   customers_file_path?: string | null;
