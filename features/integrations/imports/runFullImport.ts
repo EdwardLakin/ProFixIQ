@@ -3809,7 +3809,7 @@ async function upsertHistoryLine(args: {
     cause: cause ?? null,
     correction: correction ?? null,
     description: correction ?? complaint ?? "Imported history line",
-    status: "completed",
+    status: "awaiting",
     line_type: "info",
     labor_time: normalizedLaborTime,
     line_no: rowIndex,
@@ -3919,7 +3919,7 @@ async function upsertInvoiceIfNeeded(args: {
 
   const payload = {
     customer_id,
-    status: "paid",
+    status: "draft",
     subtotal: Math.max(0, (labor ?? 0) + (parts ?? 0)),
     labor_cost: labor ?? 0,
     parts_cost: parts ?? 0,
