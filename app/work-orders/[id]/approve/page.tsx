@@ -109,7 +109,8 @@ export default function ApproveWorkOrderPage() {
       return next;
     });
 
-  const hourlyRate = getNum(wo, "hourly_rate") ?? getNum(shop, "hourly_rate") ?? 120;
+  // Canonical labor pricing source is shops.labor_rate (owner/shop settings).
+  const hourlyRate = getNum(shop, "labor_rate") ?? 120;
   const currencyCode = (getStr(shop, "currency") ?? "USD").toUpperCase();
   const fmt = useMemo(
     () =>
