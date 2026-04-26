@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
+import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
 import {
   getLatestRunAttemptSummaryWithDiagnostics,
   getRunByShopIntake,
@@ -58,6 +59,12 @@ export async function GET() {
 
   const basics = asRecord(intake.intake_basics);
   const basicsOrchestrator = asRecord(basics.orchestrator);
+
+  const canonicalTruth = await buildCanonicalIntakeTruth({
+    admin: admin as any,
+    shopId: profile.shop_id,
+    intakeId: intake.id,
+  });
 
   let orchestrator: Record<string, unknown> | null = null;
   const diagnostics: Array<{ scope: string; code: string; message: string; hint?: string }> = [];
@@ -176,6 +183,13 @@ export async function GET() {
 
   const orchestratorRecord = asRecord(orchestrator);
   const truthStates = asRecord(orchestratorRecord.truthStates ?? orchestratorRecord.truth_states);
+  const canonicalReadyFromRun = Boolean(truthStates.canonical_ready);
+  const canonicalReadyFromRows =
+    canonicalTruth.rowCounts.total > 0 &&
+    canonicalTruth.rowCounts.unresolved === 0 &&
+    canonicalTruth.rowCounts.failed === 0 &&
+    canonicalTruth.rowCounts.mismatch === 0;
+  const canonicalReady = canonicalReadyFromRun && canonicalReadyFromRows;
 
   return NextResponse.json({
     ok: true,
@@ -187,12 +201,13 @@ export async function GET() {
       processedAt: intake.processed_at,
       progress: toIntakeProgress(intake as never),
       orchestrator,
+      canonicalTruth,
       readiness: orchestrator
         ? {
             snapshot_complete: Boolean(truthStates.snapshot_complete),
             import_complete: Boolean(truthStates.import_complete),
-            canonical_ready: Boolean(truthStates.canonical_ready),
-            activation_eligible: Boolean(truthStates.activation_eligible),
+            canonical_ready: canonicalReady,
+            activation_eligible: Boolean(truthStates.activation_eligible) && canonicalReady,
             activated: Boolean(truthStates.activated),
             verify_status: orchestratorRecord.verifyStatus ?? orchestratorRecord.verify_status ?? null,
             verify_passed: orchestratorRecord.verifyPassed ?? orchestratorRecord.verify_passed ?? null,
@@ -201,9 +216,23 @@ export async function GET() {
             domain_fail_count: orchestratorRecord.domainFailCount ?? orchestratorRecord.domain_fail_count ?? 0,
             domain_pending_count: orchestratorRecord.domainPendingCount ?? orchestratorRecord.domain_pending_count ?? 0,
             canonical_summary: orchestratorRecord.canonicalSummary ?? orchestratorRecord.canonical_summary ?? null,
-            ui_should_route_forward: orchestratorRecord.uiShouldRouteForward ?? orchestratorRecord.ui_should_route_forward ?? false,
+            ui_should_route_forward: Boolean(orchestratorRecord.uiShouldRouteForward ?? orchestratorRecord.ui_should_route_forward ?? false) && canonicalReady,
           }
-        : null,
+        : {
+            snapshot_complete: false,
+            import_complete: false,
+            canonical_ready: canonicalReadyFromRows,
+            activation_eligible: false,
+            activated: false,
+            verify_status: null,
+            verify_passed: null,
+            blockers: [],
+            domain_pass_count: 0,
+            domain_fail_count: 0,
+            domain_pending_count: 0,
+            canonical_summary: null,
+            ui_should_route_forward: false,
+          },
     },
   });
 }
