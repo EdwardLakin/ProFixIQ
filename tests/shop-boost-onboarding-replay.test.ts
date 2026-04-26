@@ -69,6 +69,21 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
       history_file_path: historyPath,
       intake_basics: {
         uploadManifest: {
+          customers: {
+            path: customersPath,
+            fileName: "customers.csv",
+            importMode: "direct",
+          },
+          vehicles: {
+            path: vehiclesPath,
+            fileName: "vehicles.csv",
+            importMode: "direct",
+          },
+          history: {
+            path: historyPath,
+            fileName: "history.csv",
+            importMode: "direct",
+          },
           invoices: {
             path: invoicesPath,
             fileName: "invoices.csv",
@@ -91,6 +106,12 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
     });
 
     console.info("[shop-boost-replay] diagnostics", JSON.stringify(diagnostics, null, 2));
+    expect(diagnostics.discoveredUploadDomains.sort()).toEqual(["customers", "history", "invoices", "vehicles"]);
+    expect(summary.rowResults.totalRows).toBeGreaterThan(0);
+    expect(summary.rowResults.domainDiagnostics?.customers.uploaded ?? 0).toBeGreaterThan(0);
+    if (diagnostics.discoveredUploadDomains.length > 0 && summary.rowResults.totalRows === 0) {
+      expect(summary.completionState).not.toBe("READY_FOR_GO_LIVE");
+    }
 
     const customers = diagnostics.customersByIntake;
     const canonicalCustomer = resolveCanonicalCustomerFromDiagnostics(diagnostics);
@@ -200,6 +221,42 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
     expect(summary.rowResults.domainDiagnostics?.invoices.skipped).toBeGreaterThanOrEqual(1);
     expect(summary.rowResults.outcomeBuckets?.mismatch).toBe(0);
   }, 120_000);
+
+  it("does not report READY_FOR_GO_LIVE when files exist but zero rows are processed", async () => {
+    const emptyIntakeId = randomUUID();
+    const emptyCustomersPath = `${storageRoot}/empty-customers.csv`;
+    await supabase!.storage.from("shop-imports").upload(emptyCustomersPath, "Customer ID,Email\n", {
+      contentType: "text/csv",
+      upsert: true,
+    });
+
+    const { error: emptyIntakeErr } = await supabase!.from("shop_boost_intakes").insert({
+      id: emptyIntakeId,
+      shop_id: shopId,
+      questionnaire: {},
+      status: "pending",
+      source: "shop_boost_replay_test",
+      customers_file_path: emptyCustomersPath,
+      intake_basics: {
+        uploadManifest: {
+          customers: {
+            path: emptyCustomersPath,
+            fileName: "empty-customers.csv",
+            importMode: "direct",
+          },
+        },
+      },
+    } as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]);
+    expect(emptyIntakeErr).toBeNull();
+
+    const summary = await runShopBoostImport({ shopId, intakeId: emptyIntakeId });
+    expect(summary.rowResults.totalRows).toBe(0);
+    expect(summary.completionState).not.toBe("READY_FOR_GO_LIVE");
+    expect(summary.completionState).toBe("NOT_READY");
+    expect((summary.rowResults.integrityErrors ?? []).some((msg) => msg.includes("import_input_empty_or_unreadable"))).toBe(
+      true,
+    );
+  }, 120_000);
 });
 
 function resolveCanonicalCustomerFromDiagnostics(diagnostics: ReplayDiagnostics): CustomerRow | null {
@@ -249,6 +306,7 @@ type ReplayDiagnostics = {
     ReviewItemRow,
     "domain" | "issue_type" | "status" | "summary" | "blocking_reason" | "resolution_action" | "recommended_action"
   >[];
+  discoveredUploadDomains: string[];
 };
 
 async function collectReplayDiagnostics(args: {
@@ -308,6 +366,13 @@ async function collectReplayDiagnostics(args: {
     return acc;
   }, {});
 
+  const intakeBasics = (intakeRes.data?.intake_basics ?? {}) as Record<string, unknown>;
+  const uploadManifest = (intakeBasics.uploadManifest ?? {}) as Record<string, unknown>;
+  const discoveredUploadDomains = ["customers", "vehicles", "history", "invoices"].filter((domain) => {
+    const entry = uploadManifest[domain];
+    return Boolean(entry && typeof entry === "object" && "path" in (entry as Record<string, unknown>));
+  });
+
   return {
     summary: args.summary,
     parserEvidence,
@@ -318,6 +383,7 @@ async function collectReplayDiagnostics(args: {
     customerRowResults: rowResults.filter((row) => row.target_domain === "customer"),
     rowResultsGrouped,
     reviewItems: reviewItemsRes.data ?? [],
+    discoveredUploadDomains,
   };
 }
 

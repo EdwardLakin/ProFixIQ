@@ -134,6 +134,17 @@ type MatchConfidence = "high" | "medium" | "low";
 type UploadManifestRecord = Partial<
   Record<ShopBoostUploadDatasetKey, { path?: string; fileName?: string | null; importMode?: "direct" | "staging" }>
 >;
+type ResolvedImportFilePaths = {
+  customersPath: string | null;
+  vehiclesPath: string | null;
+  partsPath: string | null;
+  historyPath: string | null;
+  staffPath: string | null;
+  invoicesPath: string | null;
+  vendorsPath: string | null;
+  serviceCatalogPath: string | null;
+  declaredUploadDomains: string[];
+};
 type MenuBridgeCandidate = {
   title: string;
   description: string | null;
@@ -277,6 +288,52 @@ function domainReviewItems(domain: MaterializeDomain): string[] {
   if (domain === "parts") return ["part"];
   if (domain === "staff") return [];
   return [];
+}
+
+function firstNonEmptyPath(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return null;
+}
+
+function resolveImportFilePaths(args: { intakeRow: IntakeRow; uploadManifest: UploadManifestRecord }): ResolvedImportFilePaths {
+  const customersPath = firstNonEmptyPath(args.uploadManifest.customers?.path, args.intakeRow.customers_file_path);
+  const vehiclesPath = firstNonEmptyPath(args.uploadManifest.vehicles?.path, args.intakeRow.vehicles_file_path);
+  const partsPath = firstNonEmptyPath(args.uploadManifest.parts?.path, args.intakeRow.parts_file_path);
+  const historyPath = firstNonEmptyPath(args.uploadManifest.history?.path, args.intakeRow.history_file_path);
+  const staffPath = firstNonEmptyPath(args.uploadManifest.staff?.path, args.intakeRow.staff_file_path);
+  const invoicesPath = firstNonEmptyPath(args.uploadManifest.invoices?.path);
+  const vendorsPath = firstNonEmptyPath(args.uploadManifest.vendors?.path);
+  const serviceCatalogPath = firstNonEmptyPath(args.uploadManifest.serviceCatalog?.path);
+
+  const declaredDomainPaths: Array<[string, string | null]> = [
+    ["customers", customersPath],
+    ["vehicles", vehiclesPath],
+    ["parts", partsPath],
+    ["history", historyPath],
+    ["staff", staffPath],
+    ["invoices", invoicesPath],
+    ["vendors", vendorsPath],
+    ["serviceCatalog", serviceCatalogPath],
+  ];
+  const declaredUploadDomains = declaredDomainPaths.reduce<string[]>((acc, [domain, path]) => {
+    if (path) acc.push(domain);
+    return acc;
+  }, []);
+
+  return {
+    customersPath,
+    vehiclesPath,
+    partsPath,
+    historyPath,
+    staffPath,
+    invoicesPath,
+    vendorsPath,
+    serviceCatalogPath,
+    declaredUploadDomains,
+  };
 }
 
 function norm(s: string): string {
@@ -1263,15 +1320,16 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   const uploadManifest = isRecord(intakeBasics.uploadManifest)
     ? (intakeBasics.uploadManifest as UploadManifestRecord)
     : {};
+  const resolvedFiles = resolveImportFilePaths({ intakeRow, uploadManifest });
 
   const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv, invoicesCsvFromManifest, vendorsCsv] = await Promise.all([
-    downloadCsv(intakeRow.customers_file_path ?? null),
-    downloadCsv(intakeRow.vehicles_file_path ?? null),
-    downloadCsv(intakeRow.parts_file_path ?? null),
-    downloadCsv(intakeRow.history_file_path ?? null),
-    downloadCsv(intakeRow.staff_file_path ?? null),
-    downloadCsv(uploadManifest.invoices?.path ?? null),
-    downloadCsv(uploadManifest.vendors?.path ?? null),
+    downloadCsv(resolvedFiles.customersPath),
+    downloadCsv(resolvedFiles.vehiclesPath),
+    downloadCsv(resolvedFiles.partsPath),
+    downloadCsv(resolvedFiles.historyPath),
+    downloadCsv(resolvedFiles.staffPath),
+    downloadCsv(resolvedFiles.invoicesPath),
+    downloadCsv(resolvedFiles.vendorsPath),
   ]);
 
   const parsedCustomers = customersCsv ? parseCsv(customersCsv).rows : [];
@@ -1323,6 +1381,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
     vendors: createDomainDiagnostics(parsedVendors.length),
   };
 
+  const declaredDirectImportDomains = resolvedFiles.declaredUploadDomains.filter((domain) =>
+    ["customers", "vehicles", "parts", "history", "invoices"].includes(domain),
+  );
   if (!materializeDomain) {
     await Promise.all([
       supabase.from("shop_boost_row_results").delete().eq("shop_id", shopId).eq("intake_id", intakeId),
@@ -1352,7 +1413,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   if (!materializeDomain) {
     await stageSupplementalUploads({ shopId, intakeId, uploadManifest });
   }
-  const serviceCatalogCsv = !materializeDomain ? await downloadCsv(uploadManifest.serviceCatalog?.path ?? null) : null;
+  const serviceCatalogCsv = !materializeDomain ? await downloadCsv(resolvedFiles.serviceCatalogPath) : null;
   const shopBuildSummary = !materializeDomain
     ? await bridgeOperatingLayerFromCsv({
         supabase,
@@ -3107,6 +3168,11 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
   rowOutcome.ignoredCount = ignoredCount;
   const integrity = await runPostMigrationIntegrityValidation({ shopId, intakeId });
   const integrityErrors: string[] = integrity.integrityErrors;
+  if (declaredDirectImportDomains.length > 0 && rowOutcome.totalRows === 0) {
+    integrityErrors.push(
+      `import_input_empty_or_unreadable: declared_domains=${declaredDirectImportDomains.join(",")} processed_rows=0`,
+    );
+  }
 
   const sourceFileFilter = materializeDomain ? domainSourceFile(materializeDomain) : null;
   let totalCountQuery = supabase
@@ -3405,8 +3471,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       ? "partial"
       : "ok";
 
+  const hasDeclaredDirectInputsButNoRows = declaredDirectImportDomains.length > 0 && rowOutcome.totalRows === 0;
   const effectiveCompletionState: ShopBoostImportSummary["completionState"] =
-    canonicalMaterialization.status === "partial" &&
+    (hasDeclaredDirectInputsButNoRows || canonicalMaterialization.status === "partial") &&
     (completionState === "COMPLETED_CLEAN" ||
       completionState === "COMPLETED_WITH_REVIEW" ||
       completionState === "COMPLETED_WITH_WARNINGS" ||
