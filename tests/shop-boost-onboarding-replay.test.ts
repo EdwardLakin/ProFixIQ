@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
@@ -8,6 +8,9 @@ import { SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE } from "./fixtures/shop-boost-onbo
 type DB = Database;
 
 type RowResultRow = DB["public"]["Tables"]["shop_boost_row_results"]["Row"];
+type ReviewItemRow = DB["public"]["Tables"]["shop_boost_review_items"]["Row"];
+type IntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
+type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
 const shouldRunReplay =
   process.env.RUN_SHOP_BOOST_REPLAY_TEST === "true" &&
@@ -80,17 +83,23 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
 
   it("materializes the canonical customer→vehicle→work order→invoice graph and truthful row outcomes", async () => {
     const summary = await runShopBoostImport({ shopId, intakeId });
+    const diagnostics = await collectReplayDiagnostics({
+      supabase: supabase!,
+      shopId,
+      intakeId,
+      summary,
+    });
 
-    const { data: customers } = await supabase!
-      .from("customers")
-      .select("id,email,phone,source_intake_id")
-      .eq("shop_id", shopId)
-      .eq("source_intake_id", intakeId);
-    expect(customers?.length).toBe(1);
+    console.info("[shop-boost-replay] diagnostics", JSON.stringify(diagnostics, null, 2));
 
-    const canonicalCustomerId = customers?.[0]?.id ?? null;
+    const customers = diagnostics.customersByIntake;
+    const canonicalCustomer = resolveCanonicalCustomerFromDiagnostics(diagnostics);
+    expect(canonicalCustomer, buildCustomerFailureMessage(diagnostics)).toBeTruthy();
+    expect(customers.length, buildCustomerFailureMessage(diagnostics)).toBe(1);
+
+    const canonicalCustomerId = canonicalCustomer?.id ?? null;
     expect(canonicalCustomerId).toBeTruthy();
-    expect(customers?.[0]?.email).toBe("casey.driver@example.com");
+    expect(canonicalCustomer?.email).toBe("casey.driver@example.com");
 
     const { data: vehicles } = await supabase!
       .from("vehicles")
@@ -193,6 +202,167 @@ describeReplay("Shop Boost onboarding deterministic replay", () => {
   }, 120_000);
 });
 
+function resolveCanonicalCustomerFromDiagnostics(diagnostics: ReplayDiagnostics): CustomerRow | null {
+  if (diagnostics.customersByIntake.length === 1) {
+    return diagnostics.customersByIntake[0];
+  }
+  if (diagnostics.customersByIntake.length > 1) {
+    return null;
+  }
+
+  const customerLifecycleOutcomes = diagnostics.customerRowResults
+    .map((row) => readLifecycle(row))
+    .filter((stage): stage is string => Boolean(stage));
+  const evidenceOfCustomerLinkOrCreate = customerLifecycleOutcomes.some((stage) =>
+    ["materialized_new", "linked_existing", "updated_existing"].includes(stage),
+  );
+  if (evidenceOfCustomerLinkOrCreate && diagnostics.customersByDeterministicIdentity.length > 0) {
+    return null;
+  }
+  return null;
+}
+
+type ReplayDiagnostics = {
+  summary: Awaited<ReturnType<typeof runShopBoostImport>>;
+  parserEvidence: {
+    customerHeaders: string[];
+    firstCustomerRowAliasValues: {
+      customerId: string | null;
+      email: string | null;
+      phone: string | null;
+      companyName: string | null;
+    };
+  };
+  intake: IntakeRow | null;
+  customersByIntake: CustomerRow[];
+  customersByDeterministicIdentity: CustomerRow[];
+  rowResults: Pick<
+    RowResultRow,
+    "source_file" | "source_row_index" | "target_domain" | "match_status" | "review_required" | "error_reason" | "match_details"
+  >[];
+  customerRowResults: Pick<
+    RowResultRow,
+    "source_file" | "source_row_index" | "target_domain" | "match_status" | "review_required" | "error_reason" | "match_details"
+  >[];
+  rowResultsGrouped: Record<string, number>;
+  reviewItems: Pick<
+    ReviewItemRow,
+    "domain" | "issue_type" | "status" | "summary" | "blocking_reason" | "resolution_action" | "recommended_action"
+  >[];
+};
+
+async function collectReplayDiagnostics(args: {
+  supabase: ReturnType<typeof createClient<DB>>;
+  shopId: string;
+  intakeId: string;
+  summary: Awaited<ReturnType<typeof runShopBoostImport>>;
+}): Promise<ReplayDiagnostics> {
+  const customerIdentity = deterministicFixtureCustomerIdentity();
+  const parserEvidence = fixtureCustomerParserEvidence();
+
+  const [intakeRes, intakeCustomersRes, deterministicCustomersRes, rowResultsRes, reviewItemsRes] = await Promise.all([
+    args.supabase
+      .from("shop_boost_intakes")
+      .select("*")
+      .eq("shop_id", args.shopId)
+      .eq("id", args.intakeId)
+      .maybeSingle(),
+    args.supabase
+      .from("customers")
+      .select("*")
+      .eq("shop_id", args.shopId)
+      .eq("source_intake_id", args.intakeId),
+    args.supabase
+      .from("customers")
+      .select("*")
+      .eq("shop_id", args.shopId)
+      .or(
+        [
+          `external_id.eq.${customerIdentity.externalId}`,
+          `email.eq.${customerIdentity.email}`,
+          `phone.eq.${customerIdentity.phone}`,
+          `phone_number.eq.${customerIdentity.phone}`,
+        ].join(","),
+      ),
+    args.supabase
+      .from("shop_boost_row_results")
+      .select("source_file,source_row_index,target_domain,match_status,review_required,error_reason,match_details")
+      .eq("shop_id", args.shopId)
+      .eq("intake_id", args.intakeId)
+      .order("source_file", { ascending: true })
+      .order("source_row_index", { ascending: true }),
+    args.supabase
+      .from("shop_boost_review_items")
+      .select("domain,issue_type,status,summary,blocking_reason,resolution_action,recommended_action")
+      .eq("shop_id", args.shopId)
+      .eq("intake_id", args.intakeId)
+      .order("domain", { ascending: true })
+      .order("created_at", { ascending: true }),
+  ]);
+
+  const rowResults = rowResultsRes.data ?? [];
+  const rowResultsGrouped = (rowResults ?? []).reduce<Record<string, number>>((acc, row) => {
+    const lifecycle = readLifecycle(row) ?? "unknown";
+    const key = `${row.target_domain}|${row.match_status}|${lifecycle}`;
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    summary: args.summary,
+    parserEvidence,
+    intake: intakeRes.data ?? null,
+    customersByIntake: intakeCustomersRes.data ?? [],
+    customersByDeterministicIdentity: deterministicCustomersRes.data ?? [],
+    rowResults,
+    customerRowResults: rowResults.filter((row) => row.target_domain === "customer"),
+    rowResultsGrouped,
+    reviewItems: reviewItemsRes.data ?? [],
+  };
+}
+
+function deterministicFixtureCustomerIdentity(): { email: string; phone: string; externalId: string } {
+  const sourceCustomerId = "CUST-001";
+  const email = "casey.driver@example.com";
+  const phone = "5551112222";
+  return {
+    email,
+    phone,
+    externalId: `import:source:customer:${sha1(sourceCustomerId.trim().toLowerCase()).slice(0, 20)}`,
+  };
+}
+
+function fixtureCustomerParserEvidence() {
+  const [headerLine, firstDataLine] = SHOP_BOOST_ONBOARDING_REPLAY_FIXTURE.customersCsv
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length);
+  const headers = (headerLine ?? "").split(",").map((value) => value.trim());
+  const firstRowValues = (firstDataLine ?? "").split(",").map((value) => value.trim());
+  return {
+    customerHeaders: headers,
+    firstCustomerRowAliasValues: {
+      customerId: firstRowValues[0] ?? null,
+      email: firstRowValues[2] ?? null,
+      phone: firstRowValues[3] ?? null,
+      companyName: firstRowValues[4] ?? null,
+    },
+  };
+}
+
+function buildCustomerFailureMessage(diagnostics: ReplayDiagnostics): string {
+  return [
+    "Customer canonical materialization assertion failed.",
+    `importSummary=${JSON.stringify(diagnostics.summary)}`,
+    `intake=${JSON.stringify(diagnostics.intake)}`,
+    `customersByIntake=${JSON.stringify(diagnostics.customersByIntake)}`,
+    `customersByDeterministicIdentity=${JSON.stringify(diagnostics.customersByDeterministicIdentity)}`,
+    `customerRowResults=${JSON.stringify(diagnostics.customerRowResults)}`,
+    `rowResultsGrouped=${JSON.stringify(diagnostics.rowResultsGrouped)}`,
+    `reviewItems=${JSON.stringify(diagnostics.reviewItems)}`,
+    `fixtureParserEvidence=${JSON.stringify(diagnostics.parserEvidence)}`,
+  ].join("\n");
+}
+
 function findRow(
   rows: Pick<
     RowResultRow,
@@ -212,4 +382,8 @@ function readLifecycle(row: Pick<RowResultRow, "match_details"> | undefined): st
   if (!details || typeof details !== "object" || Array.isArray(details)) return null;
   const stage = (details as Record<string, unknown>).lifecycle_stage;
   return typeof stage === "string" ? stage : null;
+}
+
+function sha1(value: string): string {
+  return createHash("sha1").update(value).digest("hex");
 }
