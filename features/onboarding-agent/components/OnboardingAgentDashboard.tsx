@@ -30,6 +30,9 @@ export function OnboardingAgentDashboard() {
       <div className="rounded-2xl border border-cyan-500/30 bg-slate-950/60 p-5">
         <h1 className="text-xl font-semibold">Onboarding Agent</h1>
         <p className="mt-2 text-sm text-cyan-100/80">Uploaded files are staged as information first. No live customers, vehicles, work orders, invoices, staff, parts, vendors, menu items, or inspections are created until a future activation step.</p>
+        <p className="mt-2 text-xs text-slate-300">
+          Use this workspace to create sessions and register staged storage paths now. In-app direct file upload and expanded import intelligence are next.
+        </p>
         <button onClick={createSession} disabled={busy} className="mt-4 rounded-md border border-cyan-400/40 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/10 disabled:opacity-50">{busy ? "Creating…" : "Create onboarding session"}</button>
       </div>
 
@@ -44,6 +47,13 @@ export function OnboardingAgentDashboard() {
           ))}
           {sessions.length === 0 ? <p className="text-sm text-slate-400">No sessions yet.</p> : null}
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-xs text-slate-300">
+        <p>
+          Need diagnostics from the legacy flow? Use <Link href="/dashboard/owner/reports" className="text-cyan-200 underline underline-offset-2">Shop Health</Link> and{" "}
+          <Link href="/dashboard/setup/review" className="text-cyan-200 underline underline-offset-2">legacy guided review</Link>.
+        </p>
       </div>
     </div>
   );
