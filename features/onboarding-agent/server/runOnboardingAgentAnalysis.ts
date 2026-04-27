@@ -28,7 +28,7 @@ const VALID_ACTION_TYPES = new Set([
   "ignore_row",
   "prepare_activation",
 ]);
-const VALID_READINESS = new Set(["not_ready", "review_required", "ready_for_dry_run", "ready_for_activation_later"]);
+const VALID_READINESS = new Set(["not_ready", "empty", "review_required", "ready_for_dry_run", "ready_for_activation_later"]);
 const VALID_DOMAINS = new Set<string>([...ONBOARDING_DOMAINS, "all"]);
 
 function stripJsonFences(raw: string) {
@@ -67,6 +67,17 @@ function sanitizeIds(ids: unknown, allow: Set<string>) {
 function buildActivationReadiness(input: OnboardingAgentInput) {
   const blockingItems = input.deterministicReviewItems.filter((item) => item.severity === "blocking");
   const warningItems = input.deterministicReviewItems.filter((item) => item.severity !== "blocking");
+  const entitiesTotal = Object.values(input.deterministicStagedEntityCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
+  const rowsParsed = input.files.reduce((sum, file) => sum + file.rowCount, 0);
+
+  if (rowsParsed > 0 && entitiesTotal === 0) {
+    return {
+      status: "empty" as const,
+      blockers: ["Rows were parsed but no staged entities were detected."],
+      warnings: ["Upload better mapped CSVs or review header mappings before re-running analysis."],
+      safeToProceed: false,
+    };
+  }
 
   if (blockingItems.length > 0) {
     return {
@@ -119,12 +130,21 @@ export function buildDeterministicFallbackReport(input: OnboardingAgentInput): O
     };
   }).filter((item) => item.rowsSeen > 0 || item.entitiesDetected > 0 || item.reviewCount > 0);
 
+  const stagedCustomers = Number(input.deterministicStagedEntityCounts.customer ?? 0);
+  const stagedVehicles = Number(input.deterministicStagedEntityCounts.vehicle ?? 0);
+  const stagedWorkOrders = Number(input.deterministicStagedEntityCounts.historical_work_order ?? 0);
+  const stagedInvoices = Number(input.deterministicStagedEntityCounts.historical_invoice ?? 0);
+  const stagedParts = Number(input.deterministicStagedEntityCounts.part ?? 0);
+  const stagedVendors = Number(input.deterministicStagedEntityCounts.vendor ?? 0);
+  const stagedStaff = Number(input.deterministicStagedEntityCounts.staff_candidate ?? 0);
+  const confidentLinks = Object.values(input.deterministicLinkCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
+
   const findings: OnboardingAgentFinding[] = [
     {
       severity: "info",
       domain: "all",
       title: "Staged analysis completed",
-      explanation: `${input.files.length} files registered, ${rowsParsed} rows parsed, ${entitiesTotal} staged entities detected.`,
+      explanation: `${input.files.length} files analyzed, ${rowsParsed} rows parsed, ${entitiesTotal} staged entities detected, ${confidentLinks} confident links found.`,
       evidence: [
         `Files: ${input.files.length}`,
         `Rows parsed: ${rowsParsed}`,
@@ -173,7 +193,7 @@ export function buildDeterministicFallbackReport(input: OnboardingAgentInput): O
   return {
     model: getOnboardingAgentModel(),
     mode: "deterministic_fallback",
-    summary: `Staged onboarding analysis completed. ${input.files.length} files, ${rowsParsed} rows, ${entitiesTotal} staged entities. No live records have been created.`,
+    summary: `Staged onboarding analysis completed. Files: ${input.files.length}, rows: ${rowsParsed}, customers: ${stagedCustomers}, vehicles: ${stagedVehicles}, historical work orders: ${stagedWorkOrders}, historical invoices: ${stagedInvoices}, parts: ${stagedParts}, vendors: ${stagedVendors}, staff candidates: ${stagedStaff}, confident links: ${confidentLinks}, review exceptions: ${input.deterministicReviewItems.length}. No live records have been created.`,
     domainSummaries,
     findings,
     recommendations,

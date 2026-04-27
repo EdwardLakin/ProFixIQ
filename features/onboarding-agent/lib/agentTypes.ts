@@ -13,6 +13,7 @@ export type OnboardingAgentRecommendationActionType =
 
 export type OnboardingAgentActivationStatus =
   | "not_ready"
+  | "empty"
   | "review_required"
   | "ready_for_dry_run"
   | "ready_for_activation_later";

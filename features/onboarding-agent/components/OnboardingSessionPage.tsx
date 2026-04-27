@@ -130,23 +130,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       <OnboardingAgentInsightsPanel sessionId={sessionId} report={session?.summary?.agentReport ?? null} onRefresh={load} />
       <OnboardingFilesPanel files={files} />
       <OnboardingEntitiesPanel entityCounts={payload?.entityCounts ?? {}} linkCounts={payload?.linkCounts ?? {}} />
-      <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} />
-
-      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-        <h3 className="text-sm font-semibold text-white">Pending review exceptions</h3>
-        <div className="mt-2 space-y-2">
-          {(payload?.reviewItems ?? []).slice(0, 25).map((item: any) => (
-            <div key={item.id} className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                {item.severity} • {item.domain ?? "unknown"}
-              </p>
-              <p className="text-sm text-white">{item.summary}</p>
-              <p className="text-xs text-slate-400">Recommended action: review exception before activation planning.</p>
-            </div>
-          ))}
-          {(payload?.reviewItems ?? []).length === 0 ? <p className="text-xs text-slate-400">No pending review exceptions.</p> : null}
-        </div>
-      </div>
+      <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} reviewItems={payload?.reviewItems ?? []} />
 
       <OnboardingActivationPlanPanel latestPlan={payload?.latestPlan ?? null} />
     </div>
