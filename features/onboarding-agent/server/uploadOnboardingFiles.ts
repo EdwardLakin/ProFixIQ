@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-export const ONBOARDING_UPLOAD_BUCKET = "shop-boost-uploads";
+export const ONBOARDING_UPLOAD_BUCKET = "shop-imports";
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const CSV_EXTENSIONS = new Set(["csv"]);
 
