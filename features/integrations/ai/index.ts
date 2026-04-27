@@ -1,9 +1,14 @@
+
+
+async function getRuntimeOpenAIClient() {
+  const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
+  return getOpenAIClient();
+}
+
 //features/integrations/ai/index.ts
 
-import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-
 /* ========================================================================== */
 /*  QUOTE ENGINE – CENTRAL AI ENTRYPOINT                                      */
 /* ========================================================================== */
@@ -54,7 +59,7 @@ export const ProFixAI = {
       `Complaint: ${complaint}`,
     ].join("\n");
 
-    const completion = await openai.chat.completions.create({
+    const completion = await (await getRuntimeOpenAIClient()).chat.completions.create({
       model: getOpenAIModelForPurpose("fast"),
       temperature: 0.4,
       max_tokens: 600,

@@ -1,13 +1,16 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
-import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 
-const openai = getOpenAIClient();
+async function getRuntimeOpenAIClient() {
+  const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
+  return getOpenAIClient();
+}
+
 
 export default async function chatgptHandler(
   messages: ChatCompletionMessageParam[],
 ) {
-  const response = await openai.chat.completions.create({
+  const response = await (await getRuntimeOpenAIClient()).chat.completions.create({
     model: getOpenAIModelForPurpose("reasoning"),
     messages,
   });

@@ -1,8 +1,14 @@
+
+
+async function getRuntimeOpenAIClient() {
+  const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
+  return getOpenAIClient();
+}
+
 // /features/integrations/ai/shopBoost.ts
 import { randomUUID, createHash } from "crypto";
 
-import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import type {
@@ -1641,7 +1647,7 @@ async function generateSnapshotWithAI(
   ].join("\n");
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await (await getRuntimeOpenAIClient()).chat.completions.create({
       model: getOpenAIModelForPurpose("fast"),
       messages: [
         { role: "system", content: systemPrompt },

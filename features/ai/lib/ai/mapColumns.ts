@@ -1,7 +1,10 @@
-import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 
-const openai = getOpenAIClient();
+async function getRuntimeOpenAIClient() {
+  const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
+  return getOpenAIClient();
+}
+
 
 export async function mapCsvColumns(
   headers: string[],
@@ -20,7 +23,7 @@ ${headers.join(", ")}
 JSON:
 `;
 
-  const response = await openai.chat.completions.create({
+  const response = await (await getRuntimeOpenAIClient()).chat.completions.create({
     model: getOpenAIModelForPurpose("extraction"),
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1,

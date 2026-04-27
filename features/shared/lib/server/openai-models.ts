@@ -1,53 +1,64 @@
 import "server-only";
 
-import { isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
-  resolveOnboardingAgentModel,
-  resolveOpenAIEmbeddingModel,
-  resolveOpenAIExtractionModel,
-  resolveOpenAIFastModel,
-  resolveOpenAIModelForPurpose,
-  resolveOpenAIReasoningModel,
+  DEFAULT_OPENAI_MODELS,
+  resolveOpenAIModel,
+  type OpenAIModelEnv,
   type OpenAIModelPurpose,
 } from "@/features/shared/lib/openai-models";
 
-function env(name: string): string | undefined {
-  return process.env[name];
-}
+export { DEFAULT_OPENAI_MODELS, resolveOpenAIModel };
+export type { OpenAIModelEnv, OpenAIModelPurpose };
 
-export type { OpenAIModelPurpose };
-
-export function getOpenAIReasoningModel(): string {
-  return resolveOpenAIReasoningModel(env);
-}
-
-export function getOpenAIFastModel(): string {
-  return resolveOpenAIFastModel(env);
-}
-
-export function getOpenAIExtractionModel(): string {
-  return resolveOpenAIExtractionModel(env);
-}
-
-export function getOpenAIEmbeddingModel(): string {
-  return resolveOpenAIEmbeddingModel(env);
-}
-
-export function getOnboardingAgentModel(): string {
-  return resolveOnboardingAgentModel(env);
+function readOpenAIModelEnv(): OpenAIModelEnv {
+  return {
+    OPENAI_MODEL: process.env.OPENAI_MODEL,
+    OPENAI_REASONING_MODEL: process.env.OPENAI_REASONING_MODEL,
+    OPENAI_FAST_MODEL: process.env.OPENAI_FAST_MODEL,
+    OPENAI_EXTRACTION_MODEL: process.env.OPENAI_EXTRACTION_MODEL,
+    OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
+    OPENAI_VISION_MODEL: process.env.OPENAI_VISION_MODEL,
+    ONBOARDING_AGENT_MODEL: process.env.ONBOARDING_AGENT_MODEL,
+  };
 }
 
 export function getOpenAIModelForPurpose(purpose: OpenAIModelPurpose): string {
-  return resolveOpenAIModelForPurpose(purpose, env);
+  return resolveOpenAIModel(purpose, readOpenAIModelEnv());
 }
 
 export function getOpenAIModelDiagnostics() {
   return {
-    reasoningModel: getOpenAIReasoningModel(),
-    fastModel: getOpenAIFastModel(),
-    extractionModel: getOpenAIExtractionModel(),
-    embeddingModel: getOpenAIEmbeddingModel(),
-    onboardingModel: getOnboardingAgentModel(),
-    openAIConfigured: isOpenAIConfigured(),
+    configured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    reasoning: getOpenAIModelForPurpose("reasoning"),
+    fast: getOpenAIModelForPurpose("fast"),
+    extraction: getOpenAIModelForPurpose("extraction"),
+    embedding: getOpenAIModelForPurpose("embedding"),
+    vision: getOpenAIModelForPurpose("vision"),
+    onboarding: getOpenAIModelForPurpose("onboarding"),
   };
+}
+
+
+export function getOpenAIReasoningModel(): string {
+  return getOpenAIModelForPurpose("reasoning");
+}
+
+export function getOpenAIFastModel(): string {
+  return getOpenAIModelForPurpose("fast");
+}
+
+export function getOpenAIExtractionModel(): string {
+  return getOpenAIModelForPurpose("extraction");
+}
+
+export function getOpenAIEmbeddingModel(): string {
+  return getOpenAIModelForPurpose("embedding");
+}
+
+export function getOpenAIVisionModel(): string {
+  return getOpenAIModelForPurpose("vision");
+}
+
+export function getOnboardingAgentModel(): string {
+  return getOpenAIModelForPurpose("onboarding");
 }

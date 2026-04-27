@@ -1,7 +1,10 @@
-import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 
-const openai = getOpenAIClient();
+async function getRuntimeOpenAIClient() {
+  const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
+  return getOpenAIClient();
+}
+
 
 /**
  * Infer part name from a job description using GPT.
@@ -9,7 +12,7 @@ const openai = getOpenAIClient();
 export async function inferPartName(description: string): Promise<string> {
   const prompt = `Given the job description "${description}", suggest the most likely part name involved. Respond with only the part name.`;
 
-  const chat = await openai.chat.completions.create({
+  const chat = await (await getRuntimeOpenAIClient()).chat.completions.create({
     model: getOpenAIModelForPurpose("reasoning"),
     messages: [
       {

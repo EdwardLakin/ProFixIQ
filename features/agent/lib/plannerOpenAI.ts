@@ -2,7 +2,7 @@
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
   buildMenuItemEfficiencyRecommendations,

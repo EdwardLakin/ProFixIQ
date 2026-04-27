@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import {  resolveOpenAIModel  } from "@/features/shared/lib/openai-models";
 
 const openai = getOpenAIClient();
 
@@ -19,7 +19,7 @@ Complaint: ${complaint}
 Response:`;
 
     const response = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("reasoning"),
+      model: resolveOpenAIModel("reasoning"),
       messages: [{ role: "user", content: prompt }],
       max_tokens: 10,
       temperature: 0.3,

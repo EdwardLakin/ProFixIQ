@@ -6,70 +6,75 @@ export type OpenAIModelPurpose =
   | "vision"
   | "onboarding";
 
-export const DEFAULT_REASONING_MODEL = "gpt-5.5";
-export const DEFAULT_FAST_MODEL = "gpt-5.4-mini";
-export const DEFAULT_EXTRACTION_MODEL = "gpt-5.5";
-export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
-export const DEFAULT_VISION_MODEL = "gpt-5.5";
+export type OpenAIModelEnv = Partial<Record<
+  | "OPENAI_MODEL"
+  | "OPENAI_REASONING_MODEL"
+  | "OPENAI_FAST_MODEL"
+  | "OPENAI_EXTRACTION_MODEL"
+  | "OPENAI_EMBEDDING_MODEL"
+  | "OPENAI_VISION_MODEL"
+  | "ONBOARDING_AGENT_MODEL",
+  string | undefined
+>>;
 
-export type OpenAIModelEnvReader = (name: string) => string | undefined;
+export const DEFAULT_OPENAI_MODELS: Record<OpenAIModelPurpose, string> = {
+  reasoning: "gpt-5.5",
+  fast: "gpt-5.5",
+  extraction: "gpt-5.5",
+  embedding: "text-embedding-3-small",
+  vision: "gpt-5.5",
+  onboarding: "gpt-5.5",
+};
 
-function fromEnv(readEnv: OpenAIModelEnvReader, name: string): string | undefined {
-  const value = readEnv(name)?.trim();
-  return value ? value : undefined;
+function clean(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
-export function resolveOpenAIReasoningModel(readEnv: OpenAIModelEnvReader): string {
-  return fromEnv(readEnv, "OPENAI_REASONING_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_MODEL")
-    ?? DEFAULT_REASONING_MODEL;
-}
+export function resolveOpenAIModel(purpose: OpenAIModelPurpose, env: OpenAIModelEnv = {}): string {
+  const globalModel = clean(env.OPENAI_MODEL);
 
-export function resolveOpenAIFastModel(readEnv: OpenAIModelEnvReader): string {
-  return fromEnv(readEnv, "OPENAI_FAST_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_MODEL")
-    ?? DEFAULT_FAST_MODEL;
-}
-
-export function resolveOpenAIExtractionModel(readEnv: OpenAIModelEnvReader): string {
-  return fromEnv(readEnv, "OPENAI_EXTRACTION_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_REASONING_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_MODEL")
-    ?? DEFAULT_EXTRACTION_MODEL;
-}
-
-export function resolveOpenAIEmbeddingModel(readEnv: OpenAIModelEnvReader): string {
-  return fromEnv(readEnv, "OPENAI_EMBEDDING_MODEL") ?? DEFAULT_EMBEDDING_MODEL;
-}
-
-export function resolveOnboardingAgentModel(readEnv: OpenAIModelEnvReader): string {
-  return fromEnv(readEnv, "ONBOARDING_AGENT_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_EXTRACTION_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_REASONING_MODEL")
-    ?? fromEnv(readEnv, "OPENAI_MODEL")
-    ?? DEFAULT_REASONING_MODEL;
-}
-
-export function resolveOpenAIModelForPurpose(
-  purpose: OpenAIModelPurpose,
-  readEnv: OpenAIModelEnvReader,
-): string {
-  switch (purpose) {
-    case "reasoning":
-      return resolveOpenAIReasoningModel(readEnv);
-    case "fast":
-      return resolveOpenAIFastModel(readEnv);
-    case "extraction":
-      return resolveOpenAIExtractionModel(readEnv);
-    case "embedding":
-      return resolveOpenAIEmbeddingModel(readEnv);
-    case "vision":
-      return fromEnv(readEnv, "OPENAI_VISION_MODEL")
-        ?? resolveOpenAIExtractionModel(readEnv)
-        ?? DEFAULT_VISION_MODEL;
-    case "onboarding":
-      return resolveOnboardingAgentModel(readEnv);
-    default:
-      return resolveOpenAIReasoningModel(readEnv);
+  if (purpose === "onboarding") {
+    return clean(env.ONBOARDING_AGENT_MODEL)
+      ?? clean(env.OPENAI_EXTRACTION_MODEL)
+      ?? clean(env.OPENAI_REASONING_MODEL)
+      ?? globalModel
+      ?? DEFAULT_OPENAI_MODELS.onboarding;
   }
+
+  if (purpose === "reasoning") {
+    return clean(env.OPENAI_REASONING_MODEL) ?? globalModel ?? DEFAULT_OPENAI_MODELS.reasoning;
+  }
+
+  if (purpose === "fast") {
+    return clean(env.OPENAI_FAST_MODEL) ?? globalModel ?? DEFAULT_OPENAI_MODELS.fast;
+  }
+
+  if (purpose === "extraction") {
+    return clean(env.OPENAI_EXTRACTION_MODEL)
+      ?? clean(env.OPENAI_REASONING_MODEL)
+      ?? globalModel
+      ?? DEFAULT_OPENAI_MODELS.extraction;
+  }
+
+  if (purpose === "embedding") {
+    return clean(env.OPENAI_EMBEDDING_MODEL) ?? DEFAULT_OPENAI_MODELS.embedding;
+  }
+
+  if (purpose === "vision") {
+    return clean(env.OPENAI_VISION_MODEL)
+      ?? clean(env.OPENAI_REASONING_MODEL)
+      ?? globalModel
+      ?? DEFAULT_OPENAI_MODELS.vision;
+  }
+
+  return globalModel ?? DEFAULT_OPENAI_MODELS.reasoning;
+}
+
+
+export function getOpenAIModelForPurpose(
+  purpose: OpenAIModelPurpose,
+  env: OpenAIModelEnv = {},
+): string {
+  return resolveOpenAIModel(purpose, env);
 }
