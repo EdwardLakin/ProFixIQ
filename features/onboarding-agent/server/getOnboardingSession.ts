@@ -62,6 +62,8 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
 
   const canonicalSummary = {
     ...canonical.summaryCounts,
+    effectiveFileMappings: Array.isArray((session?.summary ?? {})?.effectiveFileMappings) ? (session?.summary ?? {}).effectiveFileMappings : [],
+    filePipelineTraces: Array.isArray((session?.summary ?? {})?.filePipelineTraces) ? (session?.summary ?? {}).filePipelineTraces : [],
     aiRowsSampled: Number((session?.summary ?? {})?.aiRowsSampled ?? canonical.summaryCounts.aiRowsSampled ?? 0),
     aiFilesSampled: Number((session?.summary ?? {})?.aiFilesSampled ?? canonical.summaryCounts.aiFilesSampled ?? 0),
     activationReadiness: canonical.activation_readiness,
