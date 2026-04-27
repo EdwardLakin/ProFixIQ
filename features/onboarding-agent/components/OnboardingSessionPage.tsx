@@ -38,11 +38,10 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json.ok) {
         setError(json?.error || "Analysis failed. Please retry.");
       } else {
-        const mode = json?.agentReport?.mode;
-        if (!json?.agentReport) {
-          setNotice("Analysis complete. Agent insights may be unavailable right now, but deterministic results are staged.");
-        } else if (mode === "deterministic_fallback") {
-          setNotice("Analysis complete. AI is unavailable, so deterministic fallback insights were generated.");
+        const mode = json?.mode;
+        const warnings = Array.isArray(json?.warnings) ? json.warnings : [];
+        if (mode === "deterministic_fallback") {
+          setNotice(warnings[0] ?? "Analysis complete. AI is unavailable, so deterministic fallback staging was used.");
         } else {
           setNotice("Analysis complete.");
         }
@@ -127,12 +126,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       </div>
 
       <OnboardingProgressCard summary={session?.summary ?? null} />
-      <OnboardingAgentInsightsPanel sessionId={sessionId} report={session?.summary?.agentReport ?? null} fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness} onRefresh={load} />
+      <OnboardingAgentInsightsPanel sessionId={sessionId} report={session?.summary?.agentReport ?? null} plan={session?.summary?.agentPlan ?? null} fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness} onRefresh={load} />
       <OnboardingFilesPanel files={files} />
-      <OnboardingEntitiesPanel entityCounts={payload?.entityCounts ?? {}} entityStatusCounts={payload?.entityStatusCounts ?? {}} linkCounts={payload?.linkCounts ?? {}} />
-      <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} reviewItems={payload?.reviewItems ?? []} />
+      <OnboardingEntitiesPanel entityCounts={payload?.entityCounts ?? {}} entityStatusCounts={payload?.entityStatusCounts ?? {}} linkCounts={payload?.linkCounts ?? {}} agentPlan={session?.summary?.agentPlan ?? null} />
+      <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} reviewItems={payload?.reviewItems ?? []} agentPlan={session?.summary?.agentPlan ?? null} />
 
-      <OnboardingActivationPlanPanel latestPlan={payload?.latestPlan ?? null} fallbackSummary={payload?.activationPlanSummary ?? session?.summary?.activationPlanSummary ?? null} />
+      <OnboardingActivationPlanPanel latestPlan={payload?.latestPlan ?? null} fallbackSummary={payload?.activationPlanSummary ?? session?.summary?.activationPlanSummary ?? null} agentPlan={session?.summary?.agentPlan ?? null} />
     </div>
   );
 }
