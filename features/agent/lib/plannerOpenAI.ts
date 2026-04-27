@@ -2,6 +2,7 @@
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
   buildMenuItemEfficiencyRecommendations,
@@ -226,7 +227,7 @@ async function llmParseGoal(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_AGENT_MODEL || "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("reasoning"),
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },

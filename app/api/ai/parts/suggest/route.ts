@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
@@ -19,7 +20,7 @@ type SuggestRequestBody = {
   topK?: number;
 };
 
-const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-5.1-mini";
+const MODEL = getOpenAIModelForPurpose("reasoning");
 
 async function inferAiOnlySuggestions(args: {
   description?: string | null;

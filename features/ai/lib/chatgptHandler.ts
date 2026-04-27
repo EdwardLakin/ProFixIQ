@@ -1,16 +1,14 @@
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+
+const openai = getOpenAIClient();
 
 export default async function chatgptHandler(
   messages: ChatCompletionMessageParam[],
 ) {
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: getOpenAIModelForPurpose("reasoning"),
     messages,
   });
 

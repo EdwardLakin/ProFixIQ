@@ -3,11 +3,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = getOpenAIClient();
 
 type Vehicle = {
   year?: string | null;
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
     ].join("\n");
 
     const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL?.trim() || "gpt-4o",
+      model: getOpenAIModelForPurpose("reasoning"),
       temperature: 0.3,
       stream: false,
       messages: [{ role: "user", content: prompt }],

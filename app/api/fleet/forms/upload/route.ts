@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import OpenAI from "openai";
 
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -19,7 +20,7 @@ type FleetParseResult = {
   sections?: FleetParseSection[];
 };
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = getOpenAIClient();
 
 function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
       ].join("\n");
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: getOpenAIModelForPurpose("vision"),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },

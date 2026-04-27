@@ -1,11 +1,10 @@
 // app/api/ai/summarize-stats/route.ts
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-const apiKey = process.env.OPENAI_API_KEY ?? "";
-
-const openai = new OpenAI({ apiKey });
+const openai = isOpenAIConfigured() ? getOpenAIClient() : null;
 
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
@@ -17,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!apiKey) {
+  if (!openai) {
     return NextResponse.json(
       { error: "OPENAI_API_KEY is not set" },
       { status: 500 }
@@ -39,7 +38,7 @@ ${JSON.stringify(body.stats, null, 2)}
 `;
 
   const res = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getOpenAIModelForPurpose("fast"),
     messages: [{ role: "user", content: prompt }],
   });
 

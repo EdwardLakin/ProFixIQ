@@ -1,12 +1,11 @@
 // /app/api/ai/interpret/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 export const runtime = "nodejs";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = getOpenAIClient();
 
 type CommandStatus = "ok" | "fail" | "na" | "recommend";
 type InterpretMode = "open" | "strict_context";
@@ -373,7 +372,7 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
       .join("\n\n");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
+      model: getOpenAIModelForPurpose("extraction"),
       temperature: 0.2,
       messages: [
         { role: "system", content: systemPrompt },

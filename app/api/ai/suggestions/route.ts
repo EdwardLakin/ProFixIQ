@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { createOpenAIEmbedding } from "@/features/shared/lib/server/openai-embeddings";
 
 type DB = Database;
 
@@ -83,33 +84,11 @@ function normalizeIntelligenceText(input: {
 }
 
 async function createEmbedding(text: string): Promise<number[] | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
   const cleaned = text.trim();
+  if (!cleaned) return null;
 
-  if (!apiKey || !cleaned) return null;
-
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "text-embedding-3-small",
-      input: cleaned,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Embedding request failed: ${res.status} ${body}`);
-  }
-
-  const json = (await res.json()) as {
-    data?: Array<{ embedding?: number[] }>;
-  };
-
-  return json.data?.[0]?.embedding ?? null;
+  const embedding = await createOpenAIEmbedding(cleaned);
+  return embedding?.embedding ?? null;
 }
 
 function toPgVectorLiteral(values: number[] | null): string | null {

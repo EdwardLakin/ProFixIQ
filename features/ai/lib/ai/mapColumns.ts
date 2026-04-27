@@ -1,8 +1,7 @@
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = getOpenAIClient();
 
 export async function mapCsvColumns(
   headers: string[],
@@ -22,7 +21,7 @@ JSON:
 `;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: getOpenAIModelForPurpose("extraction"),
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1,
   });

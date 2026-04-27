@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const openai = getOpenAIClient();
 
 export async function POST(req: Request) {
   const { prompt } = await req.json();
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: getOpenAIModelForPurpose("extraction"),
     messages: [
       {
         role: "system",

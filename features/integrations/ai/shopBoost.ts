@@ -2,6 +2,7 @@
 import { randomUUID, createHash } from "crypto";
 
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import type {
@@ -1641,7 +1642,7 @@ async function generateSnapshotWithAI(
 
   try {
     const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: getOpenAIModelForPurpose("fast"),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

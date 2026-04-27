@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const openai = getOpenAIClient();
 
 function findVinLike(text: string): string | null {
   const match = text.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/);
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
     const dataUrl = "data:" + file.type + ";base64," + base64;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
+      model: getOpenAIModelForPurpose("vision"),
       max_tokens: 50,
       messages: [
         {

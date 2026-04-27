@@ -1,15 +1,15 @@
 // features/ai/api/stats/summarize/route.ts
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const apiKey = process.env.OPENAI_API_KEY ?? "";
-if (!apiKey) {
+if (!isOpenAIConfigured()) {
   // Don’t throw at import-time in Next; return a clean error on request.
   // eslint-disable-next-line no-console
   console.warn("[summarize-stats] OPENAI_API_KEY is not set");
 }
 
-const openai = new OpenAI({ apiKey });
+const openai = isOpenAIConfigured() ? getOpenAIClient() : null;
 
 type SummarizeBody = {
   timeRange?: string;
@@ -18,7 +18,7 @@ type SummarizeBody = {
 
 export async function POST(req: Request) {
   try {
-    if (!apiKey) {
+    if (!openai) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY is not set" },
         { status: 500 },
@@ -48,7 +48,7 @@ Output in paragraph form.
 `.trim();
 
     const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-5",
+      model: getOpenAIModelForPurpose("reasoning"),
       temperature: 0.7,
       messages: [{ role: "user", content: prompt }],
     });
