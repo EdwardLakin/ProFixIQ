@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type Ctx = { params: { id: string; certId: string } };
+type Ctx = {
+  params: Promise<{
+    id: string;
+    certId: string;
+  }>;
+};
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type CertificationPayload = {
   cert_type?: string;
@@ -33,12 +38,12 @@ async function findCertification(admin: AdminClient, shopId: string, userId: str
 }
 
 export async function PATCH(req: NextRequest, context: unknown) {
-  const { params } = context as Ctx;
+  const { id, certId } = await (context as Ctx).params;
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
   const admin: AdminClient = createAdminSupabase();
-  const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, params.id, params.certId);
+  const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, id, certId);
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Certification not found" }, { status: 404 });
 
@@ -66,8 +71,8 @@ export async function PATCH(req: NextRequest, context: unknown) {
     .from("staff_certifications")
     .update(updatePayload)
     .eq("shop_id", access.profile.shop_id)
-    .eq("user_id", params.id)
-    .eq("id", params.certId)
+    .eq("user_id", id)
+    .eq("id", certId)
     .select("id, cert_type, cert_name, cert_number, issuing_body, issue_date, expiry_date, status, notes")
     .single();
 
@@ -76,11 +81,11 @@ export async function PATCH(req: NextRequest, context: unknown) {
   await admin.from("audit_logs").insert({
     actor_id: access.profile.id,
     action: "people.certification.updated",
-    target: params.id,
+    target: id,
     metadata: {
       shop_id: access.profile.shop_id,
-      person_id: params.id,
-      certification_id: params.certId,
+      person_id: id,
+      certification_id: certId,
       previous_status: existing.status,
       next_status: data.status,
       cert_name: data.cert_name,
@@ -91,12 +96,12 @@ export async function PATCH(req: NextRequest, context: unknown) {
 }
 
 export async function DELETE(_req: NextRequest, context: unknown) {
-  const { params } = context as Ctx;
+  const { id, certId } = await (context as Ctx).params;
   const access = await requireShopScopedApiAccess({ requiredCapability: "canManageUsers", allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
 
   const admin: AdminClient = createAdminSupabase();
-  const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, params.id, params.certId);
+  const { data: existing, error: existingErr } = await findCertification(admin, access.profile.shop_id!, id, certId);
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Certification not found" }, { status: 404 });
 
@@ -104,19 +109,19 @@ export async function DELETE(_req: NextRequest, context: unknown) {
     .from("staff_certifications")
     .delete()
     .eq("shop_id", access.profile.shop_id)
-    .eq("user_id", params.id)
-    .eq("id", params.certId);
+    .eq("user_id", id)
+    .eq("id", certId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   await admin.from("audit_logs").insert({
     actor_id: access.profile.id,
     action: "people.certification.deleted",
-    target: params.id,
+    target: id,
     metadata: {
       shop_id: access.profile.shop_id,
-      person_id: params.id,
-      certification_id: params.certId,
+      person_id: id,
+      certification_id: certId,
       cert_name: existing.cert_name,
       status: existing.status,
     },
