@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildOnboardingSummary, ENTITY_BUCKETS, LINK_BUCKETS } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
 
 export async function getOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
@@ -10,7 +11,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     sessionId: params.sessionId,
   });
 
-  const [{ data: session }, { data: files }, { data: entities }, { data: links }, { data: reviews }, { data: latestPlan }] = await Promise.all([
+  const [{ data: session }, { data: files }, { data: entities }, { data: links }, { data: reviews }, { data: latestPlan }, rowsParsedTotal] = await Promise.all([
     sb.from("onboarding_sessions").select("*").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
     sb.from("onboarding_files").select("*").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
     sb.from("onboarding_entities").select("entity_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
@@ -22,12 +23,11 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       .eq("session_id", params.sessionId)
       .order("created_at", { ascending: false }),
     sb.from("onboarding_activation_plans").select("id, status, summary, created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    countOnboardingRawRows({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
   ]);
-
-  const rowsParsedFromFiles = (files ?? []).reduce((sum: number, file: any) => sum + Number(file.row_count ?? 0), 0);
   const canonical = buildOnboardingSummary({
     filesCount: (files ?? []).length,
-    rowsParsed: rowsParsedFromFiles,
+    rowsParsed: rowsParsedTotal,
     entityRows: (entities ?? []).map((row: any) => ({ entity_type: row.entity_type, status: row.status })),
     linkRows: (links ?? []).map((row: any) => ({ link_type: row.link_type, status: row.status })),
     reviewRows: (reviews ?? []).map((row: any) => ({

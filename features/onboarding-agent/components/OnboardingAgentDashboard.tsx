@@ -83,7 +83,7 @@ export function OnboardingAgentDashboard() {
                 </div>
                 <div className="mt-2 grid gap-2 text-xs text-slate-300 sm:grid-cols-3 lg:grid-cols-4">
                   <p>Files: {asCount(session.file_count)}</p>
-                  <p>Rows parsed: {asCount(summary.rowsParsed)}</p>
+                  <p>Rows parsed: {asCount(summary.rowsParsedTotal ?? summary.rowsParsed)}</p>
                   <p>Review exceptions: {asCount(summary.reviewExceptions)}</p>
                   <p>Source: {session.source || "manual"}</p>
                 </div>

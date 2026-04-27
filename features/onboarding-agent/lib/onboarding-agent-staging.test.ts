@@ -207,4 +207,23 @@ describe("onboarding staging", () => {
     expect(summary.liveRecordsCreated).toBe(0);
   });
 
+  it("keeps persisted rowsParsedTotal separate from aiRowsSampled", () => {
+    const summary = buildOnboardingSummary({
+      filesCount: 8,
+      rowsParsed: 19717,
+      aiRowsSampled: 1000,
+      aiFilesSampled: 8,
+      entityRows: [],
+      linkRows: [],
+      reviewRows: [],
+      analysisCompleted: true,
+    });
+
+    expect(summary.summaryCounts.rowsParsed).toBe(19717);
+    expect(summary.summaryCounts.rowsParsedTotal).toBe(19717);
+    expect(summary.summaryCounts.aiRowsSampled).toBe(1000);
+    expect(summary.summaryCounts.aiFilesSampled).toBe(8);
+    expect(summary.liveRecordsCreated).toBe(0);
+  });
+
 });

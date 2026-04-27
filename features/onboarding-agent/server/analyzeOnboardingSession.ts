@@ -90,6 +90,25 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
     sessionId: params.sessionId,
   });
 
+  const aiRowsSampled = input.files.reduce((sum, file) => sum + (Array.isArray(file.sampleRows) ? file.sampleRows.length : 0), 0);
+  const aiFilesSampled = input.files.filter((file) => Array.isArray(file.sampleRows) && file.sampleRows.length > 0).length;
+
+  const { data: sessionForAiSummary } = await sb
+    .from("onboarding_sessions")
+    .select("summary")
+    .eq("id", params.sessionId)
+    .eq("shop_id", params.shopId)
+    .maybeSingle();
+  const existingAiSummary = (sessionForAiSummary?.summary && typeof sessionForAiSummary.summary === "object") ? sessionForAiSummary.summary : {};
+  await sb.from("onboarding_sessions").update({
+    summary: {
+      ...existingAiSummary,
+      aiRowsSampled,
+      aiFilesSampled,
+      liveRecordsCreated: 0,
+    },
+  }).eq("id", params.sessionId).eq("shop_id", params.shopId);
+
   const requireAi = process.env.ONBOARDING_AGENT_REQUIRE_AI === "true";
   const { plan, warning } = await runOpenAIOnboardingPlan({ input, requireAi });
   const applied = await applyOnboardingAgentPlan({
