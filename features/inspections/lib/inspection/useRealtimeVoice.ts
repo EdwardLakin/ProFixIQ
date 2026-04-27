@@ -9,6 +9,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 
 export type VoiceState = "idle" | "connecting" | "listening" | "error";
 
@@ -92,6 +93,7 @@ export function useRealtimeVoice(
   maybeHandleWakeWord: (text: string) => string | null,
   opts?: RealtimeVoiceOptions,
 ) {
+  const transcriptionModel = getOpenAIRealtimeTranscriptionModel();
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -215,7 +217,7 @@ export function useRealtimeVoice(
                 format: { type: "audio/pcm", rate: 24000 },
                 noise_reduction: { type: "near_field" },
                 transcription: {
-                  model: "gpt-4o-mini-transcribe",
+                  model: transcriptionModel,
                   language: "en",
                 },
                 // Keep these modest; if you had a known-good set before, use it.

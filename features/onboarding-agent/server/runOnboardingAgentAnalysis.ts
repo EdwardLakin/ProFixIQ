@@ -10,7 +10,8 @@ import { ONBOARDING_DOMAINS, type OnboardingDomain } from "@/features/onboarding
 import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { buildOnboardingAgentSystemPrompt, buildOnboardingAgentUserPrompt } from "@/features/onboarding-agent/server/prompts";
-import { getOnboardingAgentEnabled, getOnboardingAgentModel } from "@/features/onboarding-agent/server/model";
+import { getOnboardingAgentModel } from "@/features/onboarding-agent/server/model";
+import { runOpenAIStructuredJson } from "@/features/shared/lib/server/openai-structured";
 
 type RunParams = {
   supabase: SupabaseClient;
@@ -31,14 +32,6 @@ const VALID_ACTION_TYPES = new Set([
 ]);
 const VALID_READINESS = new Set(["not_ready", "empty", "review_required", "ready_for_dry_run", "activation_disabled"]);
 const VALID_DOMAINS = new Set<string>([...ONBOARDING_DOMAINS, "all"]);
-
-function stripJsonFences(raw: string) {
-  return raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-}
-
-function parseModelJson(raw: string): unknown {
-  return JSON.parse(stripJsonFences(raw));
-}
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -289,25 +282,22 @@ export function sanitizeAgentReport(params: {
 }
 
 export async function callOnboardingAgentModel(input: OnboardingAgentInput): Promise<OnboardingAgentReport | null> {
-  if (!getOnboardingAgentEnabled()) return null;
-  const { openai } = await import("../../../lib/server/openai");
-
-  const model = getOnboardingAgentModel();
-  const completion = await openai.chat.completions.create({
-    model,
+  const requireAi = process.env.ONBOARDING_AGENT_REQUIRE_AI === "true";
+  const result = await runOpenAIStructuredJson<OnboardingAgentReport | null>({
+    purpose: "onboarding",
+    feature: "onboarding-agent-analysis",
+    schemaName: "OnboardingAgentReport",
+    system: buildOnboardingAgentSystemPrompt(),
+    user: {
+      prompt: buildOnboardingAgentUserPrompt(input),
+      input,
+    },
+    requireAI: requireAi,
     temperature: 0.1,
-    messages: [
-      { role: "system", content: buildOnboardingAgentSystemPrompt() },
-      { role: "user", content: buildOnboardingAgentUserPrompt(input) },
-    ],
-    response_format: { type: "json_object" },
+    fallback: () => null,
+    validate: (candidate) => candidate as OnboardingAgentReport,
   });
-
-  const text = completion.choices?.[0]?.message?.content;
-  if (!text) return null;
-
-  const parsed = parseModelJson(text);
-  return parsed as OnboardingAgentReport;
+  return result.output;
 }
 
 export async function runOnboardingAgentAnalysis(params: RunParams): Promise<OnboardingAgentReport> {
@@ -446,6 +436,9 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
       report.mode = "ai";
     }
   } catch (error) {
+    if (process.env.ONBOARDING_AGENT_REQUIRE_AI === "true") {
+      throw error;
+    }
     console.warn("[onboarding-agent] AI analysis fallback", {
       sessionId: params.sessionId,
       shopId: params.shopId,

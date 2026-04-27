@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,7 @@ export async function GET() {
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;
+    const transcriptionModel = getOpenAIRealtimeTranscriptionModel();
 
     if (!apiKey) {
       console.error("[realtime-token] Missing OPENAI_API_KEY");
@@ -101,7 +103,7 @@ export async function GET() {
               type: "near_field",
             },
             transcription: {
-              model: "gpt-4o-mini-transcribe",
+              model: transcriptionModel,
               language: "en",
             },
             turn_detection: {
