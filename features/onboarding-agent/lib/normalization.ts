@@ -32,7 +32,7 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         firstName,
         lastName: rest.join(" "),
         businessName: value(row, ["company", "company name", "business"]),
-        email: value(row, ["email", "email address"]).toLowerCase(),
+        email: value(row, ["email", "email address", "e mail", "e-mail"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "phone number", "mobile"])),
       },
     };
@@ -53,7 +53,7 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         sourceVehicleId: value(row, ["vehicle id", "id", "external vehicle id"]),
         sourceCustomerId: value(row, ["customer id"]),
         customerName: value(row, ["customer name", "name"]),
-        customerEmail: value(row, ["customer email", "email"]),
+        customerEmail: value(row, ["customer email", "email", "customer e-mail", "customer e mail"]),
         customerPhone: normalizePhone(value(row, ["customer phone", "phone"])),
         vin,
         plate,
@@ -79,12 +79,13 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         sourceWorkOrderId,
         invoiceId,
         sourceCustomerId: value(row, ["customer id"]),
-        customerEmail: value(row, ["customer email", "email"]).toLowerCase(),
+        customerEmail: value(row, ["customer email", "email", "customer e-mail", "customer e mail"]).toLowerCase(),
         customerName: value(row, ["customer name", "name"]),
         sourceVehicleId: value(row, ["vehicle id"]),
         vehicleVin: value(row, ["vin"]).toUpperCase().replace(/\s+/g, ""),
         vehiclePlate: value(row, ["plate", "license"]).toUpperCase().replace(/\s+/g, ""),
         vehicleUnitNumber: value(row, ["unit", "unit number"]),
+        invoiceNumber: value(row, ["invoice number", "invoice", "invoice id"]),
         complaint,
         cause: value(row, ["cause"]),
         correction,
@@ -113,8 +114,10 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         sourceWorkOrderId,
         sourceCustomerId: value(row, ["customer id"]),
         customerName: value(row, ["customer", "customer name", "name"]),
-        customerEmail: value(row, ["customer email", "email"]).toLowerCase(),
+        customerEmail: value(row, ["customer email", "email", "customer e-mail", "customer e mail"]).toLowerCase(),
+        sourceVehicleId: value(row, ["vehicle id"]),
         vehicleVin: value(row, ["vin"]).toUpperCase().replace(/\s+/g, ""),
+        vehiclePlate: value(row, ["plate", "license"]).toUpperCase().replace(/\s+/g, ""),
         invoiceDate,
         paymentStatus: value(row, ["status", "payment status"]),
         totalRaw,
@@ -150,8 +153,9 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
       entityType: "vendor",
       displayName: name,
       normalized: {
+        sourceVendorId: value(row, ["vendor id", "external vendor id", "vendor_number"]),
         name,
-        email: value(row, ["email", "vendor email"]).toLowerCase(),
+        email: value(row, ["email", "vendor email", "e mail", "e-mail"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "vendor phone"])),
         accountNumber: value(row, ["account", "account number", "vendor account"]),
       },
@@ -160,13 +164,15 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
 
   if (domain === "staff") {
     const name = value(row, ["name", "full name", "employee"]);
-    const email = value(row, ["email", "email address"]).toLowerCase();
+    const email = value(row, ["email", "email address", "e mail", "e-mail"]).toLowerCase();
+    const username = value(row, ["username", "user name", "login"]);
     return {
       entityType: "staff_candidate",
-      displayName: name || email,
+      displayName: name || email || username,
       normalized: {
         name,
         email,
+        username,
         phone: normalizePhone(value(row, ["phone", "mobile"])),
         role: value(row, ["role", "job title", "position", "technician", "advisor"]),
       },
@@ -175,7 +181,7 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
 
   if (domain === "menu") {
     const serviceName = value(row, ["service", "service name", "name"]);
-    const description = value(row, ["description", "service description"]);
+    const description = value(row, ["description", "service description", "service_description"]);
     const laborPriceRaw = value(row, ["labor price", "price", "labor rate"]);
 
     return {

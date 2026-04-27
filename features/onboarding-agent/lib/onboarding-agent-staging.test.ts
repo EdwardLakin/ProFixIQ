@@ -51,6 +51,30 @@ describe("onboarding staging", () => {
     expect(effective.mappingSource).toBe("ai");
   });
 
+  it("normalizes accidental canonical->source AI map direction safely", () => {
+    const effective = buildEffectiveHeaderMap({
+      domain: "customers",
+      headers: ["Customer Name", "E-mail Address"],
+      aiHeaderMap: { name: "Customer Name", email: "E-mail Address" },
+    });
+
+    expect(effective.headerMap["Customer Name"]).toBe("name");
+    expect(effective.headerMap["E-mail Address"]).toBe("email");
+  });
+
+  it("maps case/space/hyphen/underscore header variants", () => {
+    const effective = buildEffectiveHeaderMap({
+      domain: "customers",
+      headers: ["CustomerName", "customer_name", "customer-name", "E Mail"],
+      aiHeaderMap: {},
+    });
+
+    expect(effective.headerMap.CustomerName).toBe("name");
+    expect(effective.headerMap.customer_name).toBe("name");
+    expect(effective.headerMap["customer-name"]).toBe("name");
+    expect(effective.headerMap["E Mail"]).toBe("email");
+  });
+
   it("known 8-file scenario yields mapped columns > 0 for each known domain", () => {
     const fixtures: Array<{ filename: string; headers: string[] }> = [
       { filename: "customers.csv", headers: ["Customer ID", "Customer Name", "Email"] },
@@ -107,6 +131,26 @@ describe("onboarding staging", () => {
     expect(part?.entity_type).toBe("part");
     expect(staff?.entity_type).toBe("staff_candidate");
     expect(menu?.entity_type).toBe("menu_suggestion");
+  });
+
+  it("stages each 8-file domain with realistic export-style headers", () => {
+    const customer = stage("customers", { "Customer Name": "Casey Driver", "Email Address": "casey@example.com" }).entity;
+    const vehicle = stage("vehicles", { "Vehicle VIN": "1hgcm82633a101010", "Truck Number": "UNIT-7" }).entity;
+    const history = stage("history", { "RO Number": "RO-88", "Service Date": "2025-05-01", "Service Performed": "Brake service" }).entity;
+    const invoice = stage("invoices", { "Invoice Number": "INV-88", "Issue Date": "2025-05-02", Amount: "420.00" }).entity;
+    const part = stage("parts", { "Part #": "BP-42", Name: "Brake Pad Set" }).entity;
+    const vendor = stage("vendors", { "Supplier Name": "Metro Supply" }).entity;
+    const staff = stage("staff", { Username: "ashoptech" }).entity;
+    const menu = stage("menu", { "Service Description": "Transmission fluid service" }).entity;
+
+    expect(customer?.status).toBe("ready");
+    expect(vehicle?.status).toBe("ready");
+    expect(history?.status).toBe("ready");
+    expect(invoice?.status).toBe("ready");
+    expect(part?.status).toBe("ready");
+    expect(vendor?.status).toBe("ready");
+    expect(staff?.status).toBe("ready");
+    expect(menu?.status).toBe("ready");
   });
 
   it("creates work_order_invoice links when invoice references work order id", () => {
@@ -254,6 +298,19 @@ describe("onboarding staging", () => {
 
     expect(graph.links.length).toBe(0);
     expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(true);
+  });
+
+  it("does not create missing-link reviews when no lookup identity exists", () => {
+    const workOrder = stage("history", { Complaint: "Noise only" }).entity!;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [{ id: "wo-no-ids", entity_type: workOrder.entity_type, status: workOrder.status, normalized: workOrder.normalized }],
+    });
+
+    expect(graph.links).toHaveLength(0);
+    expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(false);
+    expect(graph.reviewItems.some((item) => item.issue_type === "missing_vehicle_link")).toBe(false);
   });
 
   it("summary is derived from persisted staged rows and keeps liveRecordsCreated at 0", () => {

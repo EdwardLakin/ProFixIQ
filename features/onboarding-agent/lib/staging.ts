@@ -32,8 +32,8 @@ function sourceExternalIdForDomain(domain: OnboardingDomain, normalized: Record<
   if (domain === "invoices") return text(normalized.invoiceNumber) || text(normalized.sourceWorkOrderId) || null;
   if (domain === "parts") return text(normalized.sku) || text(normalized.partNumber) || null;
   if (domain === "vendors") return text(normalized.accountNumber) || text(normalized.name) || null;
-  if (domain === "staff") return text(normalized.email) || text(normalized.name) || null;
-  if (domain === "menu") return text(normalized.opCode) || text(normalized.serviceName) || null;
+  if (domain === "staff") return text(normalized.email) || text(normalized.username) || text(normalized.name) || null;
+  if (domain === "menu") return text(normalized.serviceName) || text(normalized.description) || null;
   return null;
 }
 
@@ -106,8 +106,9 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
 
   if (domain === "history") {
     const hasPrimary = has(n.sourceWorkOrderId) || has(n.invoiceId);
-    const hasContext = has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
-    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.serviceDescription);
+    const hasContext = has(n.sourceCustomerId) || has(n.customerEmail) || has(n.customerName)
+      || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate) || has(n.vehicleUnitNumber);
+    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.serviceDescription) || has(n.invoiceNumber);
     const hasDate = has(n.openedDate) || has(n.closedDate);
     if (hasPrimary || ((hasNarrative || hasContext) && hasDate)) {
       status = "ready";
@@ -117,10 +118,12 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "invoices") {
+    const hasContext = has(n.sourceCustomerId) || has(n.customerEmail) || has(n.customerName)
+      || has(n.sourceWorkOrderId) || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
     const hasIdentity = has(n.invoiceNumber)
-      || (has(n.sourceWorkOrderId) && has(n.invoiceDate))
+      || has(n.sourceWorkOrderId)
       || (has(n.invoiceDate) && hasNumber(n.total))
-      || (has(n.sourceCustomerId) && hasNumber(n.total));
+      || (hasContext && (has(n.invoiceDate) || hasNumber(n.total)));
     if (hasIdentity) {
       status = "ready";
       confidence = 0.86;
@@ -129,7 +132,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "parts") {
-    if (has(n.sku) || has(n.partNumber) || has(n.description) || has(n.vendorName)) {
+    if (has(n.sku) || has(n.partNumber) || has(n.description)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -137,7 +140,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "vendors") {
-    if (has(n.name) || has(n.email) || has(n.phone)) {
+    if (has(n.name) || has(n.sourceVendorId) || has(n.accountNumber)) {
       status = "ready";
       confidence = 0.84;
       reviewReason = null;
@@ -145,7 +148,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "staff") {
-    if (has(n.name) || has(n.email)) {
+    if (has(n.name) || has(n.email) || has(n.username)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -153,7 +156,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "menu") {
-    if (has(n.serviceName) || has(n.description) || has(n.opCode)) {
+    if (has(n.serviceName) || has(n.description)) {
       status = "ready";
       confidence = 0.8;
       reviewReason = null;

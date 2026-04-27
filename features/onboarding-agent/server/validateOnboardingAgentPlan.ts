@@ -4,6 +4,7 @@ import {
   type OnboardingAgentPlan,
   type OnboardingAgentPlanDomain,
 } from "@/features/onboarding-agent/lib/agentPlanTypes";
+import { normalizeAiHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 
 const DOMAINS = new Set<OnboardingAgentPlanDomain>(["customers", "vehicles", "history", "invoices", "parts", "vendors", "staff", "menu", "inspections", "unknown"]);
 
@@ -63,9 +64,10 @@ export function validateOnboardingAgentPlan(params: {
     const fileId = asString(o.fileId);
     if (!params.validFileIds.has(fileId)) return null;
     const inferred = normalizePlanDomain(o.inferredDomain);
-    const headerMap = Object.fromEntries(
+    const rawHeaderMap = Object.fromEntries(
       Object.entries(asObj(o.headerMap)).slice(0, 80).map(([k, v]) => [k, asString(v).slice(0, 80)]).filter(([k, v]) => Boolean(k) && Boolean(v)),
     );
+    const headerMap = normalizeAiHeaderMap({ domain: inferred, headers: [], aiHeaderMap: rawHeaderMap });
     const mappingSource = (["ai", "deterministic_alias", "mixed", "none"].includes(asString(o.mappingSource)) ? asString(o.mappingSource) : "none") as "ai" | "deterministic_alias" | "mixed" | "none";
     return {
       fileId,
