@@ -80,6 +80,17 @@ type LatestReadiness = {
   canonical_summary?: Record<string, unknown> | null;
 };
 
+type ActivationReadinessSummary = {
+  score: number | null;
+  canonicalReady: boolean;
+  activationEligible: boolean;
+  activated: boolean;
+  importComplete: boolean;
+  snapshotComplete: boolean;
+  statusLabel: "Activation ready" | "Activation not ready" | "Activation in progress" | "Unknown";
+  tone: "good" | "watch" | "risk" | "none";
+};
+
 const cardBase =
   "rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur";
 const cardInner =
@@ -342,13 +353,23 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
           supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("source_intake_id", intakeId),
         ]);
         const hasCanonicalCountError = canonicalCounts.some((res) => Boolean(res.error));
+        const customerCount = hasCanonicalCountError ? 0 : canonicalCounts[0].count ?? 0;
+        const vehicleCount = hasCanonicalCountError ? 0 : canonicalCounts[1].count ?? 0;
+        const workOrderCount = hasCanonicalCountError ? 0 : canonicalCounts[2].count ?? 0;
+        const canonicalStatus: CanonicalImportStats["canonicalStatus"] = hasCanonicalCountError
+          ? "unknown"
+          : vehicleCount > 0 && workOrderCount > 0
+            ? "ok"
+            : customerCount > 0 || vehicleCount > 0 || workOrderCount > 0
+              ? "partial"
+              : "unknown";
         setCanonicalStats({
           staffSuggestions: staffFromBase.length,
           staffCandidates: prioritizedStaffRows.filter((row) => row.source_type === "candidate").length,
-          customers: hasCanonicalCountError ? 0 : canonicalCounts[0].count ?? 0,
-          vehicles: hasCanonicalCountError ? 0 : canonicalCounts[1].count ?? 0,
-          workOrders: hasCanonicalCountError ? 0 : canonicalCounts[2].count ?? 0,
-          canonicalStatus: "unknown",
+          customers: customerCount,
+          vehicles: vehicleCount,
+          workOrders: workOrderCount,
+          canonicalStatus,
         });
       } else {
         setCanonicalStats(null);
@@ -376,26 +397,89 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const normalized = normalizeScores(scores);
 
   const overall = normalized.overall ?? null;
-  const status =
+  const snapshotStatus =
     overall === null ? "unknown" : overall >= 80 ? "good" : overall >= 55 ? "watch" : "risk";
 
-  const statusLabel =
-    status === "good"
-      ? "Healthy"
-      : status === "watch"
+  const snapshotStatusLabel =
+    snapshotStatus === "good"
+      ? "Snapshot healthy"
+      : snapshotStatus === "watch"
         ? "Needs attention"
-        : status === "risk"
+        : snapshotStatus === "risk"
           ? "At risk"
           : "No score yet";
 
-  const statusClass =
-    status === "good"
+  const snapshotStatusClass =
+    snapshotStatus === "good"
       ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-100"
-      : status === "watch"
+      : snapshotStatus === "watch"
         ? "border-amber-500/50 bg-amber-500/10 text-amber-100"
-        : status === "risk"
+        : snapshotStatus === "risk"
           ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
           : "border-white/10 bg-black/25 text-neutral-300";
+
+  const activationReadiness = useMemo<ActivationReadinessSummary>(() => {
+    const canonicalReady = Boolean(latestReadiness?.canonical_ready);
+    const activationEligible = Boolean(latestReadiness?.activation_eligible);
+    const activated = Boolean(latestReadiness?.activated);
+    const importComplete = Boolean(latestReadiness?.import_complete);
+    const snapshotComplete = Boolean(latestReadiness?.snapshot_complete);
+    const hasCanonicalCounts = typeof canonicalStats?.vehicles === "number" && typeof canonicalStats?.workOrders === "number";
+    const materializationReady = hasCanonicalCounts
+      ? (canonicalStats?.vehicles ?? 0) > 0 && (canonicalStats?.workOrders ?? 0) > 0
+      : false;
+
+    const signals: boolean[] = [
+      snapshotComplete,
+      importComplete,
+      canonicalReady,
+      activationEligible,
+      materializationReady,
+    ];
+    const score = latestReadiness || hasCanonicalCounts
+      ? Math.round((signals.filter(Boolean).length / signals.length) * 100)
+      : null;
+
+    if (score === null) {
+      return {
+        score: null,
+        canonicalReady,
+        activationEligible,
+        activated,
+        importComplete,
+        snapshotComplete,
+        statusLabel: "Unknown",
+        tone: "none",
+      };
+    }
+
+    if (canonicalReady && activationEligible && materializationReady) {
+      return {
+        score,
+        canonicalReady,
+        activationEligible,
+        activated,
+        importComplete,
+        snapshotComplete,
+        statusLabel: activated ? "Activation ready" : "Activation in progress",
+        tone: activated ? "good" : "watch",
+      };
+    }
+
+    return {
+      score,
+      canonicalReady,
+      activationEligible,
+      activated,
+      importComplete,
+      snapshotComplete,
+      statusLabel: "Activation not ready",
+      tone: "risk",
+    };
+  }, [latestReadiness, canonicalStats]);
+
+  const showSnapshotVsActivationWarning =
+    snapshotStatus === "good" && activationReadiness.statusLabel === "Activation not ready";
 
   const snapshotAge = latest?.snapshot_created_at
     ? timeAgo(latest.snapshot_created_at)
@@ -443,6 +527,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const openMenu = useCallback(() => router.push("/menu"), [router]);
   const openInspections = useCallback(() => router.push("/inspections/templates"), [router]);
   const openTeam = useCallback(() => router.push("/dashboard/owner/create-user"), [router]);
+  const openGuidedReview = useCallback(() => router.push("/dashboard/setup/review"), [router]);
 
   /** ✅ WIRED: calls /api/shop-health/accept-suggestion and handles per-createdType */
   const acceptSuggestion = useCallback(
@@ -550,13 +635,24 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </div>
                 <h2 className={`mt-1 text-lg font-blackops ${titleText}`}>Health Snapshot</h2>
                 <p className={`mt-1 text-xs ${subtleText}`}>
-                  A quick scorecard + recommended setup actions (menu items, inspections, staff).
+                  Snapshot quality + activation readiness are shown separately so staged health is never confused with go-live readiness.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${statusClass}`}>
-                  {statusLabel}
+                <span className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${snapshotStatusClass}`}>
+                  {snapshotStatusLabel}
+                </span>
+                <span className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                  activationReadiness.tone === "good"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-100"
+                    : activationReadiness.tone === "watch"
+                      ? "border-amber-500/50 bg-amber-500/10 text-amber-100"
+                      : activationReadiness.tone === "risk"
+                        ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
+                        : "border-white/10 bg-black/25 text-neutral-300"
+                }`}>
+                  {activationReadiness.statusLabel}
                 </span>
 
                 <button
@@ -576,13 +672,48 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               </div>
             </div>
 
+            {showSnapshotVsActivationWarning ? (
+              <div className="mt-3 rounded-lg border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                Uploaded data has enough signal for recommendations, but customers/vehicles/work orders/invoices are not fully materialized into canonical ProFixIQ records yet.
+              </div>
+            ) : null}
+
+            {canonicalStats ? (
+              <div className={`mt-3 ${cardInner} p-3`}>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Activation truth (promoted)</div>
+                <div className="mt-2 grid gap-2 text-xs text-neutral-200 md:grid-cols-5">
+                  <div>Customers: <span className="text-neutral-100">{canonicalStats.customers}</span></div>
+                  <div className={canonicalStats.vehicles === 0 ? "font-semibold text-amber-200" : ""}>Vehicles materialized: <span className="text-neutral-100">{canonicalStats.vehicles}</span></div>
+                  <div className={canonicalStats.workOrders === 0 ? "font-semibold text-amber-200" : ""}>Work orders materialized: <span className="text-neutral-100">{canonicalStats.workOrders}</span></div>
+                  <div>Import: <span className={activationReadiness.importComplete ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.importComplete ? "complete" : "pending"}</span></div>
+                  <div>Canonical: <span className={activationReadiness.canonicalReady ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.canonicalReady ? "ready" : "not ready"}</span></div>
+                </div>
+                <div className="mt-2 grid gap-1 text-[11px] text-neutral-300 md:grid-cols-3">
+                  <div>Eligible: <span className={activationReadiness.activationEligible ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.activationEligible ? "yes" : "no"}</span></div>
+                  <div>Activated: <span className={activationReadiness.activated ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.activated ? "yes" : "no"}</span></div>
+                  <div>Staff suggestions/candidates: <span className="text-neutral-100">{canonicalStats.staffSuggestions}/{canonicalStats.staffCandidates}</span></div>
+                </div>
+                {(canonicalStats.vehicles === 0 || canonicalStats.workOrders === 0) ? (
+                  <div className="mt-2 text-[11px] text-amber-200">
+                    Activation is blocked until canonical vehicle/work order materialization is complete.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {/* Summary tiles */}
-            <div className="mt-4 grid gap-4 md:grid-cols-4">
+            <div className="mt-4 grid gap-4 md:grid-cols-5">
               <HealthKpiCard
-                title="Overall"
+                title="Snapshot score"
                 value={overall}
                 hint={snapshotAge ? `Updated ${snapshotAge}` : "No snapshot yet"}
-                tone={status === "good" ? "good" : status === "watch" ? "watch" : status === "risk" ? "risk" : "none"}
+                tone={snapshotStatus === "good" ? "good" : snapshotStatus === "watch" ? "watch" : snapshotStatus === "risk" ? "risk" : "none"}
+              />
+              <HealthKpiCard
+                title="Activation readiness"
+                value={activationReadiness.score}
+                hint={activationReadiness.statusLabel}
+                tone={activationReadiness.tone}
               />
               <HealthKpiCard
                 title="Data completeness"
@@ -638,28 +769,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </button>
               ) : null}
             </div>
-            {canonicalStats ? (
-              <div className={`mt-3 ${cardInner} p-3`}>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Import truth (snapshot vs canonical)</div>
-                <div className="mt-2 grid gap-2 text-xs text-neutral-200 md:grid-cols-4">
-                  <div>Customers: <span className="text-neutral-100">{canonicalStats.customers}</span></div>
-                  <div>Vehicles materialized: <span className="text-neutral-100">{canonicalStats.vehicles}</span></div>
-                  <div>Work orders materialized: <span className="text-neutral-100">{canonicalStats.workOrders}</span></div>
-                  <div>Staff suggestions/candidates: <span className="text-neutral-100">{canonicalStats.staffSuggestions}/{canonicalStats.staffCandidates}</span></div>
-                </div>
-                <div className="mt-2 text-[11px] text-neutral-300">
-                  Snapshot status: <span className="text-neutral-100">{intakeStatus ?? "unknown"}</span> • Canonical materialization:{" "}
-                  <span className={canonicalStats.canonicalStatus === "ok" ? "text-emerald-200" : "text-amber-200"}>
-                    {canonicalStats.canonicalStatus}
-                  </span>
-                </div>
-                {(canonicalStats.customers > 0 &&
-                  (canonicalStats.vehicles === 0 || canonicalStats.workOrders === 0)) ? (
-                  <div className="mt-2 text-[11px] text-amber-200">
-                    Staged snapshot data can look healthy while canonical graph materialization is still incomplete.
-                  </div>
-                ) : null}
-                {latestReadiness ? (() => {
+            {latestReadiness ? (() => {
                   const canonicalSummary = isRecord(latestReadiness.canonical_summary) ? latestReadiness.canonical_summary : null;
                   const unresolvedLinks = readSummaryCount(canonicalSummary, ["unresolved_link_count", "unlinked_history_rows", "history_without_vehicle_count"]);
                   const reviewRequired = readSummaryCount(canonicalSummary, ["review_required_count", "pending_review_count", "blocked_review_count"]);
@@ -670,7 +780,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                     </div>
                   );
                 })() : null}
-                {latestReadiness ? (
+            {latestReadiness ? (
                   <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-neutral-200">
                     <div className="font-medium text-neutral-100">Activation truth states</div>
                     <div className="mt-1 grid gap-1 md:grid-cols-5">
@@ -687,8 +797,6 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
-            ) : null}
           </section>
 
           {/* How to use this */}
@@ -700,14 +808,24 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </div>
                 <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>Make it actionable</h3>
                 <p className={`mt-1 text-xs ${subtleText}`}>
-                  Use suggestions as a checklist: create missing menu items, standard inspections, and invite staff.
+                  Use suggestions as a staged checklist: accept to create menu items, inspection templates, and staff invites.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <QuickLinkButton label="Open Menu Builder" onClick={openMenu} />
-                <QuickLinkButton label="Open Inspections" onClick={openInspections} />
-                <QuickLinkButton label="Open Team" onClick={openTeam} />
+                {activationReadiness.statusLabel === "Activation not ready" ? (
+                  <>
+                    <QuickLinkButton label="Open Guided Review" onClick={openGuidedReview} />
+                    <QuickLinkButton label="Review unresolved records" onClick={openGuidedReview} />
+                    <QuickLinkButton label="Apply setup suggestions" onClick={openMenu} />
+                  </>
+                ) : (
+                  <>
+                    <QuickLinkButton label="Open Menu Builder" onClick={openMenu} />
+                    <QuickLinkButton label="Open Inspections" onClick={openInspections} />
+                    <QuickLinkButton label="Open Team" onClick={openTeam} />
+                  </>
+                )}
               </div>
             </div>
 
@@ -768,7 +886,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </div>
                 <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>Setup checklist (menus, inspections, staff)</h3>
                 <p className={`mt-1 text-xs ${subtleText}`}>
-                  Use “Open” to go to the right screen. “Create” now calls the accept-suggestion API.
+                  Suggestions remain staged until accepted. “Accept & Create” calls only the accept-suggestion API.
                 </p>
                 <p className="mt-1 text-xs text-amber-200/90">
                   Staff CSV imports are staged as invite suggestions first. Staff users are created only after accept.
@@ -1157,7 +1275,7 @@ function SuggestionColumn({
                   ].join(" ")}
                   title="Optional: one-click create (requires API)"
                 >
-                  {creatingId === s.id ? "Creating…" : "Create"}
+                  {creatingId === s.id ? "Creating…" : "Accept & Create"}
                 </button>
               </div>
             </div>
