@@ -1,10 +1,12 @@
 // app/api/ocr/registration/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import type { ChatCompletionMessageParam } from "openai/resources/chat";
 
 export const runtime = "nodejs";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = getOpenAIClient();
 
 /* ----------------------------- helpers ----------------------------- */
 function normalizeVin(raw?: string | null): string | null {
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Chat Completions (vision) + JSON mode (no casts, fully typed) ----
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
+    const messages: ChatCompletionMessageParam[] = [
       {
         role: "user",
         content: [
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
     ];
 
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("extraction"),
       messages,
       temperature: 0,
       // Ensures a valid JSON object string

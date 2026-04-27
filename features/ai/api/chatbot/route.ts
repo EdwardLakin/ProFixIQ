@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 // IMPORTANT: use your alias-based import so Vercel resolves it consistently.
 // If your project uses a different alias, adjust this one line.
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 type Variant = "marketing" | "full";
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
     ];
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("fast"),
       messages: safeMsgs,
       temperature: 0.4,
       max_tokens: 600,

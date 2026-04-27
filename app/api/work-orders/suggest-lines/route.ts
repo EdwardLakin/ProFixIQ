@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 export const runtime = "nodejs";
 
@@ -235,7 +236,7 @@ export async function POST(req: Request) {
     ].join(" ");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("fast"),
       temperature: 0.4,
       messages: [
         { role: "system", content: system },

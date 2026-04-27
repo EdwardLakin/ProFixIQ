@@ -1,6 +1,7 @@
 //features/integrations/ai/index.ts
 
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 /* ========================================================================== */
@@ -54,7 +55,7 @@ export const ProFixAI = {
     ].join("\n");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("fast"),
       temperature: 0.4,
       max_tokens: 600,
       messages: [

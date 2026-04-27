@@ -1,9 +1,10 @@
 // app/api/generate-inspection/route.ts
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { toInspectionCategories } from "@/features/inspections/lib/inspection/normalize";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = getOpenAIClient();
 
 type GenerateBody = {
   prompt?: string;
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
       "The list should be practical and shop-usable. No extra keys, no markdown.";
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: getOpenAIModelForPurpose("extraction"),
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [

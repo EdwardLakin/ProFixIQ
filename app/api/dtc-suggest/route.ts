@@ -1,6 +1,7 @@
 // app/api/work-orders/dtc-suggest/route.ts
 import { NextResponse } from "next/server";
-import { openai } from "lib/server/openai"; // adjust path if needed
+import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models"; // adjust path if needed
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type DtcSuggestion = {
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
     let completion;
     try {
       completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL?.trim() || "gpt-5.1",
+        model: getOpenAIModelForPurpose("reasoning"),
         response_format: { type: "json_object" },
         messages: [
           {

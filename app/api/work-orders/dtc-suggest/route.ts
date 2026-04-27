@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 
@@ -330,7 +331,7 @@ async function generateDtcResponse(args: {
   messages: PersistedMessage[];
 }): Promise<DtcSuggestResponse> {
   const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL?.trim() || "gpt-5-mini",
+    model: getOpenAIModelForPurpose("reasoning"),
     response_format: { type: "json_object" },
     messages: [
       {

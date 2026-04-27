@@ -1,7 +1,5 @@
 // features/assistant/server/runAssistant.ts
 
-import OpenAI from "openai";
-
 import type {
   AssistantAction,
   AssistantContext,
@@ -10,6 +8,8 @@ import type {
   PlannerPayload,
 } from "../types/assistant";
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
+import { getOpenAIClient as getCanonicalOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 type RunAssistantParams = {
   shopId: string;
@@ -37,11 +37,11 @@ type LlmAssistantResponse = {
   actions?: LlmAssistantAction[];
 };
 
-function getOpenAIClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-  return new OpenAI({ apiKey });
+function getOpenAIClient() {
+  if (!isOpenAIConfigured()) return null;
+  return getCanonicalOpenAIClient();
 }
+
 
 function extractPlannerPayloadFromNotification(
   item: AssistantNotification,
@@ -286,7 +286,7 @@ export async function runAssistant(
 
   try {
     const response = await client.chat.completions.create({
-      model: process.env.OPENAI_ASSISTANT_MODEL || "gpt-4.1-mini",
+      model: getOpenAIModelForPurpose("reasoning"),
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [

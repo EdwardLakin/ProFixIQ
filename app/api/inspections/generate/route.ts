@@ -1,7 +1,8 @@
 // app/api/inspections/generate/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import {
   buildFromMaster,
   type VehicleType,
@@ -171,7 +172,7 @@ export async function POST(req: Request) {
     });
 
     // 4) call OpenAI — same pattern as your build-from-prompt route
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const openai = getOpenAIClient();
 
     const system = [
       "You are an AI assistant for generating vehicle inspection templates.",
@@ -189,7 +190,7 @@ export async function POST(req: Request) {
     ].join("\n");
 
     const resp = await openai.responses.create({
-      model: "gpt-4o-mini",
+      model: getOpenAIModelForPurpose("extraction"),
       input: [
         { role: "system", content: system },
         { role: "user", content: user },

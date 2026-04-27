@@ -1,13 +1,10 @@
-const DEFAULT_ONBOARDING_MODEL = "gpt-5-mini";
+import { getOnboardingAgentModel as getCanonicalOnboardingModel } from "@/features/shared/lib/server/openai-models";
+import { isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 
 export function getOnboardingAgentModel() {
-  return (
-    process.env.ONBOARDING_AGENT_MODEL?.trim() ||
-    process.env.OPENAI_MODEL?.trim() ||
-    DEFAULT_ONBOARDING_MODEL
-  );
+  return getCanonicalOnboardingModel();
 }
 
 export function getOnboardingAgentEnabled() {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+  return isOpenAIConfigured();
 }

@@ -1,8 +1,7 @@
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = getOpenAIClient();
 
 /**
  * Infer part name from a job description using GPT.
@@ -11,7 +10,7 @@ export async function inferPartName(description: string): Promise<string> {
   const prompt = `Given the job description "${description}", suggest the most likely part name involved. Respond with only the part name.`;
 
   const chat = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: getOpenAIModelForPurpose("reasoning"),
     messages: [
       {
         role: "system",

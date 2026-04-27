@@ -1,8 +1,7 @@
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const openai = getOpenAIClient();
 
 // Runs only on the server
 export async function generateLaborTimeEstimate(
@@ -13,7 +12,7 @@ export async function generateLaborTimeEstimate(
     const prompt = `Estimate labor time in hours (number only) for the following automotive job:\n\nJob Type: ${jobType}\nComplaint: ${complaint}\n\nResponse:`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: getOpenAIModelForPurpose("reasoning"),
       messages: [{ role: "user", content: prompt }],
       max_tokens: 10,
       temperature: 0.3,

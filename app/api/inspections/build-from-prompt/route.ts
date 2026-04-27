@@ -1,7 +1,8 @@
 // app/api/inspections/build-from-prompt/route.ts (FULL FILE REPLACEMENT)
 import "server-only";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import {
   buildFromMaster,
   type VehicleType,
@@ -425,7 +426,7 @@ export async function POST(req: Request) {
     // 7) try to augment with OpenAI
     let aiSections: SectionOut[] = [];
     try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = getOpenAIClient();
 
       const lightDutyMode = dutyClass === "light" || brakeSystem === "hyd_brake";
 
@@ -452,7 +453,7 @@ export async function POST(req: Request) {
         .join("\n");
 
       const resp = await openai.responses.create({
-        model: "gpt-4o-mini",
+        model: getOpenAIModelForPurpose("extraction"),
         input: [
           { role: "system", content: system },
           { role: "user", content: user },

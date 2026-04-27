@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 type DB = Database;
 
@@ -224,7 +225,7 @@ export async function generateMaintenanceRulesForVehicle(opts: {
   ].join("\n");
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getOpenAIModelForPurpose("fast"),
     temperature: 0.4,
     max_tokens: 900,
     messages: [
