@@ -50,7 +50,6 @@ function remapHeaders(raw: Record<string, unknown>, map: Record<string, string>)
     const key = map[k] ?? map[k.toLowerCase()] ?? normalizedMap[normalizeKey(k)] ?? k;
     const stringValue = typeof v === "string" ? v : String(v ?? "");
     if (!(key in out) || !out[key]) out[key] = stringValue;
-    if (!(k in out)) out[k] = stringValue;
   }
   return out;
 }
@@ -91,6 +90,19 @@ export async function applyOnboardingAgentPlan(params: {
   const reviewItems: any[] = [];
   const stagedByDomain: Record<string, number> = {};
   const reviewByDomain: Record<string, number> = {};
+  const effectiveFileMappings: Array<{
+    fileId: string;
+    filename: string;
+    domain: OnboardingDomain;
+    mappedColumnCount: number;
+    mappingSource: "ai" | "deterministic_alias" | "mixed" | "none";
+    aiMappedColumnCount: number;
+    deterministicMappedColumnCount: number;
+    canonicalPassthroughColumnCount: number;
+    rawRowsProcessed: number;
+    stagedRows: number;
+    reviewRows: number;
+  }> = [];
 
   for (const [fileId, fileRows] of rawRowsByFile.entries()) {
     const planFile = fileMap.get(fileId);
@@ -109,7 +121,11 @@ export async function applyOnboardingAgentPlan(params: {
               : deterministicDomain));
     const domain = DOMAIN_TO_ENTITY[effectiveDomain] ?? "unknown";
     const fileHeaders = Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [];
-    const { headerMap, mappingSource } = buildEffectiveHeaderMap({ domain, headers: fileHeaders, aiHeaderMap: planFile?.headerMap ?? {} });
+    const { headerMap, mappingSource, mappedColumnCount, diagnostics } = buildEffectiveHeaderMap({
+      domain,
+      headers: fileHeaders,
+      aiHeaderMap: planFile?.headerMap ?? {},
+    });
     const parserMode = planFile?.recommendedParserMode ?? (domain === "unknown" ? "stage_review_only" : "stage_entities");
     let stagedForFile = 0;
     let reviewForFile = 0;
@@ -155,9 +171,16 @@ export async function applyOnboardingAgentPlan(params: {
           shopId: params.shopId,
           fileId,
           filename: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
+          declaredDomain: fileMeta?.declared_domain ?? null,
+          detectedDomain: fileMeta?.detected_domain ?? null,
           inferredDomain: effectiveDomain,
+          mappingSource,
+          mappedColumnCount,
+          effectiveHeaderMapKeys: Object.keys(headerMap),
           rowIndex: Number(row.source_row_index ?? 0),
           rawHeaderKeys: Object.keys((row.raw ?? {}) as Record<string, unknown>),
+          rawRowSampleKeysOnly: Object.keys((row.raw ?? {}) as Record<string, unknown>),
+          remappedRowKeys: Object.keys(mappedRow),
           effectiveMappedKeys: Object.keys(mappedRow).filter((key) => key in normalized.normalized),
           normalizedKeysPresent: Object.entries(normalized.normalized).filter(([, value]) => {
             if (typeof value === "string") return value.trim().length > 0;
@@ -165,6 +188,12 @@ export async function applyOnboardingAgentPlan(params: {
             return Boolean(value);
           }).map(([key]) => key),
           entityStaged: Boolean(staged.entity && parserMode === "stage_entities"),
+          stageResult: {
+            entityCreated: Boolean(staged.entity && parserMode === "stage_entities"),
+            entityType: staged.entity?.entity_type ?? normalized.entityType,
+            status: staged.entity?.status ?? null,
+            reviewItemsGenerated: staged.reviewItems.map((item) => item.issue_type),
+          },
           reviewIssueTypes: staged.reviewItems.map((item) => item.issue_type),
           fingerprint: fingerprint ?? null,
         });
@@ -180,9 +209,22 @@ export async function applyOnboardingAgentPlan(params: {
       rawRowsProcessed: fileRows.length,
       rowsStaged: stagedForFile,
       rowsReview: reviewForFile,
-      mappedColumns: Object.keys(headerMap).length,
+      mappedColumns: mappedColumnCount,
       mappingSource,
       missingIdentity,
+    });
+    effectiveFileMappings.push({
+      fileId,
+      filename: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
+      domain,
+      mappedColumnCount,
+      mappingSource,
+      aiMappedColumnCount: diagnostics.aiMappedColumns,
+      deterministicMappedColumnCount: diagnostics.deterministicMappedColumns,
+      canonicalPassthroughColumnCount: diagnostics.canonicalPassthroughColumns,
+      rawRowsProcessed: fileRows.length,
+      stagedRows: stagedForFile,
+      reviewRows: reviewForFile,
     });
 
     await sb.from("onboarding_files").update({
@@ -251,6 +293,7 @@ export async function applyOnboardingAgentPlan(params: {
     ...canonical.summaryCounts,
     aiRowsSampled: Number(existingSummary.aiRowsSampled ?? 0),
     aiFilesSampled: Number(existingSummary.aiFilesSampled ?? 0),
+    effectiveFileMappings,
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0,

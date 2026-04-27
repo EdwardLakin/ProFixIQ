@@ -106,11 +106,10 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
 
   if (domain === "history") {
     const hasPrimary = has(n.sourceWorkOrderId) || has(n.invoiceId);
-    const hasContext = has(n.sourceCustomerId) || has(n.customerEmail) || has(n.customerName)
-      || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate) || has(n.vehicleUnitNumber);
-    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.serviceDescription) || has(n.invoiceNumber);
+    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.serviceDescription);
     const hasDate = has(n.openedDate) || has(n.closedDate);
-    if (hasPrimary || ((hasNarrative || hasContext) && hasDate)) {
+    const hasOdometerNarrative = has(n.odometer) && hasNarrative;
+    if (hasPrimary || (hasDate && hasNarrative) || hasOdometerNarrative) {
       status = "ready";
       confidence = 0.86;
       reviewReason = null;
@@ -132,7 +131,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "parts") {
-    if (has(n.sku) || has(n.partNumber) || has(n.description)) {
+    if (has(n.sku) || has(n.partNumber) || has(n.description) || has(n.vendorPartNumber)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -140,7 +139,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "vendors") {
-    if (has(n.name) || has(n.sourceVendorId) || has(n.accountNumber)) {
+    if (has(n.name) || has(n.sourceVendorId) || has(n.accountNumber) || has(n.email) || has(n.phone)) {
       status = "ready";
       confidence = 0.84;
       reviewReason = null;
@@ -148,7 +147,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "staff") {
-    if (has(n.name) || has(n.email) || has(n.username)) {
+    if (has(n.name) || has(n.email) || has(n.username) || has(n.role)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -156,7 +155,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "menu") {
-    if (has(n.serviceName) || has(n.description)) {
+    if (has(n.serviceName) || has(n.description) || has(n.laborHours) || hasNumber(n.laborPrice)) {
       status = "ready";
       confidence = 0.8;
       reviewReason = null;
