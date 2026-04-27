@@ -32,6 +32,8 @@ function sourceExternalIdForDomain(domain: OnboardingDomain, normalized: Record<
   if (domain === "invoices") return text(normalized.invoiceNumber) || null;
   if (domain === "parts") return text(normalized.sku) || text(normalized.partNumber) || null;
   if (domain === "vendors") return text(normalized.accountNumber) || null;
+  if (domain === "staff") return text(normalized.email) || text(normalized.name) || null;
+  if (domain === "menu") return text(normalized.opCode) || text(normalized.serviceName) || null;
   return null;
 }
 
@@ -62,7 +64,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   const n = input.normalized;
   const domain = input.domain;
 
-  if (domain === "unknown" || domain === "menu" || domain === "inspections") {
+  if (domain === "unknown" || domain === "inspections") {
     return {
       entity: null,
       reviewItems: [
@@ -80,14 +82,13 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   let status: EntityStatus = "needs_review";
-  let confidence = 0.6;
+  let confidence = 0.62;
   let reviewReason: string | null = "missing_identity";
   const reviewItems: ReturnType<typeof makeReviewItem>[] = [];
 
   if (domain === "customers") {
-    const identityName = has(n.name) || has(n.businessName);
-    const identityContact = has(n.email) || has(n.phone);
-    if (identityName && identityContact) {
+    const hasIdentity = has(n.email) || has(n.phone) || has(n.sourceCustomerId) || has(n.name) || has(n.businessName);
+    if (hasIdentity) {
       status = "ready";
       confidence = 0.9;
       reviewReason = null;
@@ -95,52 +96,35 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "vehicles") {
-    const hasIdentity = has(n.vin) || has(n.plate) || has(n.unitNumber);
-    const hasCustomerHint = has(n.sourceCustomerId) || has(n.customerEmail) || has(n.customerPhone) || has(n.customerName);
-    if (hasIdentity && hasCustomerHint) {
+    if (has(n.vin) || has(n.plate) || has(n.unitNumber) || has(n.sourceVehicleId)) {
       status = "ready";
-      confidence = 0.9;
+      confidence = 0.88;
       reviewReason = null;
     }
   }
 
   if (domain === "history") {
-    const hasWorkOrderId = has(n.sourceWorkOrderId);
-    const hasLinkHint = has(n.sourceCustomerId) || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
-    const hasDescription = has(n.complaint) || has(n.cause) || has(n.correction);
-    if (hasWorkOrderId && hasLinkHint && hasDescription) {
+    const hasPrimary = has(n.sourceWorkOrderId) || has(n.invoiceId);
+    const hasContext = has(n.sourceCustomerId) || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
+    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.openedDate);
+    if (hasPrimary || (hasContext && hasNarrative)) {
       status = "ready";
-      confidence = 0.88;
+      confidence = 0.86;
       reviewReason = null;
     }
   }
 
   if (domain === "invoices") {
-    const hasInvoiceId = has(n.invoiceNumber);
-    const hasAmountOrRo = hasNumber(n.total) || has(n.sourceWorkOrderId);
-    const invalidMoney = has(n.totalRaw) && typeof n.total === "number" && !Number.isFinite(n.total);
-    if (invalidMoney) {
-      reviewItems.push(
-        makeReviewItem({
-          shopId: input.shopId,
-          sessionId: input.sessionId,
-          severity: "high",
-          domain: "invoices",
-          issueType: "invalid_money",
-          summary: `Invoice row ${input.sourceRowIndex + 1} has invalid money format`,
-          details: { value: n.totalRaw },
-        }),
-      );
-    }
-    if (hasInvoiceId && hasAmountOrRo) {
+    const hasIdentity = has(n.invoiceNumber) || (hasNumber(n.total) && (has(n.invoiceDate) || has(n.sourceWorkOrderId) || has(n.sourceCustomerId)));
+    if (hasIdentity) {
       status = "ready";
-      confidence = 0.88;
+      confidence = 0.86;
       reviewReason = null;
     }
   }
 
   if (domain === "parts") {
-    if (has(n.sku) || has(n.partNumber) || has(n.description) || has(n.name)) {
+    if (has(n.sku) || has(n.partNumber) || has(n.description)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -148,20 +132,25 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "vendors") {
-    const hasName = has(n.name);
-    const hasIdentity = has(n.email) || has(n.phone) || has(n.accountNumber);
-    if (hasName && hasIdentity) {
+    if (has(n.name) || has(n.email) || has(n.phone)) {
       status = "ready";
-      confidence = 0.86;
+      confidence = 0.84;
       reviewReason = null;
     }
   }
 
   if (domain === "staff") {
-    const hasIdentity = has(n.email) || (has(n.name) && has(n.role));
-    if (hasIdentity) {
+    if (has(n.name) || has(n.email)) {
       status = "ready";
-      confidence = 0.84;
+      confidence = 0.82;
+      reviewReason = null;
+    }
+  }
+
+  if (domain === "menu") {
+    if (has(n.serviceName) || has(n.description)) {
+      status = "ready";
+      confidence = 0.8;
       reviewReason = null;
     }
   }
@@ -197,22 +186,22 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
     );
   }
 
+  const entityTypeByDomain: Record<string, string> = {
+    customers: "customer",
+    vehicles: "vehicle",
+    history: "historical_work_order",
+    invoices: "historical_invoice",
+    parts: "part",
+    vendors: "vendor",
+    staff: "staff_candidate",
+    menu: "menu_suggestion",
+  };
+
   return {
     entity: {
       shop_id: input.shopId,
       session_id: input.sessionId,
-      entity_type:
-        domain === "history"
-          ? "historical_work_order"
-          : domain === "invoices"
-            ? "historical_invoice"
-            : domain === "parts"
-              ? "part"
-              : domain === "vendors"
-                ? "vendor"
-                : domain === "staff"
-                  ? "staff_candidate"
-                  : domain.slice(0, -1),
+      entity_type: entityTypeByDomain[domain] ?? "unknown",
       source_file_id: input.sourceFileId,
       source_row_id: input.sourceRowId,
       source_row_index: input.sourceRowIndex,

@@ -28,7 +28,7 @@ const VALID_ACTION_TYPES = new Set([
   "ignore_row",
   "prepare_activation",
 ]);
-const VALID_READINESS = new Set(["not_ready", "empty", "review_required", "ready_for_dry_run", "ready_for_activation_later"]);
+const VALID_READINESS = new Set(["not_ready", "empty", "review_required", "ready_for_dry_run", "activation_disabled"]);
 const VALID_DOMAINS = new Set<string>([...ONBOARDING_DOMAINS, "all"]);
 
 function stripJsonFences(raw: string) {
@@ -79,9 +79,18 @@ function buildActivationReadiness(input: OnboardingAgentInput) {
     };
   }
 
+  if (rowsParsed === 0) {
+    return {
+      status: "empty" as const,
+      blockers: [],
+      warnings: ["Upload one or more CSV files to stage onboarding data."],
+      safeToProceed: false,
+    };
+  }
+
   if (blockingItems.length > 0) {
     return {
-      status: "not_ready" as const,
+      status: "review_required" as const,
       blockers: blockingItems.map((item) => item.summary),
       warnings: warningItems.map((item) => item.summary),
       safeToProceed: false,
@@ -90,7 +99,7 @@ function buildActivationReadiness(input: OnboardingAgentInput) {
 
   if (warningItems.length > 0) {
     return {
-      status: "review_required" as const,
+      status: "ready_for_dry_run" as const,
       blockers: [],
       warnings: warningItems.map((item) => item.summary),
       safeToProceed: true,
@@ -98,7 +107,7 @@ function buildActivationReadiness(input: OnboardingAgentInput) {
   }
 
   return {
-    status: "ready_for_dry_run" as const,
+    status: "activation_disabled" as const,
     blockers: [],
     warnings: ["Activation remains disabled in this phase; dry-run only."],
     safeToProceed: true,
@@ -137,6 +146,7 @@ export function buildDeterministicFallbackReport(input: OnboardingAgentInput): O
   const stagedParts = Number(input.deterministicStagedEntityCounts.part ?? 0);
   const stagedVendors = Number(input.deterministicStagedEntityCounts.vendor ?? 0);
   const stagedStaff = Number(input.deterministicStagedEntityCounts.staff_candidate ?? 0);
+  const stagedMenu = Number(input.deterministicStagedEntityCounts.menu_suggestion ?? 0);
   const confidentLinks = Object.values(input.deterministicLinkCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
 
   const findings: OnboardingAgentFinding[] = [
@@ -186,14 +196,14 @@ export function buildDeterministicFallbackReport(input: OnboardingAgentInput): O
         ? "Blocking staged issues are preventing readiness. Resolve exceptions first."
         : "Data is ready for dry-run planning. Activation stays disabled in this phase.",
       riskLevel: blockingCount > 0 ? "high" : "low",
-      affectedRowIds: input.deterministicReviewItems.map((item) => item.id),
+      affectedRowIds: input.deterministicReviewItems.slice(0, 20).map((item) => item.id),
     },
   ];
 
   return {
     model: getOnboardingAgentModel(),
     mode: "deterministic_fallback",
-    summary: `Staged onboarding analysis completed. Files: ${input.files.length}, rows: ${rowsParsed}, customers: ${stagedCustomers}, vehicles: ${stagedVehicles}, historical work orders: ${stagedWorkOrders}, historical invoices: ${stagedInvoices}, parts: ${stagedParts}, vendors: ${stagedVendors}, staff candidates: ${stagedStaff}, confident links: ${confidentLinks}, review exceptions: ${input.deterministicReviewItems.length}. No live records have been created.`,
+    summary: `Staged onboarding analysis completed. Files: ${input.files.length}, rows: ${rowsParsed}, customers: ${stagedCustomers}, vehicles: ${stagedVehicles}, historical work orders: ${stagedWorkOrders}, historical invoices: ${stagedInvoices}, parts: ${stagedParts}, vendors: ${stagedVendors}, staff candidates: ${stagedStaff}, menu suggestions: ${stagedMenu}, confident links: ${confidentLinks}, review exceptions: ${input.deterministicReviewItems.length}. No live records have been created.`,
     domainSummaries,
     findings,
     recommendations,

@@ -17,6 +17,7 @@ const LINK_ROWS: Array<{ key: string; label: string }> = [
   { key: "vehicle_work_order", label: "Vehicle ↔ Work order" },
   { key: "work_order_invoice", label: "Work order ↔ Invoice" },
   { key: "vendor_part", label: "Vendor ↔ Part" },
+  { key: "service_menu_suggestion", label: "Service ↔ Menu suggestion" },
 ];
 
 export function OnboardingEntitiesPanel({ entityCounts, linkCounts }: { entityCounts: Record<string, number>; linkCounts: Record<string, number> }) {

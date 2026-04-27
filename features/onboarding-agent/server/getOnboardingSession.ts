@@ -1,20 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildOnboardingSummary, ENTITY_BUCKETS, LINK_BUCKETS } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
-
-const ENTITY_BUCKETS = [
-  "customer",
-  "vehicle",
-  "historical_work_order",
-  "historical_invoice",
-  "part",
-  "vendor",
-  "staff_candidate",
-  "menu_suggestion",
-  "inspection_suggestion",
-  "unknown",
-] as const;
-
-const LINK_BUCKETS = ["customer_vehicle", "customer_work_order", "vehicle_work_order", "work_order_invoice", "vendor_part"] as const;
 
 export async function getOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
@@ -38,44 +24,41 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     sb.from("onboarding_activation_plans").select("id, status, summary, created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
+  const rowsParsedFromFiles = (files ?? []).reduce((sum: number, file: any) => sum + Number(file.row_count ?? 0), 0);
+  const canonical = buildOnboardingSummary({
+    filesCount: (files ?? []).length,
+    rowsParsed: rowsParsedFromFiles,
+    entityRows: (entities ?? []).map((row: any) => ({ entity_type: row.entity_type })),
+    linkRows: (links ?? []).map((row: any) => ({ link_type: row.link_type })),
+    reviewRows: (reviews ?? []).map((row: any) => ({
+      id: row.id,
+      severity: row.severity,
+      status: row.status,
+      domain: row.domain,
+      issue_type: row.issue_type,
+      summary: row.summary,
+      details: row.details ?? {},
+    })),
+    groupedExceptionCount: (reviews ?? []).length,
+    activationReadiness: ((session?.stats ?? {}) as Record<string, unknown>).activation_readiness as string | undefined,
+  });
+
   const entityCounts = ENTITY_BUCKETS.reduce<Record<string, number>>((acc, key) => {
-    acc[key] = 0;
+    acc[key] = canonical.entity_counts_by_type[key] ?? 0;
     return acc;
   }, {});
-  for (const row of entities ?? []) {
-    entityCounts[row.entity_type] = (entityCounts[row.entity_type] ?? 0) + 1;
-  }
+  const linkCounts = LINK_BUCKETS.reduce<Record<string, number>>((acc, key) => {
+    acc[key] = canonical.link_counts_by_type[key] ?? 0;
+    return acc;
+  }, {});
 
   const reviewCounts = {
-    blocking: 0,
-    high: 0,
-    medium: 0,
-    low: 0,
-    byDomain: {} as Record<string, number>,
+    blocking: canonical.review_counts_by_severity.blocking ?? 0,
+    high: canonical.review_counts_by_severity.high ?? 0,
+    medium: canonical.review_counts_by_severity.medium ?? 0,
+    low: canonical.review_counts_by_severity.low ?? 0,
+    byDomain: canonical.review_counts_by_domain,
   };
-  for (const row of reviews ?? []) {
-    if (row.status !== "pending") continue;
-    if (row.severity === "blocking") reviewCounts.blocking += 1;
-    if (row.severity === "high") reviewCounts.high += 1;
-    if (row.severity === "medium") reviewCounts.medium += 1;
-    if (row.severity === "low") reviewCounts.low += 1;
-    const domain = row.domain ?? "unknown";
-    reviewCounts.byDomain[domain] = (reviewCounts.byDomain[domain] ?? 0) + 1;
-  }
-
-  const linkCounts = LINK_BUCKETS.reduce<Record<string, number>>((acc, key) => {
-    acc[key] = 0;
-    return acc;
-  }, {});
-  for (const row of links ?? []) {
-    linkCounts[row.link_type] = (linkCounts[row.link_type] ?? 0) + 1;
-  }
-
-  const uploadedFiles = (files ?? []).length;
-  const rowsParsedFromFiles = (files ?? []).reduce((sum: number, file: any) => sum + Number(file.row_count ?? 0), 0);
-  const entitiesDiscovered = Object.values(entityCounts).reduce((sum, count) => sum + count, 0);
-  const linksFound = Object.values(linkCounts).reduce((sum, count) => sum + count, 0);
-  const reviewExceptions = reviewCounts.blocking + reviewCounts.high + reviewCounts.medium + reviewCounts.low;
 
   return {
     session,
@@ -86,11 +69,12 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     linkCounts,
     latestPlan,
     summaryCounts: {
-      uploadedFiles,
-      rowsParsed: rowsParsedFromFiles,
-      entitiesDiscovered,
-      linksFound,
-      reviewExceptions,
+      uploadedFiles: canonical.files_count,
+      rowsParsed: canonical.rows_parsed,
+      entitiesDiscovered: canonical.total_entities,
+      linksFound: canonical.total_links,
+      reviewExceptions: canonical.total_review_items,
+      groupedExceptionCount: canonical.grouped_exception_count,
       liveRecordsCreated: 0 as const,
     },
   };
