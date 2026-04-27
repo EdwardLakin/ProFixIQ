@@ -62,6 +62,8 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
 
   const canonicalSummary = {
     ...canonical.summaryCounts,
+    aiRowsSampled: Number((session?.summary ?? {})?.aiRowsSampled ?? canonical.summaryCounts.aiRowsSampled ?? 0),
+    aiFilesSampled: Number((session?.summary ?? {})?.aiFilesSampled ?? canonical.summaryCounts.aiFilesSampled ?? 0),
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0 as const,

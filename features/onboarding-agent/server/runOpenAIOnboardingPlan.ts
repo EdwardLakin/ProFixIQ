@@ -54,7 +54,7 @@ export async function runOpenAIOnboardingPlan(params: {
     schemaName: "OnboardingAgentPlan",
     system: "You are the ProFixIQ onboarding migration planner. You produce JSON only. Never claim live record creation. Staged-only semantics: historical work orders are not active jobs; historical invoices are not active invoice workflow; staff rows are candidates/invites, not auth users; menu/inspection rows are suggestions only.",
     user: {
-      instruction: "Infer per-file domains, header mappings, review groups, relationships, and a dry-run activation preview. Use filename heavily, then headers/samples to refine. For known exports, do not return unknown. Use stage_entities for recognized domains. Missing links should create review groups rather than unsupported file outputs. Historical work orders/invoices may stage without resolved links. Staff rows are candidates only. Service catalog rows are menu suggestions only. Return strict OnboardingAgentPlan JSON.",
+      instruction: "Infer per-file domains, header mappings, review groups, relationships, and a dry-run activation preview. Header map contract is required: headerMap keys MUST be source/raw headers and values MUST be canonical fields. Use filename heavily, then headers/samples to refine. For known exports, do not return unknown. Use stage_entities for recognized domains. Missing links should create review groups rather than unsupported file outputs. Historical work orders/invoices may stage without resolved links. Staff rows are candidates only. Service catalog rows are menu suggestions only. Return strict OnboardingAgentPlan JSON.",
       knownFilesHint: ["customers.csv", "vehicles.csv", "work_orders_history.csv", "invoices.csv", "parts_inventory.csv", "vendors.csv", "staff_users.csv", "service_catalog.csv"],
       input: params.input,
     },
@@ -79,6 +79,13 @@ export async function runOpenAIOnboardingPlan(params: {
     mode: result.mode,
     liveRecordsCreated: 0,
   });
+  console.info("[onboarding-agent] ai input files", params.input.files.map((file) => ({
+    fileId: file.fileId,
+    filename: file.filename,
+    headers: file.headers.length,
+    sampleRows: file.sampleRows.length,
+    detectedDomain: file.detectedDomain,
+  })));
 
   return {
     plan: result.output,

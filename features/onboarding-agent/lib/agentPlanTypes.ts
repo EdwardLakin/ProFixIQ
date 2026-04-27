@@ -36,6 +36,7 @@ export type OnboardingAgentPlan = {
     confidence: number;
     reasoning: string;
     headerMap: Record<string, string>;
+    mappingSource?: "ai" | "deterministic_alias" | "mixed" | "none";
     requiredFieldsPresent: string[];
     missingImportantFields: string[];
     rowCountEstimate: number;
