@@ -156,6 +156,38 @@ describe("onboarding agent ai safeguards", () => {
     expect(plan.liveRecordsCreated).toBe(0);
   });
 
+  it("plan validator preserves valid file mapping and falls back missing files per-file", () => {
+    const plan = validateOnboardingAgentPlan({
+      validFileIds: new Set(["file-1", "file-2"]),
+      deterministicByFileId: new Map([
+        ["file-1", { filename: "customers.csv", inferredDomain: "customers", rowCount: 22 }],
+        ["file-2", { filename: "vehicles.csv", inferredDomain: "vehicles", rowCount: 14 }],
+      ]),
+      candidate: {
+        mode: "ai_planned",
+        files: [{
+          fileId: "file-1",
+          filename: "customers.csv",
+          inferredDomain: "customers",
+          confidence: 0.87,
+          reasoning: "name/email columns",
+          headerMap: { "Customer Name": "name", Email: "email" },
+          rowCountEstimate: 22,
+          requiredFieldsPresent: ["name"],
+          missingImportantFields: [],
+          recommendedParserMode: "stage_entities",
+        }],
+      },
+    });
+
+    expect(plan.files).toHaveLength(2);
+    expect(plan.files.find((file) => file.fileId === "file-1")?.inferredDomain).toBe("customers");
+    expect(plan.files.find((file) => file.fileId === "file-1")?.recommendedParserMode).toBe("stage_entities");
+    expect(plan.files.find((file) => file.fileId === "file-1")?.headerMap?.Email).toBe("email");
+    expect(plan.files.find((file) => file.fileId === "file-2")?.inferredDomain).toBe("vehicles");
+    expect(plan.files.find((file) => file.fileId === "file-2")?.reasoning).toContain("deterministic fallback");
+  });
+
   it("redaction masks email and phone", () => {
     const row = redactOnboardingSample({ Email: "jane@example.com", Phone: "555-321-1234", Note: "x".repeat(180) });
     expect(String(row.Email)).toContain("***@");

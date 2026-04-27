@@ -86,6 +86,28 @@ export function detectDomain(input: { filename?: string | null; headers?: string
     }
   }
 
+  const hasToken = (token: string) => filename.includes(token) || filenameTokens.includes(token);
+  if (hasToken("service catalog") || hasToken("service menu") || hasToken("catalog") || hasToken("menu")) {
+    scores.menu += 20;
+    scores.parts = Math.max(0, scores.parts - 10);
+  }
+  if (hasToken("vendor") || hasToken("supplier")) {
+    scores.vendors += 20;
+    scores.customers = Math.max(0, scores.customers - 10);
+  }
+  if (hasToken("staff") || hasToken("users") || hasToken("employees")) {
+    scores.staff += 20;
+    scores.customers = Math.max(0, scores.customers - 10);
+  }
+  if (hasToken("invoice")) {
+    scores.invoices += 20;
+    scores.history = Math.max(0, scores.history - 8);
+  }
+  if (hasToken("work orders history") || hasToken("work order history") || hasToken("repair order history") || hasToken("history")) {
+    scores.history += 20;
+    scores.invoices = Math.max(0, scores.invoices - 8);
+  }
+
   if (scores.menu > 0 && scores.parts > 0 && scores.menu >= scores.parts) {
     scores.parts = Math.max(0, scores.parts - 4);
   }

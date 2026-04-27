@@ -18,4 +18,16 @@ describe("onboarding known file domain mapping", () => {
       expect(detectDomain({ filename: fixture.filename, headers: [] })).toBe(fixture.expected);
     }
   });
+
+  it("keeps service catalog in menu domain even with price columns", () => {
+    expect(detectDomain({ filename: "service_catalog.csv", headers: ["Service Name", "Price", "Labor Hours"] })).toBe("menu");
+  });
+
+  it("keeps vendors in vendors domain even with email/phone", () => {
+    expect(detectDomain({ filename: "vendors.csv", headers: ["Company", "Email", "Phone"] })).toBe("vendors");
+  });
+
+  it("keeps staff files in staff domain even with email/phone", () => {
+    expect(detectDomain({ filename: "staff_users.csv", headers: ["Full Name", "Email", "Phone"] })).toBe("staff");
+  });
 });

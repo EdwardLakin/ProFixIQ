@@ -203,7 +203,12 @@ export function buildOnboardingSummary(input: {
     acc[key] = 0;
     return acc;
   }, {});
+  const linkCountsByStatus: Record<string, number> = {};
   for (const row of input.linkRows) linkCounts[row.link_type] = (linkCounts[row.link_type] ?? 0) + 1;
+  for (const row of input.linkRows) {
+    const status = row.status ?? "staged";
+    linkCountsByStatus[status] = (linkCountsByStatus[status] ?? 0) + 1;
+  }
 
   const pending = input.reviewRows.filter((row) => !row.status || row.status === "pending");
   const reviewCountsByDomain: Record<string, number> = {};
@@ -215,8 +220,13 @@ export function buildOnboardingSummary(input: {
   }
 
   const totalEntities = Object.values(entityCounts).reduce((sum, count) => sum + count, 0);
+  const entityCountsByStatus = Object.values(entityStatusCountsByType).reduce<Record<string, number>>((acc, counts) => {
+    for (const [status, count] of Object.entries(counts)) acc[status] = (acc[status] ?? 0) + toNumber(count);
+    return acc;
+  }, {});
   const totalLinks = Object.values(linkCounts).reduce((sum, count) => sum + count, 0);
   const totalReviewItems = Object.values(reviewCountsBySeverity).reduce((sum, count) => sum + count, 0);
+  const groupedReviewItems = groupReviewItems(pending);
   const readyEntityTotal = Object.values(entityStatusCountsByType).reduce((sum, counts) => sum + toNumber(counts.ready), 0);
 
   const activationPlanSummary = buildActivationPlanSummary({
@@ -247,9 +257,11 @@ export function buildOnboardingSummary(input: {
     rows_parsed: input.rowsParsed,
     total_entities: totalEntities,
     entity_counts_by_type: entityCounts,
+    entity_counts_by_status: entityCountsByStatus,
     entity_status_counts_by_type: entityStatusCountsByType,
     total_links: totalLinks,
     link_counts_by_type: linkCounts,
+    link_counts_by_status: linkCountsByStatus,
     total_review_items: totalReviewItems,
     review_counts_by_domain: {
       ...reviewCountsByDomain,
@@ -257,6 +269,7 @@ export function buildOnboardingSummary(input: {
     },
     review_counts_by_severity: reviewCountsBySeverity,
     grouped_exception_count: input.groupedExceptionCount ?? 0,
+    grouped_review_items: groupedReviewItems,
     activation_readiness: activationReadiness,
     activation_plan_summary: activationPlanSummary,
     liveRecordsCreated: 0 as const,
