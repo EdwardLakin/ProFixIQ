@@ -7402,6 +7402,634 @@ export type Database = {
         }
         Relationships: []
       }
+      onboarding_activation_events: {
+        Row: {
+          canonical_id: string | null
+          canonical_table: string | null
+          created_at: string
+          entity_id: string | null
+          event_type: string
+          id: string
+          message: string | null
+          metadata: Json
+          plan_id: string | null
+          session_id: string
+          shop_id: string
+          status: string
+        }
+        Insert: {
+          canonical_id?: string | null
+          canonical_table?: string | null
+          created_at?: string
+          entity_id?: string | null
+          event_type: string
+          id?: string
+          message?: string | null
+          metadata?: Json
+          plan_id?: string | null
+          session_id: string
+          shop_id: string
+          status?: string
+        }
+        Update: {
+          canonical_id?: string | null
+          canonical_table?: string | null
+          created_at?: string
+          entity_id?: string | null
+          event_type?: string
+          id?: string
+          message?: string | null
+          metadata?: Json
+          plan_id?: string | null
+          session_id?: string
+          shop_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_activation_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_events_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_activation_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_activation_plans: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          id: string
+          plan: Json
+          risk_flags: Json
+          session_id: string
+          shop_id: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          plan?: Json
+          risk_flags?: Json
+          session_id: string
+          shop_id: string
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          plan?: Json
+          risk_flags?: Json
+          session_id?: string
+          shop_id?: string
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_activation_plans_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_plans_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_activation_plans_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_entities: {
+        Row: {
+          canonical_fingerprint: string | null
+          canonical_id: string | null
+          canonical_table: string | null
+          confidence: number | null
+          created_at: string
+          display_name: string | null
+          entity_type: string
+          id: string
+          normalized: Json
+          review_reason: string | null
+          session_id: string
+          shop_id: string
+          source_external_id: string | null
+          source_file_id: string | null
+          source_row_id: string | null
+          source_row_index: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_fingerprint?: string | null
+          canonical_id?: string | null
+          canonical_table?: string | null
+          confidence?: number | null
+          created_at?: string
+          display_name?: string | null
+          entity_type: string
+          id?: string
+          normalized?: Json
+          review_reason?: string | null
+          session_id: string
+          shop_id: string
+          source_external_id?: string | null
+          source_file_id?: string | null
+          source_row_id?: string | null
+          source_row_index?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_fingerprint?: string | null
+          canonical_id?: string | null
+          canonical_table?: string | null
+          confidence?: number | null
+          created_at?: string
+          display_name?: string | null
+          entity_type?: string
+          id?: string
+          normalized?: Json
+          review_reason?: string | null
+          session_id?: string
+          shop_id?: string
+          source_external_id?: string | null
+          source_file_id?: string | null
+          source_row_id?: string | null
+          source_row_index?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_entities_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entities_source_file_id_fkey"
+            columns: ["source_file_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entities_source_row_id_fkey"
+            columns: ["source_row_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_raw_rows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_entity_links: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          evidence: Json
+          from_entity_id: string
+          id: string
+          link_type: string
+          session_id: string
+          shop_id: string
+          status: string
+          to_entity_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          evidence?: Json
+          from_entity_id: string
+          id?: string
+          link_type: string
+          session_id: string
+          shop_id: string
+          status?: string
+          to_entity_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          evidence?: Json
+          from_entity_id?: string
+          id?: string
+          link_type?: string
+          session_id?: string
+          shop_id?: string
+          status?: string
+          to_entity_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_entity_links_from_entity_id_fkey"
+            columns: ["from_entity_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entity_links_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entity_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entity_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_entity_links_to_entity_id_fkey"
+            columns: ["to_entity_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_files: {
+        Row: {
+          created_at: string
+          declared_domain: string | null
+          detected_domain: string | null
+          file_size_bytes: number | null
+          header_row: Json
+          id: string
+          mime_type: string | null
+          original_filename: string | null
+          parse_error: string | null
+          parse_status: string
+          row_count: number
+          session_id: string
+          shop_id: string
+          storage_bucket: string
+          storage_path: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          declared_domain?: string | null
+          detected_domain?: string | null
+          file_size_bytes?: number | null
+          header_row?: Json
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          parse_error?: string | null
+          parse_status?: string
+          row_count?: number
+          session_id: string
+          shop_id: string
+          storage_bucket: string
+          storage_path: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          declared_domain?: string | null
+          detected_domain?: string | null
+          file_size_bytes?: number | null
+          header_row?: Json
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          parse_error?: string | null
+          parse_status?: string
+          row_count?: number
+          session_id?: string
+          shop_id?: string
+          storage_bucket?: string
+          storage_path?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_files_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_files_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_files_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_raw_rows: {
+        Row: {
+          created_at: string
+          detected_domain: string | null
+          error_reason: string | null
+          file_id: string
+          id: string
+          normalized_preview: Json
+          parse_status: string
+          raw: Json
+          row_hash: string | null
+          session_id: string
+          shop_id: string
+          source_row_index: number
+        }
+        Insert: {
+          created_at?: string
+          detected_domain?: string | null
+          error_reason?: string | null
+          file_id: string
+          id?: string
+          normalized_preview?: Json
+          parse_status?: string
+          raw?: Json
+          row_hash?: string | null
+          session_id: string
+          shop_id: string
+          source_row_index: number
+        }
+        Update: {
+          created_at?: string
+          detected_domain?: string | null
+          error_reason?: string | null
+          file_id?: string
+          id?: string
+          normalized_preview?: Json
+          parse_status?: string
+          raw?: Json
+          row_hash?: string | null
+          session_id?: string
+          shop_id?: string
+          source_row_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_raw_rows_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_raw_rows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_raw_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_raw_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_review_items: {
+        Row: {
+          created_at: string
+          details: Json
+          domain: string | null
+          entity_id: string | null
+          id: string
+          issue_type: string
+          link_id: string | null
+          recommended_action: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          session_id: string
+          severity: string
+          shop_id: string
+          status: string
+          summary: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          domain?: string | null
+          entity_id?: string | null
+          id?: string
+          issue_type: string
+          link_id?: string | null
+          recommended_action?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id: string
+          severity?: string
+          shop_id: string
+          status?: string
+          summary: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          domain?: string | null
+          entity_id?: string | null
+          id?: string
+          issue_type?: string
+          link_id?: string | null
+          recommended_action?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id?: string
+          severity?: string
+          shop_id?: string
+          status?: string
+          summary?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_review_items_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_review_items_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_entity_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_review_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_review_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_review_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_sessions: {
+        Row: {
+          activated_at: string | null
+          analyzed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          shop_id: string
+          source: string | null
+          stats: Json
+          status: string
+          summary: Json
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          analyzed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          shop_id: string
+          source?: string | null
+          stats?: Json
+          status?: string
+          summary?: Json
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          analyzed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          shop_id?: string
+          source?: string | null
+          stats?: Json
+          status?: string
+          summary?: Json
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_sessions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_sessions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       optimization_actions: {
         Row: {
           action: string
