@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { OnboardingAgentInput, OnboardingAgentReport } from "@/features/onboarding-agent/lib/agentTypes";
-import {
-  buildDeterministicFallbackReport,
-  sanitizeAgentReport,
-} from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
+import { buildDeterministicFallbackReport, sanitizeAgentReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
+import { validateOnboardingAgentPlan } from "@/features/onboarding-agent/server/validateOnboardingAgentPlan";
+import { redactOnboardingSample } from "@/features/onboarding-agent/server/redactOnboardingSample";
 
 function makeInput(reviewSeverity: "blocking" | "high" = "blocking"): OnboardingAgentInput {
   return {
@@ -135,4 +134,33 @@ describe("onboarding agent ai safeguards", () => {
 
     expect(report.liveRecordsCreated).toBe(0);
   });
+
+  it("plan validator clamps confidence and forces liveRecordsCreated=0", () => {
+    const plan = validateOnboardingAgentPlan({
+      validFileIds: new Set(["file-1"]),
+      candidate: {
+        mode: "ai_planned",
+        confidence: 9,
+        liveRecordsCreated: 8,
+        files: [{ fileId: "file-1", filename: "customers.csv", inferredDomain: "customers", confidence: 4, reasoning: "x", headerMap: { Email: "email" }, rowCountEstimate: 10, requiredFieldsPresent: [], missingImportantFields: [], recommendedParserMode: "stage_entities" }],
+        entityPlan: {},
+        relationshipPlan: [],
+        reviewGroups: [],
+        activationReadiness: "ready_for_dry_run",
+        activationPreview: { creates: {}, requiresReview: 0, blockingIssues: 0, risks: [] },
+      },
+    });
+
+    expect(plan.confidence).toBe(1);
+    expect(plan.files[0].confidence).toBe(1);
+    expect(plan.liveRecordsCreated).toBe(0);
+  });
+
+  it("redaction masks email and phone", () => {
+    const row = redactOnboardingSample({ Email: "jane@example.com", Phone: "555-321-1234", Note: "x".repeat(180) });
+    expect(String(row.Email)).toContain("***@");
+    expect(String(row.Phone)).toContain("***-***-");
+    expect(String(row.Note).length).toBeLessThanOrEqual(120);
+  });
+
 });
