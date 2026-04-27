@@ -20,7 +20,14 @@ export async function POST(_: Request, context: RouteContext) {
   try {
     await assertOnboardingSessionOwnership({ supabase: admin, shopId, sessionId });
     const result = await analyzeOnboardingSession({ supabase: admin, shopId, sessionId });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({
+      ok: true,
+      mode: result.mode,
+      warning: result.warning ?? null,
+      liveRecordsCreated: 0,
+      planSummary: result.planSummary,
+      sessionSummary: result.sessionSummary,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Rerun failed";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
