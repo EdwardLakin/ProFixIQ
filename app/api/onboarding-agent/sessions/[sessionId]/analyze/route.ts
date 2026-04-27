@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeOnboardingSession } from "@/features/onboarding-agent/server/analyzeOnboardingSession";
+import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -17,14 +18,7 @@ export async function POST(_: Request, context: RouteContext) {
   const { sessionId } = await context.params;
 
   try {
-    const { data: session, error: sessionError } = await (admin as any)
-      .from("onboarding_sessions")
-      .select("id")
-      .eq("id", sessionId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-    if (sessionError) throw new Error(sessionError.message);
-    if (!session) return NextResponse.json({ ok: false, error: "Session not found for this shop" }, { status: 404 });
+    await assertOnboardingSessionOwnership({ supabase: admin, shopId, sessionId });
 
     const { count, error: countError } = await (admin as any)
       .from("onboarding_files")
@@ -40,12 +34,14 @@ export async function POST(_: Request, context: RouteContext) {
     return NextResponse.json({
       ok: true,
       mode: result.mode,
+      warning: result.warning ?? null,
       liveRecordsCreated: 0,
       planSummary: result.planSummary,
       sessionSummary: result.sessionSummary,
-      warnings: result.warning ? [result.warning] : [],
     });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Analysis failed" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Analysis failed";
+    const status = message.includes("not found") ? 404 : 500;
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
