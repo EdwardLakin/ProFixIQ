@@ -64,7 +64,7 @@ export function OnboardingAgentInsightsPanel({
                 <li key={file.fileId} className="rounded border border-white/10 px-2 py-1">
                   <p className="text-white">{file.filename}</p>
                   <p>{file.inferredDomain} • {file.recommendedParserMode} • {Math.round(file.confidence * 100)}%</p>
-                  <p className="text-slate-400">mapped: {mappedEntries.length} columns</p>
+                  <p className="text-slate-400">mapped: {mappedEntries.length} columns • source: {file.mappingSource ?? "none"}</p>
                   {file.missingImportantFields.length ? <p className="text-amber-200/90">missing: {file.missingImportantFields.slice(0, 4).join(", ")}</p> : null}
                   {mappedEntries.length ? (
                     <details className="mt-1 text-slate-400">

@@ -143,6 +143,19 @@ export async function buildOnboardingAgentInput(params: {
     });
   }
 
+  console.info("[onboarding-agent] build input", {
+    sessionId: params.sessionId,
+    shopId: params.shopId,
+    mode: "ai_planned",
+    files: filesPayload.map((file) => ({
+      fileId: file.fileId,
+      filename: file.filename,
+      headers: file.headers.length,
+      sampleRows: file.sampleRows.length,
+      detectedDomain: file.detectedDomain,
+    })),
+  });
+
   return {
     sessionId: params.sessionId,
     shopId: params.shopId,

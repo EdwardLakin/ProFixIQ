@@ -43,10 +43,11 @@ const DOMAIN_TO_ENTITY: Record<string, OnboardingDomain> = {
 
 function remapHeaders(raw: Record<string, unknown>, map: Record<string, string>) {
   const out: Record<string, string> = {};
-  const normalizedMap = Object.fromEntries(Object.entries(map).map(([source, target]) => [source.toLowerCase(), target]));
+  const normalizeKey = (value: string) => value.toLowerCase().replace(/[_-\s]+/g, " ").trim();
+  const normalizedMap = Object.fromEntries(Object.entries(map).map(([source, target]) => [normalizeKey(source), target]));
 
   for (const [k, v] of Object.entries(raw)) {
-    const key = map[k] ?? map[k.toLowerCase()] ?? normalizedMap[k.toLowerCase()] ?? k;
+    const key = map[k] ?? map[k.toLowerCase()] ?? normalizedMap[normalizeKey(k)] ?? k;
     out[key] = typeof v === "string" ? v : String(v ?? "");
   }
   return out;
@@ -104,8 +105,11 @@ export async function applyOnboardingAgentPlan(params: {
               : deterministicDomain));
     const domain = DOMAIN_TO_ENTITY[effectiveDomain] ?? "unknown";
     const fileHeaders = Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [];
-    const headerMap = buildEffectiveHeaderMap({ domain, headers: fileHeaders, aiHeaderMap: planFile?.headerMap ?? {} });
+    const { headerMap, mappingSource } = buildEffectiveHeaderMap({ domain, headers: fileHeaders, aiHeaderMap: planFile?.headerMap ?? {} });
     const parserMode = planFile?.recommendedParserMode ?? (domain === "unknown" ? "stage_review_only" : "stage_entities");
+    let stagedForFile = 0;
+    let reviewForFile = 0;
+    let missingIdentity = 0;
 
     if (parserMode === "ignore" || parserMode === "unsupported") {
       reviewItems.push({ severity: "medium", domain, issue_type: "ignored_file", summary: `File ${planFile?.filename ?? fileId} ignored by plan`, details: { fileId } });
@@ -127,9 +131,30 @@ export async function applyOnboardingAgentPlan(params: {
         sessionId: params.sessionId,
         canonicalFingerprint: fingerprint,
       });
-      if (staged.entity && parserMode === "stage_entities") stagedEntities.push(staged.entity);
-      if (staged.reviewItems.length) reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
+      if (staged.entity && parserMode === "stage_entities") {
+        stagedEntities.push(staged.entity);
+        stagedForFile += 1;
+      }
+      if (staged.reviewItems.length) {
+        missingIdentity += staged.reviewItems.filter((item) => item.issue_type === "missing_identity").length;
+        reviewForFile += staged.reviewItems.length;
+        reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
+      }
     }
+    console.info("[onboarding-agent] file staging details", {
+      sessionId: params.sessionId,
+      shopId: params.shopId,
+      fileId,
+      filename: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
+      domain,
+      parserMode,
+      rawRowsProcessed: fileRows.length,
+      rowsStaged: stagedForFile,
+      rowsReview: reviewForFile,
+      mappedColumns: Object.keys(headerMap).length,
+      mappingSource,
+      missingIdentity,
+    });
 
     await sb.from("onboarding_files").update({
       detected_domain: effectiveDomain,

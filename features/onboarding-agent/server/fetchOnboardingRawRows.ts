@@ -18,6 +18,7 @@ export async function fetchOnboardingRawRows(params: {
       .eq("session_id", params.sessionId)
       .order("file_id", { ascending: true })
       .order("source_row_index", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
 
     if (params.fileIds?.length) {

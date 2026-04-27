@@ -63,15 +63,18 @@ export function validateOnboardingAgentPlan(params: {
     const fileId = asString(o.fileId);
     if (!params.validFileIds.has(fileId)) return null;
     const inferred = normalizePlanDomain(o.inferredDomain);
+    const headerMap = Object.fromEntries(
+      Object.entries(asObj(o.headerMap)).slice(0, 80).map(([k, v]) => [k, asString(v).slice(0, 80)]).filter(([k, v]) => Boolean(k) && Boolean(v)),
+    );
+    const mappingSource = (["ai", "deterministic_alias", "mixed", "none"].includes(asString(o.mappingSource)) ? asString(o.mappingSource) : "none") as "ai" | "deterministic_alias" | "mixed" | "none";
     return {
       fileId,
       filename: asString(o.filename) || fileId,
       inferredDomain: inferred,
       confidence: clamp01(o.confidence, 0.5),
       reasoning: asString(o.reasoning).slice(0, 500),
-      headerMap: Object.fromEntries(
-        Object.entries(asObj(o.headerMap)).slice(0, 80).map(([k, v]) => [k, asString(v).slice(0, 80)]),
-      ),
+      headerMap,
+      mappingSource: Object.keys(headerMap).length > 0 && mappingSource === "none" ? "ai" : mappingSource,
       requiredFieldsPresent: asArr(o.requiredFieldsPresent).slice(0, 30).map((x) => asString(x)),
       missingImportantFields: asArr(o.missingImportantFields).slice(0, 30).map((x) => asString(x)),
       rowCountEstimate: Math.max(0, Math.floor(asNum(o.rowCountEstimate))),
@@ -104,6 +107,7 @@ export function validateOnboardingAgentPlan(params: {
       confidence: 0.5,
       reasoning: "AI omitted this file; deterministic fallback applied.",
       headerMap: {},
+      mappingSource: "none",
       requiredFieldsPresent: [],
       missingImportantFields: [],
       rowCountEstimate: deterministic?.rowCount ?? 0,

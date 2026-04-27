@@ -6,6 +6,8 @@ import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/stagi
 import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
+import { detectDomain } from "@/features/onboarding-agent/lib/domains";
+import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 
 function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
   const normalized = normalizeRow(domain, row);
@@ -25,15 +27,48 @@ function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
 describe("onboarding staging", () => {
 
   it("deterministic header mapping provides canonical fields when AI map is empty", () => {
-    const map = buildEffectiveHeaderMap({
+    const effective = buildEffectiveHeaderMap({
       domain: "customers",
       headers: ["Customer ID", "Full Name", "Email Address"],
       aiHeaderMap: {},
     });
 
-    expect(map["Customer ID"]).toBe("sourceCustomerId");
-    expect(map["Full Name"]).toBe("name");
-    expect(map["Email Address"]).toBe("email");
+    expect(effective.mappingSource).toBe("deterministic_alias");
+    expect(effective.headerMap["Customer ID"]).toBe("sourceCustomerId");
+    expect(effective.headerMap["Full Name"]).toBe("name");
+    expect(effective.headerMap["Email Address"]).toBe("email");
+  });
+
+  it("preserves AI headerMap shape sourceHeader -> canonicalField", () => {
+    const effective = buildEffectiveHeaderMap({
+      domain: "invoices",
+      headers: ["Inv #", "Date Issued"],
+      aiHeaderMap: { "Inv #": "invoiceNumber", "Date Issued": "invoiceDate" },
+    });
+
+    expect(effective.headerMap["Inv #"]).toBe("invoiceNumber");
+    expect(effective.headerMap["Date Issued"]).toBe("invoiceDate");
+    expect(effective.mappingSource).toBe("ai");
+  });
+
+  it("known 8-file scenario yields mapped columns > 0 for each known domain", () => {
+    const fixtures: Array<{ filename: string; headers: string[] }> = [
+      { filename: "customers.csv", headers: ["Customer ID", "Customer Name", "Email"] },
+      { filename: "vehicles.csv", headers: ["Vehicle ID", "VIN", "Customer ID"] },
+      { filename: "work_orders_history.csv", headers: ["RO Number", "Service Date", "Complaint"] },
+      { filename: "invoices.csv", headers: ["Invoice Number", "Invoice Date", "Total"] },
+      { filename: "parts_inventory.csv", headers: ["SKU", "Part Number", "Description"] },
+      { filename: "vendors.csv", headers: ["Vendor Name", "Email", "Account Number"] },
+      { filename: "staff_users.csv", headers: ["Full Name", "Email", "Role"] },
+      { filename: "service_catalog.csv", headers: ["Service Name", "Category", "Price"] },
+    ];
+
+    for (const fixture of fixtures) {
+      const domain = detectDomain({ filename: fixture.filename, headers: fixture.headers });
+      expect(domain).not.toBe("unknown");
+      const effective = buildEffectiveHeaderMap({ domain, headers: fixture.headers, aiHeaderMap: {} });
+      expect(Object.keys(effective.headerMap).length).toBeGreaterThan(0);
+    }
   });
   it("analyze creates staged entities from customer rows", () => {
     const staged = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" });
@@ -205,6 +240,22 @@ describe("onboarding staging", () => {
     expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(true);
   });
 
+  it("does not create links when endpoints are not ready", () => {
+    const customer = stage("customers", { Name: "No Identity" }).entity;
+    const vehicle = stage("vehicles", { VIN: "1HGCM82633A111111", "Customer ID": "C-1" }).entity;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [
+        { id: "customer-review", entity_type: "customer", status: "needs_review", normalized: customer?.normalized ?? {} },
+        { id: "vehicle-ready", entity_type: "vehicle", status: vehicle?.status ?? "ready", normalized: vehicle?.normalized ?? {} },
+      ],
+    });
+
+    expect(graph.links.length).toBe(0);
+    expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(true);
+  });
+
   it("summary is derived from persisted staged rows and keeps liveRecordsCreated at 0", () => {
     const summary = buildOnboardingSummary({
       filesCount: 2,
@@ -273,6 +324,36 @@ describe("onboarding staging", () => {
     expect(summary.activation_plan_summary.customersReady).toBe(1);
     expect(summary.activation_plan_summary.vehiclesReady).toBe(1);
     expect(summary.activation_plan_summary.historicalInvoicesReady).toBe(1);
+  });
+
+  it("fetchOnboardingRawRows paginates beyond 1000 rows", async () => {
+    const allRows = Array.from({ length: 1501 }, (_, idx) => ({ id: idx + 1, file_id: "file-1", source_row_index: idx, raw: { row: idx } }));
+    const sb = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                order: () => ({
+                  order: () => ({
+                    range: (from: number, to: number) => Promise.resolve({ data: allRows.slice(from, to + 1), error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const rows = await fetchOnboardingRawRows({
+      sb,
+      shopId: "shop-1",
+      sessionId: "session-1",
+      select: "id, file_id, source_row_index, raw",
+    });
+
+    expect(rows).toHaveLength(1501);
   });
 
 });

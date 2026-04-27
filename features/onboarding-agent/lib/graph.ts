@@ -3,6 +3,7 @@ import { makeReviewItem } from "@/features/onboarding-agent/lib/staging";
 type Entity = {
   id: string;
   entity_type: string;
+  status?: string | null;
   display_name?: string | null;
   normalized: Record<string, unknown>;
   source_external_id?: string | null;
@@ -23,7 +24,8 @@ type BuildLinksParams = {
 };
 
 export function buildStagedLinks(params: BuildLinksParams) {
-  const { entities, shopId, sessionId } = params;
+  const { shopId, sessionId } = params;
+  const entities = params.entities.filter((entity) => (entity.status ?? "ready") === "ready");
   const links: Array<{ from_entity_id: string; to_entity_id: string; link_type: string; confidence: number; evidence: Record<string, unknown>; status: string }> = [];
   const reviewItems: ReturnType<typeof makeReviewItem>[] = [];
 
@@ -35,21 +37,31 @@ export function buildStagedLinks(params: BuildLinksParams) {
   const vendors = entities.filter((entity) => entity.entity_type === "vendor");
   const menus = entities.filter((entity) => entity.entity_type === "menu_suggestion");
 
-  const customersBySourceId = new Map(customers.map((c) => [text(c.normalized.sourceCustomerId), c]));
-  const customersByEmail = new Map(customers.map((c) => [text(c.normalized.email).toLowerCase(), c]));
-  const customersByPhone = new Map(customers.map((c) => [text(c.normalized.phone), c]));
-  const customersByName = new Map(customers.map((c) => [normalizeName(c.normalized.name || c.normalized.businessName), c]));
+  const mapByNonEmpty = (items: Entity[], getKey: (entity: Entity) => string) => {
+    const map = new Map<string, Entity>();
+    for (const item of items) {
+      const key = getKey(item);
+      if (!key) continue;
+      map.set(key, item);
+    }
+    return map;
+  };
 
-  const vehiclesBySourceId = new Map(vehicles.map((v) => [text(v.normalized.sourceVehicleId), v]));
-  const vehiclesByVin = new Map(vehicles.map((v) => [text(v.normalized.vin).toUpperCase(), v]));
-  const vehiclesByPlate = new Map(vehicles.map((v) => [text(v.normalized.plate).toUpperCase(), v]));
-  const vehiclesByUnit = new Map(vehicles.map((v) => [text(v.normalized.unitNumber).toUpperCase(), v]));
+  const customersBySourceId = mapByNonEmpty(customers, (c) => text(c.normalized.sourceCustomerId));
+  const customersByEmail = mapByNonEmpty(customers, (c) => text(c.normalized.email).toLowerCase());
+  const customersByPhone = mapByNonEmpty(customers, (c) => text(c.normalized.phone));
+  const customersByName = mapByNonEmpty(customers, (c) => normalizeName(c.normalized.name || c.normalized.businessName));
 
-  const workOrdersBySourceId = new Map(workOrders.map((wo) => [text(wo.normalized.sourceWorkOrderId), wo]));
-  const workOrdersByInvoiceId = new Map(workOrders.map((wo) => [text(wo.normalized.invoiceId), wo]));
+  const vehiclesBySourceId = mapByNonEmpty(vehicles, (v) => text(v.normalized.sourceVehicleId));
+  const vehiclesByVin = mapByNonEmpty(vehicles, (v) => text(v.normalized.vin).toUpperCase());
+  const vehiclesByPlate = mapByNonEmpty(vehicles, (v) => text(v.normalized.plate).toUpperCase());
+  const vehiclesByUnit = mapByNonEmpty(vehicles, (v) => text(v.normalized.unitNumber).toUpperCase());
+
+  const workOrdersBySourceId = mapByNonEmpty(workOrders, (wo) => text(wo.normalized.sourceWorkOrderId));
+  const workOrdersByInvoiceId = mapByNonEmpty(workOrders, (wo) => text(wo.normalized.invoiceId));
 
   const pushLink = (from: string, to: string, linkType: string, confidence: number, evidence: Record<string, unknown>) => {
-    if (confidence < 0.6) return;
+    if (confidence < 0.6 || !from || !to) return;
 
     links.push({
       from_entity_id: from,
