@@ -6,9 +6,15 @@ import { buildSimpleLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { nextStatusFromCounts } from "@/features/onboarding-agent/lib/sessionStatus";
 import { makeReviewItem } from "@/features/onboarding-agent/lib/staging";
+import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 
 export async function analyzeOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
+  await assertOnboardingSessionOwnership({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
 
   const { data: files, error: filesError } = await sb
     .from("onboarding_files")

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { registerOnboardingFile } from "@/features/onboarding-agent/server/registerOnboardingFile";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{
@@ -11,6 +12,10 @@ type RouteContext = {
 export async function POST(req: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id as string;
+  const actorId = access.profile.id;
+  void actorId;
+  const admin = createAdminSupabase();
 
   const { sessionId } = await context.params;
 
@@ -27,8 +32,8 @@ export async function POST(req: Request, context: RouteContext) {
 
   try {
     const result = await registerOnboardingFile({
-      supabase: access.supabase,
-      shopId: access.profile.shop_id as string,
+      supabase: admin,
+      shopId,
       sessionId,
       storageBucket: body.storageBucket,
       storagePath: body.storagePath,
