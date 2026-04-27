@@ -1,8 +1,12 @@
 /**
- * Infer a likely part name from a job description without importing server-only OpenAI code.
+ * Client-safe deterministic part-name inference.
  *
- * This file is imported by UI/page/component paths, so it must remain client-safe.
- * If AI inference is needed later, call it through a server route or server action.
+ * IMPORTANT:
+ * This file is imported by React components/pages, so it must not import
+ * server-only OpenAI helpers, even dynamically.
+ *
+ * If true AI inference is needed later, expose it through an API route or
+ * server action and call that from the UI.
  */
 export async function inferPartName(description: string): Promise<string> {
   const text = String(description ?? "").toLowerCase();
