@@ -1,7 +1,11 @@
 export type OnboardingSessionStatus =
   | "draft"
   | "files_uploaded"
+  | "analyzing_started"
+  | "clearing_previous_analysis"
+  | "applying_analysis"
   | "analyzing"
+  | "analysis_failed"
   | "analysis_ready"
   | "review_required"
   | "activation_ready"

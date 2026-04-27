@@ -5,6 +5,7 @@ import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/se
 import { applyOnboardingAgentPlan } from "@/features/onboarding-agent/server/applyOnboardingAgentPlan";
 import { buildOnboardingAgentInput } from "@/features/onboarding-agent/server/buildOnboardingAgentInput";
 import { runOpenAIOnboardingPlan } from "@/features/onboarding-agent/server/runOpenAIOnboardingPlan";
+import { resetOnboardingAnalysisArtifacts } from "@/features/onboarding-agent/server/resetOnboardingAnalysisArtifacts";
 
 const INSERT_CHUNK_SIZE = 1000;
 
@@ -38,11 +39,19 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
     .order("created_at", { ascending: true });
   if (filesError) throw new Error(filesError.message);
 
-  await sb.from("onboarding_sessions").update({ status: "analyzing" }).eq("id", params.sessionId).eq("shop_id", params.shopId);
+  await sb.from("onboarding_sessions").update({ status: "analyzing_started" }).eq("id", params.sessionId).eq("shop_id", params.shopId);
 
-  await sb.from("onboarding_raw_rows").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
+  try {
+    await resetOnboardingAnalysisArtifacts({
+      supabase: params.supabase,
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+    });
+    await sb.from("onboarding_sessions").update({ status: "applying_analysis" }).eq("id", params.sessionId).eq("shop_id", params.shopId);
 
-  for (const file of files ?? []) {
+    await sb.from("onboarding_raw_rows").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
+
+    for (const file of files ?? []) {
     const dl = await sb.storage.from(file.storage_bucket).download(file.storage_path);
     if (dl.error || !dl.data) {
       const { error: updateError } = await sb
@@ -82,53 +91,68 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
       .eq("id", file.id)
       .eq("shop_id", params.shopId);
     if (fileUpdateError) throw new Error(fileUpdateError.message);
-  }
+    }
 
-  const input = await buildOnboardingAgentInput({
+    const input = await buildOnboardingAgentInput({
     supabase: params.supabase,
     shopId: params.shopId,
     sessionId: params.sessionId,
   });
 
-  const aiRowsSampled = input.files.reduce((sum, file) => sum + (Array.isArray(file.sampleRows) ? file.sampleRows.length : 0), 0);
-  const aiFilesSampled = input.files.filter((file) => Array.isArray(file.sampleRows) && file.sampleRows.length > 0).length;
+    const aiRowsSampled = input.files.reduce((sum, file) => sum + (Array.isArray(file.sampleRows) ? file.sampleRows.length : 0), 0);
+    const aiFilesSampled = input.files.filter((file) => Array.isArray(file.sampleRows) && file.sampleRows.length > 0).length;
 
-  const { data: sessionForAiSummary } = await sb
+    const { data: sessionForAiSummary } = await sb
     .from("onboarding_sessions")
     .select("summary")
     .eq("id", params.sessionId)
     .eq("shop_id", params.shopId)
     .maybeSingle();
-  const existingAiSummary = (sessionForAiSummary?.summary && typeof sessionForAiSummary.summary === "object") ? sessionForAiSummary.summary : {};
-  await sb.from("onboarding_sessions").update({
-    summary: {
-      ...existingAiSummary,
-      aiRowsSampled,
-      aiFilesSampled,
-      liveRecordsCreated: 0,
-    },
-  }).eq("id", params.sessionId).eq("shop_id", params.shopId);
+    const existingAiSummary = (sessionForAiSummary?.summary && typeof sessionForAiSummary.summary === "object") ? sessionForAiSummary.summary : {};
+    await sb.from("onboarding_sessions").update({
+      summary: {
+        ...existingAiSummary,
+        aiRowsSampled,
+        aiFilesSampled,
+        liveRecordsCreated: 0,
+      },
+    }).eq("id", params.sessionId).eq("shop_id", params.shopId);
 
-  const requireAi = process.env.ONBOARDING_AGENT_REQUIRE_AI === "true";
-  const { plan, warning } = await runOpenAIOnboardingPlan({ input, requireAi });
-  const applied = await applyOnboardingAgentPlan({
-    supabase: params.supabase,
-    shopId: params.shopId,
-    sessionId: params.sessionId,
-    plan,
-  });
+    const requireAi = process.env.ONBOARDING_AGENT_REQUIRE_AI === "true";
+    const { plan, warning } = await runOpenAIOnboardingPlan({ input, requireAi });
+    const applied = await applyOnboardingAgentPlan({
+      supabase: params.supabase,
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      plan,
+    });
 
-  return {
-    mode: plan.mode,
-    warning,
-    planSummary: {
-      summary: plan.summary,
-      confidence: plan.confidence,
-      activationReadiness: plan.activationReadiness,
-      model: plan.model ?? null,
-      files: plan.files.length,
-    },
-    sessionSummary: applied.summary,
-    liveRecordsCreated: 0 as const,
-  };
+    return {
+      mode: plan.mode,
+      warning,
+      planSummary: {
+        summary: plan.summary,
+        confidence: plan.confidence,
+        activationReadiness: plan.activationReadiness,
+        model: plan.model ?? null,
+        files: plan.files.length,
+      },
+      sessionSummary: applied.summary,
+      liveRecordsCreated: 0 as const,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Analysis failed";
+    const { data: failedSession } = await sb.from("onboarding_sessions").select("summary").eq("id", params.sessionId).eq("shop_id", params.shopId).maybeSingle();
+    const failedSummary = (failedSession?.summary && typeof failedSession.summary === "object") ? failedSession.summary : {};
+    await sb.from("onboarding_sessions").update({
+      status: "analysis_failed",
+      summary: {
+        ...failedSummary,
+        analysisError: message,
+        analysisFailedAt: new Date().toISOString(),
+        liveRecordsCreated: 0,
+      },
+    }).eq("id", params.sessionId).eq("shop_id", params.shopId);
+    throw error;
+  }
 }
