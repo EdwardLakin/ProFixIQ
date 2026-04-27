@@ -162,7 +162,7 @@ describe("analyzeOnboardingSession idempotent raw-row rebuild", () => {
     expect(firstRunCount).toBeGreaterThan(0);
     expect(secondRunCount).toBe(firstRunCount);
     expect(sb.upsertCalls.every((call) => call.onConflict === "shop_id,file_id,source_row_index")).toBe(true);
-    expect(sb.upsertCalls.flatMap((call) => call.rows).every((row) => row.session_id === "session-1" && row.parse_error === null)).toBe(true);
+    expect(sb.upsertCalls.flatMap((call) => call.rows).every((row) => row.session_id === "session-1" && row.error_reason === null)).toBe(true);
   });
 
   it("throws 409 conflict when a run is already in progress", async () => {
