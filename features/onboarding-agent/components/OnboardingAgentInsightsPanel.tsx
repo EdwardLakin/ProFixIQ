@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { OnboardingAgentReport } from "@/features/onboarding-agent/lib/agentTypes";
 
 function readinessTone(status: OnboardingAgentReport["activationReadiness"]["status"] | undefined) {
-  if (status === "ready_for_dry_run" || status === "ready_for_activation_later") return "border-emerald-400/40 text-emerald-200";
+  if (status === "ready_for_dry_run" || status === "activation_disabled") return "border-emerald-400/40 text-emerald-200";
   if (status === "review_required") return "border-amber-400/40 text-amber-200";
   return "border-rose-400/40 text-rose-200";
 }

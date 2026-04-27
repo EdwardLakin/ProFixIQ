@@ -105,7 +105,7 @@ describe("onboarding agent ai safeguards", () => {
 
   it("activation readiness is not ready with blocking items", () => {
     const report = buildDeterministicFallbackReport(makeInput("blocking"));
-    expect(report.activationReadiness.status).toBe("not_ready");
+    expect(report.activationReadiness.status).toBe("review_required");
     expect(report.activationReadiness.safeToProceed).toBe(false);
   });
 
@@ -113,7 +113,7 @@ describe("onboarding agent ai safeguards", () => {
     const input = makeInput("high");
     input.deterministicReviewItems = [];
     const report = buildDeterministicFallbackReport(input);
-    expect(report.activationReadiness.status).toBe("ready_for_dry_run");
+    expect(report.activationReadiness.status).toBe("activation_disabled");
     expect(report.activationReadiness.safeToProceed).toBe(true);
   });
 

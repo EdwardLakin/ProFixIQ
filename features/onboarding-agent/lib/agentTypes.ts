@@ -16,7 +16,7 @@ export type OnboardingAgentActivationStatus =
   | "empty"
   | "review_required"
   | "ready_for_dry_run"
-  | "ready_for_activation_later";
+  | "activation_disabled";
 
 export type OnboardingAgentInput = {
   sessionId: string;

@@ -49,6 +49,17 @@ describe("onboarding staging", () => {
     expect(invoice?.entity_type).toBe("historical_invoice");
   });
 
+  it("stages vendors, parts, staff, and menu suggestions", () => {
+    const vendor = stage("vendors", { "Vendor Name": "North Supply", Email: "orders@north.test" }).entity;
+    const part = stage("parts", { SKU: "P-1", Description: "Brake Pad", Vendor: "North Supply" }).entity;
+    const staff = stage("staff", { Name: "Alex Tech", Email: "alex@shop.test" }).entity;
+    const menu = stage("menu", { "Service Name": "Alignment", Description: "4 wheel alignment" }).entity;
+    expect(vendor?.entity_type).toBe("vendor");
+    expect(part?.entity_type).toBe("part");
+    expect(staff?.entity_type).toBe("staff_candidate");
+    expect(menu?.entity_type).toBe("menu_suggestion");
+  });
+
   it("creates work_order_invoice links when invoice references work order id", () => {
     const wo = stage("history", { "Work Order": "RO-1", "Customer ID": "C-1", Complaint: "noise" }).entity;
     const invoice = stage("invoices", { Invoice: "INV-1", "Work Order": "RO-1", Total: "500" }).entity;
@@ -61,6 +72,28 @@ describe("onboarding staging", () => {
       ],
     });
     expect(graph.links.some((link) => link.link_type === "work_order_invoice")).toBe(true);
+  });
+
+  it("creates customer_work_order, vehicle_work_order, and vendor_part links", () => {
+    const customer = stage("customers", { "Customer ID": "C-2", Name: "John Doe", Email: "john@example.com" }).entity!;
+    const vehicle = stage("vehicles", { "Vehicle ID": "V-2", "Customer ID": "C-2", VIN: "1HGCM82633A004353" }).entity!;
+    const wo = stage("history", { "Work Order": "RO-2", "Customer ID": "C-2", "Vehicle ID": "V-2", Complaint: "pulling" }).entity!;
+    const vendor = stage("vendors", { "Vendor Name": "Parts Co", Email: "parts@co.test" }).entity!;
+    const part = stage("parts", { SKU: "P-2", Description: "Rotor", Vendor: "Parts Co" }).entity!;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [
+        { id: "c-2", entity_type: customer.entity_type, normalized: customer.normalized },
+        { id: "v-2", entity_type: vehicle.entity_type, normalized: vehicle.normalized },
+        { id: "wo-2", entity_type: wo.entity_type, normalized: wo.normalized },
+        { id: "vendor-2", entity_type: vendor.entity_type, normalized: vendor.normalized },
+        { id: "part-2", entity_type: part.entity_type, normalized: part.normalized },
+      ],
+    });
+    expect(graph.links.some((link) => link.link_type === "customer_work_order")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "vehicle_work_order")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "vendor_part")).toBe(true);
   });
 
   it("missing identity creates review item instead of fake entity", () => {

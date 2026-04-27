@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDryRunActivationPlan } from "@/features/onboarding-agent/lib/activationPlan";
+import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 
 export async function buildOnboardingActivationPlan(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
@@ -26,8 +27,15 @@ export async function buildOnboardingActivationPlan(params: { supabase: Supabase
     return acc;
   }, {});
 
-  const blocking = (reviewRows ?? []).filter((row: any) => row.severity === "blocking").length;
-  const nonblocking = (reviewRows ?? []).length - blocking;
+  const canonical = buildOnboardingSummary({
+    filesCount: 0,
+    rowsParsed: 0,
+    entityRows: (entityRows ?? []).map((row: any) => ({ entity_type: row.entity_type })),
+    linkRows: (linkRows ?? []).map((row: any) => ({ link_type: row.link_type })),
+    reviewRows: (reviewRows ?? []).map((row: any) => ({ severity: row.severity, summary: "", status: "pending" })),
+  });
+  const blocking = canonical.review_counts_by_severity.blocking ?? 0;
+  const nonblocking = canonical.total_review_items - blocking;
 
   const plan = buildDryRunActivationPlan({
     sessionId: params.sessionId,

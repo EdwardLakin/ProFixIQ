@@ -72,5 +72,14 @@ export function fingerprintForDomain(domain: OnboardingDomain, normalized: Recor
     return name ? `staff:name:${name.toLowerCase()}` : null;
   }
 
+  if (domain === "menu") {
+    const opCode = text(normalized.opCode);
+    if (opCode) return `menu:op:${opCode.toLowerCase()}`;
+    const serviceName = text(normalized.serviceName);
+    if (serviceName) return `menu:name:${serviceName.toLowerCase()}`;
+    const description = text(normalized.description);
+    return description ? `menu:description:${description.toLowerCase()}` : null;
+  }
+
   return null;
 }

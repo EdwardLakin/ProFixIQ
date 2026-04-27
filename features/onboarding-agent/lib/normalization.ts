@@ -27,18 +27,13 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
       entityType: "customer",
       displayName: name || value(row, ["company name", "company", "business"]),
       normalized: {
-        sourceCustomerId: value(row, ["customer id", "id"]),
+        sourceCustomerId: value(row, ["customer id", "id", "external customer id"]),
         name,
         firstName,
         lastName: rest.join(" "),
         businessName: value(row, ["company", "company name", "business"]),
         email: value(row, ["email", "email address"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "phone number", "mobile"])),
-        address: value(row, ["address", "street", "street address"]),
-        city: value(row, ["city", "town"]),
-        province: value(row, ["province", "state", "region"]),
-        postalCode: value(row, ["postal", "postal code", "zip", "zip code"]),
-        fleetFlag: ["1", "true", "yes", "fleet"].includes(value(row, ["fleet", "is fleet", "company flag"]).toLowerCase()),
       },
     };
   }
@@ -53,7 +48,7 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
       entityType: "vehicle",
       displayName: `${year} ${make} ${model}`.trim() || vin || value(row, ["plate", "license"]),
       normalized: {
-        sourceVehicleId: value(row, ["vehicle id", "id"]),
+        sourceVehicleId: value(row, ["vehicle id", "id", "external vehicle id"]),
         sourceCustomerId: value(row, ["customer id"]),
         customerName: value(row, ["customer name", "name"]),
         customerEmail: value(row, ["customer email", "email"]),
@@ -71,26 +66,24 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   if (domain === "history") {
     return {
       entityType: "historical_work_order",
-      displayName: value(row, ["work order", "repair order", "ro", "ro id"]),
+      displayName: value(row, ["work order", "repair order", "ro", "ro id", "ro number"]),
       normalized: {
         sourceWorkOrderId: value(row, ["work order", "ro id", "repair order", "ro number"]),
+        invoiceId: value(row, ["invoice id", "invoice number", "invoice"]),
         sourceCustomerId: value(row, ["customer id"]),
+        customerEmail: value(row, ["customer email", "email"]).toLowerCase(),
+        customerName: value(row, ["customer name", "name"]),
         sourceVehicleId: value(row, ["vehicle id"]),
         vehicleVin: value(row, ["vin"]).toUpperCase().replace(/\s+/g, ""),
         vehiclePlate: value(row, ["plate", "license"]).toUpperCase().replace(/\s+/g, ""),
-        invoiceId: value(row, ["invoice id", "invoice number", "invoice"]),
+        vehicleUnitNumber: value(row, ["unit", "unit number"]),
         complaint: value(row, ["complaint", "description", "concern"]),
         cause: value(row, ["cause"]),
         correction: value(row, ["correction", "resolution"]),
-        openedDate: value(row, ["opened", "opened date", "open date"]),
+        openedDate: value(row, ["opened", "opened date", "open date", "date"]),
         closedDate: value(row, ["closed", "completed date", "closed date"]),
-        mileage: value(row, ["mileage", "odometer"]),
         totalRaw: value(row, ["total", "amount"]),
         total: parseMoney(value(row, ["total", "amount"])),
-        laborRaw: value(row, ["labor", "labor amount"]),
-        laborAmount: parseMoney(value(row, ["labor", "labor amount"])),
-        partsRaw: value(row, ["parts", "parts amount"]),
-        partsAmount: parseMoney(value(row, ["parts", "parts amount"])),
       },
     };
   }
@@ -104,19 +97,10 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         invoiceNumber: value(row, ["invoice", "invoice number", "invoice id"]),
         sourceWorkOrderId: value(row, ["work order", "ro", "ro id", "repair order"]),
         sourceCustomerId: value(row, ["customer id"]),
-        subtotalRaw: value(row, ["subtotal"]),
-        subtotal: parseMoney(value(row, ["subtotal"])),
-        taxRaw: value(row, ["tax", "tax amount"]),
-        tax: parseMoney(value(row, ["tax", "tax amount"])),
-        laborRaw: value(row, ["labor", "labor amount"]),
-        laborAmount: parseMoney(value(row, ["labor", "labor amount"])),
-        partsRaw: value(row, ["parts", "parts amount"]),
-        partsAmount: parseMoney(value(row, ["parts", "parts amount"])),
+        invoiceDate: value(row, ["issue date", "invoice date", "date"]),
+        paymentStatus: value(row, ["status", "payment status"]),
         totalRaw,
         total: parseMoney(totalRaw),
-        issueDate: value(row, ["issue date", "date"]),
-        paidDate: value(row, ["paid date", "closed", "closed date"]),
-        paymentStatus: value(row, ["status", "payment status"]),
       },
     };
   }
@@ -129,12 +113,7 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         sku: value(row, ["sku", "part sku"]),
         partNumber: value(row, ["part number", "part #", "number"]),
         description: value(row, ["description", "name", "part"]),
-        vendorName: value(row, ["vendor", "supplier", "vendor name"]),
-        quantity: value(row, ["qty", "quantity", "on hand"]),
-        costRaw: value(row, ["cost"]),
-        cost: parseMoney(value(row, ["cost"])),
-        priceRaw: value(row, ["price", "retail"]),
-        price: parseMoney(value(row, ["price", "retail"])),
+        vendorName: value(row, ["vendor", "supplier", "vendor name", "supplier name"]),
       },
     };
   }
@@ -142,9 +121,9 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   if (domain === "vendors") {
     return {
       entityType: "vendor",
-      displayName: value(row, ["vendor", "supplier", "company", "vendor name"]),
+      displayName: value(row, ["vendor", "supplier", "company", "vendor name", "supplier name"]),
       normalized: {
-        name: value(row, ["vendor", "supplier", "company", "vendor name"]),
+        name: value(row, ["vendor", "supplier", "company", "vendor name", "supplier name"]),
         email: value(row, ["email", "vendor email"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "vendor phone"])),
         accountNumber: value(row, ["account", "account number", "vendor account"]),
@@ -160,7 +139,23 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         name: value(row, ["name", "full name", "employee"]),
         email: value(row, ["email", "email address"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "mobile"])),
-        role: value(row, ["role", "job title", "position"]),
+        role: value(row, ["role", "job title", "position", "technician", "advisor"]),
+      },
+    };
+  }
+
+  if (domain === "menu") {
+    return {
+      entityType: "menu_suggestion",
+      displayName: value(row, ["service", "service name", "name", "description"]),
+      normalized: {
+        serviceName: value(row, ["service", "service name", "name"]),
+        description: value(row, ["description"]),
+        category: value(row, ["category", "service category"]),
+        laborHours: value(row, ["labor hours", "hours"]),
+        laborPriceRaw: value(row, ["labor price", "price", "labor rate"]),
+        laborPrice: parseMoney(value(row, ["labor price", "price", "labor rate"])),
+        opCode: value(row, ["operation code", "op code", "labor operation", "canned job"]),
       },
     };
   }

@@ -9,6 +9,15 @@ describe("onboarding agent helpers", () => {
     expect(detectDomain({ filename: "customers.csv", headers: ["Customer ID", "Full NAME", "EMAIL", "Phone Number", "Company Name"] })).toBe("customers");
   });
 
+  it("detects known domain files using filename hints", () => {
+    expect(detectDomain({ filename: "vendors.csv", headers: ["Vendor Name", "Vendor Email"] })).toBe("vendors");
+    expect(detectDomain({ filename: "staff_users.csv", headers: ["Full Name", "Role", "Email"] })).toBe("staff");
+    expect(detectDomain({ filename: "vehicles.csv", headers: ["VIN", "Plate"] })).toBe("vehicles");
+    expect(detectDomain({ filename: "invoices.csv", headers: ["Invoice Number", "Total"] })).toBe("invoices");
+    expect(detectDomain({ filename: "work_orders_history.csv", headers: ["Work Order", "Complaint"] })).toBe("history");
+    expect(detectDomain({ filename: "service_catalog.csv", headers: ["Service Name", "Labor Hours"] })).toBe("menu");
+  });
+
   it("parses csv with mixed-case headers", () => {
     const parsed = parseCsvText("Customer ID,Full NAME,EMAIL\n1,Jane Doe,jane@example.com");
     expect(parsed.headers).toEqual(["Customer ID", "Full NAME", "EMAIL"]);
@@ -24,6 +33,13 @@ describe("onboarding agent helpers", () => {
 
     const invoice = normalizeRow("invoices", { Invoice: "INV-1", "Work Order": "RO-9", Total: "500", Status: "closed" });
     expect(invoice.entityType).toBe("historical_invoice");
+  });
+
+  it("normalizes parts/vendors/staff/menu rows", () => {
+    expect(normalizeRow("parts", { SKU: "SKU-1", Description: "Filter" }).entityType).toBe("part");
+    expect(normalizeRow("vendors", { "Vendor Name": "Acme Supply" }).entityType).toBe("vendor");
+    expect(normalizeRow("staff", { Name: "Tech A", Email: "tech@example.com" }).entityType).toBe("staff_candidate");
+    expect(normalizeRow("menu", { "Service Name": "Oil Change", "Labor Hours": "1.0" }).entityType).toBe("menu_suggestion");
   });
 
   it("builds dry-run activation plan", () => {

@@ -1,11 +1,25 @@
+"use client";
+
+import { useState } from "react";
+
+type ReviewItem = {
+  id: string;
+  severity: string;
+  domain?: string | null;
+  issue_type?: string;
+  summary: string;
+  details?: Record<string, unknown>;
+};
+
 export function OnboardingReviewPanel({
   reviewCounts,
   reviewItems,
 }: {
   reviewCounts: { blocking?: number; high?: number; medium?: number; low?: number; byDomain?: Record<string, number> };
-  reviewItems: Array<{ id: string; severity: string; domain?: string | null; issue_type?: string; summary: string }>;
+  reviewItems: ReviewItem[];
 }) {
-  const topItems = reviewItems.filter((item) => item).slice(0, 10);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const topItems = reviewItems.filter((item) => item).slice(0, 12);
   const domainCounts = reviewCounts.byDomain ?? {};
 
   return (
@@ -29,16 +43,39 @@ export function OnboardingReviewPanel({
       </div>
 
       <div className="mt-3 space-y-2">
-        <p className="text-xs uppercase tracking-wide text-slate-400">Top pending exceptions</p>
-        {topItems.map((item) => (
-          <div key={item.id} className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              {item.severity} • {item.domain ?? "unknown"} • {item.issue_type ?? "issue"}
-            </p>
-            <p className="text-sm text-white">{item.summary}</p>
-            <p className="text-xs text-slate-400">Recommended action: resolve or map this item before activation dry-run.</p>
-          </div>
-        ))}
+        <p className="text-xs uppercase tracking-wide text-slate-400">Top grouped exceptions</p>
+        {topItems.map((item) => {
+          const details = (item.details ?? {}) as Record<string, any>;
+          const examples = Array.isArray(details.examples) ? details.examples : [];
+          const key = item.id;
+          return (
+            <div key={item.id} className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                {item.severity} • {item.domain ?? "unknown"} • {item.issue_type ?? "issue"}
+              </p>
+              <p className="text-sm text-white">{item.summary}</p>
+              {typeof details.count === "number" ? <p className="text-xs text-slate-300">Affected rows: {details.count}</p> : null}
+              {Array.isArray(details.sampleRowIndexes) && details.sampleRowIndexes.length > 0 ? (
+                <p className="text-xs text-slate-400">Sample rows: {details.sampleRowIndexes.slice(0, 5).join(", ")}</p>
+              ) : null}
+              <p className="text-xs text-slate-400">Recommended action: {details.recommendedAction ?? "Review examples and resolve before activation planning."}</p>
+              {examples.length > 0 ? (
+                <>
+                  <button className="mt-2 text-xs text-cyan-200 underline" onClick={() => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))}>
+                    {expanded[key] ? "Hide examples" : "Show examples"}
+                  </button>
+                  {expanded[key] ? (
+                    <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                      {examples.slice(0, 3).map((example: any, idx: number) => (
+                        <li key={`${key}-${idx}`}>• {example.summary}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          );
+        })}
         {topItems.length === 0 ? <p className="text-xs text-slate-400">No pending review exceptions.</p> : null}
       </div>
     </div>

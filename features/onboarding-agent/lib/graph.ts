@@ -33,6 +33,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
   const invoices = entities.filter((entity) => entity.entity_type === "historical_invoice");
   const parts = entities.filter((entity) => entity.entity_type === "part");
   const vendors = entities.filter((entity) => entity.entity_type === "vendor");
+  const menus = entities.filter((entity) => entity.entity_type === "menu_suggestion");
 
   const customersBySourceId = new Map(customers.map((c) => [text(c.normalized.sourceCustomerId), c]));
   const customersByEmail = new Map(customers.map((c) => [text(c.normalized.email).toLowerCase(), c]));
@@ -42,24 +43,12 @@ export function buildStagedLinks(params: BuildLinksParams) {
   const vehiclesBySourceId = new Map(vehicles.map((v) => [text(v.normalized.sourceVehicleId), v]));
   const vehiclesByVin = new Map(vehicles.map((v) => [text(v.normalized.vin).toUpperCase(), v]));
   const vehiclesByPlate = new Map(vehicles.map((v) => [text(v.normalized.plate).toUpperCase(), v]));
+  const vehiclesByUnit = new Map(vehicles.map((v) => [text(v.normalized.unitNumber).toUpperCase(), v]));
 
   const workOrdersBySourceId = new Map(workOrders.map((wo) => [text(wo.normalized.sourceWorkOrderId), wo]));
 
   const pushLink = (from: string, to: string, linkType: string, confidence: number, evidence: Record<string, unknown>) => {
-    if (confidence < 0.75) {
-      reviewItems.push(
-        makeReviewItem({
-          shopId,
-          sessionId,
-          severity: "medium",
-          domain: linkType,
-          issueType: "low_confidence_mapping",
-          summary: `${linkType} mapping confidence too low`,
-          details: evidence,
-        }),
-      );
-      return;
-    }
+    if (confidence < 0.6) return;
 
     links.push({
       from_entity_id: from,
@@ -84,19 +73,19 @@ export function buildStagedLinks(params: BuildLinksParams) {
     if (sourceCustomerId && customersBySourceId.get(sourceCustomerId)) {
       matched = customersBySourceId.get(sourceCustomerId);
       confidence = 0.95;
-      evidence = { sourceCustomerId };
+      evidence = { sourceCustomerId, matchStrategy: "source_id" };
     } else if (customerEmail && customersByEmail.get(customerEmail)) {
       matched = customersByEmail.get(customerEmail);
       confidence = 0.85;
-      evidence = { customerEmail };
+      evidence = { customerEmail, matchStrategy: "email" };
     } else if (customerPhone && customersByPhone.get(customerPhone)) {
       matched = customersByPhone.get(customerPhone);
-      confidence = 0.85;
-      evidence = { customerPhone };
+      confidence = 0.84;
+      evidence = { customerPhone, matchStrategy: "phone" };
     } else if (customerName && customersByName.get(customerName)) {
       matched = customersByName.get(customerName);
-      confidence = 0.75;
-      evidence = { customerName };
+      confidence = 0.72;
+      evidence = { customerName, matchStrategy: "name" };
     }
 
     if (!matched) {
@@ -107,8 +96,8 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "high",
           domain: "vehicles",
           issueType: "missing_customer_link",
-          summary: "Vehicle is missing a confident customer link",
-          details: { vehicleId: vehicle.id, sourceCustomerId, customerEmail, customerPhone, customerName },
+          summary: "Vehicle could not be linked to customer",
+          details: { sourceCustomerId, customerEmail, customerPhone, customerName },
         }),
       );
       continue;
@@ -119,13 +108,16 @@ export function buildStagedLinks(params: BuildLinksParams) {
 
   for (const workOrder of workOrders) {
     const sourceCustomerId = text(workOrder.normalized.sourceCustomerId);
-    const sourceVehicleId = text(workOrder.normalized.sourceVehicleId);
-    const vehicleVin = text(workOrder.normalized.vehicleVin).toUpperCase();
-    const vehiclePlate = text(workOrder.normalized.vehiclePlate).toUpperCase();
+    const customerEmail = text(workOrder.normalized.customerEmail).toLowerCase();
+    const customerName = normalizeName(workOrder.normalized.customerName);
 
-    const customer = sourceCustomerId ? customersBySourceId.get(sourceCustomerId) : undefined;
+    const customer = customersBySourceId.get(sourceCustomerId)
+      || customersByEmail.get(customerEmail)
+      || customersByName.get(customerName);
+
     if (customer) {
-      pushLink(customer.id, workOrder.id, "customer_work_order", 0.95, { sourceCustomerId });
+      const confidence = sourceCustomerId ? 0.95 : customerEmail ? 0.84 : 0.7;
+      pushLink(customer.id, workOrder.id, "customer_work_order", confidence, { sourceCustomerId, customerEmail, customerName });
     } else {
       reviewItems.push(
         makeReviewItem({
@@ -134,16 +126,25 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "high",
           domain: "history",
           issueType: "missing_customer_link",
-          summary: "Work order is missing customer linkage",
-          details: { workOrderId: workOrder.id, sourceCustomerId },
+          summary: "Work order could not be linked to customer",
+          details: { sourceCustomerId, customerEmail, customerName },
         }),
       );
     }
 
-    const vehicle = vehiclesBySourceId.get(sourceVehicleId) || vehiclesByVin.get(vehicleVin) || vehiclesByPlate.get(vehiclePlate);
+    const sourceVehicleId = text(workOrder.normalized.sourceVehicleId);
+    const vehicleVin = text(workOrder.normalized.vehicleVin).toUpperCase();
+    const vehiclePlate = text(workOrder.normalized.vehiclePlate).toUpperCase();
+    const vehicleUnit = text(workOrder.normalized.vehicleUnitNumber).toUpperCase();
+
+    const vehicle = vehiclesBySourceId.get(sourceVehicleId)
+      || vehiclesByVin.get(vehicleVin)
+      || vehiclesByPlate.get(vehiclePlate)
+      || vehiclesByUnit.get(vehicleUnit);
+
     if (vehicle) {
-      const confidence = sourceVehicleId ? 0.95 : vehicleVin ? 0.9 : 0.75;
-      pushLink(vehicle.id, workOrder.id, "vehicle_work_order", confidence, { sourceVehicleId, vehicleVin, vehiclePlate });
+      const confidence = sourceVehicleId ? 0.95 : vehicleVin || vehiclePlate ? 0.86 : 0.72;
+      pushLink(vehicle.id, workOrder.id, "vehicle_work_order", confidence, { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit });
     } else {
       reviewItems.push(
         makeReviewItem({
@@ -152,8 +153,8 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "medium",
           domain: "history",
           issueType: "missing_vehicle_link",
-          summary: "Work order is missing vehicle linkage",
-          details: { workOrderId: workOrder.id, sourceVehicleId, vehicleVin, vehiclePlate },
+          summary: "Work order could not be linked to vehicle",
+          details: { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit },
         }),
       );
     }
@@ -163,7 +164,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
     const sourceWorkOrderId = text(invoice.normalized.sourceWorkOrderId);
     const workOrder = sourceWorkOrderId ? workOrdersBySourceId.get(sourceWorkOrderId) : undefined;
     if (workOrder) {
-      pushLink(workOrder.id, invoice.id, "work_order_invoice", 0.95, { sourceWorkOrderId });
+      pushLink(workOrder.id, invoice.id, "work_order_invoice", 0.95, { sourceWorkOrderId, matchStrategy: "source_id" });
     } else {
       reviewItems.push(
         makeReviewItem({
@@ -172,8 +173,8 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "high",
           domain: "invoices",
           issueType: "missing_work_order_link",
-          summary: "Invoice is missing work-order linkage",
-          details: { invoiceId: invoice.id, sourceWorkOrderId },
+          summary: "Invoice could not be linked to work order",
+          details: { sourceWorkOrderId },
         }),
       );
     }
@@ -181,22 +182,51 @@ export function buildStagedLinks(params: BuildLinksParams) {
 
   for (const part of parts) {
     const vendorName = normalizeName(part.normalized.vendorName);
-    const match = vendors.find((vendor) => {
-      const vendorKey = normalizeName(vendor.normalized.name);
-      return vendorName && vendorKey && vendorName === vendorKey;
-    });
+    if (!vendorName) continue;
+    const match = vendors.find((vendor) => normalizeName(vendor.normalized.name) === vendorName);
     if (match) {
-      pushLink(match.id, part.id, "vendor_part", 0.75, { vendorName });
+      pushLink(match.id, part.id, "vendor_part", 0.8, { vendorName, matchStrategy: "vendor_name" });
+    } else {
+      reviewItems.push(
+        makeReviewItem({
+          shopId,
+          sessionId,
+          severity: "medium",
+          domain: "parts",
+          issueType: "missing_vendor_link",
+          summary: "Part is missing vendor match",
+          details: { vendorName },
+        }),
+      );
     }
+  }
+
+  for (const menu of menus) {
+    if (!text(menu.normalized.serviceName) && !text(menu.normalized.description)) {
+      reviewItems.push(
+        makeReviewItem({
+          shopId,
+          sessionId,
+          severity: "medium",
+          domain: "menu",
+          issueType: "missing_service_identity",
+          summary: "Service catalog row is missing service identity",
+          details: { opCode: menu.normalized.opCode },
+        }),
+      );
+      continue;
+    }
+
+    pushLink(menu.id, menu.id, "service_menu_suggestion", 1, { type: "self" });
   }
 
   const dedupedLinks = links.filter(
     (link, index, all) =>
       all.findIndex(
         (candidate) =>
-          candidate.link_type === link.link_type &&
-          candidate.from_entity_id === link.from_entity_id &&
-          candidate.to_entity_id === link.to_entity_id,
+          candidate.link_type === link.link_type
+          && candidate.from_entity_id === link.from_entity_id
+          && candidate.to_entity_id === link.to_entity_id,
       ) === index,
   );
 

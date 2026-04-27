@@ -5,8 +5,25 @@ import { fingerprintForDomain } from "@/features/onboarding-agent/lib/fingerprin
 import { buildStagedLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { nextStatusFromCounts } from "@/features/onboarding-agent/lib/sessionStatus";
-import { makeReviewItem, markDuplicateEntities, stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
+import { markDuplicateEntities, stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
+import { buildOnboardingSummary, groupReviewItems } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+
+const INSERT_CHUNK_SIZE = 1000;
+
+async function insertInChunks(sb: any, table: string, rows: any[], returning?: string) {
+  if (!rows.length) return [];
+  const output: any[] = [];
+  for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + INSERT_CHUNK_SIZE);
+    let query = sb.from(table).insert(chunk);
+    if (returning) query = query.select(returning);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    if (Array.isArray(data)) output.push(...data);
+  }
+  return output;
+}
 
 export async function analyzeOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
@@ -26,7 +43,6 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
 
   await sb.from("onboarding_sessions").update({ status: "analyzing" }).eq("id", params.sessionId).eq("shop_id", params.shopId);
 
-  // Analyze is intentionally repeatable. We clear only staged analysis artifacts and recreate them.
   await sb.from("onboarding_raw_rows").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
   await sb.from("onboarding_entities").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
   await sb.from("onboarding_entity_links").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
@@ -39,16 +55,13 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
   for (const file of files ?? []) {
     const dl = await sb.storage.from(file.storage_bucket).download(file.storage_path);
     if (dl.error || !dl.data) {
-      reviewItems.push(
-        makeReviewItem({
-          shopId: params.shopId,
-          sessionId: params.sessionId,
-          severity: "blocking",
-          domain: "unknown",
-          issueType: "parse_error",
-          summary: `Failed to read ${file.original_filename ?? file.storage_path}`,
-        }),
-      );
+      reviewItems.push({
+        severity: "blocking",
+        domain: "unknown",
+        issue_type: "parse_error",
+        summary: `Failed to read ${file.original_filename ?? file.storage_path}`,
+        details: {},
+      });
       const { error: updateError } = await sb
         .from("onboarding_files")
         .update({ parse_status: "failed", parse_error: dl.error?.message ?? "download failed" })
@@ -79,12 +92,7 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
       parse_status: "parsed",
     }));
 
-    const { data: rawRows, error: rawRowsError } = await sb
-      .from("onboarding_raw_rows")
-      .insert(rawRowsPayload)
-      .select("id, source_row_index");
-    if (rawRowsError) throw new Error(rawRowsError.message);
-
+    const rawRows = await insertInChunks(sb, "onboarding_raw_rows", rawRowsPayload, "id, source_row_index");
     const rawRowsByIndex = new Map<number, string>((rawRows ?? []).map((row: any) => [Number(row.source_row_index), row.id]));
 
     parsed.rows.forEach((row, index) => {
@@ -103,7 +111,7 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
       });
 
       if (staged.entity) stagedEntities.push(staged.entity);
-      reviewItems.push(...staged.reviewItems);
+      reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
     });
 
     const { error: fileUpdateError } = await sb
@@ -112,63 +120,69 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
       .eq("id", file.id)
       .eq("shop_id", params.shopId);
     if (fileUpdateError) throw new Error(fileUpdateError.message);
-
-    if (detectedDomain === "unknown") {
-      reviewItems.push(
-        makeReviewItem({
-          shopId: params.shopId,
-          sessionId: params.sessionId,
-          severity: "medium",
-          domain: "unknown",
-          issueType: "unsupported_file",
-          summary: `Unsupported file type for ${file.original_filename ?? file.storage_path}`,
-        }),
-      );
-    }
   }
 
-  reviewItems.push(...markDuplicateEntities(stagedEntities, { shopId: params.shopId, sessionId: params.sessionId }));
+  reviewItems.push(...markDuplicateEntities(stagedEntities, { shopId: params.shopId, sessionId: params.sessionId }).map((item) => ({
+    severity: item.severity,
+    domain: item.domain,
+    issue_type: item.issue_type,
+    summary: item.summary,
+    details: item.details,
+  })));
 
-  let entities: Array<{ id: string; entity_type: string; normalized: Record<string, unknown>; display_name?: string | null; source_external_id?: string | null }> = [];
-  if (stagedEntities.length) {
-    const { data: insertedEntities, error: entitiesError } = await sb
-      .from("onboarding_entities")
-      .insert(stagedEntities)
-      .select("id, entity_type, normalized, display_name, source_external_id");
-    if (entitiesError) throw new Error(entitiesError.message);
-    entities = insertedEntities ?? [];
-  }
+  const entities = await insertInChunks(sb, "onboarding_entities", stagedEntities, "id, entity_type, normalized, display_name, source_external_id");
 
-  const graph = buildStagedLinks({ entities: entities.map((e) => ({ ...e, normalized: e.normalized ?? {} })), shopId: params.shopId, sessionId: params.sessionId });
-  reviewItems.push(...graph.reviewItems);
+  const graph = buildStagedLinks({ entities: entities.map((e: any) => ({ ...e, normalized: e.normalized ?? {} })), shopId: params.shopId, sessionId: params.sessionId });
+  reviewItems.push(...graph.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
 
-  if (graph.links.length) {
-    const { error: linksError } = await sb
-      .from("onboarding_entity_links")
-      .insert(graph.links.map((link) => ({ ...link, shop_id: params.shopId, session_id: params.sessionId })));
-    if (linksError) throw new Error(linksError.message);
-  }
+  const linksToInsert = graph.links.map((link) => ({ ...link, shop_id: params.shopId, session_id: params.sessionId }));
+  await insertInChunks(sb, "onboarding_entity_links", linksToInsert);
 
-  if (reviewItems.length) {
-    const { error: reviewError } = await sb.from("onboarding_review_items").insert(reviewItems);
-    if (reviewError) throw new Error(reviewError.message);
-  }
+  const groupedReviewItems = groupReviewItems(reviewItems as any).map((item) => ({
+    shop_id: params.shopId,
+    session_id: params.sessionId,
+    entity_id: null,
+    severity: item.severity,
+    domain: item.domain,
+    issue_type: item.issue_type,
+    summary: item.summary,
+    details: {
+      count: item.count,
+      sampleRowIndexes: item.sampleRowIndexes,
+      sampleNormalizedValues: item.sampleNormalizedValues,
+      recommendedAction: item.recommended_action,
+      ...item.details,
+    },
+    status: "pending",
+  }));
+  await insertInChunks(sb, "onboarding_review_items", groupedReviewItems);
 
-  const blockingCount = reviewItems.filter((item) => item.severity === "blocking").length;
+  const blockingCount = groupedReviewItems.filter((item) => item.severity === "blocking").length;
   const status = nextStatusFromCounts({ fileCount: (files ?? []).length, blockingReviewCount: blockingCount });
 
-  const summary = {
-    fileCount: (files ?? []).length,
+  const canonical = buildOnboardingSummary({
+    filesCount: (files ?? []).length,
     rowsParsed: totalRows,
-    entitiesDiscovered: entities.length,
-    linksFound: graph.links.length,
-    reviewExceptions: reviewItems.length,
+    entityRows: (entities ?? []).map((e: any) => ({ entity_type: e.entity_type })),
+    linkRows: graph.links.map((l) => ({ link_type: l.link_type })),
+    reviewRows: groupedReviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details, status: item.status })),
+    groupedExceptionCount: groupedReviewItems.length,
+    activationReadiness: blockingCount > 0 ? "review_required" : "ready_for_dry_run",
+  });
+
+  const summary = {
+    fileCount: canonical.files_count,
+    rowsParsed: canonical.rows_parsed,
+    entitiesDiscovered: canonical.total_entities,
+    linksFound: canonical.total_links,
+    reviewExceptions: canonical.total_review_items,
+    groupedExceptionCount: canonical.grouped_exception_count,
     liveRecordsCreated: 0 as const,
   };
 
   await sb
     .from("onboarding_sessions")
-    .update({ status, analyzed_at: new Date().toISOString(), summary, stats: summary })
+    .update({ status, analyzed_at: new Date().toISOString(), summary, stats: canonical })
     .eq("id", params.sessionId)
     .eq("shop_id", params.shopId);
 
