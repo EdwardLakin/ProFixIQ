@@ -8,7 +8,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     sb.from("onboarding_files").select("*").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
     sb.from("onboarding_entities").select("entity_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb.from("onboarding_entity_links").select("link_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("onboarding_review_items").select("severity, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_review_items").select("id, severity, status, domain, summary, issue_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
     sb.from("onboarding_activation_plans").select("id, status, summary, created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
@@ -28,5 +28,13 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     return acc;
   }, {});
 
-  return { session, files: files ?? [], entityCounts, reviewCounts, linkCounts, latestPlan };
+  return {
+    session,
+    files: files ?? [],
+    entityCounts,
+    reviewCounts,
+    reviewItems: reviews ?? [],
+    linkCounts,
+    latestPlan,
+  };
 }
