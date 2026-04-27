@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createOnboardingSession } from "@/features/onboarding-agent/server/createOnboardingSession";
+import { countOnboardingRawRowsBySession } from "@/features/onboarding-agent/server/rawRowCounts";
+import { buildOnboardingSessionListPayload } from "@/features/onboarding-agent/server/sessionListSummary";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -63,10 +65,17 @@ export async function GET() {
     }
   }
 
-  const sessions = (data ?? []).map((session: any) => ({
-    ...session,
-    file_count: fileCounts.get(String(session.id)) ?? 0,
-  }));
+  const rawRowsBySession = await countOnboardingRawRowsBySession({
+    supabase: admin,
+    shopId,
+    sessionIds,
+  });
+
+  const sessions = buildOnboardingSessionListPayload({
+    sessions: (data ?? []) as Array<{ id: string; summary?: Record<string, unknown> | null }>,
+    fileCounts,
+    rawRowsBySession,
+  });
 
   return NextResponse.json({ ok: true, sessions });
 }

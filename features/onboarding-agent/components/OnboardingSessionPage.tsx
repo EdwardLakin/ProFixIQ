@@ -80,7 +80,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     if (!session) return false;
     if (session.analyzed_at) return true;
     if (session.summary && typeof session.summary === "object") {
-      return Number((session.summary as Record<string, unknown>).rowsParsed ?? 0) > 0;
+      return Number((session.summary as Record<string, unknown>).rowsParsedTotal ?? (session.summary as Record<string, unknown>).rowsParsed ?? 0) > 0;
     }
     return false;
   }, [session]);

@@ -8,6 +8,7 @@ import { buildOnboardingSummary, groupReviewItems } from "@/features/onboarding-
 import type { OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
 import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
+import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
 
 const INSERT_CHUNK_SIZE = 1000;
 
@@ -162,9 +163,15 @@ export async function applyOnboardingAgentPlan(params: {
   await insertInChunks(sb, "onboarding_review_items", groupedReviewItems);
 
   const { data: files } = await sb.from("onboarding_files").select("id").eq("shop_id", params.shopId).eq("session_id", params.sessionId);
+  const rowsParsedTotal = await countOnboardingRawRows({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
+
   const canonical = buildOnboardingSummary({
     filesCount: (files ?? []).length,
-    rowsParsed: (rows ?? []).length,
+    rowsParsed: rowsParsedTotal,
     entityRows: (entities ?? []).map((e: any) => ({ entity_type: e.entity_type, status: e.status })),
     linkRows: (insertedLinks ?? []).map((l: any) => ({ link_type: l.link_type, status: l.status })),
     reviewRows: groupedReviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details, status: item.status })),

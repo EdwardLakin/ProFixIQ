@@ -180,6 +180,8 @@ export function buildOnboardingSummary(input: {
   reviewRows: PendingReviewItem[];
   groupedExceptionCount?: number;
   analysisCompleted?: boolean;
+  aiRowsSampled?: number;
+  aiFilesSampled?: number;
 }) {
   const entityCounts = ENTITY_BUCKETS.reduce<Record<string, number>>((acc, key) => {
     acc[key] = 0;
@@ -276,6 +278,9 @@ export function buildOnboardingSummary(input: {
     summaryCounts: {
       uploadedFiles: input.filesCount,
       rowsParsed: input.rowsParsed,
+      rowsParsedTotal: input.rowsParsed,
+      aiRowsSampled: toNumber(input.aiRowsSampled),
+      aiFilesSampled: toNumber(input.aiFilesSampled),
       entitiesDiscovered: totalEntities,
       linksFound: totalLinks,
       reviewExceptions: totalReviewItems,
