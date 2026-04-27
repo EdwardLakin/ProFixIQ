@@ -29,13 +29,14 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     void load();
   }, [load]);
 
-  const analyze = async () => {
+  const analyze = async (mode: "analyze" | "rerun" = "analyze") => {
     setAnalyzing(true);
     setError(null);
     setNotice(null);
 
     try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/analyze`, { method: "POST" });
+      const endpoint = mode === "rerun" ? "rerun" : "analyze";
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/${endpoint}`, { method: "POST" });
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
@@ -134,15 +135,15 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={analyze}
-            disabled={!hasFiles || analyzing || deleting}
+            onClick={() => analyze("analyze")}
+            disabled={!hasFiles || hasAnalysis || analyzing || deleting}
             className="rounded border border-cyan-400/40 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {analyzing ? "Analyzing…" : "Analyze staged files"}
           </button>
           {hasAnalysis ? (
             <button
-              onClick={analyze}
+              onClick={() => analyze("rerun")}
               disabled={!hasFiles || analyzing || deleting}
               className="rounded border border-white/20 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -166,6 +167,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         </div>
 
         {!hasFiles ? <p className="mt-2 text-xs text-slate-400">Upload at least one file before analysis.</p> : null}
+        {hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analysis already exists; use Rerun analysis to safely clear and rebuild staged artifacts.</p> : null}
         {!hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analyze staged files before preparing an activation plan.</p> : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}

@@ -1,4 +1,5 @@
 import type { OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
+import { createHash } from "node:crypto";
 
 export type EntityStatus = "ready" | "needs_review" | "duplicate_candidate";
 
@@ -12,6 +13,12 @@ export type StageEntityInput = {
   shopId: string;
   sessionId: string;
 };
+
+export function stableUuidFromParts(parts: Array<string | number | null | undefined>): string {
+  const seed = parts.map((part) => String(part ?? "")).join("|");
+  const hex = createHash("sha1").update(seed).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -207,6 +214,14 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
 
   return {
     entity: {
+      id: stableUuidFromParts([
+        "onboarding_entity",
+        input.shopId,
+        input.sessionId,
+        input.sourceFileId,
+        input.sourceRowIndex,
+        entityTypeByDomain[domain] ?? "unknown",
+      ]),
       shop_id: input.shopId,
       session_id: input.sessionId,
       entity_type: entityTypeByDomain[domain] ?? "unknown",

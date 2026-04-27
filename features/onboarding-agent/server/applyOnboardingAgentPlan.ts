@@ -3,7 +3,7 @@ import { fingerprintForDomain } from "@/features/onboarding-agent/lib/fingerprin
 import { buildStagedLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { nextStatusFromCounts } from "@/features/onboarding-agent/lib/sessionStatus";
-import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
+import { stableUuidFromParts, stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
 import { buildOnboardingSummary, groupReviewItems } from "@/features/onboarding-agent/lib/summaries";
 import type { OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
@@ -20,7 +20,7 @@ async function insertInChunks(sb: any, table: string, rows: any[], returning?: s
   const output: any[] = [];
   for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
     const chunk = rows.slice(i, i + INSERT_CHUNK_SIZE);
-    let query = sb.from(table).insert(chunk);
+    let query = sb.from(table).upsert(chunk, { onConflict: "id" });
     if (returning) query = query.select(returning);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -97,9 +97,6 @@ export async function applyOnboardingAgentPlan(params: {
   plan: OnboardingAgentPlan;
 }) {
   const sb = params.supabase as any;
-  await sb.from("onboarding_entities").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
-  await sb.from("onboarding_entity_links").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
-  await sb.from("onboarding_review_items").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
 
   const fileMap = new Map(params.plan.files.map((file) => [file.fileId, file]));
   const { data: filesData } = await sb
@@ -205,7 +202,7 @@ export async function applyOnboardingAgentPlan(params: {
         reviewItemsByFile[fileId] = byFile;
         reviewForFile += staged.reviewItems.length;
         reviewByDomain[domain] = (reviewByDomain[domain] ?? 0) + staged.reviewItems.length;
-        reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
+        reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: { ...(item.details ?? {}), fileId } })));
       }
 
       if (!didTraceRow) {
@@ -324,12 +321,18 @@ export async function applyOnboardingAgentPlan(params: {
 
   const entities = await insertInChunks(sb, "onboarding_entities", stagedEntities, "id, entity_type, status, normalized");
   const graph = buildStagedLinks({ entities: (entities ?? []).map((e: any) => ({ ...e, normalized: e.normalized ?? {} })), shopId: params.shopId, sessionId: params.sessionId });
-  const linksToInsert = graph.links.map((link) => ({ ...link, shop_id: params.shopId, session_id: params.sessionId }));
+  const linksToInsert = graph.links.map((link) => ({
+    ...link,
+    id: stableUuidFromParts(["onboarding_link", params.shopId, params.sessionId, link.link_type, link.from_entity_id, link.to_entity_id]),
+    shop_id: params.shopId,
+    session_id: params.sessionId,
+  }));
   const insertedLinks = await insertInChunks(sb, "onboarding_entity_links", linksToInsert, "id, link_type, status");
 
-  reviewItems.push(...graph.reviewItems);
+  reviewItems.push(...graph.reviewItems.map((item) => ({ ...item, details: item.details ?? {} })));
 
   const groupedReviewItems = groupReviewItems(reviewItems as any).map((item) => ({
+    id: stableUuidFromParts(["onboarding_review", params.shopId, params.sessionId, item.domain, item.issue_type, item.severity, JSON.stringify(item.details ?? {})]),
     shop_id: params.shopId,
     session_id: params.sessionId,
     entity_id: null,
@@ -352,12 +355,6 @@ export async function applyOnboardingAgentPlan(params: {
     linksByEntityId.set(link.to_entity_id, to);
   }
 
-  const reviewCountsByIssueCode = groupedReviewItems.reduce<Record<string, number>>((acc, item) => {
-    const issueCode = String(item.issue_type ?? "issue");
-    acc[issueCode] = (acc[issueCode] ?? 0) + 1;
-    return acc;
-  }, {});
-
   for (const trace of pipelineTraces) {
     const stagedForFile = stagedEntitiesByFile[trace.fileId] ?? [];
     const linkCounts = stagedForFile.reduce<Record<string, number>>((acc, entity) => {
@@ -368,10 +365,13 @@ export async function applyOnboardingAgentPlan(params: {
     trace.persistedLinkCountsByType = linkCounts;
     trace.rowsSampledForAI = Math.min(trace.rowCountTotal, 25);
     trace.readyCount = stagedForFile.filter((entity) => String(entity.status ?? "ready") === "ready").length;
-    trace.reviewCount = stagedForFile.filter((entity) => String(entity.status ?? "ready") !== "ready").length;
-    trace.reviewIssueCountsByCode = Object.keys(trace.reviewIssueCountsByCode).length
-      ? trace.reviewIssueCountsByCode
-      : reviewCountsByIssueCode;
+    const fileReviewItems = groupedReviewItems.filter((item) => String((item.details as Record<string, unknown> | undefined)?.fileId ?? "") === trace.fileId);
+    trace.reviewCount = fileReviewItems.length;
+    trace.reviewIssueCountsByCode = fileReviewItems.reduce<Record<string, number>>((acc, item) => {
+      const issueCode = String(item.issue_type ?? "issue");
+      acc[issueCode] = (acc[issueCode] ?? 0) + 1;
+      return acc;
+    }, {});
   }
 
   const { data: files } = await sb.from("onboarding_files").select("id").eq("shop_id", params.shopId).eq("session_id", params.sessionId);

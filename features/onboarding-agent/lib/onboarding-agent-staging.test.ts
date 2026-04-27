@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fingerprintForDomain } from "@/features/onboarding-agent/lib/fingerprints";
 import { buildStagedLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
-import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
+import { stableUuidFromParts, stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
 import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
@@ -26,6 +26,20 @@ function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
 }
 
 describe("onboarding staging", () => {
+  it("stableUuidFromParts is deterministic", () => {
+    const a = stableUuidFromParts(["shop-1", "session-1", "file-1", 10, "vehicle"]);
+    const b = stableUuidFromParts(["shop-1", "session-1", "file-1", 10, "vehicle"]);
+    const c = stableUuidFromParts(["shop-1", "session-1", "file-1", 11, "vehicle"]);
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  it("staged entity id is deterministic across reruns for same source row", () => {
+    const one = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" }, 7);
+    const two = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" }, 7);
+    expect(one.entity?.id).toBeTruthy();
+    expect(one.entity?.id).toBe(two.entity?.id);
+  });
 
   it("deterministic header mapping provides canonical fields when AI map is empty", () => {
     const effective = buildEffectiveHeaderMap({
@@ -256,6 +270,44 @@ describe("onboarding staging", () => {
       activationPlanSummary: null,
     });
     expect(report.liveRecordsCreated).toBe(0);
+  });
+
+  it("fetchOnboardingRawRows paginates beyond 1000 rows", async () => {
+    const PAGE = 1000;
+    const rows = Array.from({ length: 1450 }).map((_, i) => ({
+      id: `row-${i}`,
+      file_id: "file-1",
+      source_row_index: i,
+      raw: { i },
+      shop_id: "shop-1",
+      session_id: "session-1",
+    }));
+    const ranges: Array<{ from: number; to: number }> = [];
+
+    const sb = {
+      from() {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          order() { return this; },
+          range(from: number, to: number) {
+            ranges.push({ from, to });
+            return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
+          },
+        };
+      },
+    };
+
+    const output = await fetchOnboardingRawRows({
+      sb,
+      shopId: "shop-1",
+      sessionId: "session-1",
+      select: "id,file_id,source_row_index,raw",
+    });
+
+    expect(output).toHaveLength(1450);
+    expect(ranges.length).toBeGreaterThan(1);
+    expect(ranges[0]).toEqual({ from: 0, to: PAGE - 1 });
   });
 
   it("deterministic report carries non-empty entity/link count input", () => {
