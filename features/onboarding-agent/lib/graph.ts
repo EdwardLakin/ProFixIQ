@@ -102,6 +102,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
     }
 
     if (!matched) {
+      if (!sourceCustomerId && !customerEmail && !customerPhone && !customerName) continue;
       reviewItems.push(
         makeReviewItem({
           shopId,
@@ -132,6 +133,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
       const confidence = sourceCustomerId ? 0.95 : customerEmail ? 0.84 : 0.7;
       pushLink(customer.id, workOrder.id, "customer_work_order", confidence, { sourceCustomerId, customerEmail, customerName });
     } else {
+      if (sourceCustomerId || customerEmail || customerName) {
       reviewItems.push(
         makeReviewItem({
           shopId,
@@ -143,6 +145,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
           details: { sourceCustomerId, customerEmail, customerName, recommendedAction: "Map customer identifiers in work order history for stronger linking." },
         }),
       );
+      }
     }
 
     const sourceVehicleId = text(workOrder.normalized.sourceVehicleId);
@@ -159,6 +162,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
       const confidence = sourceVehicleId ? 0.95 : vehicleVin || vehiclePlate ? 0.86 : 0.72;
       pushLink(vehicle.id, workOrder.id, "vehicle_work_order", confidence, { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit });
     } else {
+      if (sourceVehicleId || vehicleVin || vehiclePlate || vehicleUnit) {
       reviewItems.push(
         makeReviewItem({
           shopId,
@@ -170,6 +174,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
           details: { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit, recommendedAction: "Map vehicle VIN, plate, or vehicle ID in work order history." },
         }),
       );
+      }
     }
   }
 
@@ -181,6 +186,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
     if (workOrder) {
       pushLink(workOrder.id, invoice.id, "work_order_invoice", 0.95, { sourceWorkOrderId, invoiceNumber, matchStrategy: sourceWorkOrderId ? "source_id" : "invoice_number" });
     } else {
+      if (sourceWorkOrderId || invoiceNumber) {
       reviewItems.push(
         makeReviewItem({
           shopId,
@@ -192,6 +198,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
           details: { sourceWorkOrderId, invoiceNumber, recommendedAction: "Include work order or repair order references in invoice data." },
         }),
       );
+      }
     }
   }
 
@@ -202,6 +209,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
     if (match) {
       pushLink(match.id, part.id, "vendor_part", 0.8, { vendorName, matchStrategy: "vendor_name" });
     } else {
+      if (!vendorName) continue;
       reviewItems.push(
         makeReviewItem({
           shopId,

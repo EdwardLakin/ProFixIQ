@@ -48,7 +48,9 @@ function remapHeaders(raw: Record<string, unknown>, map: Record<string, string>)
 
   for (const [k, v] of Object.entries(raw)) {
     const key = map[k] ?? map[k.toLowerCase()] ?? normalizedMap[normalizeKey(k)] ?? k;
-    out[key] = typeof v === "string" ? v : String(v ?? "");
+    const stringValue = typeof v === "string" ? v : String(v ?? "");
+    if (!(key in out) || !out[key]) out[key] = stringValue;
+    if (!(k in out)) out[k] = stringValue;
   }
   return out;
 }
@@ -87,6 +89,8 @@ export async function applyOnboardingAgentPlan(params: {
 
   const stagedEntities: any[] = [];
   const reviewItems: any[] = [];
+  const stagedByDomain: Record<string, number> = {};
+  const reviewByDomain: Record<string, number> = {};
 
   for (const [fileId, fileRows] of rawRowsByFile.entries()) {
     const planFile = fileMap.get(fileId);
@@ -110,6 +114,7 @@ export async function applyOnboardingAgentPlan(params: {
     let stagedForFile = 0;
     let reviewForFile = 0;
     let missingIdentity = 0;
+    let didTraceRow = false;
 
     if (parserMode === "ignore" || parserMode === "unsupported") {
       reviewItems.push({ severity: "medium", domain, issue_type: "ignored_file", summary: `File ${planFile?.filename ?? fileId} ignored by plan`, details: { fileId } });
@@ -134,11 +139,35 @@ export async function applyOnboardingAgentPlan(params: {
       if (staged.entity && parserMode === "stage_entities") {
         stagedEntities.push(staged.entity);
         stagedForFile += 1;
+        stagedByDomain[domain] = (stagedByDomain[domain] ?? 0) + 1;
       }
       if (staged.reviewItems.length) {
         missingIdentity += staged.reviewItems.filter((item) => item.issue_type === "missing_identity").length;
         reviewForFile += staged.reviewItems.length;
+        reviewByDomain[domain] = (reviewByDomain[domain] ?? 0) + staged.reviewItems.length;
         reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
+      }
+
+      if (!didTraceRow) {
+        didTraceRow = true;
+        console.info("[onboarding-agent] row trace", {
+          sessionId: params.sessionId,
+          shopId: params.shopId,
+          fileId,
+          filename: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
+          inferredDomain: effectiveDomain,
+          rowIndex: Number(row.source_row_index ?? 0),
+          rawHeaderKeys: Object.keys((row.raw ?? {}) as Record<string, unknown>),
+          effectiveMappedKeys: Object.keys(mappedRow).filter((key) => key in normalized.normalized),
+          normalizedKeysPresent: Object.entries(normalized.normalized).filter(([, value]) => {
+            if (typeof value === "string") return value.trim().length > 0;
+            if (typeof value === "number") return Number.isFinite(value);
+            return Boolean(value);
+          }).map(([key]) => key),
+          entityStaged: Boolean(staged.entity && parserMode === "stage_entities"),
+          reviewIssueTypes: staged.reviewItems.map((item) => item.issue_type),
+          fingerprint: fingerprint ?? null,
+        });
       }
     }
     console.info("[onboarding-agent] file staging details", {
@@ -241,6 +270,13 @@ export async function applyOnboardingAgentPlan(params: {
     stats: canonical,
     summary,
   }).eq("id", params.sessionId).eq("shop_id", params.shopId);
+
+  console.info("[onboarding-agent] persisted staging counts by domain", {
+    sessionId: params.sessionId,
+    shopId: params.shopId,
+    stagedByDomain,
+    reviewByDomain,
+  });
 
   return { canonical, status, summary };
 }

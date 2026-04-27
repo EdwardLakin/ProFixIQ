@@ -8,7 +8,7 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
     firstName: ["first name", "firstname"],
     lastName: ["last name", "lastname"],
     businessName: ["company", "company name", "business"],
-    email: ["email", "email address"],
+    email: ["email", "email address", "e mail", "e-mail"],
     phone: ["phone", "phone number", "mobile", "phone_number"],
     address: ["address", "street", "street address"],
   },
@@ -18,7 +18,7 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
     vin: ["vin", "vehicle vin", "vehicle_vin"],
     plate: ["plate", "license", "license plate", "license_plate"],
     unitNumber: ["unit", "unit number", "truck number"],
-    customerEmail: ["customer email", "customer_email"],
+    customerEmail: ["customer email", "customer_email", "customer e-mail", "customer e mail"],
     customerPhone: ["customer phone", "customer_phone"],
     year: ["year"],
     make: ["make"],
@@ -27,6 +27,7 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
   history: {
     sourceWorkOrderId: ["work order", "ro id", "repair order", "ro number", "work order number", "work_order_number"],
     invoiceId: ["invoice id", "invoice number", "invoice", "invoice_number"],
+    invoiceNumber: ["invoice number", "invoice", "invoice id", "invoice_number"],
     sourceCustomerId: ["customer id", "customer_number"],
     sourceVehicleId: ["vehicle id", "vehicle_number"],
     vehicleVin: ["vin", "vehicle vin", "vehicle_vin"],
@@ -46,7 +47,7 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
     sourceVehicleId: ["vehicle id", "vehicle_number"],
     vehicleVin: ["vin", "vehicle vin", "vehicle_vin"],
     customerName: ["customer", "customer name", "name"],
-    customerEmail: ["customer email", "email"],
+    customerEmail: ["customer email", "email", "customer e-mail", "customer e mail"],
     invoiceDate: ["issue date", "invoice date", "date", "invoice_date"],
     subtotal: ["subtotal"],
     tax: ["tax"],
@@ -63,8 +64,9 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
     quantityOnHandRaw: ["qty", "quantity", "on hand", "quantity on hand", "on_hand"],
   },
   vendors: {
+    sourceVendorId: ["vendor id", "external vendor id", "vendor_number"],
     name: ["vendor", "supplier", "company", "vendor name", "supplier name"],
-    email: ["email", "vendor email"],
+    email: ["email", "vendor email", "e mail", "e-mail"],
     phone: ["phone", "vendor phone"],
     accountNumber: ["account", "account number", "vendor account", "account_number"],
   },
@@ -72,7 +74,8 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
     name: ["name", "full name", "employee"],
     firstName: ["first name", "firstname"],
     lastName: ["last name", "lastname"],
-    email: ["email", "email address"],
+    email: ["email", "email address", "e mail", "e-mail"],
+    username: ["username", "user name", "login"],
     phone: ["phone", "mobile"],
     role: ["role", "job title", "position", "technician", "advisor", "username"],
   },
@@ -96,11 +99,18 @@ const DOMAIN_FIELD_ALIASES: Record<OnboardingDomain, Record<string, string[]>> =
 function resolveCanonicalField(domain: OnboardingDomain, value: string): string | null {
   const aliases = DOMAIN_FIELD_ALIASES[domain] ?? {};
   const normalized = normalizeHeader(value);
+  const loose = normalizeLooseKey(value);
   for (const [field, fieldAliases] of Object.entries(aliases)) {
-    if (normalized === normalizeHeader(field)) return field;
-    if (fieldAliases.some((alias) => normalizeHeader(alias) === normalized)) return field;
+    if (normalized === normalizeHeader(field) || loose === normalizeLooseKey(field)) return field;
+    if (fieldAliases.some((alias) => normalizeHeader(alias) === normalized || normalizeLooseKey(alias) === loose)) return field;
   }
   return null;
+}
+
+function isCanonicalFieldName(domain: OnboardingDomain, value: string): boolean {
+  const aliases = DOMAIN_FIELD_ALIASES[domain] ?? {};
+  const normalized = normalizeHeader(value);
+  return Object.keys(aliases).some((field) => normalizeHeader(field) === normalized);
 }
 
 export function buildDeterministicHeaderMap(domain: OnboardingDomain, headers: string[]): Record<string, string> {
@@ -112,30 +122,95 @@ export function buildDeterministicHeaderMap(domain: OnboardingDomain, headers: s
   return map;
 }
 
+function normalizeLooseKey(value: string): string {
+  return normalizeHeader(value).replace(/\s+/g, "");
+}
+
+function buildHeaderLookup(headers: string[]) {
+  const byLoose = new Map<string, string>();
+  const byNormalized = new Map<string, string>();
+  for (const header of headers) {
+    byLoose.set(normalizeLooseKey(header), header);
+    byNormalized.set(normalizeHeader(header), header);
+  }
+  return { byLoose, byNormalized };
+}
+
+function resolveSourceHeader(value: string, headers: string[], lookup?: ReturnType<typeof buildHeaderLookup>): string {
+  const table = lookup ?? buildHeaderLookup(headers);
+  return table.byLoose.get(normalizeLooseKey(value))
+    ?? table.byNormalized.get(normalizeHeader(value))
+    ?? value;
+}
+
+export function normalizeAiHeaderMap(params: {
+  domain: OnboardingDomain;
+  headers: string[];
+  aiHeaderMap?: Record<string, string> | null;
+}): Record<string, string> {
+  const ai = params.aiHeaderMap ?? {};
+  const output: Record<string, string> = {};
+  const lookup = buildHeaderLookup(params.headers);
+
+  for (const [leftRaw, rightRaw] of Object.entries(ai)) {
+    const left = String(leftRaw ?? "").trim();
+    const right = String(rightRaw ?? "").trim();
+    if (!left || !right) continue;
+
+    const leftCanonical = resolveCanonicalField(params.domain, left);
+    const rightCanonical = resolveCanonicalField(params.domain, right);
+    const leftIsFieldName = isCanonicalFieldName(params.domain, left);
+    const rightIsFieldName = isCanonicalFieldName(params.domain, right);
+
+    if (leftIsFieldName && !rightIsFieldName && leftCanonical) {
+      output[resolveSourceHeader(right, params.headers, lookup)] = leftCanonical;
+      continue;
+    }
+
+    if (rightIsFieldName && !leftIsFieldName && rightCanonical) {
+      output[resolveSourceHeader(left, params.headers, lookup)] = rightCanonical;
+      continue;
+    }
+
+    if (rightCanonical && !leftCanonical) {
+      output[resolveSourceHeader(left, params.headers, lookup)] = rightCanonical;
+      continue;
+    }
+
+    if (leftCanonical && !rightCanonical) {
+      output[resolveSourceHeader(right, params.headers, lookup)] = leftCanonical;
+      continue;
+    }
+
+    if (rightCanonical && leftCanonical) {
+      output[resolveSourceHeader(left, params.headers, lookup)] = rightCanonical;
+    }
+  }
+
+  return output;
+}
+
 export function buildEffectiveHeaderMap(params: {
   domain: OnboardingDomain;
   headers: string[];
   aiHeaderMap?: Record<string, string> | null;
 }): { headerMap: Record<string, string>; mappingSource: "ai" | "deterministic_alias" | "mixed" | "none" } {
   const deterministicMap = buildDeterministicHeaderMap(params.domain, params.headers);
-  const output: Record<string, string> = { ...deterministicMap };
-  const ai = params.aiHeaderMap ?? {};
-  let aiApplied = 0;
+  const aiMap = normalizeAiHeaderMap({
+    domain: params.domain,
+    headers: params.headers,
+    aiHeaderMap: params.aiHeaderMap ?? {},
+  });
+  const output: Record<string, string> = { ...aiMap };
+  const aiApplied = Object.keys(aiMap).length;
 
-  for (const [left, right] of Object.entries(ai)) {
-    if (!left || !right) continue;
-    const canonicalFromRight = resolveCanonicalField(params.domain, right);
-    if (canonicalFromRight) {
-      output[left] = canonicalFromRight;
-      aiApplied += 1;
-      continue;
-    }
+  for (const [header, canonical] of Object.entries(deterministicMap)) {
+    if (!output[header]) output[header] = canonical;
+  }
 
-    const canonicalFromLeft = resolveCanonicalField(params.domain, left);
-    if (canonicalFromLeft) {
-      output[right] = canonicalFromLeft;
-      aiApplied += 1;
-    }
+  for (const header of params.headers) {
+    const canonical = resolveCanonicalField(params.domain, header);
+    if (canonical && !output[header]) output[header] = canonical;
   }
 
   const deterministicCount = Object.keys(deterministicMap).length;

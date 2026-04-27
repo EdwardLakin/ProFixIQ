@@ -211,4 +211,27 @@ describe("onboarding agent ai safeguards", () => {
     expect(plan.reviewGroups[0].domain).toBe("invoices");
   });
 
+  it("plan validator coerces reversed header map direction to source->canonical", () => {
+    const plan = validateOnboardingAgentPlan({
+      validFileIds: new Set(["file-1"]),
+      candidate: {
+        files: [{
+          fileId: "file-1",
+          filename: "customers.csv",
+          inferredDomain: "customers",
+          confidence: 0.9,
+          reasoning: "x",
+          headerMap: { name: "Customer Name", email: "E-mail" },
+          rowCountEstimate: 5,
+          requiredFieldsPresent: [],
+          missingImportantFields: [],
+          recommendedParserMode: "stage_entities",
+        }],
+      },
+    });
+
+    expect(plan.files[0].headerMap["Customer Name"]).toBe("name");
+    expect(plan.files[0].headerMap["E-mail"]).toBe("email");
+  });
+
 });
