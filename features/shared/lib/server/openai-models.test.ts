@@ -43,4 +43,39 @@ describe("openai-models precedence", () => {
     expect(getOpenAIEmbeddingModel()).toBe("text-embedding-3-small");
     expect(getOnboardingAgentModel()).toBe("gpt-global");
   });
+
+  it("uses latest defaults when no env is set", () => {
+    delete process.env.OPENAI_MODEL;
+    delete process.env.OPENAI_REASONING_MODEL;
+    delete process.env.OPENAI_FAST_MODEL;
+    delete process.env.OPENAI_EXTRACTION_MODEL;
+    delete process.env.OPENAI_EMBEDDING_MODEL;
+    delete process.env.ONBOARDING_AGENT_MODEL;
+
+    expect(getOpenAIReasoningModel()).toBe("gpt-5.5");
+    expect(getOpenAIFastModel()).toBe("gpt-5.4-mini");
+    expect(getOpenAIExtractionModel()).toBe("gpt-5.5");
+    expect(getOpenAIEmbeddingModel()).toBe("text-embedding-3-small");
+    expect(getOnboardingAgentModel()).toBe("gpt-5.5");
+  });
+
+  it("onboarding model precedence is ONBOARDING -> EXTRACTION -> REASONING -> OPENAI_MODEL -> default", () => {
+    delete process.env.OPENAI_MODEL;
+    delete process.env.OPENAI_REASONING_MODEL;
+    delete process.env.OPENAI_EXTRACTION_MODEL;
+    delete process.env.ONBOARDING_AGENT_MODEL;
+    expect(getOnboardingAgentModel()).toBe("gpt-5.5");
+
+    process.env.OPENAI_MODEL = "gpt-global";
+    expect(getOnboardingAgentModel()).toBe("gpt-global");
+
+    process.env.OPENAI_REASONING_MODEL = "gpt-reasoning";
+    expect(getOnboardingAgentModel()).toBe("gpt-reasoning");
+
+    process.env.OPENAI_EXTRACTION_MODEL = "gpt-extraction";
+    expect(getOnboardingAgentModel()).toBe("gpt-extraction");
+
+    process.env.ONBOARDING_AGENT_MODEL = "gpt-onboarding";
+    expect(getOnboardingAgentModel()).toBe("gpt-onboarding");
+  });
 });

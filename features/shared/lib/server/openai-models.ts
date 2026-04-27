@@ -10,11 +10,11 @@ export type OpenAIModelPurpose =
   | "vision"
   | "onboarding";
 
-const DEFAULT_REASONING_MODEL = "gpt-5-mini";
-const DEFAULT_FAST_MODEL = "gpt-4.1-mini";
-const DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini";
+const DEFAULT_REASONING_MODEL = "gpt-5.5";
+const DEFAULT_FAST_MODEL = "gpt-5.4-mini";
+const DEFAULT_EXTRACTION_MODEL = "gpt-5.5";
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
-const DEFAULT_VISION_MODEL = "gpt-4.1-mini";
+const DEFAULT_VISION_MODEL = "gpt-5.5";
 
 function env(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -30,7 +30,7 @@ export function getOpenAIFastModel(): string {
 }
 
 export function getOpenAIExtractionModel(): string {
-  return env("OPENAI_EXTRACTION_MODEL") ?? getOpenAIReasoningModel() ?? env("OPENAI_MODEL") ?? DEFAULT_EXTRACTION_MODEL;
+  return env("OPENAI_EXTRACTION_MODEL") ?? env("OPENAI_REASONING_MODEL") ?? env("OPENAI_MODEL") ?? DEFAULT_EXTRACTION_MODEL;
 }
 
 export function getOpenAIEmbeddingModel(): string {
@@ -38,7 +38,11 @@ export function getOpenAIEmbeddingModel(): string {
 }
 
 export function getOnboardingAgentModel(): string {
-  return env("ONBOARDING_AGENT_MODEL") ?? getOpenAIExtractionModel() ?? getOpenAIReasoningModel() ?? env("OPENAI_MODEL") ?? DEFAULT_REASONING_MODEL;
+  return env("ONBOARDING_AGENT_MODEL")
+    ?? env("OPENAI_EXTRACTION_MODEL")
+    ?? env("OPENAI_REASONING_MODEL")
+    ?? env("OPENAI_MODEL")
+    ?? DEFAULT_REASONING_MODEL;
 }
 
 export function getOpenAIModelForPurpose(purpose: OpenAIModelPurpose): string {
