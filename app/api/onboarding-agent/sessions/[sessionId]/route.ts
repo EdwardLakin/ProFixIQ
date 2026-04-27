@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { deleteOnboardingSession } from "@/features/onboarding-agent/server/deleteOnboardingSession";
 import { getOnboardingSession } from "@/features/onboarding-agent/server/getOnboardingSession";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -36,5 +37,33 @@ export async function GET(_: Request, context: RouteContext) {
       { ok: false, error: error instanceof Error ? error.message : "Failed to load session" },
       { status: 500 },
     );
+  }
+}
+
+export async function DELETE(_: Request, context: RouteContext) {
+  const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
+  if (!access.ok) return access.response;
+
+  const shopId = access.profile.shop_id as string;
+  const admin = createAdminSupabase();
+  const { sessionId } = await context.params;
+
+  try {
+    const result = await deleteOnboardingSession({
+      supabase: admin,
+      shopId,
+      sessionId,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      deletedSessionId: result.deletedSessionId,
+      deletedFiles: result.deletedFiles,
+      storageWarnings: result.storageWarnings,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete onboarding session";
+    const status = message.includes("not found") ? 404 : 500;
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

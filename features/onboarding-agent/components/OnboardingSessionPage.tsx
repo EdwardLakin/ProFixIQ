@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { OnboardingActivationPlanPanel } from "@/features/onboarding-agent/components/OnboardingActivationPlanPanel";
 import { OnboardingAgentInsightsPanel } from "@/features/onboarding-agent/components/OnboardingAgentInsightsPanel";
 import { OnboardingEntitiesPanel } from "@/features/onboarding-agent/components/OnboardingEntitiesPanel";
@@ -10,9 +11,11 @@ import { OnboardingProgressCard } from "@/features/onboarding-agent/components/O
 import { OnboardingReviewPanel } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
 
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,9 +42,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         setError(json?.error || "Analysis failed. Please retry.");
       } else {
         const mode = json?.mode;
-        const warnings = Array.isArray(json?.warnings) ? json.warnings : [];
+        const warning = typeof json?.warning === "string" ? json.warning : null;
         if (mode === "deterministic_fallback") {
-          setNotice(warnings[0] ?? "Analysis complete. AI is unavailable, so deterministic fallback staging was used.");
+          setNotice(warning ?? "Analysis complete. AI is unavailable, so deterministic fallback staging was used.");
         } else {
           setNotice("Analysis complete.");
         }
@@ -52,6 +55,33 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       setError("Analysis failed. Please retry.");
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const deleteSession = async () => {
+    const confirmed = window.confirm(
+      "Delete this staged onboarding session? This removes uploaded staged files, analysis rows, staged entities, links, and review items. It does not delete live shop records.",
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json?.error || "Failed to delete staged session.");
+        return;
+      }
+
+      router.push("/dashboard/onboarding");
+      router.refresh();
+    } catch {
+      setError("Failed to delete staged session.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -105,17 +135,33 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={analyze}
-            disabled={!hasFiles || analyzing}
+            disabled={!hasFiles || analyzing || deleting}
             className="rounded border border-cyan-400/40 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {analyzing ? "Analyzing…" : "Analyze staged files"}
           </button>
+          {hasAnalysis ? (
+            <button
+              onClick={analyze}
+              disabled={!hasFiles || analyzing || deleting}
+              className="rounded border border-white/20 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {analyzing ? "Rerunning…" : "Rerun analysis"}
+            </button>
+          ) : null}
           <button
             onClick={plan}
-            disabled={!hasAnalysis || planning}
+            disabled={!hasAnalysis || planning || deleting}
             className="rounded border border-amber-400/40 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {planning ? "Preparing…" : "Prepare activation plan"}
+          </button>
+          <button
+            onClick={deleteSession}
+            disabled={deleting || analyzing || planning}
+            className="rounded border border-rose-400/40 px-3 py-2 text-sm text-rose-200 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete staged session"}
           </button>
         </div>
 

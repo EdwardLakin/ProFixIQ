@@ -21,6 +21,8 @@ function asCount(value: unknown) {
 export function OnboardingAgentDashboard() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [runningActions, setRunningActions] = useState<Record<string, "rerun" | "delete" | undefined>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, string | undefined>>({});
 
   const load = async () => {
     const res = await fetch("/api/onboarding-agent/sessions", { cache: "no-store" });
@@ -31,6 +33,51 @@ export function OnboardingAgentDashboard() {
   useEffect(() => {
     void load();
   }, []);
+
+  const setSessionAction = (sessionId: string, action: "rerun" | "delete" | null) => {
+    setRunningActions((prev) => ({ ...prev, [sessionId]: action ?? undefined }));
+  };
+
+  const rerunSession = async (sessionId: string) => {
+    setSessionAction(sessionId, "rerun");
+    setActionErrors((prev) => ({ ...prev, [sessionId]: undefined }));
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/analyze`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setActionErrors((prev) => ({ ...prev, [sessionId]: json?.error || "Rerun failed. Please retry." }));
+      } else {
+        await load();
+      }
+    } catch {
+      setActionErrors((prev) => ({ ...prev, [sessionId]: "Rerun failed. Please retry." }));
+    } finally {
+      setSessionAction(sessionId, null);
+    }
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    const confirmed = window.confirm(
+      "Delete this staged onboarding session? This removes uploaded staged files, analysis rows, staged entities, links, and review items. It does not delete live shop records.",
+    );
+    if (!confirmed) return;
+
+    setSessionAction(sessionId, "delete");
+    setActionErrors((prev) => ({ ...prev, [sessionId]: undefined }));
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setActionErrors((prev) => ({ ...prev, [sessionId]: json?.error || "Delete failed. Please retry." }));
+      } else {
+        setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      }
+    } catch {
+      setActionErrors((prev) => ({ ...prev, [sessionId]: "Delete failed. Please retry." }));
+    } finally {
+      setSessionAction(sessionId, null);
+    }
+  };
 
   const createSession = async () => {
     setBusy(true);
@@ -74,12 +121,28 @@ export function OnboardingAgentDashboard() {
                       Status: {session.status} • Last updated {new Date(session.updated_at).toLocaleString()}
                     </p>
                   </div>
-                  <Link
-                    href={`/dashboard/onboarding/${session.id}`}
-                    className="rounded-md border border-cyan-400/40 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/10"
-                  >
-                    Open
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/dashboard/onboarding/${session.id}`}
+                      className="rounded-md border border-cyan-400/40 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/10"
+                    >
+                      Open
+                    </Link>
+                    <button
+                      onClick={() => rerunSession(session.id)}
+                      disabled={Boolean(runningActions[session.id])}
+                      className="rounded-md border border-white/20 px-3 py-1.5 text-xs text-slate-100 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {runningActions[session.id] === "rerun" ? "Rerunning…" : "Rerun"}
+                    </button>
+                    <button
+                      onClick={() => deleteSession(session.id)}
+                      disabled={Boolean(runningActions[session.id])}
+                      className="rounded-md border border-rose-400/40 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {runningActions[session.id] === "delete" ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-2 grid gap-2 text-xs text-slate-300 sm:grid-cols-3 lg:grid-cols-4">
                   <p>Files: {asCount(session.file_count)}</p>
@@ -87,6 +150,7 @@ export function OnboardingAgentDashboard() {
                   <p>Review exceptions: {asCount(summary.reviewExceptions)}</p>
                   <p>Source: {session.source || "manual"}</p>
                 </div>
+                {actionErrors[session.id] ? <p className="mt-2 text-xs text-rose-300">{actionErrors[session.id]}</p> : null}
               </div>
             );
           })}
