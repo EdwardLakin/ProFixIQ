@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -443,7 +444,7 @@ export default function ShopBoostReviewPage() {
       const json = (await res.json().catch(() => ({}))) as ResetPreviewResponse;
       if (!res.ok || !json.ok) {
         setResetPreview(null);
-        setResetFeedback(json.error ?? "Failed to load reset preview.");
+        setResetFeedback("Legacy reset preview failed. Use Onboarding Agent for staged onboarding. Existing data was not changed.");
         return;
       }
       setResetPreview(json);
@@ -536,7 +537,7 @@ export default function ShopBoostReviewPage() {
       }}
     >
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review</h1>
+        <h1 className="text-xl font-semibold text-white">Shop Boost Guided Review (Legacy)</h1>
         <p className="mt-1 text-sm text-neutral-300">Resolve migration issues in guided steps with transparent reasoning and confidence-backed actions.</p>
         <p className="mt-1 text-xs text-neutral-400">This page keeps checking readiness in the background and will auto-continue once activation truth flips ready.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
@@ -557,6 +558,9 @@ export default function ShopBoostReviewPage() {
           </div>
         ) : null}
         {feedback ? <div className="mt-3 rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">{feedback}</div> : null}
+        <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+          Legacy Shop Boost import tools are being replaced by the staging-first Onboarding Agent. Existing snapshots remain available for diagnostics. <Link href="/dashboard/onboarding" className="underline underline-offset-2">Open Onboarding Agent workspace</Link>.
+        </div>
       </div>
 
       {isOwnerOrAdmin ? (

@@ -375,16 +375,16 @@ export default function ReportsPage() {
           ) : (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
               <div className="text-[11px] text-neutral-400">
-                Shop Health reads your latest snapshot + suggestions and highlights where onboarding can be automated.
+                Shop Health is a diagnostics surface. Snapshot health does not mean onboarding activation readiness.
               </div>
 
               {/* Upload + Run Snapshot buttons */}
               <div className="flex items-center gap-2">
                 <Link
-                  href="/onboarding/shop-boost"
+                  href="/dashboard/onboarding"
                   className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:bg-black/35 hover:text-white"
                 >
-                  ⬆️ Upload files
+                  🧭 Onboarding Agent
                 </Link>
 
                 <button
