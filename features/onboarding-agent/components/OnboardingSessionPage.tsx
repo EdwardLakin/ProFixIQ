@@ -9,6 +9,8 @@ import { OnboardingFileUploadPanel } from "@/features/onboarding-agent/component
 import { OnboardingFilesPanel } from "@/features/onboarding-agent/components/OnboardingFilesPanel";
 import { OnboardingProgressCard } from "@/features/onboarding-agent/components/OnboardingProgressCard";
 import { OnboardingReviewPanel } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
+import { onboardingSessionActionPath } from "@/features/onboarding-agent/lib/routes";
+import { formatOnboardingSessionStatusLabel } from "@/features/onboarding-agent/lib/sessionStatus";
 
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
@@ -35,8 +37,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     setNotice(null);
 
     try {
-      const endpoint = mode === "rerun" ? "rerun" : "analyze";
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/${endpoint}`, { method: "POST" });
+      const res = await fetch(onboardingSessionActionPath(sessionId, mode), { method: "POST" });
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
@@ -120,7 +121,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     <div className="space-y-4 p-6 text-white">
       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
         <h1 className="text-xl font-semibold">Onboarding session</h1>
-        <p className="text-sm text-slate-300">Status: {session?.status ?? "loading"}</p>
+        <p className="text-sm text-slate-300">Status: {session?.status ? formatOnboardingSessionStatusLabel(session.status) : "loading"}</p>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
           <span className="rounded-full border border-cyan-400/50 px-2 py-1 text-cyan-200">Staged-only</span>
           <span className="rounded-full border border-emerald-400/40 px-2 py-1 text-emerald-200">No live records created</span>

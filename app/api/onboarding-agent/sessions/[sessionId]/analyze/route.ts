@@ -20,6 +20,27 @@ export async function POST(_: Request, context: RouteContext) {
   try {
     await assertOnboardingSessionOwnership({ supabase: admin, shopId, sessionId });
 
+    const { data: sessionRow, error: sessionError } = await (admin as any)
+      .from("onboarding_sessions")
+      .select("analyzed_at,summary")
+      .eq("shop_id", shopId)
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (sessionError) throw new Error(sessionError.message);
+
+    const summary = sessionRow?.summary && typeof sessionRow.summary === "object" ? sessionRow.summary : {};
+    const analyzedRows = Number((summary as Record<string, unknown>).rowsParsedTotal ?? (summary as Record<string, unknown>).rowsParsed ?? 0);
+    const hasAnalysisArtifacts = Boolean(sessionRow?.analyzed_at) || analyzedRows > 0;
+    if (hasAnalysisArtifacts) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Use Rerun analysis to rebuild staged artifacts.",
+        },
+        { status: 409 },
+      );
+    }
+
     const { count, error: countError } = await (admin as any)
       .from("onboarding_files")
       .select("id", { count: "exact", head: true })

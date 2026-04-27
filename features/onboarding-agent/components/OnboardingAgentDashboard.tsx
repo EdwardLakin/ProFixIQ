@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { onboardingSessionActionPath } from "@/features/onboarding-agent/lib/routes";
+import { formatOnboardingSessionStatusLabel } from "@/features/onboarding-agent/lib/sessionStatus";
 
 type SessionRow = {
   id: string;
@@ -42,7 +44,7 @@ export function OnboardingAgentDashboard() {
     setSessionAction(sessionId, "rerun");
     setActionErrors((prev) => ({ ...prev, [sessionId]: undefined }));
     try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/analyze`, { method: "POST" });
+      const res = await fetch(onboardingSessionActionPath(sessionId, "rerun"), { method: "POST" });
       const json = await res.json();
       if (!res.ok || !json.ok) {
         setActionErrors((prev) => ({ ...prev, [sessionId]: json?.error || "Rerun failed. Please retry." }));
@@ -118,7 +120,7 @@ export function OnboardingAgentDashboard() {
                   <div>
                     <p className="text-sm font-medium text-white">{session.title || session.source || "Untitled session"}</p>
                     <p className="text-xs text-slate-400">
-                      Status: {session.status} • Last updated {new Date(session.updated_at).toLocaleString()}
+                      Status: {formatOnboardingSessionStatusLabel(session.status)} • Last updated {new Date(session.updated_at).toLocaleString()}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

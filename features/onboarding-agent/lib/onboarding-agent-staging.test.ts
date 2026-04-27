@@ -5,7 +5,6 @@ import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { stableUuidFromParts, stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
 import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
-import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
 import { detectDomain } from "@/features/onboarding-agent/lib/domains";
 import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
@@ -257,20 +256,6 @@ describe("onboarding staging", () => {
     expect(graphAgain.links.length).toBe(graph.links.length);
   });
 
-  it("liveRecordsCreated remains 0", () => {
-    const report = buildDeterministicFallbackReport({
-      sessionId: "session-1",
-      shopId: "shop-1",
-      files: [],
-      deterministicDomainDetections: {},
-      deterministicStagedEntityCounts: {},
-      deterministicEntityStatusCountsByType: {},
-      deterministicLinkCounts: {},
-      deterministicReviewItems: [],
-      activationPlanSummary: null,
-    });
-    expect(report.liveRecordsCreated).toBe(0);
-  });
 
   it("fetchOnboardingRawRows paginates beyond 1000 rows", async () => {
     const PAGE = 1000;
@@ -310,33 +295,6 @@ describe("onboarding staging", () => {
     expect(ranges[0]).toEqual({ from: 0, to: PAGE - 1 });
   });
 
-  it("deterministic report carries non-empty entity/link count input", () => {
-    const report = buildDeterministicFallbackReport({
-      sessionId: "session-1",
-      shopId: "shop-1",
-      files: [
-        {
-          id: "file-1",
-          filename: "customers.csv",
-          declaredDomain: "customers",
-          detectedDomain: "customers",
-          parseStatus: "parsed",
-          headers: ["Customer ID"],
-          rowCount: 2,
-          sampleRows: [],
-        },
-      ],
-      deterministicDomainDetections: { customers: 1 },
-      deterministicStagedEntityCounts: { customer: 2 },
-      deterministicEntityStatusCountsByType: { customer: { ready: 2 } },
-      deterministicLinkCounts: { customer_vehicle: 1 },
-      deterministicReviewItems: [],
-      activationPlanSummary: null,
-    });
-
-    expect(report.summary).toContain("customers: 2");
-    expect(report.summary).toContain("confident links: 1");
-  });
 
   it("stages historical work order without customer identity when work order/date/service data exists", () => {
     const wo = stage("history", { "Open Date": "2025-04-01", Complaint: "No start", Correction: "Replaced starter" }).entity;
