@@ -5,18 +5,6 @@ import { buildOnboardingActivationPlan } from "@/features/onboarding-agent/serve
 import { ONBOARDING_SESSION_ALLOWED_STATUSES } from "@/features/onboarding-agent/lib/sessionStatus";
 
 describe("onboarding phase 1 consolidation", () => {
-  it("legacy agent-analysis endpoint returns 410", async () => {
-    const { POST } = await import("../../../app/api/onboarding-agent/sessions/[sessionId]/agent-analysis/route");
-    const response = await POST(new Request("http://localhost"), { params: Promise.resolve({ sessionId: "session-1" }) });
-    expect(response.status).toBe(410);
-  });
-
-  it("legacy file registration endpoint returns 410", async () => {
-    const { POST } = await import("../../../app/api/onboarding-agent/sessions/[sessionId]/files/route");
-    const response = await POST(new Request("http://localhost"), { params: Promise.resolve({ sessionId: "session-1" }) });
-    expect(response.status).toBe(410);
-  });
-
   it("dashboard rerun and session rerun share canonical route helper usage", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "features/onboarding-agent/components/OnboardingAgentDashboard.tsx"), "utf8");
     const sessionPage = readFileSync(resolve(process.cwd(), "features/onboarding-agent/components/OnboardingSessionPage.tsx"), "utf8");

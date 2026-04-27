@@ -113,7 +113,7 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
         detected_domain: detectedDomain,
         row_hash: `${file.id}:${index}`,
         parse_status: "parsed",
-        parse_error: null,
+        error_reason: null,
       }));
 
       await upsertInChunks(sb, "onboarding_raw_rows", rawRowsPayload, {

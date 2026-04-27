@@ -11,9 +11,40 @@ import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection"
 import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
-import type { OnboardingFilePipelineTrace } from "@/features/onboarding-agent/lib/pipelineTrace";
 
 const INSERT_CHUNK_SIZE = 1000;
+
+type OnboardingStageDecision = "staged" | "review" | "skipped";
+
+type OnboardingFilePipelineTrace = {
+  sessionId: string;
+  fileId: string;
+  fileName: string;
+  declaredDomain: string | null;
+  detectedDomain: OnboardingDomain;
+  finalDomainUsed: OnboardingDomain;
+  rowCountTotal: number;
+  rowsSampledForAI: number;
+  effectiveHeaderMapSource: "ai" | "deterministic_alias" | "mixed" | "none";
+  effectiveHeaderMapCount: number;
+  effectiveHeaderMapKeys: string[];
+  sourceHeaderKeysSample: string[];
+  canonicalFieldsMapped: string[];
+  firstRepresentativeRowTrace: {
+    rawKeyCount: number;
+    remappedKeyCount: number;
+    normalizedKeyCount: number;
+    identityKeysPresent: string[];
+    identityKeysMissing: string[];
+    stageDecision: OnboardingStageDecision;
+    stageReason: string;
+  } | null;
+  persistedEntityCount: number;
+  readyCount: number;
+  reviewCount: number;
+  persistedLinkCountsByType: Record<string, number>;
+  reviewIssueCountsByCode: Record<string, number>;
+};
 
 async function insertInChunks(sb: any, table: string, rows: any[], returning?: string) {
   if (!rows.length) return [];
