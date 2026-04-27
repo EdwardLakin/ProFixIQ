@@ -172,7 +172,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       </div>
 
       <OnboardingProgressCard summary={session?.summary ?? null} />
-      <OnboardingAgentInsightsPanel sessionId={sessionId} report={session?.summary?.agentReport ?? null} plan={session?.summary?.agentPlan ?? null} summary={session?.summary ?? null} fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness} onRefresh={load} />
+      <OnboardingAgentInsightsPanel report={session?.summary?.agentReport ?? null} plan={session?.summary?.agentPlan ?? null} summary={session?.summary ?? null} fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness} />
       <OnboardingFilesPanel files={files} />
       <OnboardingEntitiesPanel entityCounts={payload?.entityCounts ?? {}} entityStatusCounts={payload?.entityStatusCounts ?? {}} linkCounts={payload?.linkCounts ?? {}} agentPlan={session?.summary?.agentPlan ?? null} />
       <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} reviewItems={payload?.reviewItems ?? []} />

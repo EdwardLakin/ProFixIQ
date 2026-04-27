@@ -11,6 +11,7 @@ import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection"
 import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
+import type { OnboardingFilePipelineTrace } from "@/features/onboarding-agent/lib/pipelineTrace";
 
 const INSERT_CHUNK_SIZE = 1000;
 
@@ -54,6 +55,41 @@ function remapHeaders(raw: Record<string, unknown>, map: Record<string, string>)
   return out;
 }
 
+const IDENTITY_KEYS_BY_DOMAIN: Record<OnboardingDomain, string[]> = {
+  customers: ["sourceCustomerId", "name", "businessName", "email", "phone"],
+  vehicles: ["sourceVehicleId", "vin", "plate", "unitNumber", "year", "make", "model"],
+  history: ["sourceWorkOrderId", "invoiceId", "openedDate", "complaint", "correction"],
+  invoices: ["invoiceNumber", "sourceWorkOrderId", "invoiceDate", "total"],
+  parts: ["sku", "partNumber", "description", "vendorName"],
+  vendors: ["sourceVendorId", "name", "accountNumber", "email", "phone"],
+  staff: ["name", "email", "username", "role"],
+  menu: ["serviceName", "description", "opCode", "laborHours", "laborPrice"],
+  inspections: ["name", "description", "category"],
+  unknown: [],
+};
+
+function populatedKeys(record: Record<string, unknown>) {
+  return Object.entries(record)
+    .filter(([, value]) => {
+      if (typeof value === "string") return value.trim().length > 0;
+      if (typeof value === "number") return Number.isFinite(value);
+      return Boolean(value);
+    })
+    .map(([key]) => key);
+}
+
+function stageReasonFromResult(params: {
+  parserMode: string;
+  stageEntityExists: boolean;
+  reviewIssueTypes: string[];
+}) {
+  if (params.parserMode !== "stage_entities") return "parser_mode_not_stage_entities";
+  if (params.stageEntityExists) return "identity_requirements_met";
+  if (params.reviewIssueTypes.includes("missing_identity")) return "missing_identity";
+  if (params.reviewIssueTypes.length > 0) return params.reviewIssueTypes.join(",");
+  return "row_not_staged";
+}
+
 export async function applyOnboardingAgentPlan(params: {
   supabase: SupabaseClient;
   shopId: string;
@@ -88,8 +124,10 @@ export async function applyOnboardingAgentPlan(params: {
 
   const stagedEntities: any[] = [];
   const reviewItems: any[] = [];
+  const reviewItemsByFile: Record<string, Array<{ issueType: string }>> = {};
   const stagedByDomain: Record<string, number> = {};
   const reviewByDomain: Record<string, number> = {};
+  const stagedEntitiesByFile: Record<string, any[]> = {};
   const effectiveFileMappings: Array<{
     fileId: string;
     filename: string;
@@ -103,6 +141,7 @@ export async function applyOnboardingAgentPlan(params: {
     stagedRows: number;
     reviewRows: number;
   }> = [];
+  const pipelineTraces: OnboardingFilePipelineTrace[] = [];
 
   for (const [fileId, fileRows] of rawRowsByFile.entries()) {
     const planFile = fileMap.get(fileId);
@@ -112,13 +151,13 @@ export async function applyOnboardingAgentPlan(params: {
       headers: Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [],
       declaredDomain: fileMeta?.declared_domain ?? null,
     });
-    const effectiveDomain = planFile?.inferredDomain && planFile.inferredDomain !== "unknown"
-      ? planFile.inferredDomain
-      : (fileMeta?.detected_domain && fileMeta.detected_domain !== "unknown"
-          ? fileMeta.detected_domain
-          : (fileMeta?.declared_domain && fileMeta.declared_domain !== "unknown"
-              ? fileMeta.declared_domain
-              : deterministicDomain));
+    const persistedDetectedDomain = DOMAIN_TO_ENTITY[fileMeta?.detected_domain] ? fileMeta.detected_domain as OnboardingDomain : "unknown";
+    const planDomain = DOMAIN_TO_ENTITY[planFile?.inferredDomain ?? ""] ? planFile?.inferredDomain as OnboardingDomain : "unknown";
+    const effectiveDomain = persistedDetectedDomain !== "unknown"
+      ? persistedDetectedDomain
+      : (deterministicDomain !== "unknown"
+          ? deterministicDomain
+          : (planDomain !== "unknown" ? planDomain : "unknown"));
     const domain = DOMAIN_TO_ENTITY[effectiveDomain] ?? "unknown";
     const fileHeaders = Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [];
     const { headerMap, mappingSource, mappedColumnCount, diagnostics } = buildEffectiveHeaderMap({
@@ -129,8 +168,8 @@ export async function applyOnboardingAgentPlan(params: {
     const parserMode = planFile?.recommendedParserMode ?? (domain === "unknown" ? "stage_review_only" : "stage_entities");
     let stagedForFile = 0;
     let reviewForFile = 0;
-    let missingIdentity = 0;
     let didTraceRow = false;
+    let firstRepresentativeRowTrace: OnboardingFilePipelineTrace["firstRepresentativeRowTrace"] = null;
 
     if (parserMode === "ignore" || parserMode === "unsupported") {
       reviewItems.push({ severity: "medium", domain, issue_type: "ignored_file", summary: `File ${planFile?.filename ?? fileId} ignored by plan`, details: { fileId } });
@@ -154,11 +193,16 @@ export async function applyOnboardingAgentPlan(params: {
       });
       if (staged.entity && parserMode === "stage_entities") {
         stagedEntities.push(staged.entity);
+        const byFile = stagedEntitiesByFile[fileId] ?? [];
+        byFile.push(staged.entity);
+        stagedEntitiesByFile[fileId] = byFile;
         stagedForFile += 1;
         stagedByDomain[domain] = (stagedByDomain[domain] ?? 0) + 1;
       }
       if (staged.reviewItems.length) {
-        missingIdentity += staged.reviewItems.filter((item) => item.issue_type === "missing_identity").length;
+        const byFile = reviewItemsByFile[fileId] ?? [];
+        byFile.push(...staged.reviewItems.map((item) => ({ issueType: item.issue_type })));
+        reviewItemsByFile[fileId] = byFile;
         reviewForFile += staged.reviewItems.length;
         reviewByDomain[domain] = (reviewByDomain[domain] ?? 0) + staged.reviewItems.length;
         reviewItems.push(...staged.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
@@ -166,6 +210,30 @@ export async function applyOnboardingAgentPlan(params: {
 
       if (!didTraceRow) {
         didTraceRow = true;
+        const normalizedKeysPresent = populatedKeys(normalized.normalized);
+        const identityKeys = IDENTITY_KEYS_BY_DOMAIN[domain] ?? [];
+        const identityKeysPresent = identityKeys.filter((key) => normalizedKeysPresent.includes(key));
+        const identityKeysMissing = identityKeys.filter((key) => !normalizedKeysPresent.includes(key));
+        const stageDecision = staged.entity && parserMode === "stage_entities"
+          ? "staged"
+          : staged.reviewItems.length > 0
+            ? "review"
+            : "skipped";
+        const stageReason = stageReasonFromResult({
+          parserMode,
+          stageEntityExists: Boolean(staged.entity),
+          reviewIssueTypes: staged.reviewItems.map((item) => item.issue_type),
+        });
+        firstRepresentativeRowTrace = {
+          rawKeyCount: Object.keys((row.raw ?? {}) as Record<string, unknown>).length,
+          remappedKeyCount: Object.keys(mappedRow).length,
+          normalizedKeyCount: normalizedKeysPresent.length,
+          identityKeysPresent,
+          identityKeysMissing,
+          stageDecision,
+          stageReason,
+        };
+
         console.info("[onboarding-agent] row trace", {
           sessionId: params.sessionId,
           shopId: params.shopId,
@@ -173,7 +241,7 @@ export async function applyOnboardingAgentPlan(params: {
           filename: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
           declaredDomain: fileMeta?.declared_domain ?? null,
           detectedDomain: fileMeta?.detected_domain ?? null,
-          inferredDomain: effectiveDomain,
+          finalDomainUsed: domain,
           mappingSource,
           mappedColumnCount,
           effectiveHeaderMapKeys: Object.keys(headerMap),
@@ -182,11 +250,7 @@ export async function applyOnboardingAgentPlan(params: {
           rawRowSampleKeysOnly: Object.keys((row.raw ?? {}) as Record<string, unknown>),
           remappedRowKeys: Object.keys(mappedRow),
           effectiveMappedKeys: Object.keys(mappedRow).filter((key) => key in normalized.normalized),
-          normalizedKeysPresent: Object.entries(normalized.normalized).filter(([, value]) => {
-            if (typeof value === "string") return value.trim().length > 0;
-            if (typeof value === "number") return Number.isFinite(value);
-            return Boolean(value);
-          }).map(([key]) => key),
+          normalizedKeysPresent,
           entityStaged: Boolean(staged.entity && parserMode === "stage_entities"),
           stageResult: {
             entityCreated: Boolean(staged.entity && parserMode === "stage_entities"),
@@ -196,6 +260,7 @@ export async function applyOnboardingAgentPlan(params: {
           },
           reviewIssueTypes: staged.reviewItems.map((item) => item.issue_type),
           fingerprint: fingerprint ?? null,
+          firstRepresentativeRowTrace,
         });
       }
     }
@@ -211,7 +276,6 @@ export async function applyOnboardingAgentPlan(params: {
       rowsReview: reviewForFile,
       mappedColumns: mappedColumnCount,
       mappingSource,
-      missingIdentity,
     });
     effectiveFileMappings.push({
       fileId,
@@ -231,16 +295,30 @@ export async function applyOnboardingAgentPlan(params: {
       detected_domain: effectiveDomain,
       parse_status: "parsed",
     }).eq("shop_id", params.shopId).eq("id", fileId);
-  }
 
-  for (const group of params.plan.reviewGroups) {
-    const normalizedDomain = DOMAIN_TO_ENTITY[group.domain] ? group.domain : "unknown";
-    reviewItems.push({
-      severity: group.severity,
-      domain: normalizedDomain,
-      issue_type: group.issueType,
-      summary: group.summary,
-      details: { sampleRows: group.sampleRows, affectedRowCount: group.affectedRowCount, recommendedAction: group.recommendedAction },
+    pipelineTraces.push({
+      sessionId: params.sessionId,
+      fileId,
+      fileName: planFile?.filename ?? fileMeta?.original_filename ?? fileId,
+      declaredDomain: fileMeta?.declared_domain ?? null,
+      detectedDomain: persistedDetectedDomain !== "unknown" ? persistedDetectedDomain : deterministicDomain,
+      finalDomainUsed: domain,
+      rowCountTotal: fileRows.length,
+      rowsSampledForAI: 0,
+      effectiveHeaderMapSource: mappingSource,
+      effectiveHeaderMapCount: mappedColumnCount,
+      effectiveHeaderMapKeys: Object.keys(headerMap).slice(0, 80),
+      sourceHeaderKeysSample: fileHeaders.slice(0, 80),
+      canonicalFieldsMapped: Array.from(new Set(Object.values(headerMap))).slice(0, 80),
+      firstRepresentativeRowTrace,
+      persistedEntityCount: stagedForFile,
+      readyCount: stagedForFile,
+      reviewCount: reviewForFile,
+      persistedLinkCountsByType: {},
+      reviewIssueCountsByCode: (reviewItemsByFile[fileId] ?? []).reduce<Record<string, number>>((acc, item) => {
+        acc[item.issueType] = (acc[item.issueType] ?? 0) + 1;
+        return acc;
+      }, {}),
     });
   }
 
@@ -263,6 +341,38 @@ export async function applyOnboardingAgentPlan(params: {
     status: "pending",
   }));
   await insertInChunks(sb, "onboarding_review_items", groupedReviewItems);
+
+  const linksByEntityId = new Map<string, Array<{ link_type: string }>>();
+  for (const link of linksToInsert) {
+    const from = linksByEntityId.get(link.from_entity_id) ?? [];
+    from.push({ link_type: link.link_type });
+    linksByEntityId.set(link.from_entity_id, from);
+    const to = linksByEntityId.get(link.to_entity_id) ?? [];
+    to.push({ link_type: link.link_type });
+    linksByEntityId.set(link.to_entity_id, to);
+  }
+
+  const reviewCountsByIssueCode = groupedReviewItems.reduce<Record<string, number>>((acc, item) => {
+    const issueCode = String(item.issue_type ?? "issue");
+    acc[issueCode] = (acc[issueCode] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  for (const trace of pipelineTraces) {
+    const stagedForFile = stagedEntitiesByFile[trace.fileId] ?? [];
+    const linkCounts = stagedForFile.reduce<Record<string, number>>((acc, entity) => {
+      const related = linksByEntityId.get(String(entity.id ?? "")) ?? [];
+      for (const rel of related) acc[rel.link_type] = (acc[rel.link_type] ?? 0) + 1;
+      return acc;
+    }, {});
+    trace.persistedLinkCountsByType = linkCounts;
+    trace.rowsSampledForAI = Math.min(trace.rowCountTotal, 25);
+    trace.readyCount = stagedForFile.filter((entity) => String(entity.status ?? "ready") === "ready").length;
+    trace.reviewCount = stagedForFile.filter((entity) => String(entity.status ?? "ready") !== "ready").length;
+    trace.reviewIssueCountsByCode = Object.keys(trace.reviewIssueCountsByCode).length
+      ? trace.reviewIssueCountsByCode
+      : reviewCountsByIssueCode;
+  }
 
   const { data: files } = await sb.from("onboarding_files").select("id").eq("shop_id", params.shopId).eq("session_id", params.sessionId);
   const rowsParsedTotal = await countOnboardingRawRows({
@@ -294,6 +404,7 @@ export async function applyOnboardingAgentPlan(params: {
     aiRowsSampled: Number(existingSummary.aiRowsSampled ?? 0),
     aiFilesSampled: Number(existingSummary.aiFilesSampled ?? 0),
     effectiveFileMappings,
+    filePipelineTraces: pipelineTraces,
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0,

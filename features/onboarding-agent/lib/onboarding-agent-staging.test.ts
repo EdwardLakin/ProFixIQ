@@ -50,7 +50,7 @@ describe("onboarding staging", () => {
 
     expect(effective.headerMap["Inv #"]).toBe("invoiceNumber");
     expect(effective.headerMap["Date Issued"]).toBe("invoiceDate");
-    expect(effective.mappingSource).toBe("ai");
+    expect(effective.mappingSource).toBe("mixed");
   });
 
   it("normalizes accidental canonical->source AI map direction safely", () => {
@@ -104,6 +104,15 @@ describe("onboarding staging", () => {
       declaredDomain: "not-a-domain",
     });
     expect(domain).toBe("history");
+  });
+
+  it("detectFileDomain prefers deterministic detection over conflicting declared domain", () => {
+    const domain = detectFileDomain({
+      filename: "vehicles.csv",
+      headers: ["Vehicle ID", "VIN", "Customer ID"],
+      declaredDomain: "customers",
+    });
+    expect(domain).toBe("vehicles");
   });
   it("analyze creates staged entities from customer rows", () => {
     const staged = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" });
