@@ -1,39 +1,27 @@
+import { buildActivationPlanSummary } from "@/features/onboarding-agent/lib/summaries";
+
 export function buildDryRunActivationPlan(input: {
   sessionId: string;
-  entityCounts: Record<string, number>;
-  linkCounts: Record<string, number>;
-  reviewBlocking: number;
-  reviewNonBlocking: number;
+  entityStatusCountsByType: Record<string, Record<string, number>>;
+  linkRows: Array<{ link_type: string; status?: string | null }>;
+  reviewCountsBySeverity: Record<string, number>;
 }) {
+  const summary = buildActivationPlanSummary({
+    entityStatusCountsByType: input.entityStatusCountsByType,
+    linkRows: input.linkRows,
+    reviewCountsBySeverity: input.reviewCountsBySeverity,
+  });
+
   const risks: string[] = [];
-  if (input.reviewBlocking > 0) risks.push(`${input.reviewBlocking} blocking review items must be resolved before activation.`);
-  if ((input.entityCounts.historical_invoice ?? 0) > 0 && (input.linkCounts.work_order_invoice ?? 0) === 0) {
-    risks.push("Historical invoices have no work order links yet.");
+  if (summary.blockingIssues > 0) risks.push(`${summary.blockingIssues} high/blocking review items must be resolved before activation.`);
+  if (summary.historicalInvoicesReady > 0 && !input.linkRows.some((row) => row.link_type === "work_order_invoice")) {
+    risks.push("Historical invoices are staged but some work order links still need review.");
   }
 
   return {
     sessionId: input.sessionId,
-    mode: "dry_run",
-    creates: {
-      customers: input.entityCounts.customer ?? 0,
-      vehicles: input.entityCounts.vehicle ?? 0,
-      historicalWorkOrders: input.entityCounts.historical_work_order ?? 0,
-      historicalInvoices: input.entityCounts.historical_invoice ?? 0,
-      parts: input.entityCounts.part ?? 0,
-      vendors: input.entityCounts.vendor ?? 0,
-      staffCandidates: input.entityCounts.staff_candidate ?? 0,
-      menuSuggestions: input.entityCounts.menu_suggestion ?? 0,
-      inspectionSuggestions: input.entityCounts.inspection_suggestion ?? 0,
-    },
-    links: {
-      customerVehicle: input.linkCounts.customer_vehicle ?? 0,
-      vehicleWorkOrder: input.linkCounts.vehicle_work_order ?? 0,
-      workOrderInvoice: input.linkCounts.work_order_invoice ?? 0,
-    },
-    review: {
-      blocking: input.reviewBlocking,
-      nonblocking: input.reviewNonBlocking,
-    },
+    mode: "dry_run" as const,
+    ...summary,
     risks,
   };
 }

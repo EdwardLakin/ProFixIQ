@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import type { OnboardingAgentReport } from "@/features/onboarding-agent/lib/agentTypes";
 
-function readinessTone(status: OnboardingAgentReport["activationReadiness"]["status"] | undefined) {
-  if (status === "ready_for_dry_run" || status === "activation_disabled") return "border-emerald-400/40 text-emerald-200";
+function readinessTone(status: OnboardingAgentReport["activationReadiness"]["status"] | string | undefined) {
+  if (status === "ready_for_dry_run") return "border-emerald-400/40 text-emerald-200";
   if (status === "review_required") return "border-amber-400/40 text-amber-200";
   return "border-rose-400/40 text-rose-200";
 }
@@ -13,13 +13,16 @@ export function OnboardingAgentInsightsPanel({
   sessionId,
   report,
   onRefresh,
+  fallbackReadiness,
 }: {
   sessionId: string;
   report?: OnboardingAgentReport | null;
+  fallbackReadiness?: string;
   onRefresh: () => Promise<void>;
 }) {
   const [running, setRunning] = useState(false);
   const findings = report?.findings ?? [];
+  const displayedReadiness = report?.activationReadiness?.status ?? fallbackReadiness ?? "not_ready";
   const recommendations = report?.recommendations ?? [];
 
   const groupedFindings = useMemo(() => {
@@ -71,9 +74,9 @@ export function OnboardingAgentInsightsPanel({
             <p className="mt-1 text-xs text-amber-200/90">AI reasoning unavailable; deterministic staging still completed.</p>
           ) : null}
         </div>
-        <div className={`rounded-lg border bg-slate-900/50 p-3 ${readinessTone(report?.activationReadiness?.status)}`}>
+        <div className={`rounded-lg border bg-slate-900/50 p-3 ${readinessTone(displayedReadiness)}`}>
           <p className="text-[11px] uppercase tracking-wide text-slate-400">Activation readiness</p>
-          <p className="text-sm">{report?.activationReadiness?.status ?? "not_ready"}</p>
+          <p className="text-sm">{displayedReadiness}</p>
         </div>
       </div>
 

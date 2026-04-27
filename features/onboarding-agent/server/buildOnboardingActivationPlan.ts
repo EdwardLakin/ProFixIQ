@@ -11,48 +11,75 @@ export async function buildOnboardingActivationPlan(params: { supabase: Supabase
     sessionId: params.sessionId,
   });
 
-  const [{ data: entityRows }, { data: linkRows }, { data: reviewRows }, { data: sessionRow }] = await Promise.all([
-    sb.from("onboarding_entities").select("entity_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("onboarding_entity_links").select("link_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("onboarding_review_items").select("severity").eq("shop_id", params.shopId).eq("session_id", params.sessionId).eq("status", "pending"),
-    sb.from("onboarding_sessions").select("summary").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
+  const [{ data: entityRows }, { data: linkRows }, { data: reviewRows }, { data: filesRows }, { data: sessionRow }] = await Promise.all([
+    sb.from("onboarding_entities").select("entity_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_entity_links").select("link_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_review_items").select("severity, status, domain, issue_type, summary, details").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_files").select("row_count").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_sessions").select("summary, analyzed_at").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
   ]);
 
-  const entityCounts = (entityRows ?? []).reduce((acc: Record<string, number>, row: any) => {
-    acc[row.entity_type] = (acc[row.entity_type] ?? 0) + 1;
-    return acc;
-  }, {});
-  const linkCounts = (linkRows ?? []).reduce((acc: Record<string, number>, row: any) => {
-    acc[row.link_type] = (acc[row.link_type] ?? 0) + 1;
-    return acc;
-  }, {});
+  const filesCount = (filesRows ?? []).length;
+  const rowsParsed = (filesRows ?? []).reduce((sum: number, row: any) => sum + Number(row.row_count ?? 0), 0);
 
   const canonical = buildOnboardingSummary({
-    filesCount: 0,
-    rowsParsed: 0,
-    entityRows: (entityRows ?? []).map((row: any) => ({ entity_type: row.entity_type })),
-    linkRows: (linkRows ?? []).map((row: any) => ({ link_type: row.link_type })),
-    reviewRows: (reviewRows ?? []).map((row: any) => ({ severity: row.severity, summary: "", status: "pending" })),
+    filesCount,
+    rowsParsed,
+    entityRows: (entityRows ?? []).map((row: any) => ({ entity_type: row.entity_type, status: row.status })),
+    linkRows: (linkRows ?? []).map((row: any) => ({ link_type: row.link_type, status: row.status })),
+    reviewRows: (reviewRows ?? []).map((row: any) => ({
+      severity: row.severity,
+      status: row.status,
+      domain: row.domain,
+      issue_type: row.issue_type,
+      summary: row.summary ?? "",
+      details: row.details ?? {},
+    })),
+    groupedExceptionCount: (reviewRows ?? []).length,
+    analysisCompleted: Boolean(sessionRow?.analyzed_at),
   });
-  const blocking = canonical.review_counts_by_severity.blocking ?? 0;
-  const nonblocking = canonical.total_review_items - blocking;
 
   const plan = buildDryRunActivationPlan({
     sessionId: params.sessionId,
-    entityCounts,
-    linkCounts,
-    reviewBlocking: blocking,
-    reviewNonBlocking: nonblocking,
+    entityStatusCountsByType: canonical.entity_status_counts_by_type,
+    linkRows: (linkRows ?? []).map((row: any) => ({ link_type: row.link_type, status: row.status })),
+    reviewCountsBySeverity: canonical.review_counts_by_severity,
   });
 
   const sessionSummary = (sessionRow?.summary ?? {}) as Record<string, unknown>;
-  const summaryWithAgent = { ...plan, agentReport: sessionSummary.agentReport ?? null, liveRecordsCreated: 0 };
+  const summaryWithAgent = {
+    ...plan,
+    readiness: canonical.activation_readiness,
+    agentReport: sessionSummary.agentReport ?? null,
+    liveRecordsCreated: 0,
+  };
 
   const { data } = await sb
     .from("onboarding_activation_plans")
-    .insert({ shop_id: params.shopId, session_id: params.sessionId, status: "ready", plan, summary: summaryWithAgent, risk_flags: { risks: plan.risks } })
+    .insert({
+      shop_id: params.shopId,
+      session_id: params.sessionId,
+      status: canonical.activation_readiness === "ready_for_dry_run" ? "ready" : "review_required",
+      plan,
+      summary: summaryWithAgent,
+      risk_flags: { risks: plan.risks },
+    })
     .select("id, status, summary, created_at")
     .single();
+
+  await sb
+    .from("onboarding_sessions")
+    .update({
+      summary: {
+        ...(sessionSummary ?? {}),
+        activationPlanSummary: plan,
+        activationReadiness: canonical.activation_readiness,
+        liveRecordsCreated: 0,
+      },
+      stats: canonical,
+    })
+    .eq("shop_id", params.shopId)
+    .eq("id", params.sessionId);
 
   return { plan: summaryWithAgent, record: data };
 }

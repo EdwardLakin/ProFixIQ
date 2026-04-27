@@ -46,6 +46,7 @@ export function buildStagedLinks(params: BuildLinksParams) {
   const vehiclesByUnit = new Map(vehicles.map((v) => [text(v.normalized.unitNumber).toUpperCase(), v]));
 
   const workOrdersBySourceId = new Map(workOrders.map((wo) => [text(wo.normalized.sourceWorkOrderId), wo]));
+  const workOrdersByInvoiceId = new Map(workOrders.map((wo) => [text(wo.normalized.invoiceId), wo]));
 
   const pushLink = (from: string, to: string, linkType: string, confidence: number, evidence: Record<string, unknown>) => {
     if (confidence < 0.6) return;
@@ -93,11 +94,11 @@ export function buildStagedLinks(params: BuildLinksParams) {
         makeReviewItem({
           shopId,
           sessionId,
-          severity: "high",
+          severity: "medium",
           domain: "vehicles",
           issueType: "missing_customer_link",
-          summary: "Vehicle could not be linked to customer",
-          details: { sourceCustomerId, customerEmail, customerPhone, customerName },
+          summary: "Vehicle identity staged but customer link is missing",
+          details: { sourceCustomerId, customerEmail, customerPhone, customerName, recommendedAction: "Provide customer identifier columns to improve vehicle linking." },
         }),
       );
       continue;
@@ -123,11 +124,11 @@ export function buildStagedLinks(params: BuildLinksParams) {
         makeReviewItem({
           shopId,
           sessionId,
-          severity: "high",
+          severity: "medium",
           domain: "history",
           issueType: "missing_customer_link",
-          summary: "Work order could not be linked to customer",
-          details: { sourceCustomerId, customerEmail, customerName },
+          summary: "Historical work order staged but customer link is missing",
+          details: { sourceCustomerId, customerEmail, customerName, recommendedAction: "Map customer identifiers in work order history for stronger linking." },
         }),
       );
     }
@@ -153,8 +154,8 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "medium",
           domain: "history",
           issueType: "missing_vehicle_link",
-          summary: "Work order could not be linked to vehicle",
-          details: { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit },
+          summary: "Historical work order staged but vehicle link is missing",
+          details: { sourceVehicleId, vehicleVin, vehiclePlate, vehicleUnit, recommendedAction: "Map vehicle VIN, plate, or vehicle ID in work order history." },
         }),
       );
     }
@@ -162,9 +163,11 @@ export function buildStagedLinks(params: BuildLinksParams) {
 
   for (const invoice of invoices) {
     const sourceWorkOrderId = text(invoice.normalized.sourceWorkOrderId);
-    const workOrder = sourceWorkOrderId ? workOrdersBySourceId.get(sourceWorkOrderId) : undefined;
+    const invoiceNumber = text(invoice.normalized.invoiceNumber);
+    const workOrder = (sourceWorkOrderId ? workOrdersBySourceId.get(sourceWorkOrderId) : undefined)
+      || (invoiceNumber ? workOrdersByInvoiceId.get(invoiceNumber) : undefined);
     if (workOrder) {
-      pushLink(workOrder.id, invoice.id, "work_order_invoice", 0.95, { sourceWorkOrderId, matchStrategy: "source_id" });
+      pushLink(workOrder.id, invoice.id, "work_order_invoice", 0.95, { sourceWorkOrderId, invoiceNumber, matchStrategy: sourceWorkOrderId ? "source_id" : "invoice_number" });
     } else {
       reviewItems.push(
         makeReviewItem({
@@ -173,8 +176,8 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "high",
           domain: "invoices",
           issueType: "missing_work_order_link",
-          summary: "Invoice could not be linked to work order",
-          details: { sourceWorkOrderId },
+          summary: "Historical invoice staged but work order link is missing",
+          details: { sourceWorkOrderId, invoiceNumber, recommendedAction: "Include work order or repair order references in invoice data." },
         }),
       );
     }
@@ -194,15 +197,15 @@ export function buildStagedLinks(params: BuildLinksParams) {
           severity: "medium",
           domain: "parts",
           issueType: "missing_vendor_link",
-          summary: "Part is missing vendor match",
-          details: { vendorName },
+          summary: "Part staged but vendor link is missing",
+          details: { vendorName, recommendedAction: "Upload vendor master data or align vendor naming." },
         }),
       );
     }
   }
 
   for (const menu of menus) {
-    if (!text(menu.normalized.serviceName) && !text(menu.normalized.description)) {
+    if (!text(menu.normalized.serviceName) && !text(menu.normalized.description) && !text(menu.normalized.opCode)) {
       reviewItems.push(
         makeReviewItem({
           shopId,

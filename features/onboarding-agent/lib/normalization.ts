@@ -43,10 +43,12 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
     const make = value(row, ["make"]);
     const model = value(row, ["model"]);
     const vin = value(row, ["vin"]).toUpperCase().replace(/\s+/g, "");
+    const plate = value(row, ["plate", "license", "license plate"]).toUpperCase().replace(/\s+/g, "");
+    const unitNumber = value(row, ["unit", "unit number", "truck number"]);
 
     return {
       entityType: "vehicle",
-      displayName: `${year} ${make} ${model}`.trim() || vin || value(row, ["plate", "license"]),
+      displayName: `${year} ${make} ${model}`.trim() || vin || plate || unitNumber,
       normalized: {
         sourceVehicleId: value(row, ["vehicle id", "id", "external vehicle id"]),
         sourceCustomerId: value(row, ["customer id"]),
@@ -54,8 +56,8 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         customerEmail: value(row, ["customer email", "email"]),
         customerPhone: normalizePhone(value(row, ["customer phone", "phone"])),
         vin,
-        plate: value(row, ["plate", "license", "license plate"]).toUpperCase().replace(/\s+/g, ""),
-        unitNumber: value(row, ["unit", "unit number", "truck number"]),
+        plate,
+        unitNumber,
         year,
         make,
         model,
@@ -64,12 +66,18 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   }
 
   if (domain === "history") {
+    const sourceWorkOrderId = value(row, ["work order", "ro id", "repair order", "ro number", "work order number"]);
+    const invoiceId = value(row, ["invoice id", "invoice number", "invoice"]);
+    const openedDate = value(row, ["opened", "opened date", "open date", "date", "service date"]);
+    const complaint = value(row, ["complaint", "description", "concern", "service text", "service performed"]);
+    const correction = value(row, ["correction", "resolution"]);
+
     return {
       entityType: "historical_work_order",
-      displayName: value(row, ["work order", "repair order", "ro", "ro id", "ro number"]),
+      displayName: sourceWorkOrderId || invoiceId || `${openedDate} ${complaint || correction}`.trim(),
       normalized: {
-        sourceWorkOrderId: value(row, ["work order", "ro id", "repair order", "ro number"]),
-        invoiceId: value(row, ["invoice id", "invoice number", "invoice"]),
+        sourceWorkOrderId,
+        invoiceId,
         sourceCustomerId: value(row, ["customer id"]),
         customerEmail: value(row, ["customer email", "email"]).toLowerCase(),
         customerName: value(row, ["customer name", "name"]),
@@ -77,11 +85,14 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
         vehicleVin: value(row, ["vin"]).toUpperCase().replace(/\s+/g, ""),
         vehiclePlate: value(row, ["plate", "license"]).toUpperCase().replace(/\s+/g, ""),
         vehicleUnitNumber: value(row, ["unit", "unit number"]),
-        complaint: value(row, ["complaint", "description", "concern"]),
+        complaint,
         cause: value(row, ["cause"]),
-        correction: value(row, ["correction", "resolution"]),
-        openedDate: value(row, ["opened", "opened date", "open date", "date"]),
+        correction,
+        serviceDescription: value(row, ["service", "service name", "line description", "service description"]),
+        openedDate,
         closedDate: value(row, ["closed", "completed date", "closed date"]),
+        laborRaw: value(row, ["labor", "labor total"]),
+        laborTotal: parseMoney(value(row, ["labor", "labor total"])),
         totalRaw: value(row, ["total", "amount"]),
         total: parseMoney(value(row, ["total", "amount"])),
       },
@@ -89,15 +100,22 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   }
 
   if (domain === "invoices") {
-    const totalRaw = value(row, ["total", "amount"]);
+    const totalRaw = value(row, ["total", "amount", "invoice total"]);
+    const sourceWorkOrderId = value(row, ["work order", "ro", "ro id", "repair order", "work order number"]);
+    const invoiceNumber = value(row, ["invoice", "invoice number", "invoice id"]);
+    const invoiceDate = value(row, ["issue date", "invoice date", "date"]);
+
     return {
       entityType: "historical_invoice",
-      displayName: value(row, ["invoice", "invoice number"]),
+      displayName: invoiceNumber || `${sourceWorkOrderId} ${invoiceDate}`.trim(),
       normalized: {
-        invoiceNumber: value(row, ["invoice", "invoice number", "invoice id"]),
-        sourceWorkOrderId: value(row, ["work order", "ro", "ro id", "repair order"]),
+        invoiceNumber,
+        sourceWorkOrderId,
         sourceCustomerId: value(row, ["customer id"]),
-        invoiceDate: value(row, ["issue date", "invoice date", "date"]),
+        customerName: value(row, ["customer", "customer name", "name"]),
+        customerEmail: value(row, ["customer email", "email"]).toLowerCase(),
+        vehicleVin: value(row, ["vin"]).toUpperCase().replace(/\s+/g, ""),
+        invoiceDate,
         paymentStatus: value(row, ["status", "payment status"]),
         totalRaw,
         total: parseMoney(totalRaw),
@@ -106,24 +124,33 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   }
 
   if (domain === "parts") {
+    const description = value(row, ["description", "name", "part"]);
+    const partNumber = value(row, ["part number", "part #", "number"]);
+    const sku = value(row, ["sku", "part sku"]);
     return {
       entityType: "part",
-      displayName: value(row, ["description", "name", "part"]),
+      displayName: description || partNumber || sku,
       normalized: {
-        sku: value(row, ["sku", "part sku"]),
-        partNumber: value(row, ["part number", "part #", "number"]),
-        description: value(row, ["description", "name", "part"]),
+        sku,
+        partNumber,
+        description,
         vendorName: value(row, ["vendor", "supplier", "vendor name", "supplier name"]),
+        quantityOnHandRaw: value(row, ["qty", "quantity", "on hand", "quantity on hand"]),
+        costRaw: value(row, ["cost", "unit cost"]),
+        cost: parseMoney(value(row, ["cost", "unit cost"])),
+        priceRaw: value(row, ["price", "list price", "sale price"]),
+        price: parseMoney(value(row, ["price", "list price", "sale price"])),
       },
     };
   }
 
   if (domain === "vendors") {
+    const name = value(row, ["vendor", "supplier", "company", "vendor name", "supplier name"]);
     return {
       entityType: "vendor",
-      displayName: value(row, ["vendor", "supplier", "company", "vendor name", "supplier name"]),
+      displayName: name,
       normalized: {
-        name: value(row, ["vendor", "supplier", "company", "vendor name", "supplier name"]),
+        name,
         email: value(row, ["email", "vendor email"]).toLowerCase(),
         phone: normalizePhone(value(row, ["phone", "vendor phone"])),
         accountNumber: value(row, ["account", "account number", "vendor account"]),
@@ -132,12 +159,14 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   }
 
   if (domain === "staff") {
+    const name = value(row, ["name", "full name", "employee"]);
+    const email = value(row, ["email", "email address"]).toLowerCase();
     return {
       entityType: "staff_candidate",
-      displayName: value(row, ["name", "full name", "employee"]),
+      displayName: name || email,
       normalized: {
-        name: value(row, ["name", "full name", "employee"]),
-        email: value(row, ["email", "email address"]).toLowerCase(),
+        name,
+        email,
         phone: normalizePhone(value(row, ["phone", "mobile"])),
         role: value(row, ["role", "job title", "position", "technician", "advisor"]),
       },
@@ -145,17 +174,22 @@ export function normalizeRow(domain: OnboardingDomain, row: Record<string, strin
   }
 
   if (domain === "menu") {
+    const serviceName = value(row, ["service", "service name", "name"]);
+    const description = value(row, ["description", "service description"]);
+    const laborPriceRaw = value(row, ["labor price", "price", "labor rate"]);
+
     return {
       entityType: "menu_suggestion",
-      displayName: value(row, ["service", "service name", "name", "description"]),
+      displayName: serviceName || description,
       normalized: {
-        serviceName: value(row, ["service", "service name", "name"]),
-        description: value(row, ["description"]),
+        serviceName,
+        description,
         category: value(row, ["category", "service category"]),
         laborHours: value(row, ["labor hours", "hours"]),
-        laborPriceRaw: value(row, ["labor price", "price", "labor rate"]),
-        laborPrice: parseMoney(value(row, ["labor price", "price", "labor rate"])),
+        laborPriceRaw,
+        laborPrice: parseMoney(laborPriceRaw),
         opCode: value(row, ["operation code", "op code", "labor operation", "canned job"]),
+        inspectionHint: value(row, ["inspection", "inspection hint", "recommended inspection"]),
       },
     };
   }

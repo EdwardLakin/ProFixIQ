@@ -23,6 +23,7 @@ function makeInput(reviewSeverity: "blocking" | "high" = "blocking"): Onboarding
     ],
     deterministicDomainDetections: { customers: 1 },
     deterministicStagedEntityCounts: { customer: 10, vehicle: 5 },
+    deterministicEntityStatusCountsByType: { customer: { ready: 10 }, vehicle: { ready: 5 } },
     deterministicLinkCounts: { customer_vehicle: 4 },
     deterministicReviewItems: [
       {
@@ -36,6 +37,7 @@ function makeInput(reviewSeverity: "blocking" | "high" = "blocking"): Onboarding
       },
     ],
     activationPlanSummary: null,
+    canonicalReadiness: reviewSeverity === "blocking" || reviewSeverity === "high" ? "review_required" : "ready_for_dry_run",
   };
 }
 
@@ -112,8 +114,9 @@ describe("onboarding agent ai safeguards", () => {
   it("activation readiness is ready_for_dry_run with no blocking items", () => {
     const input = makeInput("high");
     input.deterministicReviewItems = [];
+    input.canonicalReadiness = "ready_for_dry_run";
     const report = buildDeterministicFallbackReport(input);
-    expect(report.activationReadiness.status).toBe("activation_disabled");
+    expect(report.activationReadiness.status).toBe("ready_for_dry_run");
     expect(report.activationReadiness.safeToProceed).toBe(true);
   });
 

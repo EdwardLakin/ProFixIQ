@@ -33,7 +33,9 @@ export type OnboardingAgentInput = {
   }>;
   deterministicDomainDetections: Record<string, number>;
   deterministicStagedEntityCounts: Record<string, number>;
+  deterministicEntityStatusCountsByType: Record<string, Record<string, number>>;
   deterministicLinkCounts: Record<string, number>;
+  canonicalReadiness?: OnboardingAgentActivationStatus;
   deterministicReviewItems: Array<{
     id: string;
     severity: string;
