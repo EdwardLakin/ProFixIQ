@@ -1,3 +1,5 @@
+import "server-only";
+
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
@@ -9,7 +11,12 @@ export async function generateLaborTimeEstimate(
   jobType: string,
 ): Promise<number | null> {
   try {
-    const prompt = `Estimate labor time in hours (number only) for the following automotive job:\n\nJob Type: ${jobType}\nComplaint: ${complaint}\n\nResponse:`;
+    const prompt = `Estimate labor time in hours (number only) for the following automotive job:
+
+Job Type: ${jobType}
+Complaint: ${complaint}
+
+Response:`;
 
     const response = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
@@ -23,26 +30,6 @@ export async function generateLaborTimeEstimate(
     return isNaN(parsed) ? null : parsed;
   } catch (err) {
     console.error("Failed to generate labor time:", err);
-    return null;
-  }
-}
-
-// Safe to call from client
-export async function estimateLabor(
-  complaint: string,
-  jobType: string,
-): Promise<number | null> {
-  try {
-    const res = await fetch("/api/ai/estimate-labor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ complaint, jobType }),
-    });
-
-    const data = await res.json();
-    return data.hours ?? null;
-  } catch (err) {
-    console.error("Error estimating labor (client):", err);
     return null;
   }
 }

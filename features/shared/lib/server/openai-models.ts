@@ -1,67 +1,44 @@
 import "server-only";
 
 import { isOpenAIConfigured } from "@/features/shared/lib/server/openai";
-
-export type OpenAIModelPurpose =
-  | "reasoning"
-  | "fast"
-  | "extraction"
-  | "embedding"
-  | "vision"
-  | "onboarding";
-
-const DEFAULT_REASONING_MODEL = "gpt-5.5";
-const DEFAULT_FAST_MODEL = "gpt-5.4-mini";
-const DEFAULT_EXTRACTION_MODEL = "gpt-5.5";
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
-const DEFAULT_VISION_MODEL = "gpt-5.5";
+import {
+  resolveOnboardingAgentModel,
+  resolveOpenAIEmbeddingModel,
+  resolveOpenAIExtractionModel,
+  resolveOpenAIFastModel,
+  resolveOpenAIModelForPurpose,
+  resolveOpenAIReasoningModel,
+  type OpenAIModelPurpose,
+} from "@/features/shared/lib/openai-models";
 
 function env(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
+  return process.env[name];
 }
 
+export type { OpenAIModelPurpose };
+
 export function getOpenAIReasoningModel(): string {
-  return env("OPENAI_REASONING_MODEL") ?? env("OPENAI_MODEL") ?? DEFAULT_REASONING_MODEL;
+  return resolveOpenAIReasoningModel(env);
 }
 
 export function getOpenAIFastModel(): string {
-  return env("OPENAI_FAST_MODEL") ?? env("OPENAI_MODEL") ?? DEFAULT_FAST_MODEL;
+  return resolveOpenAIFastModel(env);
 }
 
 export function getOpenAIExtractionModel(): string {
-  return env("OPENAI_EXTRACTION_MODEL") ?? env("OPENAI_REASONING_MODEL") ?? env("OPENAI_MODEL") ?? DEFAULT_EXTRACTION_MODEL;
+  return resolveOpenAIExtractionModel(env);
 }
 
 export function getOpenAIEmbeddingModel(): string {
-  return env("OPENAI_EMBEDDING_MODEL") ?? DEFAULT_EMBEDDING_MODEL;
+  return resolveOpenAIEmbeddingModel(env);
 }
 
 export function getOnboardingAgentModel(): string {
-  return env("ONBOARDING_AGENT_MODEL")
-    ?? env("OPENAI_EXTRACTION_MODEL")
-    ?? env("OPENAI_REASONING_MODEL")
-    ?? env("OPENAI_MODEL")
-    ?? DEFAULT_REASONING_MODEL;
+  return resolveOnboardingAgentModel(env);
 }
 
 export function getOpenAIModelForPurpose(purpose: OpenAIModelPurpose): string {
-  switch (purpose) {
-    case "reasoning":
-      return getOpenAIReasoningModel();
-    case "fast":
-      return getOpenAIFastModel();
-    case "extraction":
-      return getOpenAIExtractionModel();
-    case "embedding":
-      return getOpenAIEmbeddingModel();
-    case "vision":
-      return env("OPENAI_VISION_MODEL") ?? getOpenAIExtractionModel() ?? DEFAULT_VISION_MODEL;
-    case "onboarding":
-      return getOnboardingAgentModel();
-    default:
-      return getOpenAIReasoningModel();
-  }
+  return resolveOpenAIModelForPurpose(purpose, env);
 }
 
 export function getOpenAIModelDiagnostics() {

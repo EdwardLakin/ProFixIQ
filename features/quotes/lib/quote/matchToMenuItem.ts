@@ -1,6 +1,6 @@
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 import { serviceMenu } from "@shared/lib/menuItems";
-import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
+import { estimateLabor } from "@ai/lib/ai/estimateLabor";
 
 /** Shape expected by QuoteViewer (summary page) */
 export interface QuoteLine {
@@ -78,7 +78,7 @@ export async function generateQuoteFromInspection(
     }
 
     // 2) Fall back to AI labor estimate
-    const labor = await generateLaborTimeEstimate(term, "repair");
+    const labor = await estimateLabor(term, "repair");
     if (typeof labor === "number" && labor > 0) {
       quote.push({
         description: term,
