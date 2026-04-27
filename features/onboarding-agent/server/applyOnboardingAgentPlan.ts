@@ -7,6 +7,7 @@ import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/stagi
 import { buildOnboardingSummary, groupReviewItems } from "@/features/onboarding-agent/lib/summaries";
 import type { OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
+import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
 
 const INSERT_CHUNK_SIZE = 1000;
 
@@ -58,6 +59,12 @@ export async function applyOnboardingAgentPlan(params: {
   await sb.from("onboarding_review_items").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId);
 
   const fileMap = new Map(params.plan.files.map((file) => [file.fileId, file]));
+  const { data: filesData } = await sb
+    .from("onboarding_files")
+    .select("id, original_filename, declared_domain, detected_domain, header_row")
+    .eq("shop_id", params.shopId)
+    .eq("session_id", params.sessionId);
+  const fileMetadataById = new Map((filesData ?? []).map((file: any) => [file.id, file]));
   const rawRowsByFile = new Map<string, any[]>();
   const { data: rows } = await sb
     .from("onboarding_raw_rows")
@@ -77,9 +84,22 @@ export async function applyOnboardingAgentPlan(params: {
 
   for (const [fileId, fileRows] of rawRowsByFile.entries()) {
     const planFile = fileMap.get(fileId);
-    const domain = DOMAIN_TO_ENTITY[planFile?.inferredDomain ?? "unknown"] ?? "unknown";
+    const fileMeta = (fileMetadataById.get(fileId) ?? null) as any;
+    const deterministicDomain = detectFileDomain({
+      filename: fileMeta?.original_filename,
+      headers: Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [],
+      declaredDomain: fileMeta?.declared_domain ?? null,
+    });
+    const effectiveDomain = planFile?.inferredDomain && planFile.inferredDomain !== "unknown"
+      ? planFile.inferredDomain
+      : (fileMeta?.detected_domain && fileMeta.detected_domain !== "unknown"
+          ? fileMeta.detected_domain
+          : (fileMeta?.declared_domain && fileMeta.declared_domain !== "unknown"
+              ? fileMeta.declared_domain
+              : deterministicDomain));
+    const domain = DOMAIN_TO_ENTITY[effectiveDomain] ?? "unknown";
     const headerMap = planFile?.headerMap ?? {};
-    const parserMode = planFile?.recommendedParserMode ?? "stage_review_only";
+    const parserMode = planFile?.recommendedParserMode ?? (domain === "unknown" ? "stage_review_only" : "stage_entities");
 
     if (parserMode === "ignore" || parserMode === "unsupported") {
       reviewItems.push({ severity: "medium", domain, issue_type: "ignored_file", summary: `File ${planFile?.filename ?? fileId} ignored by plan`, details: { fileId } });
@@ -106,7 +126,7 @@ export async function applyOnboardingAgentPlan(params: {
     }
 
     await sb.from("onboarding_files").update({
-      detected_domain: domain,
+      detected_domain: effectiveDomain,
       parse_status: "parsed",
     }).eq("shop_id", params.shopId).eq("id", fileId);
   }
@@ -125,6 +145,8 @@ export async function applyOnboardingAgentPlan(params: {
   const graph = buildStagedLinks({ entities: (entities ?? []).map((e: any) => ({ ...e, normalized: e.normalized ?? {} })), shopId: params.shopId, sessionId: params.sessionId });
   const linksToInsert = graph.links.map((link) => ({ ...link, shop_id: params.shopId, session_id: params.sessionId }));
   const insertedLinks = await insertInChunks(sb, "onboarding_entity_links", linksToInsert, "id, link_type, status");
+
+  reviewItems.push(...graph.reviewItems);
 
   const groupedReviewItems = groupReviewItems(reviewItems as any).map((item) => ({
     shop_id: params.shopId,

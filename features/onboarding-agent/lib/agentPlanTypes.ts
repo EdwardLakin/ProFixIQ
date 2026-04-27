@@ -97,11 +97,16 @@ export type OnboardingAgentInputPayload = {
     fileId: string;
     filename: string;
     declaredDomain: string | null;
+    deterministicDetectedDomain: string;
     detectedDomain: string;
     parseStatus: string | null;
     rowCount: number;
     headers: string[];
+    normalizedHeaders: string[];
+    sampleRowIndexes: number[];
     sampleRows: Record<string, unknown>[];
+    idReferenceColumns: string[];
+    relationshipColumns: string[];
     columnExamples: Record<string, unknown[]>;
     deterministic: {
       entityCount: number;

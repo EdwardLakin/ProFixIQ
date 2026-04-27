@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
 
 type ReviewItem = {
   id: string;
@@ -15,29 +14,12 @@ type ReviewItem = {
 export function OnboardingReviewPanel({
   reviewCounts,
   reviewItems,
-  agentPlan,
 }: {
   reviewCounts: { blocking?: number; high?: number; medium?: number; low?: number; byDomain?: Record<string, number> };
   reviewItems: ReviewItem[];
-  agentPlan?: OnboardingAgentPlan | null;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const groupedFromPlan = agentPlan?.reviewGroups ?? [];
-  const topItems = groupedFromPlan.length
-    ? groupedFromPlan.slice(0, 12).map((group, index) => ({
-      id: `${group.domain}-${group.issueType}-${index}`,
-      severity: group.severity,
-      domain: group.domain,
-      issue_type: group.issueType,
-      summary: group.summary,
-      details: {
-        count: group.affectedRowCount,
-        sampleRowIndexes: group.sampleRows,
-        recommendedAction: group.recommendedAction,
-        examples: group.sampleRows.map((row) => ({ summary: `Sample row ${row}` })),
-      },
-    }))
-    : reviewItems.filter((item) => item).slice(0, 12);
+  const topItems = reviewItems.filter((item) => item).slice(0, 12);
   const domainCounts = reviewCounts.byDomain ?? {};
 
   return (

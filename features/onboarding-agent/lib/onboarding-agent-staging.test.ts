@@ -3,6 +3,7 @@ import { fingerprintForDomain } from "@/features/onboarding-agent/lib/fingerprin
 import { buildStagedLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
+import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
 
 function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
@@ -179,6 +180,31 @@ describe("onboarding staging", () => {
     expect(invoice?.entity_type).toBe("historical_invoice");
     expect(invoice?.status).toBe("ready");
     expect(graph.reviewItems.some((item) => item.issue_type === "missing_work_order_link")).toBe(true);
+  });
+
+  it("creates review when vehicle has unresolved customer link", () => {
+    const vehicle = stage("vehicles", { "Vehicle ID": "V-404", VIN: "1HGCM82633A999999", "Customer ID": "C-missing" }).entity;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [{ id: "vehicle-404", entity_type: vehicle!.entity_type, normalized: vehicle!.normalized }],
+    });
+    expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(true);
+  });
+
+  it("summary is derived from persisted staged rows and keeps liveRecordsCreated at 0", () => {
+    const summary = buildOnboardingSummary({
+      filesCount: 2,
+      rowsParsed: 4,
+      entityRows: [{ entity_type: "customer", status: "ready" }, { entity_type: "vehicle", status: "needs_review" }],
+      linkRows: [{ link_type: "customer_vehicle", status: "staged" }],
+      reviewRows: [{ severity: "medium", domain: "vehicles", issue_type: "missing_customer_link", summary: "x", status: "pending" }],
+      analysisCompleted: true,
+    });
+    expect(summary.total_entities).toBe(2);
+    expect(summary.total_links).toBe(1);
+    expect(summary.total_review_items).toBe(1);
+    expect(summary.liveRecordsCreated).toBe(0);
   });
 
 });

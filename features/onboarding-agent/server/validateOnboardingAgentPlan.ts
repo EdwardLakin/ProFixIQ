@@ -38,12 +38,13 @@ function sanitizeEntityPlan(value: unknown): EntityPlanSummary {
 export function validateOnboardingAgentPlan(params: {
   candidate: unknown;
   validFileIds: Set<string>;
+  deterministicByFileId?: Map<string, { filename: string; inferredDomain: OnboardingAgentPlanDomain; rowCount: number }>;
   modeFallback?: OnboardingAgentPlan["mode"];
   model?: string;
 }): OnboardingAgentPlan {
   const root = asObj(params.candidate);
 
-  const files = asArr(root.files).slice(0, 50).map((raw) => {
+  const parsedFiles = asArr(root.files).slice(0, 50).map((raw) => {
     const o = asObj(raw);
     const fileId = asString(o.fileId);
     if (!params.validFileIds.has(fileId)) return null;
@@ -62,9 +63,39 @@ export function validateOnboardingAgentPlan(params: {
       rowCountEstimate: Math.max(0, Math.floor(asNum(o.rowCountEstimate))),
       recommendedParserMode: (["stage_entities", "stage_review_only", "ignore", "unsupported"].includes(asString(o.recommendedParserMode))
         ? asString(o.recommendedParserMode)
-        : "stage_review_only") as "stage_entities" | "stage_review_only" | "ignore" | "unsupported",
+        : "stage_entities") as "stage_entities" | "stage_review_only" | "ignore" | "unsupported",
     };
   }).filter(Boolean) as OnboardingAgentPlan["files"];
+
+  const filesById = new Map(parsedFiles.map((file) => [file.fileId, file]));
+  const files: OnboardingAgentPlan["files"] = [];
+  for (const fileId of params.validFileIds) {
+    const candidateFile = filesById.get(fileId);
+    const deterministic = params.deterministicByFileId?.get(fileId);
+    if (candidateFile) {
+      if (candidateFile.inferredDomain === "unknown" && deterministic?.inferredDomain && deterministic.inferredDomain !== "unknown") {
+        candidateFile.inferredDomain = deterministic.inferredDomain;
+        candidateFile.reasoning = `${candidateFile.reasoning || "AI response incomplete."} Deterministic domain fallback applied.`;
+      }
+      if (!candidateFile.rowCountEstimate && deterministic?.rowCount) candidateFile.rowCountEstimate = deterministic.rowCount;
+      if (!candidateFile.filename && deterministic?.filename) candidateFile.filename = deterministic.filename;
+      files.push(candidateFile);
+      continue;
+    }
+
+    files.push({
+      fileId,
+      filename: deterministic?.filename ?? fileId,
+      inferredDomain: deterministic?.inferredDomain ?? "unknown",
+      confidence: 0.5,
+      reasoning: "AI omitted this file; deterministic fallback applied.",
+      headerMap: {},
+      requiredFieldsPresent: [],
+      missingImportantFields: [],
+      rowCountEstimate: deterministic?.rowCount ?? 0,
+      recommendedParserMode: deterministic?.inferredDomain && deterministic.inferredDomain !== "unknown" ? "stage_entities" : "stage_review_only",
+    });
+  }
 
   const ep = asObj(root.entityPlan);
   const reviewGroups = asArr(root.reviewGroups).slice(0, 200).map((raw) => {

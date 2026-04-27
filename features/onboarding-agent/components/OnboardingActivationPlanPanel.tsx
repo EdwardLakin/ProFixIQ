@@ -9,7 +9,7 @@ function num(value: unknown) {
 
 export function OnboardingActivationPlanPanel({ latestPlan, fallbackSummary, agentPlan }: { latestPlan?: Record<string, unknown> | null; fallbackSummary?: Record<string, unknown> | null; agentPlan?: OnboardingAgentPlan | null }) {
   const [showDevDetails, setShowDevDetails] = useState(false);
-  const summary = (latestPlan?.summary ?? latestPlan ?? fallbackSummary ?? {}) as Record<string, any>;
+  const summary = (fallbackSummary ?? latestPlan?.summary ?? latestPlan ?? {}) as Record<string, any>;
   const preview = agentPlan?.activationPreview;
 
   return (

@@ -33,6 +33,7 @@ export function OnboardingEntitiesPanel({
             {ENTITY_ROWS.map((item) => {
               const status = entityStatusCounts[item.key] ?? {};
               const planned = agentPlan?.entityPlan?.[item.planKey];
+              const hasMeaningfulPlan = Boolean(planned && (planned.staged > 0 || planned.ready > 0 || planned.review > 0));
               return (
                 <li key={item.key} className="rounded border border-white/5 px-2 py-1">
                   <div className="flex items-center justify-between gap-2">
@@ -40,7 +41,7 @@ export function OnboardingEntitiesPanel({
                     <span className="font-semibold text-white">{entityCounts[item.key] ?? 0}</span>
                   </div>
                   <p className="text-[11px] text-slate-400">ready: {status.ready ?? 0} • review: {(status.needs_review ?? 0) + (status.duplicate_candidate ?? 0)}</p>
-                  {planned ? <p className="text-[11px] text-cyan-200">ai staged: {planned.staged} • ai ready: {planned.ready} • ai review: {planned.review}</p> : null}
+                  {hasMeaningfulPlan ? <p className="text-[11px] text-cyan-200">ai staged: {planned!.staged} • ai ready: {planned!.ready} • ai review: {planned!.review}</p> : null}
                 </li>
               );
             })}

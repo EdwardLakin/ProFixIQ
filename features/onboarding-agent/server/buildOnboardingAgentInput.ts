@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseCsvText } from "@/features/onboarding-agent/lib/csvParsing";
 import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
+import { normalizeHeader } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentInputPayload } from "@/features/onboarding-agent/lib/agentPlanTypes";
 import { redactOnboardingSample } from "@/features/onboarding-agent/server/redactOnboardingSample";
 
@@ -21,14 +22,31 @@ function targetSchema() {
 }
 
 function pickSamples(rows: Record<string, unknown>[], max: number) {
-  if (rows.length <= max) return rows;
-  const first = rows.slice(0, Math.ceil(max * 0.7));
+  if (rows.length <= max) {
+    return rows.map((row, idx) => ({ row, idx }));
+  }
+  const first = rows.slice(0, Math.ceil(max * 0.7)).map((row, idx) => ({ row, idx }));
   const stride = Math.max(1, Math.floor(rows.length / Math.max(1, max - first.length)));
-  const later: Record<string, unknown>[] = [];
+  const later: Array<{ row: Record<string, unknown>; idx: number }> = [];
   for (let i = Math.ceil(max * 0.7); i < rows.length && first.length + later.length < max; i += stride) {
-    later.push(rows[i]);
+    later.push({ row: rows[i], idx: i });
   }
   return [...first, ...later];
+}
+
+const RELATIONSHIP_HEADER_HINTS = [
+  "customer id", "customer", "vehicle id", "vin", "unit", "plate", "work order", "repair order", "ro number", "invoice",
+  "vendor id", "vendor", "part number", "sku", "service", "menu", "operation code", "op code",
+];
+
+function detectReferenceColumns(headers: string[]) {
+  const normalized = headers.map(normalizeHeader);
+  const idReferenceColumns = normalized.filter((header) => header.includes(" id") || header.endsWith("id") || header.includes("number") || header.includes("vin") || header.includes("sku"));
+  const relationshipColumns = normalized.filter((header) => RELATIONSHIP_HEADER_HINTS.some((hint) => header.includes(hint)));
+  return {
+    idReferenceColumns: Array.from(new Set(idReferenceColumns)).slice(0, 40),
+    relationshipColumns: Array.from(new Set(relationshipColumns)).slice(0, 40),
+  };
 }
 
 export async function buildOnboardingAgentInput(params: {
@@ -82,9 +100,18 @@ export async function buildOnboardingAgentInput(params: {
       }
     }
 
-    const sampled = pickSamples(rows, sampleLimit).map(redactOnboardingSample);
+    const sampled = pickSamples(rows, sampleLimit);
+    const sampleRows = sampled.map((entry) => redactOnboardingSample(entry.row));
+    const sampleRowIndexes = sampled.map((entry) => entry.idx);
+    const normalizedHeaders = headers.map(normalizeHeader);
+    const deterministicDetectedDomain = detectFileDomain({
+      filename: file.original_filename ?? file.storage_path,
+      headers,
+      declaredDomain: file.declared_domain,
+    });
+    const { idReferenceColumns, relationshipColumns } = detectReferenceColumns(headers);
     const columnExamples: Record<string, unknown[]> = {};
-    for (const row of sampled) {
+    for (const row of sampleRows) {
       for (const [key, val] of Object.entries(row)) {
         const arr = columnExamples[key] ?? [];
         if (val && arr.length < 3) arr.push(val);
@@ -96,11 +123,16 @@ export async function buildOnboardingAgentInput(params: {
       fileId: file.id,
       filename: file.original_filename ?? file.storage_path,
       declaredDomain: file.declared_domain,
-      detectedDomain: file.detected_domain ?? detectFileDomain({ filename: file.original_filename ?? file.storage_path, headers, declaredDomain: file.declared_domain }),
+      deterministicDetectedDomain,
+      detectedDomain: file.detected_domain ?? deterministicDetectedDomain,
       parseStatus: file.parse_status,
       rowCount,
       headers,
-      sampleRows: sampled,
+      normalizedHeaders,
+      sampleRowIndexes,
+      sampleRows,
+      idReferenceColumns,
+      relationshipColumns,
       columnExamples,
       deterministic: {
         entityCount: 0,

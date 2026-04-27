@@ -1,11 +1,18 @@
-import type { OnboardingAgentInputPayload, OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
+import type { OnboardingAgentInputPayload, OnboardingAgentPlan, OnboardingAgentPlanDomain } from "@/features/onboarding-agent/lib/agentPlanTypes";
 import { runOpenAIStructuredJson } from "@/features/shared/lib/server/openai-structured";
 import { validateOnboardingAgentPlan } from "@/features/onboarding-agent/server/validateOnboardingAgentPlan";
+
+function domainOrUnknown(value: string): OnboardingAgentPlanDomain {
+  return (["customers", "vehicles", "history", "invoices", "parts", "vendors", "staff", "menu", "inspections", "unknown"].includes(value)
+    ? value
+    : "unknown") as OnboardingAgentPlanDomain;
+}
 
 function buildFallbackPlan(input: OnboardingAgentInputPayload, model: string): OnboardingAgentPlan {
   return validateOnboardingAgentPlan({
     modeFallback: "deterministic_fallback",
     model,
+    deterministicByFileId: new Map(input.files.map((f) => [f.fileId, { filename: f.filename, inferredDomain: domainOrUnknown(f.deterministicDetectedDomain), rowCount: f.rowCount }])),
     validFileIds: new Set(input.files.map((f) => f.fileId)),
     candidate: {
       version: "onboarding_agent_plan_v1",
@@ -47,7 +54,7 @@ export async function runOpenAIOnboardingPlan(params: {
     schemaName: "OnboardingAgentPlan",
     system: "You are the ProFixIQ onboarding migration planner. You produce JSON only. Never claim live record creation. Staged-only semantics: historical work orders are not active jobs; historical invoices are not active invoice workflow; staff rows are candidates/invites, not auth users; menu/inspection rows are suggestions only.",
     user: {
-      instruction: "Infer per-file domains, header mappings, review groups, relationships, and a dry-run activation preview. Return strict OnboardingAgentPlan JSON.",
+      instruction: "Infer per-file domains, header mappings, review groups, relationships, and a dry-run activation preview. Use filename heavily, then headers/samples to refine. For known exports, do not return unknown. Use stage_entities for recognized domains. Missing links should create review groups rather than unsupported file outputs. Historical work orders/invoices may stage without resolved links. Staff rows are candidates only. Service catalog rows are menu suggestions only. Return strict OnboardingAgentPlan JSON.",
       knownFilesHint: ["customers.csv", "vehicles.csv", "work_orders_history.csv", "invoices.csv", "parts_inventory.csv", "vendors.csv", "staff_users.csv", "service_catalog.csv"],
       input: params.input,
     },
@@ -58,6 +65,7 @@ export async function runOpenAIOnboardingPlan(params: {
       candidate,
       validFileIds,
       model,
+      deterministicByFileId: new Map(params.input.files.map((f) => [f.fileId, { filename: f.filename, inferredDomain: domainOrUnknown(f.deterministicDetectedDomain), rowCount: f.rowCount }])),
       modeFallback: "ai_planned",
     }),
   });
