@@ -18,20 +18,21 @@ export function OnboardingActivationPlanPanel({ latestPlan, fallbackSummary, age
       <p className="mt-2 text-xs text-amber-200/80">No live records have been created. This is dry-run only.</p>
 
       <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <div>Customers: <span className="font-semibold text-white">{num(preview?.creates.customers ?? summary.customersReady)}</span></div>
-        <div>Vehicles: <span className="font-semibold text-white">{num(preview?.creates.vehicles ?? summary.vehiclesReady)}</span></div>
-        <div>Historical work orders: <span className="font-semibold text-white">{num(preview?.creates.historicalWorkOrders ?? summary.historicalWorkOrdersReady)}</span></div>
-        <div>Historical invoices: <span className="font-semibold text-white">{num(preview?.creates.historicalInvoices ?? summary.historicalInvoicesReady)}</span></div>
-        <div>Parts: <span className="font-semibold text-white">{num(preview?.creates.parts ?? summary.partsReady)}</span></div>
-        <div>Vendors: <span className="font-semibold text-white">{num(preview?.creates.vendors ?? summary.vendorsReady)}</span></div>
-        <div>Staff candidates: <span className="font-semibold text-white">{num(preview?.creates.staffCandidates ?? summary.staffCandidatesReady)}</span></div>
-        <div>Menu suggestions: <span className="font-semibold text-white">{num(preview?.creates.menuSuggestions ?? summary.menuSuggestionsReady)}</span></div>
-        <div>Inspection suggestions: <span className="font-semibold text-white">{num(preview?.creates.inspectionSuggestions ?? summary.inspectionSuggestionsReady)}</span></div>
-        <div>Blocking issues: <span className="font-semibold text-white">{num(preview?.blockingIssues ?? summary.blockingIssues)}</span></div>
-        <div>Requires review: <span className="font-semibold text-white">{num(preview?.requiresReview ?? summary.reviewNeeded)}</span></div>
+        <div>Customers: <span className="font-semibold text-white">{num(summary.customersReady)}</span></div>
+        <div>Vehicles: <span className="font-semibold text-white">{num(summary.vehiclesReady)}</span></div>
+        <div>Historical work orders: <span className="font-semibold text-white">{num(summary.historicalWorkOrdersReady)}</span></div>
+        <div>Historical invoices: <span className="font-semibold text-white">{num(summary.historicalInvoicesReady)}</span></div>
+        <div>Parts: <span className="font-semibold text-white">{num(summary.partsReady)}</span></div>
+        <div>Vendors: <span className="font-semibold text-white">{num(summary.vendorsReady)}</span></div>
+        <div>Staff candidates: <span className="font-semibold text-white">{num(summary.staffCandidatesReady)}</span></div>
+        <div>Menu suggestions: <span className="font-semibold text-white">{num(summary.menuSuggestionsReady)}</span></div>
+        <div>Inspection suggestions: <span className="font-semibold text-white">{num(summary.inspectionSuggestionsReady)}</span></div>
+        <div>Blocking issues: <span className="font-semibold text-white">{num(summary.blockingIssues)}</span></div>
+        <div>Requires review: <span className="font-semibold text-white">{num(summary.reviewNeeded)}</span></div>
       </div>
 
       {preview?.risks?.length ? <ul className="mt-3 list-disc pl-5 text-xs text-amber-100/90">{preview.risks.slice(0, 5).map((risk, idx) => <li key={`${risk}-${idx}`}>{risk}</li>)}</ul> : null}
+      {preview ? <p className="mt-2 text-[11px] text-amber-200/70">AI activation preview is advisory only; counts above are derived from persisted staged rows.</p> : null}
 
       <button onClick={() => setShowDevDetails((v) => !v)} className="mt-3 rounded border border-white/20 px-2 py-1 text-xs text-slate-200">{showDevDetails ? "Hide" : "Show"} developer details</button>
       {showDevDetails ? <pre className="mt-2 overflow-auto rounded-lg bg-slate-900/60 p-3 text-xs text-slate-200">{JSON.stringify({ latestPlan, agentPlan }, null, 2)}</pre> : null}

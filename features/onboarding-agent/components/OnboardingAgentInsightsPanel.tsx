@@ -7,16 +7,20 @@ export function OnboardingAgentInsightsPanel({
   report,
   plan,
   fallbackReadiness,
+  summary,
 }: {
   sessionId: string;
   report?: { mode?: string; summary?: string; model?: string | null; activationReadiness?: { status?: string } } | null;
   plan?: OnboardingAgentPlan | null;
   fallbackReadiness?: string;
+  summary?: Record<string, unknown> | null;
   onRefresh: () => Promise<void>;
 }) {
   const [showDev, setShowDev] = useState(false);
   const displayedReadiness = report?.activationReadiness?.status ?? fallbackReadiness ?? "not_ready";
   const usingFallback = report?.mode === "deterministic_fallback";
+  const aiRowsSampled = Number(summary?.aiRowsSampled ?? 0);
+  const rowsParsed = Number(summary?.rowsParsedTotal ?? summary?.rowsParsed ?? 0);
 
   return (
     <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/10 p-4">
@@ -42,6 +46,11 @@ export function OnboardingAgentInsightsPanel({
         </div>
       </div>
 
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <p className="rounded border border-white/10 bg-slate-900/50 px-3 py-2 text-xs text-slate-200">Rows parsed: <span className="font-semibold text-white">{rowsParsed.toLocaleString()}</span></p>
+        <p className="rounded border border-white/10 bg-slate-900/50 px-3 py-2 text-xs text-slate-200">AI sampled rows: <span className="font-semibold text-white">{aiRowsSampled.toLocaleString()}</span></p>
+      </div>
+
       <p className="mt-3 text-sm text-slate-200">{report?.summary ?? "Run analysis to get onboarding understanding."}</p>
       {usingFallback ? <p className="mt-2 text-xs text-amber-200">Warning: AI output fell back to deterministic planning for one or more files.</p> : null}
 
@@ -49,13 +58,25 @@ export function OnboardingAgentInsightsPanel({
         <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/50 p-3">
           <p className="text-[11px] uppercase tracking-wide text-slate-400">Per-file AI plan</p>
           <ul className="mt-2 space-y-1 text-xs text-slate-200">
-            {plan.files.slice(0, 12).map((file) => (
-              <li key={file.fileId} className="rounded border border-white/10 px-2 py-1">
-                <p className="text-white">{file.filename}</p>
-                <p>{file.inferredDomain} • {file.recommendedParserMode} • {Math.round(file.confidence * 100)}%</p>
-                <p className="text-slate-400">mapped: {Object.values(file.headerMap).slice(0, 6).join(", ") || "none"}</p>
-              </li>
-            ))}
+            {plan.files.slice(0, 12).map((file) => {
+              const mappedEntries = Object.entries(file.headerMap ?? {});
+              return (
+                <li key={file.fileId} className="rounded border border-white/10 px-2 py-1">
+                  <p className="text-white">{file.filename}</p>
+                  <p>{file.inferredDomain} • {file.recommendedParserMode} • {Math.round(file.confidence * 100)}%</p>
+                  <p className="text-slate-400">mapped: {mappedEntries.length} columns</p>
+                  {file.missingImportantFields.length ? <p className="text-amber-200/90">missing: {file.missingImportantFields.slice(0, 4).join(", ")}</p> : null}
+                  {mappedEntries.length ? (
+                    <details className="mt-1 text-slate-400">
+                      <summary className="cursor-pointer">mapping details</summary>
+                      <ul className="mt-1 space-y-0.5 text-[11px]">
+                        {mappedEntries.slice(0, 8).map(([sourceHeader, canonicalField]) => <li key={`${file.fileId}-${sourceHeader}`}>{canonicalField} ← {sourceHeader}</li>)}
+                      </ul>
+                    </details>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

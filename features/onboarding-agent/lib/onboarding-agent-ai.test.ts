@@ -195,4 +195,20 @@ describe("onboarding agent ai safeguards", () => {
     expect(String(row.Note).length).toBeLessThanOrEqual(120);
   });
 
+  it("plan validator normalizes known review and relationship domains", () => {
+    const plan = validateOnboardingAgentPlan({
+      validFileIds: new Set(["file-1"]),
+      candidate: {
+        files: [{ fileId: "file-1", filename: "work_orders_history.csv", inferredDomain: "historical_work_order", confidence: 0.8, reasoning: "x", headerMap: {}, rowCountEstimate: 5, requiredFieldsPresent: [], missingImportantFields: [], recommendedParserMode: "stage_entities" }],
+        relationshipPlan: [{ fromDomain: "historical_work_order", toDomain: "invoice", relationshipType: "work_order_invoice", confidence: 0.7, matchingKeys: ["workOrderId"], reasoning: "x", expectedLinks: 3, reviewRequired: false }],
+        reviewGroups: [{ severity: "medium", domain: "historical_invoice", issueType: "missing_work_order_link", affectedRowCount: 2, sampleRows: [1], summary: "x", recommendedAction: "manual_review" }],
+      },
+    });
+
+    expect(plan.files[0].inferredDomain).toBe("history");
+    expect(plan.relationshipPlan[0].fromDomain).toBe("history");
+    expect(plan.relationshipPlan[0].toDomain).toBe("invoices");
+    expect(plan.reviewGroups[0].domain).toBe("invoices");
+  });
+
 });

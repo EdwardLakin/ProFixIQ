@@ -2,7 +2,8 @@ export function OnboardingProgressCard({ summary }: { summary?: Record<string, u
   const rows = [
     ["Uploaded files", String((summary?.uploadedFiles as number) ?? (summary?.fileCount as number) ?? 0)],
     ["Rows parsed", String((summary?.rowsParsedTotal as number) ?? (summary?.rowsParsed as number) ?? 0)],
-    ["Entities discovered", String((summary?.entitiesDiscovered as number) ?? 0)],
+    ["AI sampled rows", String((summary?.aiRowsSampled as number) ?? 0)],
+    ["Unique staged entities", String((summary?.entitiesDiscovered as number) ?? 0)],
     ["Links found", String((summary?.linksFound as number) ?? 0)],
     ["Review exceptions", String((summary?.reviewExceptions as number) ?? 0)],
   ];

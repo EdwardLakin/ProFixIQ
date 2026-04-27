@@ -4,6 +4,7 @@ import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection"
 import { normalizeHeader } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentInputPayload } from "@/features/onboarding-agent/lib/agentPlanTypes";
 import { redactOnboardingSample } from "@/features/onboarding-agent/server/redactOnboardingSample";
+import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 
 const DEFAULT_SAMPLES = 25;
 
@@ -69,15 +70,15 @@ export async function buildOnboardingAgentInput(params: {
   const fileIds = (files ?? []).map((f: any) => f.id);
   const rowsByFile = new Map<string, Record<string, unknown>[]>();
   if (fileIds.length) {
-    const { data: rows } = await sb
-      .from("onboarding_raw_rows")
-      .select("file_id, source_row_index, raw")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .in("file_id", fileIds)
-      .order("source_row_index", { ascending: true });
+    const rows = await fetchOnboardingRawRows({
+      sb,
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      select: "file_id, source_row_index, raw",
+      fileIds,
+    });
 
-    for (const row of rows ?? []) {
+    for (const row of rows) {
       const list = rowsByFile.get(row.file_id) ?? [];
       list.push((row.raw ?? {}) as Record<string, unknown>);
       rowsByFile.set(row.file_id, list);
