@@ -41,7 +41,11 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
-        setError(json?.error || "Analysis failed. Please retry.");
+        if (res.status === 409 && typeof json?.error === "string") {
+          setError(json.error);
+        } else {
+          setError(json?.error || "Analysis failed. Please retry.");
+        }
       } else {
         const mode = json?.mode;
         const warning = typeof json?.warning === "string" ? json.warning : null;

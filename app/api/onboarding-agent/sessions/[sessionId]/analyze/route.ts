@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { analyzeOnboardingSession } from "@/features/onboarding-agent/server/analyzeOnboardingSession";
+import { analyzeOnboardingSession, OnboardingAnalysisConflictError } from "@/features/onboarding-agent/server/analyzeOnboardingSession";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -30,7 +30,14 @@ export async function POST(_: Request, context: RouteContext) {
 
     const summary = sessionRow?.summary && typeof sessionRow.summary === "object" ? sessionRow.summary : {};
     const analyzedRows = Number((summary as Record<string, unknown>).rowsParsedTotal ?? (summary as Record<string, unknown>).rowsParsed ?? 0);
-    const hasAnalysisArtifacts = Boolean(sessionRow?.analyzed_at) || analyzedRows > 0;
+    const { count: rawRowCount, error: rawRowCountError } = await (admin as any)
+      .from("onboarding_raw_rows")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("session_id", sessionId);
+    if (rawRowCountError) throw new Error(rawRowCountError.message);
+
+    const hasAnalysisArtifacts = Boolean(sessionRow?.analyzed_at) || analyzedRows > 0 || Number(rawRowCount ?? 0) > 0;
     if (hasAnalysisArtifacts) {
       return NextResponse.json(
         {
@@ -62,7 +69,7 @@ export async function POST(_: Request, context: RouteContext) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
-    const status = message.includes("not found") ? 404 : 500;
+    const status = error instanceof OnboardingAnalysisConflictError ? 409 : message.includes("not found") ? 404 : 500;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

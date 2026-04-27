@@ -38,6 +38,7 @@ export async function resetOnboardingAnalysisArtifacts(params: {
   await run(sb.from("onboarding_entity_links").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId));
   await run(sb.from("onboarding_review_items").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId));
   await run(sb.from("onboarding_entities").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId));
+  await run(sb.from("onboarding_activation_plans").delete().eq("shop_id", params.shopId).eq("session_id", params.sessionId));
 
   const { data: session } = await sb.from("onboarding_sessions").select("summary").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle();
   const existingSummary = (session?.summary && typeof session.summary === "object") ? session.summary : {};
