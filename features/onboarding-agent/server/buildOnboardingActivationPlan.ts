@@ -4,10 +4,11 @@ import { buildDryRunActivationPlan } from "@/features/onboarding-agent/lib/activ
 export async function buildOnboardingActivationPlan(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
 
-  const [{ data: entityRows }, { data: linkRows }, { data: reviewRows }] = await Promise.all([
+  const [{ data: entityRows }, { data: linkRows }, { data: reviewRows }, { data: sessionRow }] = await Promise.all([
     sb.from("onboarding_entities").select("entity_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb.from("onboarding_entity_links").select("link_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb.from("onboarding_review_items").select("severity").eq("shop_id", params.shopId).eq("session_id", params.sessionId).eq("status", "pending"),
+    sb.from("onboarding_sessions").select("summary").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
   ]);
 
   const entityCounts = (entityRows ?? []).reduce((acc: Record<string, number>, row: any) => {
@@ -30,11 +31,14 @@ export async function buildOnboardingActivationPlan(params: { supabase: Supabase
     reviewNonBlocking: nonblocking,
   });
 
+  const sessionSummary = (sessionRow?.summary ?? {}) as Record<string, unknown>;
+  const summaryWithAgent = { ...plan, agentReport: sessionSummary.agentReport ?? null, liveRecordsCreated: 0 };
+
   const { data } = await sb
     .from("onboarding_activation_plans")
-    .insert({ shop_id: params.shopId, session_id: params.sessionId, status: "ready", plan, summary: plan, risk_flags: { risks: plan.risks } })
+    .insert({ shop_id: params.shopId, session_id: params.sessionId, status: "ready", plan, summary: summaryWithAgent, risk_flags: { risks: plan.risks } })
     .select("id, status, summary, created_at")
     .single();
 
-  return { plan, record: data };
+  return { plan: summaryWithAgent, record: data };
 }
