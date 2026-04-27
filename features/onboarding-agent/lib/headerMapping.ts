@@ -194,7 +194,16 @@ export function buildEffectiveHeaderMap(params: {
   domain: OnboardingDomain;
   headers: string[];
   aiHeaderMap?: Record<string, string> | null;
-}): { headerMap: Record<string, string>; mappingSource: "ai" | "deterministic_alias" | "mixed" | "none" } {
+}): {
+  headerMap: Record<string, string>;
+  mappingSource: "ai" | "deterministic_alias" | "mixed" | "none";
+  mappedColumnCount: number;
+  diagnostics: {
+    aiMappedColumns: number;
+    deterministicMappedColumns: number;
+    canonicalPassthroughColumns: number;
+  };
+} {
   const deterministicMap = buildDeterministicHeaderMap(params.domain, params.headers);
   const aiMap = normalizeAiHeaderMap({
     domain: params.domain,
@@ -203,6 +212,7 @@ export function buildEffectiveHeaderMap(params: {
   });
   const output: Record<string, string> = { ...aiMap };
   const aiApplied = Object.keys(aiMap).length;
+  let passthroughCount = 0;
 
   for (const [header, canonical] of Object.entries(deterministicMap)) {
     if (!output[header]) output[header] = canonical;
@@ -210,7 +220,10 @@ export function buildEffectiveHeaderMap(params: {
 
   for (const header of params.headers) {
     const canonical = resolveCanonicalField(params.domain, header);
-    if (canonical && !output[header]) output[header] = canonical;
+    if (canonical && !output[header]) {
+      output[header] = canonical;
+      passthroughCount += 1;
+    }
   }
 
   const deterministicCount = Object.keys(deterministicMap).length;
@@ -226,5 +239,11 @@ export function buildEffectiveHeaderMap(params: {
   return {
     headerMap: output,
     mappingSource: totalCount > 0 ? mappingSource : "none",
+    mappedColumnCount: totalCount,
+    diagnostics: {
+      aiMappedColumns: aiApplied,
+      deterministicMappedColumns: deterministicCount,
+      canonicalPassthroughColumns: passthroughCount,
+    },
   };
 }

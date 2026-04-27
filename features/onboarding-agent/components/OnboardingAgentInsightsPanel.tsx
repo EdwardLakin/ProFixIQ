@@ -21,6 +21,8 @@ export function OnboardingAgentInsightsPanel({
   const usingFallback = report?.mode === "deterministic_fallback";
   const aiRowsSampled = Number(summary?.aiRowsSampled ?? 0);
   const rowsParsed = Number(summary?.rowsParsedTotal ?? summary?.rowsParsed ?? 0);
+  const effectiveFileMappings = Array.isArray(summary?.effectiveFileMappings) ? summary.effectiveFileMappings as Array<Record<string, unknown>> : [];
+  const effectiveByFileId = new Map(effectiveFileMappings.map((item) => [String(item.fileId ?? ""), item]));
 
   return (
     <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/10 p-4">
@@ -56,15 +58,21 @@ export function OnboardingAgentInsightsPanel({
 
       {plan?.files?.length ? (
         <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/50 p-3">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Per-file AI plan</p>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">Per-file AI plan & effective mapping</p>
           <ul className="mt-2 space-y-1 text-xs text-slate-200">
             {plan.files.slice(0, 12).map((file) => {
               const mappedEntries = Object.entries(file.headerMap ?? {});
+              const effective = effectiveByFileId.get(file.fileId);
               return (
                 <li key={file.fileId} className="rounded border border-white/10 px-2 py-1">
                   <p className="text-white">{file.filename}</p>
                   <p>{file.inferredDomain} • {file.recommendedParserMode} • {Math.round(file.confidence * 100)}%</p>
-                  <p className="text-slate-400">mapped: {mappedEntries.length} columns • source: {file.mappingSource ?? "none"}</p>
+                  <p className="text-slate-400">AI map: {mappedEntries.length} columns • source: {file.mappingSource ?? "none"}</p>
+                  {effective ? (
+                    <p className="text-cyan-200/90">
+                      Effective map: {Number(effective.mappedColumnCount ?? 0)} columns • source: {String(effective.mappingSource ?? "none")} • staged rows: {Number(effective.stagedRows ?? 0)}
+                    </p>
+                  ) : null}
                   {file.missingImportantFields.length ? <p className="text-amber-200/90">missing: {file.missingImportantFields.slice(0, 4).join(", ")}</p> : null}
                   {mappedEntries.length ? (
                     <details className="mt-1 text-slate-400">

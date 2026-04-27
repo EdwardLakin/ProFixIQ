@@ -8,6 +8,7 @@ import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerM
 import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
 import { detectDomain } from "@/features/onboarding-agent/lib/domains";
 import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
+import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
 
 function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
   const normalized = normalizeRow(domain, row);
@@ -34,6 +35,7 @@ describe("onboarding staging", () => {
     });
 
     expect(effective.mappingSource).toBe("deterministic_alias");
+    expect(effective.mappedColumnCount).toBe(3);
     expect(effective.headerMap["Customer ID"]).toBe("sourceCustomerId");
     expect(effective.headerMap["Full Name"]).toBe("name");
     expect(effective.headerMap["Email Address"]).toBe("email");
@@ -91,8 +93,17 @@ describe("onboarding staging", () => {
       const domain = detectDomain({ filename: fixture.filename, headers: fixture.headers });
       expect(domain).not.toBe("unknown");
       const effective = buildEffectiveHeaderMap({ domain, headers: fixture.headers, aiHeaderMap: {} });
-      expect(Object.keys(effective.headerMap).length).toBeGreaterThan(0);
+      expect(effective.mappedColumnCount).toBeGreaterThan(0);
     }
+  });
+
+  it("detectFileDomain ignores invalid declared domain and keeps deterministic match", () => {
+    const domain = detectFileDomain({
+      filename: "work_orders_history.csv",
+      headers: ["RO Number", "Complaint", "Service Date"],
+      declaredDomain: "not-a-domain",
+    });
+    expect(domain).toBe("history");
   });
   it("analyze creates staged entities from customer rows", () => {
     const staged = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" });
@@ -113,6 +124,17 @@ describe("onboarding staging", () => {
     });
 
     expect(graph.links.some((link) => link.link_type === "customer_vehicle")).toBe(true);
+  });
+
+  it("does not create customer_vehicle links when there are no vehicles", () => {
+    const customer = stage("customers", { "Customer ID": "C-1", Name: "Jane" }).entity!;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [{ id: "customer-1", entity_type: customer.entity_type, normalized: customer.normalized }],
+    });
+
+    expect(graph.links.some((link) => link.link_type === "customer_vehicle")).toBe(false);
   });
 
   it("creates historical_work_order and historical_invoice entities", () => {
@@ -298,6 +320,45 @@ describe("onboarding staging", () => {
 
     expect(graph.links.length).toBe(0);
     expect(graph.reviewItems.some((item) => item.issue_type === "missing_customer_link")).toBe(true);
+  });
+
+  it("golden 8-file pipeline stages all domains from mapped canonical rows", () => {
+    const fixtures = [
+      { domain: "customers", row: { "Customer ID": "C-100", "Customer Name": "Dana Driver", Email: "dana@example.test" } },
+      { domain: "vehicles", row: { "Vehicle ID": "V-100", "Customer ID": "C-100", VIN: "1HGCM82633A777777", Make: "Ford", Model: "Transit", Year: "2021" } },
+      { domain: "history", row: { "RO Number": "RO-100", "Customer ID": "C-100", "Vehicle ID": "V-100", "Service Date": "2026-03-20", Complaint: "Brake pulsation" } },
+      { domain: "invoices", row: { "Invoice Number": "INV-100", "Work Order": "RO-100", "Invoice Date": "2026-03-21", Total: "899.12" } },
+      { domain: "parts", row: { SKU: "BRK-10", "Part Number": "P-100", Description: "Brake Kit", Vendor: "Metro Supply" } },
+      { domain: "vendors", row: { "Vendor Name": "Metro Supply", Email: "orders@metro.test" } },
+      { domain: "staff", row: { "Full Name": "Alex Tech", Email: "alex@shop.test", Role: "Technician" } },
+      { domain: "menu", row: { "Service Name": "Brake Service", Description: "Pad and rotor replacement", Price: "350" } },
+    ] as const;
+
+    const staged = fixtures.map((fixture, index) => stage(fixture.domain, fixture.row as Record<string, string>, index).entity).filter(Boolean);
+    const counts = staged.reduce<Record<string, number>>((acc, entity) => {
+      acc[entity!.entity_type] = (acc[entity!.entity_type] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    expect(counts.customer ?? 0).toBeGreaterThan(0);
+    expect(counts.vehicle ?? 0).toBeGreaterThan(0);
+    expect(counts.historical_work_order ?? 0).toBeGreaterThan(0);
+    expect(counts.historical_invoice ?? 0).toBeGreaterThan(0);
+    expect(counts.part ?? 0).toBeGreaterThan(0);
+    expect(counts.vendor ?? 0).toBeGreaterThan(0);
+    expect(counts.staff_candidate ?? 0).toBeGreaterThan(0);
+    expect(counts.menu_suggestion ?? 0).toBeGreaterThan(0);
+
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: staged.map((entity, index) => ({ id: `entity-${index}`, entity_type: entity!.entity_type, normalized: entity!.normalized, status: entity!.status })),
+    });
+    expect(graph.links.some((link) => link.link_type === "customer_vehicle")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "customer_work_order")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "vehicle_work_order")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "work_order_invoice")).toBe(true);
+    expect(graph.links.some((link) => link.link_type === "vendor_part")).toBe(true);
   });
 
   it("does not create missing-link reviews when no lookup identity exists", () => {
