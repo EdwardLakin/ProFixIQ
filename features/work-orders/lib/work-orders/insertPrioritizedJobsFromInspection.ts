@@ -9,7 +9,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { estimateLabor } from "@ai/lib/ai/generateLaborTimeEstimate";
+import { estimateLabor } from "@ai/lib/ai/estimateLabor";
 
 type DB = Database;
 
