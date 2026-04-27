@@ -11,6 +11,10 @@ import {
   type Scope,
   type Tile,
 } from "@/features/shared/config/tiles";
+import {
+  OWNER_GROUP_ORDER,
+  getOwnerSidebarTiles,
+} from "@/features/shared/lib/ownerSidebarNav";
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -25,6 +29,7 @@ const GROUP_ORDER = [
   "Settings",
   "General",
 ];
+
 
 function normalizeRole(raw: string | null | undefined): Role | null {
   const r = String(raw ?? "").toLowerCase().trim();
@@ -81,9 +86,12 @@ export default function RoleSidebar() {
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
 
-    return TILES.filter((t) => t.roles.includes(role)).filter(
+    const filteredTiles = TILES.filter((t) => t.roles.includes(role)).filter(
       (t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter),
     );
+
+    if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
+    return filteredTiles;
   }, [role, scopeFilter]);
 
   const canonicalActiveTile = useMemo(
@@ -102,15 +110,14 @@ export default function RoleSidebar() {
     }, {});
   }, [tiles]);
 
-  const sortedGroups = useMemo(
-    () =>
-      Object.entries(groups).sort(([a], [b]) => {
-        const ia = GROUP_ORDER.indexOf(a);
-        const ib = GROUP_ORDER.indexOf(b);
-        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-      }),
-    [groups],
-  );
+  const sortedGroups = useMemo(() => {
+    const groupOrder = role === "owner" ? OWNER_GROUP_ORDER : GROUP_ORDER;
+    return Object.entries(groups).sort(([a], [b]) => {
+      const ia = groupOrder.indexOf(a);
+      const ib = groupOrder.indexOf(b);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+  }, [groups, role]);
 
   useEffect(() => {
     if (!sortedGroups.length) return;
