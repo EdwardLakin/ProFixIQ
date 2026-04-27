@@ -14,6 +14,18 @@ import {
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+const GROUP_ORDER = [
+  "Tech",
+  "Operations",
+  "Parts",
+  "Fleet",
+  "Tools",
+  "Admin",
+  "Billing",
+  "Settings",
+  "General",
+];
+
 function normalizeRole(raw: string | null | undefined): Role | null {
   const r = String(raw ?? "").toLowerCase().trim();
   if (!r) return null;
@@ -22,6 +34,18 @@ function normalizeRole(raw: string | null | undefined): Role | null {
   if (r === "fleet pm" || r === "fleet_pm") return "fleet_manager";
 
   return r as Role;
+}
+
+function isRouteMatch(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  if (href === "/") return pathname === "/";
+  return pathname.startsWith(`${href}/`);
+}
+
+function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
+  const matching = tiles.filter((tile) => isRouteMatch(pathname, tile.href));
+  if (matching.length === 0) return null;
+  return matching.sort((a, b) => b.href.length - a.href.length)[0] ?? null;
 }
 
 export default function RoleSidebar() {
@@ -62,6 +86,11 @@ export default function RoleSidebar() {
     );
   }, [role, scopeFilter]);
 
+  const canonicalActiveTile = useMemo(
+    () => getCanonicalActiveTile(pathname, tiles),
+    [pathname, tiles],
+  );
+
   const groups = useMemo(() => {
     return tiles.reduce<Record<string, Tile[]>>((acc, tile) => {
       const key =
@@ -73,23 +102,11 @@ export default function RoleSidebar() {
     }, {});
   }, [tiles]);
 
-  const order = [
-    "Tech",
-    "Operations",
-    "Parts",
-    "Fleet",
-    "Tools",
-    "Admin",
-    "Billing",
-    "Settings",
-    "General",
-  ];
-
   const sortedGroups = useMemo(
     () =>
       Object.entries(groups).sort(([a], [b]) => {
-        const ia = order.indexOf(a);
-        const ib = order.indexOf(b);
+        const ia = GROUP_ORDER.indexOf(a);
+        const ib = GROUP_ORDER.indexOf(b);
         return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
       }),
     [groups],
@@ -100,9 +117,9 @@ export default function RoleSidebar() {
 
     const next: Record<string, boolean> = {};
     for (const [group, groupTiles] of sortedGroups) {
-      const hasActive = groupTiles.some(
-        (t) => pathname === t.href || pathname.startsWith(t.href + "/"),
-      );
+      const hasActive = canonicalActiveTile
+        ? groupTiles.some((t) => t.href === canonicalActiveTile.href)
+        : groupTiles.some((t) => isRouteMatch(pathname, t.href));
       next[group] = hasActive;
     }
 
@@ -111,7 +128,7 @@ export default function RoleSidebar() {
         Object.entries(next).map(([k, v]) => [k, prev[k] ?? v ?? false]),
       ),
     );
-  }, [pathname, sortedGroups]);
+  }, [pathname, sortedGroups, canonicalActiveTile]);
 
   if (!role) {
     return (
@@ -138,9 +155,9 @@ export default function RoleSidebar() {
     >
       {sortedGroups.map(([group, groupTiles]) => {
         const open = !!openSections[group];
-        const hasActive = groupTiles.some(
-          (t) => pathname === t.href || pathname.startsWith(t.href + "/"),
-        );
+        const hasActive = canonicalActiveTile
+          ? groupTiles.some((t) => t.href === canonicalActiveTile.href)
+          : groupTiles.some((t) => isRouteMatch(pathname, t.href));
 
         return (
           <div key={group} className="px-2.5">
@@ -220,8 +237,9 @@ export default function RoleSidebar() {
             {open ? (
               <div className="mt-2 space-y-1.5 pl-2.5">
                 {groupTiles.map((t) => {
-                  const active =
-                    pathname === t.href || pathname.startsWith(t.href + "/");
+                  const active = canonicalActiveTile
+                    ? canonicalActiveTile.href === t.href
+                    : isRouteMatch(pathname, t.href);
 
                   return (
                     <Link
