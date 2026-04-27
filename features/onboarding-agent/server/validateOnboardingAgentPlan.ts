@@ -24,6 +24,20 @@ function clamp01(v: unknown, fb = 0.5) {
   return Math.max(0, Math.min(1, asNum(v, fb)));
 }
 
+
+function normalizePlanDomain(raw: unknown): OnboardingAgentPlanDomain {
+  const value = asString(raw, "unknown").toLowerCase();
+  if (value === "historical_work_order" || value === "work_orders" || value === "work_order") return "history";
+  if (value === "historical_invoice" || value === "invoice" || value === "billing") return "invoices";
+  if (value === "customer") return "customers";
+  if (value === "vehicle") return "vehicles";
+  if (value === "part") return "parts";
+  if (value === "vendor") return "vendors";
+  if (value === "employee" || value === "users") return "staff";
+  if (value === "service_catalog" || value === "service_menu") return "menu";
+  return (DOMAINS.has(value as OnboardingAgentPlanDomain) ? value : "unknown") as OnboardingAgentPlanDomain;
+}
+
 function sanitizeEntityPlan(value: unknown): EntityPlanSummary {
   const o = asObj(value);
   return {
@@ -48,11 +62,11 @@ export function validateOnboardingAgentPlan(params: {
     const o = asObj(raw);
     const fileId = asString(o.fileId);
     if (!params.validFileIds.has(fileId)) return null;
-    const inferred = asString(o.inferredDomain, "unknown") as OnboardingAgentPlanDomain;
+    const inferred = normalizePlanDomain(o.inferredDomain);
     return {
       fileId,
       filename: asString(o.filename) || fileId,
-      inferredDomain: DOMAINS.has(inferred) ? inferred : "unknown",
+      inferredDomain: inferred,
       confidence: clamp01(o.confidence, 0.5),
       reasoning: asString(o.reasoning).slice(0, 500),
       headerMap: Object.fromEntries(
@@ -103,7 +117,7 @@ export function validateOnboardingAgentPlan(params: {
     const severity = asString(o.severity);
     return {
       severity: (["low", "medium", "high", "blocking"].includes(severity) ? severity : "medium") as "low" | "medium" | "high" | "blocking",
-      domain: asString(o.domain, "unknown"),
+      domain: normalizePlanDomain(o.domain),
       issueType: asString(o.issueType, "needs_review"),
       affectedRowCount: Math.max(0, Math.floor(asNum(o.affectedRowCount))),
       sampleRows: asArr(o.sampleRows).slice(0, 10).map((x) => Math.max(0, Math.floor(asNum(x)))),
@@ -136,8 +150,8 @@ export function validateOnboardingAgentPlan(params: {
     relationshipPlan: asArr(root.relationshipPlan).slice(0, 100).map((raw) => {
       const o = asObj(raw);
       return {
-        fromDomain: asString(o.fromDomain, "unknown"),
-        toDomain: asString(o.toDomain, "unknown"),
+        fromDomain: normalizePlanDomain(o.fromDomain),
+        toDomain: normalizePlanDomain(o.toDomain),
         relationshipType: asString(o.relationshipType, "unknown"),
         confidence: clamp01(o.confidence, 0.5),
         matchingKeys: asArr(o.matchingKeys).slice(0, 10).map((x) => asString(x)),

@@ -8,6 +8,8 @@ import { buildOnboardingSummary, groupReviewItems } from "@/features/onboarding-
 import type { OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
 import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
 import { detectFileDomain } from "@/features/onboarding-agent/lib/fileDetection";
+import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
+import { fetchOnboardingRawRows } from "@/features/onboarding-agent/server/fetchOnboardingRawRows";
 import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
 
 const INSERT_CHUNK_SIZE = 1000;
@@ -41,8 +43,10 @@ const DOMAIN_TO_ENTITY: Record<string, OnboardingDomain> = {
 
 function remapHeaders(raw: Record<string, unknown>, map: Record<string, string>) {
   const out: Record<string, string> = {};
+  const normalizedMap = Object.fromEntries(Object.entries(map).map(([source, target]) => [source.toLowerCase(), target]));
+
   for (const [k, v] of Object.entries(raw)) {
-    const key = map[k] ?? map[k.toLowerCase()] ?? k;
+    const key = map[k] ?? map[k.toLowerCase()] ?? normalizedMap[k.toLowerCase()] ?? k;
     out[key] = typeof v === "string" ? v : String(v ?? "");
   }
   return out;
@@ -67,14 +71,14 @@ export async function applyOnboardingAgentPlan(params: {
     .eq("session_id", params.sessionId);
   const fileMetadataById = new Map((filesData ?? []).map((file: any) => [file.id, file]));
   const rawRowsByFile = new Map<string, any[]>();
-  const { data: rows } = await sb
-    .from("onboarding_raw_rows")
-    .select("id, file_id, source_row_index, raw")
-    .eq("shop_id", params.shopId)
-    .eq("session_id", params.sessionId)
-    .order("source_row_index", { ascending: true });
+  const rows = await fetchOnboardingRawRows({
+    sb,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+    select: "id, file_id, source_row_index, raw",
+  });
 
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     const list = rawRowsByFile.get(row.file_id) ?? [];
     list.push(row);
     rawRowsByFile.set(row.file_id, list);
@@ -99,7 +103,8 @@ export async function applyOnboardingAgentPlan(params: {
               ? fileMeta.declared_domain
               : deterministicDomain));
     const domain = DOMAIN_TO_ENTITY[effectiveDomain] ?? "unknown";
-    const headerMap = planFile?.headerMap ?? {};
+    const fileHeaders = Array.isArray(fileMeta?.header_row) ? fileMeta.header_row : [];
+    const headerMap = buildEffectiveHeaderMap({ domain, headers: fileHeaders, aiHeaderMap: planFile?.headerMap ?? {} });
     const parserMode = planFile?.recommendedParserMode ?? (domain === "unknown" ? "stage_review_only" : "stage_entities");
 
     if (parserMode === "ignore" || parserMode === "unsupported") {
@@ -133,9 +138,10 @@ export async function applyOnboardingAgentPlan(params: {
   }
 
   for (const group of params.plan.reviewGroups) {
+    const normalizedDomain = DOMAIN_TO_ENTITY[group.domain] ? group.domain : "unknown";
     reviewItems.push({
       severity: group.severity,
-      domain: group.domain,
+      domain: normalizedDomain,
       issue_type: group.issueType,
       summary: group.summary,
       details: { sampleRows: group.sampleRows, affectedRowCount: group.affectedRowCount, recommendedAction: group.recommendedAction },
@@ -189,6 +195,8 @@ export async function applyOnboardingAgentPlan(params: {
   const summary = {
     ...existingSummary,
     ...canonical.summaryCounts,
+    aiRowsSampled: Number(existingSummary.aiRowsSampled ?? 0),
+    aiFilesSampled: Number(existingSummary.aiFilesSampled ?? 0),
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0,

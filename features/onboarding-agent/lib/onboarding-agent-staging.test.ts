@@ -4,6 +4,7 @@ import { buildStagedLinks } from "@/features/onboarding-agent/lib/graph";
 import { normalizeRow } from "@/features/onboarding-agent/lib/normalization";
 import { stageEntityFromNormalized } from "@/features/onboarding-agent/lib/staging";
 import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
+import { buildEffectiveHeaderMap } from "@/features/onboarding-agent/lib/headerMapping";
 import { buildDeterministicFallbackReport } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
 
 function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
@@ -22,6 +23,18 @@ function stage(domain: any, row: Record<string, string>, sourceRowIndex = 0) {
 }
 
 describe("onboarding staging", () => {
+
+  it("deterministic header mapping provides canonical fields when AI map is empty", () => {
+    const map = buildEffectiveHeaderMap({
+      domain: "customers",
+      headers: ["Customer ID", "Full Name", "Email Address"],
+      aiHeaderMap: {},
+    });
+
+    expect(map["Customer ID"]).toBe("sourceCustomerId");
+    expect(map["Full Name"]).toBe("name");
+    expect(map["Email Address"]).toBe("email");
+  });
   it("analyze creates staged entities from customer rows", () => {
     const staged = stage("customers", { "Customer ID": "C-1", "Full Name": "Jane Doe", Email: "jane@example.com" });
     expect(staged.entity?.entity_type).toBe("customer");
@@ -224,6 +237,42 @@ describe("onboarding staging", () => {
     expect(summary.summaryCounts.aiRowsSampled).toBe(1000);
     expect(summary.summaryCounts.aiFilesSampled).toBe(8);
     expect(summary.liveRecordsCreated).toBe(0);
+  });
+
+  it("entities discovered can exceed AI sampled rows", () => {
+    const summary = buildOnboardingSummary({
+      filesCount: 1,
+      rowsParsed: 1500,
+      aiRowsSampled: 200,
+      aiFilesSampled: 1,
+      entityRows: Array.from({ length: 1500 }, () => ({ entity_type: "customer", status: "ready" as const })),
+      linkRows: [],
+      reviewRows: [],
+      analysisCompleted: true,
+    });
+
+    expect(summary.summaryCounts.rowsParsedTotal).toBe(1500);
+    expect(summary.summaryCounts.aiRowsSampled).toBe(200);
+    expect(summary.summaryCounts.entitiesDiscovered).toBe(1500);
+  });
+
+  it("activation plan summary is derived from persisted staged rows", () => {
+    const summary = buildOnboardingSummary({
+      filesCount: 1,
+      rowsParsed: 3,
+      entityRows: [
+        { entity_type: "customer", status: "ready" },
+        { entity_type: "vehicle", status: "ready" },
+        { entity_type: "historical_invoice", status: "ready" },
+      ],
+      linkRows: [],
+      reviewRows: [],
+      analysisCompleted: true,
+    });
+
+    expect(summary.activation_plan_summary.customersReady).toBe(1);
+    expect(summary.activation_plan_summary.vehiclesReady).toBe(1);
+    expect(summary.activation_plan_summary.historicalInvoicesReady).toBe(1);
   });
 
 });
