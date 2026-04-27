@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { createOnboardingSession } from "@/features/onboarding-agent/server/createOnboardingSession";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id as string;
+  const actorId = access.profile.id;
+  const admin = createAdminSupabase();
 
   const body = (await req.json().catch(() => ({}))) as { title?: string; source?: string; notes?: string };
 
   try {
     const result = await createOnboardingSession({
-      supabase: access.supabase,
-      shopId: access.profile.shop_id as string,
-      createdBy: access.profile.id,
+      supabase: admin,
+      shopId,
+      createdBy: actorId,
       title: body.title,
       source: body.source,
       notes: body.notes,
@@ -29,11 +33,15 @@ export async function POST(req: Request) {
 export async function GET() {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id as string;
+  const actorId = access.profile.id;
+  void actorId;
+  const admin = createAdminSupabase();
 
-  const { data, error } = await (access.supabase as any)
+  const { data, error } = await (admin as any)
     .from("onboarding_sessions")
     .select("id, title, source, status, summary, stats, created_at, updated_at")
-    .eq("shop_id", access.profile.shop_id)
+    .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
     .limit(30);
 
@@ -43,10 +51,10 @@ export async function GET() {
   const fileCounts = new Map<string, number>();
 
   if (sessionIds.length) {
-    const { data: files } = await (access.supabase as any)
+    const { data: files } = await (admin as any)
       .from("onboarding_files")
       .select("session_id")
-      .eq("shop_id", access.profile.shop_id)
+      .eq("shop_id", shopId)
       .in("session_id", sessionIds);
 
     for (const file of files ?? []) {

@@ -1,8 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDryRunActivationPlan } from "@/features/onboarding-agent/lib/activationPlan";
+import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 
 export async function buildOnboardingActivationPlan(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
+  await assertOnboardingSessionOwnership({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
 
   const [{ data: entityRows }, { data: linkRows }, { data: reviewRows }, { data: sessionRow }] = await Promise.all([
     sb.from("onboarding_entities").select("entity_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),

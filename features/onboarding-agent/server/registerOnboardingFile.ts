@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 
 export async function registerOnboardingFile(params: {
   supabase: SupabaseClient;
@@ -9,14 +10,11 @@ export async function registerOnboardingFile(params: {
   originalFilename?: string | null;
   declaredDomain?: string | null;
 }) {
-  const { data: session, error: sessionError } = await (params.supabase as any)
-    .from("onboarding_sessions")
-    .select("id")
-    .eq("id", params.sessionId)
-    .eq("shop_id", params.shopId)
-    .maybeSingle();
-
-  if (sessionError || !session) throw new Error("Session not found for this shop");
+  await assertOnboardingSessionOwnership({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
 
   const { data, error } = await (params.supabase as any)
     .from("onboarding_files")

@@ -7,6 +7,7 @@ import type {
   OnboardingAgentReport,
 } from "@/features/onboarding-agent/lib/agentTypes";
 import { ONBOARDING_DOMAINS, type OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
+import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { buildOnboardingAgentSystemPrompt, buildOnboardingAgentUserPrompt } from "@/features/onboarding-agent/server/prompts";
 import { getOnboardingAgentEnabled, getOnboardingAgentModel } from "@/features/onboarding-agent/server/model";
 
@@ -278,6 +279,11 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
   const sb = params.supabase as any;
   const configuredSampleSize = params.sampleRowsPerFile ?? Number(process.env.ONBOARDING_AGENT_SAMPLE_ROWS ?? 20);
   const sampleRowsPerFile = Math.max(1, Math.min(50, configuredSampleSize || 20));
+  await assertOnboardingSessionOwnership({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
 
   const { data: session } = await sb
     .from("onboarding_sessions")

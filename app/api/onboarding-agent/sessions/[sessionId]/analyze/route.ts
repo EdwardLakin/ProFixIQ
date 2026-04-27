@@ -3,6 +3,7 @@ import { analyzeOnboardingSession } from "@/features/onboarding-agent/server/ana
 import { getOnboardingAgentEnabled } from "@/features/onboarding-agent/server/model";
 import { runOnboardingAgentAnalysis } from "@/features/onboarding-agent/server/runOnboardingAgentAnalysis";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{
@@ -13,14 +14,29 @@ type RouteContext = {
 export async function POST(_: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id as string;
+  const actorId = access.profile.id;
+  void actorId;
+  const admin = createAdminSupabase();
 
   const { sessionId } = await context.params;
 
   try {
-    const { count, error: countError } = await (access.supabase as any)
+    const { data: session, error: sessionError } = await (admin as any)
+      .from("onboarding_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    if (sessionError) throw new Error(sessionError.message);
+    if (!session) {
+      return NextResponse.json({ ok: false, error: "Session not found for this shop" }, { status: 404 });
+    }
+
+    const { count, error: countError } = await (admin as any)
       .from("onboarding_files")
       .select("id", { count: "exact", head: true })
-      .eq("shop_id", access.profile.shop_id)
+      .eq("shop_id", shopId)
       .eq("session_id", sessionId);
 
     if (countError) throw new Error(countError.message);
@@ -32,8 +48,8 @@ export async function POST(_: Request, context: RouteContext) {
     }
 
     const summary = await analyzeOnboardingSession({
-      supabase: access.supabase,
-      shopId: access.profile.shop_id as string,
+      supabase: admin,
+      shopId,
       sessionId,
     });
 
@@ -46,8 +62,8 @@ export async function POST(_: Request, context: RouteContext) {
     if (shouldAutoAnalyze) {
       try {
         agentReport = await runOnboardingAgentAnalysis({
-          supabase: access.supabase,
-          shopId: access.profile.shop_id as string,
+          supabase: admin,
+          shopId,
           sessionId,
         });
       } catch (error) {

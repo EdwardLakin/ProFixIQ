@@ -6,6 +6,7 @@ import {
   ONBOARDING_UPLOAD_BUCKET,
 } from "@/features/onboarding-agent/server/uploadOnboardingFiles";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{
@@ -18,6 +19,10 @@ export const runtime = "nodejs";
 export async function POST(req: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id as string;
+  const actorId = access.profile.id;
+  void actorId;
+  const admin = createAdminSupabase();
 
   const { sessionId } = await context.params;
 
@@ -26,11 +31,11 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "Expected multipart/form-data" }, { status: 400 });
   }
 
-  const { data: session, error: sessionError } = await (access.supabase as any)
+  const { data: session, error: sessionError } = await (admin as any)
     .from("onboarding_sessions")
     .select("id")
     .eq("id", sessionId)
-    .eq("shop_id", access.profile.shop_id)
+    .eq("shop_id", shopId)
     .maybeSingle();
 
   if (sessionError || !session) {
@@ -59,14 +64,14 @@ export async function POST(req: Request, context: RouteContext) {
     try {
       const { safeName } = assertOnboardingUploadFile(file);
       const storagePath = buildOnboardingStoragePath({
-        shopId: access.profile.shop_id as string,
+        shopId,
         sessionId,
         filename: safeName,
         index,
       });
 
       const bytes = Buffer.from(await file.arrayBuffer());
-      const { error: uploadError } = await access.supabase.storage
+      const { error: uploadError } = await admin.storage
         .from(ONBOARDING_UPLOAD_BUCKET)
         .upload(storagePath, bytes, {
           contentType: file.type || "text/csv",
@@ -78,8 +83,8 @@ export async function POST(req: Request, context: RouteContext) {
       }
 
       const registration = await registerOnboardingFile({
-        supabase: access.supabase,
-        shopId: access.profile.shop_id as string,
+        supabase: admin,
+        shopId,
         sessionId,
         storageBucket: ONBOARDING_UPLOAD_BUCKET,
         storagePath,
