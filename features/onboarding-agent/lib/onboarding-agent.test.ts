@@ -45,13 +45,17 @@ describe("onboarding agent helpers", () => {
   it("builds dry-run activation plan", () => {
     const plan = buildDryRunActivationPlan({
       sessionId: "s-1",
-      entityCounts: { customer: 2, vehicle: 1, historical_work_order: 3, historical_invoice: 1 },
-      linkCounts: { customer_vehicle: 1 },
-      reviewBlocking: 2,
-      reviewNonBlocking: 1,
+      entityStatusCountsByType: {
+        customer: { ready: 2, needs_review: 0, duplicate_candidate: 0 },
+        vehicle: { ready: 1, needs_review: 0, duplicate_candidate: 0 },
+        historical_work_order: { ready: 3, needs_review: 0, duplicate_candidate: 0 },
+        historical_invoice: { ready: 1, needs_review: 0, duplicate_candidate: 0 },
+      },
+      linkRows: [{ link_type: "customer_vehicle", status: "staged" }],
+      reviewCountsBySeverity: { blocking: 1, high: 1, medium: 1, low: 0 },
     });
     expect(plan.mode).toBe("dry_run");
-    expect(plan.creates.customers).toBe(2);
-    expect(plan.review.blocking).toBe(2);
+    expect(plan.customersReady).toBe(2);
+    expect(plan.blockingIssues).toBe(2);
   });
 });

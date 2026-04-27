@@ -27,11 +27,11 @@ function hasNumber(value: unknown): boolean {
 
 function sourceExternalIdForDomain(domain: OnboardingDomain, normalized: Record<string, unknown>): string | null {
   if (domain === "customers") return text(normalized.sourceCustomerId) || null;
-  if (domain === "vehicles") return text(normalized.sourceVehicleId) || null;
-  if (domain === "history") return text(normalized.sourceWorkOrderId) || null;
-  if (domain === "invoices") return text(normalized.invoiceNumber) || null;
+  if (domain === "vehicles") return text(normalized.sourceVehicleId) || text(normalized.vin) || text(normalized.plate) || null;
+  if (domain === "history") return text(normalized.sourceWorkOrderId) || text(normalized.invoiceId) || null;
+  if (domain === "invoices") return text(normalized.invoiceNumber) || text(normalized.sourceWorkOrderId) || null;
   if (domain === "parts") return text(normalized.sku) || text(normalized.partNumber) || null;
-  if (domain === "vendors") return text(normalized.accountNumber) || null;
+  if (domain === "vendors") return text(normalized.accountNumber) || text(normalized.name) || null;
   if (domain === "staff") return text(normalized.email) || text(normalized.name) || null;
   if (domain === "menu") return text(normalized.opCode) || text(normalized.serviceName) || null;
   return null;
@@ -96,7 +96,8 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "vehicles") {
-    if (has(n.vin) || has(n.plate) || has(n.unitNumber) || has(n.sourceVehicleId)) {
+    const hasIdentity = has(n.vin) || has(n.plate) || has(n.unitNumber) || has(n.sourceVehicleId) || (has(n.year) && has(n.make) && has(n.model));
+    if (hasIdentity) {
       status = "ready";
       confidence = 0.88;
       reviewReason = null;
@@ -105,9 +106,10 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
 
   if (domain === "history") {
     const hasPrimary = has(n.sourceWorkOrderId) || has(n.invoiceId);
-    const hasContext = has(n.sourceCustomerId) || has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
-    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.openedDate);
-    if (hasPrimary || (hasContext && hasNarrative)) {
+    const hasContext = has(n.sourceVehicleId) || has(n.vehicleVin) || has(n.vehiclePlate);
+    const hasNarrative = has(n.complaint) || has(n.cause) || has(n.correction) || has(n.serviceDescription);
+    const hasDate = has(n.openedDate) || has(n.closedDate);
+    if (hasPrimary || ((hasNarrative || hasContext) && hasDate)) {
       status = "ready";
       confidence = 0.86;
       reviewReason = null;
@@ -115,7 +117,10 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "invoices") {
-    const hasIdentity = has(n.invoiceNumber) || (hasNumber(n.total) && (has(n.invoiceDate) || has(n.sourceWorkOrderId) || has(n.sourceCustomerId)));
+    const hasIdentity = has(n.invoiceNumber)
+      || (has(n.sourceWorkOrderId) && has(n.invoiceDate))
+      || (has(n.invoiceDate) && hasNumber(n.total))
+      || (has(n.sourceCustomerId) && hasNumber(n.total));
     if (hasIdentity) {
       status = "ready";
       confidence = 0.86;
@@ -124,7 +129,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "parts") {
-    if (has(n.sku) || has(n.partNumber) || has(n.description)) {
+    if (has(n.sku) || has(n.partNumber) || has(n.description) || has(n.vendorName)) {
       status = "ready";
       confidence = 0.82;
       reviewReason = null;
@@ -148,7 +153,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
   }
 
   if (domain === "menu") {
-    if (has(n.serviceName) || has(n.description)) {
+    if (has(n.serviceName) || has(n.description) || has(n.opCode)) {
       status = "ready";
       confidence = 0.8;
       reviewReason = null;
@@ -167,7 +172,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
           domain,
           issueType: "missing_identity",
           summary: `${domain} row ${input.sourceRowIndex + 1} is missing identity fields`,
-          details: { sourceRowIndex: input.sourceRowIndex },
+          details: { sourceRowIndex: input.sourceRowIndex, normalized: n },
         }),
       ],
     };
@@ -182,6 +187,7 @@ export function stageEntityFromNormalized(input: StageEntityInput & { canonicalF
         domain,
         issueType: "needs_review",
         summary: `${domain} row ${input.sourceRowIndex + 1} needs review before activation planning`,
+        details: { sourceRowIndex: input.sourceRowIndex, normalized: n },
       }),
     );
   }
@@ -242,7 +248,7 @@ export function markDuplicateEntities(
           domain: entity.entity_type,
           issueType: "duplicate_candidate",
           summary: `${entity.entity_type} row ${entity.source_row_index + 1} is a duplicate candidate`,
-          details: { canonicalFingerprint: fingerprint, duplicateCount: count },
+          details: { canonicalFingerprint: fingerprint, duplicateCount: count, sourceRowIndex: entity.source_row_index },
         }),
       );
     }

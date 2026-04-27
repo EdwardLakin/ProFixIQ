@@ -13,7 +13,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
   const [{ data: session }, { data: files }, { data: entities }, { data: links }, { data: reviews }, { data: latestPlan }] = await Promise.all([
     sb.from("onboarding_sessions").select("*").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
     sb.from("onboarding_files").select("*").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
-    sb.from("onboarding_entities").select("entity_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_entities").select("entity_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb.from("onboarding_entity_links").select("link_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb
       .from("onboarding_review_items")
@@ -28,8 +28,8 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
   const canonical = buildOnboardingSummary({
     filesCount: (files ?? []).length,
     rowsParsed: rowsParsedFromFiles,
-    entityRows: (entities ?? []).map((row: any) => ({ entity_type: row.entity_type })),
-    linkRows: (links ?? []).map((row: any) => ({ link_type: row.link_type })),
+    entityRows: (entities ?? []).map((row: any) => ({ entity_type: row.entity_type, status: row.status })),
+    linkRows: (links ?? []).map((row: any) => ({ link_type: row.link_type, status: row.status })),
     reviewRows: (reviews ?? []).map((row: any) => ({
       id: row.id,
       severity: row.severity,
@@ -40,7 +40,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       details: row.details ?? {},
     })),
     groupedExceptionCount: (reviews ?? []).length,
-    activationReadiness: ((session?.stats ?? {}) as Record<string, unknown>).activation_readiness as string | undefined,
+    analysisCompleted: Boolean(session?.analyzed_at),
   });
 
   const entityCounts = ENTITY_BUCKETS.reduce<Record<string, number>>((acc, key) => {
@@ -60,22 +60,25 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     byDomain: canonical.review_counts_by_domain,
   };
 
+  const canonicalSummary = {
+    ...canonical.summaryCounts,
+    activationReadiness: canonical.activation_readiness,
+    activationPlanSummary: canonical.activation_plan_summary,
+    liveRecordsCreated: 0 as const,
+    agentReport: (session?.summary ?? {})?.agentReport ?? null,
+  };
+
   return {
-    session,
+    session: session ? { ...session, summary: canonicalSummary, stats: canonical } : null,
     files: files ?? [],
     entityCounts,
+    entityStatusCounts: canonical.entity_status_counts_by_type,
     reviewCounts,
     reviewItems: reviews ?? [],
     linkCounts,
+    activationPlanSummary: canonical.activation_plan_summary,
+    readiness: canonical.activation_readiness,
     latestPlan,
-    summaryCounts: {
-      uploadedFiles: canonical.files_count,
-      rowsParsed: canonical.rows_parsed,
-      entitiesDiscovered: canonical.total_entities,
-      linksFound: canonical.total_links,
-      reviewExceptions: canonical.total_review_items,
-      groupedExceptionCount: canonical.grouped_exception_count,
-      liveRecordsCreated: 0 as const,
-    },
+    summaryCounts: canonical.summaryCounts,
   };
 }

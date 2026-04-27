@@ -7,6 +7,7 @@ import type {
   OnboardingAgentReport,
 } from "@/features/onboarding-agent/lib/agentTypes";
 import { ONBOARDING_DOMAINS, type OnboardingDomain } from "@/features/onboarding-agent/lib/domains";
+import { buildOnboardingSummary } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { buildOnboardingAgentSystemPrompt, buildOnboardingAgentUserPrompt } from "@/features/onboarding-agent/server/prompts";
 import { getOnboardingAgentEnabled, getOnboardingAgentModel } from "@/features/onboarding-agent/server/model";
@@ -65,19 +66,12 @@ function sanitizeIds(ids: unknown, allow: Set<string>) {
 }
 
 function buildActivationReadiness(input: OnboardingAgentInput) {
-  const blockingItems = input.deterministicReviewItems.filter((item) => item.severity === "blocking");
-  const warningItems = input.deterministicReviewItems.filter((item) => item.severity !== "blocking");
-  const entitiesTotal = Object.values(input.deterministicStagedEntityCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
   const rowsParsed = input.files.reduce((sum, file) => sum + file.rowCount, 0);
+  const entitiesTotal = Object.values(input.deterministicStagedEntityCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
+  const blockingItems = input.deterministicReviewItems.filter((item) => item.severity === "blocking" || item.severity === "high");
+  const warningItems = input.deterministicReviewItems.filter((item) => item.severity !== "blocking" && item.severity !== "high");
 
-  if (rowsParsed > 0 && entitiesTotal === 0) {
-    return {
-      status: "empty" as const,
-      blockers: ["Rows were parsed but no staged entities were detected."],
-      warnings: ["Upload better mapped CSVs or review header mappings before re-running analysis."],
-      safeToProceed: false,
-    };
-  }
+  const status = input.canonicalReadiness ?? "review_required";
 
   if (rowsParsed === 0) {
     return {
@@ -88,7 +82,16 @@ function buildActivationReadiness(input: OnboardingAgentInput) {
     };
   }
 
-  if (blockingItems.length > 0) {
+  if (rowsParsed > 0 && entitiesTotal === 0) {
+    return {
+      status: "empty" as const,
+      blockers: ["Rows were parsed but no staged entities were detected."],
+      warnings: ["Upload better mapped CSVs or review header mappings before re-running analysis."],
+      safeToProceed: false,
+    };
+  }
+
+  if (status === "review_required" || status === "not_ready") {
     return {
       status: "review_required" as const,
       blockers: blockingItems.map((item) => item.summary),
@@ -97,36 +100,38 @@ function buildActivationReadiness(input: OnboardingAgentInput) {
     };
   }
 
-  if (warningItems.length > 0) {
-    return {
-      status: "ready_for_dry_run" as const,
-      blockers: [],
-      warnings: warningItems.map((item) => item.summary),
-      safeToProceed: true,
-    };
-  }
-
   return {
-    status: "activation_disabled" as const,
+    status: status === "ready_for_dry_run" ? "ready_for_dry_run" as const : "activation_disabled" as const,
     blockers: [],
-    warnings: ["Activation remains disabled in this phase; dry-run only."],
-    safeToProceed: true,
+    warnings: warningItems.map((item) => item.summary).concat(["Activation remains disabled in this phase; dry-run only."]),
+    safeToProceed: status === "ready_for_dry_run",
   };
 }
 
 export function buildDeterministicFallbackReport(input: OnboardingAgentInput): OnboardingAgentReport {
   const rowsParsed = input.files.reduce((sum, file) => sum + file.rowCount, 0);
   const entitiesTotal = Object.values(input.deterministicStagedEntityCounts).reduce((sum, count) => sum + Number(count ?? 0), 0);
-  const blockingCount = input.deterministicReviewItems.filter((item) => item.severity === "blocking").length;
+  const blockingCount = input.deterministicReviewItems.filter((item) => item.severity === "blocking" || item.severity === "high").length;
   const readiness = buildActivationReadiness(input);
+
+  const entityTypesByDomain: Record<string, string[]> = {
+    customers: ["customer"],
+    vehicles: ["vehicle"],
+    history: ["historical_work_order"],
+    invoices: ["historical_invoice"],
+    parts: ["part"],
+    vendors: ["vendor"],
+    staff: ["staff_candidate"],
+    menu: ["menu_suggestion"],
+    inspections: ["inspection_suggestion"],
+  };
 
   const domainSummaries: OnboardingAgentDomainSummary[] = ONBOARDING_DOMAINS.map((domain) => {
     const fileRows = input.files.filter((file) => (file.detectedDomain ?? "unknown") === domain).reduce((sum, file) => sum + file.rowCount, 0);
     const reviewCount = input.deterministicReviewItems.filter((item) => (item.domain ?? "unknown") === domain).length;
-    const entitiesDetected = Object.entries(input.deterministicStagedEntityCounts)
-      .filter(([entityType]) => entityType.includes(domain.slice(0, -1)) || (domain === "history" && entityType === "historical_work_order") || (domain === "invoices" && entityType === "historical_invoice"))
-      .reduce((sum, [, count]) => sum + Number(count ?? 0), 0);
-    const readyCount = Math.max(0, entitiesDetected - reviewCount);
+    const domainEntityTypes = entityTypesByDomain[domain] ?? [];
+    const entitiesDetected = domainEntityTypes.reduce((sum, entityType) => sum + Number(input.deterministicStagedEntityCounts[entityType] ?? 0), 0);
+    const readyCount = domainEntityTypes.reduce((sum, entityType) => sum + Number(input.deterministicEntityStatusCountsByType[entityType]?.ready ?? 0), 0);
 
     return {
       domain,
@@ -328,8 +333,8 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
 
   const [{ data: files }, { data: entities }, { data: links }, { data: reviews }, { data: latestPlan }] = await Promise.all([
     sb.from("onboarding_files").select("id, original_filename, storage_path, declared_domain, detected_domain, parse_status, row_count, header_row").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: true }),
-    sb.from("onboarding_entities").select("id, entity_type, source_file_id").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("onboarding_entity_links").select("id, link_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_entities").select("id, entity_type, status, source_file_id").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
+    sb.from("onboarding_entity_links").select("id, link_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
     sb.from("onboarding_review_items").select("id, severity, domain, summary, issue_type, entity_id, details").eq("shop_id", params.shopId).eq("session_id", params.sessionId).eq("status", "pending"),
     sb.from("onboarding_activation_plans").select("summary").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
@@ -355,10 +360,30 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
     }
   }
 
+  const canonical = buildOnboardingSummary({
+    filesCount: (files ?? []).length,
+    rowsParsed: (files ?? []).reduce((sum: number, file: any) => sum + Number(file.row_count ?? 0), 0),
+    entityRows: (entities ?? []).map((entity: any) => ({ entity_type: entity.entity_type, status: entity.status })),
+    linkRows: (links ?? []).map((link: any) => ({ link_type: link.link_type, status: link.status })),
+    reviewRows: (reviews ?? []).map((review: any) => ({
+      id: review.id,
+      severity: review.severity,
+      status: "pending",
+      domain: review.domain,
+      issue_type: review.issue_type,
+      summary: review.summary,
+      details: review.details ?? {},
+    })),
+    groupedExceptionCount: (reviews ?? []).length,
+    analysisCompleted: true,
+  });
+
   const deterministicStagedEntityCounts = (entities ?? []).reduce((acc: Record<string, number>, entity: any) => {
     acc[entity.entity_type] = (acc[entity.entity_type] ?? 0) + 1;
     return acc;
   }, {});
+
+  const deterministicEntityStatusCountsByType = canonical.entity_status_counts_by_type;
 
   const deterministicLinkCounts = (links ?? []).reduce((acc: Record<string, number>, link: any) => {
     acc[link.link_type] = (acc[link.link_type] ?? 0) + 1;
@@ -386,7 +411,9 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
     })),
     deterministicDomainDetections,
     deterministicStagedEntityCounts,
+    deterministicEntityStatusCountsByType,
     deterministicLinkCounts,
+    canonicalReadiness: canonical.activation_readiness,
     deterministicReviewItems: (reviews ?? []).map((review: any) => ({
       id: review.id,
       severity: review.severity,
@@ -427,11 +454,11 @@ export async function runOnboardingAgentAnalysis(params: RunParams): Promise<Onb
   }
 
   const existingSummary = asRecord(session.summary);
-  const nextSummary = { ...existingSummary, agentReport: report, liveRecordsCreated: 0 };
+  const nextSummary = { ...existingSummary, ...canonical.summaryCounts, activationReadiness: canonical.activation_readiness, activationPlanSummary: canonical.activation_plan_summary, agentReport: report, liveRecordsCreated: 0 };
 
   await sb
     .from("onboarding_sessions")
-    .update({ summary: nextSummary, stats: nextSummary })
+    .update({ summary: nextSummary, stats: canonical })
     .eq("shop_id", params.shopId)
     .eq("id", params.sessionId);
 

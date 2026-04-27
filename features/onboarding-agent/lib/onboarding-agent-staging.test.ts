@@ -126,6 +126,7 @@ describe("onboarding staging", () => {
       files: [],
       deterministicDomainDetections: {},
       deterministicStagedEntityCounts: {},
+      deterministicEntityStatusCountsByType: {},
       deterministicLinkCounts: {},
       deterministicReviewItems: [],
       activationPlanSummary: null,
@@ -151,6 +152,7 @@ describe("onboarding staging", () => {
       ],
       deterministicDomainDetections: { customers: 1 },
       deterministicStagedEntityCounts: { customer: 2 },
+      deterministicEntityStatusCountsByType: { customer: { ready: 2 } },
       deterministicLinkCounts: { customer_vehicle: 1 },
       deterministicReviewItems: [],
       activationPlanSummary: null,
@@ -159,4 +161,24 @@ describe("onboarding staging", () => {
     expect(report.summary).toContain("customers: 2");
     expect(report.summary).toContain("confident links: 1");
   });
+
+  it("stages historical work order without customer identity when work order/date/service data exists", () => {
+    const wo = stage("history", { "Open Date": "2025-04-01", Complaint: "No start", Correction: "Replaced starter" }).entity;
+    expect(wo?.entity_type).toBe("historical_work_order");
+    expect(wo?.status).toBe("ready");
+  });
+
+  it("stages invoice even when work order link is unresolved and creates grouped link review", () => {
+    const invoice = stage("invoices", { Invoice: "INV-404", "Invoice Date": "2025-05-04", Total: "199.99" }).entity;
+    const graph = buildStagedLinks({
+      shopId: "shop-1",
+      sessionId: "session-1",
+      entities: [{ id: "invoice-404", entity_type: invoice!.entity_type, normalized: invoice!.normalized }],
+    });
+
+    expect(invoice?.entity_type).toBe("historical_invoice");
+    expect(invoice?.status).toBe("ready");
+    expect(graph.reviewItems.some((item) => item.issue_type === "missing_work_order_link")).toBe(true);
+  });
+
 });

@@ -130,13 +130,13 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
     details: item.details,
   })));
 
-  const entities = await insertInChunks(sb, "onboarding_entities", stagedEntities, "id, entity_type, normalized, display_name, source_external_id");
+  const entities = await insertInChunks(sb, "onboarding_entities", stagedEntities, "id, entity_type, status, normalized, display_name, source_external_id");
 
   const graph = buildStagedLinks({ entities: entities.map((e: any) => ({ ...e, normalized: e.normalized ?? {} })), shopId: params.shopId, sessionId: params.sessionId });
   reviewItems.push(...graph.reviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details })));
 
   const linksToInsert = graph.links.map((link) => ({ ...link, shop_id: params.shopId, session_id: params.sessionId }));
-  await insertInChunks(sb, "onboarding_entity_links", linksToInsert);
+  const insertedLinks = await insertInChunks(sb, "onboarding_entity_links", linksToInsert, "id, link_type, status");
 
   const groupedReviewItems = groupReviewItems(reviewItems as any).map((item) => ({
     shop_id: params.shopId,
@@ -157,26 +157,23 @@ export async function analyzeOnboardingSession(params: { supabase: SupabaseClien
   }));
   await insertInChunks(sb, "onboarding_review_items", groupedReviewItems);
 
-  const blockingCount = groupedReviewItems.filter((item) => item.severity === "blocking").length;
-  const status = nextStatusFromCounts({ fileCount: (files ?? []).length, blockingReviewCount: blockingCount });
-
   const canonical = buildOnboardingSummary({
     filesCount: (files ?? []).length,
     rowsParsed: totalRows,
-    entityRows: (entities ?? []).map((e: any) => ({ entity_type: e.entity_type })),
-    linkRows: graph.links.map((l) => ({ link_type: l.link_type })),
+    entityRows: (entities ?? []).map((e: any) => ({ entity_type: e.entity_type, status: e.status })),
+    linkRows: (insertedLinks ?? []).map((l: any) => ({ link_type: l.link_type, status: l.status })),
     reviewRows: groupedReviewItems.map((item) => ({ severity: item.severity, domain: item.domain, issue_type: item.issue_type, summary: item.summary, details: item.details, status: item.status })),
     groupedExceptionCount: groupedReviewItems.length,
-    activationReadiness: blockingCount > 0 ? "review_required" : "ready_for_dry_run",
+    analysisCompleted: true,
   });
 
+  const blockingCount = (canonical.review_counts_by_severity.blocking ?? 0) + (canonical.review_counts_by_severity.high ?? 0);
+  const status = nextStatusFromCounts({ fileCount: (files ?? []).length, blockingReviewCount: blockingCount });
+
   const summary = {
-    fileCount: canonical.files_count,
-    rowsParsed: canonical.rows_parsed,
-    entitiesDiscovered: canonical.total_entities,
-    linksFound: canonical.total_links,
-    reviewExceptions: canonical.total_review_items,
-    groupedExceptionCount: canonical.grouped_exception_count,
+    ...canonical.summaryCounts,
+    activationReadiness: canonical.activation_readiness,
+    activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0 as const,
   };
 
