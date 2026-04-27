@@ -27,6 +27,7 @@ describe("resetOnboardingAnalysisArtifacts", () => {
       "delete:onboarding_entity_links",
       "delete:onboarding_review_items",
       "delete:onboarding_entities",
+      "delete:onboarding_activation_plans",
       "update:onboarding_sessions",
     ]);
   });
