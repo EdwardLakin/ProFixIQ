@@ -19,7 +19,10 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, sessionId: result.sessionId });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Failed to create session" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Failed to create session" },
+      { status: 500 },
+    );
   }
 }
 
@@ -35,5 +38,27 @@ export async function GET() {
     .limit(30);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, sessions: data ?? [] });
+
+  const sessionIds = (data ?? []).map((session: any) => session.id as string);
+  const fileCounts = new Map<string, number>();
+
+  if (sessionIds.length) {
+    const { data: files } = await (access.supabase as any)
+      .from("onboarding_files")
+      .select("session_id")
+      .eq("shop_id", access.profile.shop_id)
+      .in("session_id", sessionIds);
+
+    for (const file of files ?? []) {
+      const key = String(file.session_id);
+      fileCounts.set(key, (fileCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const sessions = (data ?? []).map((session: any) => ({
+    ...session,
+    file_count: fileCounts.get(String(session.id)) ?? 0,
+  }));
+
+  return NextResponse.json({ ok: true, sessions });
 }
