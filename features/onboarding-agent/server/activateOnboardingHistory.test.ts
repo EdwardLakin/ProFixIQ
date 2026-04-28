@@ -127,6 +127,24 @@ describe("activateOnboardingHistory", () => {
     expect(result.resolvedViaVehicleWorkOrderLink).toBe(1);
   });
 
+  it("resolves live vehicle from staged unit number mapping used by customer/vehicle activation", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      { id: "h-1", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01" } },
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", name: "Acme" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: null, normalized: { unitNumber: "TRUCK-42", make: "Ford", model: "F-150", year: "2021" } },
+    ] as any[];
+    sb.state.links = [
+      { id: "l-c-1", shop_id: "shop-1", session_id: "session-1", link_type: "customer_work_order", from_entity_id: "c-stage-1", to_entity_id: "h-1" },
+      { id: "l-v-1", shop_id: "shop-1", session_id: "session-1", link_type: "vehicle_work_order", from_entity_id: "v-stage-1", to_entity_id: "h-1" },
+    ] as any[];
+    sb.state.vehicles = [{ id: "v-42", shop_id: "shop-1", external_id: null, vin: null, license_plate: null, unit_number: "TRUCK-42", year: 2021, make: "Ford", model: "F-150" }] as any[];
+
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(1);
+    expect(result.diagnostics.rowsWithBothLiveCustomerAndVehicle).toBe(1);
+  });
+
   it("creates review item for missing identifier", async () => {
     const sb = fakeSb();
     sb.state.entities = [{ id: "h-2", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: {} }] as any[];
@@ -200,6 +218,7 @@ describe("activateOnboardingHistory", () => {
     expect(result.skippedUnresolved).toBe(1);
     expect(result.skippedMissingCustomer).toBe(1);
     expect(result.skippedMissingVehicle).toBe(1);
+    expect(result.diagnostics.unresolvedSamples[0]?.finalSkipReason).toBe("missing_vehicle_link");
     expect(sb.state.work_orders).toHaveLength(0);
   });
 
@@ -251,6 +270,7 @@ describe("activateOnboardingHistory", () => {
     expect(first.stagedHistoryRows).toBe(6);
     expect(first.historicalWorkOrdersCreated + first.existingMatched).toBe(5);
     expect(first.skippedUnresolved).toBe(1);
+    expect(first.diagnostics.rowsWithBothLiveCustomerAndVehicle).toBe(5);
     expect(first.unresolvedDueToMissingLiveCustomer).toBe(1);
     expect(first.unresolvedDueToMissingLiveVehicle).toBe(1);
     expect(first.customerWorkOrderLinks).toBe(6);
@@ -260,6 +280,33 @@ describe("activateOnboardingHistory", () => {
     expect(second.historicalWorkOrdersCreated).toBe(0);
     expect(second.existingMatched).toBe(5);
     expect(sb.state.work_orders).toHaveLength(5);
+  });
+
+  it("mixed large dataset does not blanket-skip when links resolve", async () => {
+    const sb = fakeSb();
+    const rows = 200;
+    sb.state.entities = [
+      ...Array.from({ length: rows }, (_, idx) => ({
+        id: `h-${idx + 1}`,
+        shop_id: "shop-1",
+        session_id: "session-1",
+        entity_type: "historical_work_order",
+        status: "ready",
+        normalized: { sourceWorkOrderId: `RO-${idx + 1}`, openedDate: "2022-01-01" },
+      })),
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", name: "Acme" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1" } },
+      { id: "h-missing", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-missing", openedDate: "2022-01-01" } },
+    ] as any[];
+    sb.state.links = [
+      ...Array.from({ length: rows }, (_, idx) => ({ id: `l-c-${idx + 1}`, shop_id: "shop-1", session_id: "session-1", link_type: "customer_work_order", from_entity_id: "c-stage-1", to_entity_id: `h-${idx + 1}` })),
+      ...Array.from({ length: rows }, (_, idx) => ({ id: `l-v-${idx + 1}`, shop_id: "shop-1", session_id: "session-1", link_type: "vehicle_work_order", from_entity_id: "v-stage-1", to_entity_id: `h-${idx + 1}` })),
+    ] as any[];
+
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(rows);
+    expect(result.skippedUnresolved).toBe(1);
+    expect(result.diagnostics.rowsWithBothLiveCustomerAndVehicle).toBe(rows);
   });
 
   it("rerun matches existing historical import and does not create duplicates", async () => {

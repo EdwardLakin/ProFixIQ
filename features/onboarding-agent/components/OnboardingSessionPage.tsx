@@ -187,6 +187,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [partsActivationSummary, setPartsActivationSummary] = useState<string | null>(null);
   const [historyActivationSummary, setHistoryActivationSummary] = useState<string | null>(null);
   const [historyActivationOutcome, setHistoryActivationOutcome] = useState<"activated" | "blocked" | "not_run">("not_run");
+  const [historyActivationResult, setHistoryActivationResult] = useState<any>(null);
   const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
   const [resolvingReviewItemId, setResolvingReviewItemId] = useState<string | null>(null);
   const [selectedCustomerByReviewItemId, setSelectedCustomerByReviewItemId] = useState<Record<string, string>>({});
@@ -384,6 +385,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     setActivatingHistory(true);
     setError(null);
     setNotice(null);
+    setHistoryActivationResult(null);
     try {
       const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-history`, { method: "POST" });
       const json = await res.json();
@@ -397,8 +399,6 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         const reviewItemsReused = asNumber(json?.reviewItemsReused);
         const skipped = asNumber(json?.skipped);
         const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.history);
-        const skippedMissingCustomer = asNumber(json?.skippedMissingCustomer);
-        const skippedMissingVehicle = asNumber(json?.skippedMissingVehicle);
         const groupedRowsRepresented = asNumber(json?.unresolvedDueToMissingCustomerLink)
           + asNumber(json?.unresolvedDueToMissingVehicleLink)
           + asNumber(json?.unresolvedDueToMissingLiveCustomer)
@@ -412,9 +412,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           : "";
         const mappingBlocked = stagedProcessed > 0 && created === 0 && matched === 0 && skipped >= stagedProcessed;
         const mappingReason = mappingBlocked
-          ? (skippedMissingCustomer > 0 || skippedMissingVehicle > 0
-            ? " Most rows were skipped because no live customer/vehicle mapping could be resolved."
-            : " History attempted: no historical work orders created.")
+          ? " History rows were processed but no historical work orders were created or matched. Open developer details to inspect link/live resolution."
           : "";
         setHistoryActivationSummary(
           formatActivationPhaseSummary({
@@ -431,6 +429,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           }),
         );
         setHistoryActivationOutcome(historyActivationState({ stagedProcessed, created, matched, skipped }));
+        setHistoryActivationResult(json);
       }
       await load();
     } catch {
@@ -710,6 +709,42 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
         {partsActivationSummary ? <p className="mt-2 text-xs text-indigo-200">{partsActivationSummary}</p> : null}
         {historyActivationSummary ? <p className="mt-2 text-xs text-fuchsia-200">{historyActivationSummary}</p> : null}
+        {historyActivationResult?.diagnostics ? (
+          <details className="mt-2 rounded border border-fuchsia-400/20 bg-fuchsia-950/20 p-2 text-[11px] text-fuchsia-100/90">
+            <summary className="cursor-pointer">History developer details</summary>
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <div>stagedHistoryRows: {asNumber(historyActivationResult.diagnostics.stagedHistoryRows)}</div>
+              <div>customerWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.customerWorkOrderLinks)}</div>
+              <div>vehicleWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.vehicleWorkOrderLinks)}</div>
+              <div>historyRowsWithCustomerLink: {asNumber(historyActivationResult.diagnostics.historyRowsWithCustomerLink)}</div>
+              <div>historyRowsWithVehicleLink: {asNumber(historyActivationResult.diagnostics.historyRowsWithVehicleLink)}</div>
+              <div>linkedCustomerStagedEntitiesFound: {asNumber(historyActivationResult.diagnostics.linkedCustomerStagedEntitiesFound)}</div>
+              <div>linkedVehicleStagedEntitiesFound: {asNumber(historyActivationResult.diagnostics.linkedVehicleStagedEntitiesFound)}</div>
+              <div>linkedCustomerLiveResolved: {asNumber(historyActivationResult.diagnostics.linkedCustomerLiveResolved)}</div>
+              <div>linkedVehicleLiveResolved: {asNumber(historyActivationResult.diagnostics.linkedVehicleLiveResolved)}</div>
+              <div>rowsWithBothLiveCustomerAndVehicle: {asNumber(historyActivationResult.diagnostics.rowsWithBothLiveCustomerAndVehicle)}</div>
+              <div>rowsMissingLiveCustomer: {asNumber(historyActivationResult.diagnostics.rowsMissingLiveCustomer)}</div>
+              <div>rowsMissingLiveVehicle: {asNumber(historyActivationResult.diagnostics.rowsMissingLiveVehicle)}</div>
+              <div>rowsMissingBoth: {asNumber(historyActivationResult.diagnostics.rowsMissingBoth)}</div>
+              <div>rowsInvalidDate: {asNumber(historyActivationResult.diagnostics.rowsInvalidDate)}</div>
+              <div>rowsMissingRequiredIdentifier: {asNumber(historyActivationResult.diagnostics.rowsMissingRequiredIdentifier)}</div>
+              <div>workOrdersCreated: {asNumber(historyActivationResult.diagnostics.workOrdersCreated)}</div>
+              <div>workOrdersMatchedExisting: {asNumber(historyActivationResult.diagnostics.workOrdersMatchedExisting)}</div>
+            </div>
+            {Array.isArray(historyActivationResult.diagnostics.unresolvedSamples) && historyActivationResult.diagnostics.unresolvedSamples.length > 0 ? (
+              <div className="mt-2">
+                <div>Unresolved samples (first {historyActivationResult.diagnostics.unresolvedSamples.length}):</div>
+                <ul className="list-disc pl-5">
+                  {historyActivationResult.diagnostics.unresolvedSamples.map((sample: any) => (
+                    <li key={`history-sample-${sample.historyEntityId}`}>
+                      {sample.historyEntityId}: {sample.finalSkipReason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </details>
+        ) : null}
         {customerVehicleActivationResult ? (
           <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
             <p>
