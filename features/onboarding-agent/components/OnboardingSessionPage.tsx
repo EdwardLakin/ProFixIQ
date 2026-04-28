@@ -144,10 +144,14 @@ function formatActivationPhaseSummary(input: {
   reviewItemsPersisted: number;
   reviewItemsReused: number;
   openReviewForDomain: number;
+  groupedRowsRepresented?: number;
   warning?: string;
 }) {
   const reviewSuffix = input.reviewItemsReused > 0 ? `, reused ${input.reviewItemsReused}` : "";
-  return `${input.phaseLabel} activation: Processed: ${input.stagedProcessed.toLocaleString()} staged rows. Created: ${input.created.toLocaleString()} live records. Matched existing: ${input.matched.toLocaleString()} live records. Skipped/unresolved: ${input.skipped.toLocaleString()}. Review items persisted: ${input.reviewItemsPersisted.toLocaleString()}${reviewSuffix}. Review exceptions now open for ${input.phaseLabel.toLowerCase()}: ${input.openReviewForDomain.toLocaleString()}.${input.warning ?? ""}`;
+  const groupedSuffix = input.groupedRowsRepresented && input.groupedRowsRepresented > 0
+    ? ` Grouped repeated skipped rows represented: ${input.groupedRowsRepresented.toLocaleString()}.`
+    : "";
+  return `${input.phaseLabel} activation: Processed: ${input.stagedProcessed.toLocaleString()} staged rows. Created: ${input.created.toLocaleString()} live records. Matched existing: ${input.matched.toLocaleString()} live records. Skipped/unresolved: ${input.skipped.toLocaleString()}. Review items persisted: ${input.reviewItemsPersisted.toLocaleString()}${reviewSuffix}. Review exceptions now open for ${input.phaseLabel.toLowerCase()}: ${input.openReviewForDomain.toLocaleString()}.${groupedSuffix}${input.warning ?? ""}`;
 }
 
 export function historyActivationState(input: { stagedProcessed: number; created: number; matched: number; skipped: number }): "activated" | "blocked" | "not_run" {
@@ -395,6 +399,10 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.history);
         const skippedMissingCustomer = asNumber(json?.skippedMissingCustomer);
         const skippedMissingVehicle = asNumber(json?.skippedMissingVehicle);
+        const groupedRowsRepresented = asNumber(json?.unresolvedDueToMissingCustomerLink)
+          + asNumber(json?.unresolvedDueToMissingVehicleLink)
+          + asNumber(json?.unresolvedDueToMissingLiveCustomer)
+          + asNumber(json?.unresolvedDueToMissingLiveVehicle);
         const expectedReady = historyReadyCount;
         const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
         const reconciliationTotal = created + matched + skipped;
@@ -418,6 +426,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             reviewItemsPersisted,
             reviewItemsReused,
             openReviewForDomain,
+            groupedRowsRepresented,
             warning: `${warning}${mappingReason}`,
           }),
         );

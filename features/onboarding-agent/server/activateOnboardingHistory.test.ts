@@ -114,6 +114,19 @@ describe("activateOnboardingHistory", () => {
     expect(sb.state.work_orders[0].vehicle_id).toBe("v-1");
   });
 
+  it("resolves links when staged customer/vehicle entities are not ready", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      { id: "h-1", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01" } },
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", name: "Acme" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1" } },
+    ] as any[];
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(1);
+    expect(result.resolvedViaCustomerWorkOrderLink).toBe(1);
+    expect(result.resolvedViaVehicleWorkOrderLink).toBe(1);
+  });
+
   it("creates review item for missing identifier", async () => {
     const sb = fakeSb();
     sb.state.entities = [{ id: "h-2", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: {} }] as any[];
@@ -188,6 +201,65 @@ describe("activateOnboardingHistory", () => {
     expect(result.skippedMissingCustomer).toBe(1);
     expect(result.skippedMissingVehicle).toBe(1);
     expect(sb.state.work_orders).toHaveLength(0);
+  });
+
+  it("activates resolvable history rows and skips only unresolved row", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      ...Array.from({ length: 6 }, (_, idx) => ({
+        id: `h-${idx + 1}`,
+        shop_id: "shop-1",
+        session_id: "session-1",
+        entity_type: "historical_work_order",
+        status: "ready",
+        normalized: {
+          sourceWorkOrderId: `RO-${idx + 1}`,
+          openedDate: "2022-01-01",
+          customerName: idx === 5 ? "Missing Co" : "Acme",
+          sourceCustomerId: idx === 5 ? "CUST-MISSING" : "CUST-1",
+          sourceVehicleId: idx === 5 ? "VEH-MISSING" : "VEH-1",
+          vehicleVin: idx === 5 ? "VIN-MISSING" : "VIN1",
+        },
+      })),
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "ready", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", name: "Acme" } },
+      { id: "c-stage-missing", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "ready", source_external_id: "CUST-MISSING", display_name: "Missing", normalized: { sourceCustomerId: "CUST-MISSING", name: "Missing" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "ready", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1" } },
+      { id: "v-stage-missing", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "ready", source_external_id: "VEH-MISSING", normalized: { sourceVehicleId: "VEH-MISSING", vin: "VIN-MISSING" } },
+    ] as any[];
+    sb.state.links = [
+      ...Array.from({ length: 6 }, (_, idx) => ({
+        id: `l-c-${idx + 1}`,
+        shop_id: "shop-1",
+        session_id: "session-1",
+        link_type: "customer_work_order",
+        from_entity_id: idx === 5 ? `h-${idx + 1}` : "c-stage-1",
+        to_entity_id: idx === 5 ? "c-stage-missing" : `h-${idx + 1}`,
+      })),
+      ...Array.from({ length: 6 }, (_, idx) => ({
+        id: `l-v-${idx + 1}`,
+        shop_id: "shop-1",
+        session_id: "session-1",
+        link_type: "vehicle_work_order",
+        from_entity_id: idx === 5 ? "v-stage-missing" : "v-stage-1",
+        to_entity_id: `h-${idx + 1}`,
+      })),
+    ] as any[];
+
+    const first = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    const second = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+
+    expect(first.stagedHistoryRows).toBe(6);
+    expect(first.historicalWorkOrdersCreated + first.existingMatched).toBe(5);
+    expect(first.skippedUnresolved).toBe(1);
+    expect(first.unresolvedDueToMissingLiveCustomer).toBe(1);
+    expect(first.unresolvedDueToMissingLiveVehicle).toBe(1);
+    expect(first.customerWorkOrderLinks).toBe(6);
+    expect(first.vehicleWorkOrderLinks).toBe(6);
+    expect(sb.state.work_orders).toHaveLength(5);
+    expect(sb.state.work_orders.every((row: any) => row.type === "historical_import" && row.status === "completed")).toBe(true);
+    expect(second.historicalWorkOrdersCreated).toBe(0);
+    expect(second.existingMatched).toBe(5);
+    expect(sb.state.work_orders).toHaveLength(5);
   });
 
   it("rerun matches existing historical import and does not create duplicates", async () => {
