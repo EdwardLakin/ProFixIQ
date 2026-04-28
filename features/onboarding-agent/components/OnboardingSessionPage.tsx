@@ -77,6 +77,38 @@ export function linkIssueReasonLabel(reason: string): string {
   return labels[reason] ?? labels.unknown;
 }
 
+type UnresolvedReviewItem = {
+  id: string;
+  status: string;
+  details?: Record<string, any> | null;
+};
+
+function unresolvedReviewDetails(reviewItem: UnresolvedReviewItem) {
+  const details = reviewItem?.details && typeof reviewItem.details === "object" ? reviewItem.details : {};
+  return {
+    stagedLinkId: typeof details.stagedLinkId === "string" ? details.stagedLinkId : null,
+    proposedCustomerLabel: typeof details.proposedCustomerLabel === "string" ? details.proposedCustomerLabel : "Unknown customer",
+    proposedVehicleLabel: typeof details.proposedVehicleLabel === "string" ? details.proposedVehicleLabel : "Unknown vehicle",
+    reasonCode: typeof details.reasonCode === "string" ? details.reasonCode : "unknown",
+    reasonLabel: typeof details.reasonLabel === "string" ? details.reasonLabel : linkIssueReasonLabel(String(details.reasonCode ?? "unknown")),
+    liveVehicleId: typeof details.liveVehicleId === "string" ? details.liveVehicleId : null,
+    candidateLiveCustomers: Array.isArray(details.candidateLiveCustomers) ? details.candidateLiveCustomers : [],
+    stagedCustomerEntityId: typeof details.stagedCustomerEntityId === "string" ? details.stagedCustomerEntityId : null,
+    stagedVehicleEntityId: typeof details.stagedVehicleEntityId === "string" ? details.stagedVehicleEntityId : null,
+    liveCustomerId: typeof details.liveCustomerId === "string" ? details.liveCustomerId : null,
+    currentVehicleCustomerId: typeof details.currentVehicleCustomerId === "string" ? details.currentVehicleCustomerId : null,
+  };
+}
+
+export function unresolvedReviewPrimaryCopy(reviewItem: UnresolvedReviewItem): { customer: string; vehicle: string; reason: string } {
+  const details = unresolvedReviewDetails(reviewItem);
+  return {
+    customer: details.proposedCustomerLabel,
+    vehicle: details.proposedVehicleLabel,
+    reason: details.reasonLabel,
+  };
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -89,6 +121,8 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [activatingCustomersVehicles, setActivatingCustomersVehicles] = useState(false);
   const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
   const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
+  const [resolvingReviewItemId, setResolvingReviewItemId] = useState<string | null>(null);
+  const [selectedCustomerByReviewItemId, setSelectedCustomerByReviewItemId] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -303,6 +337,58 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     }
     return [...groups.entries()].map(([reason, group]) => ({ reason, ...group }));
   }, [customerVehicleActivationResult]);
+  const unresolvedCustomerVehicleReviewItems = useMemo(() => {
+    const items = Array.isArray(payload?.reviewItems) ? payload.reviewItems : [];
+    return items.filter((item: any) => item?.issue_type === "unresolved_customer_vehicle_link");
+  }, [payload?.reviewItems]);
+  const unresolvedPendingItems = useMemo(
+    () => unresolvedCustomerVehicleReviewItems.filter((item: any) => String(item?.status ?? "pending") === "pending"),
+    [unresolvedCustomerVehicleReviewItems],
+  );
+  const unresolvedManuallyResolvedCount = useMemo(
+    () => unresolvedCustomerVehicleReviewItems.filter((item: any) => ["resolved", "skipped"].includes(String(item?.status ?? ""))).length,
+    [unresolvedCustomerVehicleReviewItems],
+  );
+  const groupedUnresolvedPendingByReason = useMemo(() => {
+    const groups = new Map<string, { reasonLabel: string; count: number }>();
+    for (const item of unresolvedPendingItems) {
+      const details = unresolvedReviewDetails(item);
+      const key = details.reasonCode;
+      const group = groups.get(key) ?? { reasonLabel: details.reasonLabel, count: 0 };
+      group.count += 1;
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([reasonCode, group]) => ({ reasonCode, ...group }));
+  }, [unresolvedPendingItems]);
+
+  const resolveUnresolvedLink = useCallback(async (args: { reviewItemId: string; action: "link" | "skip"; selectedCustomerId?: string }) => {
+    setResolvingReviewItemId(args.reviewItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/resolve-customer-vehicle-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewItemId: args.reviewItemId,
+          action: args.action,
+          selectedCustomerId: args.selectedCustomerId,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Failed to resolve unresolved customer/vehicle link.");
+      } else {
+        const warning = typeof json?.warning === "string" && json.warning ? ` Warning: ${json.warning}` : "";
+        setNotice(`${args.action === "skip" ? "Skipped" : "Linked"} ${json?.vehicleLabel ?? "vehicle"}${json?.customerLabel ? ` to ${json.customerLabel}` : ""}.${warning}`);
+      }
+      await load();
+    } catch {
+      setError("Failed to resolve unresolved customer/vehicle link.");
+    } finally {
+      setResolvingReviewItemId(null);
+    }
+  }, [load, sessionId]);
 
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
@@ -426,6 +512,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             <p>
               Links materialized: {Number(customerVehicleActivationResult.vehicleCustomerLinksMaterialized ?? 0)} / {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
               Unresolved links: {Number(customerVehicleActivationResult.vehicleCustomerLinksUnresolved ?? 0)}.
+              Resolved manually: {unresolvedManuallyResolvedCount}.
               Live vehicle/customer links after: {Number(customerVehicleActivationResult.liveVehicleCustomerLinksAfter ?? 0)}.
             </p>
             <p>
@@ -486,6 +573,89 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
                 </ul>
               </div>
             ) : null}
+          </div>
+        ) : null}
+        {unresolvedCustomerVehicleReviewItems.length > 0 ? (
+          <div className="mt-3 rounded-lg border border-cyan-400/25 bg-slate-950/50 p-3 text-xs text-cyan-100">
+            <p className="font-medium">Unresolved customer/vehicle links</p>
+            <p className="mt-1 text-cyan-100/90">
+              Pending: {unresolvedPendingItems.length}. Manually resolved/skipped: {unresolvedManuallyResolvedCount}.
+            </p>
+            {groupedUnresolvedPendingByReason.length > 0 ? (
+              <ul className="mt-1 list-disc pl-5 text-[11px] text-cyan-100/90">
+                {groupedUnresolvedPendingByReason.map((group) => (
+                  <li key={`pending-group-${group.reasonCode}`}>{group.reasonLabel}: {group.count}</li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="mt-2 space-y-2">
+              {unresolvedPendingItems.slice(0, 25).map((item: any) => {
+                const details = unresolvedReviewDetails(item);
+                const selectedCustomerId = selectedCustomerByReviewItemId[item.id] ?? "";
+                const canLink = details.liveVehicleId && details.candidateLiveCustomers.length > 0;
+                return (
+                  <div key={item.id} className="rounded border border-cyan-400/20 bg-cyan-950/10 p-2">
+                    <div>Customer: {details.proposedCustomerLabel}</div>
+                    <div>Vehicle: {details.proposedVehicleLabel}</div>
+                    <div>Reason: {details.reasonLabel}</div>
+                    {canLink ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select
+                          value={selectedCustomerId}
+                          onChange={(event) => setSelectedCustomerByReviewItemId((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                          className="rounded border border-cyan-300/30 bg-slate-900 px-2 py-1 text-xs text-cyan-50"
+                        >
+                          <option value="">Select live customer…</option>
+                          {details.candidateLiveCustomers.map((customer: any) => (
+                            <option key={`${item.id}-${customer.id}`} value={customer.id}>
+                              {getCustomerDisplayLabel(customer)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "link", selectedCustomerId })}
+                          disabled={!selectedCustomerId || resolvingReviewItemId === item.id}
+                          className="rounded border border-emerald-300/40 px-2 py-1 text-xs text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Link to selected customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "skip" })}
+                          disabled={resolvingReviewItemId === item.id}
+                          className="rounded border border-amber-300/40 px-2 py-1 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Do not link
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-[11px] text-cyan-200/85">
+                        Manual link requires exactly one materialized vehicle and candidate live customer matches.
+                        <button
+                          type="button"
+                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "skip" })}
+                          disabled={resolvingReviewItemId === item.id}
+                          className="ml-2 rounded border border-amber-300/40 px-2 py-1 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Do not link
+                        </button>
+                      </div>
+                    )}
+                    <details className="mt-2 text-[11px] text-cyan-200/85">
+                      <summary className="cursor-pointer">Developer details</summary>
+                      <div>review_item_id: {item.id}</div>
+                      <div>staged_link_id: {details.stagedLinkId ?? "n/a"}</div>
+                      <div>staged_customer_entity_id: {details.stagedCustomerEntityId ?? "n/a"}</div>
+                      <div>staged_vehicle_entity_id: {details.stagedVehicleEntityId ?? "n/a"}</div>
+                      <div>live_customer_id: {details.liveCustomerId ?? "n/a"}</div>
+                      <div>live_vehicle_id: {details.liveVehicleId ?? "n/a"}</div>
+                      <div>current_vehicle_customer_id: {details.currentVehicleCustomerId ?? "n/a"}</div>
+                    </details>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}

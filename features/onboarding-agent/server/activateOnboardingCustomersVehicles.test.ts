@@ -51,12 +51,27 @@ type Vehicle = {
   model: string | null;
   customer_id: string | null;
 };
+type ReviewItem = {
+  id: string;
+  shop_id: string;
+  session_id: string;
+  issue_type: string;
+  link_id: string | null;
+  status: string;
+  summary: string;
+  details: Record<string, unknown>;
+  severity: string;
+  domain: string | null;
+  entity_id: string | null;
+  resolved_at?: string | null;
+};
 
 function createFakeSupabase(seed?: {
   entities?: Entity[];
   links?: Link[];
   customers?: Customer[];
   vehicles?: Vehicle[];
+  reviewItems?: ReviewItem[];
   failCustomerInsertForEmails?: string[];
   conflictRecoveryCustomerByEmail?: Record<string, Customer>;
 }) {
@@ -69,6 +84,7 @@ function createFakeSupabase(seed?: {
     links: [...(seed?.links ?? [])],
     customers: [...(seed?.customers ?? [])],
     vehicles: [...(seed?.vehicles ?? [])],
+    reviewItems: [...(seed?.reviewItems ?? [])],
     nextCustomerId: 1,
     nextVehicleId: 1,
     writes: [] as string[],
@@ -99,6 +115,7 @@ function createFakeSupabase(seed?: {
         not(k: string, op: string, v: any) { this.notFilters.push({ k, op, v }); return this; },
         update(payload: any) { this.op = "update"; this.payload = payload; return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
+        upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this; },
         single() { return this.execSingle(); },
         then(resolve: any, reject: any) { return this.exec().then(resolve, reject); },
         async execSingle() {
@@ -123,7 +140,7 @@ function createFakeSupabase(seed?: {
             if (typeof this.rangeFrom === "number" && typeof this.rangeTo === "number") {
               return filtered.slice(this.rangeFrom, this.rangeTo + 1);
             }
-            if (!this.selectOpts?.head && this.op === "select" && (this.table === "onboarding_entities" || this.table === "onboarding_entity_links" || this.table === "customers" || this.table === "vehicles")) {
+            if (!this.selectOpts?.head && this.op === "select" && (this.table === "onboarding_entities" || this.table === "onboarding_entity_links" || this.table === "customers" || this.table === "vehicles" || this.table === "onboarding_review_items")) {
               return filtered.slice(0, 1000);
             }
             return filtered;
@@ -131,6 +148,7 @@ function createFakeSupabase(seed?: {
 
           if (this.table === "onboarding_entities" && this.op === "select") return { data: applyFilters(state.entities), error: null };
           if (this.table === "onboarding_entity_links" && this.op === "select") return { data: applyFilters(state.links), error: null };
+          if (this.table === "onboarding_review_items" && this.op === "select") return { data: applyFilters(state.reviewItems), error: null };
 
           if (this.table === "customers" && this.op === "select") {
             const rows = applyFilters(state.customers);
@@ -180,6 +198,24 @@ function createFakeSupabase(seed?: {
             const target = applyFilters(state.vehicles)[0];
             if (target) Object.assign(target, this.payload);
             state.writes.push("vehicles:update");
+            return { data: [], error: null };
+          }
+
+          if (this.table === "onboarding_review_items" && this.op === "upsert") {
+            const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
+            for (const row of rows) {
+              const existingIndex = state.reviewItems.findIndex((item) => item.id === row.id);
+              if (existingIndex >= 0) state.reviewItems[existingIndex] = { ...state.reviewItems[existingIndex], ...row };
+              else state.reviewItems.push(row);
+            }
+            state.writes.push("onboarding_review_items:upsert");
+            return { data: rows, error: null };
+          }
+
+          if (this.table === "onboarding_review_items" && this.op === "update") {
+            const target = applyFilters(state.reviewItems)[0];
+            if (target) Object.assign(target, this.payload);
+            state.writes.push("onboarding_review_items:update");
             return { data: [], error: null };
           }
 
@@ -504,5 +540,26 @@ describe("activateOnboardingCustomersVehicles", () => {
     expect(result.vehicleCustomerLinksSkipped).toBe(1);
     expect(result.vehicleCustomerLinksUnresolved).toBe(1);
     expect(result.customerVehicleLinkIssues[0]?.reason).toBe("vehicle_linked_to_different_customer");
+  });
+
+  it("persists unresolved review items idempotently across reruns", async () => {
+    sb = createFakeSupabase({
+      entities: [
+        stagedCustomer("c1", { normalized: { sourceCustomerId: null, email: null, phone: "5551112222", businessName: null, name: "Ambig" }, source_external_id: null }),
+        stagedVehicle("v1", { normalized: { sourceVehicleId: "V-1", vin: "VIN-1", plate: "P-1", year: "2020", make: "Ford", model: "F150" } }),
+      ],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
+      customers: [
+        { id: "customer-1", shop_id: "shop-1", external_id: null, email: "a1@example.com", phone: "5551112222", phone_number: "5551112222", name: "One", first_name: null, last_name: null, business_name: null },
+        { id: "customer-2", shop_id: "shop-1", external_id: null, email: "a2@example.com", phone: "5551112222", phone_number: "5551112222", name: "Two", first_name: null, last_name: null, business_name: null },
+      ],
+    });
+
+    await runActivation(sb);
+    await runActivation(sb);
+
+    const unresolved = sb.state.reviewItems.filter((item) => item.issue_type === "unresolved_customer_vehicle_link");
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]?.details?.reasonCode).toBe("ambiguous_customer_match");
   });
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/features/onboarding-agent/lib/fingerprints";
+import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -12,6 +13,8 @@ type CustomerUpdate = Database["public"]["Tables"]["customers"]["Update"];
 type VehicleRow = Database["public"]["Tables"]["vehicles"]["Row"];
 type VehicleInsert = Database["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
+type OnboardingReviewItemRow = Database["public"]["Tables"]["onboarding_review_items"]["Row"];
+type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 const PAGE_SIZE = 1000;
 
 export type CustomerVehicleActivationResult = {
@@ -82,6 +85,26 @@ export type CustomerVehicleLinkIssue = {
   liveCustomerId?: string | null;
   liveVehicleId?: string | null;
   currentVehicleCustomerId?: string | null;
+  candidateLiveCustomers?: Array<{
+    id: string;
+    name: string | null;
+    businessName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone: string | null;
+  }>;
+  candidateLiveVehicles?: Array<{
+    id: string;
+    externalId: string | null;
+    vin: string | null;
+    licensePlate: string | null;
+    unitNumber: string | null;
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    customerId: string | null;
+  }>;
 };
 
 type NormalizedCustomer = {
@@ -352,6 +375,136 @@ function pickLiveCustomerMatch(candidate: NormalizedCustomer, indexes: ReturnTyp
 
   const [single] = [...matchedRowsById.values()];
   return { row: single ?? null, ambiguous: false, strategy: "single_key" as const };
+}
+
+function customerLabel(candidate?: {
+  businessName?: string | null;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+} | null) {
+  if (!candidate) return "Unknown customer";
+  const business = textOrNull(candidate.businessName);
+  if (business) return business;
+  const fullName = textOrNull(`${candidate.firstName ?? ""} ${candidate.lastName ?? ""}`);
+  if (fullName) return fullName;
+  const name = textOrNull(candidate.name);
+  if (name) return name;
+  return textOrNull(candidate.email) ?? textOrNull(candidate.phone) ?? "Unknown customer";
+}
+
+function vehicleLabel(candidate?: {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+  licensePlate?: string | null;
+  unitNumber?: string | null;
+} | null) {
+  if (!candidate) return "Unknown vehicle";
+  const ymm = [candidate.year, candidate.make, candidate.model].filter(Boolean).join(" ").trim();
+  if (candidate.vin) return ymm ? `${ymm} — VIN ${candidate.vin}` : `VIN ${candidate.vin}`;
+  if (candidate.licensePlate) return ymm ? `${ymm} — Plate ${candidate.licensePlate}` : `Plate ${candidate.licensePlate}`;
+  if (candidate.unitNumber) return ymm ? `${ymm} — Unit ${candidate.unitNumber}` : `Unit ${candidate.unitNumber}`;
+  return ymm || "Unknown vehicle";
+}
+
+function issueReasonLabel(reason: CustomerVehicleLinkIssue["reason"]): string {
+  const labels: Record<CustomerVehicleLinkIssue["reason"], string> = {
+    missing_staged_customer: "Staged customer entity was missing",
+    missing_staged_vehicle: "Staged vehicle entity was missing",
+    customer_not_materialized: "Customer was not materialized",
+    vehicle_not_materialized: "Vehicle was not materialized",
+    vehicle_linked_to_different_customer: "Vehicle already linked to a different customer",
+    ambiguous_customer_match: "Customer match was ambiguous",
+    ambiguous_vehicle_match: "Vehicle match was ambiguous",
+    unsupported_link_direction: "Link direction is unsupported",
+    unknown: "Unknown materialization issue",
+  };
+  return labels[reason] ?? labels.unknown;
+}
+
+async function persistUnresolvedLinkReviewItems(args: {
+  supabase: SupabaseClient;
+  shopId: string;
+  sessionId: string;
+  issues: CustomerVehicleLinkIssue[];
+}) {
+  const sb = args.supabase as any;
+  const issueType = "unresolved_customer_vehicle_link";
+  const unresolved = args.issues.filter((issue) => issue.reason !== "unknown");
+  const unresolvedLinkIds = new Set(unresolved.map((issue) => issue.linkId));
+
+  const { data: existingRows, error: existingError } = await sb
+    .from("onboarding_review_items")
+    .select("id, link_id, status")
+    .eq("shop_id", args.shopId)
+    .eq("session_id", args.sessionId)
+    .eq("issue_type", issueType);
+  if (existingError) throw new Error(existingError.message);
+
+  const existingById = new Map<string, Pick<OnboardingReviewItemRow, "id" | "status" | "link_id">>(
+    ((existingRows ?? []) as Array<Pick<OnboardingReviewItemRow, "id" | "status" | "link_id">>).map((row) => [row.id, row]),
+  );
+
+  const upserts: OnboardingReviewItemInsert[] = unresolved.map((issue) => {
+    const reviewItemId = stableUuidFromParts(["onboarding_review", args.shopId, args.sessionId, issueType, issue.linkId]);
+    const existing = existingById.get(reviewItemId);
+    const status = existing?.status === "skipped" ? "skipped" : "pending";
+    return {
+      id: reviewItemId,
+      shop_id: args.shopId,
+      session_id: args.sessionId,
+      link_id: issue.linkId,
+      entity_id: issue.stagedVehicleSummary?.entityId ?? issue.stagedCustomerSummary?.entityId ?? null,
+      domain: "vehicles",
+      issue_type: issueType,
+      severity: "medium",
+      status,
+      summary: `${customerLabel(issue.stagedCustomerSummary)} ↔ ${vehicleLabel(issue.stagedVehicleSummary)}: ${issueReasonLabel(issue.reason)}.`,
+      details: {
+        stagedLinkId: issue.linkId,
+        stagedCustomerEntityId: issue.stagedCustomerSummary?.entityId ?? null,
+        stagedVehicleEntityId: issue.stagedVehicleSummary?.entityId ?? null,
+        proposedCustomerLabel: customerLabel(issue.stagedCustomerSummary),
+        proposedVehicleLabel: vehicleLabel(issue.stagedVehicleSummary),
+        reasonCode: issue.reason,
+        reasonLabel: issueReasonLabel(issue.reason),
+        stagedCustomerSummary: issue.stagedCustomerSummary ?? null,
+        stagedVehicleSummary: issue.stagedVehicleSummary ?? null,
+        liveCustomerId: issue.liveCustomerId ?? null,
+        liveVehicleId: issue.liveVehicleId ?? null,
+        currentVehicleCustomerId: issue.currentVehicleCustomerId ?? null,
+        candidateLiveCustomers: issue.candidateLiveCustomers ?? [],
+        candidateLiveVehicles: issue.candidateLiveVehicles ?? [],
+      },
+    };
+  });
+
+  if (upserts.length > 0) {
+    const { error: upsertError } = await sb.from("onboarding_review_items").upsert(upserts, { onConflict: "id" });
+    if (upsertError) throw new Error(upsertError.message);
+  }
+
+  const stalePendingIds = ((existingRows ?? []) as Array<Pick<OnboardingReviewItemRow, "id" | "status" | "link_id">>)
+    .filter((row) => row.status === "pending" && !unresolvedLinkIds.has(String(row.link_id ?? "")))
+    .map((row) => row.id);
+
+  for (const id of stalePendingIds) {
+    const { error } = await sb
+      .from("onboarding_review_items")
+      .update({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        summary: "Unresolved customer/vehicle link no longer requires manual review.",
+      })
+      .eq("shop_id", args.shopId)
+      .eq("session_id", args.sessionId)
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
 }
 
 function isCustomerEmailUniqueViolation(error: { message?: string; code?: string; details?: string } | null): boolean {
@@ -681,6 +834,8 @@ export async function activateOnboardingCustomersVehicles(params: {
 
     const customerId = customerEntityToLiveId.get(customerEntityId);
     const vehicleId = vehicleEntityToLiveId.get(vehicleEntityId);
+    const customerEntityRow = customerEntity!;
+    const vehicleEntityRow = vehicleEntity!;
     if (!customerId || !vehicleId) {
       vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: customer or vehicle was not materialized.`);
@@ -692,10 +847,54 @@ export async function activateOnboardingCustomersVehicles(params: {
         fromEntityId: link.from_entity_id,
         toEntityId: link.to_entity_id,
         reason,
-        stagedCustomerSummary: customerEntity ? toStagedCustomerSummary(customerEntity) : undefined,
-        stagedVehicleSummary: vehicleEntity ? toStagedVehicleSummary(vehicleEntity) : undefined,
+        stagedCustomerSummary: toStagedCustomerSummary(customerEntityRow),
+        stagedVehicleSummary: toStagedVehicleSummary(vehicleEntityRow),
         liveCustomerId: customerId ?? null,
         liveVehicleId: vehicleId ?? null,
+        candidateLiveCustomers: customerEntitySkippedReason.get(customerEntityId) === "ambiguous_customer_match"
+          ? customerPool
+            .filter((row) => {
+              const normalized = toNormalizedCustomer(customerEntityRow);
+              return (
+                (normalized.email && normalizeEmail(row.email) === normalized.email)
+                || (normalized.phone && normalizePhone(row.phone ?? row.phone_number) === normalized.phone)
+                || (normalized.externalId && normalizeLookupKey(row.external_id) === normalizeLookupKey(normalized.externalId))
+              );
+            })
+            .slice(0, 10)
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              businessName: row.business_name,
+              firstName: row.first_name,
+              lastName: row.last_name,
+              email: row.email,
+              phone: row.phone ?? row.phone_number,
+            }))
+          : [],
+        candidateLiveVehicles: vehicleEntitySkippedReason.get(vehicleEntityId) === "ambiguous_vehicle_match"
+          ? vehiclePool
+            .filter((row) => {
+              const normalizedVehicle = toNormalizedVehicle(vehicleEntityRow);
+              return (
+                (normalizedVehicle.vin && normalizeVin(row.vin) === normalizedVehicle.vin)
+                || (normalizedVehicle.plate && normalizePlate(row.license_plate) === normalizedVehicle.plate)
+                || (normalizedVehicle.externalId && normalizeLookupKey(row.external_id) === normalizeLookupKey(normalizedVehicle.externalId))
+              );
+            })
+            .slice(0, 10)
+            .map((row) => ({
+              id: row.id,
+              externalId: row.external_id,
+              vin: row.vin,
+              licensePlate: row.license_plate,
+              unitNumber: row.unit_number,
+              year: row.year,
+              make: row.make,
+              model: row.model,
+              customerId: row.customer_id,
+            }))
+          : [],
       });
       continue;
     }
@@ -747,6 +946,13 @@ export async function activateOnboardingCustomersVehicles(params: {
     }
     vehicle.customer_id = customerId;
   }
+
+  await persistUnresolvedLinkReviewItems({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+    issues: customerVehicleLinkIssues,
+  });
 
   const [{ count: customersAfter, error: customersAfterError }, { count: vehiclesAfter, error: vehiclesAfterError }, { count: liveVehicleCustomerLinksAfter, error: liveVehicleCustomerLinksAfterError }] = await Promise.all([
     sb.from("customers").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId),
