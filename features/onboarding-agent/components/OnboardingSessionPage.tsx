@@ -21,6 +21,62 @@ function warningCategory(warning: string): string {
   return "other";
 }
 
+export function getCustomerDisplayLabel(customer?: {
+  businessName?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+} | null): string {
+  if (!customer) return "Unknown customer";
+  const businessName = customer.businessName?.trim();
+  if (businessName) return businessName;
+  const fullName = `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim();
+  if (fullName) return fullName;
+  const name = customer.name?.trim();
+  if (name) return name;
+  const email = customer.email?.trim();
+  if (email) return email;
+  const phone = customer.phone?.trim();
+  if (phone) return phone;
+  return "Unknown customer";
+}
+
+export function getVehicleDisplayLabel(vehicle?: {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+  licensePlate?: string | null;
+  unitNumber?: string | null;
+} | null): string {
+  if (!vehicle) return "Unknown vehicle";
+  const ymm = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim();
+  const identifier = vehicle.vin || vehicle.licensePlate || vehicle.unitNumber || null;
+  if (ymm && identifier) return `${ymm} — ${vehicle.vin ? `VIN ${vehicle.vin}` : vehicle.licensePlate ? `Plate ${vehicle.licensePlate}` : `Unit ${vehicle.unitNumber}`}`;
+  if (ymm) return ymm;
+  if (vehicle.vin) return `VIN ${vehicle.vin}`;
+  if (vehicle.licensePlate) return `Plate ${vehicle.licensePlate}`;
+  if (vehicle.unitNumber) return `Unit ${vehicle.unitNumber}`;
+  return "Unknown vehicle";
+}
+
+export function linkIssueReasonLabel(reason: string): string {
+  const labels: Record<string, string> = {
+    missing_staged_customer: "Staged customer entity was missing.",
+    missing_staged_vehicle: "Staged vehicle entity was missing.",
+    customer_not_materialized: "Customer could not be materialized.",
+    vehicle_not_materialized: "Vehicle could not be materialized.",
+    vehicle_linked_to_different_customer: "Vehicle was already linked to a different customer.",
+    ambiguous_customer_match: "Customer match was ambiguous.",
+    ambiguous_vehicle_match: "Vehicle match was ambiguous.",
+    unsupported_link_direction: "Link does not connect a staged customer and vehicle.",
+    unknown: "Unknown link materialization issue.",
+  };
+  return labels[reason] ?? labels.unknown;
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -233,6 +289,20 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       examples: group.examples,
     }));
   }, [customerVehicleActivationResult]);
+  const groupedLinkIssues = useMemo(() => {
+    const issues = Array.isArray(customerVehicleActivationResult?.customerVehicleLinkIssues)
+      ? customerVehicleActivationResult.customerVehicleLinkIssues
+      : [];
+    const groups = new Map<string, { count: number; examples: any[] }>();
+    for (const issue of issues) {
+      const key = issue.reason ?? "unknown";
+      const group = groups.get(key) ?? { count: 0, examples: [] };
+      group.count += 1;
+      if (group.examples.length < 5) group.examples.push(issue);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([reason, group]) => ({ reason, ...group }));
+  }, [customerVehicleActivationResult]);
 
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
@@ -354,10 +424,48 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               {Number(customerVehicleActivationResult.vehicleCustomerLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksAlreadyCorrect ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksSkipped ?? 0)}.
             </p>
             <p>
+              Links materialized: {Number(customerVehicleActivationResult.vehicleCustomerLinksMaterialized ?? 0)} / {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
+              Unresolved links: {Number(customerVehicleActivationResult.vehicleCustomerLinksUnresolved ?? 0)}.
+              Live vehicle/customer links after: {Number(customerVehicleActivationResult.liveVehicleCustomerLinksAfter ?? 0)}.
+            </p>
+            <p>
               Live customers before/after: {Number(customerVehicleActivationResult.customersBefore ?? 0)}/
               {Number(customerVehicleActivationResult.customersAfter ?? 0)}. Live vehicles before/after: {Number(customerVehicleActivationResult.vehiclesBefore ?? 0)}/
               {Number(customerVehicleActivationResult.vehiclesAfter ?? 0)}.
             </p>
+            {groupedLinkIssues.length > 0 ? (
+              <div className="mt-2">
+                <p>Unresolved customer/vehicle links: {Number(customerVehicleActivationResult.vehicleCustomerLinksUnresolved ?? 0)}</p>
+                <ul className="list-disc pl-5">
+                  {groupedLinkIssues.map((group) => (
+                    <li key={`issue-${group.reason}`}>
+                      {group.reason}: {group.count}
+                      <details className="mt-1 pl-2">
+                        <summary className="cursor-pointer text-[11px] text-cyan-200/90">Show first {group.examples.length} examples</summary>
+                        <ul className="list-disc pl-5 pt-1 text-[11px] text-cyan-100/90">
+                          {group.examples.map((issue: any, index: number) => (
+                            <li key={`${group.reason}-${index}`}>
+                              <div>Customer: {getCustomerDisplayLabel(issue?.stagedCustomerSummary)}</div>
+                              <div>Vehicle: {getVehicleDisplayLabel(issue?.stagedVehicleSummary)}</div>
+                              <div>Reason: {linkIssueReasonLabel(issue?.reason ?? "unknown")}</div>
+                              <details className="pl-2 text-cyan-200/80">
+                                <summary className="cursor-pointer">Developer details</summary>
+                                <div>link_id: {issue?.linkId ?? "n/a"}</div>
+                                <div>staged_customer_entity_id: {issue?.stagedCustomerSummary?.entityId ?? "n/a"}</div>
+                                <div>staged_vehicle_entity_id: {issue?.stagedVehicleSummary?.entityId ?? "n/a"}</div>
+                                <div>live_customer_id: {issue?.liveCustomerId ?? "n/a"}</div>
+                                <div>live_vehicle_id: {issue?.liveVehicleId ?? "n/a"}</div>
+                                <div>current_vehicle_customer_id: {issue?.currentVehicleCustomerId ?? "n/a"}</div>
+                              </details>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {Array.isArray(customerVehicleActivationResult.warnings) && customerVehicleActivationResult.warnings.length > 0 ? (
               <div className="mt-1">
                 <p>Warnings: {customerVehicleActivationResult.warnings.length}</p>
