@@ -114,6 +114,23 @@ type NormalizedVehicle = {
   model: string | null;
 };
 
+function customerIdentityKey(input: NormalizedCustomer): string | null {
+  if (input.email) return `email:${normalizeLookup(input.email)}`;
+  if (input.sourceCustomerId) return `external:${normalizeLookup(input.sourceCustomerId)}`;
+  if (input.phone) return `phone:${input.phone}`;
+  if (input.name) return `name:${normalizeLookup(input.name)}`;
+  return null;
+}
+
+function vehicleIdentityKey(input: NormalizedVehicle): string | null {
+  if (input.vin) return `vin:${normalizeVin(input.vin)}`;
+  if (input.sourceVehicleId) return `external:${normalizeLookup(input.sourceVehicleId)}`;
+  if (input.plate) return `plate:${normalizePlate(input.plate)}`;
+  if (input.unitNumber) return `unit:${normalizeLookup(input.unitNumber)}`;
+  const descriptor = vehicleDescriptorKey(input);
+  return descriptor ? `descriptor:${descriptor}` : null;
+}
+
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -231,6 +248,77 @@ function resolveLiveVehicleIdFromStagedEntity(stagedEntity: Pick<OnboardingEntit
     || (descriptor && vehicleDescriptorKey({ year: row.year, make: normalizeLookup(row.make), model: normalizeLookup(row.model) }) === descriptor));
   if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
   return { id: null, ambiguous: matches.length > 1 };
+}
+
+function buildGroupedCustomerLiveMap(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "source_external_id" | "display_name" | "normalized">>, customerRows: CustomerRow[]) {
+  const grouped = new Map<string, { entityIds: string[]; normalized: NormalizedCustomer }>();
+  for (const entity of customerEntities) {
+    const normalized = toNormalizedCustomer(entity);
+    const key = customerIdentityKey(normalized) ?? `entity:${entity.id}`;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { entityIds: [entity.id], normalized });
+      continue;
+    }
+    existing.entityIds.push(entity.id);
+    existing.normalized = {
+      sourceCustomerId: existing.normalized.sourceCustomerId ?? normalized.sourceCustomerId,
+      email: existing.normalized.email ?? normalized.email,
+      phone: existing.normalized.phone ?? normalized.phone,
+      name: existing.normalized.name ?? normalized.name,
+    };
+  }
+
+  const stagedCustomerEntityIdToLiveCustomerId = new Map<string, string>();
+  for (const group of grouped.values()) {
+    const matches = customerRows.filter((row) =>
+      (group.normalized.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(group.normalized.sourceCustomerId))
+      || (group.normalized.email && normalizeLookup(row.email) === normalizeLookup(group.normalized.email))
+      || (group.normalized.phone && normalizePhone(row.phone ?? row.phone_number) === group.normalized.phone)
+      || (group.normalized.name && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(group.normalized.name)));
+    if (matches.length !== 1) continue;
+    const id = matches[0]!.id;
+    for (const entityId of group.entityIds) stagedCustomerEntityIdToLiveCustomerId.set(entityId, id);
+  }
+  return stagedCustomerEntityIdToLiveCustomerId;
+}
+
+function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntityRow, "id" | "source_external_id" | "normalized">>, vehicleRows: VehicleRow[]) {
+  const grouped = new Map<string, { entityIds: string[]; normalized: NormalizedVehicle }>();
+  for (const entity of vehicleEntities) {
+    const normalized = toNormalizedVehicle(entity);
+    const key = vehicleIdentityKey(normalized) ?? `entity:${entity.id}`;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { entityIds: [entity.id], normalized });
+      continue;
+    }
+    existing.entityIds.push(entity.id);
+    existing.normalized = {
+      sourceVehicleId: existing.normalized.sourceVehicleId ?? normalized.sourceVehicleId,
+      vin: existing.normalized.vin ?? normalized.vin,
+      plate: existing.normalized.plate ?? normalized.plate,
+      unitNumber: existing.normalized.unitNumber ?? normalized.unitNumber,
+      year: existing.normalized.year ?? normalized.year,
+      make: existing.normalized.make ?? normalized.make,
+      model: existing.normalized.model ?? normalized.model,
+    };
+  }
+
+  const stagedVehicleEntityIdToLiveVehicleId = new Map<string, string>();
+  for (const group of grouped.values()) {
+    const descriptor = vehicleDescriptorKey(group.normalized);
+    const matches = vehicleRows.filter((row) =>
+      (group.normalized.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(group.normalized.sourceVehicleId))
+      || (group.normalized.vin && normalizeVin(row.vin) === group.normalized.vin)
+      || (group.normalized.plate && normalizePlate(row.license_plate) === group.normalized.plate)
+      || (group.normalized.unitNumber && normalizeLookup(row.unit_number) === group.normalized.unitNumber)
+      || (descriptor && vehicleDescriptorKey({ year: row.year, make: normalizeLookup(row.make), model: normalizeLookup(row.model) }) === descriptor));
+    if (matches.length !== 1) continue;
+    const id = matches[0]!.id;
+    for (const entityId of group.entityIds) stagedVehicleEntityIdToLiveVehicleId.set(entityId, id);
+  }
+  return stagedVehicleEntityIdToLiveVehicleId;
 }
 
 function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
@@ -426,33 +514,31 @@ export async function activateOnboardingHistory(params: {
     }
   }
 
-  const stagedCustomerEntityIdToLiveCustomerId = new Map<string, string>();
+  const stagedCustomerEntityIdToLiveCustomerId = buildGroupedCustomerLiveMap([...customerEntityById.values()], customerRows);
   const stagedCustomerSourceRowIdToLiveCustomerId = new Map<string, string>();
   const stagedCustomerExternalIdToLiveCustomerId = new Map<string, string>();
   for (const entity of customerEntityById.values()) {
-    const resolved = resolveLiveCustomerIdFromStagedEntity(entity, customerRows);
-    if (!resolved.id || resolved.ambiguous) continue;
-    stagedCustomerEntityIdToLiveCustomerId.set(entity.id, resolved.id);
+    const resolvedId = stagedCustomerEntityIdToLiveCustomerId.get(entity.id);
+    if (!resolvedId) continue;
     const sourceRowKey = normalizeText(entity.source_row_id);
-    if (sourceRowKey) stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolved.id);
+    if (sourceRowKey) stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
-    if (externalKey) stagedCustomerExternalIdToLiveCustomerId.set(externalKey, resolved.id);
+    if (externalKey) stagedCustomerExternalIdToLiveCustomerId.set(externalKey, resolvedId);
   }
 
-  const stagedVehicleEntityIdToLiveVehicleId = new Map<string, string>();
+  const stagedVehicleEntityIdToLiveVehicleId = buildGroupedVehicleLiveMap([...vehicleEntityById.values()], vehicleRows);
   const stagedVehicleSourceRowIdToLiveVehicleId = new Map<string, string>();
   const stagedVehicleExternalIdToLiveVehicleId = new Map<string, string>();
   const stagedVehicleVinToLiveVehicleId = new Map<string, string>();
   for (const entity of vehicleEntityById.values()) {
-    const resolved = resolveLiveVehicleIdFromStagedEntity(entity, vehicleRows);
-    if (!resolved.id || resolved.ambiguous) continue;
-    stagedVehicleEntityIdToLiveVehicleId.set(entity.id, resolved.id);
+    const resolvedId = stagedVehicleEntityIdToLiveVehicleId.get(entity.id);
+    if (!resolvedId) continue;
     const sourceRowKey = normalizeText(entity.source_row_id);
-    if (sourceRowKey) stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolved.id);
+    if (sourceRowKey) stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
-    if (externalKey) stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolved.id);
+    if (externalKey) stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolvedId);
     const vinKey = normalizeVin((entity.normalized ?? ({} as any)).vin);
-    if (vinKey) stagedVehicleVinToLiveVehicleId.set(vinKey, resolved.id);
+    if (vinKey) stagedVehicleVinToLiveVehicleId.set(vinKey, resolvedId);
   }
 
   for (const entity of historyRows) {
