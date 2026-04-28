@@ -150,6 +150,15 @@ function parseMoney(value: unknown): number | null {
 function parseDate(value: unknown): string | null {
   const raw = normalizeText(value);
   if (!raw) return null;
+  const mdY = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (mdY) {
+    const month = Number(mdY[1]);
+    const day = Number(mdY[2]);
+    const yearRaw = Number(mdY[3]);
+    const year = yearRaw < 100 ? yearRaw + 2000 : yearRaw;
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
@@ -323,17 +332,31 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
 
 function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
+  const firstText = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = normalizeText(normalized[key]);
+      if (value) return value;
+    }
+    return null;
+  };
+  const firstDate = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = parseDate(normalized[key]);
+      if (value) return value;
+    }
+    return null;
+  };
   return {
-    sourceWorkOrderId: normalizeText(normalized.sourceWorkOrderId) || null,
-    invoiceNumber: normalizeText(normalized.invoiceNumber ?? normalized.invoiceId) || null,
-    openedDate: parseDate(normalized.openedDate),
-    closedDate: parseDate(normalized.closedDate),
-    customerName: normalizeText(normalized.customerName) || null,
-    customerEmail: normalizeText(normalized.customerEmail).toLowerCase() || null,
-    sourceCustomerId: normalizeText(normalized.sourceCustomerId) || null,
-    sourceVehicleId: normalizeText(normalized.sourceVehicleId) || null,
-    vehicleVin: normalizeText(normalized.vehicleVin).toUpperCase() || null,
-    vehiclePlate: normalizeText(normalized.vehiclePlate).toUpperCase() || null,
+    sourceWorkOrderId: firstText("sourceWorkOrderId", "workOrderNumber", "roNumber", "repairOrderNumber", "sourceExternalId", "sourceRowId"),
+    invoiceNumber: firstText("invoiceNumber", "invoiceId", "sourceInvoiceId"),
+    openedDate: firstDate("openedDate", "openedAt", "opened_date", "dateOpened", "serviceDate", "createdAt", "date", "completedAt", "closedAt", "invoiceDate"),
+    closedDate: firstDate("closedDate", "closedAt", "completedAt", "invoiceDate"),
+    customerName: firstText("customerName", "name", "businessName"),
+    customerEmail: firstText("customerEmail", "email")?.toLowerCase() ?? null,
+    sourceCustomerId: firstText("sourceCustomerId", "customerId", "customerExternalId"),
+    sourceVehicleId: firstText("sourceVehicleId", "vehicleId", "vehicleExternalId"),
+    vehicleVin: firstText("vehicleVin", "vin")?.toUpperCase() ?? null,
+    vehiclePlate: firstText("vehiclePlate", "plate", "licensePlate")?.toUpperCase() ?? null,
     complaint: normalizeText(normalized.complaint) || null,
     correction: normalizeText(normalized.correction) || null,
     laborTotal: parseMoney(normalized.laborTotal ?? normalized.laborRaw),
@@ -406,8 +429,7 @@ export async function activateOnboardingHistory(params: {
         .select("id, normalized, entity_type, source_row_id, source_external_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
-        .eq("entity_type", "historical_work_order")
-        .eq("status", "ready")
+        .in("entity_type", ["historical_work_order", "history"])
         .order("id", { ascending: true })
         .range(from, to)),
     fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name" | "source_row_id" | "status">>((from, to) =>
@@ -490,6 +512,7 @@ export async function activateOnboardingHistory(params: {
   const vehicleWorkOrderLinks = linkRows.filter((row) => row.link_type === "vehicle_work_order").length;
 
   const groupedReviewItems = new Map<string, GroupedReviewBucket>();
+  const historyEntityIdSet = new Set(historyRows.map((row) => row.id));
   const entityById = new Map<string, Pick<OnboardingEntityRow, "id" | "entity_type">>([
     ...historyRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
     ...entityRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
@@ -505,12 +528,12 @@ export async function activateOnboardingHistory(params: {
     const to = entityById.get(link.to_entity_id);
     if (!from || !to) continue;
     if (link.link_type === "customer_work_order") {
-      if (from.entity_type === "historical_work_order" && to.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, from.id, to.id);
-      if (to.entity_type === "historical_work_order" && from.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, to.id, from.id);
+      if (historyEntityIdSet.has(from.id) && to.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, from.id, to.id);
+      if (historyEntityIdSet.has(to.id) && from.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, to.id, from.id);
     }
     if (link.link_type === "vehicle_work_order") {
-      if (from.entity_type === "historical_work_order" && to.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, from.id, to.id);
-      if (to.entity_type === "historical_work_order" && from.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, to.id, from.id);
+      if (historyEntityIdSet.has(from.id) && to.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, from.id, to.id);
+      if (historyEntityIdSet.has(to.id) && from.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, to.id, from.id);
     }
   }
 
