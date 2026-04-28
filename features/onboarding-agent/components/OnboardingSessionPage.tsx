@@ -12,6 +12,15 @@ import { OnboardingReviewPanel } from "@/features/onboarding-agent/components/On
 import { onboardingSessionActionPath } from "@/features/onboarding-agent/lib/routes";
 import { formatOnboardingSessionStatusLabel } from "@/features/onboarding-agent/lib/sessionStatus";
 
+function warningCategory(warning: string): string {
+  if (warning.includes("unique conflict recovery failed")) return "unique conflict recovery failed";
+  if (warning.includes("does not connect staged customer+vehicle entities")) return "invalid customer_vehicle link";
+  if (warning.includes("customer or vehicle was not materialized")) return "unmaterialized customer/vehicle";
+  if (warning.includes("already belongs to another customer")) return "vehicle already linked to other customer";
+  if (warning.includes("ambiguous")) return "ambiguous match";
+  return "other";
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -206,6 +215,24 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const actionBusy = analyzing || deleting || planning || activatingVendors || activatingCustomersVehicles;
   const canShowVendorActivation = !loadingSession && !sessionLoadError && vendorReadyCount > 0;
   const canShowCustomerVehicleActivation = !loadingSession && !sessionLoadError && hasCustomerVehicleReady;
+  const groupedCustomerVehicleWarnings = useMemo(() => {
+    const warnings: string[] = Array.isArray(customerVehicleActivationResult?.warnings)
+      ? customerVehicleActivationResult.warnings
+      : [];
+    const groups = new Map<string, { count: number; examples: string[] }>();
+    for (const warning of warnings) {
+      const key = warningCategory(warning);
+      const group = groups.get(key) ?? { count: 0, examples: [] };
+      group.count += 1;
+      if (group.examples.length < 10) group.examples.push(warning);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([reason, group]) => ({
+      reason,
+      count: group.count,
+      examples: group.examples,
+    }));
+  }, [customerVehicleActivationResult]);
 
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
@@ -315,16 +342,16 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               {Number(customerVehicleActivationResult.customersUpdated ?? 0)}/{Number(customerVehicleActivationResult.customersMatchedExisting ?? 0)}/{Number(customerVehicleActivationResult.customersSkipped ?? 0)}.
             </p>
             <p>
-              Vehicles inserted/updated/skipped: {Number(customerVehicleActivationResult.vehiclesInserted ?? 0)}/
-              {Number(customerVehicleActivationResult.vehiclesUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehiclesSkipped ?? 0)}.
+              Vehicles inserted/updated/matched existing/skipped: {Number(customerVehicleActivationResult.vehiclesInserted ?? 0)}/
+              {Number(customerVehicleActivationResult.vehiclesUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehiclesMatchedExisting ?? 0)}/{Number(customerVehicleActivationResult.vehiclesSkipped ?? 0)}.
             </p>
             <p>
               Customer duplicate-staged/ambiguous/recovered from unique conflict: {Number(customerVehicleActivationResult.customersSkippedDuplicateStaged ?? 0)}/
               {Number(customerVehicleActivationResult.customersSkippedAmbiguous ?? 0)}/{Number(customerVehicleActivationResult.customersRecoveredFromUniqueConflict ?? 0)}.
             </p>
             <p>
-              Vehicle/customer links created/updated/skipped: {Number(customerVehicleActivationResult.vehicleCustomerLinksCreated ?? 0)}/
-              {Number(customerVehicleActivationResult.vehicleCustomerLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksSkipped ?? 0)}.
+              Vehicle/customer links created/updated/already-correct/skipped: {Number(customerVehicleActivationResult.vehicleCustomerLinksCreated ?? 0)}/
+              {Number(customerVehicleActivationResult.vehicleCustomerLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksAlreadyCorrect ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksSkipped ?? 0)}.
             </p>
             <p>
               Live customers before/after: {Number(customerVehicleActivationResult.customersBefore ?? 0)}/
@@ -335,8 +362,18 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               <div className="mt-1">
                 <p>Warnings: {customerVehicleActivationResult.warnings.length}</p>
                 <ul className="list-disc pl-5">
-                  {customerVehicleActivationResult.warnings.map((warning: string, index: number) => (
-                    <li key={`${warning}-${index}`}>{warning}</li>
+                  {groupedCustomerVehicleWarnings.map((group) => (
+                    <li key={group.reason}>
+                      {group.reason}: {group.count}
+                      <details className="mt-1 pl-2">
+                        <summary className="cursor-pointer text-[11px] text-cyan-200/90">Show first {group.examples.length} examples</summary>
+                        <ul className="list-disc pl-5 pt-1 text-[11px] text-cyan-100/90">
+                          {group.examples.map((warning: string, index: number) => (
+                            <li key={`${group.reason}-${index}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
                   ))}
                 </ul>
               </div>

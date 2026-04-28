@@ -12,6 +12,7 @@ type CustomerUpdate = Database["public"]["Tables"]["customers"]["Update"];
 type VehicleRow = Database["public"]["Tables"]["vehicles"]["Row"];
 type VehicleInsert = Database["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
+const PAGE_SIZE = 1000;
 
 export type CustomerVehicleActivationResult = {
   ok: true;
@@ -28,9 +29,11 @@ export type CustomerVehicleActivationResult = {
   customersSkipped: number;
   vehiclesInserted: number;
   vehiclesUpdated: number;
+  vehiclesMatchedExisting: number;
   vehiclesSkipped: number;
   vehicleCustomerLinksCreated: number;
   vehicleCustomerLinksUpdated: number;
+  vehicleCustomerLinksAlreadyCorrect: number;
   vehicleCustomerLinksSkipped: number;
   customersBefore: number;
   customersAfter: number;
@@ -323,6 +326,20 @@ export async function activateOnboardingCustomersVehicles(params: {
   sessionId: string;
 }): Promise<CustomerVehicleActivationResult> {
   const sb = params.supabase as any;
+  async function fetchAllRows<T>(buildQuery: (from: number, to: number) => any): Promise<T[]> {
+    const rows: T[] = [];
+    let from = 0;
+    while (true) {
+      const to = from + PAGE_SIZE - 1;
+      const { data, error } = await buildQuery(from, to);
+      if (error) throw new Error(error.message);
+      const batch = (data ?? []) as T[];
+      rows.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+    return rows;
+  }
 
   await assertOnboardingSessionOwnership({
     supabase: params.supabase,
@@ -330,48 +347,41 @@ export async function activateOnboardingCustomersVehicles(params: {
     sessionId: params.sessionId,
   });
 
-  const [
-    entitiesResult,
-    linksResult,
-    customersResult,
-    vehiclesResult,
-  ] = await Promise.all([
-    sb
-      .from("onboarding_entities")
-      .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .in("entity_type", ["customer", "vehicle"])
-      .eq("status", "ready")
-      .order("id", { ascending: true }),
-    sb
-      .from("onboarding_entity_links")
-      .select("id, shop_id, session_id, from_entity_id, to_entity_id, link_type")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .eq("link_type", "customer_vehicle")
-      .order("id", { ascending: true }),
-    sb
-      .from("customers")
-      .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
-      .eq("shop_id", params.shopId)
-      .order("id", { ascending: true }),
-    sb
-      .from("vehicles")
-      .select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id")
-      .eq("shop_id", params.shopId)
-      .order("id", { ascending: true }),
+  const [entities, links, customerPool, vehiclePool] = await Promise.all([
+    fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id">>((from, to) =>
+      sb
+        .from("onboarding_entities")
+        .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .in("entity_type", ["customer", "vehicle"])
+        .eq("status", "ready")
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllRows<Pick<OnboardingEntityLinkRow, "id" | "shop_id" | "session_id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
+      sb
+        .from("onboarding_entity_links")
+        .select("id, shop_id, session_id, from_entity_id, to_entity_id, link_type")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .eq("link_type", "customer_vehicle")
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllRows<CustomerRow>((from, to) =>
+      sb
+        .from("customers")
+        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllRows<VehicleRow>((from, to) =>
+      sb
+        .from("vehicles")
+        .select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
   ]);
-
-  if (entitiesResult.error) throw new Error(entitiesResult.error.message);
-  if (linksResult.error) throw new Error(linksResult.error.message);
-  if (customersResult.error) throw new Error(customersResult.error.message);
-  if (vehiclesResult.error) throw new Error(vehiclesResult.error.message);
-
-  const entities = (entitiesResult.data ?? []) as Array<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id">>;
-  const links = (linksResult.data ?? []) as Array<Pick<OnboardingEntityLinkRow, "id" | "shop_id" | "session_id" | "from_entity_id" | "to_entity_id" | "link_type">>;
-  const customerPool = (customersResult.data ?? []) as CustomerRow[];
-  const vehiclePool = (vehiclesResult.data ?? []) as VehicleRow[];
 
   const customersBefore = customerPool.length;
   const vehiclesBefore = vehiclePool.length;
@@ -431,12 +441,14 @@ export async function activateOnboardingCustomersVehicles(params: {
     const { data, error } = await sb.from("customers").insert(payload).select("id").single();
     if (error) {
       if (!normalized.email || !isCustomerEmailUniqueViolation(error)) throw new Error(error.message);
-      const recoveryResult = await sb
-        .from("customers")
-        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
-        .eq("shop_id", params.shopId);
-      if (recoveryResult.error) throw new Error(recoveryResult.error.message);
-      const recovered = ((recoveryResult.data ?? []) as CustomerRow[])
+      const recovered = (await fetchAllRows<CustomerRow>((from, to) =>
+        sb
+          .from("customers")
+          .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
+          .eq("shop_id", params.shopId)
+          .eq("email", normalized.email)
+          .order("id", { ascending: true })
+          .range(from, to)))
         .filter((row) => normalizeEmail(row.email) === normalized.email);
 
       if (recovered.length === 1) {
@@ -492,6 +504,7 @@ export async function activateOnboardingCustomersVehicles(params: {
 
   let vehiclesInserted = 0;
   let vehiclesUpdated = 0;
+  let vehiclesMatchedExisting = 0;
   let vehiclesSkipped = 0;
   for (const entity of vehicleEntities) {
     const normalized = toNormalizedVehicle(entity);
@@ -510,7 +523,7 @@ export async function activateOnboardingCustomersVehicles(params: {
       const update = buildVehicleUpdate(current, normalized);
       vehicleEntityToLiveId.set(entity.id, current.id);
       if (!update) {
-        vehiclesSkipped += 1;
+        vehiclesMatchedExisting += 1;
         continue;
       }
       const { error } = await sb.from("vehicles").update(update).eq("shop_id", params.shopId).eq("id", current.id);
@@ -552,8 +565,10 @@ export async function activateOnboardingCustomersVehicles(params: {
   }
 
   let vehicleCustomerLinksCreated = 0;
-  const vehicleCustomerLinksUpdated = 0;
+  let vehicleCustomerLinksUpdated = 0;
+  let vehicleCustomerLinksAlreadyCorrect = 0;
   let vehicleCustomerLinksSkipped = 0;
+  const vehicleById = new Map(vehiclePool.map((row) => [row.id, row]));
 
   for (const link of links) {
     const from = entityById.get(link.from_entity_id);
@@ -575,14 +590,14 @@ export async function activateOnboardingCustomersVehicles(params: {
       continue;
     }
 
-    const vehicle = vehiclePool.find((row) => row.id === vehicleId);
+    const vehicle = vehicleById.get(vehicleId);
     if (!vehicle) {
       vehicleCustomerLinksSkipped += 1;
       continue;
     }
 
     if (vehicle.customer_id === customerId) {
-      vehicleCustomerLinksSkipped += 1;
+      vehicleCustomerLinksAlreadyCorrect += 1;
       continue;
     }
 
@@ -594,8 +609,12 @@ export async function activateOnboardingCustomersVehicles(params: {
 
     const { error } = await sb.from("vehicles").update({ customer_id: customerId }).eq("shop_id", params.shopId).eq("id", vehicleId);
     if (error) throw new Error(error.message);
+    if (vehicle.customer_id === null) {
+      vehicleCustomerLinksCreated += 1;
+    } else {
+      vehicleCustomerLinksUpdated += 1;
+    }
     vehicle.customer_id = customerId;
-    vehicleCustomerLinksCreated += 1;
   }
 
   const [{ count: customersAfter, error: customersAfterError }, { count: vehiclesAfter, error: vehiclesAfterError }] = await Promise.all([
@@ -623,9 +642,11 @@ export async function activateOnboardingCustomersVehicles(params: {
     customersSkipped,
     vehiclesInserted,
     vehiclesUpdated,
+    vehiclesMatchedExisting,
     vehiclesSkipped,
     vehicleCustomerLinksCreated,
     vehicleCustomerLinksUpdated,
+    vehicleCustomerLinksAlreadyCorrect,
     vehicleCustomerLinksSkipped,
     customersBefore,
     customersAfter: Number(customersAfter ?? customerPool.length),

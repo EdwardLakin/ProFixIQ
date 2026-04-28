@@ -84,12 +84,15 @@ function createFakeSupabase(seed?: {
         payload: null as any,
         filters: [] as Array<{ k: string; v: any; op: "eq" | "in" }>,
         selectOpts: null as any,
+        rangeFrom: null as number | null,
+        rangeTo: null as number | null,
         select(_columns: string, options?: any) {
           this.selectOpts = options ?? null;
           if (!this.op) this.op = "select";
           return this;
         },
         order() { return this; },
+        range(from: number, to: number) { this.rangeFrom = from; this.rangeTo = to; return this; },
         eq(k: string, v: any) { this.filters.push({ k, v, op: "eq" }); return this; },
         in(k: string, v: any[]) { this.filters.push({ k, v, op: "in" }); return this; },
         update(payload: any) { this.op = "update"; this.payload = payload; return this; },
@@ -109,6 +112,12 @@ function createFakeSupabase(seed?: {
                 if (filter.op === "eq") return row[filter.k] === filter.v;
                 return Array.isArray(filter.v) && filter.v.includes(row[filter.k]);
               });
+            }
+            if (typeof this.rangeFrom === "number" && typeof this.rangeTo === "number") {
+              return filtered.slice(this.rangeFrom, this.rangeTo + 1);
+            }
+            if (!this.selectOpts?.head && this.op === "select" && (this.table === "onboarding_entities" || this.table === "onboarding_entity_links" || this.table === "customers" || this.table === "vehicles")) {
+              return filtered.slice(0, 1000);
             }
             return filtered;
           };
@@ -333,5 +342,91 @@ describe("activateOnboardingCustomersVehicles", () => {
 
     expect(result.customersSkippedAmbiguous).toBe(1);
     expect(result.warnings.some((warning) => warning.includes("ambiguous"))).toBe(true);
+  });
+
+  it("paginates full staged customer/vehicle/link sets and processes links past first 1000", async () => {
+    const customers = Array.from({ length: 1800 }, (_, index) => stagedCustomer(`c${index + 1}`, {
+      normalized: { sourceCustomerId: `C-${index + 1}`, email: `customer${index + 1}@example.com`, name: `Customer ${index + 1}` },
+      source_external_id: `C-${index + 1}`,
+    }));
+    const vehicles = Array.from({ length: 2600 }, (_, index) => stagedVehicle(`v${index + 1}`, {
+      normalized: {
+        sourceVehicleId: `V-${index + 1}`,
+        sourceCustomerId: `C-${(index % 1800) + 1}`,
+        vin: `VIN${String(index + 1).padStart(6, "0")}`,
+        plate: `PLATE${index + 1}`,
+        year: "2022",
+        make: "Ford",
+        model: "Transit",
+      },
+      source_external_id: `V-${index + 1}`,
+    }));
+    const links = Array.from({ length: 2600 }, (_, index) => ({
+      id: `l${index + 1}`,
+      shop_id: "shop-1",
+      session_id: "session-1",
+      from_entity_id: `c${(index % 1800) + 1}`,
+      to_entity_id: `v${index + 1}`,
+      link_type: "customer_vehicle",
+    }));
+
+    sb = createFakeSupabase({ entities: [...customers, ...vehicles], links });
+
+    const result = await runActivation(sb);
+
+    expect(result.stagedCustomersFound).toBe(1800);
+    expect(result.stagedVehiclesFound).toBe(2600);
+    expect(result.stagedCustomerVehicleLinksFound).toBe(2600);
+    expect(result.stagedCustomersFound).not.toBe(405);
+    expect(result.stagedVehiclesFound).not.toBe(595);
+    expect(result.stagedCustomerVehicleLinksFound).not.toBe(1000);
+    expect(result.vehiclesAfter).toBe(2600);
+    expect(sb.state.vehicles[1500]?.customer_id).toBeTruthy();
+  });
+
+  it("maps duplicate staged customer ids to one live customer and links past 1000 stay idempotent", async () => {
+    const entities: Entity[] = [
+      stagedCustomer("c1", { normalized: { sourceCustomerId: "SRC-ONE", email: "one@example.com", name: "One" } }),
+      stagedCustomer("c2", { normalized: { sourceCustomerId: "SRC-TWO", email: "one@example.com", name: "One Duplicate" } }),
+      ...Array.from({ length: 2600 }, (_, index) => stagedVehicle(`v${index + 1}`, {
+        normalized: {
+          sourceVehicleId: `V-${index + 1}`,
+          sourceCustomerId: index >= 1000 ? "SRC-TWO" : "SRC-ONE",
+          vin: `VIN${String(index + 1).padStart(6, "0")}`,
+          plate: `P${index + 1}`,
+          year: "2021",
+          make: "Toyota",
+          model: "Camry",
+        },
+      })),
+    ];
+    const links: Link[] = Array.from({ length: 2600 }, (_, index) => ({
+      id: `l${index + 1}`,
+      shop_id: "shop-1",
+      session_id: "session-1",
+      from_entity_id: index >= 1000 ? "c2" : "c1",
+      to_entity_id: `v${index + 1}`,
+      link_type: "customer_vehicle",
+    }));
+
+    sb = createFakeSupabase({
+      entities,
+      links,
+      customers: [
+        { id: "customer-live", shop_id: "shop-1", external_id: null, email: "one@example.com", phone: null, phone_number: null, name: "Existing One", first_name: null, last_name: null, business_name: null },
+      ],
+    });
+
+    const first = await runActivation(sb);
+    const second = await runActivation(sb);
+
+    expect(first.customersInserted).toBe(0);
+    expect(first.customersMatchedExisting + first.customersUpdated).toBe(1);
+    expect(first.customersSkippedDuplicateStaged).toBe(1);
+    expect(sb.state.customerInsertAttemptsByEmail.get("one@example.com") ?? 0).toBe(0);
+    expect(sb.state.vehicles[1500]?.customer_id).toBe("customer-live");
+    expect(first.vehicleCustomerLinksCreated).toBeGreaterThan(1000);
+    expect(second.vehicleCustomerLinksCreated).toBe(0);
+    expect(second.vehicleCustomerLinksAlreadyCorrect).toBe(2600);
   });
 });
