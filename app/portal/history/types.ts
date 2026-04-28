@@ -5,8 +5,9 @@ export type WorkOrder = Database["public"]["Tables"]["work_orders"]["Row"];
 export type HistoryRow = Database["public"]["Tables"]["history"]["Row"];
 
 /**
- * Small shapes the UI needs. These keep us compatible even if your
- * work_orders table doesn’t actually have `status` or `type` right now.
+ * Small shapes the UI needs.
+ * `work_orders.status` and `work_orders.type` exist in generated DB types,
+ * but these remain optional for defensive UI compatibility.
  */
 type VehicleMini = {
   id: Vehicle["id"];

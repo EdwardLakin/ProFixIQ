@@ -19,7 +19,7 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type WorkOrderPick = Pick<
   DB["public"]["Tables"]["work_orders"]["Row"],
-  "id" | "custom_id" | "vehicle_id"
+  "id" | "custom_id" | "vehicle_id" | "type"
 >;
 
 type VehiclePick = Pick<
@@ -198,7 +198,6 @@ export default function MobileTechQueuePage() {
       }
 
       const assignedLines = (techLines ?? []) as Line[];
-      setLines(assignedLines);
 
       // 4) fetch WOs + all lines for those WOs, to compute “client” line numbers
       const woIds = Array.from(
@@ -213,8 +212,9 @@ export default function MobileTechQueuePage() {
         const [wosRes, allLinesRes] = await Promise.all([
           supabase
             .from("work_orders")
-            .select("id, custom_id, vehicle_id")
-            .in("id", woIds),
+            .select("id, custom_id, vehicle_id, type")
+            .in("id", woIds)
+            .neq("type", "historical_import"),
           supabase
             .from("work_order_lines")
             .select("id, work_order_id, created_at, job_type, approval_state, line_type")
@@ -223,6 +223,8 @@ export default function MobileTechQueuePage() {
         ]);
 
         const wos = (wosRes.data ?? []) as WorkOrderPick[];
+        const allowedWorkOrderIds = new Set(wos.map((wo) => wo.id));
+        setLines(assignedLines.filter((line) => line.work_order_id && allowedWorkOrderIds.has(line.work_order_id)));
 
         // vehicles lookup (batch)
         const vehicleIds = Array.from(
@@ -307,6 +309,7 @@ export default function MobileTechQueuePage() {
 
         setLineNumberMap(lnMap);
       } else {
+        setLines([]);
         setWorkOrderMap({});
         setLineNumberMap({});
       }
