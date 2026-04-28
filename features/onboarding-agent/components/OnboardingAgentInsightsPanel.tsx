@@ -3,16 +3,30 @@
 import { useState } from "react";
 import type { OnboardingAgentPlan } from "@/features/onboarding-agent/lib/agentPlanTypes";
 
+export function agentInsightsStateCopy(started: boolean): string {
+  return started
+    ? "Activation has started. Some records may have been created or matched. Historical work orders remain closed/historical and invoices remain staged."
+    : "No live records have been created yet. This is staged analysis only.";
+}
+
 export function OnboardingAgentInsightsPanel({
   report,
   plan,
   fallbackReadiness,
   summary,
+  activationState,
 }: {
   report?: { mode?: string; summary?: string; model?: string | null; activationReadiness?: { status?: string } } | null;
   plan?: OnboardingAgentPlan | null;
   fallbackReadiness?: string;
   summary?: Record<string, unknown> | null;
+  activationState?: {
+    started: boolean;
+    customersVehicles: "activated" | "matched" | "not_run";
+    vendors: "activated" | "matched" | "not_run";
+    parts: "activated" | "matched" | "not_run";
+    history: "activated" | "matched" | "not_run";
+  };
 }) {
   const [showDev, setShowDev] = useState(false);
   const displayedReadiness = report?.activationReadiness?.status ?? fallbackReadiness ?? "not_ready";
@@ -29,7 +43,16 @@ export function OnboardingAgentInsightsPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-cyan-100">Agent insights</h3>
-          <p className="mt-1 text-xs text-cyan-100/70">No live records have been created. This is a staged analysis only.</p>
+          <p className="mt-1 text-xs text-cyan-100/70">
+            {agentInsightsStateCopy(Boolean(activationState?.started))}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-cyan-100/85">
+            <span className="rounded border border-cyan-500/30 px-2 py-0.5">Customers/vehicles: {activationState?.customersVehicles ?? "not_run"}</span>
+            <span className="rounded border border-cyan-500/30 px-2 py-0.5">Vendors: {activationState?.vendors ?? "not_run"}</span>
+            <span className="rounded border border-cyan-500/30 px-2 py-0.5">Parts: {activationState?.parts ?? "not_run"}</span>
+            <span className="rounded border border-cyan-500/30 px-2 py-0.5">History: {activationState?.history ?? "not_run"}</span>
+            <span className="rounded border border-amber-500/40 px-2 py-0.5 text-amber-100">Invoices: staged only</span>
+          </div>
         </div>
       </div>
 

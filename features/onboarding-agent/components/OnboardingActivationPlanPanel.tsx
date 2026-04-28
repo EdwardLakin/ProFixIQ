@@ -7,17 +7,30 @@ function num(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-export function OnboardingActivationPlanPanel({ latestPlan, fallbackSummary, agentPlan }: { latestPlan?: Record<string, unknown> | null; fallbackSummary?: Record<string, unknown> | null; agentPlan?: OnboardingAgentPlan | null }) {
+export function activationPreviewCopy(activationStarted: boolean): { title: string; description: string } {
+  return activationStarted
+    ? {
+      title: "Activation readiness snapshot",
+      description: "This snapshot is based on staged rows and review items. Some live records may already be created or matched.",
+    }
+    : {
+      title: "Dry-run activation preview",
+      description: "No live records have been created yet. These are activation candidates from persisted staged entities only.",
+    };
+}
+
+export function OnboardingActivationPlanPanel({ latestPlan, fallbackSummary, agentPlan, activationStarted = false }: { latestPlan?: Record<string, unknown> | null; fallbackSummary?: Record<string, unknown> | null; agentPlan?: OnboardingAgentPlan | null; activationStarted?: boolean }) {
   const [showDevDetails, setShowDevDetails] = useState(false);
   const summary = (fallbackSummary ?? latestPlan?.summary ?? latestPlan ?? {}) as Record<string, any>;
   const preview = agentPlan?.activationPreview;
+  const copy = activationPreviewCopy(activationStarted);
   const readyTotal = num(summary.customersReady) + num(summary.vehiclesReady) + num(summary.historicalWorkOrdersReady) + num(summary.historicalInvoicesReady) + num(summary.partsReady) + num(summary.vendorsReady) + num(summary.staffCandidatesReady) + num(summary.menuSuggestionsReady) + num(summary.inspectionSuggestionsReady);
   const reviewTotal = num(summary.reviewNeeded);
 
   return (
     <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-4">
-      <h3 className="text-sm font-semibold text-amber-100">Dry-run activation preview</h3>
-      <p className="mt-2 text-xs text-amber-200/80">No live records have been created. These are activation candidates from persisted staged entities only.</p>
+      <h3 className="text-sm font-semibold text-amber-100">{copy.title}</h3>
+      <p className="mt-2 text-xs text-amber-200/80">{copy.description}</p>
       <p className="mt-1 text-xs text-amber-100/90">{readyTotal.toLocaleString()} ready, {reviewTotal.toLocaleString()} require review.</p>
 
       <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">

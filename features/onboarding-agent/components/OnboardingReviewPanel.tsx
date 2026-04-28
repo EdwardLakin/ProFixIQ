@@ -11,6 +11,36 @@ type ReviewItem = {
   details?: Record<string, unknown>;
 };
 
+export function groupReviewIssuesForDisplay(reviewItems: ReviewItem[]) {
+  return Object.values(
+    reviewItems.reduce<Record<string, {
+      id: string;
+      severity: string;
+      domain: string;
+      issueType: string;
+      summary: string;
+      count: number;
+      examples: string[];
+      detailExamples: Record<string, unknown>[];
+    }>>((acc, item) => {
+      if (!item) return acc;
+      const domain = String(item.domain ?? "unknown");
+      const issueType = String(item.issue_type ?? "issue");
+      const summary = String(item.summary ?? "Review required");
+      const severity = String(item.severity ?? "medium");
+      const key = `${domain}|${severity}|${issueType}|${summary}`;
+      if (!acc[key]) {
+        acc[key] = { id: key, severity, domain, issueType, summary, count: 0, examples: [], detailExamples: [] };
+      }
+      const bucket = acc[key]!;
+      bucket.count += 1;
+      if (bucket.examples.length < 3) bucket.examples.push(summary);
+      if (bucket.detailExamples.length < 3 && item.details && typeof item.details === "object") bucket.detailExamples.push(item.details);
+      return acc;
+    }, {}),
+  ).sort((a, b) => b.count - a.count).slice(0, 12);
+}
+
 export function OnboardingReviewPanel({
   reviewCounts,
   reviewItems,
@@ -19,7 +49,7 @@ export function OnboardingReviewPanel({
   reviewItems: ReviewItem[];
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const topItems = reviewItems.filter((item) => item).slice(0, 12);
+  const groupedItems = groupReviewIssuesForDisplay(reviewItems);
   const domainCounts = reviewCounts.byDomain ?? {};
 
   return (
@@ -37,22 +67,25 @@ export function OnboardingReviewPanel({
 
       <div className="mt-3 space-y-2">
         <p className="text-xs uppercase tracking-wide text-slate-400">Grouped review issues</p>
-        {topItems.map((item) => {
-          const details = (item.details ?? {}) as Record<string, any>;
-          const examples = Array.isArray(details.examples) ? details.examples : [];
+        {groupedItems.map((item) => {
           const key = item.id;
           return (
             <div key={item.id} className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-400">{item.severity} • {item.domain ?? "unknown"} • {item.issue_type ?? "issue"}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{item.severity} • {item.domain} • {item.issueType}</p>
               <p className="text-sm text-white">{item.summary}</p>
-              {typeof details.count === "number" ? <p className="text-xs text-slate-300">Affected rows: {details.count}</p> : null}
-              {Array.isArray(details.sampleRowIndexes) && details.sampleRowIndexes.length > 0 ? <p className="text-xs text-slate-400">Sample rows: {details.sampleRowIndexes.slice(0, 5).join(", ")}</p> : null}
-              <p className="text-xs text-slate-400">Recommended action: {details.recommendedAction ?? "manual_review"}</p>
-              {examples.length > 0 ? <><button className="mt-2 text-xs text-cyan-200 underline" onClick={() => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))}>{expanded[key] ? "Hide examples" : "Show examples"}</button>{expanded[key] ? <ul className="mt-2 space-y-1 text-xs text-slate-300">{examples.slice(0, 3).map((example: any, idx: number) => <li key={`${key}-${idx}`}>• {example.summary}</li>)}</ul> : null}</> : null}
+              <p className="text-xs text-slate-300">Count: {item.count}</p>
+              <p className="text-xs text-slate-400">Recommended action: manual_review</p>
+              {item.examples.length > 0 ? <><button className="mt-2 text-xs text-cyan-200 underline" onClick={() => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))}>{expanded[key] ? "Hide examples" : "Show examples"}</button>{expanded[key] ? <ul className="mt-2 space-y-1 text-xs text-slate-300">{item.examples.slice(0, 3).map((example: string, idx: number) => <li key={`${key}-${idx}`}>• {example}</li>)}</ul> : null}</> : null}
+              {expanded[key] && item.detailExamples.length > 0 ? (
+                <details className="mt-2 text-[11px] text-slate-400">
+                  <summary className="cursor-pointer">Developer details</summary>
+                  <pre className="mt-1 overflow-auto rounded bg-slate-950/60 p-2">{JSON.stringify(item.detailExamples, null, 2)}</pre>
+                </details>
+              ) : null}
             </div>
           );
         })}
-        {topItems.length === 0 ? <p className="text-xs text-slate-400">No pending review exceptions.</p> : null}
+        {groupedItems.length === 0 ? <p className="text-xs text-slate-400">No pending review exceptions.</p> : null}
       </div>
     </div>
   );

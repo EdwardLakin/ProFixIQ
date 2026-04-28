@@ -268,7 +268,9 @@ describe("activateOnboardingParts", () => {
     expect(first.skipped).toBeGreaterThan(0);
     expect(first.reviewItemsCreated).toBeGreaterThan(0);
     expect(second.partsCreated).toBe(0);
-    expect(second.reviewItemsCreated).toBe(first.reviewItemsCreated);
+    expect(second.reviewItemsCreated).toBe(0);
+    expect(second.reviewItemsReused).toBeGreaterThan(0);
+    expect(second.reviewItemsPersisted).toBeGreaterThan(0);
   });
 
 });

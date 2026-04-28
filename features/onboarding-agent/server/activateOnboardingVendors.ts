@@ -21,7 +21,11 @@ export type VendorActivationResult = {
   needsReview: number;
   suppliersBefore: number;
   suppliersAfter: number;
+  reviewItemsAttempted: number;
+  reviewItemsPersisted: number;
+  reviewItemsReused: number;
   reviewItemsCreated: number;
+  reviewItemsOpenForDomain: number;
   warnings: string[];
   records: Array<{
     entityId: string;
@@ -248,15 +252,27 @@ export async function activateOnboardingVendors(params: {
     records.push({ entityId: entity.id, supplierId: data?.id ?? null, action: "created", reason: "Created supplier" });
   }
 
+  let reviewItemsPersisted = 0;
+  let reviewItemsReused = 0;
   if (reviewItems.length > 0) {
-    await upsertOnboardingReviewItems({
+    const writeResult = await upsertOnboardingReviewItems({
       supabase: params.supabase,
       phase: "vendors",
       shopId: params.shopId,
       sessionId: params.sessionId,
       reviewItems,
     });
+    reviewItemsPersisted = writeResult.persisted;
+    reviewItemsReused = writeResult.reused;
   }
+  const { count: reviewItemsOpenCount, error: reviewItemsOpenError } = await sb
+    .from("onboarding_review_items")
+    .select("id", { head: true, count: "exact" })
+    .eq("shop_id", params.shopId)
+    .eq("session_id", params.sessionId)
+    .eq("domain", "vendors")
+    .eq("status", "pending");
+  if (reviewItemsOpenError) throw new Error(reviewItemsOpenError.message);
 
   const { count: suppliersAfterCount, error: suppliersAfterError } = await sb.from("suppliers").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId);
   if (suppliersAfterError) throw new Error(suppliersAfterError.message);
@@ -271,7 +287,11 @@ export async function activateOnboardingVendors(params: {
     needsReview,
     suppliersBefore,
     suppliersAfter: Number(suppliersAfterCount ?? supplierPool.length),
-    reviewItemsCreated: reviewItems.length,
+    reviewItemsAttempted: reviewItems.length,
+    reviewItemsPersisted,
+    reviewItemsReused,
+    reviewItemsCreated: Math.max(0, reviewItemsPersisted - reviewItemsReused),
+    reviewItemsOpenForDomain: Number(reviewItemsOpenCount ?? 0),
     warnings,
     records,
   };

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, linkIssueReasonLabel, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
+import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, linkIssueReasonLabel, partsVendorGuidance, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
+import { agentInsightsStateCopy } from "@/features/onboarding-agent/components/OnboardingAgentInsightsPanel";
+import { activationPreviewCopy } from "@/features/onboarding-agent/components/OnboardingActivationPlanPanel";
+import { groupReviewIssuesForDisplay } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
 
 describe("OnboardingSessionPage warning label helpers", () => {
   it("builds human-readable customer labels", () => {
@@ -46,5 +49,30 @@ describe("OnboardingSessionPage warning label helpers", () => {
     expect(grouped.vendors).toBe(2);
     expect(grouped.parts).toBe(1);
     expect(grouped.unknown).toBe(1);
+  });
+
+  it("switches agent insights copy after activation starts", () => {
+    expect(agentInsightsStateCopy(false)).toContain("No live records have been created yet");
+    expect(agentInsightsStateCopy(true)).toContain("Activation has started");
+    expect(agentInsightsStateCopy(true)).toContain("invoices remain staged");
+  });
+
+  it("switches dry-run label after activation starts", () => {
+    expect(activationPreviewCopy(false).title).toBe("Dry-run activation preview");
+    expect(activationPreviewCopy(true).title).toBe("Activation readiness snapshot");
+  });
+
+  it("renders vendor-before-parts guidance when vendor links are unavailable", () => {
+    expect(partsVendorGuidance({ canShowPartsActivation: true, vendorsActivated: false, vendorPartLinkCount: 0 })).toContain("vendor links may require review");
+    expect(partsVendorGuidance({ canShowPartsActivation: true, vendorsActivated: true, vendorPartLinkCount: 0 })).toContain("No vendor-part relationships");
+  });
+
+  it("groups repeated review summaries into a single display bucket", () => {
+    const grouped = groupReviewIssuesForDisplay([
+      { id: "1", severity: "medium", domain: "parts", issue_type: "missing_vendor", summary: "Vendor not found", details: { a: 1 } },
+      { id: "2", severity: "medium", domain: "parts", issue_type: "missing_vendor", summary: "Vendor not found", details: { a: 2 } },
+    ]);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]?.count).toBe(2);
   });
 });

@@ -144,6 +144,8 @@ describe("activateOnboardingHistory", () => {
     expect(sb.state.work_orders.some((row) => row.custom_id === "RO-6076")).toBe(true);
     expect(sb.state.work_orders.every((row) => row.type === "historical_import" && row.status === "completed")).toBe(true);
     expect(second.historicalWorkOrdersCreated).toBe(0);
+    expect(second.reviewItemsCreated).toBe(0);
+    expect(second.reviewItemsReused).toBeGreaterThan(0);
   });
 
 });
