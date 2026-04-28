@@ -16,10 +16,10 @@ function fakeSb() {
   ].join("|");
 
   const state = {
-    entities: [{ id: "h-1", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01", customerName: "Acme", vehicleVin: "VIN1", complaint: "Noise" } }] as any[],
-    links: [],
-    customers: [{ id: "c-1", external_id: null, email: null, name: "Acme", business_name: null }],
-    vehicles: [{ id: "v-1", external_id: null, vin: "VIN1", license_plate: null }],
+    entities: [{ id: "h-1", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01", customerName: "Acme", vehicleVin: "VIN1", complaint: "Noise" } }] as any[],
+    links: [] as any[],
+    customers: [{ id: "c-1", shop_id: "shop-1", external_id: null, email: null, name: "Acme", business_name: null }],
+    vehicles: [{ id: "v-1", shop_id: "shop-1", external_id: null, vin: "VIN1", license_plate: null }],
     work_orders: [] as any[],
     lines: [] as any[],
     reviewItems: [] as any[],
@@ -31,10 +31,13 @@ function fakeSb() {
         filters: [] as Array<{ key: string; value: any }>,
         op: "select",
         payload: null as any,
+        rangeFrom: 0,
+        rangeTo: Number.MAX_SAFE_INTEGER,
         select() { return this; },
         eq(key: string, value: any) { this.filters.push({ key, value }); return this; },
         in() { return this; },
         order() { return this; },
+        range(from: number, to: number) { this.rangeFrom = from; this.rangeTo = to; return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
         update(payload: any) { this.op = "update"; this.payload = payload; return this; },
         upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this.exec(); },
@@ -42,11 +45,14 @@ function fakeSb() {
         then(resolve: any, reject: any) { return this.exec().then(resolve, reject); },
         async execSingle() { const r = await this.exec(); return { ...r, data: Array.isArray(r.data) ? r.data[0] : r.data }; },
         async exec() {
-          if (table === "onboarding_entities") return { data: state.entities, error: null };
-          if (table === "onboarding_entity_links") return { data: state.links, error: null };
-          if (table === "customers") return { data: state.customers, error: null };
-          if (table === "vehicles") return { data: state.vehicles, error: null };
-          if (table === "work_orders" && this.op === "select") return { data: state.work_orders, error: null };
+          const applyFilters = (rows: any[]) => rows
+            .filter((row) => this.filters.every((f: any) => row?.[f.key] === f.value))
+            .slice(this.rangeFrom, this.rangeTo + 1);
+          if (table === "onboarding_entities") return { data: applyFilters(state.entities), error: null };
+          if (table === "onboarding_entity_links") return { data: applyFilters(state.links), error: null };
+          if (table === "customers") return { data: applyFilters(state.customers), error: null };
+          if (table === "vehicles") return { data: applyFilters(state.vehicles), error: null };
+          if (table === "work_orders" && this.op === "select") return { data: applyFilters(state.work_orders), error: null };
           if (table === "work_orders" && this.op === "insert") { const row = { ...this.payload, id: `wo-${state.work_orders.length + 1}` }; state.work_orders.push(row); return { data: [{ id: row.id }], error: null }; }
           if (table === "work_order_lines" && this.op === "insert") { state.lines.push(this.payload); return { data: [], error: null }; }
           if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
@@ -91,7 +97,7 @@ describe("activateOnboardingHistory", () => {
 
   it("creates review item for missing identifier", async () => {
     const sb = fakeSb();
-    sb.state.entities = [{ id: "h-2", normalized: {} }] as any[];
+    sb.state.entities = [{ id: "h-2", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: {} }] as any[];
     const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     expect(result.needsReview).toBeGreaterThan(0);
     expect(sb.state.reviewItems.some((i) => i.issue_type === "missing_required_history_identifier")).toBe(true);
@@ -99,7 +105,7 @@ describe("activateOnboardingHistory", () => {
 
   it("rerun is idempotent for missing_required_history_identifier", async () => {
     const sb = fakeSb();
-    sb.state.entities = [{ id: "h-dup", normalized: {} }] as any[];
+    sb.state.entities = [{ id: "h-dup", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: {} }] as any[];
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     const before = sb.state.reviewItems.length;
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
@@ -109,10 +115,35 @@ describe("activateOnboardingHistory", () => {
 
   it("rerun does not duplicate invalid_history_date review items", async () => {
     const sb = fakeSb();
-    sb.state.entities = [{ id: "h-invalid-date", normalized: { sourceWorkOrderId: "RO-404", openedDate: "not-a-date" } }] as any[];
+    sb.state.entities = [{ id: "h-invalid-date", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-404", openedDate: "not-a-date" } }] as any[];
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "invalid_history_date")).toHaveLength(1);
+  });
+
+  it("paginates staged history rows over 1000 and keeps historical queue behavior", async () => {
+    const sb = fakeSb();
+    sb.state.entities = Array.from({ length: 6076 }, (_, index) => ({
+      id: `h-${index + 1}`,
+      shop_id: "shop-1",
+      session_id: "session-1",
+      entity_type: "historical_work_order",
+      status: "ready",
+      normalized: index === 6075
+        ? { sourceWorkOrderId: `RO-${index + 1}`, openedDate: "2022-01-01", customerName: "Acme", vehicleVin: "VIN1", complaint: "Noise" }
+        : { sourceWorkOrderId: `RO-${index + 1}` },
+    }));
+
+    const first = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    const second = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+
+    expect(first.stagedHistoryRows).toBe(6076);
+    expect(first.historicalWorkOrdersCreated).toBe(1);
+    expect(first.skipped).toBeGreaterThan(0);
+    expect(first.reviewItemsCreated).toBeGreaterThan(0);
+    expect(sb.state.work_orders.some((row) => row.custom_id === "RO-6076")).toBe(true);
+    expect(sb.state.work_orders.every((row) => row.type === "historical_import" && row.status === "completed")).toBe(true);
+    expect(second.historicalWorkOrdersCreated).toBe(0);
   });
 
 });

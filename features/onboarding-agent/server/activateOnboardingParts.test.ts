@@ -48,9 +48,12 @@ function fakeSb() {
         op: "select",
         payload: null as any,
         options: null as any,
+        rangeFrom: 0,
+        rangeTo: Number.MAX_SAFE_INTEGER,
         select() { return this; },
         eq(col: string, value: any) { filters.push({ op: "eq", col, value }); return this; },
         in(col: string, value: any[]) { filters.push({ op: "in", col, value }); return this; },
+        range(from: number, to: number) { this.rangeFrom = from; this.rangeTo = to; return this; },
         order(col: string) {
           if (table === "stock_locations" && col === "created_at") throw new Error("stock_locations.created_at should not be queried");
           return this;
@@ -63,7 +66,9 @@ function fakeSb() {
         then(resolve: any, reject: any) { return this.exec().then(resolve, reject); },
         async execSingle() { const r = await this.exec(); return { ...r, data: Array.isArray(r.data) ? r.data[0] : r.data }; },
         async exec() {
-          const applyFilters = (rows: any[]) => rows.filter((row) => filters.every((f) => (f.op === "eq" ? row?.[f.col] === f.value : (f.value ?? []).includes(row?.[f.col]))));
+          const applyFilters = (rows: any[]) => rows
+            .filter((row) => filters.every((f) => (f.op === "eq" ? row?.[f.col] === f.value : (f.value ?? []).includes(row?.[f.col]))))
+            .slice(this.rangeFrom, this.rangeTo + 1);
 
           if (table === "onboarding_entities") return { data: applyFilters(state.entities), error: null };
           if (table === "parts" && this.op === "select") return { data: applyFilters(state.parts), error: null };
@@ -236,6 +241,34 @@ describe("activateOnboardingParts", () => {
     await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "ambiguous_vendor_for_part")).toHaveLength(1);
+  });
+
+  it("paginates staged parts over 1000 rows and preserves idempotency across reruns", async () => {
+    const sb = fakeSb();
+    sb.state.entities = Array.from({ length: 3200 }, (_, index) => ({
+      id: `part-${index + 1}`,
+      shop_id: "shop-1",
+      session_id: "session-1",
+      entity_type: "part",
+      status: "ready",
+      normalized: {
+        description: index === 3199 ? "Part 3200" : "",
+        quantityOnHandRaw: index === 1500 ? "-1" : "1",
+      },
+      display_name: `Part ${index + 1}`,
+      source_external_id: `src-${index + 1}`,
+    }));
+
+    const first = await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    const second = await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+
+    expect(first.stagedParts).toBe(3200);
+    expect(first.partsCreated).toBe(1);
+    expect(sb.state.parts.some((row) => row.source_intake_id === "session-1" && row.name === "Part 3200")).toBe(true);
+    expect(first.skipped).toBeGreaterThan(0);
+    expect(first.reviewItemsCreated).toBeGreaterThan(0);
+    expect(second.partsCreated).toBe(0);
+    expect(second.reviewItemsCreated).toBe(first.reviewItemsCreated);
   });
 
 });

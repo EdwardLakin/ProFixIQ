@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import { fetchAllPaginatedRows } from "@/features/onboarding-agent/server/fetchAllPaginatedRows";
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -123,26 +124,49 @@ export async function activateOnboardingHistory(params: {
   const sb = params.supabase as any;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [{ data: entities }, { data: links }, { data: customers }, { data: vehicles }, { data: workOrders }] = await Promise.all([
-    sb
-      .from("onboarding_entities")
-      .select("id, normalized")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .eq("entity_type", "historical_work_order")
-      .eq("status", "ready")
-      .order("id", { ascending: true }),
-    sb.from("onboarding_entity_links").select("id, from_entity_id, to_entity_id, link_type").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("customers").select("id, external_id, email, name, business_name").eq("shop_id", params.shopId),
-    sb.from("vehicles").select("id, external_id, vin, license_plate").eq("shop_id", params.shopId),
-    sb.from("work_orders").select("*").eq("shop_id", params.shopId),
+  const [historyRows, linkRows, customerRows, vehicleRows, workOrders] = await Promise.all([
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized">>((from, to) =>
+      sb
+        .from("onboarding_entities")
+        .select("id, normalized")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .eq("entity_type", "historical_work_order")
+        .eq("status", "ready")
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
+      sb
+        .from("onboarding_entity_links")
+        .select("id, from_entity_id, to_entity_id, link_type")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<CustomerRow>((from, to) =>
+      sb
+        .from("customers")
+        .select("id, external_id, email, name, business_name")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<VehicleRow>((from, to) =>
+      sb
+        .from("vehicles")
+        .select("id, external_id, vin, license_plate")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<WorkOrderRow>((from, to) =>
+      sb
+        .from("work_orders")
+        .select("*")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
   ]);
 
-  const historyRows = (entities ?? []) as Array<Pick<OnboardingEntityRow, "id" | "normalized">>;
-  const linkRows = (links ?? []) as Array<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>;
-  const customerRows = (customers ?? []) as CustomerRow[];
-  const vehicleRows = (vehicles ?? []) as VehicleRow[];
-  const woRows = [...((workOrders ?? []) as WorkOrderRow[])];
+  const woRows = [...workOrders];
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
   const warnings: string[] = [];

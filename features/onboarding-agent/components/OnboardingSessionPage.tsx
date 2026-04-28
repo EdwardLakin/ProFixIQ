@@ -287,8 +287,21 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json?.ok) {
         setError(activationErrorMessage(json?.error, "Failed to activate staged parts."));
       } else {
+        const stagedProcessed = Number(json?.stagedParts ?? 0);
+        const created = Number(json?.partsCreated ?? 0);
+        const matched = Number(json?.existingPartsMatched ?? 0);
+        const reviewItemsCreated = Number(json?.reviewItemsCreated ?? json?.needsReview ?? 0);
+        const skipped = Number(json?.skipped ?? 0);
+        const expectedReady = partReadyCount;
+        const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
+        const reconciliationTotal = created + matched + skipped;
+        const reconciliationUnclear = stagedProcessed > 0 && reconciliationTotal > 0 && reconciliationTotal !== stagedProcessed;
+        const warning = processedLessThanExpected || reconciliationUnclear
+          ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
+          : "";
+        const completionLabel = processedLessThanExpected ? "Parts activation finished with warnings." : "Parts activation complete.";
         setPartsActivationSummary(
-          `Parts activation complete. Staged: ${Number(json?.stagedParts ?? 0)}. Created: ${Number(json?.partsCreated ?? 0)}. Matched: ${Number(json?.existingPartsMatched ?? 0)}. Stock created: ${Number(json?.stockRecordsCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,
+          `${completionLabel} Staged rows processed: ${stagedProcessed}. Created live records: ${created}. Matched existing live records: ${matched}. Review items created: ${reviewItemsCreated}. Skipped/unresolved: ${skipped}.${warning}`,
         );
       }
       await load();
@@ -311,8 +324,21 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json?.ok) {
         setError(activationErrorMessage(json?.error, "Failed to activate historical work orders."));
       } else {
+        const stagedProcessed = Number(json?.stagedHistoryRows ?? 0);
+        const created = Number(json?.historicalWorkOrdersCreated ?? 0);
+        const matched = Number(json?.existingMatched ?? 0);
+        const reviewItemsCreated = Number(json?.reviewItemsCreated ?? json?.needsReview ?? 0);
+        const skipped = Number(json?.skipped ?? 0);
+        const expectedReady = historyReadyCount;
+        const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
+        const reconciliationTotal = created + matched + skipped;
+        const reconciliationUnclear = stagedProcessed > 0 && reconciliationTotal > 0 && reconciliationTotal !== stagedProcessed;
+        const warning = processedLessThanExpected || reconciliationUnclear
+          ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
+          : "";
+        const completionLabel = processedLessThanExpected ? "History activation finished with warnings." : "History activation complete.";
         setHistoryActivationSummary(
-          `History activation complete. Staged: ${Number(json?.stagedHistoryRows ?? 0)}. Created: ${Number(json?.historicalWorkOrdersCreated ?? 0)}. Matched: ${Number(json?.existingMatched ?? 0)}. Lines created: ${Number(json?.linesCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,
+          `${completionLabel} Staged rows processed: ${stagedProcessed}. Created live records: ${created}. Matched existing live records: ${matched}. Review items created: ${reviewItemsCreated}. Skipped/unresolved: ${skipped}.${warning}`,
         );
       }
       await load();

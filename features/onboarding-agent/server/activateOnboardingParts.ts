@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import { fetchAllPaginatedRows } from "@/features/onboarding-agent/server/fetchAllPaginatedRows";
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -131,35 +132,43 @@ export async function activateOnboardingParts(params: {
   const sb = params.supabase as any;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [{ data: staged }, { data: parts }, { data: suppliers }, { data: stockLocations }] = await Promise.all([
-    sb
-      .from("onboarding_entities")
-      .select("id, normalized, display_name, source_external_id")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .eq("entity_type", "part")
-      .eq("status", "ready")
-      .order("id", { ascending: true }),
-    sb.from("parts").select("*").eq("shop_id", params.shopId),
+  const [{ data: suppliers }, { data: stockLocations }, stagedRows, partRows] = await Promise.all([
     sb.from("suppliers").select("id, name").eq("shop_id", params.shopId),
     sb.from("stock_locations").select("*").eq("shop_id", params.shopId).order("code", { ascending: true }).order("name", { ascending: true }).order("id", { ascending: true }).limit(1),
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>((from, to) =>
+      sb
+        .from("onboarding_entities")
+        .select("id, normalized, display_name, source_external_id")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .eq("entity_type", "part")
+        .eq("status", "ready")
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<PartRow>((from, to) =>
+      sb
+        .from("parts")
+        .select("*")
+        .eq("shop_id", params.shopId)
+        .order("id", { ascending: true })
+        .range(from, to)),
   ]);
 
-  const stagedRows = (staged ?? []) as Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>;
-  const partRows = [...((parts ?? []) as PartRow[])];
+  const materializedParts = [...partRows];
   const supplierRows = suppliers ?? [];
   const defaultLocation = (stockLocations?.[0] ?? null) as StockLocationRow | null;
-  const shopPartIds = partRows.map((row) => row.id).filter((id): id is string => Boolean(id));
+  const shopPartIds = materializedParts.map((row) => row.id).filter((id): id is string => Boolean(id));
 
   let stockRows: PartStockRow[] = [];
   if (defaultLocation && shopPartIds.length > 0) {
-    const { data: partStockRows, error: partStockError } = await sb
-      .from("part_stock")
-      .select("id, part_id, location_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty")
-      .eq("location_id", defaultLocation.id)
-      .in("part_id", shopPartIds);
-    if (partStockError) throw new Error(partStockError.message);
-    stockRows = [...((partStockRows ?? []) as PartStockRow[])];
+    stockRows = await fetchAllPaginatedRows<PartStockRow>((from, to) =>
+      sb
+        .from("part_stock")
+        .select("id, part_id, location_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty")
+        .eq("location_id", defaultLocation.id)
+        .in("part_id", shopPartIds)
+        .order("id", { ascending: true })
+        .range(from, to));
   }
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
@@ -198,7 +207,7 @@ export async function activateOnboardingParts(params: {
       needsReview += 1;
     }
 
-    const candidates = getPartMatchCandidates(partRows, normalized);
+    const candidates = getPartMatchCandidates(materializedParts, normalized);
     if (candidates.length > 1) {
       skipped += 1;
       needsReview += 1;
@@ -272,7 +281,7 @@ export async function activateOnboardingParts(params: {
       const { data, error } = await sb.from("parts").insert(payload).select("*").single();
       if (error) throw new Error(error.message);
       targetPart = data as PartRow;
-      partRows.push(targetPart);
+      materializedParts.push(targetPart);
       partsCreated += 1;
     }
 
