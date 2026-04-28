@@ -36,13 +36,14 @@ function fakeSb() {
     from(table: string) {
       const q: any = {
         filters: [] as Array<{ key: string; value: any }>,
+        inFilters: [] as Array<{ key: string; values: any[] }>,
         op: "select",
         payload: null as any,
         rangeFrom: 0,
         rangeTo: Number.MAX_SAFE_INTEGER,
         select() { return this; },
         eq(key: string, value: any) { this.filters.push({ key, value }); return this; },
-        in() { return this; },
+        in(key: string, values: any[]) { this.inFilters.push({ key, values }); return this; },
         order() { return this; },
         range(from: number, to: number) { this.rangeFrom = from; this.rangeTo = to; return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
@@ -54,6 +55,7 @@ function fakeSb() {
         async exec() {
           const applyFilters = (rows: any[]) => rows
             .filter((row) => this.filters.every((f: any) => row?.[f.key] === f.value))
+            .filter((row) => this.inFilters.every((f: any) => f.values.includes(row?.[f.key])))
             .slice(this.rangeFrom, this.rangeTo + 1);
           if (table === "onboarding_entities") return { data: applyFilters(state.entities), error: null };
           if (table === "onboarding_entity_links") return { data: applyFilters(state.links), error: null };
@@ -112,6 +114,15 @@ describe("activateOnboardingHistory", () => {
     expect(result.historicalWorkOrdersCreated).toBe(1);
     expect(sb.state.work_orders[0].customer_id).toBe("c-1");
     expect(sb.state.work_orders[0].vehicle_id).toBe("v-1");
+  });
+
+  it("resolves history rows when entity_type is history", async () => {
+    const sb = fakeSb();
+    sb.state.entities[0].entity_type = "history";
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(1);
+    expect(result.diagnostics.historyRowsWithCustomerLink).toBe(1);
+    expect(result.diagnostics.historyRowsWithVehicleLink).toBe(1);
   });
 
   it("resolves links when staged customer/vehicle entities are not ready", async () => {
@@ -191,6 +202,25 @@ describe("activateOnboardingHistory", () => {
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "invalid_history_date")).toHaveLength(1);
+  });
+
+  it("extracts identifier/date aliases from staged normalized history payload", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      { id: "h-alias", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { roNumber: "RO-ALIAS", serviceDate: "03/14/2024", customerEmail: "a@b.com", vin: "VIN1" } },
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", email: "a@b.com" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1" } },
+    ] as any[];
+    sb.state.links = [
+      { id: "l-c-1", shop_id: "shop-1", session_id: "session-1", link_type: "customer_work_order", from_entity_id: "h-alias", to_entity_id: "c-stage-1" },
+      { id: "l-v-1", shop_id: "shop-1", session_id: "session-1", link_type: "vehicle_work_order", from_entity_id: "h-alias", to_entity_id: "v-stage-1" },
+    ] as any[];
+
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(1);
+    expect(sb.state.work_orders[0].custom_id).toBe("RO-ALIAS");
+    expect(result.skippedInvalidDate).toBe(0);
+    expect(result.skippedMissingIdentifier).toBe(0);
   });
 
   it("paginates staged history rows over 1000 and keeps historical queue behavior", async () => {
