@@ -29,10 +29,16 @@ export async function POST(_: Request, context: RouteContext) {
           code: "activation_review_item_write_failed",
           message: "Activation review item write failed",
           phase: error.phase,
+          domain: error.domain,
           issueType: error.issueType,
+          severity: error.severity,
+          scope: error.scope,
           scopeKey: error.scopeKey,
-          reason: error.causeMessage,
-          details: error.message,
+          reason: "review_item_persist_failed",
+          developer: {
+            code: error.causeCode,
+            message: error.causeMessage,
+          },
         },
       }, { status: 500 });
     }

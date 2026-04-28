@@ -142,7 +142,7 @@ export async function activateOnboardingParts(params: {
       .order("id", { ascending: true }),
     sb.from("parts").select("*").eq("shop_id", params.shopId),
     sb.from("suppliers").select("id, name").eq("shop_id", params.shopId),
-    sb.from("stock_locations").select("*").eq("shop_id", params.shopId).order("created_at", { ascending: true }).limit(1),
+    sb.from("stock_locations").select("*").eq("shop_id", params.shopId).order("code", { ascending: true }).order("name", { ascending: true }).order("id", { ascending: true }).limit(1),
   ]);
 
   const stagedRows = (staged ?? []) as Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>;

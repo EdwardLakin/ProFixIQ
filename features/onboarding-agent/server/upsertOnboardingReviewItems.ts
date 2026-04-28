@@ -9,16 +9,33 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 
 export class ActivationReviewItemWriteError extends Error {
   phase: string;
+  domain: string;
   issueType: string;
+  severity: string;
+  scope: { shopId: string; sessionId: string; domain: string; issueType: string; severity: string };
   scopeKey: string;
+  causeCode: string | null;
   causeMessage: string;
 
-  constructor(params: { phase: string; issueType: string; scopeKey: string; causeMessage: string }) {
-    super(`Activation review item write failed (${params.phase}:${params.issueType}:${params.scopeKey}) - ${params.causeMessage}`);
+  constructor(params: {
+    phase: string;
+    domain: string;
+    issueType: string;
+    severity: string;
+    scope: { shopId: string; sessionId: string; domain: string; issueType: string; severity: string };
+    scopeKey: string;
+    causeCode?: string | null;
+    causeMessage: string;
+  }) {
+    super(`Activation review item write failed (${params.phase}:${params.domain}:${params.issueType}:${params.severity}:${params.scopeKey}) - ${params.causeMessage}`);
     this.name = "ActivationReviewItemWriteError";
     this.phase = params.phase;
+    this.domain = params.domain;
     this.issueType = params.issueType;
+    this.severity = params.severity;
+    this.scope = params.scope;
     this.scopeKey = params.scopeKey;
+    this.causeCode = params.causeCode ?? null;
     this.causeMessage = params.causeMessage;
   }
 }
@@ -114,7 +131,7 @@ export async function upsertOnboardingReviewItems(params: {
       ? mergeDetails(canonicalDetails(existing.details ?? {}), normalizedDetails)
       : normalizedDetails;
 
-    payload.push({
+    const normalizedItem: OnboardingReviewItemInsert = {
       ...item,
       id: existing?.id ?? item.id,
       shop_id: params.shopId,
@@ -127,28 +144,134 @@ export async function upsertOnboardingReviewItems(params: {
       entity_id: existing?.entity_id ?? item.entity_id ?? null,
       link_id: existing?.link_id ?? item.link_id ?? null,
       details: mergedDetails as any,
-    });
+    };
+    payload.push(normalizedItem);
 
     if (existing) reused += 1;
   }
 
-  const { error } = await sb.from("onboarding_review_items").upsert(payload, { onConflict: "id" });
-  if (error) {
-    const failedItem = payload[0];
-    throw new ActivationReviewItemWriteError({
-      phase: params.phase,
-      issueType: String(failedItem?.issue_type ?? "unknown"),
-      scopeKey: scopeKey({
-        shop_id: params.shopId,
-        session_id: params.sessionId,
-        domain: failedItem?.domain,
-        issue_type: failedItem?.issue_type ?? "unknown",
-        severity: failedItem?.severity ?? "medium",
-        details: failedItem?.details ?? {},
-      }),
-      causeMessage: error.message,
+  const writtenKeys = new Set<string>();
+  let persisted = 0;
+
+  for (const item of payload) {
+    const key = scopeKey({
+      shop_id: params.shopId,
+      session_id: params.sessionId,
+      domain: item.domain,
+      issue_type: item.issue_type,
+      severity: item.severity,
+      details: item.details ?? {},
     });
+    if (writtenKeys.has(key)) continue;
+    writtenKeys.add(key);
+
+    const current = existingByScope.get(key);
+    if (current) {
+      const updatePayload = {
+        summary: current.summary || item.summary,
+        details: mergeDetails(canonicalDetails(current.details ?? {}), canonicalDetails(item.details ?? {})) as any,
+        entity_id: current.entity_id ?? item.entity_id ?? null,
+        link_id: current.link_id ?? item.link_id ?? null,
+      };
+      const { error: updateError } = await sb.from("onboarding_review_items").update(updatePayload).eq("id", current.id);
+      if (updateError) {
+        throw new ActivationReviewItemWriteError({
+          phase: params.phase,
+          domain: String(item.domain ?? "unknown"),
+          issueType: String(item.issue_type ?? "unknown"),
+          severity: String(item.severity ?? "medium"),
+          scope: {
+            shopId: params.shopId,
+            sessionId: params.sessionId,
+            domain: String(item.domain ?? ""),
+            issueType: String(item.issue_type ?? "unknown"),
+            severity: String(item.severity ?? "medium"),
+          },
+          scopeKey: key,
+          causeCode: String((updateError as { code?: string } | null)?.code ?? ""),
+          causeMessage: updateError.message,
+        });
+      }
+      persisted += 1;
+      continue;
+    }
+
+    const { error: insertError } = await sb.from("onboarding_review_items").insert(item);
+    if (!insertError) {
+      persisted += 1;
+      continue;
+    }
+
+    const conflict = String((insertError as { code?: string } | null)?.code ?? "") === "23505"
+      || String(insertError.message ?? "").includes("onboarding_review_items_shop_session_issue_scope_uidx");
+    if (!conflict) {
+      throw new ActivationReviewItemWriteError({
+        phase: params.phase,
+        domain: String(item.domain ?? "unknown"),
+        issueType: String(item.issue_type ?? "unknown"),
+        severity: String(item.severity ?? "medium"),
+        scope: {
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          domain: String(item.domain ?? ""),
+          issueType: String(item.issue_type ?? "unknown"),
+          severity: String(item.severity ?? "medium"),
+        },
+        scopeKey: key,
+        causeCode: String((insertError as { code?: string } | null)?.code ?? ""),
+        causeMessage: insertError.message,
+      });
+    }
+
+    const { data: conflictRows, error: conflictLookupError } = await sb
+      .from("onboarding_review_items")
+      .select("id, shop_id, session_id, domain, issue_type, severity, details, status, summary, entity_id, link_id")
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("domain", item.domain ?? "")
+      .eq("issue_type", item.issue_type)
+      .eq("severity", item.severity);
+    if (conflictLookupError) {
+      throw new ActivationReviewItemWriteError({
+        phase: params.phase,
+        domain: String(item.domain ?? "unknown"),
+        issueType: String(item.issue_type ?? "unknown"),
+        severity: String(item.severity ?? "medium"),
+        scope: {
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          domain: String(item.domain ?? ""),
+          issueType: String(item.issue_type ?? "unknown"),
+          severity: String(item.severity ?? "medium"),
+        },
+        scopeKey: key,
+        causeCode: String((conflictLookupError as { code?: string } | null)?.code ?? ""),
+        causeMessage: conflictLookupError.message,
+      });
+    }
+
+    const resolved = ((conflictRows ?? []) as OnboardingReviewItemRow[]).find((row) => scopeKey(row) === key);
+    if (!resolved) {
+      throw new ActivationReviewItemWriteError({
+        phase: params.phase,
+        domain: String(item.domain ?? "unknown"),
+        issueType: String(item.issue_type ?? "unknown"),
+        severity: String(item.severity ?? "medium"),
+        scope: {
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          domain: String(item.domain ?? ""),
+          issueType: String(item.issue_type ?? "unknown"),
+          severity: String(item.severity ?? "medium"),
+        },
+        scopeKey: key,
+        causeCode: String((insertError as { code?: string } | null)?.code ?? ""),
+        causeMessage: "Conflict detected but scoped row was not found after retry",
+      });
+    }
+    existingByScope.set(key, resolved);
+    reused += 1;
   }
 
-  return { persisted: payload.length, reused };
+  return { persisted, reused };
 }
