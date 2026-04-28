@@ -38,6 +38,16 @@ type HistoryActivationResult = {
   reviewItemsReused: number;
   reviewItemsCreated: number;
   reviewItemsOpenForDomain: number;
+  customerWorkOrderLinks: number;
+  vehicleWorkOrderLinks: number;
+  resolvedViaCustomerWorkOrderLink: number;
+  resolvedViaVehicleWorkOrderLink: number;
+  resolvedCustomerLiveIds: number;
+  resolvedVehicleLiveIds: number;
+  unresolvedDueToMissingCustomerLink: number;
+  unresolvedDueToMissingVehicleLink: number;
+  unresolvedDueToMissingLiveCustomer: number;
+  unresolvedDueToMissingLiveVehicle: number;
   warnings: string[];
 };
 
@@ -99,23 +109,19 @@ function normalizePlate(value: unknown): string | null {
   return normalized || null;
 }
 
-function resolveStagedLinkEntityId(params: {
-  historyEntityId: string;
-  linkType: string;
-  targetEntityType: "customer" | "vehicle";
-  linkRows: Array<Pick<OnboardingEntityLinkRow, "from_entity_id" | "to_entity_id" | "link_type">>;
-  entityById: Map<string, Pick<OnboardingEntityRow, "id" | "entity_type">>;
-}): { id: string | null; ambiguous: boolean } {
-  const matches = params.linkRows.filter((row) => row.link_type === params.linkType && (row.from_entity_id === params.historyEntityId || row.to_entity_id === params.historyEntityId));
-  const candidateEntityIds = new Set<string>();
-  for (const row of matches) {
-    const candidateId = row.from_entity_id === params.historyEntityId ? row.to_entity_id : row.from_entity_id;
-    const candidate = params.entityById.get(candidateId);
-    if (candidate?.entity_type === params.targetEntityType) candidateEntityIds.add(candidateId);
-  }
-  if (candidateEntityIds.size === 1) return { id: [...candidateEntityIds][0] ?? null, ambiguous: false };
-  if (candidateEntityIds.size > 1) return { id: null, ambiguous: true };
-  return { id: null, ambiguous: false };
+function pushMapValue(map: Map<string, Set<string>>, key: string | null, value: string) {
+  if (!key) return;
+  const next = map.get(key) ?? new Set<string>();
+  next.add(value);
+  map.set(key, next);
+}
+
+function mapSingleValue(map: Map<string, Set<string>>, key: string | null): { id: string | null; ambiguous: boolean } {
+  if (!key) return { id: null, ambiguous: false };
+  const values = map.get(key);
+  if (!values || values.size === 0) return { id: null, ambiguous: false };
+  if (values.size === 1) return { id: [...values][0] ?? null, ambiguous: false };
+  return { id: null, ambiguous: true };
 }
 
 function resolveLiveCustomerIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null, customerRows: CustomerRow[]): ResolveLiveIdResult {
@@ -166,6 +172,32 @@ function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): N
   };
 }
 
+type GroupedReviewBucket = {
+  issueType: string;
+  summary: string;
+  severity?: "low" | "medium" | "high" | "blocking";
+  count: number;
+  sampleEntityIds: string[];
+};
+
+function trackGroupedReview(grouped: Map<string, GroupedReviewBucket>, input: {
+  issueType: string;
+  summary: string;
+  entityId: string;
+  severity?: "low" | "medium" | "high" | "blocking";
+}) {
+  const existing = grouped.get(input.issueType) ?? {
+    issueType: input.issueType,
+    summary: input.summary,
+    severity: input.severity,
+    count: 0,
+    sampleEntityIds: [],
+  };
+  existing.count += 1;
+  if (existing.sampleEntityIds.length < 5) existing.sampleEntityIds.push(input.entityId);
+  grouped.set(input.issueType, existing);
+}
+
 function reviewItem(params: {
   shopId: string;
   sessionId: string;
@@ -199,24 +231,23 @@ export async function activateOnboardingHistory(params: {
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
   const [historyRows, entityRows, linkRows, customerRows, vehicleRows, workOrders] = await Promise.all([
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type">>((from, to) =>
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, normalized, entity_type")
+        .select("id, normalized, entity_type, source_row_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .eq("entity_type", "historical_work_order")
         .eq("status", "ready")
         .order("id", { ascending: true })
         .range(from, to)),
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name">>((from, to) =>
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name" | "source_row_id" | "status">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, normalized, entity_type, source_external_id, display_name")
+        .select("id, normalized, entity_type, source_external_id, display_name, source_row_id, status")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .in("entity_type", ["customer", "vehicle"])
-        .eq("status", "ready")
         .order("id", { ascending: true })
         .range(from, to)),
     fetchAllPaginatedRows<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
@@ -268,12 +299,69 @@ export async function activateOnboardingHistory(params: {
   let skippedInvalidDate = 0;
   let skippedInvalidTotal = 0;
   let needsReview = 0;
+  let resolvedViaCustomerWorkOrderLink = 0;
+  let resolvedViaVehicleWorkOrderLink = 0;
+  let unresolvedDueToMissingCustomerLink = 0;
+  let unresolvedDueToMissingVehicleLink = 0;
+  let unresolvedDueToMissingLiveCustomer = 0;
+  let unresolvedDueToMissingLiveVehicle = 0;
+
+  const customerWorkOrderLinks = linkRows.filter((row) => row.link_type === "customer_work_order").length;
+  const vehicleWorkOrderLinks = linkRows.filter((row) => row.link_type === "vehicle_work_order").length;
+
+  const groupedReviewItems = new Map<string, GroupedReviewBucket>();
   const entityById = new Map<string, Pick<OnboardingEntityRow, "id" | "entity_type">>([
     ...historyRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
     ...entityRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
   ]);
   const customerEntityById = new Map(entityRows.filter((row) => row.entity_type === "customer").map((row) => [row.id, row]));
   const vehicleEntityById = new Map(entityRows.filter((row) => row.entity_type === "vehicle").map((row) => [row.id, row]));
+  const historyToCustomerEntityIds = new Map<string, Set<string>>();
+  const historyToVehicleEntityIds = new Map<string, Set<string>>();
+
+  for (const link of linkRows) {
+    if (link.link_type !== "customer_work_order" && link.link_type !== "vehicle_work_order") continue;
+    const from = entityById.get(link.from_entity_id);
+    const to = entityById.get(link.to_entity_id);
+    if (!from || !to) continue;
+    if (link.link_type === "customer_work_order") {
+      if (from.entity_type === "historical_work_order" && to.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, from.id, to.id);
+      if (to.entity_type === "historical_work_order" && from.entity_type === "customer") pushMapValue(historyToCustomerEntityIds, to.id, from.id);
+    }
+    if (link.link_type === "vehicle_work_order") {
+      if (from.entity_type === "historical_work_order" && to.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, from.id, to.id);
+      if (to.entity_type === "historical_work_order" && from.entity_type === "vehicle") pushMapValue(historyToVehicleEntityIds, to.id, from.id);
+    }
+  }
+
+  const stagedCustomerEntityIdToLiveCustomerId = new Map<string, string>();
+  const stagedCustomerSourceRowIdToLiveCustomerId = new Map<string, string>();
+  const stagedCustomerExternalIdToLiveCustomerId = new Map<string, string>();
+  for (const entity of customerEntityById.values()) {
+    const resolved = resolveLiveCustomerIdFromStagedEntity(entity, customerRows);
+    if (!resolved.id || resolved.ambiguous) continue;
+    stagedCustomerEntityIdToLiveCustomerId.set(entity.id, resolved.id);
+    const sourceRowKey = normalizeText(entity.source_row_id);
+    if (sourceRowKey) stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolved.id);
+    const externalKey = normalizeLookup(entity.source_external_id);
+    if (externalKey) stagedCustomerExternalIdToLiveCustomerId.set(externalKey, resolved.id);
+  }
+
+  const stagedVehicleEntityIdToLiveVehicleId = new Map<string, string>();
+  const stagedVehicleSourceRowIdToLiveVehicleId = new Map<string, string>();
+  const stagedVehicleExternalIdToLiveVehicleId = new Map<string, string>();
+  const stagedVehicleVinToLiveVehicleId = new Map<string, string>();
+  for (const entity of vehicleEntityById.values()) {
+    const resolved = resolveLiveVehicleIdFromStagedEntity(entity, vehicleRows);
+    if (!resolved.id || resolved.ambiguous) continue;
+    stagedVehicleEntityIdToLiveVehicleId.set(entity.id, resolved.id);
+    const sourceRowKey = normalizeText(entity.source_row_id);
+    if (sourceRowKey) stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolved.id);
+    const externalKey = normalizeLookup(entity.source_external_id);
+    if (externalKey) stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolved.id);
+    const vinKey = normalizeVin((entity.normalized ?? ({} as any)).vin);
+    if (vinKey) stagedVehicleVinToLiveVehicleId.set(vinKey, resolved.id);
+  }
 
   for (const entity of historyRows) {
     const history = toNormalizedHistory(entity);
@@ -297,16 +385,25 @@ export async function activateOnboardingHistory(params: {
       needsReview += 1;
     }
 
-    const stagedCustomerLink = resolveStagedLinkEntityId({ historyEntityId: entity.id, linkType: "customer_work_order", targetEntityType: "customer", linkRows, entityById });
-    const stagedVehicleLink = resolveStagedLinkEntityId({ historyEntityId: entity.id, linkType: "vehicle_work_order", targetEntityType: "vehicle", linkRows, entityById });
+    const stagedCustomerLink = mapSingleValue(historyToCustomerEntityIds, entity.id);
+    const stagedVehicleLink = mapSingleValue(historyToVehicleEntityIds, entity.id);
     const linkedStagedCustomer = stagedCustomerLink.id ? customerEntityById.get(stagedCustomerLink.id) ?? null : null;
     const linkedStagedVehicle = stagedVehicleLink.id ? vehicleEntityById.get(stagedVehicleLink.id) ?? null : null;
 
     const customerResolvedByLink = resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
     const vehicleResolvedByLink = resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
 
-    let customerId = customerResolvedByLink.id;
-    let vehicleId = vehicleResolvedByLink.id;
+    let customerId = customerResolvedByLink.id
+      ?? (stagedCustomerLink.id ? stagedCustomerEntityIdToLiveCustomerId.get(stagedCustomerLink.id) ?? null : null)
+      ?? (stagedCustomerLink.id ? stagedCustomerSourceRowIdToLiveCustomerId.get(normalizeText(customerEntityById.get(stagedCustomerLink.id)?.source_row_id)) ?? null : null)
+      ?? (stagedCustomerLink.id ? stagedCustomerExternalIdToLiveCustomerId.get(normalizeLookup(customerEntityById.get(stagedCustomerLink.id)?.source_external_id)) ?? null : null);
+    let vehicleId = vehicleResolvedByLink.id
+      ?? (stagedVehicleLink.id ? stagedVehicleEntityIdToLiveVehicleId.get(stagedVehicleLink.id) ?? null : null)
+      ?? (stagedVehicleLink.id ? stagedVehicleSourceRowIdToLiveVehicleId.get(normalizeText(vehicleEntityById.get(stagedVehicleLink.id)?.source_row_id)) ?? null : null)
+      ?? (stagedVehicleLink.id ? stagedVehicleExternalIdToLiveVehicleId.get(normalizeLookup(vehicleEntityById.get(stagedVehicleLink.id)?.source_external_id)) ?? null : null);
+
+    if (customerId && stagedCustomerLink.id) resolvedViaCustomerWorkOrderLink += 1;
+    if (vehicleId && stagedVehicleLink.id) resolvedViaVehicleWorkOrderLink += 1;
 
     if (!customerId) {
       const fallbackCustomerMatches = customerRows.filter((row) =>
@@ -321,6 +418,10 @@ export async function activateOnboardingHistory(params: {
         (history.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceVehicleId))
         || (history.vehicleVin && normalizeVin(row.vin) === normalizeVin(history.vehicleVin))
         || (history.vehiclePlate && normalizePlate(row.license_plate) === normalizePlate(history.vehiclePlate)));
+      if (!vehicleId && history.vehicleVin) {
+        const byStagedVin = stagedVehicleVinToLiveVehicleId.get(normalizeVin(history.vehicleVin) ?? "");
+        if (byStagedVin) vehicleId = byStagedVin;
+      }
       if (fallbackVehicleMatches.length === 1) vehicleId = fallbackVehicleMatches[0]!.id;
       else if (fallbackVehicleMatches.length > 1 && !vehicleResolvedByLink.ambiguous) vehicleResolvedByLink.ambiguous = true;
     }
@@ -333,37 +434,33 @@ export async function activateOnboardingHistory(params: {
       skippedUnresolved += 1;
       if (!customerId) {
         skippedMissingCustomer += 1;
+        if (!stagedCustomerLink.id) unresolvedDueToMissingCustomerLink += 1;
+        else unresolvedDueToMissingLiveCustomer += 1;
         needsReview += 1;
-        reviewItems.push(reviewItem({
-          shopId: params.shopId,
-          sessionId: params.sessionId,
+        trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
           issueType: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous ? "ambiguous_customer_match_for_history" : "missing_customer_for_history",
           summary: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous
-            ? "Historical work order has ambiguous customer mapping."
-            : "Historical work order customer could not be matched.",
-          details: {
-            stagedCustomerEntityId: stagedCustomerLink.id,
-            hasCustomerWorkOrderLink: Boolean(stagedCustomerLink.id),
-          },
-        }));
+            ? "Historical work orders have ambiguous customer mapping."
+            : !stagedCustomerLink.id
+              ? "Historical work orders are missing customer_work_order links."
+              : "Historical work orders have customer links but no resolvable live customer mapping.",
+        });
       }
       if (!vehicleId) {
         skippedMissingVehicle += 1;
+        if (!stagedVehicleLink.id) unresolvedDueToMissingVehicleLink += 1;
+        else unresolvedDueToMissingLiveVehicle += 1;
         needsReview += 1;
-        reviewItems.push(reviewItem({
-          shopId: params.shopId,
-          sessionId: params.sessionId,
+        trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
           issueType: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous ? "ambiguous_vehicle_match_for_history" : "missing_vehicle_for_history",
           summary: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous
-            ? "Historical work order has ambiguous vehicle mapping."
-            : "Historical work order vehicle could not be matched.",
-          details: {
-            stagedVehicleEntityId: stagedVehicleLink.id,
-            hasVehicleWorkOrderLink: Boolean(stagedVehicleLink.id),
-          },
-        }));
+            ? "Historical work orders have ambiguous vehicle mapping."
+            : !stagedVehicleLink.id
+              ? "Historical work orders are missing vehicle_work_order links."
+              : "Historical work orders have vehicle links but no resolvable live vehicle mapping.",
+        });
       }
       continue;
     }
@@ -418,12 +515,32 @@ export async function activateOnboardingHistory(params: {
       const { error: lineError } = await sb.from("work_order_lines").insert(linePayload);
       if (lineError) {
         warnings.push(`Unable to create history line for ${entity.id}`);
-        reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "unsupported_history_line_format", summary: "Historical line could not be created safely." }));
+        trackGroupedReview(groupedReviewItems, {
+          entityId: entity.id,
+          issueType: "unsupported_history_line_format",
+          summary: "Historical lines could not be created safely for some rows.",
+        });
         needsReview += 1;
       } else {
         linesCreated += 1;
       }
     }
+  }
+
+  for (const grouped of groupedReviewItems.values()) {
+    reviewItems.push(reviewItem({
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      entityId: `history-group:${grouped.issueType}`,
+      issueType: grouped.issueType,
+      summary: grouped.summary,
+      severity: grouped.severity,
+      details: {
+        grouped: true,
+        affectedRows: grouped.count,
+        sampleEntityIds: grouped.sampleEntityIds,
+      },
+    }));
   }
 
   let reviewItemsPersisted = 0;
@@ -472,6 +589,16 @@ export async function activateOnboardingHistory(params: {
     reviewItemsReused,
     reviewItemsCreated: Math.max(0, reviewItemsPersisted - reviewItemsReused),
     reviewItemsOpenForDomain: Number(reviewItemsOpenCount ?? 0),
+    customerWorkOrderLinks,
+    vehicleWorkOrderLinks,
+    resolvedViaCustomerWorkOrderLink,
+    resolvedViaVehicleWorkOrderLink,
+    resolvedCustomerLiveIds: customerLinksResolved,
+    resolvedVehicleLiveIds: vehicleLinksResolved,
+    unresolvedDueToMissingCustomerLink,
+    unresolvedDueToMissingVehicleLink,
+    unresolvedDueToMissingLiveCustomer,
+    unresolvedDueToMissingLiveVehicle,
     warnings,
   };
 }
