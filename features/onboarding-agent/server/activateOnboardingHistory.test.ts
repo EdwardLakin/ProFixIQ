@@ -6,6 +6,15 @@ vi.mock("@/features/onboarding-agent/server/assertOnboardingSessionOwnership", (
 }));
 
 function fakeSb() {
+  const reviewScopeKey = (row: any) => [
+    row.shop_id ?? "",
+    row.session_id ?? "",
+    row.domain ?? "",
+    row.issue_type ?? "",
+    row.severity ?? "",
+    JSON.stringify(row.details ?? {}),
+  ].join("|");
+
   const state = {
     entities: [{ id: "h-1", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01", customerName: "Acme", vehicleVin: "VIN1", complaint: "Noise" } }] as any[],
     links: [],
@@ -19,13 +28,15 @@ function fakeSb() {
     state,
     from(table: string) {
       const q: any = {
+        filters: [] as Array<{ key: string; value: any }>,
         op: "select",
         payload: null as any,
         select() { return this; },
-        eq() { return this; },
+        eq(key: string, value: any) { this.filters.push({ key, value }); return this; },
         in() { return this; },
         order() { return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
+        update(payload: any) { this.op = "update"; this.payload = payload; return this; },
         upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this.exec(); },
         single() { return this.execSingle(); },
         then(resolve: any, reject: any) { return this.exec().then(resolve, reject); },
@@ -39,7 +50,18 @@ function fakeSb() {
           if (table === "work_orders" && this.op === "insert") { const row = { ...this.payload, id: `wo-${state.work_orders.length + 1}` }; state.work_orders.push(row); return { data: [{ id: row.id }], error: null }; }
           if (table === "work_order_lines" && this.op === "insert") { state.lines.push(this.payload); return { data: [], error: null }; }
           if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
-          if (table === "onboarding_review_items" && this.op === "insert") return { data: null, error: { message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+          if (table === "onboarding_review_items" && this.op === "insert") {
+            const row = this.payload;
+            const existing = state.reviewItems.find((item) => reviewScopeKey(item) === reviewScopeKey(row));
+            if (existing) return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+            state.reviewItems.push(row);
+            return { data: [row], error: null };
+          }
+          if (table === "onboarding_review_items" && this.op === "update") {
+            const target = state.reviewItems.find((item) => this.filters.every((f: any) => item[f.key] === f.value));
+            if (target) Object.assign(target, this.payload);
+            return { data: [], error: null };
+          }
           if (table === "onboarding_review_items" && this.op === "upsert") {
             const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
             for (const row of rows) {
@@ -83,6 +105,14 @@ describe("activateOnboardingHistory", () => {
     await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
     expect(sb.state.reviewItems.length).toBe(before);
     expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "missing_required_history_identifier")).toHaveLength(1);
+  });
+
+  it("rerun does not duplicate invalid_history_date review items", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [{ id: "h-invalid-date", normalized: { sourceWorkOrderId: "RO-404", openedDate: "not-a-date" } }] as any[];
+    await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "invalid_history_date")).toHaveLength(1);
   });
 
 });

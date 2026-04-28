@@ -39,6 +39,15 @@ function supplier(overrides: Partial<Supplier>): Supplier {
 }
 
 function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
+  const reviewScopeKey = (row: any) => [
+    row.shop_id ?? "",
+    row.session_id ?? "",
+    row.domain ?? "",
+    row.issue_type ?? "",
+    row.severity ?? "",
+    JSON.stringify(row.details ?? {}),
+  ].join("|");
+
   const state = {
     entities: [...(params?.entities ?? [])],
     suppliers: [...(params?.suppliers ?? [])],
@@ -92,7 +101,18 @@ function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
             return { count: state.suppliers.length, error: null };
           }
           if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
-          if (table === "onboarding_review_items" && this.op === "insert") return { data: null, error: { message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+          if (table === "onboarding_review_items" && this.op === "insert") {
+            const row = this.payload;
+            const existing = state.reviewItems.find((item) => reviewScopeKey(item) === reviewScopeKey(row));
+            if (existing) return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+            state.reviewItems.push(row);
+            return { data: [row], error: null };
+          }
+          if (table === "onboarding_review_items" && this.op === "update") {
+            const target = state.reviewItems.find((item) => this.filters.every((f: any) => item[f.key] === f.value));
+            if (target) Object.assign(target, this.payload);
+            return { data: [], error: null };
+          }
           if (table === "onboarding_review_items" && this.op === "upsert") {
             const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
             for (const row of rows) {
@@ -151,6 +171,20 @@ describe("activateOnboardingVendors", () => {
     await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
     expect(sb.state.reviewItems.length).toBe(before);
     expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "missing_vendor_name")).toHaveLength(1);
+  });
+
+  it("rerun does not duplicate ambiguous_vendor_match review items", async () => {
+    const sb = fakeSb({
+      entities: [entity({ id: "entity-ambiguous", normalized: { name: "North Supply" } })],
+      suppliers: [
+        supplier({ id: "supplier-a", name: "North Supply", email: "n@example.com", phone: "111" }),
+        supplier({ id: "supplier-b", name: "North Supply", email: "n@example.com", phone: "111" }),
+      ],
+    });
+
+    await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "ambiguous_vendor_match")).toHaveLength(1);
   });
 
 });
