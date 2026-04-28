@@ -1,7 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildOnboardingSummary, ENTITY_BUCKETS, LINK_BUCKETS } from "@/features/onboarding-agent/lib/summaries";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
-import { countOnboardingRawRows } from "@/features/onboarding-agent/server/rawRowCounts";
+import {
+  countOnboardingEntities,
+  countOnboardingEntityLinks,
+  countOnboardingPendingReviewItems,
+  countOnboardingRawRows,
+  fetchPaginatedOnboardingRows,
+} from "@/features/onboarding-agent/server/rawRowCounts";
 
 export async function getOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
   const sb = params.supabase as any;
@@ -11,26 +17,48 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     sessionId: params.sessionId,
   });
 
-  const [{ data: session }, { data: files }, { data: entities }, { data: links }, { data: reviews }, { data: latestPlan }, rowsParsedTotal] = await Promise.all([
+  const [{ data: session }, { data: files }, entities, links, reviews, { data: latestPlan }, rowsParsedTotal, totalEntitiesCount, totalLinksCount, totalPendingReviewCount] = await Promise.all([
     sb.from("onboarding_sessions").select("*").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
     sb.from("onboarding_files").select("*").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
-    sb.from("onboarding_entities").select("entity_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb.from("onboarding_entity_links").select("link_type, status").eq("shop_id", params.shopId).eq("session_id", params.sessionId),
-    sb
-      .from("onboarding_review_items")
-      .select("id, severity, status, domain, summary, issue_type, details")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .order("created_at", { ascending: false }),
+    fetchPaginatedOnboardingRows<{ entity_type: string; status?: string | null }>({
+      supabase: params.supabase,
+      table: "onboarding_entities",
+      select: "entity_type, status",
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      orderBy: "id",
+      ascending: true,
+    }),
+    fetchPaginatedOnboardingRows<{ link_type: string; status?: string | null }>({
+      supabase: params.supabase,
+      table: "onboarding_entity_links",
+      select: "link_type, status",
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      orderBy: "id",
+      ascending: true,
+    }),
+    fetchPaginatedOnboardingRows<any>({
+      supabase: params.supabase,
+      table: "onboarding_review_items",
+      select: "id, severity, status, domain, summary, issue_type, details",
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      orderBy: "created_at",
+      ascending: false,
+    }),
     sb.from("onboarding_activation_plans").select("id, status, summary, created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     countOnboardingRawRows({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
+    countOnboardingEntities({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
+    countOnboardingEntityLinks({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
+    countOnboardingPendingReviewItems({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
   ]);
   const canonical = buildOnboardingSummary({
     filesCount: (files ?? []).length,
     rowsParsed: rowsParsedTotal,
-    entityRows: (entities ?? []).map((row: any) => ({ entity_type: row.entity_type, status: row.status })),
-    linkRows: (links ?? []).map((row: any) => ({ link_type: row.link_type, status: row.status })),
-    reviewRows: (reviews ?? []).map((row: any) => ({
+    entityRows: entities.map((row: any) => ({ entity_type: row.entity_type, status: row.status })),
+    linkRows: links.map((row: any) => ({ link_type: row.link_type, status: row.status })),
+    reviewRows: reviews.map((row: any) => ({
       id: row.id,
       severity: row.severity,
       status: row.status,
@@ -39,7 +67,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       summary: row.summary,
       details: row.details ?? {},
     })),
-    groupedExceptionCount: (reviews ?? []).length,
+    groupedExceptionCount: totalPendingReviewCount,
     analysisCompleted: Boolean(session?.analyzed_at),
   });
 
@@ -66,6 +94,9 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     filePipelineTraces: Array.isArray((session?.summary ?? {})?.filePipelineTraces) ? (session?.summary ?? {}).filePipelineTraces : [],
     aiRowsSampled: Number((session?.summary ?? {})?.aiRowsSampled ?? canonical.summaryCounts.aiRowsSampled ?? 0),
     aiFilesSampled: Number((session?.summary ?? {})?.aiFilesSampled ?? canonical.summaryCounts.aiFilesSampled ?? 0),
+    entitiesDiscovered: totalEntitiesCount,
+    linksFound: totalLinksCount,
+    reviewExceptions: totalPendingReviewCount,
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
     liveRecordsCreated: 0 as const,
@@ -79,7 +110,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     entityCounts,
     entityStatusCounts: canonical.entity_status_counts_by_type,
     reviewCounts,
-    reviewItems: reviews ?? [],
+    reviewItems: reviews,
     linkCounts,
     activationPlanSummary: canonical.activation_plan_summary,
     readiness: canonical.activation_readiness,
