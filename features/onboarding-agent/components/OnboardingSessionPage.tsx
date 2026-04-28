@@ -109,6 +109,14 @@ export function unresolvedReviewPrimaryCopy(reviewItem: UnresolvedReviewItem): {
   };
 }
 
+export function groupReviewItemsByDomain(reviewItems: Array<{ domain?: string | null }>): Record<string, number> {
+  return reviewItems.reduce<Record<string, number>>((acc, item) => {
+    const key = String(item?.domain ?? "unknown");
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -118,8 +126,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [planning, setPlanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activatingVendors, setActivatingVendors] = useState(false);
+  const [activatingParts, setActivatingParts] = useState(false);
+  const [activatingHistory, setActivatingHistory] = useState(false);
   const [activatingCustomersVehicles, setActivatingCustomersVehicles] = useState(false);
   const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
+  const [partsActivationSummary, setPartsActivationSummary] = useState<string | null>(null);
+  const [historyActivationSummary, setHistoryActivationSummary] = useState<string | null>(null);
   const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
   const [resolvingReviewItemId, setResolvingReviewItemId] = useState<string | null>(null);
   const [selectedCustomerByReviewItemId, setSelectedCustomerByReviewItemId] = useState<Record<string, string>>({});
@@ -239,7 +251,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       } else {
         const warnings = Array.isArray(json?.warnings) ? json.warnings.length : 0;
         setVendorActivationSummary(
-          `Vendor activation complete. Staged vendors: ${Number(json?.stagedVendorsFound ?? 0)}. Inserted: ${Number(json?.inserted ?? 0)}. Updated: ${Number(json?.updated ?? 0)}. Skipped: ${Number(json?.skipped ?? 0)}. Suppliers before/after: ${Number(json?.suppliersBefore ?? 0)}/${Number(json?.suppliersAfter ?? 0)}.${warnings > 0 ? ` Warnings: ${warnings}.` : ""}`,
+          `Vendor activation complete. Staged vendors: ${Number(json?.stagedVendors ?? 0)}. Created: ${Number(json?.created ?? 0)}. Matched existing: ${Number(json?.matchedExisting ?? 0)}. Updated null-only: ${Number(json?.updatedNullOnly ?? 0)}. Skipped: ${Number(json?.skipped ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.${warnings > 0 ? ` Warnings: ${warnings}.` : ""}`,
         );
       }
       await load();
@@ -247,6 +259,54 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       setError("Failed to activate staged vendors.");
     } finally {
       setActivatingVendors(false);
+    }
+  };
+
+  const activateParts = async () => {
+    const confirmed = window.confirm("Activate staged parts inventory into live parts and stock records. Safe to rerun; matching records are updated/null-filled without duplicates.");
+    if (!confirmed) return;
+    setActivatingParts(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-parts`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Failed to activate staged parts.");
+      } else {
+        setPartsActivationSummary(
+          `Parts activation complete. Staged: ${Number(json?.stagedParts ?? 0)}. Created: ${Number(json?.partsCreated ?? 0)}. Matched: ${Number(json?.existingPartsMatched ?? 0)}. Stock created: ${Number(json?.stockRecordsCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,
+        );
+      }
+      await load();
+    } catch {
+      setError("Failed to activate staged parts.");
+    } finally {
+      setActivatingParts(false);
+    }
+  };
+
+  const activateHistory = async () => {
+    const confirmed = window.confirm("Activate historical work orders as closed historical records only. They will not be added to active technician queues.");
+    if (!confirmed) return;
+    setActivatingHistory(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-history`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Failed to activate historical work orders.");
+      } else {
+        setHistoryActivationSummary(
+          `History activation complete. Staged: ${Number(json?.stagedHistoryRows ?? 0)}. Created: ${Number(json?.historicalWorkOrdersCreated ?? 0)}. Matched: ${Number(json?.existingMatched ?? 0)}. Lines created: ${Number(json?.linesCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,
+        );
+      }
+      await load();
+    } catch {
+      setError("Failed to activate historical work orders.");
+    } finally {
+      setActivatingHistory(false);
     }
   };
 
@@ -302,8 +362,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const customerReadyCount = Number(payload?.entityStatusCounts?.customer?.ready ?? 0);
   const vehicleReadyCount = Number(payload?.entityStatusCounts?.vehicle?.ready ?? 0);
   const hasCustomerVehicleReady = customerReadyCount > 0 || vehicleReadyCount > 0;
-  const actionBusy = analyzing || deleting || planning || activatingVendors || activatingCustomersVehicles;
+  const actionBusy = analyzing || deleting || planning || activatingVendors || activatingCustomersVehicles || activatingParts || activatingHistory;
   const canShowVendorActivation = !loadingSession && !sessionLoadError && vendorReadyCount > 0;
+  const partReadyCount = Number(payload?.entityStatusCounts?.part?.ready ?? 0);
+  const historyReadyCount = Number(payload?.entityStatusCounts?.historical_work_order?.ready ?? 0);
+  const canShowPartsActivation = !loadingSession && !sessionLoadError && partReadyCount > 0;
+  const canShowHistoryActivation = !loadingSession && !sessionLoadError && historyReadyCount > 0;
   const canShowCustomerVehicleActivation = !loadingSession && !sessionLoadError && hasCustomerVehicleReady;
   const groupedCustomerVehicleWarnings = useMemo(() => {
     const warnings: string[] = Array.isArray(customerVehicleActivationResult?.warnings)
@@ -460,6 +524,24 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               {activatingVendors ? "Activating vendors…" : "Activate vendors to live suppliers"}
             </button>
           ) : null}
+          {canShowPartsActivation ? (
+            <button
+              onClick={activateParts}
+              disabled={actionBusy || !!sessionLoadError || partReadyCount <= 0}
+              className="rounded border border-indigo-400/40 px-3 py-2 text-sm text-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {activatingParts ? "Activating parts…" : "Activate parts inventory"}
+            </button>
+          ) : null}
+          {canShowHistoryActivation ? (
+            <button
+              onClick={activateHistory}
+              disabled={actionBusy || !!sessionLoadError || historyReadyCount <= 0}
+              className="rounded border border-fuchsia-400/40 px-3 py-2 text-sm text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {activatingHistory ? "Activating history…" : "Activate historical work orders"}
+            </button>
+          ) : null}
           <button
             onClick={deleteSession}
             disabled={deleting || analyzing || planning}
@@ -482,8 +564,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             Creates/updates live customers and vehicles only. No work orders, invoices, parts, staff, or menu items are activated.
           </p>
         ) : null}
+        {canShowPartsActivation ? <p className="mt-1 text-xs text-indigo-100/90">Safe to rerun. Existing imported part records will be matched, not duplicated.</p> : null}
+        {canShowHistoryActivation ? <p className="mt-1 text-xs text-fuchsia-100/90">Historical work orders are imported as closed/historical records and will not appear in active technician queues.</p> : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
+        {partsActivationSummary ? <p className="mt-2 text-xs text-indigo-200">{partsActivationSummary}</p> : null}
+        {historyActivationSummary ? <p className="mt-2 text-xs text-fuchsia-200">{historyActivationSummary}</p> : null}
         {customerVehicleActivationResult ? (
           <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
             <p>

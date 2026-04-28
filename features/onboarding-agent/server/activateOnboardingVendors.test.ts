@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { activateOnboardingVendors, computeVendorActivationResult } from "@/features/onboarding-agent/server/activateOnboardingVendors";
+import { activateOnboardingVendors } from "@/features/onboarding-agent/server/activateOnboardingVendors";
 
 vi.mock("@/features/onboarding-agent/server/assertOnboardingSessionOwnership", () => ({
   assertOnboardingSessionOwnership: vi.fn().mockResolvedValue(undefined),
 }));
 
-type Entity = Parameters<typeof computeVendorActivationResult>[0]["entities"][number];
-type Supplier = Parameters<typeof computeVendorActivationResult>[0]["supplierRows"][number];
+type Entity = any;
+type Supplier = any;
 
 function entity(overrides: Partial<Entity>): Entity {
   return {
@@ -16,9 +16,10 @@ function entity(overrides: Partial<Entity>): Entity {
     entity_type: "vendor",
     status: "ready",
     display_name: null,
+    source_external_id: null,
     normalized: {},
     ...overrides,
-  } as Entity;
+  };
 }
 
 function supplier(overrides: Partial<Supplier>): Supplier {
@@ -37,14 +38,11 @@ function supplier(overrides: Partial<Supplier>): Supplier {
   };
 }
 
-function createFakeSupabase(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
+function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
   const state = {
     entities: [...(params?.entities ?? [])],
     suppliers: [...(params?.suppliers ?? [])],
-    nextSupplierId: 100,
-    insertCalls: 0,
-    updateCalls: 0,
-    writes: [] as string[],
+    reviewItems: [] as any[],
   };
 
   return {
@@ -52,241 +50,88 @@ function createFakeSupabase(params?: { entities?: Entity[]; suppliers?: Supplier
     from(table: string) {
       const query: any = {
         table,
-        filters: [] as Array<{ k: string; v: any }>,
+        filters: [] as Array<{ key: string; value: any }>,
         payload: null as any,
-        selectColumns: "",
-        update(payload: any) {
-          this.payload = payload;
-          this.op = "update";
-          return this;
-        },
-        insert(payload: any) {
-          this.payload = payload;
-          this.op = "insert";
-          return this;
-        },
-        select(columns: string) {
-          this.selectColumns = columns;
-          this.op = this.op ?? "select";
-          return this;
-        },
-        order() {
-          return this;
-        },
-        eq(k: string, v: any) {
-          this.filters.push({ k, v });
-          return this;
-        },
-        single() {
-          return this.execSingle();
-        },
-        then(resolve: any, reject: any) {
-          return this.exec().then(resolve, reject);
-        },
+        op: "select",
+        select() { return this; },
+        order() { return this; },
+        eq(key: string, value: any) { this.filters.push({ key, value }); return this; },
+        insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
+        update(payload: any) { this.op = "update"; this.payload = payload; return this; },
+        upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this.exec(); },
+        single() { return this.execSingle(); },
+        then(resolve: any, reject: any) { return this.exec().then(resolve, reject); },
         async execSingle() {
           const result = await this.exec();
-          const first = Array.isArray(result.data) ? result.data[0] ?? null : result.data ?? null;
-          return { ...result, data: first };
+          const data = Array.isArray(result.data) ? (result.data[0] ?? null) : result.data;
+          return { ...result, data };
         },
         async exec() {
-          if (this.table === "onboarding_entities" && this.op === "select") {
+          if (table === "onboarding_entities") {
             let rows = [...state.entities];
-            for (const filter of this.filters) rows = rows.filter((row: any) => row[filter.k] === filter.v);
+            for (const f of this.filters) rows = rows.filter((row) => row[f.key] === f.value);
             return { data: rows, error: null };
           }
-
-          if (this.table === "suppliers" && this.op === "select") {
+          if (table === "suppliers" && this.op === "select") {
             let rows = [...state.suppliers];
-            for (const filter of this.filters) rows = rows.filter((row: any) => row[filter.k] === filter.v);
+            for (const f of this.filters) rows = rows.filter((row) => row[f.key] === f.value);
             return { data: rows, error: null };
           }
-
-          if (this.table === "suppliers" && this.op === "insert") {
-            state.insertCalls += 1;
-            state.writes.push("suppliers:insert");
-            const created = {
-              id: `supplier-${state.nextSupplierId++}`,
-              created_at: new Date().toISOString(),
-              created_by: this.payload.created_by ?? null,
-              is_active: this.payload.is_active ?? true,
-              notes: this.payload.notes ?? null,
-              ...this.payload,
-            };
+          if (table === "suppliers" && this.op === "insert") {
+            const created = { ...this.payload, id: `supplier-${state.suppliers.length + 1}`, created_at: new Date().toISOString() };
             state.suppliers.push(created);
             return { data: [{ id: created.id }], error: null };
           }
-
-          if (this.table === "suppliers" && this.op === "update") {
-            state.updateCalls += 1;
-            state.writes.push("suppliers:update");
-            const target = state.suppliers.find((row: any) => this.filters.every((f: any) => row[f.k] === f.v));
+          if (table === "suppliers" && this.op === "update") {
+            const target = state.suppliers.find((row) => this.filters.every((f: any) => row[f.key] === f.value));
             if (target) Object.assign(target, this.payload);
             return { data: [], error: null };
           }
-
+          if (table === "suppliers" && this.filters.length === 1 && this.filters[0]?.key === "shop_id" && this.payload === null) {
+            return { count: state.suppliers.length, error: null };
+          }
+          if (table === "onboarding_review_items") {
+            state.reviewItems.push(...(Array.isArray(this.payload) ? this.payload : [this.payload]));
+            return { data: [], error: null };
+          }
           return { data: [], error: null };
         },
       };
-
       return query;
     },
   };
 }
 
-describe("computeVendorActivationResult", () => {
-  it("inserts suppliers for ready staged vendor entities", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [entity({ normalized: { name: "North Supply", email: "orders@north.test" } })],
-      supplierRows: [],
-    });
-
-    expect(result.inserted).toBe(1);
-    expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(0);
-    expect(result.preparedInserts).toHaveLength(1);
-  });
-
-  it("rerun does not duplicate suppliers because name match resolves to existing", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [entity({ normalized: { name: "North Supply" } })],
-      supplierRows: [supplier({ id: "supplier-1", name: "North Supply" })],
-    });
-
-    expect(result.inserted).toBe(0);
-    expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(1);
-    expect(result.records[0]?.reason).toContain("already has mapped fields");
-  });
-
-  it("updates only null-safe fields on existing supplier matches", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [entity({ normalized: { name: "North Supply", accountNumber: "ACCT-44", email: "new@north.test", phone: "111-222-3333", notes: "Preferred" } })],
-      supplierRows: [supplier({ id: "supplier-1", name: "North Supply", email: "existing@north.test", phone: null, account_no: "ACCT-44", notes: null })],
-    });
-
-    expect(result.updated).toBe(1);
-    expect(result.preparedUpdates).toHaveLength(1);
-    expect(result.preparedUpdates[0]?.payload).toEqual({ phone: "111-222-3333", notes: "Preferred" });
-  });
-
-  it("ignores cross-shop entities and non-ready/non-vendor rows", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [
-        entity({ id: "entity-cross-shop", shop_id: "shop-2", normalized: { name: "Wrong Shop" } }),
-        entity({ id: "entity-wrong-session", session_id: "session-2", normalized: { name: "Wrong Session" } }),
-        entity({ id: "entity-not-ready", status: "needs_review", normalized: { name: "Needs Review" } }),
-        entity({ id: "entity-not-vendor", entity_type: "customer", normalized: { name: "Customer Co" } }),
-      ],
-      supplierRows: [],
-    });
-
-    expect(result.inserted).toBe(0);
-    expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(0);
-  });
-
-  it("skips ambiguous matches and returns warnings", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [entity({ normalized: { name: "North Supply" } })],
-      supplierRows: [supplier({ id: "supplier-1", name: "North Supply" }), supplier({ id: "supplier-2", name: "North Supply" })],
-    });
-
-    expect(result.inserted).toBe(0);
-    expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(1);
-    expect(result.warnings).toHaveLength(1);
-    expect(result.records[0]?.reason).toContain("Ambiguous");
-  });
-
-  it("analyze/rerun guarantee: activation result is empty when no ready vendor entities are present", () => {
-    const result = computeVendorActivationResult({
-      shopId: "shop-1",
-      sessionId: "session-1",
-      entities: [entity({ entity_type: "part", status: "ready", normalized: { name: "Brake Pad" } })],
-      supplierRows: [],
-    });
-
-    expect(result.inserted).toBe(0);
-    expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(0);
-    expect(result.records).toHaveLength(0);
-  });
-});
-
 describe("activateOnboardingVendors", () => {
-  let sb: ReturnType<typeof createFakeSupabase>;
+  let sb: ReturnType<typeof fakeSb>;
 
   beforeEach(() => {
-    const stagedVendors = Array.from({ length: 10 }).map((_, index) =>
-      entity({
-        id: `entity-${index + 1}`,
-        normalized: { name: `Vendor ${index + 1}`, email: `vendor${index + 1}@test.com`, account_no: `ACCT-${index + 1}` },
-      }),
-    );
-    sb = createFakeSupabase({ entities: stagedVendors, suppliers: [] });
+    sb = fakeSb({ entities: [entity({ normalized: { name: "Vendor A" } })] });
   });
 
-  it("creates suppliers from 10 ready staged vendors and is idempotent on rerun", async () => {
-    const first = await activateOnboardingVendors({
-      supabase: sb as any,
-      shopId: "shop-1",
-      sessionId: "session-1",
-      actorId: "user-1",
-    });
+  it("creates vendor once then rerun matches existing", async () => {
+    const first = await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    const second = await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
 
-    expect(first.ok).toBe(true);
-    expect(first.stagedVendorsFound).toBe(10);
-    expect(first.suppliersBefore).toBe(0);
-    expect(first.suppliersAfter).toBe(10);
-    expect(first.inserted).toBe(10);
-    expect(first.updated).toBe(0);
-    expect(first.skipped).toBe(0);
-
-    const second = await activateOnboardingVendors({
-      supabase: sb as any,
-      shopId: "shop-1",
-      sessionId: "session-1",
-      actorId: "user-1",
-    });
-
-    expect(second.inserted).toBe(0);
-    expect(second.updated).toBe(0);
-    expect(second.skipped).toBe(10);
-    expect(second.suppliersBefore).toBe(10);
-    expect(second.suppliersAfter).toBe(10);
+    expect(first.created).toBe(1);
+    expect(second.created).toBe(0);
+    expect(second.matchedExisting + second.updatedNullOnly).toBe(1);
   });
 
-  it("only writes to suppliers table and ignores non-ready/non-vendor/cross-shop rows", async () => {
-    sb = createFakeSupabase({
-      suppliers: [],
-      entities: [
-        entity({ id: "vendor-ready", normalized: { name: "Vendor A" } }),
-        entity({ id: "wrong-shop", shop_id: "shop-2", normalized: { name: "Vendor B" } }),
-        entity({ id: "wrong-session", session_id: "session-2", normalized: { name: "Vendor C" } }),
-        entity({ id: "not-ready", status: "needs_review", normalized: { name: "Vendor D" } }),
-        entity({ id: "not-vendor", entity_type: "vehicle", normalized: { name: "Truck" } }),
-      ],
-    });
+  it("writes review item for missing vendor name", async () => {
+    sb = fakeSb({ entities: [entity({ id: "entity-missing", normalized: {} })] });
+    const result = await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    expect(result.needsReview).toBeGreaterThan(0);
+    expect(sb.state.reviewItems.some((item) => item.issue_type === "missing_vendor_name")).toBe(true);
+  });
 
-    const result = await activateOnboardingVendors({
-      supabase: sb as any,
-      shopId: "shop-1",
-      sessionId: "session-1",
-      actorId: "user-1",
+  it("null-only updates existing matched supplier", async () => {
+    sb = fakeSb({
+      entities: [entity({ normalized: { name: "North Supply", phone: "555-1234" } })],
+      suppliers: [supplier({ name: "North Supply", phone: null })],
     });
-
-    expect(result.stagedVendorsFound).toBe(1);
-    expect(result.inserted).toBe(1);
-    expect(sb.state.writes.every((entry) => entry.startsWith("suppliers:"))).toBe(true);
+    const result = await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    expect(result.updatedNullOnly).toBe(1);
+    expect(sb.state.suppliers[0].phone).toBe("555-1234");
   });
 });

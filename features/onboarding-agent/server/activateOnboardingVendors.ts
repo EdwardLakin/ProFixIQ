@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -7,33 +8,35 @@ type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["
 type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
 type SupplierInsert = Database["public"]["Tables"]["suppliers"]["Insert"];
 type SupplierUpdate = Database["public"]["Tables"]["suppliers"]["Update"];
-
-export type VendorActivationRecordResult = {
-  entityId: string;
-  supplierId: string | null;
-  action: "inserted" | "updated" | "skipped";
-  reason: string;
-};
+type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 
 export type VendorActivationResult = {
   ok: true;
-  inserted: number;
-  updated: number;
+  stagedVendors: number;
+  created: number;
+  matchedExisting: number;
+  updatedNullOnly: number;
   skipped: number;
-  warnings: string[];
+  needsReview: number;
   suppliersBefore: number;
   suppliersAfter: number;
-  stagedVendorsFound: number;
-  records: VendorActivationRecordResult[];
+  reviewItemsCreated: number;
+  warnings: string[];
+  records: Array<{
+    entityId: string;
+    supplierId: string | null;
+    action: "created" | "matched_existing" | "updated_null_only" | "skipped" | "needs_review";
+    reason: string;
+  }>;
 };
 
 type NormalizedVendor = {
-  name: string;
+  name: string | null;
   accountNo: string | null;
   email: string | null;
   phone: string | null;
   notes: string | null;
-  isActive: boolean | null;
+  sourceExternalId: string | null;
 };
 
 function normalizeText(value: unknown): string {
@@ -61,134 +64,57 @@ function firstText(values: unknown[]): string | null {
   return null;
 }
 
-function toNormalizedVendor(entity: Pick<OnboardingEntityRow, "normalized" | "display_name">): NormalizedVendor | null {
+function toNormalizedVendor(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">): NormalizedVendor {
   const normalized = (entity.normalized ?? {}) as JsonObject;
-  const name = firstText([normalized.name, entity.display_name]);
-  if (!name) return null;
-
-  const accountNo = firstText([
-    normalized.account_no,
-    normalized.accountNo,
-    normalized.accountNumber,
-    normalized.vendorCode,
-    normalized.sourceVendorId,
-  ]);
-
   return {
-    name,
-    accountNo,
+    name: firstText([normalized.name, entity.display_name]),
+    accountNo: firstText([normalized.account_no, normalized.accountNo, normalized.accountNumber]),
     email: normalizeEmail(normalized.email),
     phone: firstText([normalized.phone]),
     notes: firstText([normalized.notes, normalized.note]),
-    isActive: typeof normalized.is_active === "boolean" ? normalized.is_active : typeof normalized.active === "boolean" ? normalized.active : null,
+    sourceExternalId: firstText([entity.source_external_id, normalized.sourceVendorId]),
   };
 }
 
-function collectMatchCandidates(params: { supplierRows: SupplierRow[]; vendor: NormalizedVendor }) {
-  const accountKey = params.vendor.accountNo ? normalizeLookupKey(params.vendor.accountNo) : "";
-  if (accountKey) {
-    return params.supplierRows.filter((row) => normalizeLookupKey(row.account_no) === accountKey);
-  }
-
-  const emailKey = params.vendor.email ? normalizeLookupKey(params.vendor.email) : "";
-  if (emailKey) {
-    return params.supplierRows.filter((row) => normalizeLookupKey(row.email) === emailKey);
-  }
-
-  const nameKey = normalizeLookupKey(params.vendor.name);
-  if (!nameKey) return [];
-  return params.supplierRows.filter((row) => normalizeLookupKey(row.name) === nameKey);
-}
-
-function buildNullSafeUpdate(params: { current: SupplierRow; vendor: NormalizedVendor }): SupplierUpdate | null {
+function buildNullOnlySupplierUpdate(current: SupplierRow, vendor: NormalizedVendor): SupplierUpdate | null {
   const update: SupplierUpdate = {};
-  if (!normalizeText(params.current.name)) update.name = params.vendor.name;
-  if (!normalizeText(params.current.account_no) && params.vendor.accountNo) update.account_no = params.vendor.accountNo;
-  if (!normalizeText(params.current.email) && params.vendor.email) update.email = params.vendor.email;
-  if (!normalizeText(params.current.phone) && params.vendor.phone) update.phone = params.vendor.phone;
-  if (!normalizeText(params.current.notes) && params.vendor.notes) update.notes = params.vendor.notes;
-
-  return Object.keys(update).length ? update : null;
+  if (!normalizeText(current.account_no) && vendor.accountNo) update.account_no = vendor.accountNo;
+  if (!normalizeText(current.email) && vendor.email) update.email = vendor.email;
+  if (!normalizeText(current.phone) && vendor.phone) update.phone = vendor.phone;
+  if (!normalizeText(current.notes) && vendor.notes) update.notes = vendor.notes;
+  return Object.keys(update).length > 0 ? update : null;
 }
 
-export function computeVendorActivationResult(params: {
+function vendorMatchScore(row: SupplierRow, vendor: NormalizedVendor): number {
+  let score = 0;
+  if (vendor.sourceExternalId && normalizeLookupKey(vendor.sourceExternalId) === normalizeLookupKey(row.account_no)) score += 100;
+  if (vendor.accountNo && normalizeLookupKey(vendor.accountNo) === normalizeLookupKey(row.account_no)) score += 90;
+  if (vendor.email && normalizeLookupKey(vendor.email) === normalizeLookupKey(row.email)) score += 80;
+  if (vendor.phone && normalizeLookupKey(vendor.phone) === normalizeLookupKey(row.phone)) score += 70;
+  if (vendor.name && normalizeLookupKey(vendor.name) === normalizeLookupKey(row.name)) score += 60;
+  return score;
+}
+
+function makeReviewItem(params: {
   shopId: string;
   sessionId: string;
-  entities: Array<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name">>;
-  supplierRows: SupplierRow[];
-}) {
-  const records: VendorActivationRecordResult[] = [];
-  const warnings: string[] = [];
-  const preparedInserts: Array<{ entityId: string; payload: SupplierInsert }> = [];
-  const preparedUpdates: Array<{ entityId: string; supplierId: string; payload: SupplierUpdate }> = [];
-  const supplierPool = [...params.supplierRows];
-
-  for (const entity of params.entities) {
-    if (entity.shop_id !== params.shopId || entity.session_id !== params.sessionId) continue;
-    if (entity.entity_type !== "vendor" || entity.status !== "ready") continue;
-
-    const normalizedVendor = toNormalizedVendor(entity);
-    if (!normalizedVendor) {
-      records.push({ entityId: entity.id, supplierId: null, action: "skipped", reason: "Missing vendor name in staged normalized payload" });
-      continue;
-    }
-
-    const matches = collectMatchCandidates({ supplierRows: supplierPool, vendor: normalizedVendor });
-    if (matches.length > 1) {
-      const warning = `Entity ${entity.id} skipped: multiple supplier matches found in shop for staged vendor "${normalizedVendor.name}".`;
-      warnings.push(warning);
-      records.push({ entityId: entity.id, supplierId: null, action: "skipped", reason: "Ambiguous supplier match; manual review required" });
-      continue;
-    }
-
-    if (matches.length === 1) {
-      const current = matches[0];
-      const update = buildNullSafeUpdate({ current, vendor: normalizedVendor });
-      if (!update) {
-        records.push({ entityId: entity.id, supplierId: current.id, action: "skipped", reason: "Existing supplier already has mapped fields" });
-        continue;
-      }
-
-      preparedUpdates.push({ entityId: entity.id, supplierId: current.id, payload: update });
-      Object.assign(current, update);
-      records.push({ entityId: entity.id, supplierId: current.id, action: "updated", reason: "Matched existing supplier and filled null-only fields" });
-      continue;
-    }
-
-    const insertPayload: SupplierInsert = {
-      shop_id: params.shopId,
-      name: normalizedVendor.name,
-      account_no: normalizedVendor.accountNo,
-      email: normalizedVendor.email,
-      phone: normalizedVendor.phone,
-      notes: normalizedVendor.notes,
-      is_active: normalizedVendor.isActive ?? true,
-    };
-
-    preparedInserts.push({ entityId: entity.id, payload: insertPayload });
-    supplierPool.push({
-      id: `pending:${entity.id}`,
-      created_at: new Date(0).toISOString(),
-      created_by: null,
-      is_active: true,
-      notes: null,
-      ...insertPayload,
-    } as SupplierRow);
-    records.push({ entityId: entity.id, supplierId: null, action: "inserted", reason: "Inserted new supplier from staged vendor" });
-  }
-
-  const inserted = records.filter((item) => item.action === "inserted").length;
-  const updated = records.filter((item) => item.action === "updated").length;
-  const skipped = records.filter((item) => item.action === "skipped").length;
-
+  entityId: string;
+  issueType: string;
+  summary: string;
+  details: Record<string, unknown>;
+  severity?: "low" | "medium" | "high" | "blocking";
+}): OnboardingReviewItemInsert {
   return {
-    inserted,
-    updated,
-    skipped,
-    warnings,
-    records,
-    preparedInserts,
-    preparedUpdates,
+    id: stableUuidFromParts(["onboarding-review", params.shopId, params.sessionId, "vendor", params.issueType, params.entityId]),
+    shop_id: params.shopId,
+    session_id: params.sessionId,
+    entity_id: params.entityId,
+    domain: "vendors",
+    issue_type: params.issueType,
+    summary: params.summary,
+    severity: params.severity ?? "medium",
+    status: "pending",
+    details: params.details as any,
   };
 }
 
@@ -199,78 +125,148 @@ export async function activateOnboardingVendors(params: {
   actorId: string;
 }): Promise<VendorActivationResult> {
   const sb = params.supabase as any;
+  await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  await assertOnboardingSessionOwnership({
-    supabase: params.supabase,
-    shopId: params.shopId,
-    sessionId: params.sessionId,
-  });
-
-  const { data: entities, error: entityError } = await sb
-    .from("onboarding_entities")
-    .select("id, shop_id, session_id, entity_type, status, normalized, display_name")
-    .eq("shop_id", params.shopId)
-    .eq("session_id", params.sessionId)
-    .eq("entity_type", "vendor")
-    .eq("status", "ready")
-    .order("id", { ascending: true });
-
+  const [{ data: entities, error: entityError }, { data: suppliers, error: supplierError }] = await Promise.all([
+    sb
+      .from("onboarding_entities")
+      .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id")
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("entity_type", "vendor")
+      .eq("status", "ready")
+      .order("id", { ascending: true }),
+    sb.from("suppliers").select("id, shop_id, name, account_no, email, phone, notes, is_active, created_at, created_by").eq("shop_id", params.shopId),
+  ]);
   if (entityError) throw new Error(entityError.message);
-
-  const { data: suppliers, error: supplierError } = await sb
-    .from("suppliers")
-    .select("id, shop_id, name, account_no, email, phone, notes, is_active, created_at, created_by")
-    .eq("shop_id", params.shopId)
-    .order("name", { ascending: true });
-
   if (supplierError) throw new Error(supplierError.message);
-  const suppliersBefore = (suppliers ?? []).length;
-  const stagedVendorsFound = (entities ?? []).length;
 
-  const computed = computeVendorActivationResult({
-    shopId: params.shopId,
-    sessionId: params.sessionId,
-    entities: (entities ?? []) as Array<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name">>,
-    supplierRows: (suppliers ?? []) as SupplierRow[],
-  });
+  const staged = (entities ?? []) as Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>;
+  const supplierPool = [...((suppliers ?? []) as SupplierRow[])];
+  const suppliersBefore = supplierPool.length;
+  const reviewItems: OnboardingReviewItemInsert[] = [];
+  const warnings: string[] = [];
+  const records: VendorActivationResult["records"] = [];
 
-  for (const pendingInsert of computed.preparedInserts) {
-    const payload = {
-      ...pendingInsert.payload,
+  let created = 0;
+  let matchedExisting = 0;
+  let updatedNullOnly = 0;
+  let skipped = 0;
+  let needsReview = 0;
+
+  for (const entity of staged) {
+    const vendor = toNormalizedVendor(entity);
+    if (!vendor.name) {
+      skipped += 1;
+      needsReview += 1;
+      records.push({ entityId: entity.id, supplierId: null, action: "needs_review", reason: "Missing vendor name" });
+      reviewItems.push(
+        makeReviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: "missing_vendor_name",
+          summary: "Vendor row skipped: name is required.",
+          details: { sourceExternalId: vendor.sourceExternalId },
+          severity: "high",
+        }),
+      );
+      continue;
+    }
+
+    const scored = supplierPool
+      .map((row) => ({ row, score: vendorMatchScore(row, vendor) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 1 && scored[0]?.score === scored[1]?.score) {
+      skipped += 1;
+      needsReview += 1;
+      warnings.push(`Ambiguous vendor match for entity ${entity.id}`);
+      records.push({ entityId: entity.id, supplierId: null, action: "needs_review", reason: "Ambiguous vendor match" });
+      reviewItems.push(
+        makeReviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: "ambiguous_vendor_match",
+          summary: `Vendor "${vendor.name}" matched multiple suppliers and requires review.`,
+          details: {
+            sourceExternalId: vendor.sourceExternalId,
+            vendorName: vendor.name,
+            candidates: scored.slice(0, 3).map((entry) => ({ id: entry.row.id, name: entry.row.name, email: entry.row.email, phone: entry.row.phone })),
+          },
+          severity: "high",
+        }),
+      );
+      continue;
+    }
+
+    if (scored.length > 0) {
+      const target = scored[0]!.row;
+      const update = buildNullOnlySupplierUpdate(target, vendor);
+      if (update) {
+        const { error } = await sb.from("suppliers").update(update).eq("shop_id", params.shopId).eq("id", target.id);
+        if (error) throw new Error(error.message);
+        Object.assign(target, update);
+        updatedNullOnly += 1;
+        records.push({ entityId: entity.id, supplierId: target.id, action: "updated_null_only", reason: "Matched existing supplier and applied null-only updates" });
+      } else {
+        matchedExisting += 1;
+        records.push({ entityId: entity.id, supplierId: target.id, action: "matched_existing", reason: "Matched existing supplier" });
+      }
+      continue;
+    }
+
+    const insertPayload: SupplierInsert = {
+      shop_id: params.shopId,
+      name: vendor.name,
+      account_no: vendor.accountNo,
+      email: vendor.email,
+      phone: vendor.phone,
+      notes: vendor.notes,
+      is_active: true,
       created_by: params.actorId,
     };
-    const { data, error } = await sb.from("suppliers").insert(payload).select("id").single();
+    const { data, error } = await sb.from("suppliers").insert(insertPayload).select("id").single();
     if (error) throw new Error(error.message);
 
-    const target = computed.records.find((record) => record.entityId === pendingInsert.entityId && record.action === "inserted");
-    if (target) target.supplierId = data?.id ?? null;
+    created += 1;
+    supplierPool.push({
+      id: data?.id,
+      shop_id: params.shopId,
+      name: vendor.name,
+      account_no: vendor.accountNo,
+      email: vendor.email,
+      phone: vendor.phone,
+      notes: vendor.notes,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      created_by: params.actorId,
+    } as SupplierRow);
+    records.push({ entityId: entity.id, supplierId: data?.id ?? null, action: "created", reason: "Created supplier" });
   }
 
-  for (const pendingUpdate of computed.preparedUpdates) {
-    const { error } = await sb
-      .from("suppliers")
-      .update(pendingUpdate.payload)
-      .eq("shop_id", params.shopId)
-      .eq("id", pendingUpdate.supplierId);
-
+  if (reviewItems.length > 0) {
+    const { error } = await sb.from("onboarding_review_items").upsert(reviewItems, { onConflict: "id" });
     if (error) throw new Error(error.message);
   }
 
-  const { count: finalSupplierCount, error: finalCountError } = await sb
-    .from("suppliers")
-    .select("id", { head: true, count: "exact" })
-    .eq("shop_id", params.shopId);
-  if (finalCountError) throw new Error(finalCountError.message);
+  const { count: suppliersAfterCount, error: suppliersAfterError } = await sb.from("suppliers").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId);
+  if (suppliersAfterError) throw new Error(suppliersAfterError.message);
 
   return {
     ok: true,
-    inserted: computed.inserted,
-    updated: computed.updated,
-    skipped: computed.skipped,
-    warnings: computed.warnings,
+    stagedVendors: staged.length,
+    created,
+    matchedExisting,
+    updatedNullOnly,
+    skipped,
+    needsReview,
     suppliersBefore,
-    suppliersAfter: Number(finalSupplierCount ?? (suppliersBefore + computed.inserted)),
-    stagedVendorsFound,
-    records: computed.records,
+    suppliersAfter: Number(suppliersAfterCount ?? supplierPool.length),
+    reviewItemsCreated: reviewItems.length,
+    warnings,
+    records,
   };
 }
