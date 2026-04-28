@@ -21,7 +21,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [planning, setPlanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activatingVendors, setActivatingVendors] = useState(false);
+  const [activatingCustomersVehicles, setActivatingCustomersVehicles] = useState(false);
   const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
+  const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -128,6 +130,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     setError(null);
     setNotice(null);
     setVendorActivationSummary(null);
+    setCustomerVehicleActivationResult(null);
 
     try {
       const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-vendors`, { method: "POST" });
@@ -145,6 +148,33 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       setError("Failed to activate staged vendors.");
     } finally {
       setActivatingVendors(false);
+    }
+  };
+
+  const activateCustomersVehicles = async () => {
+    const confirmed = window.confirm(
+      "This writes staged customer and vehicle records into live customers and vehicles for this shop. It does not activate work orders, invoices, parts, staff, or menu items.",
+    );
+    if (!confirmed) return;
+
+    setActivatingCustomersVehicles(true);
+    setError(null);
+    setNotice(null);
+    setCustomerVehicleActivationResult(null);
+
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Failed to activate staged customers and vehicles.");
+      } else {
+        setCustomerVehicleActivationResult(json);
+      }
+      await load();
+    } catch {
+      setError("Failed to activate staged customers and vehicles.");
+    } finally {
+      setActivatingCustomersVehicles(false);
     }
   };
 
@@ -170,7 +200,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const files = payload?.files ?? [];
   const hasFiles = files.length > 0;
   const vendorReadyCount = Number(payload?.entityStatusCounts?.vendor?.ready ?? 0);
+  const customerReadyCount = Number(payload?.entityStatusCounts?.customer?.ready ?? 0);
+  const vehicleReadyCount = Number(payload?.entityStatusCounts?.vehicle?.ready ?? 0);
+  const hasCustomerVehicleReady = customerReadyCount > 0 || vehicleReadyCount > 0;
+  const actionBusy = analyzing || deleting || planning || activatingVendors || activatingCustomersVehicles;
   const canShowVendorActivation = !loadingSession && !sessionLoadError && vendorReadyCount > 0;
+  const canShowCustomerVehicleActivation = !loadingSession && !sessionLoadError && hasCustomerVehicleReady;
 
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
@@ -219,15 +254,24 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           ) : null}
           <button
             onClick={plan}
-            disabled={!hasAnalysis || planning || deleting}
+            disabled={!hasAnalysis || planning || deleting || activatingCustomersVehicles}
             className="rounded border border-amber-400/40 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {planning ? "Preparing…" : "Prepare activation plan"}
           </button>
+          {canShowCustomerVehicleActivation ? (
+            <button
+              onClick={activateCustomersVehicles}
+              disabled={actionBusy || !!sessionLoadError || !hasCustomerVehicleReady}
+              className="rounded border border-cyan-300/40 px-3 py-2 text-sm text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {activatingCustomersVehicles ? "Activating customers + vehicles…" : "Activate customers + vehicles"}
+            </button>
+          ) : null}
           {canShowVendorActivation ? (
             <button
               onClick={activateVendors}
-              disabled={activatingVendors || analyzing || deleting || planning || !!sessionLoadError || vendorReadyCount <= 0}
+              disabled={actionBusy || !!sessionLoadError || vendorReadyCount <= 0}
               className="rounded border border-emerald-400/40 px-3 py-2 text-sm text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {activatingVendors ? "Activating vendors…" : "Activate vendors to live suppliers"}
@@ -250,8 +294,48 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             Creates/updates suppliers only from staged ready vendor records. No customers, vehicles, parts, work orders, or invoices are activated.
           </p>
         ) : null}
+        {canShowCustomerVehicleActivation ? (
+          <p className="mt-1 text-xs text-cyan-100/90">
+            Creates/updates live customers and vehicles only. No work orders, invoices, parts, staff, or menu items are activated.
+          </p>
+        ) : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
+        {customerVehicleActivationResult ? (
+          <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
+            <p>
+              Staged customers/vehicles: {Number(customerVehicleActivationResult.stagedCustomersFound ?? 0)}/
+              {Number(customerVehicleActivationResult.stagedVehiclesFound ?? 0)}. Links: {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
+            </p>
+            <p>
+              Customers inserted/updated/skipped: {Number(customerVehicleActivationResult.customersInserted ?? 0)}/
+              {Number(customerVehicleActivationResult.customersUpdated ?? 0)}/{Number(customerVehicleActivationResult.customersSkipped ?? 0)}.
+            </p>
+            <p>
+              Vehicles inserted/updated/skipped: {Number(customerVehicleActivationResult.vehiclesInserted ?? 0)}/
+              {Number(customerVehicleActivationResult.vehiclesUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehiclesSkipped ?? 0)}.
+            </p>
+            <p>
+              Customer/vehicle links created/updated/skipped: {Number(customerVehicleActivationResult.customerVehicleLinksCreated ?? 0)}/
+              {Number(customerVehicleActivationResult.customerVehicleLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.customerVehicleLinksSkipped ?? 0)}.
+            </p>
+            <p>
+              Live customers before/after: {Number(customerVehicleActivationResult.customersBefore ?? 0)}/
+              {Number(customerVehicleActivationResult.customersAfter ?? 0)}. Live vehicles before/after: {Number(customerVehicleActivationResult.vehiclesBefore ?? 0)}/
+              {Number(customerVehicleActivationResult.vehiclesAfter ?? 0)}.
+            </p>
+            {Array.isArray(customerVehicleActivationResult.warnings) && customerVehicleActivationResult.warnings.length > 0 ? (
+              <div className="mt-1">
+                <p>Warnings: {customerVehicleActivationResult.warnings.length}</p>
+                <ul className="list-disc pl-5">
+                  {customerVehicleActivationResult.warnings.map((warning: string, index: number) => (
+                    <li key={`${warning}-${index}`}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
         {sessionLoadError ? (
           <div className="mt-3 rounded-lg border border-rose-400/40 bg-rose-950/40 p-3 text-xs text-rose-200">
