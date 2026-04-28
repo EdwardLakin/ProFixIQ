@@ -16,10 +16,14 @@ export type VendorActivationRecordResult = {
 };
 
 export type VendorActivationResult = {
+  ok: true;
   inserted: number;
   updated: number;
   skipped: number;
-  warnings: number;
+  warnings: string[];
+  suppliersBefore: number;
+  suppliersAfter: number;
+  stagedVendorsFound: number;
   records: VendorActivationRecordResult[];
 };
 
@@ -28,6 +32,8 @@ type NormalizedVendor = {
   accountNo: string | null;
   email: string | null;
   phone: string | null;
+  notes: string | null;
+  isActive: boolean | null;
 };
 
 function normalizeText(value: unknown): string {
@@ -73,22 +79,25 @@ function toNormalizedVendor(entity: Pick<OnboardingEntityRow, "normalized" | "di
     accountNo,
     email: normalizeEmail(normalized.email),
     phone: firstText([normalized.phone]),
+    notes: firstText([normalized.notes, normalized.note]),
+    isActive: typeof normalized.is_active === "boolean" ? normalized.is_active : typeof normalized.active === "boolean" ? normalized.active : null,
   };
 }
 
 function collectMatchCandidates(params: { supplierRows: SupplierRow[]; vendor: NormalizedVendor }) {
-  const nameKey = normalizeLookupKey(params.vendor.name);
   const accountKey = params.vendor.accountNo ? normalizeLookupKey(params.vendor.accountNo) : "";
+  if (accountKey) {
+    return params.supplierRows.filter((row) => normalizeLookupKey(row.account_no) === accountKey);
+  }
+
   const emailKey = params.vendor.email ? normalizeLookupKey(params.vendor.email) : "";
+  if (emailKey) {
+    return params.supplierRows.filter((row) => normalizeLookupKey(row.email) === emailKey);
+  }
 
-  const matches = params.supplierRows.filter((row) => {
-    if (accountKey && normalizeLookupKey(row.account_no) === accountKey) return true;
-    if (emailKey && normalizeLookupKey(row.email) === emailKey) return true;
-    if (nameKey && normalizeLookupKey(row.name) === nameKey) return true;
-    return false;
-  });
-
-  return matches;
+  const nameKey = normalizeLookupKey(params.vendor.name);
+  if (!nameKey) return [];
+  return params.supplierRows.filter((row) => normalizeLookupKey(row.name) === nameKey);
 }
 
 function buildNullSafeUpdate(params: { current: SupplierRow; vendor: NormalizedVendor }): SupplierUpdate | null {
@@ -97,6 +106,7 @@ function buildNullSafeUpdate(params: { current: SupplierRow; vendor: NormalizedV
   if (!normalizeText(params.current.account_no) && params.vendor.accountNo) update.account_no = params.vendor.accountNo;
   if (!normalizeText(params.current.email) && params.vendor.email) update.email = params.vendor.email;
   if (!normalizeText(params.current.phone) && params.vendor.phone) update.phone = params.vendor.phone;
+  if (!normalizeText(params.current.notes) && params.vendor.notes) update.notes = params.vendor.notes;
 
   return Object.keys(update).length ? update : null;
 }
@@ -108,6 +118,7 @@ export function computeVendorActivationResult(params: {
   supplierRows: SupplierRow[];
 }) {
   const records: VendorActivationRecordResult[] = [];
+  const warnings: string[] = [];
   const preparedInserts: Array<{ entityId: string; payload: SupplierInsert }> = [];
   const preparedUpdates: Array<{ entityId: string; supplierId: string; payload: SupplierUpdate }> = [];
   const supplierPool = [...params.supplierRows];
@@ -124,6 +135,8 @@ export function computeVendorActivationResult(params: {
 
     const matches = collectMatchCandidates({ supplierRows: supplierPool, vendor: normalizedVendor });
     if (matches.length > 1) {
+      const warning = `Entity ${entity.id} skipped: multiple supplier matches found in shop for staged vendor "${normalizedVendor.name}".`;
+      warnings.push(warning);
       records.push({ entityId: entity.id, supplierId: null, action: "skipped", reason: "Ambiguous supplier match; manual review required" });
       continue;
     }
@@ -148,6 +161,8 @@ export function computeVendorActivationResult(params: {
       account_no: normalizedVendor.accountNo,
       email: normalizedVendor.email,
       phone: normalizedVendor.phone,
+      notes: normalizedVendor.notes,
+      is_active: normalizedVendor.isActive ?? true,
     };
 
     preparedInserts.push({ entityId: entity.id, payload: insertPayload });
@@ -165,7 +180,6 @@ export function computeVendorActivationResult(params: {
   const inserted = records.filter((item) => item.action === "inserted").length;
   const updated = records.filter((item) => item.action === "updated").length;
   const skipped = records.filter((item) => item.action === "skipped").length;
-  const warnings = records.filter((item) => item.reason.toLowerCase().includes("ambiguous")).length;
 
   return {
     inserted,
@@ -210,6 +224,8 @@ export async function activateOnboardingVendors(params: {
     .order("name", { ascending: true });
 
   if (supplierError) throw new Error(supplierError.message);
+  const suppliersBefore = (suppliers ?? []).length;
+  const stagedVendorsFound = (entities ?? []).length;
 
   const computed = computeVendorActivationResult({
     shopId: params.shopId,
@@ -241,10 +257,14 @@ export async function activateOnboardingVendors(params: {
   }
 
   return {
+    ok: true,
     inserted: computed.inserted,
     updated: computed.updated,
     skipped: computed.skipped,
     warnings: computed.warnings,
+    suppliersBefore,
+    suppliersAfter: suppliersBefore + computed.inserted,
+    stagedVendorsFound,
     records: computed.records,
   };
 }

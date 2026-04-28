@@ -112,9 +112,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json.ok) {
         setError(json?.error || "Failed to activate staged vendors.");
       } else {
-        const result = json?.result ?? {};
+        const warnings = Array.isArray(json?.warnings) ? json.warnings.length : 0;
         setVendorActivationSummary(
-          `Vendor activation complete. Inserted: ${Number(result.inserted ?? 0)}. Updated: ${Number(result.updated ?? 0)}. Skipped: ${Number(result.skipped ?? 0)}.`,
+          `Vendor activation complete. Staged vendors: ${Number(json?.stagedVendorsFound ?? 0)}. Inserted: ${Number(json?.inserted ?? 0)}. Updated: ${Number(json?.updated ?? 0)}. Skipped: ${Number(json?.skipped ?? 0)}. Suppliers before/after: ${Number(json?.suppliersBefore ?? 0)}/${Number(json?.suppliersAfter ?? 0)}.${warnings > 0 ? ` Warnings: ${warnings}.` : ""}`,
         );
       }
       await load();
