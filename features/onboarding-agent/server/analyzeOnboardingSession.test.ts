@@ -41,6 +41,7 @@ function createFakeSupabase() {
       },
     ],
     upsertCalls: [] as Array<{ rows: any[]; onConflict: string }>,
+    touchedTables: [] as string[],
   };
 
   return {
@@ -53,6 +54,7 @@ function createFakeSupabase() {
     rawRows: state.rawRows,
     files: state.files,
     upsertCalls: state.upsertCalls,
+    touchedTables: state.touchedTables,
     storage: {
       from: () => ({
         download: async () => ({
@@ -64,6 +66,7 @@ function createFakeSupabase() {
       }),
     },
     from(table: string) {
+      state.touchedTables.push(table);
       const query: any = {
       table,
       op: null,
@@ -163,6 +166,7 @@ describe("analyzeOnboardingSession idempotent raw-row rebuild", () => {
     expect(secondRunCount).toBe(firstRunCount);
     expect(sb.upsertCalls.every((call) => call.onConflict === "shop_id,file_id,source_row_index")).toBe(true);
     expect(sb.upsertCalls.flatMap((call) => call.rows).every((row) => row.session_id === "session-1" && row.error_reason === null)).toBe(true);
+    expect(sb.touchedTables.includes("suppliers")).toBe(false);
   });
 
   it("throws 409 conflict when a run is already in progress", async () => {

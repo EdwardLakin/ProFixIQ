@@ -26,7 +26,7 @@ export async function POST(_: Request, context: RouteContext) {
       actorId,
     });
 
-    return NextResponse.json({ ok: true, result });
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to activate vendors";
     const status = message.includes("Session not found") ? 404 : 500;
