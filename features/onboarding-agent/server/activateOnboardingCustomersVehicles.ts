@@ -16,17 +16,22 @@ type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
 export type CustomerVehicleActivationResult = {
   ok: true;
   stagedCustomersFound: number;
+  customerActivationCandidates: number;
   stagedVehiclesFound: number;
   stagedCustomerVehicleLinksFound: number;
   customersInserted: number;
   customersUpdated: number;
+  customersMatchedExisting: number;
+  customersSkippedDuplicateStaged: number;
+  customersSkippedAmbiguous: number;
+  customersRecoveredFromUniqueConflict: number;
   customersSkipped: number;
   vehiclesInserted: number;
   vehiclesUpdated: number;
   vehiclesSkipped: number;
-  customerVehicleLinksCreated: number;
-  customerVehicleLinksUpdated: number;
-  customerVehicleLinksSkipped: number;
+  vehicleCustomerLinksCreated: number;
+  vehicleCustomerLinksUpdated: number;
+  vehicleCustomerLinksSkipped: number;
   customersBefore: number;
   customersAfter: number;
   vehiclesBefore: number;
@@ -52,6 +57,13 @@ type NormalizedVehicle = {
   make: string | null;
   model: string | null;
   externalId: string | null;
+};
+
+type StagedCustomerCandidate = {
+  key: string;
+  canonicalEntityId: string;
+  entityIds: string[];
+  normalized: NormalizedCustomer;
 };
 
 function normalizeText(value: unknown): string {
@@ -149,33 +161,126 @@ function buildVehicleUpdate(current: VehicleRow, next: NormalizedVehicle): Vehic
   return Object.keys(update).length > 0 ? update : null;
 }
 
-function customerMatchesInPriority(customer: NormalizedCustomer, pool: CustomerRow[]) {
-  if (customer.externalId) {
-    const matches = pool.filter((row) => normalizeLookupKey(row.external_id) === normalizeLookupKey(customer.externalId));
-    return { matches, strategy: "external_id" };
+function getCustomerNameBusinessKey(customer: NormalizedCustomer): string | null {
+  return normalizeLookupKey(customer.businessName ?? customer.name) || null;
+}
+
+function getRowNameBusinessKey(row: CustomerRow): string | null {
+  return normalizeLookupKey(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) || null;
+}
+
+function mergeNormalizedCustomers(base: NormalizedCustomer, incoming: NormalizedCustomer): NormalizedCustomer {
+  return {
+    externalId: base.externalId ?? incoming.externalId,
+    name: base.name ?? incoming.name,
+    firstName: base.firstName ?? incoming.firstName,
+    lastName: base.lastName ?? incoming.lastName,
+    businessName: base.businessName ?? incoming.businessName,
+    email: base.email ?? incoming.email,
+    phone: base.phone ?? incoming.phone,
+  };
+}
+
+function stagedIdentityKey(customer: NormalizedCustomer): string {
+  if (customer.email) return `email:${customer.email}`;
+  if (customer.externalId) return `external:${normalizeLookupKey(customer.externalId)}`;
+  if (customer.phone) return `phone:${customer.phone}`;
+  const nameKey = getCustomerNameBusinessKey(customer);
+  if (nameKey) return `name:${nameKey}`;
+  return "fallback:unknown";
+}
+
+function buildCustomerCandidates(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>) {
+  const byKey = new Map<string, StagedCustomerCandidate>();
+  let customersSkippedDuplicateStaged = 0;
+
+  for (const entity of customerEntities) {
+    const normalized = toNormalizedCustomer(entity);
+    const key = stagedIdentityKey(normalized);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, {
+        key,
+        canonicalEntityId: entity.id,
+        entityIds: [entity.id],
+        normalized,
+      });
+      continue;
+    }
+
+    existing.entityIds.push(entity.id);
+    existing.normalized = mergeNormalizedCustomers(existing.normalized, normalized);
+    customersSkippedDuplicateStaged += 1;
   }
 
-  if (customer.email) {
-    const matches = pool.filter((row) => normalizeEmail(row.email) === customer.email);
-    return { matches, strategy: "email" };
+  return {
+    candidates: [...byKey.values()],
+    customersSkippedDuplicateStaged,
+  };
+}
+
+function addIndexEntry(index: Map<string, CustomerRow[]>, key: string | null, row: CustomerRow) {
+  if (!key) return;
+  const next = index.get(key) ?? [];
+  next.push(row);
+  index.set(key, next);
+}
+
+function buildLiveCustomerIndexes(rows: CustomerRow[]) {
+  const byExternalId = new Map<string, CustomerRow[]>();
+  const byEmail = new Map<string, CustomerRow[]>();
+  const byPhone = new Map<string, CustomerRow[]>();
+  const byNameBusiness = new Map<string, CustomerRow[]>();
+
+  for (const row of rows) {
+    addIndexEntry(byExternalId, normalizeLookupKey(row.external_id), row);
+    addIndexEntry(byEmail, normalizeEmail(row.email), row);
+    addIndexEntry(byPhone, normalizePhone(row.phone ?? row.phone_number), row);
+    addIndexEntry(byNameBusiness, getRowNameBusinessKey(row), row);
   }
 
-  if (customer.phone) {
-    const matches = pool.filter((row) => normalizePhone(row.phone ?? row.phone_number) === customer.phone);
-    return { matches, strategy: "phone" };
-  }
+  return { byExternalId, byEmail, byPhone, byNameBusiness };
+}
 
-  const nameKey = normalizeLookupKey(customer.businessName ?? customer.name);
+function pickLiveCustomerMatch(candidate: NormalizedCustomer, indexes: ReturnType<typeof buildLiveCustomerIndexes>) {
+  const matchedRowsById = new Map<string, CustomerRow>();
+  const externalMatches = candidate.externalId ? (indexes.byExternalId.get(normalizeLookupKey(candidate.externalId)) ?? []) : [];
+
+  for (const row of externalMatches) matchedRowsById.set(row.id, row);
+  if (candidate.email) for (const row of indexes.byEmail.get(candidate.email) ?? []) matchedRowsById.set(row.id, row);
+  if (candidate.phone) for (const row of indexes.byPhone.get(candidate.phone) ?? []) matchedRowsById.set(row.id, row);
+  const nameKey = getCustomerNameBusinessKey(candidate);
   if (nameKey) {
-    const matches = pool.filter((row) => {
-      const rowBusiness = normalizeLookupKey(row.business_name);
-      const rowName = normalizeLookupKey(row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`);
-      return rowBusiness === nameKey || rowName === nameKey;
-    });
-    return { matches, strategy: "name" };
+    const nameMatches = indexes.byNameBusiness.get(nameKey) ?? [];
+    if (nameMatches.length === 1) matchedRowsById.set(nameMatches[0]!.id, nameMatches[0]!);
   }
 
-  return { matches: [], strategy: "none" };
+  if (externalMatches.length === 1) {
+    return { row: externalMatches[0]!, ambiguous: false, strategy: "external_id" as const };
+  }
+
+  if (externalMatches.length > 1) {
+    return { row: null, ambiguous: true, strategy: "external_id" as const };
+  }
+
+  if (matchedRowsById.size > 1) {
+    return { row: null, ambiguous: true, strategy: "multi_key" as const };
+  }
+
+  if (candidate.email) {
+    const emailMatches = indexes.byEmail.get(candidate.email) ?? [];
+    if (emailMatches.length > 1) return { row: null, ambiguous: true, strategy: "email" as const };
+  }
+
+  const [single] = [...matchedRowsById.values()];
+  return { row: single ?? null, ambiguous: false, strategy: "single_key" as const };
+}
+
+function isCustomerEmailUniqueViolation(error: { message?: string; code?: string; details?: string } | null): boolean {
+  if (!error) return false;
+  const haystack = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return haystack.includes("customers_shop_email_uq") || haystack.includes("duplicate key value") || haystack.includes("23505");
 }
 
 function vehicleMatchesInPriority(args: {
@@ -268,6 +373,9 @@ export async function activateOnboardingCustomersVehicles(params: {
   const customerPool = (customersResult.data ?? []) as CustomerRow[];
   const vehiclePool = (vehiclesResult.data ?? []) as VehicleRow[];
 
+  const customersBefore = customerPool.length;
+  const vehiclesBefore = vehiclePool.length;
+
   const customerEntities = entities.filter((entity) => entity.entity_type === "customer" && entity.status === "ready");
   const vehicleEntities = entities.filter((entity) => entity.entity_type === "vehicle" && entity.status === "ready");
   const entityById = new Map(entities.map((entity) => [entity.id, entity]));
@@ -276,30 +384,34 @@ export async function activateOnboardingCustomersVehicles(params: {
   const customerEntityToLiveId = new Map<string, string>();
   const vehicleEntityToLiveId = new Map<string, string>();
 
+  const { candidates: customerCandidates, customersSkippedDuplicateStaged } = buildCustomerCandidates(customerEntities);
+  const indexes = buildLiveCustomerIndexes(customerPool);
+
   let customersInserted = 0;
   let customersUpdated = 0;
-  let customersSkipped = 0;
-  for (const entity of customerEntities) {
-    const normalized = toNormalizedCustomer(entity);
-    const { matches, strategy } = customerMatchesInPriority(normalized, customerPool);
+  let customersSkippedAmbiguous = 0;
+  let customersMatchedExisting = 0;
+  let customersRecoveredFromUniqueConflict = 0;
+  for (const candidate of customerCandidates) {
+    const normalized = candidate.normalized;
+    const match = pickLiveCustomerMatch(normalized, indexes);
 
-    if (matches.length > 1) {
-      customersSkipped += 1;
-      warnings.push(`Customer entity ${entity.id} skipped: ambiguous ${strategy} match (${matches.length} rows).`);
+    if (match.ambiguous) {
+      customersSkippedAmbiguous += 1;
+      warnings.push(`Customer candidate ${candidate.canonicalEntityId} skipped: ambiguous ${match.strategy} live match.`);
       continue;
     }
 
-    if (matches.length === 1) {
-      const current = matches[0];
-      const update = buildCustomerUpdate(current, normalized);
-      customerEntityToLiveId.set(entity.id, current.id);
+    if (match.row) {
+      const update = buildCustomerUpdate(match.row, normalized);
+      for (const entityId of candidate.entityIds) customerEntityToLiveId.set(entityId, match.row.id);
       if (!update) {
-        customersSkipped += 1;
+        customersMatchedExisting += 1;
         continue;
       }
-      const { error } = await sb.from("customers").update(update).eq("shop_id", params.shopId).eq("id", current.id);
+      const { error } = await sb.from("customers").update(update).eq("shop_id", params.shopId).eq("id", match.row.id);
       if (error) throw new Error(error.message);
-      Object.assign(current, update);
+      Object.assign(match.row, update);
       customersUpdated += 1;
       continue;
     }
@@ -317,10 +429,40 @@ export async function activateOnboardingCustomersVehicles(params: {
     };
 
     const { data, error } = await sb.from("customers").insert(payload).select("id").single();
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (!normalized.email || !isCustomerEmailUniqueViolation(error)) throw new Error(error.message);
+      const recoveryResult = await sb
+        .from("customers")
+        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
+        .eq("shop_id", params.shopId);
+      if (recoveryResult.error) throw new Error(recoveryResult.error.message);
+      const recovered = ((recoveryResult.data ?? []) as CustomerRow[])
+        .filter((row) => normalizeEmail(row.email) === normalized.email);
+
+      if (recovered.length === 1) {
+        const recoveredRow = recovered[0]!;
+        const update = buildCustomerUpdate(recoveredRow, normalized);
+        if (update) {
+          const updateResult = await sb.from("customers").update(update).eq("shop_id", params.shopId).eq("id", recoveredRow.id);
+          if (updateResult.error) throw new Error(updateResult.error.message);
+          Object.assign(recoveredRow, update);
+          customersUpdated += 1;
+        } else {
+          customersMatchedExisting += 1;
+        }
+        for (const entityId of candidate.entityIds) customerEntityToLiveId.set(entityId, recoveredRow.id);
+        customersRecoveredFromUniqueConflict += 1;
+        continue;
+      }
+
+      warnings.push(`Customer candidate ${candidate.canonicalEntityId} skipped: unique conflict recovery failed for email ${normalized.email}.`);
+      customersSkippedAmbiguous += 1;
+      continue;
+    }
+
     const newId = String(data?.id);
-    customerEntityToLiveId.set(entity.id, newId);
-    customerPool.push({
+    for (const entityId of candidate.entityIds) customerEntityToLiveId.set(entityId, newId);
+    const newRow = {
       id: newId,
       shop_id: params.shopId,
       external_id: payload.external_id ?? null,
@@ -331,7 +473,12 @@ export async function activateOnboardingCustomersVehicles(params: {
       first_name: payload.first_name ?? null,
       last_name: payload.last_name ?? null,
       business_name: payload.business_name ?? null,
-    } as CustomerRow);
+    } as CustomerRow;
+    customerPool.push(newRow);
+    addIndexEntry(indexes.byExternalId, normalizeLookupKey(newRow.external_id), newRow);
+    addIndexEntry(indexes.byEmail, normalizeEmail(newRow.email), newRow);
+    addIndexEntry(indexes.byPhone, normalizePhone(newRow.phone ?? newRow.phone_number), newRow);
+    addIndexEntry(indexes.byNameBusiness, getRowNameBusinessKey(newRow), newRow);
     customersInserted += 1;
   }
 
@@ -359,7 +506,7 @@ export async function activateOnboardingCustomersVehicles(params: {
     }
 
     if (matches.length === 1) {
-      const current = matches[0];
+      const current = matches[0]!;
       const update = buildVehicleUpdate(current, normalized);
       vehicleEntityToLiveId.set(entity.id, current.id);
       if (!update) {
@@ -404,9 +551,9 @@ export async function activateOnboardingCustomersVehicles(params: {
     vehiclesInserted += 1;
   }
 
-  let customerVehicleLinksCreated = 0;
-  const customerVehicleLinksUpdated = 0;
-  let customerVehicleLinksSkipped = 0;
+  let vehicleCustomerLinksCreated = 0;
+  const vehicleCustomerLinksUpdated = 0;
+  let vehicleCustomerLinksSkipped = 0;
 
   for (const link of links) {
     const from = entityById.get(link.from_entity_id);
@@ -415,7 +562,7 @@ export async function activateOnboardingCustomersVehicles(params: {
     const vehicleEntityId = from?.entity_type === "vehicle" ? from.id : to?.entity_type === "vehicle" ? to.id : null;
 
     if (!customerEntityId || !vehicleEntityId) {
-      customerVehicleLinksSkipped += 1;
+      vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: does not connect staged customer+vehicle entities.`);
       continue;
     }
@@ -423,24 +570,24 @@ export async function activateOnboardingCustomersVehicles(params: {
     const customerId = customerEntityToLiveId.get(customerEntityId);
     const vehicleId = vehicleEntityToLiveId.get(vehicleEntityId);
     if (!customerId || !vehicleId) {
-      customerVehicleLinksSkipped += 1;
+      vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: customer or vehicle was not materialized.`);
       continue;
     }
 
     const vehicle = vehiclePool.find((row) => row.id === vehicleId);
     if (!vehicle) {
-      customerVehicleLinksSkipped += 1;
+      vehicleCustomerLinksSkipped += 1;
       continue;
     }
 
     if (vehicle.customer_id === customerId) {
-      customerVehicleLinksSkipped += 1;
+      vehicleCustomerLinksSkipped += 1;
       continue;
     }
 
     if (vehicle.customer_id) {
-      customerVehicleLinksSkipped += 1;
+      vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: vehicle ${vehicleId} already belongs to another customer.`);
       continue;
     }
@@ -448,7 +595,7 @@ export async function activateOnboardingCustomersVehicles(params: {
     const { error } = await sb.from("vehicles").update({ customer_id: customerId }).eq("shop_id", params.shopId).eq("id", vehicleId);
     if (error) throw new Error(error.message);
     vehicle.customer_id = customerId;
-    customerVehicleLinksCreated += 1;
+    vehicleCustomerLinksCreated += 1;
   }
 
   const [{ count: customersAfter, error: customersAfterError }, { count: vehiclesAfter, error: vehiclesAfterError }] = await Promise.all([
@@ -459,23 +606,30 @@ export async function activateOnboardingCustomersVehicles(params: {
   if (customersAfterError) throw new Error(customersAfterError.message);
   if (vehiclesAfterError) throw new Error(vehiclesAfterError.message);
 
+  const customersSkipped = customersSkippedDuplicateStaged + customersSkippedAmbiguous;
+
   return {
     ok: true,
     stagedCustomersFound: customerEntities.length,
+    customerActivationCandidates: customerCandidates.length,
     stagedVehiclesFound: vehicleEntities.length,
     stagedCustomerVehicleLinksFound: links.length,
     customersInserted,
     customersUpdated,
+    customersMatchedExisting,
+    customersSkippedDuplicateStaged,
+    customersSkippedAmbiguous,
+    customersRecoveredFromUniqueConflict,
     customersSkipped,
     vehiclesInserted,
     vehiclesUpdated,
     vehiclesSkipped,
-    customerVehicleLinksCreated,
-    customerVehicleLinksUpdated,
-    customerVehicleLinksSkipped,
-    customersBefore: customerPool.length - customersInserted,
+    vehicleCustomerLinksCreated,
+    vehicleCustomerLinksUpdated,
+    vehicleCustomerLinksSkipped,
+    customersBefore,
     customersAfter: Number(customersAfter ?? customerPool.length),
-    vehiclesBefore: vehiclePool.length - vehiclesInserted,
+    vehiclesBefore,
     vehiclesAfter: Number(vehiclesAfter ?? vehiclePool.length),
     warnings,
   };
