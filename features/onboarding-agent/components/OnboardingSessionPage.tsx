@@ -18,6 +18,8 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activatingVendors, setActivatingVendors] = useState(false);
+  const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +93,38 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     }
   };
 
+
+
+  const activateVendors = async () => {
+    const confirmed = window.confirm(
+      "This writes staged vendor records into live supplier records for this shop. It does not activate customers, vehicles, parts, invoices, or work orders.",
+    );
+    if (!confirmed) return;
+
+    setActivatingVendors(true);
+    setError(null);
+    setNotice(null);
+    setVendorActivationSummary(null);
+
+    try {
+      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-vendors`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json?.error || "Failed to activate staged vendors.");
+      } else {
+        const result = json?.result ?? {};
+        setVendorActivationSummary(
+          `Vendor activation complete. Inserted: ${Number(result.inserted ?? 0)}. Updated: ${Number(result.updated ?? 0)}. Skipped: ${Number(result.skipped ?? 0)}.`,
+        );
+      }
+      await load();
+    } catch {
+      setError("Failed to activate staged vendors.");
+    } finally {
+      setActivatingVendors(false);
+    }
+  };
+
   const plan = async () => {
     setPlanning(true);
     setError(null);
@@ -112,6 +146,8 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const session = payload?.session;
   const files = payload?.files ?? [];
   const hasFiles = files.length > 0;
+  const vendorReadyCount = Number(payload?.entityStatusCounts?.vendor?.ready ?? 0);
+
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
     if (session.analyzed_at) return true;
@@ -162,6 +198,15 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           >
             {planning ? "Preparing…" : "Prepare activation plan"}
           </button>
+          {vendorReadyCount > 0 ? (
+            <button
+              onClick={activateVendors}
+              disabled={!hasAnalysis || activatingVendors || analyzing || deleting || planning}
+              className="rounded border border-emerald-400/40 px-3 py-2 text-sm text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {activatingVendors ? "Activating vendors…" : "Activate vendors to live suppliers"}
+            </button>
+          ) : null}
           <button
             onClick={deleteSession}
             disabled={deleting || analyzing || planning}
@@ -174,7 +219,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         {!hasFiles ? <p className="mt-2 text-xs text-slate-400">Upload at least one file before analysis.</p> : null}
         {hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analysis already exists; use Rerun analysis to safely clear and rebuild staged artifacts.</p> : null}
         {!hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analyze staged files before preparing an activation plan.</p> : null}
+        {vendorReadyCount > 0 ? (
+          <p className="mt-1 text-xs text-amber-200/90">
+            This writes staged vendor records into live supplier records for this shop. It does not activate customers, vehicles, parts, invoices, or work orders.
+          </p>
+        ) : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
+        {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
       </div>
 
