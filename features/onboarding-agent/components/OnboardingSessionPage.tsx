@@ -130,6 +130,37 @@ export function groupReviewItemsByDomain(reviewItems: Array<{ domain?: string | 
   }, {});
 }
 
+function asNumber(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatActivationPhaseSummary(input: {
+  phaseLabel: string;
+  stagedProcessed: number;
+  created: number;
+  matched: number;
+  skipped: number;
+  reviewItemsPersisted: number;
+  reviewItemsReused: number;
+  openReviewForDomain: number;
+  warning?: string;
+}) {
+  const reviewSuffix = input.reviewItemsReused > 0 ? `, reused ${input.reviewItemsReused}` : "";
+  return `${input.phaseLabel} activation: Processed: ${input.stagedProcessed.toLocaleString()} staged rows. Created: ${input.created.toLocaleString()} live records. Matched existing: ${input.matched.toLocaleString()} live records. Skipped/unresolved: ${input.skipped.toLocaleString()}. Review items persisted: ${input.reviewItemsPersisted.toLocaleString()}${reviewSuffix}. Review exceptions now open for ${input.phaseLabel.toLowerCase()}: ${input.openReviewForDomain.toLocaleString()}.${input.warning ?? ""}`;
+}
+
+export function partsVendorGuidance(input: { canShowPartsActivation: boolean; vendorsActivated: boolean; vendorPartLinkCount: number }): string | null {
+  if (!input.canShowPartsActivation) return null;
+  if (!input.vendorsActivated) {
+    return "Parts can still be activated, but vendor links may require review until suppliers are activated/matched.";
+  }
+  if (input.vendorPartLinkCount <= 0) {
+    return "No vendor-part relationships were found in staged links. Parts were matched/created without supplier linkage.";
+  }
+  return null;
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -263,8 +294,21 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         setError(json?.error || "Failed to activate staged vendors.");
       } else {
         const warnings = Array.isArray(json?.warnings) ? json.warnings.length : 0;
+        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
+        const reviewItemsReused = asNumber(json?.reviewItemsReused);
+        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.vendors);
         setVendorActivationSummary(
-          `Vendor activation complete. Staged vendors: ${Number(json?.stagedVendors ?? 0)}. Created: ${Number(json?.created ?? 0)}. Matched existing: ${Number(json?.matchedExisting ?? 0)}. Updated null-only: ${Number(json?.updatedNullOnly ?? 0)}. Skipped: ${Number(json?.skipped ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.${warnings > 0 ? ` Warnings: ${warnings}.` : ""}`,
+          formatActivationPhaseSummary({
+            phaseLabel: "Vendors",
+            stagedProcessed: asNumber(json?.stagedVendors),
+            created: asNumber(json?.created),
+            matched: asNumber(json?.matchedExisting) + asNumber(json?.updatedNullOnly),
+            skipped: asNumber(json?.skipped),
+            reviewItemsPersisted,
+            reviewItemsReused,
+            openReviewForDomain,
+            warning: warnings > 0 ? ` Warnings: ${warnings}.` : "",
+          }),
         );
       }
       await load();
@@ -287,11 +331,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json?.ok) {
         setError(activationErrorMessage(json?.error, "Failed to activate staged parts."));
       } else {
-        const stagedProcessed = Number(json?.stagedParts ?? 0);
-        const created = Number(json?.partsCreated ?? 0);
-        const matched = Number(json?.existingPartsMatched ?? 0);
-        const reviewItemsCreated = Number(json?.reviewItemsCreated ?? json?.needsReview ?? 0);
-        const skipped = Number(json?.skipped ?? 0);
+        const stagedProcessed = asNumber(json?.stagedParts);
+        const created = asNumber(json?.partsCreated);
+        const matched = asNumber(json?.existingPartsMatched) + asNumber(json?.partsNullOnlyUpdated);
+        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
+        const reviewItemsReused = asNumber(json?.reviewItemsReused);
+        const skipped = asNumber(json?.skipped);
+        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.parts);
         const expectedReady = partReadyCount;
         const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
         const reconciliationTotal = created + matched + skipped;
@@ -299,9 +345,18 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         const warning = processedLessThanExpected || reconciliationUnclear
           ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
           : "";
-        const completionLabel = processedLessThanExpected ? "Parts activation finished with warnings." : "Parts activation complete.";
         setPartsActivationSummary(
-          `${completionLabel} Staged rows processed: ${stagedProcessed}. Created live records: ${created}. Matched existing live records: ${matched}. Review items created: ${reviewItemsCreated}. Skipped/unresolved: ${skipped}.${warning}`,
+          formatActivationPhaseSummary({
+            phaseLabel: "Parts",
+            stagedProcessed,
+            created,
+            matched,
+            skipped,
+            reviewItemsPersisted,
+            reviewItemsReused,
+            openReviewForDomain,
+            warning,
+          }),
         );
       }
       await load();
@@ -324,11 +379,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       if (!res.ok || !json?.ok) {
         setError(activationErrorMessage(json?.error, "Failed to activate historical work orders."));
       } else {
-        const stagedProcessed = Number(json?.stagedHistoryRows ?? 0);
-        const created = Number(json?.historicalWorkOrdersCreated ?? 0);
-        const matched = Number(json?.existingMatched ?? 0);
-        const reviewItemsCreated = Number(json?.reviewItemsCreated ?? json?.needsReview ?? 0);
-        const skipped = Number(json?.skipped ?? 0);
+        const stagedProcessed = asNumber(json?.stagedHistoryRows);
+        const created = asNumber(json?.historicalWorkOrdersCreated);
+        const matched = asNumber(json?.existingMatched);
+        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
+        const reviewItemsReused = asNumber(json?.reviewItemsReused);
+        const skipped = asNumber(json?.skipped);
+        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.history);
         const expectedReady = historyReadyCount;
         const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
         const reconciliationTotal = created + matched + skipped;
@@ -336,9 +393,18 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         const warning = processedLessThanExpected || reconciliationUnclear
           ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
           : "";
-        const completionLabel = processedLessThanExpected ? "History activation finished with warnings." : "History activation complete.";
         setHistoryActivationSummary(
-          `${completionLabel} Staged rows processed: ${stagedProcessed}. Created live records: ${created}. Matched existing live records: ${matched}. Review items created: ${reviewItemsCreated}. Skipped/unresolved: ${skipped}.${warning}`,
+          formatActivationPhaseSummary({
+            phaseLabel: "History",
+            stagedProcessed,
+            created,
+            matched,
+            skipped,
+            reviewItemsPersisted,
+            reviewItemsReused,
+            openReviewForDomain,
+            warning,
+          }),
         );
       }
       await load();
@@ -408,6 +474,10 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const canShowPartsActivation = !loadingSession && !sessionLoadError && partReadyCount > 0;
   const canShowHistoryActivation = !loadingSession && !sessionLoadError && historyReadyCount > 0;
   const canShowCustomerVehicleActivation = !loadingSession && !sessionLoadError && hasCustomerVehicleReady;
+  const byDomainCounts = useMemo(() => groupReviewItemsByDomain(Array.isArray(payload?.reviewItems) ? payload.reviewItems : []), [payload?.reviewItems]);
+  const vendorPartLinkCount = asNumber(payload?.linkCounts?.vendor_part);
+  const vendorsActivated = Boolean(vendorActivationSummary);
+  const anyActivationStarted = Boolean(vendorActivationSummary || partsActivationSummary || historyActivationSummary || customerVehicleActivationResult);
   const groupedCustomerVehicleWarnings = useMemo(() => {
     const warnings: string[] = Array.isArray(customerVehicleActivationResult?.warnings)
       ? customerVehicleActivationResult.warnings
@@ -511,7 +581,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         </p>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
           <span className="rounded-full border border-cyan-400/50 px-2 py-1 text-cyan-200">Staged-only</span>
-          <span className="rounded-full border border-emerald-400/40 px-2 py-1 text-emerald-200">No live records created</span>
+          <span className="rounded-full border border-emerald-400/40 px-2 py-1 text-emerald-200">{anyActivationStarted ? "Activation started" : "No live records created yet"}</span>
         </div>
         <p className="mt-2 text-xs text-cyan-100/80">
           Historical work orders remain historical (not active jobs). Historical invoices remain imported historical billing records.
@@ -604,7 +674,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           </p>
         ) : null}
         {canShowPartsActivation ? <p className="mt-1 text-xs text-indigo-100/90">Safe to rerun. Existing imported part records will be matched, not duplicated.</p> : null}
+        {partsVendorGuidance({ canShowPartsActivation, vendorsActivated, vendorPartLinkCount }) ? (
+          <p className="mt-1 text-xs text-amber-100/90">{partsVendorGuidance({ canShowPartsActivation, vendorsActivated, vendorPartLinkCount })}</p>
+        ) : null}
         {canShowHistoryActivation ? <p className="mt-1 text-xs text-fuchsia-100/90">Historical work orders are imported as closed/historical records and will not appear in active technician queues.</p> : null}
+        <div className="mt-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
+          Recommended order: 1) Activate vendors to live suppliers 2) Activate customers + vehicles 3) Activate parts inventory 4) Activate historical work orders.
+        </div>
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
         {partsActivationSummary ? <p className="mt-2 text-xs text-indigo-200">{partsActivationSummary}</p> : null}
@@ -794,11 +870,23 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       {!sessionLoadError ? (
         <>
           <OnboardingProgressCard summary={session?.summary ?? null} />
-          <OnboardingAgentInsightsPanel report={session?.summary?.agentReport ?? null} plan={session?.summary?.agentPlan ?? null} summary={session?.summary ?? null} fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness} />
+          <OnboardingAgentInsightsPanel
+            report={session?.summary?.agentReport ?? null}
+            plan={session?.summary?.agentPlan ?? null}
+            summary={session?.summary ?? null}
+            fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness}
+            activationState={{
+              started: anyActivationStarted,
+              customersVehicles: customerVehicleActivationResult ? "activated" : "not_run",
+              vendors: vendorActivationSummary ? "activated" : "not_run",
+              parts: partsActivationSummary ? "activated" : "not_run",
+              history: historyActivationSummary ? "activated" : "not_run",
+            }}
+          />
           <OnboardingFilesPanel files={files} />
           <OnboardingEntitiesPanel entityCounts={payload?.entityCounts ?? {}} entityStatusCounts={payload?.entityStatusCounts ?? {}} linkCounts={payload?.linkCounts ?? {}} agentPlan={session?.summary?.agentPlan ?? null} />
           <OnboardingReviewPanel reviewCounts={payload?.reviewCounts ?? {}} reviewItems={payload?.reviewItems ?? []} />
-          <OnboardingActivationPlanPanel latestPlan={payload?.latestPlan ?? null} fallbackSummary={payload?.activationPlanSummary ?? session?.summary?.activationPlanSummary ?? null} agentPlan={session?.summary?.agentPlan ?? null} />
+          <OnboardingActivationPlanPanel latestPlan={payload?.latestPlan ?? null} fallbackSummary={payload?.activationPlanSummary ?? session?.summary?.activationPlanSummary ?? null} agentPlan={session?.summary?.agentPlan ?? null} activationStarted={anyActivationStarted} />
         </>
       ) : null}
     </div>

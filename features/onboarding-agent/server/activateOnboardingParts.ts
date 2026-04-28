@@ -35,7 +35,11 @@ export type PartsActivationResult = {
   vendorLinksCreated: number;
   skipped: number;
   needsReview: number;
+  reviewItemsAttempted: number;
+  reviewItemsPersisted: number;
+  reviewItemsReused: number;
   reviewItemsCreated: number;
+  reviewItemsOpenForDomain: number;
   warnings: string[];
 };
 
@@ -322,15 +326,27 @@ export async function activateOnboardingParts(params: {
     }
   }
 
+  let reviewItemsPersisted = 0;
+  let reviewItemsReused = 0;
   if (reviewItems.length > 0) {
-    await upsertOnboardingReviewItems({
+    const writeResult = await upsertOnboardingReviewItems({
       supabase: params.supabase,
       phase: "parts",
       shopId: params.shopId,
       sessionId: params.sessionId,
       reviewItems,
     });
+    reviewItemsPersisted = writeResult.persisted;
+    reviewItemsReused = writeResult.reused;
   }
+  const { count: reviewItemsOpenCount, error: reviewItemsOpenError } = await sb
+    .from("onboarding_review_items")
+    .select("id", { head: true, count: "exact" })
+    .eq("shop_id", params.shopId)
+    .eq("session_id", params.sessionId)
+    .eq("domain", "parts")
+    .eq("status", "pending");
+  if (reviewItemsOpenError) throw new Error(reviewItemsOpenError.message);
 
   return {
     ok: true,
@@ -343,7 +359,11 @@ export async function activateOnboardingParts(params: {
     vendorLinksCreated,
     skipped,
     needsReview,
-    reviewItemsCreated: reviewItems.length,
+    reviewItemsAttempted: reviewItems.length,
+    reviewItemsPersisted,
+    reviewItemsReused,
+    reviewItemsCreated: Math.max(0, reviewItemsPersisted - reviewItemsReused),
+    reviewItemsOpenForDomain: Number(reviewItemsOpenCount ?? 0),
     warnings,
   };
 }
