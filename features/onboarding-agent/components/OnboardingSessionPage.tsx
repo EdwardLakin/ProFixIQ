@@ -150,6 +150,12 @@ function formatActivationPhaseSummary(input: {
   return `${input.phaseLabel} activation: Processed: ${input.stagedProcessed.toLocaleString()} staged rows. Created: ${input.created.toLocaleString()} live records. Matched existing: ${input.matched.toLocaleString()} live records. Skipped/unresolved: ${input.skipped.toLocaleString()}. Review items persisted: ${input.reviewItemsPersisted.toLocaleString()}${reviewSuffix}. Review exceptions now open for ${input.phaseLabel.toLowerCase()}: ${input.openReviewForDomain.toLocaleString()}.${input.warning ?? ""}`;
 }
 
+export function historyActivationState(input: { stagedProcessed: number; created: number; matched: number; skipped: number }): "activated" | "blocked" | "not_run" {
+  if (input.created > 0 || input.matched > 0) return "activated";
+  if (input.stagedProcessed > 0 && input.skipped >= input.stagedProcessed) return "blocked";
+  return "not_run";
+}
+
 export function partsVendorGuidance(input: { canShowPartsActivation: boolean; vendorsActivated: boolean; vendorPartLinkCount: number }): string | null {
   if (!input.canShowPartsActivation) return null;
   if (!input.vendorsActivated) {
@@ -176,6 +182,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
   const [partsActivationSummary, setPartsActivationSummary] = useState<string | null>(null);
   const [historyActivationSummary, setHistoryActivationSummary] = useState<string | null>(null);
+  const [historyActivationOutcome, setHistoryActivationOutcome] = useState<"activated" | "blocked" | "not_run">("not_run");
   const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
   const [resolvingReviewItemId, setResolvingReviewItemId] = useState<string | null>(null);
   const [selectedCustomerByReviewItemId, setSelectedCustomerByReviewItemId] = useState<Record<string, string>>({});
@@ -386,12 +393,20 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         const reviewItemsReused = asNumber(json?.reviewItemsReused);
         const skipped = asNumber(json?.skipped);
         const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.history);
+        const skippedMissingCustomer = asNumber(json?.skippedMissingCustomer);
+        const skippedMissingVehicle = asNumber(json?.skippedMissingVehicle);
         const expectedReady = historyReadyCount;
         const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
         const reconciliationTotal = created + matched + skipped;
         const reconciliationUnclear = stagedProcessed > 0 && reconciliationTotal > 0 && reconciliationTotal !== stagedProcessed;
         const warning = processedLessThanExpected || reconciliationUnclear
           ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
+          : "";
+        const mappingBlocked = stagedProcessed > 0 && created === 0 && matched === 0 && skipped >= stagedProcessed;
+        const mappingReason = mappingBlocked
+          ? (skippedMissingCustomer > 0 || skippedMissingVehicle > 0
+            ? " Most rows were skipped because no live customer/vehicle mapping could be resolved."
+            : " History attempted: no historical work orders created.")
           : "";
         setHistoryActivationSummary(
           formatActivationPhaseSummary({
@@ -403,9 +418,10 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             reviewItemsPersisted,
             reviewItemsReused,
             openReviewForDomain,
-            warning,
+            warning: `${warning}${mappingReason}`,
           }),
         );
+        setHistoryActivationOutcome(historyActivationState({ stagedProcessed, created, matched, skipped }));
       }
       await load();
     } catch {
@@ -880,7 +896,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               customersVehicles: customerVehicleActivationResult ? "activated" : "not_run",
               vendors: vendorActivationSummary ? "activated" : "not_run",
               parts: partsActivationSummary ? "activated" : "not_run",
-              history: historyActivationSummary ? "activated" : "not_run",
+              history: historyActivationSummary ? historyActivationOutcome === "blocked" ? "not_run" : "activated" : "not_run",
             }}
           />
           <OnboardingFilesPanel files={files} />
