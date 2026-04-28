@@ -127,6 +127,28 @@ describe("activateOnboardingHistory", () => {
     expect(result.resolvedViaVehicleWorkOrderLink).toBe(1);
   });
 
+  it("resolves linked staged entities via grouped canonical staged identity when linked rows are sparse", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      { id: "h-1", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01" } },
+      { id: "c-stage-linked", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: null, display_name: "Acme", normalized: { name: "Acme", email: null } },
+      { id: "c-stage-canonical", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", display_name: "Acme", normalized: { sourceCustomerId: "CUST-1", name: "Acme", email: "acme@example.com" } },
+      { id: "v-stage-linked", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: null, normalized: { make: "Ford", model: "F150", year: 2021 } },
+      { id: "v-stage-canonical", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1", make: "Ford", model: "F150", year: 2021 } },
+    ] as any[];
+    sb.state.links = [
+      { id: "l-c-1", shop_id: "shop-1", session_id: "session-1", link_type: "customer_work_order", from_entity_id: "c-stage-linked", to_entity_id: "h-1" },
+      { id: "l-v-1", shop_id: "shop-1", session_id: "session-1", link_type: "vehicle_work_order", from_entity_id: "v-stage-linked", to_entity_id: "h-1" },
+    ] as any[];
+    sb.state.customers = [{ id: "c-1", shop_id: "shop-1", external_id: "CUST-1", email: "acme@example.com", name: "Acme", business_name: null }] as any[];
+    sb.state.vehicles = [{ id: "v-1", shop_id: "shop-1", external_id: "VEH-1", vin: "VIN1", license_plate: null, unit_number: null, year: 2021, make: "Ford", model: "F150" }] as any[];
+
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.historicalWorkOrdersCreated).toBe(1);
+    expect(result.skippedUnresolved).toBe(0);
+    expect(result.diagnostics.rowsWithBothLiveCustomerAndVehicle).toBe(1);
+  });
+
   it("resolves live vehicle from staged unit number mapping used by customer/vehicle activation", async () => {
     const sb = fakeSb();
     sb.state.entities = [
