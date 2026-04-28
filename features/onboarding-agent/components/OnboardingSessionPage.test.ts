@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, linkIssueReasonLabel, partsVendorGuidance, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
+import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, historyActivationState, linkIssueReasonLabel, partsVendorGuidance, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
 import { agentInsightsStateCopy } from "@/features/onboarding-agent/components/OnboardingAgentInsightsPanel";
 import { activationPreviewCopy } from "@/features/onboarding-agent/components/OnboardingActivationPlanPanel";
 import { groupReviewIssuesForDisplay } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
@@ -74,5 +74,14 @@ describe("OnboardingSessionPage warning label helpers", () => {
     ]);
     expect(grouped).toHaveLength(1);
     expect(grouped[0]?.count).toBe(2);
+  });
+
+  it("does not mark history as activated when all processed rows were skipped", () => {
+    expect(historyActivationState({ stagedProcessed: 6076, created: 0, matched: 0, skipped: 6076 })).toBe("blocked");
+  });
+
+  it("marks history as activated when rows are created or matched", () => {
+    expect(historyActivationState({ stagedProcessed: 6076, created: 12, matched: 0, skipped: 6064 })).toBe("activated");
+    expect(historyActivationState({ stagedProcessed: 6076, created: 0, matched: 12, skipped: 6064 })).toBe("activated");
   });
 });

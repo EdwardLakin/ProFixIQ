@@ -26,6 +26,12 @@ type HistoryActivationResult = {
   customerLinksResolved: number;
   vehicleLinksResolved: number;
   skipped: number;
+  skippedUnresolved: number;
+  skippedMissingCustomer: number;
+  skippedMissingVehicle: number;
+  skippedMissingIdentifier: number;
+  skippedInvalidDate: number;
+  skippedInvalidTotal: number;
   needsReview: number;
   reviewItemsAttempted: number;
   reviewItemsPersisted: number;
@@ -74,6 +80,70 @@ function parseDate(value: unknown): string | null {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+type ResolveLiveIdResult = { id: string | null; ambiguous: boolean };
+
+function normalizeEmail(value: unknown): string | null {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized || null;
+}
+
+function normalizeVin(value: unknown): string | null {
+  const normalized = normalizeText(value).toUpperCase().replace(/\s+/g, "");
+  return normalized || null;
+}
+
+function normalizePlate(value: unknown): string | null {
+  const normalized = normalizeText(value).toUpperCase().replace(/\s+/g, "");
+  return normalized || null;
+}
+
+function resolveStagedLinkEntityId(params: {
+  historyEntityId: string;
+  linkType: string;
+  targetEntityType: "customer" | "vehicle";
+  linkRows: Array<Pick<OnboardingEntityLinkRow, "from_entity_id" | "to_entity_id" | "link_type">>;
+  entityById: Map<string, Pick<OnboardingEntityRow, "id" | "entity_type">>;
+}): { id: string | null; ambiguous: boolean } {
+  const matches = params.linkRows.filter((row) => row.link_type === params.linkType && (row.from_entity_id === params.historyEntityId || row.to_entity_id === params.historyEntityId));
+  const candidateEntityIds = new Set<string>();
+  for (const row of matches) {
+    const candidateId = row.from_entity_id === params.historyEntityId ? row.to_entity_id : row.from_entity_id;
+    const candidate = params.entityById.get(candidateId);
+    if (candidate?.entity_type === params.targetEntityType) candidateEntityIds.add(candidateId);
+  }
+  if (candidateEntityIds.size === 1) return { id: [...candidateEntityIds][0] ?? null, ambiguous: false };
+  if (candidateEntityIds.size > 1) return { id: null, ambiguous: true };
+  return { id: null, ambiguous: false };
+}
+
+function resolveLiveCustomerIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null, customerRows: CustomerRow[]): ResolveLiveIdResult {
+  if (!stagedEntity) return { id: null, ambiguous: false };
+  const normalized = (stagedEntity.normalized ?? {}) as Record<string, unknown>;
+  const sourceCustomerId = normalizeText(stagedEntity.source_external_id ?? normalized.sourceCustomerId) || null;
+  const customerEmail = normalizeEmail(normalized.email);
+  const customerName = normalizeText(normalized.businessName ?? normalized.name ?? stagedEntity.display_name) || null;
+  const matches = customerRows.filter((row) =>
+    (sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(sourceCustomerId))
+    || (customerEmail && normalizeLookup(row.email) === normalizeLookup(customerEmail))
+    || (customerName && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(customerName)));
+  if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
+  return { id: null, ambiguous: matches.length > 1 };
+}
+
+function resolveLiveVehicleIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null, vehicleRows: VehicleRow[]): ResolveLiveIdResult {
+  if (!stagedEntity) return { id: null, ambiguous: false };
+  const normalized = (stagedEntity.normalized ?? {}) as Record<string, unknown>;
+  const sourceVehicleId = normalizeText(stagedEntity.source_external_id ?? normalized.sourceVehicleId) || null;
+  const vehicleVin = normalizeVin(normalized.vin);
+  const vehiclePlate = normalizePlate(normalized.plate);
+  const matches = vehicleRows.filter((row) =>
+    (sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(sourceVehicleId))
+    || (vehicleVin && normalizeVin(row.vin) === vehicleVin)
+    || (vehiclePlate && normalizePlate(row.license_plate) === vehiclePlate));
+  if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
+  return { id: null, ambiguous: matches.length > 1 };
 }
 
 function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
@@ -128,14 +198,24 @@ export async function activateOnboardingHistory(params: {
   const sb = params.supabase as any;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [historyRows, linkRows, customerRows, vehicleRows, workOrders] = await Promise.all([
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized">>((from, to) =>
+  const [historyRows, entityRows, linkRows, customerRows, vehicleRows, workOrders] = await Promise.all([
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, normalized")
+        .select("id, normalized, entity_type")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .eq("entity_type", "historical_work_order")
+        .eq("status", "ready")
+        .order("id", { ascending: true })
+        .range(from, to)),
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name">>((from, to) =>
+      sb
+        .from("onboarding_entities")
+        .select("id, normalized, entity_type, source_external_id, display_name")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .in("entity_type", ["customer", "vehicle"])
         .eq("status", "ready")
         .order("id", { ascending: true })
         .range(from, to)),
@@ -150,7 +230,7 @@ export async function activateOnboardingHistory(params: {
     fetchAllPaginatedRows<CustomerRow>((from, to) =>
       sb
         .from("customers")
-        .select("id, external_id, email, name, business_name")
+        .select("id, external_id, email, name, business_name, first_name, last_name")
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
@@ -181,67 +261,111 @@ export async function activateOnboardingHistory(params: {
   let customerLinksResolved = 0;
   let vehicleLinksResolved = 0;
   let skipped = 0;
+  let skippedUnresolved = 0;
+  let skippedMissingCustomer = 0;
+  let skippedMissingVehicle = 0;
+  let skippedMissingIdentifier = 0;
+  let skippedInvalidDate = 0;
+  let skippedInvalidTotal = 0;
   let needsReview = 0;
+  const entityById = new Map<string, Pick<OnboardingEntityRow, "id" | "entity_type">>([
+    ...historyRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
+    ...entityRows.map((row) => [row.id, { id: row.id, entity_type: row.entity_type }] as const),
+  ]);
+  const customerEntityById = new Map(entityRows.filter((row) => row.entity_type === "customer").map((row) => [row.id, row]));
+  const vehicleEntityById = new Map(entityRows.filter((row) => row.entity_type === "vehicle").map((row) => [row.id, row]));
 
   for (const entity of historyRows) {
     const history = toNormalizedHistory(entity);
     if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
       skipped += 1;
+      skippedMissingIdentifier += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_required_history_identifier", summary: "Historical row skipped: missing identifier.", severity: "high" }));
       continue;
     }
     if (!history.openedDate) {
       skipped += 1;
+      skippedInvalidDate += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_date", summary: "Historical row skipped: invalid opened date." }));
       continue;
     }
     if (history.total !== null && history.total < 0) {
+      skippedInvalidTotal += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_total", summary: "Historical row has invalid total.", details: { total: history.total } }));
       needsReview += 1;
     }
 
-    const link = linkRows.find((row) => row.link_type === "customer_vehicle" && (row.from_entity_id === entity.id || row.to_entity_id === entity.id));
-    if (!link) {
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "unresolved_customer_vehicle_link_for_history", summary: "Historical work order missing staged customer/vehicle link." }));
-      needsReview += 1;
+    const stagedCustomerLink = resolveStagedLinkEntityId({ historyEntityId: entity.id, linkType: "customer_work_order", targetEntityType: "customer", linkRows, entityById });
+    const stagedVehicleLink = resolveStagedLinkEntityId({ historyEntityId: entity.id, linkType: "vehicle_work_order", targetEntityType: "vehicle", linkRows, entityById });
+    const linkedStagedCustomer = stagedCustomerLink.id ? customerEntityById.get(stagedCustomerLink.id) ?? null : null;
+    const linkedStagedVehicle = stagedVehicleLink.id ? vehicleEntityById.get(stagedVehicleLink.id) ?? null : null;
+
+    const customerResolvedByLink = resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
+    const vehicleResolvedByLink = resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
+
+    let customerId = customerResolvedByLink.id;
+    let vehicleId = vehicleResolvedByLink.id;
+
+    if (!customerId) {
+      const fallbackCustomerMatches = customerRows.filter((row) =>
+        (history.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceCustomerId))
+        || (history.customerEmail && normalizeLookup(row.email) === normalizeLookup(history.customerEmail))
+        || (history.customerName && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(history.customerName)));
+      if (fallbackCustomerMatches.length === 1) customerId = fallbackCustomerMatches[0]!.id;
+      else if (fallbackCustomerMatches.length > 1 && !customerResolvedByLink.ambiguous) customerResolvedByLink.ambiguous = true;
+    }
+    if (!vehicleId) {
+      const fallbackVehicleMatches = vehicleRows.filter((row) =>
+        (history.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceVehicleId))
+        || (history.vehicleVin && normalizeVin(row.vin) === normalizeVin(history.vehicleVin))
+        || (history.vehiclePlate && normalizePlate(row.license_plate) === normalizePlate(history.vehiclePlate)));
+      if (fallbackVehicleMatches.length === 1) vehicleId = fallbackVehicleMatches[0]!.id;
+      else if (fallbackVehicleMatches.length > 1 && !vehicleResolvedByLink.ambiguous) vehicleResolvedByLink.ambiguous = true;
     }
 
-    const customerMatches = customerRows.filter((row) =>
-      (history.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceCustomerId))
-      || (history.customerEmail && normalizeLookup(row.email) === normalizeLookup(history.customerEmail))
-      || (history.customerName && normalizeLookup(row.business_name || row.name) === normalizeLookup(history.customerName)),
-    );
-    const vehicleMatches = vehicleRows.filter((row) =>
-      (history.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceVehicleId))
-      || (history.vehicleVin && normalizeLookup(row.vin) === normalizeLookup(history.vehicleVin))
-      || (history.vehiclePlate && normalizeLookup(row.license_plate) === normalizeLookup(history.vehiclePlate)),
-    );
+    if (customerId) customerLinksResolved += 1;
+    if (vehicleId) vehicleLinksResolved += 1;
 
-    let customerId: string | null = null;
-    let vehicleId: string | null = null;
-
-    if (customerMatches.length === 1) {
-      customerId = customerMatches[0]!.id;
-      customerLinksResolved += 1;
-    } else if (customerMatches.length > 1) {
-      needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "ambiguous_customer_match_for_history", summary: "Historical work order has ambiguous customer match." }));
-    } else {
-      needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_customer_for_history", summary: "Historical work order customer could not be matched." }));
-    }
-
-    if (vehicleMatches.length === 1) {
-      vehicleId = vehicleMatches[0]!.id;
-      vehicleLinksResolved += 1;
-    } else if (vehicleMatches.length > 1) {
-      needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "ambiguous_vehicle_match_for_history", summary: "Historical work order has ambiguous vehicle match." }));
-    } else {
-      needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_vehicle_for_history", summary: "Historical work order vehicle could not be matched." }));
+    if (!customerId || !vehicleId) {
+      skipped += 1;
+      skippedUnresolved += 1;
+      if (!customerId) {
+        skippedMissingCustomer += 1;
+        needsReview += 1;
+        reviewItems.push(reviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous ? "ambiguous_customer_match_for_history" : "missing_customer_for_history",
+          summary: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous
+            ? "Historical work order has ambiguous customer mapping."
+            : "Historical work order customer could not be matched.",
+          details: {
+            stagedCustomerEntityId: stagedCustomerLink.id,
+            hasCustomerWorkOrderLink: Boolean(stagedCustomerLink.id),
+          },
+        }));
+      }
+      if (!vehicleId) {
+        skippedMissingVehicle += 1;
+        needsReview += 1;
+        reviewItems.push(reviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous ? "ambiguous_vehicle_match_for_history" : "missing_vehicle_for_history",
+          summary: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous
+            ? "Historical work order has ambiguous vehicle mapping."
+            : "Historical work order vehicle could not be matched.",
+          details: {
+            stagedVehicleEntityId: stagedVehicleLink.id,
+            hasVehicleWorkOrderLink: Boolean(stagedVehicleLink.id),
+          },
+        }));
+      }
+      continue;
     }
 
     const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", entity.id]);
@@ -323,6 +447,9 @@ export async function activateOnboardingHistory(params: {
     .eq("domain", "history")
     .eq("status", "pending");
   if (reviewItemsOpenError) throw new Error(reviewItemsOpenError.message);
+  if (skippedUnresolved > 0) {
+    warnings.push("Most skipped history rows were unresolved because no live customer/vehicle mapping could be resolved from staged links.");
+  }
 
   return {
     ok: true,
@@ -333,6 +460,12 @@ export async function activateOnboardingHistory(params: {
     customerLinksResolved,
     vehicleLinksResolved,
     skipped,
+    skippedUnresolved,
+    skippedMissingCustomer,
+    skippedMissingVehicle,
+    skippedMissingIdentifier,
+    skippedInvalidDate,
+    skippedInvalidTotal,
     needsReview,
     reviewItemsAttempted: reviewItems.length,
     reviewItemsPersisted,
