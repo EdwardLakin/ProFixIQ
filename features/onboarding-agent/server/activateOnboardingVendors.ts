@@ -256,6 +256,12 @@ export async function activateOnboardingVendors(params: {
     if (error) throw new Error(error.message);
   }
 
+  const { count: finalSupplierCount, error: finalCountError } = await sb
+    .from("suppliers")
+    .select("id", { head: true, count: "exact" })
+    .eq("shop_id", params.shopId);
+  if (finalCountError) throw new Error(finalCountError.message);
+
   return {
     ok: true,
     inserted: computed.inserted,
@@ -263,7 +269,7 @@ export async function activateOnboardingVendors(params: {
     skipped: computed.skipped,
     warnings: computed.warnings,
     suppliersBefore,
-    suppliersAfter: suppliersBefore + computed.inserted,
+    suppliersAfter: Number(finalSupplierCount ?? (suppliersBefore + computed.inserted)),
     stagedVendorsFound,
     records: computed.records,
   };

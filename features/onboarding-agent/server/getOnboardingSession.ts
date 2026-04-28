@@ -17,7 +17,27 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     sessionId: params.sessionId,
   });
 
-  const [{ data: session }, { data: files }, entities, links, reviews, { data: latestPlan }, rowsParsedTotal, totalEntitiesCount, totalLinksCount, totalPendingReviewCount] = await Promise.all([
+  const latestPlanPromise = sb
+    .from("onboarding_activation_plans")
+    .select("id, status, summary, created_at")
+    .eq("shop_id", params.shopId)
+    .eq("session_id", params.sessionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+    .then(({ data, error }: { data: any; error: any }) => {
+      if (error) {
+        console.warn("[onboarding-agent][session:get] activation plan lookup skipped", {
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          message: error.message,
+        });
+        return null;
+      }
+      return data ?? null;
+    });
+
+  const [{ data: session }, { data: files }, entities, links, reviews, latestPlan, rowsParsedTotal, totalEntitiesCount, totalLinksCount, totalPendingReviewCount] = await Promise.all([
     sb.from("onboarding_sessions").select("*").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle(),
     sb.from("onboarding_files").select("*").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }),
     fetchPaginatedOnboardingRows<{ entity_type: string; status?: string | null }>({
@@ -47,7 +67,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       orderBy: "created_at",
       ascending: false,
     }),
-    sb.from("onboarding_activation_plans").select("id, status, summary, created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    latestPlanPromise,
     countOnboardingRawRows({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
     countOnboardingEntities({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),
     countOnboardingEntityLinks({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId }),

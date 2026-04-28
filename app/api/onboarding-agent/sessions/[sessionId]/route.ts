@@ -33,8 +33,22 @@ export async function GET(_: Request, context: RouteContext) {
 
     return NextResponse.json({ ok: true, ...payload });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load session";
+    console.error("[onboarding-agent][session:get] failed", {
+      shopId,
+      sessionId,
+      actorId,
+      message,
+      error,
+    });
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Failed to load session" },
+      {
+        ok: false,
+        error: {
+          code: "SESSION_LOAD_FAILED",
+          message,
+        },
+      },
       { status: 500 },
     );
   }
