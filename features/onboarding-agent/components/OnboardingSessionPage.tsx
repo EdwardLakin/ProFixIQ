@@ -12,6 +12,19 @@ import { OnboardingReviewPanel } from "@/features/onboarding-agent/components/On
 import { onboardingSessionActionPath } from "@/features/onboarding-agent/lib/routes";
 import { formatOnboardingSessionStatusLabel } from "@/features/onboarding-agent/lib/sessionStatus";
 
+
+function activationErrorMessage(errorPayload: any, fallback: string): string {
+  if (typeof errorPayload === "string") return errorPayload;
+  if (errorPayload?.code === "activation_review_item_write_failed") {
+    const phase = typeof errorPayload.phase === "string" ? errorPayload.phase : "unknown";
+    const reason = typeof errorPayload.reason === "string" ? errorPayload.reason : "Unknown reason";
+    const details = typeof errorPayload.details === "string" ? errorPayload.details : "n/a";
+    return `Activation review item write failed. Phase: ${phase}. Reason: ${reason}. Developer details: ${details}`;
+  }
+  if (typeof errorPayload?.message === "string") return errorPayload.message;
+  return fallback;
+}
+
 function warningCategory(warning: string): string {
   if (warning.includes("unique conflict recovery failed")) return "unique conflict recovery failed";
   if (warning.includes("does not connect staged customer+vehicle entities")) return "invalid customer_vehicle link";
@@ -272,7 +285,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-parts`, { method: "POST" });
       const json = await res.json();
       if (!res.ok || !json?.ok) {
-        setError(json?.error || "Failed to activate staged parts.");
+        setError(activationErrorMessage(json?.error, "Failed to activate staged parts."));
       } else {
         setPartsActivationSummary(
           `Parts activation complete. Staged: ${Number(json?.stagedParts ?? 0)}. Created: ${Number(json?.partsCreated ?? 0)}. Matched: ${Number(json?.existingPartsMatched ?? 0)}. Stock created: ${Number(json?.stockRecordsCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,
@@ -296,7 +309,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-history`, { method: "POST" });
       const json = await res.json();
       if (!res.ok || !json?.ok) {
-        setError(json?.error || "Failed to activate historical work orders.");
+        setError(activationErrorMessage(json?.error, "Failed to activate historical work orders."));
       } else {
         setHistoryActivationSummary(
           `History activation complete. Staged: ${Number(json?.stagedHistoryRows ?? 0)}. Created: ${Number(json?.historicalWorkOrdersCreated ?? 0)}. Matched: ${Number(json?.existingMatched ?? 0)}. Lines created: ${Number(json?.linesCreated ?? 0)}. Needs review: ${Number(json?.needsReview ?? 0)}.`,

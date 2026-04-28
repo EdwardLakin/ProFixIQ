@@ -23,6 +23,7 @@ function fakeSb() {
         payload: null as any,
         select() { return this; },
         eq() { return this; },
+        in() { return this; },
         order() { return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
         upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this.exec(); },
@@ -37,7 +38,17 @@ function fakeSb() {
           if (table === "work_orders" && this.op === "select") return { data: state.work_orders, error: null };
           if (table === "work_orders" && this.op === "insert") { const row = { ...this.payload, id: `wo-${state.work_orders.length + 1}` }; state.work_orders.push(row); return { data: [{ id: row.id }], error: null }; }
           if (table === "work_order_lines" && this.op === "insert") { state.lines.push(this.payload); return { data: [], error: null }; }
-          if (table === "onboarding_review_items") { state.reviewItems.push(...(Array.isArray(this.payload) ? this.payload : [this.payload])); return { data: [], error: null }; }
+          if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
+          if (table === "onboarding_review_items" && this.op === "insert") return { data: null, error: { message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+          if (table === "onboarding_review_items" && this.op === "upsert") {
+            const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
+            for (const row of rows) {
+              const idx = state.reviewItems.findIndex((item) => item.id === row.id);
+              if (idx >= 0) state.reviewItems[idx] = { ...state.reviewItems[idx], ...row };
+              else state.reviewItems.push(row);
+            }
+            return { data: [], error: null };
+          }
           return { data: [], error: null };
         },
       };
@@ -63,4 +74,15 @@ describe("activateOnboardingHistory", () => {
     expect(result.needsReview).toBeGreaterThan(0);
     expect(sb.state.reviewItems.some((i) => i.issue_type === "missing_required_history_identifier")).toBe(true);
   });
+
+  it("rerun is idempotent for missing_required_history_identifier", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [{ id: "h-dup", normalized: {} }] as any[];
+    await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    const before = sb.state.reviewItems.length;
+    await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(sb.state.reviewItems.length).toBe(before);
+    expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "missing_required_history_identifier")).toHaveLength(1);
+  });
+
 });

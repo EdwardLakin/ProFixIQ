@@ -50,12 +50,13 @@ function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
     from(table: string) {
       const query: any = {
         table,
-        filters: [] as Array<{ key: string; value: any }>,
+        filters: [] as Array<{ key: string; value: any; op?: "eq" | "in" }>,
         payload: null as any,
         op: "select",
         select() { return this; },
         order() { return this; },
-        eq(key: string, value: any) { this.filters.push({ key, value }); return this; },
+        eq(key: string, value: any) { this.filters.push({ key, value, op: "eq" }); return this; },
+        in(key: string, value: any[]) { this.filters.push({ key, value, op: "in" }); return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
         update(payload: any) { this.op = "update"; this.payload = payload; return this; },
         upsert(payload: any) { this.op = "upsert"; this.payload = payload; return this.exec(); },
@@ -69,12 +70,12 @@ function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
         async exec() {
           if (table === "onboarding_entities") {
             let rows = [...state.entities];
-            for (const f of this.filters) rows = rows.filter((row) => row[f.key] === f.value);
+            for (const f of this.filters) rows = rows.filter((row) => (f.op === "in" ? (f.value ?? []).includes(row[f.key]) : row[f.key] === f.value));
             return { data: rows, error: null };
           }
           if (table === "suppliers" && this.op === "select") {
             let rows = [...state.suppliers];
-            for (const f of this.filters) rows = rows.filter((row) => row[f.key] === f.value);
+            for (const f of this.filters) rows = rows.filter((row) => (f.op === "in" ? (f.value ?? []).includes(row[f.key]) : row[f.key] === f.value));
             return { data: rows, error: null };
           }
           if (table === "suppliers" && this.op === "insert") {
@@ -90,8 +91,15 @@ function fakeSb(params?: { entities?: Entity[]; suppliers?: Supplier[] }) {
           if (table === "suppliers" && this.filters.length === 1 && this.filters[0]?.key === "shop_id" && this.payload === null) {
             return { count: state.suppliers.length, error: null };
           }
-          if (table === "onboarding_review_items") {
-            state.reviewItems.push(...(Array.isArray(this.payload) ? this.payload : [this.payload]));
+          if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
+          if (table === "onboarding_review_items" && this.op === "insert") return { data: null, error: { message: "duplicate key value violates unique constraint \"onboarding_review_items_shop_session_issue_scope_uidx\"" } };
+          if (table === "onboarding_review_items" && this.op === "upsert") {
+            const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
+            for (const row of rows) {
+              const idx = state.reviewItems.findIndex((item) => item.id === row.id);
+              if (idx >= 0) state.reviewItems[idx] = { ...state.reviewItems[idx], ...row };
+              else state.reviewItems.push(row);
+            }
             return { data: [], error: null };
           }
           return { data: [], error: null };
@@ -134,4 +142,15 @@ describe("activateOnboardingVendors", () => {
     expect(result.updatedNullOnly).toBe(1);
     expect(sb.state.suppliers[0].phone).toBe("555-1234");
   });
+
+  it("rerun is idempotent for missing_vendor_name", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [entity({ id: "entity-missing", normalized: {} })];
+    await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    const before = sb.state.reviewItems.length;
+    await activateOnboardingVendors({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "user-1" });
+    expect(sb.state.reviewItems.length).toBe(before);
+    expect(sb.state.reviewItems.filter((i: any) => i.issue_type === "missing_vendor_name")).toHaveLength(1);
+  });
+
 });

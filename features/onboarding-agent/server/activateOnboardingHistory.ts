@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
 type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
@@ -274,8 +275,13 @@ export async function activateOnboardingHistory(params: {
   }
 
   if (reviewItems.length > 0) {
-    const { error } = await sb.from("onboarding_review_items").upsert(reviewItems, { onConflict: "id" });
-    if (error) throw new Error(error.message);
+    await upsertOnboardingReviewItems({
+      supabase: params.supabase,
+      phase: "history",
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      reviewItems,
+    });
   }
 
   return {

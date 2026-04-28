@@ -78,8 +78,15 @@ function fakeSb() {
             }
             return { data: [], error: null };
           }
-          if (table === "onboarding_review_items") {
-            state.reviewItems.push(...(Array.isArray(this.payload) ? this.payload : [this.payload]));
+          if (table === "onboarding_review_items" && this.op === "select") return { data: [...state.reviewItems], error: null };
+          if (table === "onboarding_review_items" && this.op === "insert") return { data: null, error: { message: 'duplicate key value violates unique constraint "onboarding_review_items_shop_session_issue_scope_uidx"' } };
+          if (table === "onboarding_review_items" && this.op === "upsert") {
+            const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
+            for (const row of rows) {
+              const idx = state.reviewItems.findIndex((item) => item.id === row.id);
+              if (idx >= 0) state.reviewItems[idx] = { ...state.reviewItems[idx], ...row };
+              else state.reviewItems.push(row);
+            }
             return { data: [], error: null };
           }
           return { data: [], error: null };
@@ -170,4 +177,24 @@ describe("activateOnboardingParts", () => {
     expect(sb.state.reviewItems.some((i) => i.issue_type === "invalid_quantity" && i.entity_id === "part-invalid")).toBe(true);
     expect(sb.state.stock_moves.some((m) => m.reference_id === "part-other-session" || m.reference_id === "part-other-shop")).toBe(false);
   });
+  it("rerun reuses existing pending review item without duplicates", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [{
+      id: "part-issue",
+      shop_id: "shop-1",
+      session_id: "session-1",
+      entity_type: "part",
+      status: "ready",
+      normalized: { description: "Bad Qty", quantityOnHandRaw: "-1" },
+      display_name: "Bad Qty",
+      source_external_id: null,
+    }];
+
+    await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    const before = sb.state.reviewItems.length;
+    await activateOnboardingParts({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(sb.state.reviewItems.length).toBe(before);
+    expect(sb.state.reviewItems.filter((i) => i.issue_type === "invalid_quantity")).toHaveLength(1);
+  });
+
 });
