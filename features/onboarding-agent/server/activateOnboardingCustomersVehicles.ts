@@ -34,12 +34,54 @@ export type CustomerVehicleActivationResult = {
   vehicleCustomerLinksCreated: number;
   vehicleCustomerLinksUpdated: number;
   vehicleCustomerLinksAlreadyCorrect: number;
+  vehicleCustomerLinksAttempted: number;
+  vehicleCustomerLinksMaterialized: number;
   vehicleCustomerLinksSkipped: number;
+  vehicleCustomerLinksUnresolved: number;
   customersBefore: number;
   customersAfter: number;
   vehiclesBefore: number;
   vehiclesAfter: number;
+  liveVehicleCustomerLinksAfter: number;
+  customerVehicleLinkIssues: CustomerVehicleLinkIssue[];
   warnings: string[];
+};
+
+export type CustomerVehicleLinkIssue = {
+  linkId: string;
+  fromEntityId: string | null;
+  toEntityId: string | null;
+  reason:
+    | "missing_staged_customer"
+    | "missing_staged_vehicle"
+    | "customer_not_materialized"
+    | "vehicle_not_materialized"
+    | "vehicle_linked_to_different_customer"
+    | "ambiguous_customer_match"
+    | "ambiguous_vehicle_match"
+    | "unsupported_link_direction"
+    | "unknown";
+  stagedCustomerSummary?: {
+    entityId: string;
+    sourceExternalId?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    name?: string | null;
+    businessName?: string | null;
+  };
+  stagedVehicleSummary?: {
+    entityId: string;
+    sourceExternalId?: string | null;
+    vin?: string | null;
+    licensePlate?: string | null;
+    unitNumber?: string | null;
+    year?: string | number | null;
+    make?: string | null;
+    model?: string | null;
+  };
+  liveCustomerId?: string | null;
+  liveVehicleId?: string | null;
+  currentVehicleCustomerId?: string | null;
 };
 
 type NormalizedCustomer = {
@@ -68,6 +110,12 @@ type StagedCustomerCandidate = {
   entityIds: string[];
   normalized: NormalizedCustomer;
 };
+
+type LinkSideIssueReason =
+  | "customer_not_materialized"
+  | "ambiguous_customer_match"
+  | "vehicle_not_materialized"
+  | "ambiguous_vehicle_match";
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
@@ -134,6 +182,32 @@ function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "normalized" | "s
     year: normalizeNumber(normalized.year),
     make: textOrNull(normalized.make),
     model: textOrNull(normalized.model),
+  };
+}
+
+function toStagedCustomerSummary(entity: Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">) {
+  const normalized = toNormalizedCustomer(entity);
+  return {
+    entityId: entity.id,
+    sourceExternalId: normalized.externalId,
+    email: normalized.email,
+    phone: normalized.phone,
+    name: normalized.name ?? null,
+    businessName: normalized.businessName,
+  };
+}
+
+function toStagedVehicleSummary(entity: Pick<OnboardingEntityRow, "id" | "normalized" | "source_external_id">) {
+  const normalized = toNormalizedVehicle(entity);
+  return {
+    entityId: entity.id,
+    sourceExternalId: normalized.externalId,
+    vin: normalized.vin,
+    licensePlate: normalized.plate,
+    unitNumber: normalized.unitNumber,
+    year: normalized.year,
+    make: normalized.make,
+    model: normalized.model,
   };
 }
 
@@ -392,7 +466,10 @@ export async function activateOnboardingCustomersVehicles(params: {
 
   const warnings: string[] = [];
   const customerEntityToLiveId = new Map<string, string>();
+  const customerEntitySkippedReason = new Map<string, LinkSideIssueReason>();
   const vehicleEntityToLiveId = new Map<string, string>();
+  const vehicleEntitySkippedReason = new Map<string, LinkSideIssueReason>();
+  const customerVehicleLinkIssues: CustomerVehicleLinkIssue[] = [];
 
   const { candidates: customerCandidates, customersSkippedDuplicateStaged } = buildCustomerCandidates(customerEntities);
   const indexes = buildLiveCustomerIndexes(customerPool);
@@ -408,6 +485,10 @@ export async function activateOnboardingCustomersVehicles(params: {
 
     if (match.ambiguous) {
       customersSkippedAmbiguous += 1;
+      customerEntitySkippedReason.set(candidate.canonicalEntityId, "ambiguous_customer_match");
+      for (const duplicateEntityId of candidate.entityIds) {
+        customerEntitySkippedReason.set(duplicateEntityId, "ambiguous_customer_match");
+      }
       warnings.push(`Customer candidate ${candidate.canonicalEntityId} skipped: ambiguous ${match.strategy} live match.`);
       continue;
     }
@@ -469,6 +550,9 @@ export async function activateOnboardingCustomersVehicles(params: {
 
       warnings.push(`Customer candidate ${candidate.canonicalEntityId} skipped: unique conflict recovery failed for email ${normalized.email}.`);
       customersSkippedAmbiguous += 1;
+      for (const duplicateEntityId of candidate.entityIds) {
+        customerEntitySkippedReason.set(duplicateEntityId, "ambiguous_customer_match");
+      }
       continue;
     }
 
@@ -514,6 +598,7 @@ export async function activateOnboardingCustomersVehicles(params: {
 
     if (matches.length > 1) {
       vehiclesSkipped += 1;
+      vehicleEntitySkippedReason.set(entity.id, "ambiguous_vehicle_match");
       warnings.push(`Vehicle entity ${entity.id} skipped: ambiguous ${strategy} match (${matches.length} rows).`);
       continue;
     }
@@ -568,17 +653,29 @@ export async function activateOnboardingCustomersVehicles(params: {
   let vehicleCustomerLinksUpdated = 0;
   let vehicleCustomerLinksAlreadyCorrect = 0;
   let vehicleCustomerLinksSkipped = 0;
+  let vehicleCustomerLinksAttempted = 0;
   const vehicleById = new Map(vehiclePool.map((row) => [row.id, row]));
 
   for (const link of links) {
+    vehicleCustomerLinksAttempted += 1;
     const from = entityById.get(link.from_entity_id);
     const to = entityById.get(link.to_entity_id);
-    const customerEntityId = from?.entity_type === "customer" ? from.id : to?.entity_type === "customer" ? to.id : null;
-    const vehicleEntityId = from?.entity_type === "vehicle" ? from.id : to?.entity_type === "vehicle" ? to.id : null;
+    const customerEntity = from?.entity_type === "customer" ? from : to?.entity_type === "customer" ? to : null;
+    const vehicleEntity = from?.entity_type === "vehicle" ? from : to?.entity_type === "vehicle" ? to : null;
+    const customerEntityId = customerEntity?.id ?? null;
+    const vehicleEntityId = vehicleEntity?.id ?? null;
 
     if (!customerEntityId || !vehicleEntityId) {
       vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: does not connect staged customer+vehicle entities.`);
+      customerVehicleLinkIssues.push({
+        linkId: link.id,
+        fromEntityId: link.from_entity_id,
+        toEntityId: link.to_entity_id,
+        reason: !customerEntityId && !vehicleEntityId ? "unsupported_link_direction" : !customerEntityId ? "missing_staged_customer" : "missing_staged_vehicle",
+        stagedCustomerSummary: customerEntity ? toStagedCustomerSummary(customerEntity) : undefined,
+        stagedVehicleSummary: vehicleEntity ? toStagedVehicleSummary(vehicleEntity) : undefined,
+      });
       continue;
     }
 
@@ -587,12 +684,35 @@ export async function activateOnboardingCustomersVehicles(params: {
     if (!customerId || !vehicleId) {
       vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: customer or vehicle was not materialized.`);
+      const reason = !customerId
+        ? (customerEntitySkippedReason.get(customerEntityId) ?? "customer_not_materialized")
+        : (vehicleEntitySkippedReason.get(vehicleEntityId) ?? "vehicle_not_materialized");
+      customerVehicleLinkIssues.push({
+        linkId: link.id,
+        fromEntityId: link.from_entity_id,
+        toEntityId: link.to_entity_id,
+        reason,
+        stagedCustomerSummary: customerEntity ? toStagedCustomerSummary(customerEntity) : undefined,
+        stagedVehicleSummary: vehicleEntity ? toStagedVehicleSummary(vehicleEntity) : undefined,
+        liveCustomerId: customerId ?? null,
+        liveVehicleId: vehicleId ?? null,
+      });
       continue;
     }
 
     const vehicle = vehicleById.get(vehicleId);
     if (!vehicle) {
       vehicleCustomerLinksSkipped += 1;
+      customerVehicleLinkIssues.push({
+        linkId: link.id,
+        fromEntityId: link.from_entity_id,
+        toEntityId: link.to_entity_id,
+        reason: "unknown",
+        stagedCustomerSummary: customerEntity ? toStagedCustomerSummary(customerEntity) : undefined,
+        stagedVehicleSummary: vehicleEntity ? toStagedVehicleSummary(vehicleEntity) : undefined,
+        liveCustomerId: customerId,
+        liveVehicleId: vehicleId,
+      });
       continue;
     }
 
@@ -604,6 +724,17 @@ export async function activateOnboardingCustomersVehicles(params: {
     if (vehicle.customer_id) {
       vehicleCustomerLinksSkipped += 1;
       warnings.push(`Link ${link.id} skipped: vehicle ${vehicleId} already belongs to another customer.`);
+      customerVehicleLinkIssues.push({
+        linkId: link.id,
+        fromEntityId: link.from_entity_id,
+        toEntityId: link.to_entity_id,
+        reason: "vehicle_linked_to_different_customer",
+        stagedCustomerSummary: customerEntity ? toStagedCustomerSummary(customerEntity) : undefined,
+        stagedVehicleSummary: vehicleEntity ? toStagedVehicleSummary(vehicleEntity) : undefined,
+        liveCustomerId: customerId,
+        liveVehicleId: vehicleId,
+        currentVehicleCustomerId: vehicle.customer_id,
+      });
       continue;
     }
 
@@ -617,15 +748,19 @@ export async function activateOnboardingCustomersVehicles(params: {
     vehicle.customer_id = customerId;
   }
 
-  const [{ count: customersAfter, error: customersAfterError }, { count: vehiclesAfter, error: vehiclesAfterError }] = await Promise.all([
+  const [{ count: customersAfter, error: customersAfterError }, { count: vehiclesAfter, error: vehiclesAfterError }, { count: liveVehicleCustomerLinksAfter, error: liveVehicleCustomerLinksAfterError }] = await Promise.all([
     sb.from("customers").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId),
     sb.from("vehicles").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId),
+    sb.from("vehicles").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId).not("customer_id", "is", null),
   ]);
 
   if (customersAfterError) throw new Error(customersAfterError.message);
   if (vehiclesAfterError) throw new Error(vehiclesAfterError.message);
+  if (liveVehicleCustomerLinksAfterError) throw new Error(liveVehicleCustomerLinksAfterError.message);
 
   const customersSkipped = customersSkippedDuplicateStaged + customersSkippedAmbiguous;
+  const vehicleCustomerLinksMaterialized = vehicleCustomerLinksCreated + vehicleCustomerLinksUpdated + vehicleCustomerLinksAlreadyCorrect;
+  const vehicleCustomerLinksUnresolved = links.length - vehicleCustomerLinksMaterialized;
 
   return {
     ok: true,
@@ -647,11 +782,16 @@ export async function activateOnboardingCustomersVehicles(params: {
     vehicleCustomerLinksCreated,
     vehicleCustomerLinksUpdated,
     vehicleCustomerLinksAlreadyCorrect,
+    vehicleCustomerLinksAttempted,
+    vehicleCustomerLinksMaterialized,
     vehicleCustomerLinksSkipped,
+    vehicleCustomerLinksUnresolved,
     customersBefore,
     customersAfter: Number(customersAfter ?? customerPool.length),
     vehiclesBefore,
     vehiclesAfter: Number(vehiclesAfter ?? vehiclePool.length),
+    liveVehicleCustomerLinksAfter: Number(liveVehicleCustomerLinksAfter ?? vehiclePool.filter((row) => row.customer_id !== null).length),
+    customerVehicleLinkIssues,
     warnings,
   };
 }

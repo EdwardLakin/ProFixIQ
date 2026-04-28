@@ -83,6 +83,7 @@ function createFakeSupabase(seed?: {
         op: "select",
         payload: null as any,
         filters: [] as Array<{ k: string; v: any; op: "eq" | "in" }>,
+        notFilters: [] as Array<{ k: string; op: string; v: any }>,
         selectOpts: null as any,
         rangeFrom: null as number | null,
         rangeTo: null as number | null,
@@ -95,6 +96,7 @@ function createFakeSupabase(seed?: {
         range(from: number, to: number) { this.rangeFrom = from; this.rangeTo = to; return this; },
         eq(k: string, v: any) { this.filters.push({ k, v, op: "eq" }); return this; },
         in(k: string, v: any[]) { this.filters.push({ k, v, op: "in" }); return this; },
+        not(k: string, op: string, v: any) { this.notFilters.push({ k, op, v }); return this; },
         update(payload: any) { this.op = "update"; this.payload = payload; return this; },
         insert(payload: any) { this.op = "insert"; this.payload = payload; return this; },
         single() { return this.execSingle(); },
@@ -112,6 +114,11 @@ function createFakeSupabase(seed?: {
                 if (filter.op === "eq") return row[filter.k] === filter.v;
                 return Array.isArray(filter.v) && filter.v.includes(row[filter.k]);
               });
+            }
+            for (const filter of this.notFilters) {
+              if (filter.op === "is" && filter.v === null) {
+                filtered = filtered.filter((row) => row[filter.k] !== null && row[filter.k] !== undefined);
+              }
             }
             if (typeof this.rangeFrom === "number" && typeof this.rangeTo === "number") {
               return filtered.slice(this.rangeFrom, this.rangeTo + 1);
@@ -311,7 +318,7 @@ describe("activateOnboardingCustomersVehicles", () => {
 
     expect(result.customersInserted).toBe(1);
     expect(result.customersSkippedDuplicateStaged).toBe(1);
-    expect(result.vehicleCustomerLinksCreated + result.vehicleCustomerLinksSkipped).toBeGreaterThan(0);
+    expect(result.vehicleCustomerLinksMaterialized + result.vehicleCustomerLinksSkipped).toBeGreaterThan(0);
     expect(sb.state.vehicles[0]?.customer_id).toBe(sb.state.customers[0]?.id);
   });
 
@@ -381,6 +388,10 @@ describe("activateOnboardingCustomersVehicles", () => {
     expect(result.stagedVehiclesFound).not.toBe(595);
     expect(result.stagedCustomerVehicleLinksFound).not.toBe(1000);
     expect(result.vehiclesAfter).toBe(2600);
+    expect(result.vehicleCustomerLinksAttempted).toBe(2600);
+    expect(result.vehicleCustomerLinksMaterialized).toBe(2600);
+    expect(result.vehicleCustomerLinksUnresolved).toBe(0);
+    expect(result.liveVehicleCustomerLinksAfter).toBe(2600);
     expect(sb.state.vehicles[1500]?.customer_id).toBeTruthy();
   });
 
@@ -428,5 +439,70 @@ describe("activateOnboardingCustomersVehicles", () => {
     expect(first.vehicleCustomerLinksCreated).toBeGreaterThan(1000);
     expect(second.vehicleCustomerLinksCreated).toBe(0);
     expect(second.vehicleCustomerLinksAlreadyCorrect).toBe(2600);
+  });
+
+  it("materializes reversed customer_vehicle link direction", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1"), stagedVehicle("v1")],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "v1", to_entity_id: "c1", link_type: "customer_vehicle" }],
+    });
+
+    const result = await runActivation(sb);
+
+    expect(result.vehicleCustomerLinksMaterialized).toBe(1);
+    expect(result.vehicleCustomerLinksUnresolved).toBe(0);
+    expect(sb.state.vehicles[0]?.customer_id).toBe(sb.state.customers[0]?.id);
+  });
+
+  it("returns structured unresolved issue for ambiguous customer link", async () => {
+    sb = createFakeSupabase({
+      entities: [
+        stagedCustomer("c1", { normalized: { sourceCustomerId: null, email: null, phone: "5551112222", businessName: null, name: "Ambig" }, source_external_id: null }),
+        stagedVehicle("v1", { normalized: { sourceVehicleId: "V-1", vin: "VIN-1", plate: "P-1", year: "2020", make: "Ford", model: "F150" } }),
+      ],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
+      customers: [
+        { id: "customer-1", shop_id: "shop-1", external_id: null, email: "a1@example.com", phone: "5551112222", phone_number: "5551112222", name: "One", first_name: null, last_name: null, business_name: null },
+        { id: "customer-2", shop_id: "shop-1", external_id: null, email: "a2@example.com", phone: "5551112222", phone_number: "5551112222", name: "Two", first_name: null, last_name: null, business_name: null },
+      ],
+    });
+
+    const result = await runActivation(sb);
+
+    expect(result.vehicleCustomerLinksUnresolved).toBe(1);
+    expect(result.customerVehicleLinkIssues).toHaveLength(1);
+    expect(result.customerVehicleLinkIssues[0]?.reason).toBe("ambiguous_customer_match");
+    expect(result.customerVehicleLinkIssues[0]?.stagedCustomerSummary?.name).toBe("Ambig");
+  });
+
+  it("marks already-linked vehicles as alreadyCorrect and counts live links after from db", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1"), stagedVehicle("v1")],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
+      customers: [{ id: "customer-live", shop_id: "shop-1", external_id: "C-c1", email: null, phone: null, phone_number: null, name: "Existing", first_name: null, last_name: null, business_name: null }],
+      vehicles: [{ id: "vehicle-live", shop_id: "shop-1", external_id: "V-v1", vin: "VINv1", license_plate: "ABCv1", unit_number: null, year: 2020, make: "Ford", model: "F150", customer_id: "customer-live" }],
+    });
+
+    const result = await runActivation(sb);
+    expect(result.vehicleCustomerLinksAlreadyCorrect).toBe(1);
+    expect(result.liveVehicleCustomerLinksAfter).toBe(1);
+  });
+
+  it("returns unresolved issue when vehicle is linked to different customer", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1"), stagedVehicle("v1")],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
+      customers: [
+        { id: "customer-live", shop_id: "shop-1", external_id: "C-c1", email: "a@example.com", phone: null, phone_number: null, name: "Target", first_name: null, last_name: null, business_name: null },
+        { id: "customer-other", shop_id: "shop-1", external_id: "other", email: "other@example.com", phone: null, phone_number: null, name: "Other", first_name: null, last_name: null, business_name: null },
+      ],
+      vehicles: [{ id: "vehicle-live", shop_id: "shop-1", external_id: "V-v1", vin: "VINv1", license_plate: "ABCv1", unit_number: null, year: 2020, make: "Ford", model: "F150", customer_id: "customer-other" }],
+    });
+
+    const result = await runActivation(sb);
+
+    expect(result.vehicleCustomerLinksSkipped).toBe(1);
+    expect(result.vehicleCustomerLinksUnresolved).toBe(1);
+    expect(result.customerVehicleLinkIssues[0]?.reason).toBe("vehicle_linked_to_different_customer");
   });
 });
