@@ -67,6 +67,18 @@ export async function GET(req: NextRequest) {
   const effectiveUserId = a.isAdmin ? userId : a.me.id;
   const admin = createAdminSupabase();
 
+  const { data: parentWorkOrder, error: parentErr } = await admin
+    .from("work_orders")
+    .select("id, type")
+    .eq("shop_id", shopId)
+    .eq("id", workOrderId)
+    .maybeSingle<{ id: string; type: string | null }>();
+
+  if (parentErr) return NextResponse.json({ error: parentErr.message }, { status: 500 });
+  if (!parentWorkOrder || parentWorkOrder.type === "historical_import") {
+    return NextResponse.json({ lines: [] });
+  }
+
   // 1) Lines directly assigned via assigned_tech_id
   const { data: directLines, error: dErr } = await admin
     .from("work_order_lines")

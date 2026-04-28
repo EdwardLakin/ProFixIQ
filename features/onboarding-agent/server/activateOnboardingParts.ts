@@ -130,7 +130,7 @@ export async function activateOnboardingParts(params: {
   const sb = params.supabase as any;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [{ data: staged }, { data: parts }, { data: suppliers }, { data: stockLocations }, { data: partStockRows }] = await Promise.all([
+  const [{ data: staged }, { data: parts }, { data: suppliers }, { data: stockLocations }] = await Promise.all([
     sb
       .from("onboarding_entities")
       .select("id, normalized, display_name, source_external_id")
@@ -142,14 +142,24 @@ export async function activateOnboardingParts(params: {
     sb.from("parts").select("*").eq("shop_id", params.shopId),
     sb.from("suppliers").select("id, name").eq("shop_id", params.shopId),
     sb.from("stock_locations").select("*").eq("shop_id", params.shopId).order("created_at", { ascending: true }).limit(1),
-    sb.from("part_stock").select("id, part_id, location_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty"),
   ]);
 
   const stagedRows = (staged ?? []) as Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>;
   const partRows = [...((parts ?? []) as PartRow[])];
   const supplierRows = suppliers ?? [];
   const defaultLocation = (stockLocations?.[0] ?? null) as StockLocationRow | null;
-  const stockRows = [...((partStockRows ?? []) as PartStockRow[])];
+  const shopPartIds = partRows.map((row) => row.id).filter((id): id is string => Boolean(id));
+
+  let stockRows: PartStockRow[] = [];
+  if (defaultLocation && shopPartIds.length > 0) {
+    const { data: partStockRows, error: partStockError } = await sb
+      .from("part_stock")
+      .select("id, part_id, location_id, qty_on_hand, qty_reserved, reorder_point, reorder_qty")
+      .eq("location_id", defaultLocation.id)
+      .in("part_id", shopPartIds);
+    if (partStockError) throw new Error(partStockError.message);
+    stockRows = [...((partStockRows ?? []) as PartStockRow[])];
+  }
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
   const warnings: string[] = [];

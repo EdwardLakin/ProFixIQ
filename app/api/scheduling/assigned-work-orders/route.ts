@@ -74,6 +74,7 @@ export async function GET(req: NextRequest) {
     .select("id, custom_id, status, vehicle_id")
     .eq("shop_id", shopId)
     .eq("assigned_tech", effectiveUserId)
+    .neq("type", "historical_import")
     .order("created_at", { ascending: false })
     .limit(200);
 

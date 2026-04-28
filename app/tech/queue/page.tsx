@@ -14,7 +14,7 @@ type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderSlim = Pick<
   DB["public"]["Tables"]["work_orders"]["Row"],
-  "id" | "custom_id"
+  "id" | "custom_id" | "type"
 >;
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestMini = Pick<PartRequest, "job_id" | "work_order_id">;
@@ -246,7 +246,29 @@ export default function TechQueuePage() {
       }
 
       const raw = (techLines ?? []) as Line[];
-      const activeQueue = raw.filter((l) => !isCompletedLike(l.status));
+      const woIds = Array.from(
+        new Set(
+          raw
+            .map((l) => l.work_order_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+
+      let woTypeMap: Record<string, string | null> = {};
+      if (woIds.length > 0) {
+        const { data: wos } = await supabase
+          .from("work_orders")
+          .select("id, custom_id, type")
+          .in("id", woIds);
+
+        woTypeMap = {};
+        (wos ?? []).forEach((wo) => {
+          const row = wo as WorkOrderSlim;
+          woTypeMap[row.id] = row.type ?? null;
+        });
+      }
+
+      const activeQueue = raw.filter((l) => !isCompletedLike(l.status) && woTypeMap[l.work_order_id ?? ""] !== "historical_import");
       setLines(activeQueue);
 
       // 4) determine active punched-in line (strong highlight)
@@ -262,19 +284,12 @@ export default function TechQueuePage() {
       setActiveWorkOrderId(punched?.work_order_id ?? null);
 
       // 5) fetch work orders for display labels
-      const woIds = Array.from(
-        new Set(
-          activeQueue
-            .map((l) => l.work_order_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      );
-
       if (woIds.length > 0) {
         const { data: wos } = await supabase
           .from("work_orders")
-          .select("id, custom_id")
-          .in("id", woIds);
+          .select("id, custom_id, type")
+          .in("id", woIds)
+          .neq("type", "historical_import");
 
         const map: Record<string, { id: string; custom_id: string | null }> =
           {};

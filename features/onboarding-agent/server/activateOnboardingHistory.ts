@@ -12,6 +12,9 @@ type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
 type WorkOrderLineInsert = Database["public"]["Tables"]["work_order_lines"]["Insert"];
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 
+const HISTORICAL_WORK_ORDER_STATUS: WorkOrderInsert["status"] = "completed";
+const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> = "historical_import";
+
 type HistoryActivationResult = {
   ok: true;
   stagedHistoryRows: number;
@@ -230,8 +233,8 @@ export async function activateOnboardingHistory(params: {
       customer_name: history.customerName,
       vehicle_vin: history.vehicleVin,
       vehicle_license_plate: history.vehiclePlate,
-      status: "completed",
-      type: "historical_import",
+      status: HISTORICAL_WORK_ORDER_STATUS,
+      type: HISTORICAL_WORK_ORDER_TYPE,
       source_intake_id: params.sessionId,
       source_row_id: sourceRowKey,
       invoice_total: history.total,
