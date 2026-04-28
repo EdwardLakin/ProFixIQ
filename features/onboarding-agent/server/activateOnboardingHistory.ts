@@ -48,6 +48,37 @@ type HistoryActivationResult = {
   unresolvedDueToMissingVehicleLink: number;
   unresolvedDueToMissingLiveCustomer: number;
   unresolvedDueToMissingLiveVehicle: number;
+  diagnostics: {
+    stagedHistoryRows: number;
+    customerWorkOrderLinks: number;
+    vehicleWorkOrderLinks: number;
+    historyRowsWithCustomerLink: number;
+    historyRowsWithVehicleLink: number;
+    linkedCustomerStagedEntitiesFound: number;
+    linkedVehicleStagedEntitiesFound: number;
+    linkedCustomerLiveResolved: number;
+    linkedVehicleLiveResolved: number;
+    rowsWithBothLiveCustomerAndVehicle: number;
+    rowsMissingLiveCustomer: number;
+    rowsMissingLiveVehicle: number;
+    rowsMissingBoth: number;
+    rowsInvalidDate: number;
+    rowsMissingRequiredIdentifier: number;
+    workOrdersCreated: number;
+    workOrdersMatchedExisting: number;
+    unresolvedSamples: Array<{
+      historyEntityId: string;
+      sourceRowId: string | null;
+      sourceExternalId: string | null;
+      hasCustomerLink: boolean;
+      hasVehicleLink: boolean;
+      linkedCustomerEntityId: string | null;
+      linkedVehicleEntityId: string | null;
+      customerResolutionAttemptedKeys: string[];
+      vehicleResolutionAttemptedKeys: string[];
+      finalSkipReason: string;
+    }>;
+  };
   warnings: string[];
 };
 
@@ -66,6 +97,21 @@ type NormalizedHistory = {
   correction: string | null;
   laborTotal: number | null;
   total: number | null;
+};
+type NormalizedCustomer = {
+  sourceCustomerId: string | null;
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+};
+type NormalizedVehicle = {
+  sourceVehicleId: string | null;
+  vin: string | null;
+  plate: string | null;
+  unitNumber: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
 };
 
 function normalizeText(value: unknown): string {
@@ -98,6 +144,11 @@ function normalizeEmail(value: unknown): string | null {
   const normalized = normalizeText(value).toLowerCase();
   return normalized || null;
 }
+function normalizePhone(value: unknown): string | null {
+  const digits = normalizeText(value).replace(/\D+/g, "");
+  if (!digits) return null;
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
 
 function normalizeVin(value: unknown): string | null {
   const normalized = normalizeText(value).toUpperCase().replace(/\s+/g, "");
@@ -107,6 +158,38 @@ function normalizeVin(value: unknown): string | null {
 function normalizePlate(value: unknown): string | null {
   const normalized = normalizeText(value).toUpperCase().replace(/\s+/g, "");
   return normalized || null;
+}
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const cleaned = normalizeText(value).replace(/[^0-9]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null): NormalizedCustomer {
+  const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
+  return {
+    sourceCustomerId: normalizeText(entity?.source_external_id ?? normalized.sourceCustomerId) || null,
+    email: normalizeEmail(normalized.email),
+    phone: normalizePhone(normalized.phone),
+    name: normalizeText(normalized.businessName ?? normalized.name ?? entity?.display_name) || null,
+  };
+}
+function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null): NormalizedVehicle {
+  const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
+  return {
+    sourceVehicleId: normalizeText(entity?.source_external_id ?? normalized.sourceVehicleId) || null,
+    vin: normalizeVin(normalized.vin),
+    plate: normalizePlate(normalized.plate ?? normalized.licensePlate ?? normalized.vehiclePlate),
+    unitNumber: normalizeLookup(normalized.unitNumber ?? normalized.vehicleUnitNumber),
+    year: normalizeNumber(normalized.year),
+    make: normalizeLookup(normalized.make),
+    model: normalizeLookup(normalized.model),
+  };
+}
+function vehicleDescriptorKey(input: { year: number | null; make: string | null; model: string | null }): string | null {
+  if (!input.year || !input.make || !input.model) return null;
+  return `${input.year}|${input.make}|${input.model}`;
 }
 
 function pushMapValue(map: Map<string, Set<string>>, key: string | null, value: string) {
@@ -126,28 +209,26 @@ function mapSingleValue(map: Map<string, Set<string>>, key: string | null): { id
 
 function resolveLiveCustomerIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null, customerRows: CustomerRow[]): ResolveLiveIdResult {
   if (!stagedEntity) return { id: null, ambiguous: false };
-  const normalized = (stagedEntity.normalized ?? {}) as Record<string, unknown>;
-  const sourceCustomerId = normalizeText(stagedEntity.source_external_id ?? normalized.sourceCustomerId) || null;
-  const customerEmail = normalizeEmail(normalized.email);
-  const customerName = normalizeText(normalized.businessName ?? normalized.name ?? stagedEntity.display_name) || null;
+  const normalized = toNormalizedCustomer(stagedEntity);
   const matches = customerRows.filter((row) =>
-    (sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(sourceCustomerId))
-    || (customerEmail && normalizeLookup(row.email) === normalizeLookup(customerEmail))
-    || (customerName && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(customerName)));
+    (normalized.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(normalized.sourceCustomerId))
+    || (normalized.email && normalizeLookup(row.email) === normalizeLookup(normalized.email))
+    || (normalized.phone && normalizePhone(row.phone ?? row.phone_number) === normalized.phone)
+    || (normalized.name && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(normalized.name)));
   if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
   return { id: null, ambiguous: matches.length > 1 };
 }
 
 function resolveLiveVehicleIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null, vehicleRows: VehicleRow[]): ResolveLiveIdResult {
   if (!stagedEntity) return { id: null, ambiguous: false };
-  const normalized = (stagedEntity.normalized ?? {}) as Record<string, unknown>;
-  const sourceVehicleId = normalizeText(stagedEntity.source_external_id ?? normalized.sourceVehicleId) || null;
-  const vehicleVin = normalizeVin(normalized.vin);
-  const vehiclePlate = normalizePlate(normalized.plate);
+  const normalized = toNormalizedVehicle(stagedEntity);
+  const descriptor = vehicleDescriptorKey(normalized);
   const matches = vehicleRows.filter((row) =>
-    (sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(sourceVehicleId))
-    || (vehicleVin && normalizeVin(row.vin) === vehicleVin)
-    || (vehiclePlate && normalizePlate(row.license_plate) === vehiclePlate));
+    (normalized.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(normalized.sourceVehicleId))
+    || (normalized.vin && normalizeVin(row.vin) === normalized.vin)
+    || (normalized.plate && normalizePlate(row.license_plate) === normalized.plate)
+    || (normalized.unitNumber && normalizeLookup(row.unit_number) === normalized.unitNumber)
+    || (descriptor && vehicleDescriptorKey({ year: row.year, make: normalizeLookup(row.make), model: normalizeLookup(row.model) }) === descriptor));
   if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
   return { id: null, ambiguous: matches.length > 1 };
 }
@@ -231,10 +312,10 @@ export async function activateOnboardingHistory(params: {
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
   const [historyRows, entityRows, linkRows, customerRows, vehicleRows, workOrders] = await Promise.all([
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id">>((from, to) =>
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id" | "source_external_id">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, normalized, entity_type, source_row_id")
+        .select("id, normalized, entity_type, source_row_id, source_external_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .eq("entity_type", "historical_work_order")
@@ -261,14 +342,14 @@ export async function activateOnboardingHistory(params: {
     fetchAllPaginatedRows<CustomerRow>((from, to) =>
       sb
         .from("customers")
-        .select("id, external_id, email, name, business_name, first_name, last_name")
+        .select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name")
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
     fetchAllPaginatedRows<VehicleRow>((from, to) =>
       sb
         .from("vehicles")
-        .select("id, external_id, vin, license_plate")
+        .select("id, external_id, vin, license_plate, unit_number, year, make, model")
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
@@ -305,6 +386,17 @@ export async function activateOnboardingHistory(params: {
   let unresolvedDueToMissingVehicleLink = 0;
   let unresolvedDueToMissingLiveCustomer = 0;
   let unresolvedDueToMissingLiveVehicle = 0;
+  let historyRowsWithCustomerLink = 0;
+  let historyRowsWithVehicleLink = 0;
+  let linkedCustomerStagedEntitiesFound = 0;
+  let linkedVehicleStagedEntitiesFound = 0;
+  let linkedCustomerLiveResolved = 0;
+  let linkedVehicleLiveResolved = 0;
+  let rowsWithBothLiveCustomerAndVehicle = 0;
+  let rowsMissingLiveCustomer = 0;
+  let rowsMissingLiveVehicle = 0;
+  let rowsMissingBoth = 0;
+  const unresolvedSamples: HistoryActivationResult["diagnostics"]["unresolvedSamples"] = [];
 
   const customerWorkOrderLinks = linkRows.filter((row) => row.link_type === "customer_work_order").length;
   const vehicleWorkOrderLinks = linkRows.filter((row) => row.link_type === "vehicle_work_order").length;
@@ -370,6 +462,20 @@ export async function activateOnboardingHistory(params: {
       skippedMissingIdentifier += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_required_history_identifier", summary: "Historical row skipped: missing identifier.", severity: "high" }));
+      if (unresolvedSamples.length < 5) {
+        unresolvedSamples.push({
+          historyEntityId: entity.id,
+          sourceRowId: normalizeText(entity.source_row_id) || null,
+          sourceExternalId: normalizeText(entity.source_external_id) || null,
+          hasCustomerLink: false,
+          hasVehicleLink: false,
+          linkedCustomerEntityId: null,
+          linkedVehicleEntityId: null,
+          customerResolutionAttemptedKeys: [],
+          vehicleResolutionAttemptedKeys: [],
+          finalSkipReason: "missing_required_history_identifier",
+        });
+      }
       continue;
     }
     if (!history.openedDate) {
@@ -377,6 +483,20 @@ export async function activateOnboardingHistory(params: {
       skippedInvalidDate += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_date", summary: "Historical row skipped: invalid opened date." }));
+      if (unresolvedSamples.length < 5) {
+        unresolvedSamples.push({
+          historyEntityId: entity.id,
+          sourceRowId: normalizeText(entity.source_row_id) || null,
+          sourceExternalId: normalizeText(entity.source_external_id) || null,
+          hasCustomerLink: false,
+          hasVehicleLink: false,
+          linkedCustomerEntityId: null,
+          linkedVehicleEntityId: null,
+          customerResolutionAttemptedKeys: [],
+          vehicleResolutionAttemptedKeys: [],
+          finalSkipReason: "invalid_history_date",
+        });
+      }
       continue;
     }
     if (history.total !== null && history.total < 0) {
@@ -387,8 +507,12 @@ export async function activateOnboardingHistory(params: {
 
     const stagedCustomerLink = mapSingleValue(historyToCustomerEntityIds, entity.id);
     const stagedVehicleLink = mapSingleValue(historyToVehicleEntityIds, entity.id);
+    if (stagedCustomerLink.id) historyRowsWithCustomerLink += 1;
+    if (stagedVehicleLink.id) historyRowsWithVehicleLink += 1;
     const linkedStagedCustomer = stagedCustomerLink.id ? customerEntityById.get(stagedCustomerLink.id) ?? null : null;
     const linkedStagedVehicle = stagedVehicleLink.id ? vehicleEntityById.get(stagedVehicleLink.id) ?? null : null;
+    if (linkedStagedCustomer) linkedCustomerStagedEntitiesFound += 1;
+    if (linkedStagedVehicle) linkedVehicleStagedEntitiesFound += 1;
 
     const customerResolvedByLink = resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
     const vehicleResolvedByLink = resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
@@ -428,10 +552,16 @@ export async function activateOnboardingHistory(params: {
 
     if (customerId) customerLinksResolved += 1;
     if (vehicleId) vehicleLinksResolved += 1;
+    if (customerId) linkedCustomerLiveResolved += 1;
+    if (vehicleId) linkedVehicleLiveResolved += 1;
 
     if (!customerId || !vehicleId) {
+      if (!customerId) rowsMissingLiveCustomer += 1;
+      if (!vehicleId) rowsMissingLiveVehicle += 1;
+      if (!customerId && !vehicleId) rowsMissingBoth += 1;
       skipped += 1;
       skippedUnresolved += 1;
+      let finalSkipReason = "unresolved_live_customer";
       if (!customerId) {
         skippedMissingCustomer += 1;
         if (!stagedCustomerLink.id) unresolvedDueToMissingCustomerLink += 1;
@@ -446,6 +576,8 @@ export async function activateOnboardingHistory(params: {
               ? "Historical work orders are missing customer_work_order links."
               : "Historical work orders have customer links but no resolvable live customer mapping.",
         });
+        if (!stagedCustomerLink.id) finalSkipReason = "missing_customer_link";
+        else finalSkipReason = "unresolved_live_customer";
       }
       if (!vehicleId) {
         skippedMissingVehicle += 1;
@@ -461,9 +593,34 @@ export async function activateOnboardingHistory(params: {
               ? "Historical work orders are missing vehicle_work_order links."
               : "Historical work orders have vehicle links but no resolvable live vehicle mapping.",
         });
+        if (!stagedVehicleLink.id) finalSkipReason = "missing_vehicle_link";
+        else if (customerId) finalSkipReason = "unresolved_live_vehicle";
+      }
+      if (unresolvedSamples.length < 5) {
+        unresolvedSamples.push({
+          historyEntityId: entity.id,
+          sourceRowId: normalizeText(entity.source_row_id) || null,
+          sourceExternalId: normalizeText(entity.source_external_id) || null,
+          hasCustomerLink: Boolean(stagedCustomerLink.id),
+          hasVehicleLink: Boolean(stagedVehicleLink.id),
+          linkedCustomerEntityId: stagedCustomerLink.id ?? null,
+          linkedVehicleEntityId: stagedVehicleLink.id ?? null,
+          customerResolutionAttemptedKeys: [
+            `sourceCustomerId:${history.sourceCustomerId ?? ""}`,
+            `customerEmail:${history.customerEmail ?? ""}`,
+            `customerName:${history.customerName ?? ""}`,
+          ].filter((value) => value.split(":")[1]),
+          vehicleResolutionAttemptedKeys: [
+            `sourceVehicleId:${history.sourceVehicleId ?? ""}`,
+            `vehicleVin:${history.vehicleVin ?? ""}`,
+            `vehiclePlate:${history.vehiclePlate ?? ""}`,
+          ].filter((value) => value.split(":")[1]),
+          finalSkipReason,
+        });
       }
       continue;
     }
+    rowsWithBothLiveCustomerAndVehicle += 1;
 
     const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", entity.id]);
     const existing = woRows.find((row) => row.source_row_id === sourceRowKey || (history.sourceWorkOrderId && normalizeLookup(row.custom_id) === normalizeLookup(history.sourceWorkOrderId)));
@@ -599,6 +756,26 @@ export async function activateOnboardingHistory(params: {
     unresolvedDueToMissingVehicleLink,
     unresolvedDueToMissingLiveCustomer,
     unresolvedDueToMissingLiveVehicle,
+    diagnostics: {
+      stagedHistoryRows: historyRows.length,
+      customerWorkOrderLinks,
+      vehicleWorkOrderLinks,
+      historyRowsWithCustomerLink,
+      historyRowsWithVehicleLink,
+      linkedCustomerStagedEntitiesFound,
+      linkedVehicleStagedEntitiesFound,
+      linkedCustomerLiveResolved,
+      linkedVehicleLiveResolved,
+      rowsWithBothLiveCustomerAndVehicle,
+      rowsMissingLiveCustomer,
+      rowsMissingLiveVehicle,
+      rowsMissingBoth,
+      rowsInvalidDate: skippedInvalidDate,
+      rowsMissingRequiredIdentifier: skippedMissingIdentifier,
+      workOrdersCreated: historicalWorkOrdersCreated,
+      workOrdersMatchedExisting: existingMatched,
+      unresolvedSamples,
+    },
     warnings,
   };
 }
