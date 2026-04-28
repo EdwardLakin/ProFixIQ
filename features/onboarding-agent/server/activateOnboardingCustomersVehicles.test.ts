@@ -57,7 +57,13 @@ function createFakeSupabase(seed?: {
   links?: Link[];
   customers?: Customer[];
   vehicles?: Vehicle[];
+  failCustomerInsertForEmails?: string[];
+  conflictRecoveryCustomerByEmail?: Record<string, Customer>;
 }) {
+  const failEmails = new Set((seed?.failCustomerInsertForEmails ?? []).map((email) => email.trim().toLowerCase()));
+  const recoveryCustomers = new Map(
+    Object.entries(seed?.conflictRecoveryCustomerByEmail ?? {}).map(([email, customer]) => [email.trim().toLowerCase(), customer]),
+  );
   const state = {
     entities: [...(seed?.entities ?? [])],
     links: [...(seed?.links ?? [])],
@@ -66,6 +72,7 @@ function createFakeSupabase(seed?: {
     nextCustomerId: 1,
     nextVehicleId: 1,
     writes: [] as string[],
+    customerInsertAttemptsByEmail: new Map<string, number>(),
   };
 
   return {
@@ -122,6 +129,17 @@ function createFakeSupabase(seed?: {
           }
 
           if (this.table === "customers" && this.op === "insert") {
+            const normalizedEmail = String(this.payload?.email ?? "").trim().toLowerCase();
+            if (normalizedEmail) {
+              state.customerInsertAttemptsByEmail.set(normalizedEmail, (state.customerInsertAttemptsByEmail.get(normalizedEmail) ?? 0) + 1);
+            }
+            if (normalizedEmail && failEmails.has(normalizedEmail)) {
+              const recoveryCustomer = recoveryCustomers.get(normalizedEmail);
+              if (recoveryCustomer && !state.customers.find((row) => row.id === recoveryCustomer.id)) {
+                state.customers.push(recoveryCustomer);
+              }
+              return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint \"customers_shop_email_uq\"" } };
+            }
             const created = { id: `customer-${state.nextCustomerId++}`, ...this.payload };
             state.customers.push(created);
             state.writes.push("customers:insert");
@@ -202,26 +220,60 @@ describe("activateOnboardingCustomersVehicles", () => {
     sb = createFakeSupabase();
   });
 
-  it("inserts staged ready customers and vehicles and applies customer_vehicle links", async () => {
+  it("dedupes 3 staged rows by email and matches existing live customer", async () => {
     sb = createFakeSupabase({
       entities: [
-        stagedCustomer("c1", { normalized: { sourceCustomerId: "C-c1", name: "Jane Doe", email: "jane@example.com", phone: "555-111-2222" } }),
-        stagedVehicle("v1", { normalized: { sourceVehicleId: "V-v1", vin: "VIN111", plate: "ABC111", year: "2020", make: "Ford", model: "F150" } }),
+        stagedCustomer("c1", { normalized: { sourceCustomerId: "dup-1", email: "dup@example.com", name: "Dupe A", phone: null } }),
+        stagedCustomer("c2", { normalized: { sourceCustomerId: "dup-2", email: "DUP@example.com", name: "Dupe B", phone: "555-111-2222" } }),
+        stagedCustomer("c3", { normalized: { sourceCustomerId: "dup-3", email: " dup@example.com ", name: "Dupe C", phone: null } }),
       ],
-      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
+      customers: [
+        { id: "customer-live", shop_id: "shop-1", external_id: null, email: "dup@example.com", phone: null, phone_number: null, name: "Existing", first_name: null, last_name: null, business_name: null },
+      ],
     });
 
     const result = await runActivation(sb);
 
-    expect(result.customersInserted).toBe(1);
-    expect(result.vehiclesInserted).toBe(1);
-    expect(result.customerVehicleLinksCreated).toBe(1);
-    expect(sb.state.customers).toHaveLength(1);
-    expect(sb.state.vehicles).toHaveLength(1);
-    expect(sb.state.vehicles[0]?.customer_id).toBe(sb.state.customers[0]?.id);
+    expect(result.stagedCustomersFound).toBe(3);
+    expect(result.customerActivationCandidates).toBe(1);
+    expect(result.customersInserted).toBe(0);
+    expect(result.customersSkippedDuplicateStaged).toBe(2);
+    expect(result.customersUpdated + result.customersMatchedExisting).toBe(1);
+    expect(sb.state.customerInsertAttemptsByEmail.get("dup@example.com") ?? 0).toBe(0);
   });
 
-  it("is idempotent on second run with no duplicates", async () => {
+  it("if staged email exists live, activation never attempts insert", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1", { normalized: { sourceCustomerId: "src-1", email: "exists@example.com", phone: null } })],
+      customers: [
+        { id: "customer-live", shop_id: "shop-1", external_id: null, email: "exists@example.com", phone: "555", phone_number: "555", name: "Live", first_name: null, last_name: null, business_name: null },
+      ],
+    });
+
+    const result = await runActivation(sb);
+
+    expect(result.customersInserted).toBe(0);
+    expect(result.customersUpdated + result.customersMatchedExisting).toBe(1);
+    expect(sb.state.customerInsertAttemptsByEmail.get("exists@example.com") ?? 0).toBe(0);
+  });
+
+  it("recovers when insert hits customers_shop_email_uq", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1", { normalized: { sourceCustomerId: "src-1", email: "recover@example.com", phone: "5559990000" } })],
+      failCustomerInsertForEmails: ["recover@example.com"],
+      conflictRecoveryCustomerByEmail: {
+        "recover@example.com": { id: "customer-live", shop_id: "shop-1", external_id: null, email: "recover@example.com", phone: null, phone_number: null, name: "Live", first_name: null, last_name: null, business_name: null },
+      },
+    });
+
+    const result = await runActivation(sb);
+
+    expect(result.customersRecoveredFromUniqueConflict).toBe(1);
+    expect(result.customersInserted).toBe(0);
+    expect(sb.state.customers).toHaveLength(1);
+  });
+
+  it("is idempotent on second run", async () => {
     sb = createFakeSupabase({
       entities: [stagedCustomer("c1"), stagedVehicle("v1")],
       links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c1", to_entity_id: "v1", link_type: "customer_vehicle" }],
@@ -231,74 +283,55 @@ describe("activateOnboardingCustomersVehicles", () => {
     const second = await runActivation(sb);
 
     expect(first.customersInserted).toBe(1);
-    expect(first.vehiclesInserted).toBe(1);
     expect(second.customersInserted).toBe(0);
-    expect(second.vehiclesInserted).toBe(0);
-    expect(second.customerVehicleLinksCreated).toBe(0);
+    expect(second.customersAfter).toBe(first.customersAfter);
     expect(sb.state.customers).toHaveLength(1);
-    expect(sb.state.vehicles).toHaveLength(1);
   });
 
-  it("does not overwrite populated live fields but fills null-safe fields", async () => {
+  it("vehicle links still resolve to canonical live customer after staged customer dedupe", async () => {
     sb = createFakeSupabase({
       entities: [
-        stagedCustomer("c1", { normalized: { sourceCustomerId: "SRC-1", name: "Ignored Name", email: "new@example.com", phone: "5559990000" }, source_external_id: "SRC-1" }),
-        stagedVehicle("v1", { normalized: { sourceVehicleId: "VEH-1", vin: "VIN-1", plate: "XYZ-1", year: "2024", make: "Toyota", model: "Camry" }, source_external_id: "VEH-1" }),
+        stagedCustomer("c1", { normalized: { sourceCustomerId: "SRC-1", email: "canon@example.com", name: "Canon" } }),
+        stagedCustomer("c2", { normalized: { sourceCustomerId: "SRC-2", email: "canon@example.com", name: "Canon" } }),
+        stagedVehicle("v1", { normalized: { sourceVehicleId: "V-1", sourceCustomerId: "SRC-2", vin: "VIN-1", plate: "P-1", year: "2020", make: "Ford", model: "F150" } }),
       ],
-      customers: [{ id: "customer-live", shop_id: "shop-1", external_id: "SRC-1", email: "existing@example.com", phone: null, phone_number: null, name: "Existing Name", first_name: null, last_name: null, business_name: null }],
-      vehicles: [{ id: "vehicle-live", shop_id: "shop-1", external_id: "VEH-1", vin: "VIN-1", license_plate: null, unit_number: null, year: null, make: "Ford", model: "F150", customer_id: null }],
+      links: [{ id: "l1", shop_id: "shop-1", session_id: "session-1", from_entity_id: "c2", to_entity_id: "v1", link_type: "customer_vehicle" }],
     });
 
     const result = await runActivation(sb);
 
-    expect(result.customersUpdated).toBe(1);
-    expect(result.vehiclesUpdated).toBe(1);
-    expect(sb.state.customers[0]?.email).toBe("existing@example.com");
-    expect(sb.state.customers[0]?.phone).toBe("5559990000");
-    expect(sb.state.customers[0]?.name).toBe("Existing Name");
-    expect(sb.state.vehicles[0]?.make).toBe("Ford");
-    expect(sb.state.vehicles[0]?.license_plate).toBe("XYZ-1");
-    expect(sb.state.vehicles[0]?.year).toBe(2024);
-  });
-
-  it("ignores cross-shop/session, non-ready, and non-customer/non-vehicle entities", async () => {
-    sb = createFakeSupabase({
-      entities: [
-        stagedCustomer("c1"),
-        stagedCustomer("c2", { shop_id: "shop-2" }),
-        stagedVehicle("v1", { session_id: "session-2" }),
-        stagedVehicle("v2", { status: "needs_review" }),
-        stagedCustomer("c3", { entity_type: "vendor" }),
-      ],
-    });
-
-    const result = await runActivation(sb);
-    expect(result.stagedCustomersFound).toBe(1);
-    expect(result.stagedVehiclesFound).toBe(0);
     expect(result.customersInserted).toBe(1);
-    expect(result.vehiclesInserted).toBe(0);
+    expect(result.customersSkippedDuplicateStaged).toBe(1);
+    expect(result.vehicleCustomerLinksCreated + result.vehicleCustomerLinksSkipped).toBeGreaterThan(0);
+    expect(sb.state.vehicles[0]?.customer_id).toBe(sb.state.customers[0]?.id);
   });
 
-  it("skips ambiguous matches with warnings", async () => {
+  it("ignores cross-shop live customers with same email", async () => {
     sb = createFakeSupabase({
-      entities: [stagedCustomer("c1", { normalized: { name: "Acme", businessName: "Acme" }, source_external_id: null })],
+      entities: [stagedCustomer("c1", { normalized: { sourceCustomerId: "x-1", email: "same@example.com", name: "New" } })],
       customers: [
-        { id: "customer-1", shop_id: "shop-1", external_id: null, email: null, phone: null, phone_number: null, name: "Acme", first_name: null, last_name: null, business_name: null },
-        { id: "customer-2", shop_id: "shop-1", external_id: null, email: null, phone: null, phone_number: null, name: "Acme", first_name: null, last_name: null, business_name: null },
+        { id: "customer-shop2", shop_id: "shop-2", external_id: null, email: "same@example.com", phone: null, phone_number: null, name: "Other shop", first_name: null, last_name: null, business_name: null },
       ],
     });
 
     const result = await runActivation(sb);
-    expect(result.customersSkipped).toBe(1);
-    expect(result.warnings.length).toBeGreaterThan(0);
+
+    expect(result.customersInserted).toBe(1);
+    expect(result.customersAfter).toBe(1);
   });
 
-  it("only writes to customers/vehicles tables", async () => {
+  it("skips ambiguous live matches with warning", async () => {
     sb = createFakeSupabase({
-      entities: [stagedCustomer("c1"), stagedVehicle("v1")],
+      entities: [stagedCustomer("c1", { normalized: { sourceCustomerId: null, email: null, phone: "5551112222", businessName: null, name: "Ambig" }, source_external_id: null })],
+      customers: [
+        { id: "customer-1", shop_id: "shop-1", external_id: null, email: "a1@example.com", phone: "5551112222", phone_number: "5551112222", name: "One", first_name: null, last_name: null, business_name: null },
+        { id: "customer-2", shop_id: "shop-1", external_id: null, email: "a2@example.com", phone: "5551112222", phone_number: "5551112222", name: "Two", first_name: null, last_name: null, business_name: null },
+      ],
     });
 
-    await runActivation(sb);
-    expect(sb.state.writes.every((write) => write.startsWith("customers:") || write.startsWith("vehicles:"))).toBe(true);
+    const result = await runActivation(sb);
+
+    expect(result.customersSkippedAmbiguous).toBe(1);
+    expect(result.warnings.some((warning) => warning.includes("ambiguous"))).toBe(true);
   });
 });

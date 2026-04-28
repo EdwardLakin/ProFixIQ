@@ -308,16 +308,23 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               {Number(customerVehicleActivationResult.stagedVehiclesFound ?? 0)}. Links: {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
             </p>
             <p>
-              Customers inserted/updated/skipped: {Number(customerVehicleActivationResult.customersInserted ?? 0)}/
-              {Number(customerVehicleActivationResult.customersUpdated ?? 0)}/{Number(customerVehicleActivationResult.customersSkipped ?? 0)}.
+              Customer candidates: {Number(customerVehicleActivationResult.customerActivationCandidates ?? 0)} (from {Number(customerVehicleActivationResult.stagedCustomersFound ?? 0)} staged).
+            </p>
+            <p>
+              Customers inserted/updated/matched existing/skipped: {Number(customerVehicleActivationResult.customersInserted ?? 0)}/
+              {Number(customerVehicleActivationResult.customersUpdated ?? 0)}/{Number(customerVehicleActivationResult.customersMatchedExisting ?? 0)}/{Number(customerVehicleActivationResult.customersSkipped ?? 0)}.
             </p>
             <p>
               Vehicles inserted/updated/skipped: {Number(customerVehicleActivationResult.vehiclesInserted ?? 0)}/
               {Number(customerVehicleActivationResult.vehiclesUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehiclesSkipped ?? 0)}.
             </p>
             <p>
-              Customer/vehicle links created/updated/skipped: {Number(customerVehicleActivationResult.customerVehicleLinksCreated ?? 0)}/
-              {Number(customerVehicleActivationResult.customerVehicleLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.customerVehicleLinksSkipped ?? 0)}.
+              Customer duplicate-staged/ambiguous/recovered from unique conflict: {Number(customerVehicleActivationResult.customersSkippedDuplicateStaged ?? 0)}/
+              {Number(customerVehicleActivationResult.customersSkippedAmbiguous ?? 0)}/{Number(customerVehicleActivationResult.customersRecoveredFromUniqueConflict ?? 0)}.
+            </p>
+            <p>
+              Vehicle/customer links created/updated/skipped: {Number(customerVehicleActivationResult.vehicleCustomerLinksCreated ?? 0)}/
+              {Number(customerVehicleActivationResult.vehicleCustomerLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksSkipped ?? 0)}.
             </p>
             <p>
               Live customers before/after: {Number(customerVehicleActivationResult.customersBefore ?? 0)}/
