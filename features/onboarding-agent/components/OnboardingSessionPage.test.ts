@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCustomerDisplayLabel, getVehicleDisplayLabel, linkIssueReasonLabel, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
+import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, linkIssueReasonLabel, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
 
 describe("OnboardingSessionPage warning label helpers", () => {
   it("builds human-readable customer labels", () => {
@@ -34,5 +34,17 @@ describe("OnboardingSessionPage warning label helpers", () => {
     expect(copy.vehicle).toContain("Ford Transit");
     expect(copy.reason).toContain("ambiguous");
     expect(copy.customer).not.toContain("uuid");
+  });
+
+  it("groups review items by domain for operator panel", () => {
+    const grouped = groupReviewItemsByDomain([
+      { domain: "vendors" },
+      { domain: "parts" },
+      { domain: "vendors" },
+      {},
+    ]);
+    expect(grouped.vendors).toBe(2);
+    expect(grouped.parts).toBe(1);
+    expect(grouped.unknown).toBe(1);
   });
 });
