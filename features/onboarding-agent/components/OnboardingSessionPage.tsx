@@ -171,6 +171,32 @@ export function partsVendorGuidance(input: { canShowPartsActivation: boolean; ve
   return null;
 }
 
+export function historyDiagnosticsExtra(details: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!details || typeof details !== "object") return {};
+  const knownKeys = new Set([
+    "runtime",
+    "stagedHistoryRows",
+    "customerWorkOrderLinks",
+    "vehicleWorkOrderLinks",
+    "historyRowsWithCustomerLink",
+    "historyRowsWithVehicleLink",
+    "linkedCustomerStagedEntitiesFound",
+    "linkedVehicleStagedEntitiesFound",
+    "linkedCustomerLiveResolved",
+    "linkedVehicleLiveResolved",
+    "rowsWithBothLiveCustomerAndVehicle",
+    "rowsMissingLiveCustomer",
+    "rowsMissingLiveVehicle",
+    "rowsMissingBoth",
+    "rowsInvalidDate",
+    "rowsMissingRequiredIdentifier",
+    "workOrdersCreated",
+    "workOrdersMatchedExisting",
+    "unresolvedSamples",
+  ]);
+  return Object.fromEntries(Object.entries(details).filter(([key]) => !knownKeys.has(key)));
+}
+
 export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [payload, setPayload] = useState<any>(null);
@@ -713,6 +739,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           <details className="mt-2 rounded border border-fuchsia-400/20 bg-fuchsia-950/20 p-2 text-[11px] text-fuchsia-100/90">
             <summary className="cursor-pointer">History developer details</summary>
             <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <div>diagnosticVersion: {String(historyActivationResult.diagnostics.runtime?.diagnosticVersion ?? "unknown")}</div>
+              <div>activationModule: {String(historyActivationResult.diagnostics.runtime?.activationModule ?? "unknown")}</div>
+              <div>executedAt: {String(historyActivationResult.diagnostics.runtime?.executedAt ?? "unknown")}</div>
               <div>stagedHistoryRows: {asNumber(historyActivationResult.diagnostics.stagedHistoryRows)}</div>
               <div>customerWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.customerWorkOrderLinks)}</div>
               <div>vehicleWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.vehicleWorkOrderLinks)}</div>
@@ -731,6 +760,21 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               <div>workOrdersCreated: {asNumber(historyActivationResult.diagnostics.workOrdersCreated)}</div>
               <div>workOrdersMatchedExisting: {asNumber(historyActivationResult.diagnostics.workOrdersMatchedExisting)}</div>
             </div>
+            <pre className="mt-2 overflow-x-auto rounded border border-fuchsia-400/20 bg-slate-900/70 p-2 text-[10px] text-fuchsia-100/90">{JSON.stringify({
+              linkEndpointEntityTypesByCount: historyActivationResult.diagnostics.linkEndpointEntityTypesByCount ?? {},
+              customerWorkOrderEndpointTypesByCount: historyActivationResult.diagnostics.customerWorkOrderEndpointTypesByCount ?? {},
+              vehicleWorkOrderEndpointTypesByCount: historyActivationResult.diagnostics.vehicleWorkOrderEndpointTypesByCount ?? {},
+              linksPointingToFetchedHistoryIdsFrom: historyActivationResult.diagnostics.linksPointingToFetchedHistoryIdsFrom ?? 0,
+              linksPointingToFetchedHistoryIdsTo: historyActivationResult.diagnostics.linksPointingToFetchedHistoryIdsTo ?? 0,
+              linksPointingToDiscoveredHistoryLikeEntities: historyActivationResult.diagnostics.linksPointingToDiscoveredHistoryLikeEntities ?? 0,
+              discoveredHistoryLikeEntityCount: historyActivationResult.diagnostics.discoveredHistoryLikeEntityCount ?? 0,
+              discoveredCustomerLikeEntityCount: historyActivationResult.diagnostics.discoveredCustomerLikeEntityCount ?? 0,
+              discoveredVehicleLikeEntityCount: historyActivationResult.diagnostics.discoveredVehicleLikeEntityCount ?? 0,
+              historyLinkedViaSparseDuplicateCount: historyActivationResult.diagnostics.historyLinkedViaSparseDuplicateCount ?? 0,
+              historyLinkedViaCanonicalEntityCount: historyActivationResult.diagnostics.historyLinkedViaCanonicalEntityCount ?? 0,
+              firstFiveLinkEndpointSamples: historyActivationResult.diagnostics.firstFiveLinkEndpointSamples ?? [],
+            }, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border border-fuchsia-400/20 bg-slate-900/70 p-2 text-[10px] text-fuchsia-100/90">{JSON.stringify(historyDiagnosticsExtra(historyActivationResult.diagnostics), null, 2)}</pre>
             {Array.isArray(historyActivationResult.diagnostics.unresolvedSamples) && historyActivationResult.diagnostics.unresolvedSamples.length > 0 ? (
               <div className="mt-2">
                 <div>Unresolved samples (first {historyActivationResult.diagnostics.unresolvedSamples.length}):</div>

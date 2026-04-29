@@ -428,6 +428,24 @@ describe("activateOnboardingHistory", () => {
     expect(result.diagnostics.rowsWithBothLiveCustomerAndVehicle).toBe(rows);
   });
 
+  it("emits runtime diagnostic marker and sparse-history discovery counters", async () => {
+    const sb = fakeSb();
+    sb.state.entities = [
+      { id: "h-canonical", shop_id: "shop-1", session_id: "session-1", entity_type: "historical_work_order", status: "ready", source_row_id: "h-row-1", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01" } },
+      { id: "h-sparse", shop_id: "shop-1", session_id: "session-1", entity_type: "work_order", status: "ready", source_row_id: "h-row-1", normalized: { sourceWorkOrderId: "RO-1", openedDate: "2022-01-01" } },
+      { id: "c-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "customer", status: "activated", source_external_id: "CUST-1", normalized: { sourceCustomerId: "CUST-1", email: "a@b.com" } },
+      { id: "v-stage-1", shop_id: "shop-1", session_id: "session-1", entity_type: "vehicle", status: "activated", source_external_id: "VEH-1", normalized: { sourceVehicleId: "VEH-1", vin: "VIN1" } },
+    ] as any[];
+    sb.state.links = [
+      { id: "l1", shop_id: "shop-1", session_id: "session-1", link_type: "customer_work_order", from_entity_id: "c-stage-1", to_entity_id: "h-sparse" },
+      { id: "l2", shop_id: "shop-1", session_id: "session-1", link_type: "vehicle_work_order", from_entity_id: "v-stage-1", to_entity_id: "h-sparse" },
+    ] as any[];
+    const result = await activateOnboardingHistory({ supabase: sb as any, shopId: "shop-1", sessionId: "session-1", actorId: "u1" });
+    expect(result.diagnostics.runtime.diagnosticVersion).toBe("history-endpoint-first-v3");
+    expect(result.diagnostics.discoveredHistoryLikeEntityCount).toBeGreaterThan(0);
+    expect(result.diagnostics.historyLinkedViaSparseDuplicateCount).toBeGreaterThan(0);
+  });
+
   it("rerun matches existing historical import and does not create duplicates", async () => {
     const sb = fakeSb();
     sb.state.work_orders.push({

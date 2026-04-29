@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, historyActivationState, linkIssueReasonLabel, partsVendorGuidance, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
+import { getCustomerDisplayLabel, getVehicleDisplayLabel, groupReviewItemsByDomain, historyActivationState, historyDiagnosticsExtra, linkIssueReasonLabel, partsVendorGuidance, unresolvedReviewPrimaryCopy } from "@/features/onboarding-agent/components/OnboardingSessionPage";
 import { agentInsightsStateCopy } from "@/features/onboarding-agent/components/OnboardingAgentInsightsPanel";
 import { activationPreviewCopy } from "@/features/onboarding-agent/components/OnboardingActivationPlanPanel";
 import { groupReviewIssuesForDisplay } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
@@ -83,5 +83,18 @@ describe("OnboardingSessionPage warning label helpers", () => {
   it("marks history as activated when rows are created or matched", () => {
     expect(historyActivationState({ stagedProcessed: 6076, created: 12, matched: 0, skipped: 6064 })).toBe("activated");
     expect(historyActivationState({ stagedProcessed: 6076, created: 0, matched: 12, skipped: 6064 })).toBe("activated");
+  });
+
+  it("keeps unknown history diagnostics keys for developer-details JSON fallback", () => {
+    const extras = historyDiagnosticsExtra({
+      stagedHistoryRows: 10,
+      runtime: { diagnosticVersion: "history-endpoint-first-v3" },
+      customFutureCounter: 42,
+      nestedFutureShape: { foo: "bar" },
+    });
+    expect(extras).toEqual({
+      customFutureCounter: 42,
+      nestedFutureShape: { foo: "bar" },
+    });
   });
 });

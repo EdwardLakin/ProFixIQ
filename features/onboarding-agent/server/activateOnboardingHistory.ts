@@ -50,6 +50,11 @@ type HistoryActivationResult = {
   unresolvedDueToMissingLiveCustomer: number;
   unresolvedDueToMissingLiveVehicle: number;
   diagnostics: {
+    runtime: {
+      activationModule: string;
+      diagnosticVersion: string;
+      executedAt: string;
+    };
     stagedHistoryRows: number;
     customerWorkOrderLinks: number;
     vehicleWorkOrderLinks: number;
@@ -461,6 +466,11 @@ export async function activateOnboardingHistory(params: {
   sessionId: string;
   actorId: string;
 }): Promise<HistoryActivationResult> {
+  const runtimeDiagnostics = {
+    activationModule: "features/onboarding-agent/server/activateOnboardingHistory.ts",
+    diagnosticVersion: "history-endpoint-first-v3",
+    executedAt: new Date().toISOString(),
+  };
   const sb = params.supabase as any;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
@@ -933,7 +943,7 @@ export async function activateOnboardingHistory(params: {
     warnings.push("Most skipped history rows were unresolved because no live customer/vehicle mapping could be resolved from staged links.");
   }
 
-  return {
+  const result: HistoryActivationResult = {
     ok: true,
     stagedHistoryRows: historyRows.length,
     historicalWorkOrdersCreated,
@@ -965,6 +975,7 @@ export async function activateOnboardingHistory(params: {
     unresolvedDueToMissingLiveCustomer,
     unresolvedDueToMissingLiveVehicle,
     diagnostics: {
+      runtime: runtimeDiagnostics,
       stagedHistoryRows: historyRows.length,
       customerWorkOrderLinks,
       vehicleWorkOrderLinks,
@@ -998,4 +1009,25 @@ export async function activateOnboardingHistory(params: {
     },
     warnings,
   };
+  console.info("[onboarding.history.activation]", {
+    diagnosticVersion: runtimeDiagnostics.diagnosticVersion,
+    runtimeModule: runtimeDiagnostics.activationModule,
+    executedAt: runtimeDiagnostics.executedAt,
+    shopSessionScope: `${params.shopId.slice(0, 8)}:${params.sessionId.slice(0, 8)}`,
+    stagedHistoryRows: result.stagedHistoryRows,
+    customerWorkOrderLinks: result.customerWorkOrderLinks,
+    vehicleWorkOrderLinks: result.vehicleWorkOrderLinks,
+    historyRowsWithCustomerLink: result.diagnostics.historyRowsWithCustomerLink,
+    historyRowsWithVehicleLink: result.diagnostics.historyRowsWithVehicleLink,
+    discoveredHistoryLikeEndpointCount: result.diagnostics.discoveredHistoryLikeEntityCount,
+    linkedCustomerStagedEntitiesFound: result.diagnostics.linkedCustomerStagedEntitiesFound,
+    linkedVehicleStagedEntitiesFound: result.diagnostics.linkedVehicleStagedEntitiesFound,
+    linkedCustomerLiveResolved: result.diagnostics.linkedCustomerLiveResolved,
+    linkedVehicleLiveResolved: result.diagnostics.linkedVehicleLiveResolved,
+    rowsWithBothLiveCustomerAndVehicle: result.diagnostics.rowsWithBothLiveCustomerAndVehicle,
+    workOrdersCreated: result.diagnostics.workOrdersCreated,
+    workOrdersMatchedExisting: result.diagnostics.workOrdersMatchedExisting,
+    skippedUnresolved: result.skippedUnresolved,
+  });
+  return result;
 }
