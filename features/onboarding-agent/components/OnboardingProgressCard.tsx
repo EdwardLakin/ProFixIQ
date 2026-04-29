@@ -34,6 +34,8 @@ export function OnboardingProgressCard({ summary }: { summary?: SummaryRecord | 
     ["Relationship links", String(asNumber(summary?.linksFound))],
     ["Review exceptions", String(asNumber(summary?.reviewExceptions))],
     ["Live activation records", String(liveRecordsCreated)],
+    ["Customer bridge writebacks", String(asNumber(resultCounters?.customerEntityCanonicalWritebacks))],
+    ["Vehicle bridge writebacks", String(asNumber(resultCounters?.vehicleEntityCanonicalWritebacks))],
   ];
 
   return (

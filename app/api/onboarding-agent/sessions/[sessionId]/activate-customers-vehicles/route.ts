@@ -108,6 +108,8 @@ export async function POST(request: Request, context: RouteContext) {
           vehiclesMatchedExisting: result.vehiclesMatchedExisting,
           linksMaterialized: result.vehicleCustomerLinksMaterialized,
           linksUnresolved: result.vehicleCustomerLinksUnresolved,
+          customerEntityCanonicalWritebacks: result.customerEntityCanonicalWritebacks,
+          vehicleEntityCanonicalWritebacks: result.vehicleEntityCanonicalWritebacks,
         },
       },
     });

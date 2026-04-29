@@ -85,6 +85,8 @@ export type CustomerVehicleActivationResult = {
   vehiclesBefore: number;
   vehiclesAfter: number;
   liveVehicleCustomerLinksAfter: number;
+  customerEntityCanonicalWritebacks: number;
+  vehicleEntityCanonicalWritebacks: number;
   customerVehicleLinkIssues: CustomerVehicleLinkIssue[];
   warnings: string[];
 };
@@ -1128,7 +1130,12 @@ export async function activateOnboardingCustomersVehicles(params: {
     const priorNormalized = customerEntityNormalizedById.get(entityId);
     return sb
       .from("onboarding_entities")
-      .update({ normalized: withResolvedLiveId(priorNormalized, "live_customer_id", liveId) })
+      .update({
+        normalized: withResolvedLiveId(priorNormalized, "live_customer_id", liveId),
+        status: "activated",
+        canonical_table: "customers",
+        canonical_id: liveId,
+      })
       .eq("shop_id", params.shopId)
       .eq("session_id", params.sessionId)
       .eq("id", entityId)
@@ -1138,7 +1145,12 @@ export async function activateOnboardingCustomersVehicles(params: {
     const priorNormalized = (entityById.get(entityId)?.normalized ?? null);
     return sb
       .from("onboarding_entities")
-      .update({ normalized: withResolvedLiveId(priorNormalized, "live_vehicle_id", liveId) })
+      .update({
+        normalized: withResolvedLiveId(priorNormalized, "live_vehicle_id", liveId),
+        status: "activated",
+        canonical_table: "vehicles",
+        canonical_id: liveId,
+      })
       .eq("shop_id", params.shopId)
       .eq("session_id", params.sessionId)
       .eq("id", entityId)
@@ -1450,6 +1462,8 @@ export async function activateOnboardingCustomersVehicles(params: {
     vehiclesBefore,
     vehiclesAfter: Number(vehiclesAfter ?? vehiclePool.length),
     liveVehicleCustomerLinksAfter: Number(liveVehicleCustomerLinksAfter ?? vehiclePool.filter((row) => row.customer_id !== null).length),
+    customerEntityCanonicalWritebacks: customerEntityToLiveId.size,
+    vehicleEntityCanonicalWritebacks: vehicleEntityToLiveId.size,
     customerVehicleLinkIssues,
     warnings,
   };

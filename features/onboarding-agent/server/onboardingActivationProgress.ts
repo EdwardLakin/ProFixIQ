@@ -57,6 +57,10 @@ export type CustomerVehicleCheckpoint = CustomerVehicleTotals & {
 
     linksUnresolved: number;
 
+    customerEntityCanonicalWritebacks: number;
+
+    vehicleEntityCanonicalWritebacks: number;
+
   };
 
 };
@@ -140,6 +144,10 @@ export function getCustomerVehicleCheckpoint(summary: unknown): CustomerVehicleC
         linksMaterialized: typeof checkpoint.resultCounters.linksMaterialized === "number" ? checkpoint.resultCounters.linksMaterialized : 0,
 
         linksUnresolved: typeof checkpoint.resultCounters.linksUnresolved === "number" ? checkpoint.resultCounters.linksUnresolved : 0,
+
+        customerEntityCanonicalWritebacks: typeof checkpoint.resultCounters.customerEntityCanonicalWritebacks === "number" ? checkpoint.resultCounters.customerEntityCanonicalWritebacks : 0,
+
+        vehicleEntityCanonicalWritebacks: typeof checkpoint.resultCounters.vehicleEntityCanonicalWritebacks === "number" ? checkpoint.resultCounters.vehicleEntityCanonicalWritebacks : 0,
 
       }
 

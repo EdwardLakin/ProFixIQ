@@ -198,6 +198,8 @@ export async function activateOnboardingSession(params: {
           vehiclesMatchedExisting: result.vehiclesMatchedExisting,
           linksMaterialized: result.vehicleCustomerLinksMaterialized,
           linksUnresolved: result.vehicleCustomerLinksUnresolved,
+          customerEntityCanonicalWritebacks: result.customerEntityCanonicalWritebacks,
+          vehicleEntityCanonicalWritebacks: result.vehicleEntityCanonicalWritebacks,
         },
       },
     });
