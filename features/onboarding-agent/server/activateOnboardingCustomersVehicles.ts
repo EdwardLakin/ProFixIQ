@@ -203,6 +203,27 @@ function pickAlias(normalized: JsonObject, ...keys: string[]): string | null {
   return null;
 }
 
+function asObject(value: unknown): JsonObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as JsonObject;
+}
+
+function collectPayloadLayers(normalized: JsonObject): JsonObject[] {
+  const details = asObject(normalized.details);
+  const payload = asObject(normalized.payload);
+  const nestedDetails = details ? asObject(details.details) : null;
+  const nestedPayload = details ? asObject(details.payload) : null;
+  return [normalized, details, payload, nestedDetails, nestedPayload].filter(Boolean) as JsonObject[];
+}
+
+function pickFromLayers(layers: JsonObject[], ...keys: string[]): string | null {
+  for (const layer of layers) {
+    const value = pickAlias(layer, ...keys);
+    if (value) return value;
+  }
+  return null;
+}
+
 function buildCustomerDisplayName(parts: { businessName: string | null; contactName: string | null; fullName: string | null; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; externalId: string | null; sourceRowId: string | null; }): string | null {
   if (parts.businessName) return parts.businessName;
   if (parts.fullName) return parts.fullName;
@@ -214,17 +235,18 @@ function buildCustomerDisplayName(parts: { businessName: string | null; contactN
 
 function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">): NormalizedCustomer {
   const normalized = (entity.normalized ?? {}) as JsonObject;
-  const businessName = pickAlias(normalized, "businessName", "company_name", "business_name", "company", "Company", "Company Name", "Business Name");
-  const firstName = pickAlias(normalized, "firstName", "first_name", "First Name");
-  const lastName = pickAlias(normalized, "lastName", "last_name", "Last Name");
-  const contactName = pickAlias(normalized, "contactName", "contact_name", "contact", "Contact", "Contact Name");
-  const fullName = pickAlias(normalized, "name", "displayName", "display_name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
-  const email = normalizeEmail(pickAlias(normalized, "email", "Email", "email_address", "Email Address"));
-  const phone = normalizePhone(pickAlias(normalized, "phone", "Phone", "phone_number", "Phone Number", "telephone", "Telephone"));
-  const mobilePhone = normalizePhone(pickAlias(normalized, "mobile", "Mobile", "cell", "Cell", "mobile_phone"));
+  const layers = collectPayloadLayers(normalized);
+  const businessName = pickFromLayers(layers, "businessName", "company_name", "business_name", "company", "companyName", "Company", "Company Name", "Business Name");
+  const firstName = pickFromLayers(layers, "firstName", "first_name", "First Name");
+  const lastName = pickFromLayers(layers, "lastName", "last_name", "Last Name");
+  const contactName = pickFromLayers(layers, "contactName", "contact_name", "contact", "Contact", "Contact Name");
+  const fullName = pickFromLayers(layers, "name", "displayName", "display_name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
+  const email = normalizeEmail(pickFromLayers(layers, "email", "Email", "email_address", "Email Address", "customer_email", "contact_email"));
+  const phone = normalizePhone(pickFromLayers(layers, "phone", "Phone", "phone_number", "Phone Number", "telephone", "Telephone", "work_phone", "contact_phone"));
+  const mobilePhone = normalizePhone(pickFromLayers(layers, "mobile", "Mobile", "cell", "Cell", "mobile_phone"));
   return {
-    externalId: textOrNull(entity.source_external_id) ?? pickAlias(normalized, "source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id"),
-    sourceRowId: textOrNull(entity.source_row_id) ?? pickAlias(normalized, "source_row_id", "sourceRowId"),
+    externalId: textOrNull(entity.source_external_id) ?? pickFromLayers(layers, "source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id", "customerExternalId"),
+    sourceRowId: textOrNull(entity.source_row_id) ?? pickFromLayers(layers, "source_row_id", "sourceRowId"),
     name: buildCustomerDisplayName({ businessName, contactName, fullName, firstName, lastName, email, phone: phone ?? mobilePhone, externalId: textOrNull(entity.source_external_id), sourceRowId: textOrNull(entity.source_row_id) }),
     firstName,
     lastName,
@@ -233,13 +255,13 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "
     email,
     phone: phone ?? mobilePhone,
     mobilePhone,
-    street: pickAlias(normalized, "street", "address_line1", "address1", "address_1", "Address1", "address", "Address", "Address 1", "Street", "Street Address"),
-    address: pickAlias(normalized, "address", "address_line2", "address2", "address_2", "billing_address", "billingAddress"),
-    city: pickAlias(normalized, "city", "City"),
-    province: pickAlias(normalized, "province", "state", "State", "Province", "region"),
-    postalCode: pickAlias(normalized, "postalCode", "postal_code", "zip", "zipCode", "ZIP", "Zip Code", "Postal", "Postal Code"),
-    country: pickAlias(normalized, "country", "Country"),
-    notes: pickAlias(normalized, "notes", "Notes", "memo", "Memo", "comment", "comments"),
+    street: pickFromLayers(layers, "street", "address_line1", "address1", "address_1", "Address1", "address", "Address", "Address 1", "Street", "Street Address"),
+    address: pickFromLayers(layers, "address", "address_line2", "address2", "address_2", "billing_address", "billingAddress"),
+    city: pickFromLayers(layers, "city", "City"),
+    province: pickFromLayers(layers, "province", "state", "State", "Province", "region"),
+    postalCode: pickFromLayers(layers, "postalCode", "postal_code", "zip", "zipCode", "ZIP", "Zip Code", "Postal", "Postal Code"),
+    country: pickFromLayers(layers, "country", "Country"),
+    notes: pickFromLayers(layers, "notes", "Notes", "memo", "Memo", "comment", "comments"),
   };
 }
 

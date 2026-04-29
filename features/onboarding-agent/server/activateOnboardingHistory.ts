@@ -140,6 +140,7 @@ type HistoryActivationResult = {
       dateAliasesChecked?: string[];
       normalizedKeysSample?: string[];
     }>;
+    linkedTripleSamples: Array<Record<string, unknown>>;
   };
   warnings: string[];
 };
@@ -234,10 +235,22 @@ function parseDate(value: unknown): string | null {
   return d.toISOString();
 }
 
-function collectSearchRecords(normalized: Record<string, unknown>): Record<string, unknown>[] {
-  const nestedDetails = (normalized.details && typeof normalized.details === "object") ? (normalized.details as Record<string, unknown>) : null;
-  const nestedPayload = (normalized.payload && typeof normalized.payload === "object") ? (normalized.payload as Record<string, unknown>) : null;
-  return [normalized, nestedDetails, nestedPayload].filter(Boolean) as Record<string, unknown>[];
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function collectSearchRecords(normalized: Record<string, unknown>, entity?: Partial<Pick<OnboardingEntityRow, "source_external_id" | "source_row_id" | "display_name">>): Record<string, unknown>[] {
+  const nestedDetails = asRecord(normalized.details);
+  const nestedPayload = asRecord(normalized.payload);
+  const detailsDetails = nestedDetails ? asRecord(nestedDetails.details) : null;
+  const detailsPayload = nestedDetails ? asRecord(nestedDetails.payload) : null;
+  const entityTop = entity ? {
+    source_external_id: entity.source_external_id,
+    source_row_id: entity.source_row_id,
+    display_name: entity.display_name,
+  } : null;
+  return [normalized, nestedDetails, nestedPayload, detailsDetails, detailsPayload, entityTop].filter(Boolean) as Record<string, unknown>[];
 }
 
 function firstTextAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
@@ -290,23 +303,25 @@ function normalizeNumber(value: unknown): number | null {
 }
 function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null): NormalizedCustomer {
   const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
+  const records = collectSearchRecords(normalized, entity ?? undefined);
   return {
-    sourceCustomerId: normalizeText(entity?.source_external_id ?? normalized.sourceCustomerId) || null,
-    email: normalizeEmail(normalized.email),
-    phone: normalizePhone(normalized.phone),
-    name: normalizeText(normalized.businessName ?? normalized.name ?? entity?.display_name) || null,
+    sourceCustomerId: firstTextAlias(records, ["live_customer_id","customer_id","matched_customer_id","imported_customer_id","source_external_id","sourceExternalId","sourceCustomerId","customerExternalId","account_number","source_row_id","sourceRowId"]).value,
+    email: normalizeEmail(firstTextAlias(records, ["email","email_address","customer_email","contact_email"]).value),
+    phone: normalizePhone(firstTextAlias(records, ["phone","phone_number","mobile","cell","work_phone","contact_phone"]).value),
+    name: normalizeText(firstTextAlias(records, ["display_name","name","full_name","customer_name","company","company_name","businessName"]).value ?? entity?.display_name) || null,
   };
 }
 function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null): NormalizedVehicle {
   const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
+  const records = collectSearchRecords(normalized, entity ? { ...entity, source_row_id: null, display_name: null } as any : undefined);
   return {
-    sourceVehicleId: normalizeText(entity?.source_external_id ?? normalized.sourceVehicleId) || null,
-    vin: normalizeVin(normalized.vin),
-    plate: normalizePlate(normalized.plate ?? normalized.licensePlate ?? normalized.vehiclePlate),
-    unitNumber: normalizeLookup(normalized.unitNumber ?? normalized.vehicleUnitNumber),
-    year: normalizeNumber(normalized.year),
-    make: normalizeLookup(normalized.make),
-    model: normalizeLookup(normalized.model),
+    sourceVehicleId: firstTextAlias(records, ["live_vehicle_id","vehicle_id","matched_vehicle_id","imported_vehicle_id","source_external_id","sourceExternalId","sourceVehicleId","vehicleExternalId","unit_id","source_row_id","sourceRowId"]).value,
+    vin: normalizeVin(firstTextAlias(records, ["vin","VIN","vehicle_vin"]).value),
+    plate: normalizePlate(firstTextAlias(records, ["plate","license_plate","licence_plate","vehiclePlate","licensePlate"]).value),
+    unitNumber: normalizeLookup(firstTextAlias(records, ["unit","unit_number","fleet_number","unitNumber","vehicleUnitNumber"]).value),
+    year: normalizeNumber(firstTextAlias(records, ["year"]).value),
+    make: normalizeLookup(firstTextAlias(records, ["make"]).value),
+    model: normalizeLookup(firstTextAlias(records, ["model"]).value),
   };
 }
 function vehicleDescriptorKey(input: { year: number | null; make: string | null; model: string | null }): string | null {
@@ -428,9 +443,9 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
 
 function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
-  const records = collectSearchRecords(normalized);
-  const identifier = firstTextAlias(records, ["work_order_number", "workOrderNumber", "ro_number", "roNumber", "repair_order_number", "repairOrderNumber", "invoice_number", "invoiceNumber", "reference", "source_external_id", "sourceExternalId", "source_row_id", "sourceRowId", "sourceWorkOrderId"]);
-  const opened = firstDateAlias(records, ["opened_at", "openedAt", "opened_date", "openedDate", "date_opened", "dateOpened", "service_date", "serviceDate", "repair_date", "repairDate", "invoice_date", "invoiceDate", "closed_at", "closedAt", "completed_at", "completedAt", "created_at", "createdAt", "date", "openedDate"]);
+  const records = collectSearchRecords(normalized, entity as any);
+  const identifier = firstTextAlias(records, ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","order_number","orderNumber","invoice_number","invoiceNumber","reference","reference_number","source_work_order_id","sourceWorkOrderId","source_external_id","sourceExternalId","source_row_id","sourceRowId"]);
+  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","service_date","serviceDate","repair_date","repairDate","order_date","orderDate","invoice_date","invoiceDate","closed_at","closedAt","closed_date","closedDate","completed_at","completedAt","completed_date","completedDate","created_at","createdAt","date"]);
   return {
     sourceWorkOrderId: identifier.value,
     invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoiceId", "sourceInvoiceId", "sourceExternalId"]).value,
@@ -635,6 +650,7 @@ export async function activateOnboardingHistory(params: {
   let rowsMissingLiveVehicle = 0;
   let rowsMissingBoth = 0;
   const unresolvedSamples: HistoryActivationResult["diagnostics"]["unresolvedSamples"] = [];
+  const linkedTripleSamples: Array<Record<string, unknown>> = [];
 
   const customerWorkOrderLinks = linkRows.filter((row) => row.link_type === "customer_work_order").length;
   const vehicleWorkOrderLinks = linkRows.filter((row) => row.link_type === "vehicle_work_order").length;
@@ -837,6 +853,17 @@ export async function activateOnboardingHistory(params: {
 
     const customerResolvedByLink = resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
     const vehicleResolvedByLink = resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
+    if (linkedTripleSamples.length < 5) {
+      linkedTripleSamples.push({
+        historyEntityId: entity.id, historyEntityType: entity.entity_type, historyStatus: (entityById.get(entity.id)?.status ?? null),
+        historySourceRowId: entity.source_row_id, historySourceExternalId: entity.source_external_id, historyDisplayName: entityById.get(entity.id)?.display_name ?? null,
+        historyNormalizedKeys: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 20),
+        linkedCustomerEntityId: linkedStagedCustomer?.id ?? null, linkedCustomerEntityType: linkedStagedCustomer?.entity_type ?? null, linkedCustomerStatus: linkedStagedCustomer?.status ?? null,
+        linkedVehicleEntityId: linkedStagedVehicle?.id ?? null, linkedVehicleEntityType: linkedStagedVehicle?.entity_type ?? null, linkedVehicleStatus: linkedStagedVehicle?.status ?? null,
+        liveCustomerLookupResult: { method: customerResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(customerResolvedByLink.id) },
+        liveVehicleLookupResult: { method: vehicleResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(vehicleResolvedByLink.id) },
+      });
+    }
 
     let customerId = customerResolvedByLink.id
       ?? (stagedCustomerLink.id ? stagedCustomerEntityIdToLiveCustomerId.get(stagedCustomerLink.id) ?? null : null)
@@ -1146,6 +1173,7 @@ export async function activateOnboardingHistory(params: {
       sampleResolvedHistoryLinks,
       firstFiveLinkEndpointSamples,
       unresolvedSamples,
+      linkedTripleSamples,
     },
     warnings,
   };
