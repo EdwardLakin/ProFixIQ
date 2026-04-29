@@ -9,9 +9,29 @@ import { OnboardingFileUploadPanel } from "@/features/onboarding-agent/component
 import { OnboardingFilesPanel } from "@/features/onboarding-agent/components/OnboardingFilesPanel";
 import { OnboardingProgressCard } from "@/features/onboarding-agent/components/OnboardingProgressCard";
 import { OnboardingReviewPanel } from "@/features/onboarding-agent/components/OnboardingReviewPanel";
-import { onboardingSessionActionPath } from "@/features/onboarding-agent/lib/routes";
+import { onboardingSessionActionPath, onboardingSessionActivationPath } from "@/features/onboarding-agent/lib/routes";
 import { formatOnboardingSessionStatusLabel } from "@/features/onboarding-agent/lib/sessionStatus";
 
+
+type CanonicalActivationPhase = "vendors" | "customers_vehicles" | "parts" | "history" | "completed";
+
+type CanonicalActivationResult = {
+  ok: true;
+  phase: CanonicalActivationPhase;
+  completed: boolean;
+  message: string;
+  result: unknown;
+  checkpoint?: Record<string, unknown> | null;
+};
+
+function isCanonicalActivationResult(value: unknown): value is CanonicalActivationResult {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.ok === true
+    && typeof record.phase === "string"
+    && typeof record.completed === "boolean"
+    && typeof record.message === "string";
+}
 
 function activationErrorMessage(errorPayload: any, fallback: string): string {
   if (typeof errorPayload === "string") return errorPayload;
@@ -23,15 +43,6 @@ function activationErrorMessage(errorPayload: any, fallback: string): string {
   }
   if (typeof errorPayload?.message === "string") return errorPayload.message;
   return fallback;
-}
-
-function warningCategory(warning: string): string {
-  if (warning.includes("unique conflict recovery failed")) return "unique conflict recovery failed";
-  if (warning.includes("does not connect staged customer+vehicle entities")) return "invalid customer_vehicle link";
-  if (warning.includes("customer or vehicle was not materialized")) return "unmaterialized customer/vehicle";
-  if (warning.includes("already belongs to another customer")) return "vehicle already linked to other customer";
-  if (warning.includes("ambiguous")) return "ambiguous match";
-  return "other";
 }
 
 export function getCustomerDisplayLabel(customer?: {
@@ -135,24 +146,6 @@ function asNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatActivationPhaseSummary(input: {
-  phaseLabel: string;
-  stagedProcessed: number;
-  created: number;
-  matched: number;
-  skipped: number;
-  reviewItemsPersisted: number;
-  reviewItemsReused: number;
-  openReviewForDomain: number;
-  groupedRowsRepresented?: number;
-  warning?: string;
-}) {
-  const reviewSuffix = input.reviewItemsReused > 0 ? `, reused ${input.reviewItemsReused}` : "";
-  const groupedSuffix = input.groupedRowsRepresented && input.groupedRowsRepresented > 0
-    ? ` Grouped repeated skipped rows represented: ${input.groupedRowsRepresented.toLocaleString()}.`
-    : "";
-  return `${input.phaseLabel} activation: Processed: ${input.stagedProcessed.toLocaleString()} staged rows. Created: ${input.created.toLocaleString()} live records. Matched existing: ${input.matched.toLocaleString()} live records. Skipped/unresolved: ${input.skipped.toLocaleString()}. Review items persisted: ${input.reviewItemsPersisted.toLocaleString()}${reviewSuffix}. Review exceptions now open for ${input.phaseLabel.toLowerCase()}: ${input.openReviewForDomain.toLocaleString()}.${groupedSuffix}${input.warning ?? ""}`;
-}
 
 export function historyActivationState(input: { stagedProcessed: number; created: number; matched: number; skipped: number }): "activated" | "blocked" | "not_run" {
   if (input.created > 0 || input.matched > 0) return "activated";
@@ -205,18 +198,15 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [activatingVendors, setActivatingVendors] = useState(false);
-  const [activatingParts, setActivatingParts] = useState(false);
-  const [activatingHistory, setActivatingHistory] = useState(false);
-  const [activatingCustomersVehicles, setActivatingCustomersVehicles] = useState(false);
-  const [vendorActivationSummary, setVendorActivationSummary] = useState<string | null>(null);
-  const [partsActivationSummary, setPartsActivationSummary] = useState<string | null>(null);
-  const [historyActivationSummary, setHistoryActivationSummary] = useState<string | null>(null);
-  const [historyActivationOutcome, setHistoryActivationOutcome] = useState<"activated" | "blocked" | "not_run">("not_run");
-  const [historyActivationResult, setHistoryActivationResult] = useState<any>(null);
-  const [customerVehicleActivationResult, setCustomerVehicleActivationResult] = useState<any>(null);
-  const [resolvingReviewItemId, setResolvingReviewItemId] = useState<string | null>(null);
-  const [selectedCustomerByReviewItemId, setSelectedCustomerByReviewItemId] = useState<Record<string, string>>({});
+  const activatingVendors = false;
+  const activatingParts = false;
+  const activatingHistory = false;
+  const activatingCustomersVehicles = false;
+  const [activatingSession, setActivatingSession] = useState(false);
+  const [canonicalActivationResult, setCanonicalActivationResult] = useState<CanonicalActivationResult | null>(null);
+  const vendorActivationSummary: string | null = null;
+  const partsActivationSummary: string | null = null;
+  const historyActivationSummary: string | null = null;
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -313,191 +303,34 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
 
 
 
-  const activateVendors = async () => {
+  const activateSession = async () => {
     const confirmed = window.confirm(
-      "This writes staged vendor records into live supplier records for this shop. It does not activate customers, vehicles, parts, invoices, or work orders.",
+      "Continue canonical onboarding activation? This runs the next safe phase in order: vendors, customers/vehicles, parts, then historical work orders. Invoices are not activated.",
     );
     if (!confirmed) return;
 
-    setActivatingVendors(true);
+    setActivatingSession(true);
     setError(null);
     setNotice(null);
-    setVendorActivationSummary(null);
-    setCustomerVehicleActivationResult(null);
+    setCanonicalActivationResult(null);
 
     try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-vendors`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        setError(json?.error || "Failed to activate staged vendors.");
-      } else {
-        const warnings = Array.isArray(json?.warnings) ? json.warnings.length : 0;
-        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
-        const reviewItemsReused = asNumber(json?.reviewItemsReused);
-        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.vendors);
-        setVendorActivationSummary(
-          formatActivationPhaseSummary({
-            phaseLabel: "Vendors",
-            stagedProcessed: asNumber(json?.stagedVendors),
-            created: asNumber(json?.created),
-            matched: asNumber(json?.matchedExisting) + asNumber(json?.updatedNullOnly),
-            skipped: asNumber(json?.skipped),
-            reviewItemsPersisted,
-            reviewItemsReused,
-            openReviewForDomain,
-            warning: warnings > 0 ? ` Warnings: ${warnings}.` : "",
-          }),
-        );
+      const res = await fetch(onboardingSessionActivationPath(sessionId), { method: "POST" });
+      const json: unknown = await res.json();
+
+      if (!res.ok || !isCanonicalActivationResult(json)) {
+        const payload = json && typeof json === "object" && !Array.isArray(json) ? json as Record<string, unknown> : {};
+        setError(activationErrorMessage(payload.error, "Failed to continue canonical onboarding activation."));
+        return;
       }
+
+      setCanonicalActivationResult(json);
+      setNotice(json.message);
       await load();
     } catch {
-      setError("Failed to activate staged vendors.");
+      setError("Failed to continue canonical onboarding activation.");
     } finally {
-      setActivatingVendors(false);
-    }
-  };
-
-  const activateParts = async () => {
-    const confirmed = window.confirm("Activate staged parts inventory into live parts and stock records. Safe to rerun; matching records are updated/null-filled without duplicates.");
-    if (!confirmed) return;
-    setActivatingParts(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-parts`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
-        setError(activationErrorMessage(json?.error, "Failed to activate staged parts."));
-      } else {
-        const stagedProcessed = asNumber(json?.stagedParts);
-        const created = asNumber(json?.partsCreated);
-        const matched = asNumber(json?.existingPartsMatched) + asNumber(json?.partsNullOnlyUpdated);
-        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
-        const reviewItemsReused = asNumber(json?.reviewItemsReused);
-        const skipped = asNumber(json?.skipped);
-        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.parts);
-        const expectedReady = partReadyCount;
-        const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
-        const reconciliationTotal = created + matched + skipped;
-        const reconciliationUnclear = stagedProcessed > 0 && reconciliationTotal > 0 && reconciliationTotal !== stagedProcessed;
-        const warning = processedLessThanExpected || reconciliationUnclear
-          ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
-          : "";
-        setPartsActivationSummary(
-          formatActivationPhaseSummary({
-            phaseLabel: "Parts",
-            stagedProcessed,
-            created,
-            matched,
-            skipped,
-            reviewItemsPersisted,
-            reviewItemsReused,
-            openReviewForDomain,
-            warning,
-          }),
-        );
-      }
-      await load();
-    } catch {
-      setError("Failed to activate staged parts.");
-    } finally {
-      setActivatingParts(false);
-    }
-  };
-
-  const activateHistory = async () => {
-    const confirmed = window.confirm("Activate historical work orders as closed historical records only. They will not be added to active technician queues.");
-    if (!confirmed) return;
-    setActivatingHistory(true);
-    setError(null);
-    setNotice(null);
-    setHistoryActivationResult(null);
-    try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-history`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
-        setError(activationErrorMessage(json?.error, "Failed to activate historical work orders."));
-      } else {
-        const stagedProcessed = asNumber(json?.stagedHistoryRows);
-        const created = asNumber(json?.historicalWorkOrdersCreated);
-        const matched = asNumber(json?.existingMatched);
-        const reviewItemsPersisted = asNumber(json?.reviewItemsPersisted ?? json?.reviewItemsCreated);
-        const reviewItemsReused = asNumber(json?.reviewItemsReused);
-        const skipped = asNumber(json?.skipped);
-        const openReviewForDomain = asNumber(json?.reviewItemsOpenForDomain ?? byDomainCounts.history);
-        const groupedRowsRepresented = asNumber(json?.unresolvedDueToMissingCustomerLink)
-          + asNumber(json?.unresolvedDueToMissingVehicleLink)
-          + asNumber(json?.unresolvedDueToMissingLiveCustomer)
-          + asNumber(json?.unresolvedDueToMissingLiveVehicle);
-        const expectedReady = historyReadyCount;
-        const processedLessThanExpected = expectedReady > 0 && stagedProcessed < expectedReady;
-        const reconciliationTotal = created + matched + skipped;
-        const reconciliationUnclear = stagedProcessed > 0 && reconciliationTotal > 0 && reconciliationTotal !== stagedProcessed;
-        const warning = processedLessThanExpected || reconciliationUnclear
-          ? " Activation processed fewer staged rows than expected. This may indicate a pagination or filtering issue."
-          : "";
-        const mappingBlocked = stagedProcessed > 0 && created === 0 && matched === 0 && skipped >= stagedProcessed;
-        const mappingReason = mappingBlocked
-          ? " History rows were processed but no historical work orders were created or matched. Open developer details to inspect link/live resolution."
-          : "";
-        setHistoryActivationSummary(
-          formatActivationPhaseSummary({
-            phaseLabel: "History",
-            stagedProcessed,
-            created,
-            matched,
-            skipped,
-            reviewItemsPersisted,
-            reviewItemsReused,
-            openReviewForDomain,
-            groupedRowsRepresented,
-            warning: `${warning}${mappingReason}`,
-          }),
-        );
-        setHistoryActivationOutcome(historyActivationState({ stagedProcessed, created, matched, skipped }));
-        setHistoryActivationResult(json);
-      }
-      await load();
-    } catch {
-      setError("Failed to activate historical work orders.");
-    } finally {
-      setActivatingHistory(false);
-    }
-  };
-
-  const activateCustomersVehicles = async () => {
-    const runLoop = async () => {
-      for (let i = 0; i < 20; i += 1) {
-        const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "advance" }) });
-        const json = await res.json();
-        if (!res.ok || !json?.ok) {
-          setError(json?.error || "Failed to activate staged customers and vehicles.");
-          break;
-        }
-        setCustomerVehicleActivationResult(json);
-        await load({ silent: true });
-        const cp = json?.checkpoint;
-        if (cp?.status === "completed" || cp?.status === "failed") break;
-      }
-    };
-    const confirmed = window.confirm(
-      "This writes staged customer and vehicle records into live customers and vehicles for this shop. It does not activate work orders, invoices, parts, staff, or menu items.",
-    );
-    if (!confirmed) return;
-
-    setActivatingCustomersVehicles(true);
-    setError(null);
-    setNotice(null);
-    setCustomerVehicleActivationResult(null);
-
-    try {
-      await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "start" }) });
-      await runLoop();
-      await load();
-    } catch {
-      setError("Failed to activate staged customers and vehicles.");
-    } finally {
-      setActivatingCustomersVehicles(false);
+      setActivatingSession(false);
     }
   };
 
@@ -531,21 +364,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     : 0;
   const files = payload?.files ?? [];
   const hasFiles = files.length > 0;
-  const vendorReadyCount = Number(payload?.entityStatusCounts?.vendor?.ready ?? 0);
-  const customerReadyCount = Number(payload?.entityStatusCounts?.customer?.ready ?? 0);
-  const vehicleReadyCount = Number(payload?.entityStatusCounts?.vehicle?.ready ?? 0);
-  const hasCustomerVehicleReady = customerReadyCount > 0 || vehicleReadyCount > 0;
-  const actionBusy = analyzing || deleting || planning || activatingVendors || activatingCustomersVehicles || activatingParts || activatingHistory;
-  const canShowVendorActivation = !loadingSession && !sessionLoadError && vendorReadyCount > 0;
-  const partReadyCount = Number(payload?.entityStatusCounts?.part?.ready ?? 0);
-  const historyReadyCount = Number(payload?.entityStatusCounts?.historical_work_order?.ready ?? 0);
-  const canShowPartsActivation = !loadingSession && !sessionLoadError && partReadyCount > 0;
-  const canShowHistoryActivation = !loadingSession && !sessionLoadError && historyReadyCount > 0;
-  const canShowCustomerVehicleActivation = !loadingSession && !sessionLoadError && hasCustomerVehicleReady;
-  const byDomainCounts = useMemo(() => groupReviewItemsByDomain(Array.isArray(payload?.reviewItems) ? payload.reviewItems : []), [payload?.reviewItems]);
-  const vendorPartLinkCount = asNumber(payload?.linkCounts?.vendor_part);
-  const vendorsActivated = Boolean(vendorActivationSummary);
-  const anyActivationStarted = Boolean(vendorActivationSummary || partsActivationSummary || historyActivationSummary || customerVehicleActivationResult);
+  const actionBusy = analyzing || deleting || planning || activatingSession || activatingVendors || activatingCustomersVehicles || activatingParts || activatingHistory;
+  const canonicalActivationState = session?.summary?.onboardingActivation;
+  const anyActivationStarted = Boolean(canonicalActivationState || canonicalActivationResult);
 
   useEffect(() => {
     if (!actionBusy) return;
@@ -554,91 +375,6 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     }, 1500);
     return () => window.clearInterval(timer);
   }, [actionBusy, load]); // poll session while a long-running activation/action is in flight
-  const groupedCustomerVehicleWarnings = useMemo(() => {
-    const warnings: string[] = Array.isArray(customerVehicleActivationResult?.warnings)
-      ? customerVehicleActivationResult.warnings
-      : [];
-    const groups = new Map<string, { count: number; examples: string[] }>();
-    for (const warning of warnings) {
-      const key = warningCategory(warning);
-      const group = groups.get(key) ?? { count: 0, examples: [] };
-      group.count += 1;
-      if (group.examples.length < 10) group.examples.push(warning);
-      groups.set(key, group);
-    }
-    return [...groups.entries()].map(([reason, group]) => ({
-      reason,
-      count: group.count,
-      examples: group.examples,
-    }));
-  }, [customerVehicleActivationResult]);
-  const groupedLinkIssues = useMemo(() => {
-    const issues = Array.isArray(customerVehicleActivationResult?.customerVehicleLinkIssues)
-      ? customerVehicleActivationResult.customerVehicleLinkIssues
-      : [];
-    const groups = new Map<string, { count: number; examples: any[] }>();
-    for (const issue of issues) {
-      const key = issue.reason ?? "unknown";
-      const group = groups.get(key) ?? { count: 0, examples: [] };
-      group.count += 1;
-      if (group.examples.length < 5) group.examples.push(issue);
-      groups.set(key, group);
-    }
-    return [...groups.entries()].map(([reason, group]) => ({ reason, ...group }));
-  }, [customerVehicleActivationResult]);
-  const unresolvedCustomerVehicleReviewItems = useMemo(() => {
-    const items = Array.isArray(payload?.reviewItems) ? payload.reviewItems : [];
-    return items.filter((item: any) => item?.issue_type === "unresolved_customer_vehicle_link");
-  }, [payload?.reviewItems]);
-  const unresolvedPendingItems = useMemo(
-    () => unresolvedCustomerVehicleReviewItems.filter((item: any) => String(item?.status ?? "pending") === "pending"),
-    [unresolvedCustomerVehicleReviewItems],
-  );
-  const unresolvedManuallyResolvedCount = useMemo(
-    () => unresolvedCustomerVehicleReviewItems.filter((item: any) => ["resolved", "skipped"].includes(String(item?.status ?? ""))).length,
-    [unresolvedCustomerVehicleReviewItems],
-  );
-  const groupedUnresolvedPendingByReason = useMemo(() => {
-    const groups = new Map<string, { reasonLabel: string; count: number }>();
-    for (const item of unresolvedPendingItems) {
-      const details = unresolvedReviewDetails(item);
-      const key = details.reasonCode;
-      const group = groups.get(key) ?? { reasonLabel: details.reasonLabel, count: 0 };
-      group.count += 1;
-      groups.set(key, group);
-    }
-    return [...groups.entries()].map(([reasonCode, group]) => ({ reasonCode, ...group }));
-  }, [unresolvedPendingItems]);
-
-  const resolveUnresolvedLink = useCallback(async (args: { reviewItemId: string; action: "link" | "skip"; selectedCustomerId?: string }) => {
-    setResolvingReviewItemId(args.reviewItemId);
-    setError(null);
-    setNotice(null);
-    try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/resolve-customer-vehicle-link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reviewItemId: args.reviewItemId,
-          action: args.action,
-          selectedCustomerId: args.selectedCustomerId,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
-        setError(json?.error || "Failed to resolve unresolved customer/vehicle link.");
-      } else {
-        const warning = typeof json?.warning === "string" && json.warning ? ` Warning: ${json.warning}` : "";
-        setNotice(`${args.action === "skip" ? "Skipped" : "Linked"} ${json?.vehicleLabel ?? "vehicle"}${json?.customerLabel ? ` to ${json.customerLabel}` : ""}.${warning}`);
-      }
-      await load();
-    } catch {
-      setError("Failed to resolve unresolved customer/vehicle link.");
-    } finally {
-      setResolvingReviewItemId(null);
-    }
-  }, [load, sessionId]);
-
   const hasAnalysis = useMemo(() => {
     if (!session) return false;
     if (session.analyzed_at) return true;
@@ -691,42 +427,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           >
             {planning ? "Preparing…" : "Prepare activation plan"}
           </button>
-          {canShowCustomerVehicleActivation ? (
-            <button
-              onClick={activateCustomersVehicles}
-              disabled={actionBusy || !!sessionLoadError || !hasCustomerVehicleReady}
-              className="rounded border border-cyan-300/40 px-3 py-2 text-sm text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {activatingCustomersVehicles ? "Activating customers + vehicles…" : "Activate customers + vehicles"}
-            </button>
-          ) : null}
-          {canShowVendorActivation ? (
-            <button
-              onClick={activateVendors}
-              disabled={actionBusy || !!sessionLoadError || vendorReadyCount <= 0}
-              className="rounded border border-emerald-400/40 px-3 py-2 text-sm text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {activatingVendors ? "Activating vendors…" : "Activate vendors to live suppliers"}
-            </button>
-          ) : null}
-          {canShowPartsActivation ? (
-            <button
-              onClick={activateParts}
-              disabled={actionBusy || !!sessionLoadError || partReadyCount <= 0}
-              className="rounded border border-indigo-400/40 px-3 py-2 text-sm text-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {activatingParts ? "Activating parts…" : "Activate parts inventory"}
-            </button>
-          ) : null}
-          {canShowHistoryActivation ? (
-            <button
-              onClick={activateHistory}
-              disabled={actionBusy || !!sessionLoadError || historyReadyCount <= 0}
-              className="rounded border border-fuchsia-400/40 px-3 py-2 text-sm text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {activatingHistory ? "Activating history…" : "Activate historical work orders"}
-            </button>
-          ) : null}
+          <button
+            onClick={activateSession}
+            disabled={actionBusy || !!sessionLoadError || !hasAnalysis}
+            className="rounded border border-cyan-300/40 px-3 py-2 text-sm text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {activatingSession ? "Continuing activation…" : "Continue canonical activation"}
+          </button>
           <button
             onClick={deleteSession}
             disabled={deleting || analyzing || planning}
@@ -739,23 +446,13 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         {!hasFiles ? <p className="mt-2 text-xs text-slate-400">Upload at least one file before analysis.</p> : null}
         {hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analysis already exists; use Rerun analysis to safely clear and rebuild staged artifacts.</p> : null}
         {!hasAnalysis ? <p className="mt-1 text-xs text-slate-400">Analyze staged files before preparing an activation plan.</p> : null}
-        {canShowVendorActivation ? (
-          <p className="mt-1 text-xs text-amber-200/90">
-            Creates/updates suppliers only from staged ready vendor records. No customers, vehicles, parts, work orders, or invoices are activated.
-          </p>
-        ) : null}
-        {canShowCustomerVehicleActivation ? (
+        {hasAnalysis ? (
           <p className="mt-1 text-xs text-cyan-100/90">
-            Creates/updates live customers and vehicles only. No work orders, invoices, parts, staff, or menu items are activated.
+            Canonical activation advances one safe phase at a time: vendors, customers/vehicles, parts, then historical work orders. Invoices are not activated.
           </p>
         ) : null}
-        {canShowPartsActivation ? <p className="mt-1 text-xs text-indigo-100/90">Safe to rerun. Existing imported part records will be matched, not duplicated.</p> : null}
-        {partsVendorGuidance({ canShowPartsActivation, vendorsActivated, vendorPartLinkCount }) ? (
-          <p className="mt-1 text-xs text-amber-100/90">{partsVendorGuidance({ canShowPartsActivation, vendorsActivated, vendorPartLinkCount })}</p>
-        ) : null}
-        {canShowHistoryActivation ? <p className="mt-1 text-xs text-fuchsia-100/90">Historical work orders are imported as closed/historical records and will not appear in active technician queues.</p> : null}
         <div className="mt-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
-          Recommended order: 1) Activate vendors to live suppliers 2) Activate customers + vehicles 3) Activate parts inventory 4) Activate historical work orders.
+          Recommended order is now enforced by the canonical activation runner: vendors → customers/vehicles → parts → historical work orders → completion handoff.
         </div>
         {activationProgress || customerVehicleCheckpoint ? (
           <div className="mt-3 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
@@ -787,237 +484,14 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
           </div>
         ) : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
+        {canonicalActivationResult ? (
+          <p className="mt-2 text-xs text-cyan-100">
+            Last canonical phase: {canonicalActivationResult.phase}. {canonicalActivationResult.completed ? "Onboarding activation is complete." : "Click Continue canonical activation to run the next phase."}
+          </p>
+        ) : null}
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
         {partsActivationSummary ? <p className="mt-2 text-xs text-indigo-200">{partsActivationSummary}</p> : null}
         {historyActivationSummary ? <p className="mt-2 text-xs text-fuchsia-200">{historyActivationSummary}</p> : null}
-        {historyActivationResult?.diagnostics ? (
-          <details className="mt-2 rounded border border-fuchsia-400/20 bg-fuchsia-950/20 p-2 text-[11px] text-fuchsia-100/90">
-            <summary className="cursor-pointer">History developer details</summary>
-            <div className="mt-2 grid gap-1 sm:grid-cols-2">
-              <div>diagnosticVersion: {String(historyActivationResult.diagnostics.runtime?.diagnosticVersion ?? "unknown")}</div>
-              <div>activationModule: {String(historyActivationResult.diagnostics.runtime?.activationModule ?? "unknown")}</div>
-              <div>executedAt: {String(historyActivationResult.diagnostics.runtime?.executedAt ?? "unknown")}</div>
-              <div>stagedHistoryRows: {asNumber(historyActivationResult.diagnostics.stagedHistoryRows)}</div>
-              <div>customerWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.customerWorkOrderLinks)}</div>
-              <div>vehicleWorkOrderLinks: {asNumber(historyActivationResult.diagnostics.vehicleWorkOrderLinks)}</div>
-              <div>historyRowsWithCustomerLink: {asNumber(historyActivationResult.diagnostics.historyRowsWithCustomerLink)}</div>
-              <div>historyRowsWithVehicleLink: {asNumber(historyActivationResult.diagnostics.historyRowsWithVehicleLink)}</div>
-              <div>linkedCustomerStagedEntitiesFound: {asNumber(historyActivationResult.diagnostics.linkedCustomerStagedEntitiesFound)}</div>
-              <div>linkedVehicleStagedEntitiesFound: {asNumber(historyActivationResult.diagnostics.linkedVehicleStagedEntitiesFound)}</div>
-              <div>linkedCustomerLiveResolved: {asNumber(historyActivationResult.diagnostics.linkedCustomerLiveResolved)}</div>
-              <div>linkedVehicleLiveResolved: {asNumber(historyActivationResult.diagnostics.linkedVehicleLiveResolved)}</div>
-              <div>rowsWithBothLiveCustomerAndVehicle: {asNumber(historyActivationResult.diagnostics.rowsWithBothLiveCustomerAndVehicle)}</div>
-              <div>rowsMissingLiveCustomer: {asNumber(historyActivationResult.diagnostics.rowsMissingLiveCustomer)}</div>
-              <div>rowsMissingLiveVehicle: {asNumber(historyActivationResult.diagnostics.rowsMissingLiveVehicle)}</div>
-              <div>rowsMissingBoth: {asNumber(historyActivationResult.diagnostics.rowsMissingBoth)}</div>
-              <div>rowsInvalidDate: {asNumber(historyActivationResult.diagnostics.rowsInvalidDate)}</div>
-              <div>rowsMissingRequiredIdentifier: {asNumber(historyActivationResult.diagnostics.rowsMissingRequiredIdentifier)}</div>
-              <div>workOrdersCreated: {asNumber(historyActivationResult.diagnostics.workOrdersCreated)}</div>
-              <div>workOrdersMatchedExisting: {asNumber(historyActivationResult.diagnostics.workOrdersMatchedExisting)}</div>
-            </div>
-            <pre className="mt-2 overflow-x-auto rounded border border-fuchsia-400/20 bg-slate-900/70 p-2 text-[10px] text-fuchsia-100/90">{JSON.stringify({
-              linkEndpointEntityTypesByCount: historyActivationResult.diagnostics.linkEndpointEntityTypesByCount ?? {},
-              customerWorkOrderEndpointTypesByCount: historyActivationResult.diagnostics.customerWorkOrderEndpointTypesByCount ?? {},
-              vehicleWorkOrderEndpointTypesByCount: historyActivationResult.diagnostics.vehicleWorkOrderEndpointTypesByCount ?? {},
-              linksPointingToFetchedHistoryIdsFrom: historyActivationResult.diagnostics.linksPointingToFetchedHistoryIdsFrom ?? 0,
-              linksPointingToFetchedHistoryIdsTo: historyActivationResult.diagnostics.linksPointingToFetchedHistoryIdsTo ?? 0,
-              linksPointingToDiscoveredHistoryLikeEntities: historyActivationResult.diagnostics.linksPointingToDiscoveredHistoryLikeEntities ?? 0,
-              discoveredHistoryLikeEntityCount: historyActivationResult.diagnostics.discoveredHistoryLikeEntityCount ?? 0,
-              discoveredCustomerLikeEntityCount: historyActivationResult.diagnostics.discoveredCustomerLikeEntityCount ?? 0,
-              discoveredVehicleLikeEntityCount: historyActivationResult.diagnostics.discoveredVehicleLikeEntityCount ?? 0,
-              historyLinkedViaSparseDuplicateCount: historyActivationResult.diagnostics.historyLinkedViaSparseDuplicateCount ?? 0,
-              historyLinkedViaCanonicalEntityCount: historyActivationResult.diagnostics.historyLinkedViaCanonicalEntityCount ?? 0,
-              firstFiveLinkEndpointSamples: historyActivationResult.diagnostics.firstFiveLinkEndpointSamples ?? [],
-            }, null, 2)}</pre>
-            <pre className="mt-2 overflow-x-auto rounded border border-fuchsia-400/20 bg-slate-900/70 p-2 text-[10px] text-fuchsia-100/90">{JSON.stringify(historyDiagnosticsExtra(historyActivationResult.diagnostics), null, 2)}</pre>
-            {Array.isArray(historyActivationResult.diagnostics.unresolvedSamples) && historyActivationResult.diagnostics.unresolvedSamples.length > 0 ? (
-              <div className="mt-2">
-                <div>Unresolved samples (first {historyActivationResult.diagnostics.unresolvedSamples.length}):</div>
-                <ul className="list-disc pl-5">
-                  {historyActivationResult.diagnostics.unresolvedSamples.map((sample: any) => (
-                    <li key={`history-sample-${sample.historyEntityId}`}>
-                      {sample.historyEntityId}: {sample.finalSkipReason}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </details>
-        ) : null}
-        {customerVehicleActivationResult ? (
-          <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
-            <p>
-              Staged customers/vehicles: {Number(customerVehicleActivationResult.stagedCustomersFound ?? 0)}/
-              {Number(customerVehicleActivationResult.stagedVehiclesFound ?? 0)}. Links: {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
-            </p>
-            <p>
-              Customer candidates: {Number(customerVehicleActivationResult.customerActivationCandidates ?? 0)} (from {Number(customerVehicleActivationResult.stagedCustomersFound ?? 0)} staged).
-            </p>
-            <p>
-              Customers inserted/updated/matched existing/skipped: {Number(customerVehicleActivationResult.customersInserted ?? 0)}/
-              {Number(customerVehicleActivationResult.customersUpdated ?? 0)}/{Number(customerVehicleActivationResult.customersMatchedExisting ?? 0)}/{Number(customerVehicleActivationResult.customersSkipped ?? 0)}.
-            </p>
-            <p>
-              Vehicles inserted/updated/matched existing/skipped: {Number(customerVehicleActivationResult.vehiclesInserted ?? 0)}/
-              {Number(customerVehicleActivationResult.vehiclesUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehiclesMatchedExisting ?? 0)}/{Number(customerVehicleActivationResult.vehiclesSkipped ?? 0)}.
-            </p>
-            <p>
-              Customer duplicate-staged/ambiguous/recovered from unique conflict: {Number(customerVehicleActivationResult.customersSkippedDuplicateStaged ?? 0)}/
-              {Number(customerVehicleActivationResult.customersSkippedAmbiguous ?? 0)}/{Number(customerVehicleActivationResult.customersRecoveredFromUniqueConflict ?? 0)}.
-            </p>
-            <p>
-              Vehicle/customer links created/updated/already-correct/skipped: {Number(customerVehicleActivationResult.vehicleCustomerLinksCreated ?? 0)}/
-              {Number(customerVehicleActivationResult.vehicleCustomerLinksUpdated ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksAlreadyCorrect ?? 0)}/{Number(customerVehicleActivationResult.vehicleCustomerLinksSkipped ?? 0)}.
-            </p>
-            <p>
-              Links materialized: {Number(customerVehicleActivationResult.vehicleCustomerLinksMaterialized ?? 0)} / {Number(customerVehicleActivationResult.stagedCustomerVehicleLinksFound ?? 0)}.
-              Unresolved links: {Number(customerVehicleActivationResult.vehicleCustomerLinksUnresolved ?? 0)}.
-              Resolved manually: {unresolvedManuallyResolvedCount}.
-              Live vehicle/customer links after: {Number(customerVehicleActivationResult.liveVehicleCustomerLinksAfter ?? 0)}.
-            </p>
-            <p>
-              Live customers before/after: {Number(customerVehicleActivationResult.customersBefore ?? 0)}/
-              {Number(customerVehicleActivationResult.customersAfter ?? 0)}. Live vehicles before/after: {Number(customerVehicleActivationResult.vehiclesBefore ?? 0)}/
-              {Number(customerVehicleActivationResult.vehiclesAfter ?? 0)}.
-            </p>
-            {groupedLinkIssues.length > 0 ? (
-              <div className="mt-2">
-                <p>Unresolved customer/vehicle links: {Number(customerVehicleActivationResult.vehicleCustomerLinksUnresolved ?? 0)}</p>
-                <ul className="list-disc pl-5">
-                  {groupedLinkIssues.map((group) => (
-                    <li key={`issue-${group.reason}`}>
-                      {group.reason}: {group.count}
-                      <details className="mt-1 pl-2">
-                        <summary className="cursor-pointer text-[11px] text-cyan-200/90">Show first {group.examples.length} examples</summary>
-                        <ul className="list-disc pl-5 pt-1 text-[11px] text-cyan-100/90">
-                          {group.examples.map((issue: any, index: number) => (
-                            <li key={`${group.reason}-${index}`}>
-                              <div>Customer: {getCustomerDisplayLabel(issue?.stagedCustomerSummary)}</div>
-                              <div>Vehicle: {getVehicleDisplayLabel(issue?.stagedVehicleSummary)}</div>
-                              <div>Reason: {linkIssueReasonLabel(issue?.reason ?? "unknown")}</div>
-                              <details className="pl-2 text-cyan-200/80">
-                                <summary className="cursor-pointer">Developer details</summary>
-                                <div>link_id: {issue?.linkId ?? "n/a"}</div>
-                                <div>staged_customer_entity_id: {issue?.stagedCustomerSummary?.entityId ?? "n/a"}</div>
-                                <div>staged_vehicle_entity_id: {issue?.stagedVehicleSummary?.entityId ?? "n/a"}</div>
-                                <div>live_customer_id: {issue?.liveCustomerId ?? "n/a"}</div>
-                                <div>live_vehicle_id: {issue?.liveVehicleId ?? "n/a"}</div>
-                                <div>current_vehicle_customer_id: {issue?.currentVehicleCustomerId ?? "n/a"}</div>
-                              </details>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {Array.isArray(customerVehicleActivationResult.warnings) && customerVehicleActivationResult.warnings.length > 0 ? (
-              <div className="mt-1">
-                <p>Warnings: {customerVehicleActivationResult.warnings.length}</p>
-                <ul className="list-disc pl-5">
-                  {groupedCustomerVehicleWarnings.map((group) => (
-                    <li key={group.reason}>
-                      {group.reason}: {group.count}
-                      <details className="mt-1 pl-2">
-                        <summary className="cursor-pointer text-[11px] text-cyan-200/90">Show first {group.examples.length} examples</summary>
-                        <ul className="list-disc pl-5 pt-1 text-[11px] text-cyan-100/90">
-                          {group.examples.map((warning: string, index: number) => (
-                            <li key={`${group.reason}-${index}`}>{warning}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {unresolvedCustomerVehicleReviewItems.length > 0 ? (
-          <div className="mt-3 rounded-lg border border-cyan-400/25 bg-slate-950/50 p-3 text-xs text-cyan-100">
-            <p className="font-medium">Unresolved customer/vehicle links</p>
-            <p className="mt-1 text-cyan-100/90">
-              Pending: {unresolvedPendingItems.length}. Manually resolved/skipped: {unresolvedManuallyResolvedCount}.
-            </p>
-            {groupedUnresolvedPendingByReason.length > 0 ? (
-              <ul className="mt-1 list-disc pl-5 text-[11px] text-cyan-100/90">
-                {groupedUnresolvedPendingByReason.map((group) => (
-                  <li key={`pending-group-${group.reasonCode}`}>{group.reasonLabel}: {group.count}</li>
-                ))}
-              </ul>
-            ) : null}
-            <div className="mt-2 space-y-2">
-              {unresolvedPendingItems.slice(0, 25).map((item: any) => {
-                const details = unresolvedReviewDetails(item);
-                const selectedCustomerId = selectedCustomerByReviewItemId[item.id] ?? "";
-                const canLink = details.liveVehicleId && details.candidateLiveCustomers.length > 0;
-                return (
-                  <div key={item.id} className="rounded border border-cyan-400/20 bg-cyan-950/10 p-2">
-                    <div>Customer: {details.proposedCustomerLabel}</div>
-                    <div>Vehicle: {details.proposedVehicleLabel}</div>
-                    <div>Reason: {details.reasonLabel}</div>
-                    {canLink ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select
-                          value={selectedCustomerId}
-                          onChange={(event) => setSelectedCustomerByReviewItemId((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                          className="rounded border border-cyan-300/30 bg-slate-900 px-2 py-1 text-xs text-cyan-50"
-                        >
-                          <option value="">Select live customer…</option>
-                          {details.candidateLiveCustomers.map((customer: any) => (
-                            <option key={`${item.id}-${customer.id}`} value={customer.id}>
-                              {getCustomerDisplayLabel(customer)}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "link", selectedCustomerId })}
-                          disabled={!selectedCustomerId || resolvingReviewItemId === item.id}
-                          className="rounded border border-emerald-300/40 px-2 py-1 text-xs text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Link to selected customer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "skip" })}
-                          disabled={resolvingReviewItemId === item.id}
-                          className="rounded border border-amber-300/40 px-2 py-1 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Do not link
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-[11px] text-cyan-200/85">
-                        Manual link requires exactly one materialized vehicle and candidate live customer matches.
-                        <button
-                          type="button"
-                          onClick={() => resolveUnresolvedLink({ reviewItemId: item.id, action: "skip" })}
-                          disabled={resolvingReviewItemId === item.id}
-                          className="ml-2 rounded border border-amber-300/40 px-2 py-1 text-xs text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Do not link
-                        </button>
-                      </div>
-                    )}
-                    <details className="mt-2 text-[11px] text-cyan-200/85">
-                      <summary className="cursor-pointer">Developer details</summary>
-                      <div>review_item_id: {item.id}</div>
-                      <div>staged_link_id: {details.stagedLinkId ?? "n/a"}</div>
-                      <div>staged_customer_entity_id: {details.stagedCustomerEntityId ?? "n/a"}</div>
-                      <div>staged_vehicle_entity_id: {details.stagedVehicleEntityId ?? "n/a"}</div>
-                      <div>live_customer_id: {details.liveCustomerId ?? "n/a"}</div>
-                      <div>live_vehicle_id: {details.liveVehicleId ?? "n/a"}</div>
-                      <div>current_vehicle_customer_id: {details.currentVehicleCustomerId ?? "n/a"}</div>
-                    </details>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
         {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
         {sessionLoadError ? (
           <div className="mt-3 rounded-lg border border-rose-400/40 bg-rose-950/40 p-3 text-xs text-rose-200">
@@ -1036,10 +510,10 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
             fallbackReadiness={payload?.readiness ?? session?.summary?.activationReadiness}
             activationState={{
               started: anyActivationStarted,
-              customersVehicles: customerVehicleActivationResult ? "activated" : "not_run",
-              vendors: vendorActivationSummary ? "activated" : "not_run",
-              parts: partsActivationSummary ? "activated" : "not_run",
-              history: historyActivationSummary ? historyActivationOutcome === "blocked" ? "not_run" : "activated" : "not_run",
+              customersVehicles: customerVehicleCheckpoint?.status === "completed" ? "activated" : "not_run",
+              vendors: canonicalActivationResult?.phase === "vendors" || anyActivationStarted ? "activated" : "not_run",
+              parts: canonicalActivationResult?.phase === "parts" || canonicalActivationResult?.phase === "history" || canonicalActivationResult?.completed ? "activated" : "not_run",
+              history: canonicalActivationResult?.phase === "history" || canonicalActivationResult?.completed ? "activated" : "not_run",
             }}
           />
           <OnboardingFilesPanel files={files} />
