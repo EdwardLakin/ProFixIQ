@@ -7,6 +7,60 @@ type OnboardingFileRef = {
   storage_path: string | null;
 };
 
+const DELETE_CHUNK_SIZE = 500;
+
+async function deleteRowsByChunk(params: {
+  supabase: any;
+  table: string;
+  shopId: string;
+  sessionId: string;
+  matchSessionId?: boolean;
+}) {
+  const { supabase, table, shopId, sessionId, matchSessionId = true } = params;
+  let deleted = 0;
+
+  while (true) {
+    let selectQuery = supabase
+      .from(table)
+      .select("id")
+      .eq("shop_id", shopId);
+
+    selectQuery = matchSessionId
+      ? selectQuery.eq("session_id", sessionId)
+      : selectQuery.eq("id", sessionId);
+
+    const { data, error } = await selectQuery
+      .order("id", { ascending: true })
+      .limit(DELETE_CHUNK_SIZE);
+
+    if (error) throw new Error(error.message);
+
+    const ids = ((data ?? []) as Array<{ id: string | null }>)
+      .map((row) => row.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (ids.length === 0) break;
+
+    let deleteQuery = supabase
+      .from(table)
+      .delete()
+      .eq("shop_id", shopId)
+      .in("id", ids);
+
+    if (matchSessionId) {
+      deleteQuery = deleteQuery.eq("session_id", sessionId);
+    }
+
+    const { error: deleteError } = await deleteQuery;
+    if (deleteError) throw new Error(deleteError.message);
+
+    deleted += ids.length;
+    if (ids.length < DELETE_CHUNK_SIZE) break;
+  }
+
+  return deleted;
+}
+
 export async function deleteOnboardingSession(params: {
   supabase: SupabaseClient;
   shopId: string;
@@ -41,15 +95,13 @@ export async function deleteOnboardingSession(params: {
   ];
 
   for (const step of deletionSteps) {
-    let query = sb.from(step.table).delete().eq("shop_id", params.shopId);
-    if (step.matchSessionId ?? false) {
-      query = query.eq("session_id", params.sessionId);
-    } else {
-      query = query.eq("id", params.sessionId);
-    }
-
-    const { error } = await query;
-    if (error) throw new Error(error.message);
+    await deleteRowsByChunk({
+      supabase: sb,
+      table: step.table,
+      shopId: params.shopId,
+      sessionId: params.sessionId,
+      matchSessionId: step.matchSessionId ?? false,
+    });
   }
 
   const bucketPaths = safeFiles.reduce<Map<string, string[]>>((acc, file) => {

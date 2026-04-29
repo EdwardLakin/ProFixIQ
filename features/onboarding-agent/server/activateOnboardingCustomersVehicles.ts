@@ -696,7 +696,7 @@ export async function activateOnboardingCustomersVehicles(params: {
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .in("entity_type", ["customer", "vehicle"])
-        .eq("status", "ready")
+        .in("status", ["ready", "matched", "activated"])
         .order("id", { ascending: true })
         .range(from, to))),
     timed("customer_vehicle_link_fetch_ms", () => fetchAllRows<Pick<OnboardingEntityLinkRow, "id" | "shop_id" | "session_id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
@@ -710,8 +710,9 @@ export async function activateOnboardingCustomersVehicles(params: {
         .range(from, to))),
   ]);
 
-  const customerEntities = entities.filter((entity) => entity.entity_type === "customer" && entity.status === "ready");
-  const vehicleEntities = entities.filter((entity) => entity.entity_type === "vehicle" && entity.status === "ready");
+  const activatableStatuses = new Set(["ready", "matched", "activated"]);
+  const customerEntities = entities.filter((entity) => entity.entity_type === "customer" && activatableStatuses.has(String(entity.status)));
+  const vehicleEntities = entities.filter((entity) => entity.entity_type === "vehicle" && activatableStatuses.has(String(entity.status)));
   const entityById = new Map(entities.map((entity) => [entity.id, entity]));
 
   const warnings: string[] = [];
@@ -914,8 +915,22 @@ export async function activateOnboardingCustomersVehicles(params: {
   let vehiclesSkipped = 0;
   for (const entity of vehicleEntities) {
     const normalized = toNormalizedVehicle(entity);
-    const raw = (entity.normalized ?? {}) as JsonObject;
-    const linkedCustomerId = customerByExternal.get(normalizeLookupKey(raw.sourceCustomerId));
+    const vehicleLayers = buildOnboardingEntityPayloadLayers(entity as any);
+    const sourceCustomerExternalId = firstTextFromLayers(vehicleLayers, [
+      "sourceCustomerId",
+      "source_customer_id",
+      "customerExternalId",
+      "customer_external_id",
+      "customer_id",
+      "customerId",
+      "customerNumber",
+      "customer_number",
+      "ownerExternalId",
+      "owner_external_id",
+    ]).value;
+    const linkedCustomerId = sourceCustomerExternalId
+      ? customerByExternal.get(normalizeLookupKey(sourceCustomerExternalId))
+      : undefined;
     const { matches, strategy } = vehicleMatchesInPriority({ vehicle: normalized, pool: vehiclePool, linkedCustomerId: linkedCustomerId ?? null });
 
     if (matches.length > 1) {

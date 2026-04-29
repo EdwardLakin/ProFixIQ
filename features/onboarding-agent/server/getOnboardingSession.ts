@@ -94,12 +94,16 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       const counts: Record<string, Record<string, number>> = {};
       await Promise.all(ENTITY_BUCKETS.map(async (type) => {
         counts[type] = {};
-        for (const status of ["ready", "needs_review", "duplicate_candidate", "rejected", "ignored"]) {
-          counts[type][status] = await countByField("onboarding_entities", "entity_type", type).then(async () => {
-            const { count, error } = await sb.from("onboarding_entities").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId).eq("session_id", params.sessionId).eq("entity_type", type).eq("status", status);
-            if (error) throw new Error(error.message);
-            return Number(count ?? 0);
-          });
+        for (const status of ["ready", "matched", "activated", "needs_review", "duplicate_candidate", "rejected", "ignored"]) {
+          const { count, error } = await sb
+            .from("onboarding_entities")
+            .select("id", { head: true, count: "exact" })
+            .eq("shop_id", params.shopId)
+            .eq("session_id", params.sessionId)
+            .eq("entity_type", type)
+            .eq("status", status);
+          if (error) throw new Error(error.message);
+          counts[type][status] = Number(count ?? 0);
         }
       }));
       return counts;

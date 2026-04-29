@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { fetchAllPaginatedRows } from "@/features/onboarding-agent/server/fetchAllPaginatedRows";
+import { buildOnboardingEntityPayloadLayers, firstTextFromLayers } from "@/features/onboarding-agent/server/onboardingEntityPayload";
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -59,17 +60,111 @@ function parseNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function firstLayeredText(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">, aliases: string[]): string | null {
+  return firstTextFromLayers(buildOnboardingEntityPayloadLayers(entity as any), aliases).value;
+}
+
 function toNormalizedPart(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">): NormalizedPart {
-  const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
+  const name = firstLayeredText(entity, [
+    "description",
+    "Description",
+    "part_description",
+    "partDescription",
+    "item_description",
+    "itemDescription",
+    "name",
+    "Name",
+    "part_name",
+    "partName",
+    "item_name",
+    "itemName",
+  ]) ?? normalizeText(entity.display_name) || null;
+
+  const partNumber = firstLayeredText(entity, [
+    "partNumber",
+    "part_number",
+    "part_no",
+    "partNo",
+    "part #",
+    "Part #",
+    "Part Number",
+    "mpn",
+    "manufacturer_part_number",
+    "item_number",
+    "itemNumber",
+  ]);
+
+  const sku = firstLayeredText(entity, [
+    "sku",
+    "SKU",
+    "item_sku",
+    "itemSku",
+    "stock_code",
+    "stockCode",
+    "inventory_sku",
+    "inventorySku",
+  ]);
+
+  const quantityRaw = firstLayeredText(entity, [
+    "quantityOnHandRaw",
+    "quantity_on_hand_raw",
+    "quantityOnHand",
+    "quantity_on_hand",
+    "qty_on_hand",
+    "qtyOnHand",
+    "on_hand",
+    "onHand",
+    "stock",
+    "quantity",
+    "qty",
+    "Quantity",
+    "QTY",
+  ]);
+
+  const costRaw = firstLayeredText(entity, [
+    "cost",
+    "Cost",
+    "unit_cost",
+    "unitCost",
+    "default_cost",
+    "defaultCost",
+    "purchase_cost",
+    "purchaseCost",
+  ]);
+
+  const priceRaw = firstLayeredText(entity, [
+    "price",
+    "Price",
+    "sale_price",
+    "salePrice",
+    "retail_price",
+    "retailPrice",
+    "default_price",
+    "defaultPrice",
+    "list_price",
+    "listPrice",
+  ]);
+
+  const vendorName = firstLayeredText(entity, [
+    "vendorName",
+    "vendor_name",
+    "vendor",
+    "Vendor",
+    "supplier",
+    "Supplier",
+    "supplierName",
+    "supplier_name",
+  ]);
+
   return {
-    name: normalizeText(normalized.description ?? entity.display_name) || null,
-    partNumber: normalizeText(normalized.partNumber) || null,
-    sku: normalizeText(normalized.sku) || null,
-    vendorName: normalizeText(normalized.vendorName) || null,
-    quantity: parseNumber(normalized.quantityOnHandRaw),
-    cost: parseNumber(normalized.cost),
-    price: parseNumber(normalized.price),
-    sourceExternalId: normalizeText(entity.source_external_id) || null,
+    name: normalizeText(name) || null,
+    partNumber: normalizeText(partNumber) || null,
+    sku: normalizeText(sku) || null,
+    vendorName: normalizeText(vendorName) || null,
+    quantity: parseNumber(quantityRaw),
+    cost: parseNumber(costRaw),
+    price: parseNumber(priceRaw),
+    sourceExternalId: normalizeText(entity.source_external_id) || firstLayeredText(entity, ["source_external_id", "sourceExternalId", "external_id", "externalId"]) || null,
   };
 }
 
