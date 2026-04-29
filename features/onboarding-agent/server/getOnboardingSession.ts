@@ -177,6 +177,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     liveRecordsCreated: 0 as const,
     agentReport: (session?.summary ?? {})?.agentReport ?? null,
     agentPlan: (session?.summary ?? {})?.agentPlan ?? null,
+    activationProgress: (session?.summary ?? {})?.activationProgress ?? null,
   };
 
   return {

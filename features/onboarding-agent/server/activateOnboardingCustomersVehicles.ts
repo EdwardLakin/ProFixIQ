@@ -19,6 +19,24 @@ type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_revie
 const PAGE_SIZE = 1000;
 const LOOKUP_CHUNK_SIZE = 250;
 const WRITEBACK_CHUNK_SIZE = 200;
+const PROGRESS_WRITE_EVERY = 100;
+const PROGRESS_WRITE_MIN_MS = 750;
+
+type ActivationProgressSnapshot = {
+  phase: "customers_vehicles";
+  status: "running" | "completed";
+  stage: string;
+  label: string;
+  current: number;
+  total: number;
+  customersProcessed: number;
+  customersTotal: number;
+  vehiclesProcessed: number;
+  vehiclesTotal: number;
+  linksProcessed: number;
+  linksTotal: number;
+  updatedAt: string;
+};
 
 export type CustomerVehicleActivationResult = {
   ok: true;
@@ -688,6 +706,53 @@ export async function activateOnboardingCustomersVehicles(params: {
     sessionId: params.sessionId,
   });
 
+  const { data: sessionProgressRows } = await sb
+    .from("onboarding_sessions")
+    .select("summary")
+    .eq("shop_id", params.shopId)
+    .eq("id", params.sessionId);
+
+  const sessionProgressRow = Array.isArray(sessionProgressRows)
+    ? sessionProgressRows[0] ?? null
+    : sessionProgressRows ?? null;
+
+  let baseSessionSummaryForProgress =
+    sessionProgressRow?.summary && typeof sessionProgressRow.summary === "object" && !Array.isArray(sessionProgressRow.summary)
+      ? { ...(sessionProgressRow.summary as JsonObject) }
+      : {};
+
+  let lastProgressWriteAt = 0;
+  async function writeActivationProgress(progress: Omit<ActivationProgressSnapshot, "updatedAt">, force = false) {
+    const now = Date.now();
+    if (!force && now - lastProgressWriteAt < PROGRESS_WRITE_MIN_MS) return;
+    lastProgressWriteAt = now;
+
+    const activationProgress: ActivationProgressSnapshot = {
+      ...progress,
+      updatedAt: new Date().toISOString(),
+    };
+
+    baseSessionSummaryForProgress = {
+      ...baseSessionSummaryForProgress,
+      activationProgress,
+    };
+
+    const { error } = await sb
+      .from("onboarding_sessions")
+      .update({ summary: baseSessionSummaryForProgress })
+      .eq("shop_id", params.shopId)
+      .eq("id", params.sessionId);
+
+    if (error) {
+      console.warn("[onboarding-agent][customers-vehicles] progress write skipped", {
+        shopId: params.shopId,
+        sessionId: params.sessionId,
+        stage: progress.stage,
+        message: error.message,
+      });
+    }
+  }
+
   const [entities, links] = await Promise.all([
     timed("staged_customer_vehicle_fetch_ms", () => fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>((from, to) =>
       sb
@@ -781,7 +846,47 @@ export async function activateOnboardingCustomersVehicles(params: {
   const customersBefore = customerPool.length;
   const vehiclesBefore = vehiclePool.length;
   const indexes = buildLiveCustomerIndexes(customerPool);
+
+  const activationProgressTotal = customerCandidates.length + vehicleEntities.length + links.length;
+  let activationProgressCurrent = 0;
+  let customersProcessedForProgress = 0;
+  let vehiclesProcessedForProgress = 0;
+  let linksProcessedForProgress = 0;
+
+  await writeActivationProgress({
+    phase: "customers_vehicles",
+    status: "running",
+    stage: "customers",
+    label: "Materializing customers",
+    current: activationProgressCurrent,
+    total: activationProgressTotal,
+    customersProcessed: customersProcessedForProgress,
+    customersTotal: customerCandidates.length,
+    vehiclesProcessed: vehiclesProcessedForProgress,
+    vehiclesTotal: vehicleEntities.length,
+    linksProcessed: linksProcessedForProgress,
+    linksTotal: links.length,
+  }, true);
+
   for (const candidate of customerCandidates) {
+    customersProcessedForProgress += 1;
+    activationProgressCurrent += 1;
+    if (customersProcessedForProgress === 1 || customersProcessedForProgress % PROGRESS_WRITE_EVERY === 0) {
+      await writeActivationProgress({
+        phase: "customers_vehicles",
+        status: "running",
+        stage: "customers",
+        label: "Materializing customers",
+        current: activationProgressCurrent,
+        total: activationProgressTotal,
+        customersProcessed: customersProcessedForProgress,
+        customersTotal: customerCandidates.length,
+        vehiclesProcessed: vehiclesProcessedForProgress,
+        vehiclesTotal: vehicleEntities.length,
+        linksProcessed: linksProcessedForProgress,
+        linksTotal: links.length,
+      });
+    }
     const normalized = candidate.normalized;
     if (!normalized.externalId && !normalized.email && !normalized.phone && !getCustomerNameBusinessKey(normalized)) {
       customerRowsSkippedBecauseNoIdentity += 1;
@@ -909,11 +1014,44 @@ export async function activateOnboardingCustomersVehicles(params: {
     if (liveId) customerByExternal.set(normalizeLookupKey(normalized.externalId), liveId);
   }
 
+  await writeActivationProgress({
+    phase: "customers_vehicles",
+    status: "running",
+    stage: "vehicles",
+    label: "Materializing vehicles",
+    current: activationProgressCurrent,
+    total: activationProgressTotal,
+    customersProcessed: customersProcessedForProgress,
+    customersTotal: customerCandidates.length,
+    vehiclesProcessed: vehiclesProcessedForProgress,
+    vehiclesTotal: vehicleEntities.length,
+    linksProcessed: linksProcessedForProgress,
+    linksTotal: links.length,
+  }, true);
+
   let vehiclesInserted = 0;
   let vehiclesUpdated = 0;
   let vehiclesMatchedExisting = 0;
   let vehiclesSkipped = 0;
   for (const entity of vehicleEntities) {
+    vehiclesProcessedForProgress += 1;
+    activationProgressCurrent += 1;
+    if (vehiclesProcessedForProgress === 1 || vehiclesProcessedForProgress % PROGRESS_WRITE_EVERY === 0) {
+      await writeActivationProgress({
+        phase: "customers_vehicles",
+        status: "running",
+        stage: "vehicles",
+        label: "Materializing vehicles",
+        current: activationProgressCurrent,
+        total: activationProgressTotal,
+        customersProcessed: customersProcessedForProgress,
+        customersTotal: customerCandidates.length,
+        vehiclesProcessed: vehiclesProcessedForProgress,
+        vehiclesTotal: vehicleEntities.length,
+        linksProcessed: linksProcessedForProgress,
+        linksTotal: links.length,
+      });
+    }
     const normalized = toNormalizedVehicle(entity);
     const vehicleLayers = buildOnboardingEntityPayloadLayers(entity as any);
     const sourceCustomerExternalId = firstTextFromLayers(vehicleLayers, [
@@ -1006,6 +1144,21 @@ export async function activateOnboardingCustomersVehicles(params: {
       .eq("id", entityId)
       .eq("entity_type", "vehicle");
   });
+  await writeActivationProgress({
+    phase: "customers_vehicles",
+    status: "running",
+    stage: "bridge_writeback",
+    label: "Writing staged live ID bridge",
+    current: activationProgressCurrent,
+    total: activationProgressTotal,
+    customersProcessed: customersProcessedForProgress,
+    customersTotal: customerCandidates.length,
+    vehiclesProcessed: vehiclesProcessedForProgress,
+    vehiclesTotal: vehicleEntities.length,
+    linksProcessed: linksProcessedForProgress,
+    linksTotal: links.length,
+  }, true);
+
   await timed("staged_live_id_bridge_writeback_ms", async () => {
     const writes = [...customerResolutionWrites, ...vehicleResolutionWrites];
     for (let i = 0; i < writes.length; i += WRITEBACK_CHUNK_SIZE) {
@@ -1024,8 +1177,41 @@ export async function activateOnboardingCustomersVehicles(params: {
   let vehicleCustomerLinksAttempted = 0;
   const vehicleById = new Map(vehiclePool.map((row) => [row.id, row]));
 
+  await writeActivationProgress({
+    phase: "customers_vehicles",
+    status: "running",
+    stage: "links",
+    label: "Materializing customer/vehicle links",
+    current: activationProgressCurrent,
+    total: activationProgressTotal,
+    customersProcessed: customersProcessedForProgress,
+    customersTotal: customerCandidates.length,
+    vehiclesProcessed: vehiclesProcessedForProgress,
+    vehiclesTotal: vehicleEntities.length,
+    linksProcessed: linksProcessedForProgress,
+    linksTotal: links.length,
+  }, true);
+
   for (const link of links) {
     vehicleCustomerLinksAttempted += 1;
+    linksProcessedForProgress += 1;
+    activationProgressCurrent += 1;
+    if (linksProcessedForProgress === 1 || linksProcessedForProgress % PROGRESS_WRITE_EVERY === 0) {
+      await writeActivationProgress({
+        phase: "customers_vehicles",
+        status: "running",
+        stage: "links",
+        label: "Materializing customer/vehicle links",
+        current: activationProgressCurrent,
+        total: activationProgressTotal,
+        customersProcessed: customersProcessedForProgress,
+        customersTotal: customerCandidates.length,
+        vehiclesProcessed: vehiclesProcessedForProgress,
+        vehiclesTotal: vehicleEntities.length,
+        linksProcessed: linksProcessedForProgress,
+        linksTotal: links.length,
+      });
+    }
     const from = entityById.get(link.from_entity_id);
     const to = entityById.get(link.to_entity_id);
     const customerEntity = from?.entity_type === "customer" ? from : to?.entity_type === "customer" ? to : null;
@@ -1195,6 +1381,21 @@ export async function activateOnboardingCustomersVehicles(params: {
   const customerRowsMaterializedWithContactDetails = customerPool.filter((row) => row.email || row.phone || row.phone_number || row.street || row.address || row.city || row.province || row.postal_code).length;
   const vehicleCustomerLinksMaterialized = vehicleCustomerLinksCreated + vehicleCustomerLinksUpdated + vehicleCustomerLinksAlreadyCorrect;
   const vehicleCustomerLinksUnresolved = links.length - vehicleCustomerLinksMaterialized;
+
+  await writeActivationProgress({
+    phase: "customers_vehicles",
+    status: "completed",
+    stage: "completed",
+    label: "Customer/vehicle activation completed",
+    current: activationProgressTotal,
+    total: activationProgressTotal,
+    customersProcessed: customersProcessedForProgress,
+    customersTotal: customerCandidates.length,
+    vehiclesProcessed: vehiclesProcessedForProgress,
+    vehiclesTotal: vehicleEntities.length,
+    linksProcessed: linksProcessedForProgress,
+    linksTotal: links.length,
+  }, true);
 
   return {
     ok: true,

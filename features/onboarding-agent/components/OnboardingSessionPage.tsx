@@ -220,8 +220,8 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoadingSession(true);
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoadingSession(true);
     setSessionLoadError(null);
     try {
       const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}`, { cache: "no-store" });
@@ -243,7 +243,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
       setNotice(null);
       setSessionLoadError("Failed to load onboarding session.");
     } finally {
-      setLoadingSession(false);
+      if (!options?.silent) setLoadingSession(false);
     }
   }, [sessionId]);
 
@@ -511,6 +511,14 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   };
 
   const session = payload?.session;
+  const activationProgress = session?.summary?.activationProgress && typeof session.summary.activationProgress === "object"
+    ? session.summary.activationProgress
+    : null;
+  const activationProgressCurrent = asNumber(activationProgress?.current);
+  const activationProgressTotal = asNumber(activationProgress?.total);
+  const activationProgressPercent = activationProgressTotal > 0
+    ? Math.min(100, Math.max(0, Math.round((activationProgressCurrent / activationProgressTotal) * 100)))
+    : 0;
   const files = payload?.files ?? [];
   const hasFiles = files.length > 0;
   const vendorReadyCount = Number(payload?.entityStatusCounts?.vendor?.ready ?? 0);
@@ -528,6 +536,14 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const vendorPartLinkCount = asNumber(payload?.linkCounts?.vendor_part);
   const vendorsActivated = Boolean(vendorActivationSummary);
   const anyActivationStarted = Boolean(vendorActivationSummary || partsActivationSummary || historyActivationSummary || customerVehicleActivationResult);
+
+  useEffect(() => {
+    if (!actionBusy) return;
+    const timer = window.setInterval(() => {
+      void load({ silent: true });
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [actionBusy, load]); // poll session while a long-running activation/action is in flight
   const groupedCustomerVehicleWarnings = useMemo(() => {
     const warnings: string[] = Array.isArray(customerVehicleActivationResult?.warnings)
       ? customerVehicleActivationResult.warnings
@@ -731,6 +747,35 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         <div className="mt-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
           Recommended order: 1) Activate vendors to live suppliers 2) Activate customers + vehicles 3) Activate parts inventory 4) Activate historical work orders.
         </div>
+        {activationProgress ? (
+          <div className="mt-3 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-medium">Live activation progress</p>
+                <p className="mt-1 text-cyan-100/85">
+                  {String(activationProgress.label ?? "Activation running")} — {activationProgressCurrent.toLocaleString()} of {activationProgressTotal.toLocaleString()} ({activationProgressPercent}%)
+                </p>
+              </div>
+              <span className="rounded-full border border-cyan-300/40 px-2 py-1 text-[11px] text-cyan-100">
+                {String(activationProgress.status ?? "running")}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-cyan-300"
+                style={{ width: `${activationProgressPercent}%` }}
+              />
+            </div>
+            <div className="mt-2 grid gap-1 text-[11px] text-cyan-100/85 sm:grid-cols-3">
+              <div>Customers: {asNumber(activationProgress.customersProcessed).toLocaleString()} / {asNumber(activationProgress.customersTotal).toLocaleString()}</div>
+              <div>Vehicles: {asNumber(activationProgress.vehiclesProcessed).toLocaleString()} / {asNumber(activationProgress.vehiclesTotal).toLocaleString()}</div>
+              <div>Links: {asNumber(activationProgress.linksProcessed).toLocaleString()} / {asNumber(activationProgress.linksTotal).toLocaleString()}</div>
+            </div>
+            <p className="mt-1 text-[10px] text-cyan-100/65">
+              Last update: {String(activationProgress.updatedAt ?? "unknown")}
+            </p>
+          </div>
+        ) : null}
         {notice ? <p className="mt-2 text-xs text-emerald-200">{notice}</p> : null}
         {vendorActivationSummary ? <p className="mt-2 text-xs text-emerald-200">{vendorActivationSummary}</p> : null}
         {partsActivationSummary ? <p className="mt-2 text-xs text-indigo-200">{partsActivationSummary}</p> : null}
