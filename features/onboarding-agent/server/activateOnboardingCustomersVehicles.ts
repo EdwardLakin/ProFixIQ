@@ -36,6 +36,15 @@ export type CustomerVehicleActivationResult = {
   customersWithAddress: number;
   customersNameOnly: number;
   customerNameOnlySamples: Array<{ entityId: string; normalizedKeys: string[] }>;
+  customerRowsWithExtractedEmail: number;
+  customerRowsWithExtractedPhone: number;
+  customerRowsWithExtractedAddress: number;
+  customerRowsWithExtractedBusinessName: number;
+  customerRowsWithExtractedFullName: number;
+  customerRowsMaterializedWithContactDetails: number;
+  customerRowsUpdatedBlankFields: number;
+  customerRowsSkippedBecauseNoIdentity: number;
+  customerFieldAliasHits: Record<string, number>;
   vehiclesInserted: number;
   vehiclesUpdated: number;
   vehiclesMatchedExisting: number;
@@ -221,19 +230,19 @@ function buildCustomerDisplayName(parts: { businessName: string | null; contactN
   return parts.email ?? parts.phone ?? parts.externalId ?? parts.sourceRowId ?? null;
 }
 
-function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">): NormalizedCustomer {
+function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">, stats?: CustomerExtractionStats): NormalizedCustomer {
   const layers = buildOnboardingEntityPayloadLayers(entity as any);
-  const businessName = firstTextFromLayers(layers, ["business_name", "businessName", "company_name", "companyName", "company", "Company", "Company Name", "Business Name"]).value;
-  const firstName = firstTextFromLayers(layers, ["first_name", "firstName", "First Name"]).value;
-  const lastName = firstTextFromLayers(layers, ["last_name", "lastName", "Last Name"]).value;
+  const businessName = readLayeredText(layers, ["business_name", "businessName", "company_name", "companyName", "company", "Company", "Company Name", "Business Name"], stats);
+  const firstName = readLayeredText(layers, ["first_name", "firstName", "First Name"], stats);
+  const lastName = readLayeredText(layers, ["last_name", "lastName", "Last Name"], stats);
   const contactName = pickFromLayers(layers, "contactName", "contact_name", "contact", "Contact", "Contact Name");
-  const fullName = firstTextFromLayers(layers, ["full_name", "fullName", "name", "display_name", "displayName", "customer_name", "Name", "Customer Name", "Full Name"]).value ?? textOrNull(entity.display_name);
-  const email = normalizeEmail(firstTextFromLayers(layers, ["email", "email_address", "Email Address", "customer_email", "contact_email"]).value);
-  const phone = normalizePhone(firstTextFromLayers(layers, ["phone", "phone_number", "Phone Number", "telephone", "work_phone", "contact_phone"]).value);
-  const mobilePhone = normalizePhone(firstTextFromLayers(layers, ["mobile", "mobile_phone", "cell"]).value);
+  const fullName = readLayeredText(layers, ["full_name", "fullName", "name", "display_name", "displayName", "customer_name", "customerName", "Name", "Customer Name", "Full Name"], stats) ?? textOrNull(entity.display_name);
+  const email = normalizeEmail(readLayeredText(layers, ["email", "email_address", "emailAddress", "Email Address", "customer_email", "contact_email"], stats));
+  const phone = normalizePhone(readLayeredText(layers, ["phone", "phone_number", "phoneNumber", "Phone Number", "telephone", "work_phone", "contact_phone"], stats));
+  const mobilePhone = normalizePhone(readLayeredText(layers, ["mobile", "mobile_phone", "mobilePhone", "cell"], stats));
   return {
-    externalId: textOrNull(entity.source_external_id) ?? firstTextFromLayers(layers, ["source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id", "customerExternalId", "external_id"]).value,
-    sourceRowId: textOrNull(entity.source_row_id) ?? firstTextFromLayers(layers, ["source_row_id", "sourceRowId"]).value,
+    externalId: textOrNull(entity.source_external_id) ?? readLayeredText(layers, ["source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id", "customerExternalId", "external_id"], stats),
+    sourceRowId: textOrNull(entity.source_row_id) ?? readLayeredText(layers, ["source_row_id", "sourceRowId"], stats),
     name: buildCustomerDisplayName({ businessName, contactName, fullName, firstName, lastName, email, phone: phone ?? mobilePhone, externalId: textOrNull(entity.source_external_id), sourceRowId: textOrNull(entity.source_row_id) }),
     firstName,
     lastName,
@@ -242,14 +251,21 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "
     email,
     phone: phone ?? mobilePhone,
     mobilePhone,
-    street: pickFromLayers(layers, "street", "address_line1", "address1", "address_1", "Address1", "address", "Address", "Address 1", "Street", "Street Address"),
-    address: pickFromLayers(layers, "address", "address_line2", "address2", "address_2", "billing_address", "billingAddress"),
-    city: pickFromLayers(layers, "city", "City"),
-    province: pickFromLayers(layers, "province", "state", "State", "Province", "region"),
-    postalCode: pickFromLayers(layers, "postalCode", "postal_code", "zip", "zipCode", "ZIP", "Zip Code", "Postal", "Postal Code"),
-    country: pickFromLayers(layers, "country", "Country"),
-    notes: pickFromLayers(layers, "notes", "Notes", "memo", "Memo", "comment", "comments"),
+    street: readLayeredText(layers, ["street", "address_line1", "addressLine1", "address1", "address_1", "Address1", "address", "Address", "Address 1", "Street", "Street Address"], stats),
+    address: readLayeredText(layers, ["address", "address_line2", "addressLine2", "address2", "address_2", "billing_address", "billingAddress"], stats),
+    city: readLayeredText(layers, ["city", "City"], stats),
+    province: readLayeredText(layers, ["province", "state", "State", "Province", "region"], stats),
+    postalCode: readLayeredText(layers, ["postalCode", "postal_code", "zip", "zipCode", "zip_code", "ZIP", "Zip Code", "Postal", "Postal Code"], stats),
+    country: readLayeredText(layers, ["country", "Country"], stats),
+    notes: readLayeredText(layers, ["notes", "Notes", "memo", "Memo", "comment", "comments"], stats),
   };
+}
+
+type CustomerExtractionStats = { aliasHits: Record<string, number> };
+function readLayeredText(layers: JsonObject[], aliases: string[], stats?: CustomerExtractionStats): string | null {
+  const hit = firstTextFromLayers(layers, aliases);
+  if (hit.alias && stats) stats.aliasHits[hit.alias] = (stats.aliasHits[hit.alias] ?? 0) + 1;
+  return hit.value;
 }
 
 function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "normalized" | "source_external_id">): NormalizedVehicle {
@@ -364,12 +380,15 @@ function stagedIdentityKey(customer: NormalizedCustomer): string {
   return "fallback:unknown";
 }
 
-function buildCustomerCandidates(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>) {
+function buildCustomerCandidates(
+  customerEntities: Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>,
+  stats?: CustomerExtractionStats,
+) {
   const byKey = new Map<string, StagedCustomerCandidate>();
   let customersSkippedDuplicateStaged = 0;
 
   for (const entity of customerEntities) {
-    const normalized = toNormalizedCustomer(entity);
+    const normalized = toNormalizedCustomer(entity, stats);
     const key = stagedIdentityKey(normalized);
     const existing = byKey.get(key);
 
@@ -698,16 +717,23 @@ export async function activateOnboardingCustomersVehicles(params: {
   const vehicleEntitySkippedReason = new Map<string, LinkSideIssueReason>();
   const customerVehicleLinkIssues: CustomerVehicleLinkIssue[] = [];
 
-  const { candidates: customerCandidates, customersSkippedDuplicateStaged } = buildCustomerCandidates(customerEntities);
-  const indexes = buildLiveCustomerIndexes(customerPool);
-
   let customersInserted = 0;
   let customersUpdated = 0;
   let customersSkippedAmbiguous = 0;
   let customersMatchedExisting = 0;
   let customersRecoveredFromUniqueConflict = 0;
+  let customerRowsUpdatedBlankFields = 0;
+  let customerRowsSkippedBecauseNoIdentity = 0;
+  const customerFieldAliasHits: Record<string, number> = {};
+  const extractionStats: CustomerExtractionStats = { aliasHits: customerFieldAliasHits };
+  const { candidates: customerCandidates, customersSkippedDuplicateStaged } = buildCustomerCandidates(customerEntities, extractionStats);
+  const indexes = buildLiveCustomerIndexes(customerPool);
   for (const candidate of customerCandidates) {
     const normalized = candidate.normalized;
+    if (!normalized.externalId && !normalized.email && !normalized.phone && !getCustomerNameBusinessKey(normalized)) {
+      customerRowsSkippedBecauseNoIdentity += 1;
+      continue;
+    }
     const match = pickLiveCustomerMatch(normalized, indexes);
 
     if (match.ambiguous) {
@@ -731,6 +757,7 @@ export async function activateOnboardingCustomersVehicles(params: {
       if (error) throw new Error(error.message);
       Object.assign(match.row, update);
       customersUpdated += 1;
+      customerRowsUpdatedBlankFields += 1;
       continue;
     }
 
@@ -774,6 +801,7 @@ export async function activateOnboardingCustomersVehicles(params: {
           if (updateResult.error) throw new Error(updateResult.error.message);
           Object.assign(recoveredRow, update);
           customersUpdated += 1;
+          customerRowsUpdatedBlankFields += 1;
         } else {
           customersMatchedExisting += 1;
         }
@@ -1063,6 +1091,9 @@ export async function activateOnboardingCustomersVehicles(params: {
   const nameOnlyRows = customerExtraction.filter((row) => row.normalized.name && !row.normalized.email && !row.normalized.phone && !row.normalized.mobilePhone && !row.normalized.street && !row.normalized.city && !row.normalized.province && !row.normalized.postalCode);
   const customerNameOnlySamples = nameOnlyRows.slice(0, 5).map((row) => ({ entityId: row.entityId, normalizedKeys: row.normalizedKeys }));
   const customersSkipped = customersSkippedDuplicateStaged + customersSkippedAmbiguous;
+  const customerRowsWithExtractedBusinessName = customerExtraction.filter((row) => row.normalized.businessName).length;
+  const customerRowsWithExtractedFullName = customerExtraction.filter((row) => row.normalized.name || row.normalized.firstName || row.normalized.lastName).length;
+  const customerRowsMaterializedWithContactDetails = customerPool.filter((row) => row.email || row.phone || row.phone_number || row.street || row.address || row.city || row.province || row.postal_code).length;
   const vehicleCustomerLinksMaterialized = vehicleCustomerLinksCreated + vehicleCustomerLinksUpdated + vehicleCustomerLinksAlreadyCorrect;
   const vehicleCustomerLinksUnresolved = links.length - vehicleCustomerLinksMaterialized;
 
@@ -1084,6 +1115,15 @@ export async function activateOnboardingCustomersVehicles(params: {
     customersWithAddress,
     customersNameOnly: nameOnlyRows.length,
     customerNameOnlySamples,
+    customerRowsWithExtractedEmail: customersWithEmail,
+    customerRowsWithExtractedPhone: customersWithPhone,
+    customerRowsWithExtractedAddress: customersWithAddress,
+    customerRowsWithExtractedBusinessName,
+    customerRowsWithExtractedFullName,
+    customerRowsMaterializedWithContactDetails,
+    customerRowsUpdatedBlankFields,
+    customerRowsSkippedBecauseNoIdentity,
+    customerFieldAliasHits,
     vehiclesInserted,
     vehiclesUpdated,
     vehiclesMatchedExisting,
