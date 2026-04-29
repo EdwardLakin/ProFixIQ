@@ -165,6 +165,14 @@ type LinkSideIssueReason =
   | "vehicle_not_materialized"
   | "ambiguous_vehicle_match";
 
+function withResolvedLiveId(normalized: unknown, field: "live_customer_id" | "live_vehicle_id", liveId: string): JsonObject {
+  const base = (normalized && typeof normalized === "object" && !Array.isArray(normalized))
+    ? { ...(normalized as JsonObject) }
+    : {};
+  base[field] = liveId;
+  return base;
+}
+
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -848,6 +856,7 @@ export async function activateOnboardingCustomersVehicles(params: {
   }
 
   const customerByExternal = new Map<string, string>();
+  const customerEntityNormalizedById = new Map(customerEntities.map((entity) => [entity.id, entity.normalized]));
   for (const entity of customerEntities) {
     const normalized = toNormalizedCustomer(entity);
     if (!normalized.externalId) continue;
@@ -916,6 +925,31 @@ export async function activateOnboardingCustomersVehicles(params: {
       model: payload.model ?? null,
     } as VehicleRow);
     vehiclesInserted += 1;
+  }
+
+  const customerResolutionWrites = [...customerEntityToLiveId.entries()].map(([entityId, liveId]) => {
+    const priorNormalized = customerEntityNormalizedById.get(entityId);
+    return sb
+      .from("onboarding_entities")
+      .update({ normalized: withResolvedLiveId(priorNormalized, "live_customer_id", liveId) })
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("id", entityId)
+      .eq("entity_type", "customer");
+  });
+  const vehicleResolutionWrites = [...vehicleEntityToLiveId.entries()].map(([entityId, liveId]) => {
+    const priorNormalized = (entityById.get(entityId)?.normalized ?? null);
+    return sb
+      .from("onboarding_entities")
+      .update({ normalized: withResolvedLiveId(priorNormalized, "live_vehicle_id", liveId) })
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("id", entityId)
+      .eq("entity_type", "vehicle");
+  });
+  for (const write of [...customerResolutionWrites, ...vehicleResolutionWrites]) {
+    const { error } = await write;
+    if (error) throw new Error(error.message);
   }
 
   let vehicleCustomerLinksCreated = 0;

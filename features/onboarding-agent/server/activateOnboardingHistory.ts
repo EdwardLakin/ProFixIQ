@@ -140,6 +140,7 @@ type HistoryActivationResult = {
       identifierAliasesChecked?: string[];
       dateAliasesChecked?: string[];
       normalizedKeysSample?: string[];
+      searchLayerKeySamples?: Array<{ layerIndex: number; keys: string[] }>;
     }>;
     linkedTripleSamples: Array<Record<string, unknown>>;
   };
@@ -432,18 +433,18 @@ function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): N
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
   const records = collectSearchRecords(normalized, entity as any);
   const identifier = firstTextAlias(records, ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","order_number","orderNumber","invoice_number","invoiceNumber","reference","reference_number","source_work_order_id","sourceWorkOrderId","source_external_id","sourceExternalId","source_row_id","sourceRowId"]);
-  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","created_at","createdAt","date","service_date","serviceDate","completed_at","completedAt","completed_date","completedDate","closed_at","closedAt","closed_date","closedDate","invoice_date","invoiceDate","posted_date","postedDate"]);
+  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","created_at","createdAt","date","Date","service_date","serviceDate","serviceDateTime","repair_date","repairDate","work_order_date","workOrderDate","invoice_date","invoiceDate","posted_date","postedDate","completed_at","completedAt","completed_date","completedDate","closed_at","closedAt","closed_date","closedDate"]);
   return {
     sourceWorkOrderId: identifier.value,
-    invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoiceId", "sourceInvoiceId", "sourceExternalId"]).value,
+    invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoice_number", "invoiceId", "sourceInvoiceId", "sourceExternalId", "source_external_id"]).value,
     openedDate: opened.value,
-    closedDate: firstDateAlias(records, ["closedDate", "closedAt", "completedAt", "invoiceDate"]).value,
-    customerName: firstTextAlias(records, ["customerName", "name", "businessName"]).value,
+    closedDate: firstDateAlias(records, ["closedDate", "closedAt", "closed_date", "completedAt", "completed_date", "invoiceDate", "invoice_date"]).value,
+    customerName: firstTextAlias(records, ["customerName", "customer_name", "name", "businessName", "business_name", "company", "company_name"]).value,
     customerEmail: firstTextAlias(records, ["customerEmail", "email"]).value?.toLowerCase() ?? null,
-    sourceCustomerId: firstTextAlias(records, ["sourceCustomerId", "customerId", "customerExternalId", "source_external_id"]).value,
-    sourceVehicleId: firstTextAlias(records, ["sourceVehicleId", "vehicleId", "vehicleExternalId", "source_external_id"]).value,
+    sourceCustomerId: firstTextAlias(records, ["sourceCustomerId", "source_customer_id", "customerId", "customer_id", "customerExternalId", "customer_external_id", "source_external_id"]).value,
+    sourceVehicleId: firstTextAlias(records, ["sourceVehicleId", "source_vehicle_id", "vehicleId", "vehicle_id", "vehicleExternalId", "vehicle_external_id", "source_external_id"]).value,
     vehicleVin: firstTextAlias(records, ["vehicleVin", "vin"]).value?.toUpperCase() ?? null,
-    vehiclePlate: firstTextAlias(records, ["vehiclePlate", "plate", "licensePlate"]).value?.toUpperCase() ?? null,
+    vehiclePlate: firstTextAlias(records, ["vehiclePlate", "vehicle_plate", "plate", "licensePlate", "license_plate"]).value?.toUpperCase() ?? null,
     complaint: normalizeText(normalized.complaint) || null,
     correction: normalizeText(normalized.correction) || null,
     laborTotal: parseMoney(normalized.laborTotal ?? normalized.laborRaw),
@@ -774,6 +775,8 @@ export async function activateOnboardingHistory(params: {
   let historyRowsWithBothLinkedEntities = 0;
   for (const entity of combinedHistoryRows.values()) {
     const history = toNormalizedHistory(entity);
+    const layerRecords = collectSearchRecords((entity.normalized ?? {}) as Record<string, unknown>, entity as any);
+    const layerKeySamples = layerRecords.slice(0, 4).map((record, index) => ({ layerIndex: index, keys: Object.keys(record).slice(0, 20) }));
     if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
       skipped += 1;
       skippedMissingIdentifier += 1;
@@ -793,6 +796,7 @@ export async function activateOnboardingHistory(params: {
           vehicleResolutionAttemptedKeys: [],
           finalSkipReason: "missing_required_history_identifier",
           normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
+          searchLayerKeySamples: layerKeySamples,
         });
       }
       continue;
@@ -816,6 +820,7 @@ export async function activateOnboardingHistory(params: {
           vehicleResolutionAttemptedKeys: [],
           finalSkipReason: "invalid_history_date",
           normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
+          searchLayerKeySamples: layerKeySamples,
         });
       }
       continue;
@@ -970,6 +975,7 @@ export async function activateOnboardingHistory(params: {
           identifierAliasesChecked: ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","invoice_number","invoiceNumber","reference","source_external_id","sourceExternalId","source_row_id","sourceRowId"],
           dateAliasesChecked: ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","service_date","serviceDate","repair_date","repairDate","invoice_date","invoiceDate","closed_at","closedAt","completed_at","completedAt","created_at","createdAt","date"],
           normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
+          searchLayerKeySamples: layerKeySamples,
         });
       }
       continue;
