@@ -61,7 +61,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     fetchPaginatedOnboardingRows<any>({
       supabase: params.supabase,
       table: "onboarding_review_items",
-      select: "id, severity, status, domain, summary, issue_type, details",
+      select: "id, severity, status, domain, summary, issue_type",
       shopId: params.shopId,
       sessionId: params.sessionId,
       orderBy: "created_at",
@@ -85,7 +85,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       domain: row.domain,
       issue_type: row.issue_type,
       summary: row.summary,
-      details: row.details ?? {},
+      details: {},
     })),
     groupedExceptionCount: totalPendingReviewCount,
     analysisCompleted: Boolean(session?.analyzed_at),
@@ -130,11 +130,14 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     entityCounts,
     entityStatusCounts: canonical.entity_status_counts_by_type,
     reviewCounts,
-    reviewItems: reviews,
+    reviewItems: reviews.slice(0, 250),
     linkCounts,
     activationPlanSummary: canonical.activation_plan_summary,
     readiness: canonical.activation_readiness,
     latestPlan,
-    summaryCounts: canonical.summaryCounts,
+    summaryCounts: {
+      ...canonical.summaryCounts,
+      reviewExceptions: totalPendingReviewCount,
+    },
   };
 }
