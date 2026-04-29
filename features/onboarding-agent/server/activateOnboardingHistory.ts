@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import { fetchAllPaginatedRows } from "@/features/onboarding-agent/server/fetchAllPaginatedRows";
+import { buildOnboardingEntityPayloadLayers } from "@/features/onboarding-agent/server/onboardingEntityPayload";
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
@@ -235,22 +236,8 @@ function parseDate(value: unknown): string | null {
   return d.toISOString();
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function collectSearchRecords(normalized: Record<string, unknown>, entity?: Partial<Pick<OnboardingEntityRow, "source_external_id" | "source_row_id" | "display_name">>): Record<string, unknown>[] {
-  const nestedDetails = asRecord(normalized.details);
-  const nestedPayload = asRecord(normalized.payload);
-  const detailsDetails = nestedDetails ? asRecord(nestedDetails.details) : null;
-  const detailsPayload = nestedDetails ? asRecord(nestedDetails.payload) : null;
-  const entityTop = entity ? {
-    source_external_id: entity.source_external_id,
-    source_row_id: entity.source_row_id,
-    display_name: entity.display_name,
-  } : null;
-  return [normalized, nestedDetails, nestedPayload, detailsDetails, detailsPayload, entityTop].filter(Boolean) as Record<string, unknown>[];
+function collectSearchRecords(normalized: Record<string, unknown>, entity?: Partial<Pick<OnboardingEntityRow, "source_external_id" | "source_row_id" | "display_name">> & { details?: unknown; payload?: unknown }): Record<string, unknown>[] {
+  return buildOnboardingEntityPayloadLayers({ normalized, ...entity }).map((item) => item as Record<string, unknown>);
 }
 
 function firstTextAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
@@ -305,7 +292,7 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "source_external
   const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
   const records = collectSearchRecords(normalized, entity ?? undefined);
   return {
-    sourceCustomerId: firstTextAlias(records, ["live_customer_id","customer_id","matched_customer_id","imported_customer_id","source_external_id","sourceExternalId","sourceCustomerId","customerExternalId","account_number","source_row_id","sourceRowId"]).value,
+    sourceCustomerId: firstTextAlias(records, ["live_customer_id","customer_id","matched_customer_id","imported_customer_id","source_external_id","sourceExternalId","sourceCustomerId","customerExternalId","account_number","source_row_id","sourceRowId","external_id"]).value,
     email: normalizeEmail(firstTextAlias(records, ["email","email_address","customer_email","contact_email"]).value),
     phone: normalizePhone(firstTextAlias(records, ["phone","phone_number","mobile","cell","work_phone","contact_phone"]).value),
     name: normalizeText(firstTextAlias(records, ["display_name","name","full_name","customer_name","company","company_name","businessName"]).value ?? entity?.display_name) || null,
@@ -445,7 +432,7 @@ function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): N
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
   const records = collectSearchRecords(normalized, entity as any);
   const identifier = firstTextAlias(records, ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","order_number","orderNumber","invoice_number","invoiceNumber","reference","reference_number","source_work_order_id","sourceWorkOrderId","source_external_id","sourceExternalId","source_row_id","sourceRowId"]);
-  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","service_date","serviceDate","repair_date","repairDate","order_date","orderDate","invoice_date","invoiceDate","closed_at","closedAt","closed_date","closedDate","completed_at","completedAt","completed_date","completedDate","created_at","createdAt","date"]);
+  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","created_at","createdAt","date","service_date","serviceDate","completed_at","completedAt","completed_date","completedDate","closed_at","closedAt","closed_date","closedDate","invoice_date","invoiceDate","posted_date","postedDate"]);
   return {
     sourceWorkOrderId: identifier.value,
     invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoiceId", "sourceInvoiceId", "sourceExternalId"]).value,
