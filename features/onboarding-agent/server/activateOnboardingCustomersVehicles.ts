@@ -218,9 +218,9 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "
   const firstName = pickAlias(normalized, "firstName", "first_name", "First Name");
   const lastName = pickAlias(normalized, "lastName", "last_name", "Last Name");
   const contactName = pickAlias(normalized, "contactName", "contact_name", "contact", "Contact", "Contact Name");
-  const fullName = pickAlias(normalized, "name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
+  const fullName = pickAlias(normalized, "name", "displayName", "display_name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
   const email = normalizeEmail(pickAlias(normalized, "email", "Email", "email_address", "Email Address"));
-  const phone = normalizePhone(pickAlias(normalized, "phone", "Phone", "phone_number", "Phone Number"));
+  const phone = normalizePhone(pickAlias(normalized, "phone", "Phone", "phone_number", "Phone Number", "telephone", "Telephone"));
   const mobilePhone = normalizePhone(pickAlias(normalized, "mobile", "Mobile", "cell", "Cell", "mobile_phone"));
   return {
     externalId: textOrNull(entity.source_external_id) ?? pickAlias(normalized, "source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id"),
@@ -233,13 +233,13 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "
     email,
     phone: phone ?? mobilePhone,
     mobilePhone,
-    street: pickAlias(normalized, "street", "address_line1", "address1", "address", "Address", "Address 1", "Street", "Street Address"),
-    address: pickAlias(normalized, "address", "billing_address", "billingAddress"),
+    street: pickAlias(normalized, "street", "address_line1", "address1", "address_1", "Address1", "address", "Address", "Address 1", "Street", "Street Address"),
+    address: pickAlias(normalized, "address", "address_line2", "address2", "address_2", "billing_address", "billingAddress"),
     city: pickAlias(normalized, "city", "City"),
-    province: pickAlias(normalized, "province", "state", "State", "Province"),
-    postalCode: pickAlias(normalized, "postalCode", "postal_code", "zip", "ZIP", "Zip Code", "Postal", "Postal Code"),
+    province: pickAlias(normalized, "province", "state", "State", "Province", "region"),
+    postalCode: pickAlias(normalized, "postalCode", "postal_code", "zip", "zipCode", "ZIP", "Zip Code", "Postal", "Postal Code"),
     country: pickAlias(normalized, "country", "Country"),
-    notes: pickAlias(normalized, "notes", "Notes"),
+    notes: pickAlias(normalized, "notes", "Notes", "memo", "Memo", "comment", "comments"),
   };
 }
 

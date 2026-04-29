@@ -64,12 +64,24 @@ type HistoryActivationResult = {
     linkedVehicleStagedEntitiesFound: number;
     linkedCustomerLiveResolved: number;
     linkedVehicleLiveResolved: number;
+    linkedCustomerLiveResolvedBySourceExternalId: number;
+    linkedCustomerLiveResolvedByEmail: number;
+    linkedCustomerLiveResolvedByPhone: number;
+    linkedCustomerLiveResolvedByName: number;
+    linkedVehicleLiveResolvedBySourceExternalId: number;
+    linkedVehicleLiveResolvedByVin: number;
+    linkedVehicleLiveResolvedByPlate: number;
+    linkedVehicleLiveResolvedByUnit: number;
     rowsWithBothLiveCustomerAndVehicle: number;
     rowsMissingLiveCustomer: number;
     rowsMissingLiveVehicle: number;
     rowsMissingBoth: number;
     rowsInvalidDate: number;
     rowsMissingRequiredIdentifier: number;
+    historyIdentifierResolvedByAlias: Record<string, number>;
+    historyDateResolvedByAlias: Record<string, number>;
+    historyRowsMissingUsableDate: number;
+    historyRowsMissingUsableIdentifier: number;
     workOrdersCreated: number;
     workOrdersMatchedExisting: number;
     linkEndpointEntityTypesByCount: Record<string, number>;
@@ -119,7 +131,13 @@ type HistoryActivationResult = {
       linkedVehicleEntityId: string | null;
       customerResolutionAttemptedKeys: string[];
       vehicleResolutionAttemptedKeys: string[];
+      mappedCustomerSourceExternalId?: string | null;
+      mappedCustomerSourceRowId?: string | null;
+      mappedVehicleSourceExternalId?: string | null;
+      mappedVehicleSourceRowId?: string | null;
       finalSkipReason: string;
+      identifierAliasesChecked?: string[];
+      dateAliasesChecked?: string[];
       normalizedKeysSample?: string[];
     }>;
   };
@@ -141,6 +159,8 @@ type NormalizedHistory = {
   correction: string | null;
   laborTotal: number | null;
   total: number | null;
+  identifierAliasUsed: string | null;
+  openedDateAliasUsed: string | null;
 };
 type NormalizedCustomer = {
   sourceCustomerId: string | null;
@@ -194,11 +214,17 @@ function parseMoney(value: unknown): number | null {
 function parseDate(value: unknown): string | null {
   const raw = normalizeText(value);
   if (!raw) return null;
-  const mdY = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-  if (mdY) {
-    const month = Number(mdY[1]);
-    const day = Number(mdY[2]);
-    const yearRaw = Number(mdY[3]);
+  const slashOrDash = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashOrDash) {
+    let month = Number(slashOrDash[1]);
+    let day = Number(slashOrDash[2]);
+    if (month > 12 && day <= 12) {
+      month = Number(slashOrDash[2]);
+      day = Number(slashOrDash[1]);
+    } else if (month > 12 || day > 31) {
+      return null;
+    }
+    const yearRaw = Number(slashOrDash[3]);
     const year = yearRaw < 100 ? yearRaw + 2000 : yearRaw;
     const parsed = new Date(Date.UTC(year, month - 1, day));
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
@@ -206,6 +232,32 @@ function parseDate(value: unknown): string | null {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function collectSearchRecords(normalized: Record<string, unknown>): Record<string, unknown>[] {
+  const nestedDetails = (normalized.details && typeof normalized.details === "object") ? (normalized.details as Record<string, unknown>) : null;
+  const nestedPayload = (normalized.payload && typeof normalized.payload === "object") ? (normalized.payload as Record<string, unknown>) : null;
+  return [normalized, nestedDetails, nestedPayload].filter(Boolean) as Record<string, unknown>[];
+}
+
+function firstTextAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
+  for (const record of records) {
+    for (const alias of aliases) {
+      const value = normalizeText(record[alias]);
+      if (value) return { value, aliasUsed: alias };
+    }
+  }
+  return { value: null, aliasUsed: null };
+}
+
+function firstDateAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
+  for (const record of records) {
+    for (const alias of aliases) {
+      const value = parseDate(record[alias]);
+      if (value) return { value, aliasUsed: alias };
+    }
+  }
+  return { value: null, aliasUsed: null };
 }
 
 type ResolveLiveIdResult = { id: string | null; ambiguous: boolean };
@@ -376,35 +428,26 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
 
 function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
-  const firstText = (...keys: string[]) => {
-    for (const key of keys) {
-      const value = normalizeText(normalized[key]);
-      if (value) return value;
-    }
-    return null;
-  };
-  const firstDate = (...keys: string[]) => {
-    for (const key of keys) {
-      const value = parseDate(normalized[key]);
-      if (value) return value;
-    }
-    return null;
-  };
+  const records = collectSearchRecords(normalized);
+  const identifier = firstTextAlias(records, ["work_order_number", "workOrderNumber", "ro_number", "roNumber", "repair_order_number", "repairOrderNumber", "invoice_number", "invoiceNumber", "reference", "source_external_id", "sourceExternalId", "source_row_id", "sourceRowId", "sourceWorkOrderId"]);
+  const opened = firstDateAlias(records, ["opened_at", "openedAt", "opened_date", "openedDate", "date_opened", "dateOpened", "service_date", "serviceDate", "repair_date", "repairDate", "invoice_date", "invoiceDate", "closed_at", "closedAt", "completed_at", "completedAt", "created_at", "createdAt", "date", "openedDate"]);
   return {
-    sourceWorkOrderId: firstText("sourceWorkOrderId", "workOrderNumber", "roNumber", "repairOrderNumber", "sourceExternalId", "sourceRowId"),
-    invoiceNumber: firstText("invoiceNumber", "invoiceId", "sourceInvoiceId"),
-    openedDate: firstDate("openedDate", "openedAt", "opened_date", "dateOpened", "serviceDate", "createdAt", "date", "completedAt", "closedAt", "invoiceDate"),
-    closedDate: firstDate("closedDate", "closedAt", "completedAt", "invoiceDate"),
-    customerName: firstText("customerName", "name", "businessName"),
-    customerEmail: firstText("customerEmail", "email")?.toLowerCase() ?? null,
-    sourceCustomerId: firstText("sourceCustomerId", "customerId", "customerExternalId"),
-    sourceVehicleId: firstText("sourceVehicleId", "vehicleId", "vehicleExternalId"),
-    vehicleVin: firstText("vehicleVin", "vin")?.toUpperCase() ?? null,
-    vehiclePlate: firstText("vehiclePlate", "plate", "licensePlate")?.toUpperCase() ?? null,
+    sourceWorkOrderId: identifier.value,
+    invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoiceId", "sourceInvoiceId", "sourceExternalId"]).value,
+    openedDate: opened.value,
+    closedDate: firstDateAlias(records, ["closedDate", "closedAt", "completedAt", "invoiceDate"]).value,
+    customerName: firstTextAlias(records, ["customerName", "name", "businessName"]).value,
+    customerEmail: firstTextAlias(records, ["customerEmail", "email"]).value?.toLowerCase() ?? null,
+    sourceCustomerId: firstTextAlias(records, ["sourceCustomerId", "customerId", "customerExternalId", "source_external_id"]).value,
+    sourceVehicleId: firstTextAlias(records, ["sourceVehicleId", "vehicleId", "vehicleExternalId", "source_external_id"]).value,
+    vehicleVin: firstTextAlias(records, ["vehicleVin", "vin"]).value?.toUpperCase() ?? null,
+    vehiclePlate: firstTextAlias(records, ["vehiclePlate", "plate", "licensePlate"]).value?.toUpperCase() ?? null,
     complaint: normalizeText(normalized.complaint) || null,
     correction: normalizeText(normalized.correction) || null,
     laborTotal: parseMoney(normalized.laborTotal ?? normalized.laborRaw),
     total: parseMoney(normalized.total ?? normalized.totalRaw),
+    identifierAliasUsed: identifier.aliasUsed,
+    openedDateAliasUsed: opened.aliasUsed,
   };
 }
 
@@ -575,6 +618,18 @@ export async function activateOnboardingHistory(params: {
   let linkedVehicleStagedEntitiesFound = 0;
   let linkedCustomerLiveResolved = 0;
   let linkedVehicleLiveResolved = 0;
+  let linkedCustomerLiveResolvedBySourceExternalId = 0;
+  let linkedCustomerLiveResolvedByEmail = 0;
+  const linkedCustomerLiveResolvedByPhone = 0;
+  let linkedCustomerLiveResolvedByName = 0;
+  let linkedVehicleLiveResolvedBySourceExternalId = 0;
+  let linkedVehicleLiveResolvedByVin = 0;
+  let linkedVehicleLiveResolvedByPlate = 0;
+  const linkedVehicleLiveResolvedByUnit = 0;
+  const historyIdentifierResolvedByAlias: Record<string, number> = {};
+  const historyDateResolvedByAlias: Record<string, number> = {};
+  let historyRowsMissingUsableDate = 0;
+  let historyRowsMissingUsableIdentifier = 0;
   let rowsWithBothLiveCustomerAndVehicle = 0;
   let rowsMissingLiveCustomer = 0;
   let rowsMissingLiveVehicle = 0;
@@ -719,6 +774,7 @@ export async function activateOnboardingHistory(params: {
     if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
       skipped += 1;
       skippedMissingIdentifier += 1;
+      historyRowsMissingUsableIdentifier += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_required_history_identifier", summary: "Historical row skipped: missing identifier.", severity: "high" }));
       if (unresolvedSamples.length < 5) {
@@ -741,6 +797,7 @@ export async function activateOnboardingHistory(params: {
     if (!history.openedDate) {
       skipped += 1;
       skippedInvalidDate += 1;
+      historyRowsMissingUsableDate += 1;
       needsReview += 1;
       reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_date", summary: "Historical row skipped: invalid opened date." }));
       if (unresolvedSamples.length < 5) {
@@ -816,8 +873,20 @@ export async function activateOnboardingHistory(params: {
 
     if (customerId) customerLinksResolved += 1;
     if (vehicleId) vehicleLinksResolved += 1;
-    if (customerId) linkedCustomerLiveResolved += 1;
-    if (vehicleId) linkedVehicleLiveResolved += 1;
+    if (history.identifierAliasUsed) historyIdentifierResolvedByAlias[history.identifierAliasUsed] = (historyIdentifierResolvedByAlias[history.identifierAliasUsed] ?? 0) + 1;
+    if (history.openedDateAliasUsed) historyDateResolvedByAlias[history.openedDateAliasUsed] = (historyDateResolvedByAlias[history.openedDateAliasUsed] ?? 0) + 1;
+    if (customerId) {
+      linkedCustomerLiveResolved += 1;
+      if (history.sourceCustomerId) linkedCustomerLiveResolvedBySourceExternalId += 1;
+      else if (history.customerEmail) linkedCustomerLiveResolvedByEmail += 1;
+      else if (history.customerName) linkedCustomerLiveResolvedByName += 1;
+    }
+    if (vehicleId) {
+      linkedVehicleLiveResolved += 1;
+      if (history.sourceVehicleId) linkedVehicleLiveResolvedBySourceExternalId += 1;
+      else if (history.vehicleVin) linkedVehicleLiveResolvedByVin += 1;
+      else if (history.vehiclePlate) linkedVehicleLiveResolvedByPlate += 1;
+    }
 
     if (!customerId || !vehicleId) {
       if (!customerId) rowsMissingLiveCustomer += 1;
@@ -879,7 +948,13 @@ export async function activateOnboardingHistory(params: {
             `vehicleVin:${history.vehicleVin ?? ""}`,
             `vehiclePlate:${history.vehiclePlate ?? ""}`,
           ].filter((value) => value.split(":")[1]),
+          mappedCustomerSourceExternalId: normalizeText(linkedStagedCustomer?.source_external_id) || null,
+          mappedCustomerSourceRowId: normalizeText(linkedStagedCustomer?.source_row_id) || null,
+          mappedVehicleSourceExternalId: normalizeText(linkedStagedVehicle?.source_external_id) || null,
+          mappedVehicleSourceRowId: normalizeText(linkedStagedVehicle?.source_row_id) || null,
           finalSkipReason,
+          identifierAliasesChecked: ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","invoice_number","invoiceNumber","reference","source_external_id","sourceExternalId","source_row_id","sourceRowId"],
+          dateAliasesChecked: ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","service_date","serviceDate","repair_date","repairDate","invoice_date","invoiceDate","closed_at","closedAt","completed_at","completedAt","created_at","createdAt","date"],
           normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
         });
       }
@@ -1032,12 +1107,24 @@ export async function activateOnboardingHistory(params: {
       linkedVehicleStagedEntitiesFound,
       linkedCustomerLiveResolved,
       linkedVehicleLiveResolved,
+      linkedCustomerLiveResolvedBySourceExternalId,
+      linkedCustomerLiveResolvedByEmail,
+      linkedCustomerLiveResolvedByPhone,
+      linkedCustomerLiveResolvedByName,
+      linkedVehicleLiveResolvedBySourceExternalId,
+      linkedVehicleLiveResolvedByVin,
+      linkedVehicleLiveResolvedByPlate,
+      linkedVehicleLiveResolvedByUnit,
       rowsWithBothLiveCustomerAndVehicle,
       rowsMissingLiveCustomer,
       rowsMissingLiveVehicle,
       rowsMissingBoth,
       rowsInvalidDate: skippedInvalidDate,
       rowsMissingRequiredIdentifier: skippedMissingIdentifier,
+      historyIdentifierResolvedByAlias,
+      historyDateResolvedByAlias,
+      historyRowsMissingUsableDate,
+      historyRowsMissingUsableIdentifier,
       workOrdersCreated: historicalWorkOrdersCreated,
       workOrdersMatchedExisting: existingMatched,
       linkEndpointEntityTypesByCount,
