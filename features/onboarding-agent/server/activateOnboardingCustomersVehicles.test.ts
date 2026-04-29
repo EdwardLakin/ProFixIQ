@@ -497,6 +497,38 @@ describe("activateOnboardingCustomersVehicles", () => {
     expect(sb.state.vehicles[0]?.customer_id).toBe(sb.state.customers[0]?.id);
   });
 
+  it("materializes customer details from normalized.details and normalized.payload", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1", {
+        display_name: "Pat Jones",
+        normalized: {
+          details: {
+            first_name: "Pat",
+            last_name: "Jones",
+            email_address: "pat@example.com",
+            phone_number: "(555) 123-4567",
+            address_line1: "123 Main St",
+            city: "Austin",
+            state: "TX",
+            postal_code: "78701",
+            country: "US",
+            payload: { company_name: "FleetCo", notes: "VIP customer" },
+          },
+        },
+        source_external_id: "SRC-CUST-1",
+      })],
+    });
+    const result = await runActivation(sb);
+    expect(result.customersInserted).toBe(1);
+    const created = sb.state.customers[0]!;
+    expect(created.first_name).toBe("Pat");
+    expect(created.last_name).toBe("Jones");
+    expect(created.email).toBe("pat@example.com");
+    expect(created.phone).toBe("5551234567");
+    expect(created.business_name).toBe("FleetCo");
+    expect(created.city).toBe("Austin");
+  });
+
   it("returns structured unresolved issue for ambiguous customer link", async () => {
     sb = createFakeSupabase({
       entities: [
