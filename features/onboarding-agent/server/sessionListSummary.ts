@@ -16,6 +16,10 @@ export function buildOnboardingSessionListPayload(params: {
     const aiRowsSampled = Number(summarySource.aiRowsSampled ?? 0);
     const aiFilesSampled = Number(summarySource.aiFilesSampled ?? 0);
 
+    const existingLiveRecordsCreated = Number(summarySource.liveRecordsCreated ?? 0);
+    const activationProgress = summarySource.activationProgress ?? null;
+    const onboardingActivation = summarySource.onboardingActivation ?? null;
+
     return {
       ...session,
       file_count: params.fileCounts.get(sessionId) ?? 0,
@@ -25,7 +29,9 @@ export function buildOnboardingSessionListPayload(params: {
         rowsParsedTotal,
         aiRowsSampled,
         aiFilesSampled,
-        liveRecordsCreated: 0,
+        liveRecordsCreated: Number.isFinite(existingLiveRecordsCreated) ? existingLiveRecordsCreated : 0,
+        activationProgress,
+        onboardingActivation,
       },
     };
   });

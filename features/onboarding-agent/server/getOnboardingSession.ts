@@ -174,10 +174,11 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     reviewExceptions: totalPendingReviewCount,
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
-    liveRecordsCreated: 0 as const,
+    liveRecordsCreated: Number((session?.summary ?? {})?.liveRecordsCreated ?? 0),
     agentReport: (session?.summary ?? {})?.agentReport ?? null,
     agentPlan: (session?.summary ?? {})?.agentPlan ?? null,
     activationProgress: (session?.summary ?? {})?.activationProgress ?? null,
+    onboardingActivation: (session?.summary ?? {})?.onboardingActivation ?? null,
   };
 
   return {
