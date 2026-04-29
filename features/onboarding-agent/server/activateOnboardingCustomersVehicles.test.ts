@@ -37,6 +37,13 @@ type Customer = {
   first_name: string | null;
   last_name: string | null;
   business_name: string | null;
+  street?: string | null;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  notes?: string | null;
+  source_row_id?: string | null;
 };
 
 type Vehicle = {
@@ -562,4 +569,42 @@ describe("activateOnboardingCustomersVehicles", () => {
     expect(unresolved).toHaveLength(1);
     expect(unresolved[0]?.details?.reasonCode).toBe("ambiguous_customer_match");
   });
+
+  it("extracts aliases and materializes full customer details", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1", {
+        display_name: "",
+        source_external_id: "",
+        normalized: {
+          "Company Name": "Summit HVAC",
+          "Contact Name": "Alex Moore",
+          "Email Address": "ops@summit-hvac.com",
+          "Phone Number": "(555) 111-2222",
+          "Postal Code": "90210",
+          "Address 1": "12 Main St",
+          City: "Denver",
+          State: "CO",
+        },
+      })],
+    });
+    const result = await runActivation(sb);
+    expect(result.customersInserted).toBe(1);
+    const created = sb.state.customers[0]!;
+    expect(created.business_name).toBe("Summit HVAC");
+    expect(created.email).toBe("ops@summit-hvac.com");
+    expect(created.phone).toBe("5551112222");
+    expect(created.street).toBe("12 Main St");
+    expect(created.postal_code).toBe("90210");
+  });
+
+  it("fills blank existing fields but does not overwrite non-blank with blank", async () => {
+    sb = createFakeSupabase({
+      entities: [stagedCustomer("c1", { normalized: { sourceCustomerId: "SRC", email: "keep@example.com", phone: "", city: "Austin" } })],
+      customers: [{ id: "customer-live", shop_id: "shop-1", external_id: null, email: "keep@example.com", phone: "999", phone_number: "999", name: "Live", first_name: null, last_name: null, business_name: null, city: null }],
+    });
+    await runActivation(sb);
+    expect(sb.state.customers[0]?.phone).toBe("999");
+    expect(sb.state.customers[0]?.city).toBe("Austin");
+  });
+
 });
