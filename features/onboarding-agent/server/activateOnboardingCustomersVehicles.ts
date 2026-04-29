@@ -30,6 +30,11 @@ export type CustomerVehicleActivationResult = {
   customersSkippedAmbiguous: number;
   customersRecoveredFromUniqueConflict: number;
   customersSkipped: number;
+  customersWithEmail: number;
+  customersWithPhone: number;
+  customersWithAddress: number;
+  customersNameOnly: number;
+  customerNameOnlySamples: Array<{ entityId: string; normalizedKeys: string[] }>;
   vehiclesInserted: number;
   vehiclesUpdated: number;
   vehiclesMatchedExisting: number;
@@ -112,9 +117,19 @@ type NormalizedCustomer = {
   firstName: string | null;
   lastName: string | null;
   businessName: string | null;
+  contactName: string | null;
   email: string | null;
   phone: string | null;
+  mobilePhone: string | null;
+  street: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  country: string | null;
+  notes: string | null;
   externalId: string | null;
+  sourceRowId: string | null;
 };
 
 type NormalizedVehicle = {
@@ -180,18 +195,51 @@ function isBlank(value: unknown): boolean {
   return false;
 }
 
-function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">): NormalizedCustomer {
-  const normalized = (entity.normalized ?? {}) as JsonObject;
-  const name = textOrNull(normalized.name) ?? textOrNull(entity.display_name);
+function pickAlias(normalized: JsonObject, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = textOrNull(normalized[key]);
+    if (value) return value;
+  }
+  return null;
+}
 
+function buildCustomerDisplayName(parts: { businessName: string | null; contactName: string | null; fullName: string | null; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; externalId: string | null; sourceRowId: string | null; }): string | null {
+  if (parts.businessName) return parts.businessName;
+  if (parts.fullName) return parts.fullName;
+  if (parts.contactName) return parts.contactName;
+  const person = textOrNull(`${parts.firstName ?? ""} ${parts.lastName ?? ""}`);
+  if (person) return person;
+  return parts.email ?? parts.phone ?? parts.externalId ?? parts.sourceRowId ?? null;
+}
+
+function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">): NormalizedCustomer {
+  const normalized = (entity.normalized ?? {}) as JsonObject;
+  const businessName = pickAlias(normalized, "businessName", "company_name", "business_name", "company", "Company", "Company Name", "Business Name");
+  const firstName = pickAlias(normalized, "firstName", "first_name", "First Name");
+  const lastName = pickAlias(normalized, "lastName", "last_name", "Last Name");
+  const contactName = pickAlias(normalized, "contactName", "contact_name", "contact", "Contact", "Contact Name");
+  const fullName = pickAlias(normalized, "name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
+  const email = normalizeEmail(pickAlias(normalized, "email", "Email", "email_address", "Email Address"));
+  const phone = normalizePhone(pickAlias(normalized, "phone", "Phone", "phone_number", "Phone Number"));
+  const mobilePhone = normalizePhone(pickAlias(normalized, "mobile", "Mobile", "cell", "Cell", "mobile_phone"));
   return {
-    externalId: textOrNull(entity.source_external_id) ?? textOrNull(normalized.sourceCustomerId),
-    name,
-    firstName: textOrNull(normalized.firstName),
-    lastName: textOrNull(normalized.lastName),
-    businessName: textOrNull(normalized.businessName),
-    email: normalizeEmail(normalized.email),
-    phone: normalizePhone(textOrNull(normalized.phone)),
+    externalId: textOrNull(entity.source_external_id) ?? pickAlias(normalized, "source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id"),
+    sourceRowId: textOrNull(entity.source_row_id) ?? pickAlias(normalized, "source_row_id", "sourceRowId"),
+    name: buildCustomerDisplayName({ businessName, contactName, fullName, firstName, lastName, email, phone: phone ?? mobilePhone, externalId: textOrNull(entity.source_external_id), sourceRowId: textOrNull(entity.source_row_id) }),
+    firstName,
+    lastName,
+    businessName,
+    contactName,
+    email,
+    phone: phone ?? mobilePhone,
+    mobilePhone,
+    street: pickAlias(normalized, "street", "address_line1", "address1", "address", "Address", "Address 1", "Street", "Street Address"),
+    address: pickAlias(normalized, "address", "billing_address", "billingAddress"),
+    city: pickAlias(normalized, "city", "City"),
+    province: pickAlias(normalized, "province", "state", "State", "Province"),
+    postalCode: pickAlias(normalized, "postalCode", "postal_code", "zip", "ZIP", "Zip Code", "Postal", "Postal Code"),
+    country: pickAlias(normalized, "country", "Country"),
+    notes: pickAlias(normalized, "notes", "Notes"),
   };
 }
 
@@ -208,7 +256,7 @@ function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "normalized" | "s
   };
 }
 
-function toStagedCustomerSummary(entity: Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">) {
+function toStagedCustomerSummary(entity: Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id" | "source_row_id">) {
   const normalized = toNormalizedCustomer(entity);
   return {
     entityId: entity.id,
@@ -243,7 +291,14 @@ function buildCustomerUpdate(current: CustomerRow, next: NormalizedCustomer): Cu
   if (isBlank(current.business_name) && next.businessName) update.business_name = next.businessName;
   if (isBlank(current.email) && next.email) update.email = next.email;
   if (isBlank(current.phone) && next.phone) update.phone = next.phone;
-  if (isBlank(current.phone_number) && next.phone) update.phone_number = next.phone;
+  if (isBlank(current.phone_number) && (next.mobilePhone ?? next.phone)) update.phone_number = next.mobilePhone ?? next.phone;
+  if (isBlank(current.street) && next.street) update.street = next.street;
+  if (isBlank(current.address) && next.address) update.address = next.address;
+  if (isBlank(current.city) && next.city) update.city = next.city;
+  if (isBlank(current.province) && next.province) update.province = next.province;
+  if (isBlank(current.postal_code) && next.postalCode) update.postal_code = next.postalCode;
+  if (isBlank(current.notes) && next.notes) update.notes = next.notes;
+  if (isBlank(current.source_row_id) && next.sourceRowId) update.source_row_id = next.sourceRowId;
 
   return Object.keys(update).length > 0 ? update : null;
 }
@@ -276,8 +331,18 @@ function mergeNormalizedCustomers(base: NormalizedCustomer, incoming: Normalized
     firstName: base.firstName ?? incoming.firstName,
     lastName: base.lastName ?? incoming.lastName,
     businessName: base.businessName ?? incoming.businessName,
+    contactName: base.contactName ?? incoming.contactName,
     email: base.email ?? incoming.email,
     phone: base.phone ?? incoming.phone,
+    mobilePhone: base.mobilePhone ?? incoming.mobilePhone,
+    street: base.street ?? incoming.street,
+    address: base.address ?? incoming.address,
+    city: base.city ?? incoming.city,
+    province: base.province ?? incoming.province,
+    postalCode: base.postalCode ?? incoming.postalCode,
+    country: base.country ?? incoming.country,
+    notes: base.notes ?? incoming.notes,
+    sourceRowId: base.sourceRowId ?? incoming.sourceRowId,
   };
 }
 
@@ -290,7 +355,7 @@ function stagedIdentityKey(customer: NormalizedCustomer): string {
   return "fallback:unknown";
 }
 
-function buildCustomerCandidates(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id">>) {
+function buildCustomerCandidates(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>) {
   const byKey = new Map<string, StagedCustomerCandidate>();
   let customersSkippedDuplicateStaged = 0;
 
@@ -575,10 +640,10 @@ export async function activateOnboardingCustomersVehicles(params: {
   });
 
   const [entities, links, customerPool, vehiclePool] = await Promise.all([
-    fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id">>((from, to) =>
+    fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id")
+        .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id, source_row_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .in("entity_type", ["customer", "vehicle"])
@@ -597,7 +662,7 @@ export async function activateOnboardingCustomersVehicles(params: {
     fetchAllRows<CustomerRow>((from, to) =>
       sb
         .from("customers")
-        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
+        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id")
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
@@ -669,7 +734,14 @@ export async function activateOnboardingCustomersVehicles(params: {
       business_name: normalized.businessName,
       email: normalized.email,
       phone: normalized.phone,
-      phone_number: normalized.phone,
+      phone_number: normalized.mobilePhone ?? normalized.phone,
+      street: normalized.street,
+      address: normalized.address,
+      city: normalized.city,
+      province: normalized.province,
+      postal_code: normalized.postalCode,
+      notes: normalized.notes,
+      source_row_id: normalized.sourceRowId,
     };
 
     const { data, error } = await sb.from("customers").insert(payload).select("id").single();
@@ -678,7 +750,7 @@ export async function activateOnboardingCustomersVehicles(params: {
       const recovered = (await fetchAllRows<CustomerRow>((from, to) =>
         sb
           .from("customers")
-          .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name")
+          .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id")
           .eq("shop_id", params.shopId)
           .eq("email", normalized.email)
           .order("id", { ascending: true })
@@ -722,6 +794,13 @@ export async function activateOnboardingCustomersVehicles(params: {
       first_name: payload.first_name ?? null,
       last_name: payload.last_name ?? null,
       business_name: payload.business_name ?? null,
+      street: payload.street ?? null,
+      address: payload.address ?? null,
+      city: payload.city ?? null,
+      province: payload.province ?? null,
+      postal_code: payload.postal_code ?? null,
+      notes: payload.notes ?? null,
+      source_row_id: payload.source_row_id ?? null,
     } as CustomerRow;
     customerPool.push(newRow);
     addIndexEntry(indexes.byExternalId, normalizeLookupKey(newRow.external_id), newRow);
@@ -964,6 +1043,16 @@ export async function activateOnboardingCustomersVehicles(params: {
   if (vehiclesAfterError) throw new Error(vehiclesAfterError.message);
   if (liveVehicleCustomerLinksAfterError) throw new Error(liveVehicleCustomerLinksAfterError.message);
 
+  const customerExtraction = customerCandidates.map((candidate) => ({
+    entityId: candidate.canonicalEntityId,
+    normalizedKeys: Object.keys(((customerEntities.find((e) => e.id === candidate.canonicalEntityId)?.normalized ?? {}) as JsonObject)).sort(),
+    normalized: candidate.normalized,
+  }));
+  const customersWithEmail = customerExtraction.filter((row) => row.normalized.email).length;
+  const customersWithPhone = customerExtraction.filter((row) => row.normalized.phone || row.normalized.mobilePhone).length;
+  const customersWithAddress = customerExtraction.filter((row) => row.normalized.street || row.normalized.city || row.normalized.province || row.normalized.postalCode).length;
+  const nameOnlyRows = customerExtraction.filter((row) => row.normalized.name && !row.normalized.email && !row.normalized.phone && !row.normalized.mobilePhone && !row.normalized.street && !row.normalized.city && !row.normalized.province && !row.normalized.postalCode);
+  const customerNameOnlySamples = nameOnlyRows.slice(0, 5).map((row) => ({ entityId: row.entityId, normalizedKeys: row.normalizedKeys }));
   const customersSkipped = customersSkippedDuplicateStaged + customersSkippedAmbiguous;
   const vehicleCustomerLinksMaterialized = vehicleCustomerLinksCreated + vehicleCustomerLinksUpdated + vehicleCustomerLinksAlreadyCorrect;
   const vehicleCustomerLinksUnresolved = links.length - vehicleCustomerLinksMaterialized;
@@ -981,6 +1070,11 @@ export async function activateOnboardingCustomersVehicles(params: {
     customersSkippedAmbiguous,
     customersRecoveredFromUniqueConflict,
     customersSkipped,
+    customersWithEmail,
+    customersWithPhone,
+    customersWithAddress,
+    customersNameOnly: nameOnlyRows.length,
+    customerNameOnlySamples,
     vehiclesInserted,
     vehiclesUpdated,
     vehiclesMatchedExisting,

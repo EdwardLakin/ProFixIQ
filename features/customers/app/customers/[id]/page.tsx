@@ -124,6 +124,24 @@ function optNumber(obj: Record<string, unknown>, key: string): number | null {
   return null;
 }
 
+
+function compactSecondaryDetails(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  businessName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  phoneNumber?: string | null;
+  city?: string | null;
+  province?: string | null;
+}): string | null {
+  const contactName = [input.firstName ?? "", input.lastName ?? ""].filter(Boolean).join(" ").trim();
+  const phone = input.phone ?? input.phoneNumber ?? null;
+  const location = [input.city ?? "", input.province ?? ""].filter(Boolean).join(", ").trim();
+  const parts = [contactName, phone ?? "", input.email ?? "", location].filter((part) => part && part !== input.businessName);
+  return parts.length ? parts.join(" • ") : null;
+}
+
 function asText(v: unknown): string {
   if (v == null) return "—";
   if (typeof v === "string") return v.trim().length ? v : "—";
@@ -983,7 +1001,6 @@ export default function CustomerProfilePage(): JSX.Element {
             ) : (
               <div className="space-y-2">
                 {results.map((r) => {
-                  const phone = r.phone ?? r.phone_number ?? null;
                   return (
                     <button
                       key={r.id}
@@ -1010,13 +1027,7 @@ export default function CustomerProfilePage(): JSX.Element {
                                   : "—"}
                           </div>
                           <div className="mt-0.5 text-[11px] text-neutral-400">
-                            {r.email ?? "—"}
-                            {phone ? (
-                              <>
-                                <span className="mx-2 text-neutral-600">•</span>
-                                {phone}
-                              </>
-                            ) : null}
+                            {compactSecondaryDetails({ firstName: r.first_name, lastName: r.last_name, businessName: r.business_name, email: r.email, phone: r.phone, phoneNumber: r.phone_number }) ?? "No contact details imported"}
                           </div>
                         </div>
                         <div className="text-[10px] text-neutral-500">{safeDate(r.created_at)}</div>
@@ -1104,13 +1115,16 @@ export default function CustomerProfilePage(): JSX.Element {
                         ) : null}
 
                         <div className="mt-2 text-sm text-neutral-300">
-                          {customer.email ?? "—"}
-                          {customer.phone ?? customer.phone_number ? (
-                            <>
-                              <span className="mx-2 text-neutral-600">•</span>
-                              {customer.phone ?? customer.phone_number}
-                            </>
-                          ) : null}
+                          {compactSecondaryDetails({
+                            firstName: customer.first_name,
+                            lastName: customer.last_name,
+                            businessName: customer.business_name,
+                            email: customer.email,
+                            phone: customer.phone,
+                            phoneNumber: customer.phone_number,
+                            city: typeof (customer as any)["city"] === "string" ? (customer as any)["city"] : null,
+                            province: typeof (customer as any)["province"] === "string" ? (customer as any)["province"] : null,
+                          }) ?? "No contact details imported"}
                         </div>
                       </>
                     );
