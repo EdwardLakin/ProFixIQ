@@ -17,9 +17,15 @@ type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
 type OnboardingReviewItemRow = Database["public"]["Tables"]["onboarding_review_items"]["Row"];
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 const PAGE_SIZE = 1000;
+const LOOKUP_CHUNK_SIZE = 250;
+const WRITEBACK_CHUNK_SIZE = 200;
 
 export type CustomerVehicleActivationResult = {
   ok: true;
+  diagnostics: {
+    timingsMs: Record<string, number>;
+    rowCounts: Record<string, number>;
+  };
   stagedCustomersFound: number;
   customerActivationCandidates: number;
   stagedVehiclesFound: number;
@@ -654,6 +660,13 @@ export async function activateOnboardingCustomersVehicles(params: {
   sessionId: string;
 }): Promise<CustomerVehicleActivationResult> {
   const sb = params.supabase as any;
+  const timingsMs: Record<string, number> = {};
+  async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    const result = await fn();
+    timingsMs[label] = Date.now() - started;
+    return result;
+  }
   async function fetchAllRows<T>(buildQuery: (from: number, to: number) => any): Promise<T[]> {
     const rows: T[] = [];
     let from = 0;
@@ -675,8 +688,8 @@ export async function activateOnboardingCustomersVehicles(params: {
     sessionId: params.sessionId,
   });
 
-  const [entities, links, customerPool, vehiclePool] = await Promise.all([
-    fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>((from, to) =>
+  const [entities, links] = await Promise.all([
+    timed("staged_customer_vehicle_fetch_ms", () => fetchAllRows<Pick<OnboardingEntityRow, "id" | "shop_id" | "session_id" | "entity_type" | "status" | "normalized" | "display_name" | "source_external_id" | "source_row_id">>((from, to) =>
       sb
         .from("onboarding_entities")
         .select("id, shop_id, session_id, entity_type, status, normalized, display_name, source_external_id, source_row_id")
@@ -685,8 +698,8 @@ export async function activateOnboardingCustomersVehicles(params: {
         .in("entity_type", ["customer", "vehicle"])
         .eq("status", "ready")
         .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllRows<Pick<OnboardingEntityLinkRow, "id" | "shop_id" | "session_id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
+        .range(from, to))),
+    timed("customer_vehicle_link_fetch_ms", () => fetchAllRows<Pick<OnboardingEntityLinkRow, "id" | "shop_id" | "session_id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
       sb
         .from("onboarding_entity_links")
         .select("id, shop_id, session_id, from_entity_id, to_entity_id, link_type")
@@ -694,25 +707,8 @@ export async function activateOnboardingCustomersVehicles(params: {
         .eq("session_id", params.sessionId)
         .eq("link_type", "customer_vehicle")
         .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllRows<CustomerRow>((from, to) =>
-      sb
-        .from("customers")
-        .select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id")
-        .eq("shop_id", params.shopId)
-        .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllRows<VehicleRow>((from, to) =>
-      sb
-        .from("vehicles")
-        .select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id")
-        .eq("shop_id", params.shopId)
-        .order("id", { ascending: true })
-        .range(from, to)),
+        .range(from, to))),
   ]);
-
-  const customersBefore = customerPool.length;
-  const vehiclesBefore = vehiclePool.length;
 
   const customerEntities = entities.filter((entity) => entity.entity_type === "customer" && entity.status === "ready");
   const vehicleEntities = entities.filter((entity) => entity.entity_type === "vehicle" && entity.status === "ready");
@@ -735,6 +731,54 @@ export async function activateOnboardingCustomersVehicles(params: {
   const customerFieldAliasHits: Record<string, number> = {};
   const extractionStats: CustomerExtractionStats = { aliasHits: customerFieldAliasHits };
   const { candidates: customerCandidates, customersSkippedDuplicateStaged } = buildCustomerCandidates(customerEntities, extractionStats);
+  const uniqueCustomerEmails = Array.from(new Set(customerCandidates.map((c) => c.normalized.email).filter(Boolean))) as string[];
+  const uniqueCustomerExternalIds = Array.from(new Set(customerCandidates.map((c) => c.normalized.externalId).filter(Boolean))) as string[];
+  const uniqueCustomerPhones = Array.from(new Set(customerCandidates.map((c) => c.normalized.phone).filter(Boolean))) as string[];
+  const uniqueVehicleExternalIds = Array.from(new Set(vehicleEntities.map((e) => toNormalizedVehicle(e).externalId).filter(Boolean))) as string[];
+  const uniqueVehicleVins = Array.from(new Set(vehicleEntities.map((e) => toNormalizedVehicle(e).vin).filter(Boolean))) as string[];
+  const uniqueVehiclePlates = Array.from(new Set(vehicleEntities.map((e) => toNormalizedVehicle(e).plate).filter(Boolean))) as string[];
+  const [customerPool, vehiclePool] = await Promise.all([
+    timed("live_customer_lookup_ms", async () => {
+      const rows: CustomerRow[] = [];
+      for (let i = 0; i < uniqueCustomerEmails.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("customers").select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id").eq("shop_id", params.shopId).in("email", uniqueCustomerEmails.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      for (let i = 0; i < uniqueCustomerExternalIds.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("customers").select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id").eq("shop_id", params.shopId).in("external_id", uniqueCustomerExternalIds.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      for (let i = 0; i < uniqueCustomerPhones.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("customers").select("id, shop_id, external_id, email, phone, phone_number, name, first_name, last_name, business_name, street, address, city, province, postal_code, notes, source_row_id").eq("shop_id", params.shopId).in("phone", uniqueCustomerPhones.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      return Array.from(new Map(rows.map((r) => [r.id, r])).values());
+    }),
+    timed("live_vehicle_lookup_ms", async () => {
+      const rows: VehicleRow[] = [];
+      for (let i = 0; i < uniqueVehicleExternalIds.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("vehicles").select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("external_id", uniqueVehicleExternalIds.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      for (let i = 0; i < uniqueVehicleVins.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("vehicles").select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("vin", uniqueVehicleVins.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      for (let i = 0; i < uniqueVehiclePlates.length; i += LOOKUP_CHUNK_SIZE) {
+        const { data, error } = await sb.from("vehicles").select("id, shop_id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("license_plate", uniqueVehiclePlates.slice(i, i + LOOKUP_CHUNK_SIZE));
+        if (error) throw new Error(error.message);
+        rows.push(...(data ?? []));
+      }
+      return Array.from(new Map(rows.map((r) => [r.id, r])).values());
+    }),
+  ]);
+  const customersBefore = customerPool.length;
+  const vehiclesBefore = vehiclePool.length;
   const indexes = buildLiveCustomerIndexes(customerPool);
   for (const candidate of customerCandidates) {
     const normalized = candidate.normalized;
@@ -947,10 +991,16 @@ export async function activateOnboardingCustomersVehicles(params: {
       .eq("id", entityId)
       .eq("entity_type", "vehicle");
   });
-  for (const write of [...customerResolutionWrites, ...vehicleResolutionWrites]) {
-    const { error } = await write;
-    if (error) throw new Error(error.message);
-  }
+  await timed("staged_live_id_bridge_writeback_ms", async () => {
+    const writes = [...customerResolutionWrites, ...vehicleResolutionWrites];
+    for (let i = 0; i < writes.length; i += WRITEBACK_CHUNK_SIZE) {
+      const chunk = writes.slice(i, i + WRITEBACK_CHUNK_SIZE);
+      for (const write of chunk) {
+        const { error } = await write;
+        if (error) throw new Error(error.message);
+      }
+    }
+  });
 
   let vehicleCustomerLinksCreated = 0;
   let vehicleCustomerLinksUpdated = 0;
@@ -1133,6 +1183,16 @@ export async function activateOnboardingCustomersVehicles(params: {
 
   return {
     ok: true,
+    diagnostics: {
+      timingsMs,
+      rowCounts: {
+        stagedCustomers: customerEntities.length,
+        stagedVehicles: vehicleEntities.length,
+        stagedLinks: links.length,
+        liveCustomersLookupPool: customerPool.length,
+        liveVehiclesLookupPool: vehiclePool.length,
+      },
+    },
     stagedCustomersFound: customerEntities.length,
     customerActivationCandidates: customerCandidates.length,
     stagedVehiclesFound: vehicleEntities.length,
