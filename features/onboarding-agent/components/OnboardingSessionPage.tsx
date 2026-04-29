@@ -466,6 +466,20 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   };
 
   const activateCustomersVehicles = async () => {
+    const runLoop = async () => {
+      for (let i = 0; i < 20; i += 1) {
+        const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "advance" }) });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          setError(json?.error || "Failed to activate staged customers and vehicles.");
+          break;
+        }
+        setCustomerVehicleActivationResult(json);
+        await load({ silent: true });
+        const cp = json?.checkpoint;
+        if (cp?.status === "completed" || cp?.status === "failed") break;
+      }
+    };
     const confirmed = window.confirm(
       "This writes staged customer and vehicle records into live customers and vehicles for this shop. It does not activate work orders, invoices, parts, staff, or menu items.",
     );
@@ -477,13 +491,8 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     setCustomerVehicleActivationResult(null);
 
     try {
-      const res = await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
-        setError(json?.error || "Failed to activate staged customers and vehicles.");
-      } else {
-        setCustomerVehicleActivationResult(json);
-      }
+      await fetch(`/api/onboarding-agent/sessions/${sessionId}/activate-customers-vehicles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "start" }) });
+      await runLoop();
       await load();
     } catch {
       setError("Failed to activate staged customers and vehicles.");
@@ -514,6 +523,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
   const activationProgress = session?.summary?.activationProgress && typeof session.summary.activationProgress === "object"
     ? session.summary.activationProgress
     : null;
+  const customerVehicleCheckpoint = session?.summary?.onboardingActivation?.customersVehicles ?? null;
   const activationProgressCurrent = asNumber(activationProgress?.current);
   const activationProgressTotal = asNumber(activationProgress?.total);
   const activationProgressPercent = activationProgressTotal > 0
@@ -747,17 +757,17 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         <div className="mt-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
           Recommended order: 1) Activate vendors to live suppliers 2) Activate customers + vehicles 3) Activate parts inventory 4) Activate historical work orders.
         </div>
-        {activationProgress ? (
+        {activationProgress || customerVehicleCheckpoint ? (
           <div className="mt-3 rounded-lg border border-cyan-400/30 bg-cyan-950/20 p-3 text-xs text-cyan-100">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="font-medium">Live activation progress</p>
                 <p className="mt-1 text-cyan-100/85">
-                  {String(activationProgress.label ?? "Activation running")} — {activationProgressCurrent.toLocaleString()} of {activationProgressTotal.toLocaleString()} ({activationProgressPercent}%)
+                  {String(customerVehicleCheckpoint?.stage ?? activationProgress?.label ?? "Activation running")} — Customers {Number(customerVehicleCheckpoint?.customersProcessed ?? 0).toLocaleString()} / {Number(customerVehicleCheckpoint?.customersTotal ?? 0).toLocaleString()}, Vehicles {Number(customerVehicleCheckpoint?.vehiclesProcessed ?? 0).toLocaleString()} / {Number(customerVehicleCheckpoint?.vehiclesTotal ?? 0).toLocaleString()}, Links {Number(customerVehicleCheckpoint?.linksProcessed ?? 0).toLocaleString()} / {Number(customerVehicleCheckpoint?.linksTotal ?? 0).toLocaleString()}
                 </p>
               </div>
               <span className="rounded-full border border-cyan-300/40 px-2 py-1 text-[11px] text-cyan-100">
-                {String(activationProgress.status ?? "running")}
+                {String(customerVehicleCheckpoint?.status ?? activationProgress?.status ?? "running")}
               </span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
