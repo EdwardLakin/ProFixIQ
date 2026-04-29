@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/features/onboarding-agent/lib/fingerprints";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import { buildOnboardingEntityPayloadLayers, firstTextFromLayers } from "@/features/onboarding-agent/server/onboardingEntityPayload";
 import type { Database } from "@/features/shared/types/types/supabase";
 
 type JsonObject = Record<string, unknown>;
@@ -203,19 +204,6 @@ function pickAlias(normalized: JsonObject, ...keys: string[]): string | null {
   return null;
 }
 
-function asObject(value: unknown): JsonObject | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as JsonObject;
-}
-
-function collectPayloadLayers(normalized: JsonObject): JsonObject[] {
-  const details = asObject(normalized.details);
-  const payload = asObject(normalized.payload);
-  const nestedDetails = details ? asObject(details.details) : null;
-  const nestedPayload = details ? asObject(details.payload) : null;
-  return [normalized, details, payload, nestedDetails, nestedPayload].filter(Boolean) as JsonObject[];
-}
-
 function pickFromLayers(layers: JsonObject[], ...keys: string[]): string | null {
   for (const layer of layers) {
     const value = pickAlias(layer, ...keys);
@@ -234,19 +222,18 @@ function buildCustomerDisplayName(parts: { businessName: string | null; contactN
 }
 
 function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">): NormalizedCustomer {
-  const normalized = (entity.normalized ?? {}) as JsonObject;
-  const layers = collectPayloadLayers(normalized);
-  const businessName = pickFromLayers(layers, "businessName", "company_name", "business_name", "company", "companyName", "Company", "Company Name", "Business Name");
-  const firstName = pickFromLayers(layers, "firstName", "first_name", "First Name");
-  const lastName = pickFromLayers(layers, "lastName", "last_name", "Last Name");
+  const layers = buildOnboardingEntityPayloadLayers(entity as any);
+  const businessName = firstTextFromLayers(layers, ["business_name", "businessName", "company_name", "companyName", "company", "Company", "Company Name", "Business Name"]).value;
+  const firstName = firstTextFromLayers(layers, ["first_name", "firstName", "First Name"]).value;
+  const lastName = firstTextFromLayers(layers, ["last_name", "lastName", "Last Name"]).value;
   const contactName = pickFromLayers(layers, "contactName", "contact_name", "contact", "Contact", "Contact Name");
-  const fullName = pickFromLayers(layers, "name", "displayName", "display_name", "fullName", "full_name", "Name", "Customer", "Customer Name", "Full Name") ?? textOrNull(entity.display_name);
-  const email = normalizeEmail(pickFromLayers(layers, "email", "Email", "email_address", "Email Address", "customer_email", "contact_email"));
-  const phone = normalizePhone(pickFromLayers(layers, "phone", "Phone", "phone_number", "Phone Number", "telephone", "Telephone", "work_phone", "contact_phone"));
-  const mobilePhone = normalizePhone(pickFromLayers(layers, "mobile", "Mobile", "cell", "Cell", "mobile_phone"));
+  const fullName = firstTextFromLayers(layers, ["full_name", "fullName", "name", "display_name", "displayName", "customer_name", "Name", "Customer Name", "Full Name"]).value ?? textOrNull(entity.display_name);
+  const email = normalizeEmail(firstTextFromLayers(layers, ["email", "email_address", "Email Address", "customer_email", "contact_email"]).value);
+  const phone = normalizePhone(firstTextFromLayers(layers, ["phone", "phone_number", "Phone Number", "telephone", "work_phone", "contact_phone"]).value);
+  const mobilePhone = normalizePhone(firstTextFromLayers(layers, ["mobile", "mobile_phone", "cell"]).value);
   return {
-    externalId: textOrNull(entity.source_external_id) ?? pickFromLayers(layers, "source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id", "customerExternalId"),
-    sourceRowId: textOrNull(entity.source_row_id) ?? pickFromLayers(layers, "source_row_id", "sourceRowId"),
+    externalId: textOrNull(entity.source_external_id) ?? firstTextFromLayers(layers, ["source_external_id", "sourceExternalId", "sourceCustomerId", "source_customer_id", "customerExternalId", "external_id"]).value,
+    sourceRowId: textOrNull(entity.source_row_id) ?? firstTextFromLayers(layers, ["source_row_id", "sourceRowId"]).value,
     name: buildCustomerDisplayName({ businessName, contactName, fullName, firstName, lastName, email, phone: phone ?? mobilePhone, externalId: textOrNull(entity.source_external_id), sourceRowId: textOrNull(entity.source_row_id) }),
     firstName,
     lastName,
@@ -266,15 +253,15 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "
 }
 
 function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "normalized" | "source_external_id">): NormalizedVehicle {
-  const normalized = (entity.normalized ?? {}) as JsonObject;
+  const layers = buildOnboardingEntityPayloadLayers(entity as any);
   return {
-    externalId: textOrNull(entity.source_external_id) ?? textOrNull(normalized.sourceVehicleId),
-    vin: normalizeVin(normalized.vin),
-    plate: normalizePlate(normalized.plate),
-    unitNumber: textOrNull(normalized.unitNumber),
-    year: normalizeNumber(normalized.year),
-    make: textOrNull(normalized.make),
-    model: textOrNull(normalized.model),
+    externalId: textOrNull(entity.source_external_id) ?? firstTextFromLayers(layers, ["source_external_id", "sourceExternalId", "sourceVehicleId", "vehicleExternalId", "external_id"]).value,
+    vin: normalizeVin(firstTextFromLayers(layers, ["vin", "vehicle_vin"]).value),
+    plate: normalizePlate(firstTextFromLayers(layers, ["plate", "license_plate", "licensePlate"]).value),
+    unitNumber: firstTextFromLayers(layers, ["unit_number", "unitNumber", "fleet_number"]).value,
+    year: normalizeNumber(firstTextFromLayers(layers, ["year"]).value),
+    make: firstTextFromLayers(layers, ["make"]).value,
+    model: firstTextFromLayers(layers, ["model"]).value,
   };
 }
 
