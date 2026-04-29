@@ -166,9 +166,10 @@ describe("onboarding phase 1 consolidation", () => {
     expect(session.summaryCounts.reviewExceptions).toBe(reviews.length);
     expect(session.entityCounts.customer + session.entityCounts.vehicle).toBe(entities.length);
     expect(session.linkCounts.customer_vehicle + session.linkCounts.vehicle_work_order).toBe(links.length);
-    expect(
-      Object.values(session.reviewCounts.byDomain ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0),
-    ).toBe(reviews.length + session.entityStatusCounts.customer.needs_review + session.entityStatusCounts.vehicle.needs_review);
+    expect(Object.values(session.reviewCounts.byDomain ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0)).toBe(reviews.length);
+    expect(session.reviewItems.length).toBeLessThanOrEqual(250);
+    expect(session.diagnostics.sessionTimingsMs["session:fetch"]).toBeTypeOf("number");
+    expect(session.diagnostics.sessionRowCounts.entities).toBe(entities.length);
   });
 
   it("activation preview uses full persisted counts beyond first 1000 rows", async () => {
