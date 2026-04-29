@@ -83,6 +83,18 @@ type HistoryActivationResult = {
     discoveredVehicleLikeEntityCount: number;
     historyLinkedViaSparseDuplicateCount: number;
     historyLinkedViaCanonicalEntityCount: number;
+    customerLinksResolvedByEndpointClassification: number;
+    vehicleLinksResolvedByEndpointClassification: number;
+    historyToCustomerMapSize: number;
+    historyToVehicleMapSize: number;
+    historyRowsWithBothLinkedEntities: number;
+    sampleResolvedHistoryLinks: Array<{
+      historyEntityId: string;
+      linkedCustomerEntityId: string | null;
+      linkedVehicleEntityId: string | null;
+      customerLinkDirection: string | null;
+      vehicleLinkDirection: string | null;
+    }>;
     firstFiveLinkEndpointSamples: Array<{
       linkId: string;
       linkType: string;
@@ -108,6 +120,7 @@ type HistoryActivationResult = {
       customerResolutionAttemptedKeys: string[];
       vehicleResolutionAttemptedKeys: string[];
       finalSkipReason: string;
+      normalizedKeysSample?: string[];
     }>;
   };
   warnings: string[];
@@ -578,6 +591,8 @@ export async function activateOnboardingHistory(params: {
   const vehicleEntityById = new Map(entityRows.filter((row) => row.entity_type === "vehicle").map((row) => [row.id, row]));
   const historyToCustomerEntityIds = new Map<string, Set<string>>();
   const historyToVehicleEntityIds = new Map<string, Set<string>>();
+  const historyToCustomerDirection = new Map<string, string>();
+  const historyToVehicleDirection = new Map<string, string>();
   const linkEndpointEntityTypesByCount: Record<string, number> = {};
   const customerWorkOrderEndpointTypesByCount: Record<string, number> = {};
   const vehicleWorkOrderEndpointTypesByCount: Record<string, number> = {};
@@ -586,10 +601,13 @@ export async function activateOnboardingHistory(params: {
   let linksPointingToDiscoveredHistoryLikeEntities = 0;
   let historyLinkedViaSparseDuplicateCount = 0;
   let historyLinkedViaCanonicalEntityCount = 0;
+  let customerLinksResolvedByEndpointClassification = 0;
+  let vehicleLinksResolvedByEndpointClassification = 0;
   const discoveredHistoryLikeEntityIds = new Set<string>();
   const discoveredCustomerLikeEntityIds = new Set<string>();
   const discoveredVehicleLikeEntityIds = new Set<string>();
   const firstFiveLinkEndpointSamples: HistoryActivationResult["diagnostics"]["firstFiveLinkEndpointSamples"] = [];
+  const sampleResolvedHistoryLinks: HistoryActivationResult["diagnostics"]["sampleResolvedHistoryLinks"] = [];
 
   for (const link of linkRows) {
     if (link.link_type !== "customer_work_order" && link.link_type !== "vehicle_work_order") continue;
@@ -618,12 +636,12 @@ export async function activateOnboardingHistory(params: {
     if (toKind === "vehicle") discoveredVehicleLikeEntityIds.add(to.id);
 
     if (link.link_type === "customer_work_order") {
-      if (fromKind === "history" && toKind === "customer") pushMapValue(historyToCustomerEntityIds, from.id, to.id);
-      if (toKind === "history" && fromKind === "customer") pushMapValue(historyToCustomerEntityIds, to.id, from.id);
+      if (fromKind === "history" && toKind === "customer") { pushMapValue(historyToCustomerEntityIds, from.id, to.id); historyToCustomerDirection.set(from.id, "history_to_customer"); customerLinksResolvedByEndpointClassification += 1; }
+      if (toKind === "history" && fromKind === "customer") { pushMapValue(historyToCustomerEntityIds, to.id, from.id); historyToCustomerDirection.set(to.id, "customer_to_history"); customerLinksResolvedByEndpointClassification += 1; }
     }
     if (link.link_type === "vehicle_work_order") {
-      if (fromKind === "history" && toKind === "vehicle") pushMapValue(historyToVehicleEntityIds, from.id, to.id);
-      if (toKind === "history" && fromKind === "vehicle") pushMapValue(historyToVehicleEntityIds, to.id, from.id);
+      if (fromKind === "history" && toKind === "vehicle") { pushMapValue(historyToVehicleEntityIds, from.id, to.id); historyToVehicleDirection.set(from.id, "history_to_vehicle"); vehicleLinksResolvedByEndpointClassification += 1; }
+      if (toKind === "history" && fromKind === "vehicle") { pushMapValue(historyToVehicleEntityIds, to.id, from.id); historyToVehicleDirection.set(to.id, "vehicle_to_history"); vehicleLinksResolvedByEndpointClassification += 1; }
     }
   }
   for (const id of historyToCustomerEntityIds.keys()) {
@@ -672,7 +690,30 @@ export async function activateOnboardingHistory(params: {
       source_external_id: endpoint.source_external_id,
     });
   }
+  const historyCanonicalBySourceRow = new Map<string, string>();
+  for (const row of combinedHistoryRows.values()) {
+    const sourceRow = normalizeText(row.source_row_id);
+    if (sourceRow && row.entity_type === "historical_work_order") historyCanonicalBySourceRow.set(sourceRow, row.id);
+  }
+  const remapHistoryLinkMapToCanonical = (sourceMap: Map<string, Set<string>>) => {
+    for (const [historyEntityId, linkedIds] of [...sourceMap.entries()]) {
+      const sourceRow = normalizeText(combinedHistoryRows.get(historyEntityId)?.source_row_id);
+      const canonicalId = (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
+      if (canonicalId === historyEntityId) continue;
+      const current = sourceMap.get(canonicalId) ?? new Set<string>();
+      for (const linkedId of linkedIds) current.add(linkedId);
+      sourceMap.set(canonicalId, current);
+    }
+  };
+  remapHistoryLinkMapToCanonical(historyToCustomerEntityIds);
+  remapHistoryLinkMapToCanonical(historyToVehicleEntityIds);
+  const resolveCanonicalHistoryId = (historyEntityId: string): string => {
+    if (combinedHistoryRows.get(historyEntityId)?.entity_type === "historical_work_order") return historyEntityId;
+    const sourceRow = normalizeText(combinedHistoryRows.get(historyEntityId)?.source_row_id);
+    return (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
+  };
 
+  let historyRowsWithBothLinkedEntities = 0;
   for (const entity of combinedHistoryRows.values()) {
     const history = toNormalizedHistory(entity);
     if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
@@ -692,6 +733,7 @@ export async function activateOnboardingHistory(params: {
           customerResolutionAttemptedKeys: [],
           vehicleResolutionAttemptedKeys: [],
           finalSkipReason: "missing_required_history_identifier",
+          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
         });
       }
       continue;
@@ -713,6 +755,7 @@ export async function activateOnboardingHistory(params: {
           customerResolutionAttemptedKeys: [],
           vehicleResolutionAttemptedKeys: [],
           finalSkipReason: "invalid_history_date",
+          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
         });
       }
       continue;
@@ -723,10 +766,13 @@ export async function activateOnboardingHistory(params: {
       needsReview += 1;
     }
 
-    const stagedCustomerLink = mapSingleValue(historyToCustomerEntityIds, entity.id);
-    const stagedVehicleLink = mapSingleValue(historyToVehicleEntityIds, entity.id);
+    const canonicalHistoryId = resolveCanonicalHistoryId(entity.id);
+    const stagedCustomerLink = mapSingleValue(historyToCustomerEntityIds, canonicalHistoryId);
+    const stagedVehicleLink = mapSingleValue(historyToVehicleEntityIds, canonicalHistoryId);
     if (stagedCustomerLink.id) historyRowsWithCustomerLink += 1;
     if (stagedVehicleLink.id) historyRowsWithVehicleLink += 1;
+    if (stagedCustomerLink.id && stagedVehicleLink.id) historyRowsWithBothLinkedEntities += 1;
+    if (sampleResolvedHistoryLinks.length < 5) sampleResolvedHistoryLinks.push({ historyEntityId: entity.id, linkedCustomerEntityId: stagedCustomerLink.id ?? null, linkedVehicleEntityId: stagedVehicleLink.id ?? null, customerLinkDirection: historyToCustomerDirection.get(canonicalHistoryId) ?? null, vehicleLinkDirection: historyToVehicleDirection.get(canonicalHistoryId) ?? null });
     const linkedStagedCustomer = stagedCustomerLink.id ? customerEntityById.get(stagedCustomerLink.id) ?? null : null;
     const linkedStagedVehicle = stagedVehicleLink.id ? vehicleEntityById.get(stagedVehicleLink.id) ?? null : null;
     if (linkedStagedCustomer) linkedCustomerStagedEntitiesFound += 1;
@@ -834,13 +880,14 @@ export async function activateOnboardingHistory(params: {
             `vehiclePlate:${history.vehiclePlate ?? ""}`,
           ].filter((value) => value.split(":")[1]),
           finalSkipReason,
+          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
         });
       }
       continue;
     }
     rowsWithBothLiveCustomerAndVehicle += 1;
 
-    const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", entity.id]);
+    const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", canonicalHistoryId]);
     const existing = woRows.find((row) => row.source_row_id === sourceRowKey || (history.sourceWorkOrderId && normalizeLookup(row.custom_id) === normalizeLookup(history.sourceWorkOrderId)));
     if (existing) {
       existingMatched += 1;
@@ -1004,6 +1051,12 @@ export async function activateOnboardingHistory(params: {
       discoveredVehicleLikeEntityCount: discoveredVehicleLikeEntityIds.size,
       historyLinkedViaSparseDuplicateCount,
       historyLinkedViaCanonicalEntityCount,
+      customerLinksResolvedByEndpointClassification,
+      vehicleLinksResolvedByEndpointClassification,
+      historyToCustomerMapSize: historyToCustomerEntityIds.size,
+      historyToVehicleMapSize: historyToVehicleEntityIds.size,
+      historyRowsWithBothLinkedEntities,
+      sampleResolvedHistoryLinks,
       firstFiveLinkEndpointSamples,
       unresolvedSamples,
     },
