@@ -64,6 +64,16 @@ function fmtName(c: Pick<Customer, "first_name" | "last_name"> | null): string {
     [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ") || "—"
   );
 }
+function bestCustomerDisplayName(c: Pick<Customer, "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number"> | null): string {
+  if (!c) return "—";
+  const biz = c.business_name?.trim();
+  if (biz) return biz;
+  const name = c.name?.trim();
+  if (name) return name;
+  const person = [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ").trim();
+  if (person) return person;
+  return c.email ?? c.phone ?? c.phone_number ?? "—";
+}
 
 function fmtVehicleLabel(v: Vehicle): string {
   const ym = [v.year != null ? String(v.year) : "", v.make ?? "", v.model ?? ""]
@@ -1011,11 +1021,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-white">
-                            {r.business_name?.trim()
-                              ? r.business_name
-                              : r.name?.trim()
-                                ? r.name
-                                : fmtName(r)}
+                            {bestCustomerDisplayName(r)}
                           </div>
                           <div className="mt-0.5 truncate text-[11px] text-neutral-400">
                             {r.business_name?.trim() && (r.first_name || r.last_name)
@@ -1098,8 +1104,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 <div className="min-w-0">
                   {(() => {
                     const biz = customer.business_name?.trim() ?? "";
-                    const disp = customer.name?.trim() ?? "";
-                    const title = biz || disp || fmtName(customer);
+                    const title = bestCustomerDisplayName(customer);
 
                     return (
                       <>
