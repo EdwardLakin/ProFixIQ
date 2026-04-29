@@ -35,7 +35,8 @@ async function deleteRowsByChunk(params: {
 
     if (error) throw new Error(error.message);
 
-    const ids = ((data ?? []) as Array<{ id: string | null }>)
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const ids = (rows as Array<{ id: string | null }>)
       .map((row) => row.id)
       .filter((id): id is string => Boolean(id));
 

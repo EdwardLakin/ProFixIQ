@@ -16,6 +16,8 @@ function createSupabaseMock() {
     let mode: "select" | "delete" = "select";
     let filters: Record<string, string> = {};
     let selected = "*";
+    let limitValue: number | null = null;
+    let inIds: string[] | null = null;
 
     const runSelect = async () => {
       if (table === "onboarding_sessions" && selected === "id") {
@@ -24,6 +26,18 @@ function createSupabaseMock() {
       }
       if (table === "onboarding_files") {
         const rows = fileRows.filter((item) => item.shop_id === filters.shop_id && item.session_id === filters.session_id);
+        return { data: selected === "id" ? rows.map((row) => ({ id: row.id })) : rows, error: null };
+      }
+      if (selected === "id") {
+        const rowCountByTable: Record<string, number> = {
+          onboarding_entity_links: 1,
+          onboarding_review_items: 1,
+          onboarding_entities: 1,
+          onboarding_raw_rows: 1,
+          onboarding_activation_plans: 1,
+        };
+        const count = rowCountByTable[table] ?? 0;
+        const rows = Array.from({ length: Math.min(limitValue ?? count, count) }, (_, idx) => ({ id: `${table}-${idx + 1}` }));
         return { data: rows, error: null };
       }
       if (table === "customers") {
@@ -34,6 +48,7 @@ function createSupabaseMock() {
 
     const runDelete = async () => {
       deletedTables.push(table);
+      void inIds;
       return { error: null };
     };
 
@@ -49,6 +64,17 @@ function createSupabaseMock() {
       },
       eq(column: string, value: string) {
         filters = { ...filters, [column]: value };
+        return this;
+      },
+      in(column: string, values: string[]) {
+        if (column === "id") inIds = values;
+        return this;
+      },
+      order() {
+        return this;
+      },
+      limit(value: number) {
+        limitValue = value;
         return this;
       },
       maybeSingle() {

@@ -78,7 +78,7 @@ function toNormalizedPart(entity: Pick<OnboardingEntityRow, "normalized" | "disp
     "partName",
     "item_name",
     "itemName",
-  ]) ?? normalizeText(entity.display_name) || null;
+  ]);
 
   const partNumber = firstLayeredText(entity, [
     "partNumber",
