@@ -9,14 +9,15 @@ import { fmtCustomerName, fmtVehicle, formatMoneyLike, historyShortId, parseHist
 type DB = Database;
 type HistoryDetail = Pick<DB["public"]["Tables"]["history"]["Row"], "id" | "work_order_id" | "service_date" | "description" | "notes" | "created_at"> & { customers: Pick<DB["public"]["Tables"]["customers"]["Row"], "first_name" | "last_name" | "email" | "phone" | "shop_id"> | null; vehicles: Pick<DB["public"]["Tables"]["vehicles"]["Row"], "year" | "make" | "model" | "unit_number" | "license_plate" | "vin" | "shop_id"> | null };
 
-export default async function HistoryDetailPage({ params }: { params: { id: string } }): Promise<JSX.Element> {
+export default async function HistoryDetailPage({ params }: { params: Promise<{ id: string }> }): Promise<JSX.Element> {
+  const { id } = await params;
   const supabase = createServerComponentClient<DB>({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
   const { data: profile } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle();
   if (!profile?.shop_id) notFound();
 
-  const { data } = await supabase.from("history").select("id,work_order_id,service_date,description,notes,created_at,customers:customers(first_name,last_name,email,phone,shop_id),vehicles:vehicles(year,make,model,unit_number,license_plate,vin,shop_id)").eq("id", params.id).maybeSingle();
+  const { data } = await supabase.from("history").select("id,work_order_id,service_date,description,notes,created_at,customers:customers(first_name,last_name,email,phone,shop_id),vehicles:vehicles(year,make,model,unit_number,license_plate,vin,shop_id)").eq("id", id).maybeSingle();
   const row = data as HistoryDetail | null;
   if (!row) notFound();
   if ((row.customers?.shop_id && row.customers.shop_id !== profile.shop_id) || (row.vehicles?.shop_id && row.vehicles.shop_id !== profile.shop_id)) notFound();
