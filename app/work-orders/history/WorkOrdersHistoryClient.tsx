@@ -199,7 +199,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] desktop-backdrop px-4 py-6 text-white">
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.06),transparent_32%),#050914] px-4 py-6 text-white">
       <div className="mx-auto max-w-6xl space-y-4">
         <section className="overflow-hidden rounded-[26px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_48px_rgba(2,6,23,0.58)]">
           <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(96,165,250,0.12),rgba(15,23,42,0.04))] px-4 py-4 sm:px-6">
@@ -293,7 +293,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           </div>
         </section>
 
-        <section className="desktop-panel px-4 py-5 sm:px-6 sm:py-6">
+        <section className="rounded-[26px] border border-slate-700/60 bg-slate-950/70 px-4 py-5 shadow-[0_18px_48px_rgba(2,6,23,0.58)] sm:px-6 sm:py-6">
           {err ? (
             <div className="mb-4 rounded-xl border border-red-500/60 bg-red-950/80 px-4 py-2 text-sm text-red-100">
               {err}
@@ -320,7 +320,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 return (
                   <div
                     key={r.id}
-                    className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.9)]"
+                    className="rounded-2xl border border-slate-700/60 bg-slate-950/70 p-3 shadow-[0_14px_38px_rgba(2,6,23,0.82)]"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 space-y-1">
@@ -342,12 +342,12 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-200">
+                    <div className="mt-3 rounded-xl border border-slate-700/55 bg-slate-900/60 px-3 py-2 text-sm text-neutral-200">
                       {r.description || "Imported historical service record"}
                     </div>
 
                     {r.notes ? (
-                      <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] leading-relaxed text-neutral-400">
+                      <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-slate-700/55 bg-slate-900/50 px-3 py-2 text-[11px] leading-relaxed text-neutral-400">
                         {r.notes}
                       </pre>
                     ) : null}
