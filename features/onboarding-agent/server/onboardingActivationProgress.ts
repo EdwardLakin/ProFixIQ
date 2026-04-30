@@ -19,6 +19,12 @@ export type CustomerVehicleTotals = {
 
   linksTotal: number;
 
+  customersProcessed?: number;
+
+  vehiclesProcessed?: number;
+
+  linksProcessed?: number;
+
 };
 
 export type CustomerVehicleCheckpoint = CustomerVehicleTotals & {
