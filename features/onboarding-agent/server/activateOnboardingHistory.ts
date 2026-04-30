@@ -555,6 +555,16 @@ function toReviewItemDetails(details?: Record<string, unknown>): ReviewItemDetai
   return (details ?? {}) as ReviewItemDetails;
 }
 
+const POSTGREST_IN_FILTER_CHUNK_SIZE = 100;
+
+function chunkValues<T>(values: T[], size = POSTGREST_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function reviewItem(params: {
   shopId: string;
   sessionId: string;
@@ -652,32 +662,36 @@ export async function activateOnboardingHistory(params: {
 
   let linkRows: Array<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">> = [];
   if (batchHistoryEntityIds.length > 0) {
-    const [fromLinkResult, toLinkResult] = await Promise.all([
-      sb
-        .from("onboarding_entity_links")
-        .select("id, from_entity_id, to_entity_id, link_type")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .in("link_type", ["customer_work_order", "vehicle_work_order"])
-        .in("from_entity_id", batchHistoryEntityIds)
-        .order("id", { ascending: true }),
-      sb
-        .from("onboarding_entity_links")
-        .select("id, from_entity_id, to_entity_id, link_type")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .in("link_type", ["customer_work_order", "vehicle_work_order"])
-        .in("to_entity_id", batchHistoryEntityIds)
-        .order("id", { ascending: true }),
-    ]);
-
-    if (fromLinkResult.error) throw new Error(fromLinkResult.error.message);
-    if (toLinkResult.error) throw new Error(toLinkResult.error.message);
-
     const byId = new Map<string, Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>();
-    for (const row of [...(fromLinkResult.data ?? []), ...(toLinkResult.data ?? [])]) {
-      byId.set(row.id, row);
+
+    for (const idChunk of chunkValues(batchHistoryEntityIds)) {
+      const [fromLinkResult, toLinkResult] = await Promise.all([
+        sb
+          .from("onboarding_entity_links")
+          .select("id, from_entity_id, to_entity_id, link_type")
+          .eq("shop_id", params.shopId)
+          .eq("session_id", params.sessionId)
+          .in("link_type", ["customer_work_order", "vehicle_work_order"])
+          .in("from_entity_id", idChunk)
+          .order("id", { ascending: true }),
+        sb
+          .from("onboarding_entity_links")
+          .select("id, from_entity_id, to_entity_id, link_type")
+          .eq("shop_id", params.shopId)
+          .eq("session_id", params.sessionId)
+          .in("link_type", ["customer_work_order", "vehicle_work_order"])
+          .in("to_entity_id", idChunk)
+          .order("id", { ascending: true }),
+      ]);
+
+      if (fromLinkResult.error) throw new Error(fromLinkResult.error.message);
+      if (toLinkResult.error) throw new Error(toLinkResult.error.message);
+
+      for (const row of [...(fromLinkResult.data ?? []), ...(toLinkResult.data ?? [])]) {
+        byId.set(row.id, row);
+      }
     }
+
     linkRows = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
@@ -689,16 +703,24 @@ export async function activateOnboardingHistory(params: {
 
   let endpointEntities: EntityShape[] = [];
   if (endpointIds.size > 0) {
-    const { data, error } = await sb
-      .from("onboarding_entities")
-      .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .in("id", [...endpointIds])
-      .order("id", { ascending: true });
+    const byId = new Map<string, EntityShape>();
 
-    if (error) throw new Error(error.message);
-    endpointEntities = (data ?? []) as EntityShape[];
+    for (const idChunk of chunkValues([...endpointIds])) {
+      const { data, error } = await sb
+        .from("onboarding_entities")
+        .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .in("id", idChunk)
+        .order("id", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      for (const row of (data ?? []) as EntityShape[]) {
+        byId.set(row.id, row);
+      }
+    }
+
+    endpointEntities = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
   const entityRows = endpointEntities.filter((row) => row.entity_type === "customer" || row.entity_type === "vehicle");
