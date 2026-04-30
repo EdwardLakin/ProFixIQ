@@ -47,6 +47,10 @@ drop policy if exists history_wo_select on public.history;
 drop policy if exists history_wo_insert on public.history;
 drop policy if exists history_wo_update on public.history;
 drop policy if exists history_wo_delete on public.history;
+drop policy if exists history_shop_scoped_select on public.history;
+drop policy if exists history_shop_scoped_insert on public.history;
+drop policy if exists history_shop_scoped_update on public.history;
+drop policy if exists history_shop_scoped_delete on public.history;
 
 create policy history_wo_select on public.history for select to authenticated using (
   (
