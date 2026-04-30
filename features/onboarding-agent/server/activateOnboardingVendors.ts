@@ -5,11 +5,25 @@ import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/
 import type { Database } from "@/features/shared/types/types/supabase";
 
 type JsonObject = Record<string, unknown>;
+type AdminSupabase = SupabaseClient<Database>;
 type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
-type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
+type SupplierRow = Pick<
+  Database["public"]["Tables"]["suppliers"]["Row"],
+  | "id"
+  | "shop_id"
+  | "name"
+  | "account_no"
+  | "email"
+  | "phone"
+  | "notes"
+  | "is_active"
+  | "created_at"
+  | "created_by"
+>;
 type SupplierInsert = Database["public"]["Tables"]["suppliers"]["Insert"];
 type SupplierUpdate = Database["public"]["Tables"]["suppliers"]["Update"];
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
+type ReviewItemDetails = NonNullable<OnboardingReviewItemInsert["details"]>;
 
 export type VendorActivationResult = {
   ok: true;
@@ -26,6 +40,7 @@ export type VendorActivationResult = {
   reviewItemsReused: number;
   reviewItemsCreated: number;
   reviewItemsOpenForDomain: number;
+  supplierEntityCanonicalWritebacks: number;
   warnings: string[];
   records: Array<{
     entityId: string;
@@ -119,17 +134,17 @@ function makeReviewItem(params: {
     summary: params.summary,
     severity: params.severity ?? "medium",
     status: "pending",
-    details: params.details as any,
+    details: params.details as ReviewItemDetails,
   };
 }
 
 export async function activateOnboardingVendors(params: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
   actorId: string;
 }): Promise<VendorActivationResult> {
-  const sb = params.supabase as any;
+  const sb = params.supabase;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
   const [{ data: entities, error: entityError }, { data: suppliers, error: supplierError }] = await Promise.all([
@@ -158,6 +173,24 @@ export async function activateOnboardingVendors(params: {
   let updatedNullOnly = 0;
   let skipped = 0;
   let needsReview = 0;
+  let supplierEntityCanonicalWritebacks = 0;
+
+  async function markVendorEntityActivated(entityId: string, supplierId: string): Promise<void> {
+    const { error } = await sb
+      .from("onboarding_entities")
+      .update({
+        status: "activated",
+        canonical_table: "suppliers",
+        canonical_id: supplierId,
+      })
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("id", entityId)
+      .eq("entity_type", "vendor");
+
+    if (error) throw new Error(error.message);
+    supplierEntityCanonicalWritebacks += 1;
+  }
 
   for (const entity of staged) {
     const vendor = toNormalizedVendor(entity);
@@ -220,6 +253,7 @@ export async function activateOnboardingVendors(params: {
         matchedExisting += 1;
         records.push({ entityId: entity.id, supplierId: target.id, action: "matched_existing", reason: "Matched existing supplier" });
       }
+      await markVendorEntityActivated(entity.id, target.id);
       continue;
     }
 
@@ -249,7 +283,9 @@ export async function activateOnboardingVendors(params: {
       created_at: new Date().toISOString(),
       created_by: params.actorId,
     } as SupplierRow);
-    records.push({ entityId: entity.id, supplierId: data?.id ?? null, action: "created", reason: "Created supplier" });
+    const supplierId = String(data?.id);
+    records.push({ entityId: entity.id, supplierId, action: "created", reason: "Created supplier" });
+    await markVendorEntityActivated(entity.id, supplierId);
   }
 
   let reviewItemsPersisted = 0;
@@ -293,6 +329,7 @@ export async function activateOnboardingVendors(params: {
     reviewItemsCreated: Math.max(0, reviewItemsPersisted - reviewItemsReused),
     reviewItemsOpenForDomain: Number(reviewItemsOpenCount ?? 0),
     warnings,
+    supplierEntityCanonicalWritebacks,
     records,
   };
 }

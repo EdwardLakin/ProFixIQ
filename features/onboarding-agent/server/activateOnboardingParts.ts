@@ -6,13 +6,25 @@ import { buildOnboardingEntityPayloadLayers, firstTextFromLayers } from "@/featu
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
+type AdminSupabase = SupabaseClient<Database>;
 type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
 type PartRow = Database["public"]["Tables"]["parts"]["Row"];
 type PartInsert = Database["public"]["Tables"]["parts"]["Insert"];
 type PartUpdate = Database["public"]["Tables"]["parts"]["Update"];
 type StockLocationRow = Database["public"]["Tables"]["stock_locations"]["Row"];
-type PartStockRow = Database["public"]["Tables"]["part_stock"]["Row"];
+type PartStockRow = Pick<
+  Database["public"]["Tables"]["part_stock"]["Row"],
+  | "id"
+  | "part_id"
+  | "location_id"
+  | "qty_on_hand"
+  | "qty_reserved"
+  | "reorder_point"
+  | "reorder_qty"
+>;
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
+type ReviewItemDetails = NonNullable<OnboardingReviewItemInsert["details"]>;
+type SupplierLookupRow = Pick<Database["public"]["Tables"]["suppliers"]["Row"], "id" | "name">;
 
 type NormalizedPart = {
   name: string | null;
@@ -41,6 +53,7 @@ export type PartsActivationResult = {
   reviewItemsReused: number;
   reviewItemsCreated: number;
   reviewItemsOpenForDomain: number;
+  partEntityCanonicalWritebacks: number;
   warnings: string[];
 };
 
@@ -61,7 +74,10 @@ function parseNumber(value: unknown): number | null {
 }
 
 function firstLayeredText(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">, aliases: string[]): string | null {
-  return firstTextFromLayers(buildOnboardingEntityPayloadLayers(entity as any), aliases).value;
+  return firstTextFromLayers(buildOnboardingEntityPayloadLayers({
+    ...entity,
+    source_row_id: null,
+  }), aliases).value;
 }
 
 function toNormalizedPart(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id">): NormalizedPart {
@@ -187,7 +203,7 @@ function reviewItem(params: {
     summary: params.summary,
     severity: params.severity ?? "medium",
     status: "pending",
-    details: (params.details ?? {}) as any,
+    details: (params.details ?? {}) as ReviewItemDetails,
   };
 }
 
@@ -223,12 +239,12 @@ function buildNullOnlyPartUpdate(current: PartRow, incoming: NormalizedPart, sup
 }
 
 export async function activateOnboardingParts(params: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
   actorId: string;
 }): Promise<PartsActivationResult> {
-  const sb = params.supabase as any;
+  const sb = params.supabase;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
   const [{ data: suppliers }, { data: stockLocations }, stagedRows, partRows] = await Promise.all([
@@ -254,7 +270,7 @@ export async function activateOnboardingParts(params: {
   ]);
 
   const materializedParts = [...partRows];
-  const supplierRows = suppliers ?? [];
+  const supplierRows: SupplierLookupRow[] = suppliers ?? [];
   const defaultLocation = (stockLocations?.[0] ?? null) as StockLocationRow | null;
   const shopPartIds = materializedParts.map((row) => row.id).filter((id): id is string => Boolean(id));
 
@@ -281,6 +297,24 @@ export async function activateOnboardingParts(params: {
   let vendorLinksCreated = 0;
   let skipped = 0;
   let needsReview = 0;
+  let partEntityCanonicalWritebacks = 0;
+
+  async function markPartEntityActivated(entityId: string, partId: string): Promise<void> {
+    const { error } = await sb
+      .from("onboarding_entities")
+      .update({
+        status: "activated",
+        canonical_table: "parts",
+        canonical_id: partId,
+      })
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .eq("id", entityId)
+      .eq("entity_type", "part");
+
+    if (error) throw new Error(error.message);
+    partEntityCanonicalWritebacks += 1;
+  }
 
   for (const entity of stagedRows) {
     const normalized = toNormalizedPart(entity);
@@ -322,7 +356,7 @@ export async function activateOnboardingParts(params: {
     }
 
     const supplierMatch = normalized.vendorName
-      ? supplierRows.filter((row: any) => normalizeLookupKey(row.name) === normalizeLookupKey(normalized.vendorName))
+      ? supplierRows.filter((row) => normalizeLookupKey(row.name) === normalizeLookupKey(normalized.vendorName))
       : [];
     let supplierNameToWrite: string | null = null;
     if (supplierMatch.length === 1) {
@@ -383,6 +417,8 @@ export async function activateOnboardingParts(params: {
       materializedParts.push(targetPart);
       partsCreated += 1;
     }
+
+    await markPartEntityActivated(entity.id, targetPart.id);
 
     if (!defaultLocation) {
       warnings.push("No stock location found; quantity seed skipped.");
@@ -459,6 +495,7 @@ export async function activateOnboardingParts(params: {
     reviewItemsReused,
     reviewItemsCreated: Math.max(0, reviewItemsPersisted - reviewItemsReused),
     reviewItemsOpenForDomain: Number(reviewItemsOpenCount ?? 0),
+    partEntityCanonicalWritebacks,
     warnings,
   };
 }
