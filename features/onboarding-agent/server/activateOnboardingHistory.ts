@@ -269,6 +269,20 @@ function parseDate(value: unknown): string | null {
   return d.toISOString();
 }
 
+function fallbackHistoryDate(params: { sourceExternalId?: string | null; sourceRowId?: string | null }): string {
+  const seed = normalizeText(params.sourceExternalId) || normalizeText(params.sourceRowId) || "history";
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  // Keep fallback imported history clearly historical and deterministic.
+  // Spread rows across 2023 so ordering is stable instead of all rows landing on one timestamp.
+  const dayOffset = hash % 365;
+  const parsed = new Date(Date.UTC(2023, 0, 1 + dayOffset, 12, 0, 0));
+  return parsed.toISOString();
+}
+
 function collectSearchRecords(normalized: Record<string, unknown>, entity?: Partial<Pick<OnboardingEntityRow, "source_external_id" | "source_row_id" | "display_name">> & { details?: unknown; payload?: unknown }): Record<string, unknown>[] {
   return buildOnboardingEntityPayloadLayers({ normalized, ...entity }).map((item) => item as Record<string, unknown>);
 }
@@ -992,29 +1006,28 @@ export async function activateOnboardingHistory(params: {
       }
       continue;
     }
+    const effectiveOpenedDate = history.openedDate ?? history.closedDate ?? fallbackHistoryDate({
+      sourceExternalId: normalizeText(entity.source_external_id) || history.invoiceNumber || history.sourceWorkOrderId,
+      sourceRowId: normalizeText(entity.source_row_id) || entity.id,
+    });
+
     if (!history.openedDate) {
-      skipped += 1;
       skippedInvalidDate += 1;
       historyRowsMissingUsableDate += 1;
       needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_date", summary: "Historical row skipped: invalid opened date." }));
-      if (unresolvedSamples.length < 5) {
-        unresolvedSamples.push({
-          historyEntityId: entity.id,
-          sourceRowId: normalizeText(entity.source_row_id) || null,
+      reviewItems.push(reviewItem({
+        shopId: params.shopId,
+        sessionId: params.sessionId,
+        entityId: entity.id,
+        issueType: "missing_history_opened_date",
+        summary: "Historical row imported with a fallback date because no opened/service date was available.",
+        details: {
+          fallbackOpenedDate: effectiveOpenedDate,
           sourceExternalId: normalizeText(entity.source_external_id) || null,
-          hasCustomerLink: false,
-          hasVehicleLink: false,
-          linkedCustomerEntityId: null,
-          linkedVehicleEntityId: null,
-          customerResolutionAttemptedKeys: [],
-          vehicleResolutionAttemptedKeys: [],
-          finalSkipReason: "invalid_history_date",
-          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
-          searchLayerKeySamples: layerKeySamples,
-        });
-      }
-      continue;
+          sourceRowId: normalizeText(entity.source_row_id) || null,
+        },
+        severity: "low",
+      }));
     }
     if (history.total !== null && history.total < 0) {
       skippedInvalidTotal += 1;
@@ -1191,8 +1204,8 @@ export async function activateOnboardingHistory(params: {
     const payload: WorkOrderInsert = {
       shop_id: params.shopId,
       created_by: params.actorId,
-      created_at: history.openedDate,
-      updated_at: history.closedDate ?? history.openedDate,
+      created_at: effectiveOpenedDate,
+      updated_at: history.closedDate ?? effectiveOpenedDate,
       custom_id: history.sourceWorkOrderId ?? history.invoiceNumber,
       customer_id: customerId ?? null,
       vehicle_id: vehicleId ?? null,
