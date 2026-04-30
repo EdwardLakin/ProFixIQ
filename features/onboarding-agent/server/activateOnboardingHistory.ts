@@ -857,7 +857,7 @@ function trackGroupedReview(
   input: {
     issueType: string;
     summary: string;
-    entityId: string;
+    entityId?: string | null;
     severity?: "low" | "medium" | "high" | "blocking";
   },
 ) {
@@ -869,7 +869,7 @@ function trackGroupedReview(
     sampleEntityIds: [],
   };
   existing.count += 1;
-  if (existing.sampleEntityIds.length < 5)
+  if (input.entityId && existing.sampleEntityIds.length < 5)
     existing.sampleEntityIds.push(input.entityId);
   grouped.set(input.issueType, existing);
 }
@@ -922,12 +922,19 @@ function chunkValues<T>(
 function reviewItem(params: {
   shopId: string;
   sessionId: string;
-  entityId: string;
+  entityId?: string | null;
   issueType: string;
   summary: string;
   details?: Record<string, unknown>;
   severity?: "low" | "medium" | "high" | "blocking";
 }): OnboardingReviewItemInsert {
+  const reviewEntityId = params.entityId ?? null;
+  const reviewScopeId =
+    reviewEntityId ??
+    (typeof params.details?.groupKey === "string"
+      ? params.details.groupKey
+      : `history-review:${params.issueType}`);
+
   return {
     id: stableUuidFromParts([
       "onboarding-review",
@@ -935,11 +942,11 @@ function reviewItem(params: {
       params.sessionId,
       "history",
       params.issueType,
-      params.entityId,
+      reviewScopeId,
     ]),
     shop_id: params.shopId,
     session_id: params.sessionId,
-    entity_id: params.entityId,
+    entity_id: reviewEntityId,
     issue_type: params.issueType,
     summary: params.summary,
     severity: params.severity ?? "medium",
