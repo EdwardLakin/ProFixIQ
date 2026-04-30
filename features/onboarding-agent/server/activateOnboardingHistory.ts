@@ -45,6 +45,9 @@ const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> = "histor
 
 type HistoryActivationResult = {
   ok: true;
+  completed: boolean;
+  processedThisRun: number;
+  nextCursor: string | null;
   stagedHistoryRows: number;
   historicalWorkOrdersCreated: number;
   existingMatched: number;
@@ -581,6 +584,8 @@ export async function activateOnboardingHistory(params: {
   shopId: string;
   sessionId: string;
   actorId: string;
+  limit?: number;
+  startAfterId?: string | null;
 }): Promise<HistoryActivationResult> {
   const runtimeDiagnostics = {
     activationModule: "features/onboarding-agent/server/activateOnboardingHistory.ts",
@@ -838,8 +843,20 @@ export async function activateOnboardingHistory(params: {
     return (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
   };
 
+  const orderedHistoryRows = [...combinedHistoryRows.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const requestedLimit = typeof params.limit === "number" && Number.isFinite(params.limit)
+    ? Math.max(1, Math.floor(params.limit))
+    : orderedHistoryRows.length;
+  const startIndex = params.startAfterId
+    ? Math.max(0, orderedHistoryRows.findIndex((row) => row.id === params.startAfterId) + 1)
+    : 0;
+  const historyRowsForThisRun = orderedHistoryRows.slice(startIndex, startIndex + requestedLimit);
+  const lastProcessedHistoryRow = historyRowsForThisRun.at(-1) ?? null;
+  const nextCursor = lastProcessedHistoryRow?.id ?? params.startAfterId ?? null;
+  const completed = startIndex + historyRowsForThisRun.length >= orderedHistoryRows.length;
+
   let historyRowsWithBothLinkedEntities = 0;
-  for (const entity of combinedHistoryRows.values()) {
+  for (const entity of historyRowsForThisRun) {
     const history = toNormalizedHistory(entity);
     const layerRecords = collectSearchRecords((entity.normalized ?? {}) as JsonObject, {
       ...entity,
@@ -1165,6 +1182,9 @@ export async function activateOnboardingHistory(params: {
 
   const result: HistoryActivationResult = {
     ok: true,
+    completed,
+    processedThisRun: historyRowsForThisRun.length,
+    nextCursor,
     stagedHistoryRows: historyRows.length,
     historicalWorkOrdersCreated,
     existingMatched,
@@ -1260,6 +1280,9 @@ export async function activateOnboardingHistory(params: {
     executedAt: runtimeDiagnostics.executedAt,
     shopSessionScope: `${params.shopId.slice(0, 8)}:${params.sessionId.slice(0, 8)}`,
     stagedHistoryRows: result.stagedHistoryRows,
+    processedThisRun: result.processedThisRun,
+    completed: result.completed,
+    nextCursor: result.nextCursor,
     customerWorkOrderLinks: result.customerWorkOrderLinks,
     vehicleWorkOrderLinks: result.vehicleWorkOrderLinks,
     historyRowsWithCustomerLink: result.diagnostics.historyRowsWithCustomerLink,

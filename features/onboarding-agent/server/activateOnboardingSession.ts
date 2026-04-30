@@ -43,6 +43,16 @@ function getPhaseStatus(summary: JsonObject, phase: OnboardingActivationPhase): 
   return typeof phaseRecord.status === "string" ? phaseRecord.status : null;
 }
 
+function getHistoryChunkCursor(summary: JsonObject): string | null {
+  const activation = toJsonObject(summary.onboardingActivation);
+  const phases = toJsonObject(activation.phases);
+  const historyPhase = toJsonObject(phases.history);
+  const result = toJsonObject(historyPhase.result);
+  return typeof result.nextCursor === "string" && result.nextCursor ? result.nextCursor : null;
+}
+
+const HISTORY_ACTIVATION_BATCH_LIMIT = 250;
+
 async function writePhaseStatus(params: {
   supabase: AdminSupabase;
   shopId: string;
@@ -260,12 +270,19 @@ export async function activateOnboardingSession(params: {
 
   if (getPhaseStatus(summary, "history") !== "completed") {
     await writePhaseStatus({ ...params, phase: "history", status: "running" });
-    const result = await activateOnboardingHistory(params);
+
+    const result = await activateOnboardingHistory({
+      ...params,
+      limit: HISTORY_ACTIVATION_BATCH_LIMIT,
+      startAfterId: getHistoryChunkCursor(summary),
+    });
+
+    const now = new Date().toISOString();
     const checkpoint = await writePhaseStatus({
       ...params,
       phase: "history",
-      status: "completed",
-      completedAt: new Date().toISOString(),
+      status: result.completed ? "completed" : "running",
+      completedAt: result.completed ? now : undefined,
       result,
     });
 
@@ -273,7 +290,9 @@ export async function activateOnboardingSession(params: {
       ok: true,
       phase: "history",
       completed: false,
-      message: "Historical work order activation completed. Continue once more to finalize onboarding.",
+      message: result.completed
+        ? "Historical work order activation completed. Continue once more to finalize onboarding."
+        : `Historical work order activation processed ${result.processedThisRun.toLocaleString()} rows. Continue activation to process the next chunk.`,
       result,
       checkpoint,
     };
