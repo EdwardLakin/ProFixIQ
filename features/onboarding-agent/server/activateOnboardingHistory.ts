@@ -34,7 +34,6 @@ type VehicleRow = Pick<
   | "make"
   | "model"
 >;
-type WorkOrderRow = Database["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
 type WorkOrderLineInsert = Database["public"]["Tables"]["work_order_lines"]["Insert"];
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
@@ -595,7 +594,7 @@ export async function activateOnboardingHistory(params: {
   const sb = params.supabase;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [historyRows, entityRows, linkRows, endpointEntities, customerRows, vehicleRows, workOrders] = await Promise.all([
+  const [historyRows, entityRows, linkRows, endpointEntities, customerRows, vehicleRows] = await Promise.all([
     fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id" | "source_external_id">>((from, to) =>
       sb
         .from("onboarding_entities")
@@ -644,16 +643,7 @@ export async function activateOnboardingHistory(params: {
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
-    fetchAllPaginatedRows<WorkOrderRow>((from, to) =>
-      sb
-        .from("work_orders")
-        .select("*")
-        .eq("shop_id", params.shopId)
-        .order("id", { ascending: true })
-        .range(from, to)),
   ]);
-
-  const woRows = [...workOrders];
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
   const warnings: string[] = [];
@@ -854,6 +844,47 @@ export async function activateOnboardingHistory(params: {
   const lastProcessedHistoryRow = historyRowsForThisRun.at(-1) ?? null;
   const nextCursor = lastProcessedHistoryRow?.id ?? params.startAfterId ?? null;
   const completed = startIndex + historyRowsForThisRun.length >= orderedHistoryRows.length;
+
+  const existingSourceRowKeys = historyRowsForThisRun.map((row) =>
+    stableUuidFromParts([params.shopId, params.sessionId, "history", resolveCanonicalHistoryId(row.id)]),
+  );
+  const existingCustomIds = historyRowsForThisRun
+    .map((row) => {
+      const history = toNormalizedHistory(row);
+      return history.sourceWorkOrderId ?? history.invoiceNumber;
+    })
+    .filter((value): value is string => Boolean(value));
+
+  const [existingBySourceResult, existingByCustomIdResult] = await Promise.all([
+    existingSourceRowKeys.length > 0
+      ? sb
+        .from("work_orders")
+        .select("id, source_row_id, custom_id")
+        .eq("shop_id", params.shopId)
+        .in("source_row_id", existingSourceRowKeys)
+      : Promise.resolve({ data: [], error: null }),
+    existingCustomIds.length > 0
+      ? sb
+        .from("work_orders")
+        .select("id, source_row_id, custom_id")
+        .eq("shop_id", params.shopId)
+        .in("custom_id", existingCustomIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (existingBySourceResult.error) throw new Error(existingBySourceResult.error.message);
+  if (existingByCustomIdResult.error) throw new Error(existingByCustomIdResult.error.message);
+
+  const existingSourceRowIdSet = new Set(
+    [...(existingBySourceResult.data ?? []), ...(existingByCustomIdResult.data ?? [])]
+      .map((row) => row.source_row_id)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const existingCustomIdSet = new Set(
+    [...(existingBySourceResult.data ?? []), ...(existingByCustomIdResult.data ?? [])]
+      .map((row) => normalizeLookup(row.custom_id))
+      .filter(Boolean),
+  );
 
   let historyRowsWithBothLinkedEntities = 0;
   for (const entity of historyRowsForThisRun) {
@@ -1076,7 +1107,8 @@ export async function activateOnboardingHistory(params: {
     rowsWithBothLiveCustomerAndVehicle += 1;
 
     const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", canonicalHistoryId]);
-    const existing = woRows.find((row) => row.source_row_id === sourceRowKey || (history.sourceWorkOrderId && normalizeLookup(row.custom_id) === normalizeLookup(history.sourceWorkOrderId)));
+    const customIdKey = normalizeLookup(history.sourceWorkOrderId ?? history.invoiceNumber);
+    const existing = existingSourceRowIdSet.has(sourceRowKey) || (customIdKey ? existingCustomIdSet.has(customIdKey) : false);
     if (existing) {
       existingMatched += 1;
       continue;
