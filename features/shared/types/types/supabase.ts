@@ -4659,34 +4659,118 @@ export type Database = {
       }
       history: {
         Row: {
+          advisor_name: string | null
+          approval_state: string | null
+          assigned_tech_name: string | null
+          cause: string | null
+          closed_at: string | null
+          correction: string | null
           created_at: string | null
           customer_id: string
           description: string | null
+          discount: number | null
+          historical_status: string | null
           id: string
+          imported_from_session_id: string | null
+          invoice_number: string | null
+          labor_hours: number | null
+          labor_sale: number | null
           notes: string | null
+          odometer: number | null
+          opened_at: string | null
+          parts_sale: number | null
+          payment_state: string | null
+          priority: string | null
           service_date: string
+          shop_supplies: number | null
+          source_external_id: string | null
+          source_payload: Json
+          source_row_id: string | null
+          source_system: string | null
+          sublet_sale: number | null
+          symptom: string | null
+          tags: string[] | null
+          tax: number | null
+          total: number | null
           vehicle_id: string | null
           work_order_id: string | null
+          work_order_number: string | null
         }
         Insert: {
+          advisor_name?: string | null
+          approval_state?: string | null
+          assigned_tech_name?: string | null
+          cause?: string | null
+          closed_at?: string | null
+          correction?: string | null
           created_at?: string | null
           customer_id: string
           description?: string | null
+          discount?: number | null
+          historical_status?: string | null
           id?: string
+          imported_from_session_id?: string | null
+          invoice_number?: string | null
+          labor_hours?: number | null
+          labor_sale?: number | null
           notes?: string | null
+          odometer?: number | null
+          opened_at?: string | null
+          parts_sale?: number | null
+          payment_state?: string | null
+          priority?: string | null
           service_date?: string
+          shop_supplies?: number | null
+          source_external_id?: string | null
+          source_payload?: Json
+          source_row_id?: string | null
+          source_system?: string | null
+          sublet_sale?: number | null
+          symptom?: string | null
+          tags?: string[] | null
+          tax?: number | null
+          total?: number | null
           vehicle_id?: string | null
           work_order_id?: string | null
+          work_order_number?: string | null
         }
         Update: {
+          advisor_name?: string | null
+          approval_state?: string | null
+          assigned_tech_name?: string | null
+          cause?: string | null
+          closed_at?: string | null
+          correction?: string | null
           created_at?: string | null
           customer_id?: string
           description?: string | null
+          discount?: number | null
+          historical_status?: string | null
           id?: string
+          imported_from_session_id?: string | null
+          invoice_number?: string | null
+          labor_hours?: number | null
+          labor_sale?: number | null
           notes?: string | null
+          odometer?: number | null
+          opened_at?: string | null
+          parts_sale?: number | null
+          payment_state?: string | null
+          priority?: string | null
           service_date?: string
+          shop_supplies?: number | null
+          source_external_id?: string | null
+          source_payload?: Json
+          source_row_id?: string | null
+          source_system?: string | null
+          sublet_sale?: number | null
+          symptom?: string | null
+          tags?: string[] | null
+          tax?: number | null
+          total?: number | null
           vehicle_id?: string | null
           work_order_id?: string | null
+          work_order_number?: string | null
         }
         Relationships: [
           {
@@ -4694,6 +4778,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "history_imported_from_session_id_fkey"
+            columns: ["imported_from_session_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_sessions"
             referencedColumns: ["id"]
           },
           {
