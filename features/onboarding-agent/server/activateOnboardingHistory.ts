@@ -652,18 +652,33 @@ export async function activateOnboardingHistory(params: {
 
   let linkRows: Array<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">> = [];
   if (batchHistoryEntityIds.length > 0) {
-    const scopedIds = batchHistoryEntityIds.join(",");
-    const { data, error } = await sb
-      .from("onboarding_entity_links")
-      .select("id, from_entity_id, to_entity_id, link_type")
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .in("link_type", ["customer_work_order", "vehicle_work_order"])
-      .or(`from_entity_id.in.(${scopedIds}),to_entity_id.in.(${scopedIds})`)
-      .order("id", { ascending: true });
+    const [fromLinkResult, toLinkResult] = await Promise.all([
+      sb
+        .from("onboarding_entity_links")
+        .select("id, from_entity_id, to_entity_id, link_type")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .in("link_type", ["customer_work_order", "vehicle_work_order"])
+        .in("from_entity_id", batchHistoryEntityIds)
+        .order("id", { ascending: true }),
+      sb
+        .from("onboarding_entity_links")
+        .select("id, from_entity_id, to_entity_id, link_type")
+        .eq("shop_id", params.shopId)
+        .eq("session_id", params.sessionId)
+        .in("link_type", ["customer_work_order", "vehicle_work_order"])
+        .in("to_entity_id", batchHistoryEntityIds)
+        .order("id", { ascending: true }),
+    ]);
 
-    if (error) throw new Error(error.message);
-    linkRows = data ?? [];
+    if (fromLinkResult.error) throw new Error(fromLinkResult.error.message);
+    if (toLinkResult.error) throw new Error(toLinkResult.error.message);
+
+    const byId = new Map<string, Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>();
+    for (const row of [...(fromLinkResult.data ?? []), ...(toLinkResult.data ?? [])]) {
+      byId.set(row.id, row);
+    }
+    linkRows = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
   const endpointIds = new Set<string>(batchHistoryEntityIds);
