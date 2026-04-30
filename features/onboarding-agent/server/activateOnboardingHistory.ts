@@ -192,6 +192,13 @@ type HistoryActivationResult = {
 
 type NormalizedHistory = {
   sourceWorkOrderId: string | null;
+  status: string | null;
+  advisor: string | null;
+  assignedTech: string | null;
+  priority: string | null;
+  odometer: number | null;
+  symptom: string | null;
+  cause: string | null;
   invoiceNumber: string | null;
   openedDate: string | null;
   closedDate: string | null;
@@ -204,6 +211,16 @@ type NormalizedHistory = {
   complaint: string | null;
   correction: string | null;
   laborTotal: number | null;
+  partsSale: number | null;
+  shopSupplies: number | null;
+  subletSale: number | null;
+  discount: number | null;
+  tax: number | null;
+  laborHours: number | null;
+  approvalState: string | null;
+  paymentState: string | null;
+  tags: string[] | null;
+  notes: string | null;
   total: number | null;
   identifierAliasUsed: string | null;
   openedDateAliasUsed: string | null;
@@ -774,6 +791,13 @@ function toNormalizedHistory(
   ]);
   return {
     sourceWorkOrderId: identifier.value,
+    status: firstTextAlias(records, ["status"]).value,
+    advisor: firstTextAlias(records, ["advisor"]).value,
+    assignedTech: firstTextAlias(records, ["assigned_tech", "assignedTech", "technician"]).value,
+    priority: firstTextAlias(records, ["priority"]).value,
+    odometer: parseMoney(firstTextAlias(records, ["odometer", "mileage"]).value),
+    symptom: firstTextAlias(records, ["symptom", "complaint", "concern"]).value,
+    cause: firstTextAlias(records, ["cause"]).value,
     invoiceNumber: firstTextAlias(records, [
       "invoiceNumber",
       "invoice_number",
@@ -836,9 +860,22 @@ function toNormalizedHistory(
         "license_plate",
       ]).value?.toUpperCase() ?? null,
     complaint: normalizeText(normalized.complaint) || null,
-    correction: normalizeText(normalized.correction) || null,
-    laborTotal: parseMoney(normalized.laborTotal ?? normalized.laborRaw),
-    total: parseMoney(normalized.total ?? normalized.totalRaw),
+    correction: firstTextAlias(records, ["correction"]).value ?? (normalizeText(normalized.correction) || null),
+    laborHours: parseMoney(firstTextAlias(records, ["labor_hours", "laborHours"]).value),
+    laborTotal: parseMoney(firstTextAlias(records, ["labor_sale", "laborSale", "laborTotal"]).value ?? normalized.laborTotal ?? normalized.laborRaw),
+    partsSale: parseMoney(firstTextAlias(records, ["parts_sale", "partsSale", "partsTotal"]).value),
+    shopSupplies: parseMoney(firstTextAlias(records, ["shop_supplies", "shopSupplies"]).value),
+    subletSale: parseMoney(firstTextAlias(records, ["sublet_sale", "subletSale"]).value),
+    discount: parseMoney(firstTextAlias(records, ["discount"]).value),
+    tax: parseMoney(firstTextAlias(records, ["tax"]).value),
+    approvalState: firstTextAlias(records, ["approval_state", "approvalState"]).value,
+    paymentState: firstTextAlias(records, ["payment_state", "paymentState"]).value,
+    tags: normalizeText(firstTextAlias(records, ["tags"]).value)
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+    notes: firstTextAlias(records, ["notes"]).value,
+    total: parseMoney(firstTextAlias(records, ["total"]).value ?? normalized.total ?? normalized.totalRaw),
     identifierAliasUsed: identifier.aliasUsed,
     openedDateAliasUsed: opened.aliasUsed,
   };
@@ -1926,19 +1963,19 @@ export async function activateOnboardingHistory(params: {
       continue;
     }
 
-    const description = [
-      history.complaint,
-      history.correction,
-    ]
-      .map((value) => normalizeText(value))
-      .filter(Boolean)
-      .join(" | ");
+    const summaryLines = [
+      history.symptom ? `Symptom: ${history.symptom}` : null,
+      history.cause ? `Cause: ${history.cause}` : null,
+      history.correction ? `Correction: ${history.correction}` : null,
+    ].filter((value): value is string => Boolean(value));
+    const description = summaryLines.join("\n");
 
     const notes = [
       history.sourceWorkOrderId ? `Work order: ${history.sourceWorkOrderId}` : null,
       history.invoiceNumber ? `Invoice: ${history.invoiceNumber}` : null,
       history.total != null ? `Total: ${history.total}` : null,
       history.laborTotal != null ? `Labor: ${history.laborTotal}` : null,
+      history.notes ? `Notes: ${history.notes}` : null,
       normalizeText(entity.source_external_id)
         ? `Source external ID: ${normalizeText(entity.source_external_id)}`
         : null,
@@ -1962,6 +1999,38 @@ export async function activateOnboardingHistory(params: {
         history.sourceWorkOrderId ||
         "Imported historical service record",
       notes,
+      source_system: "onboarding_history_csv",
+      source_external_id: normalizeText(entity.source_external_id) || null,
+      source_row_id: normalizeText(entity.source_row_id) || null,
+      imported_from_session_id: params.sessionId,
+      work_order_number: history.sourceWorkOrderId,
+      invoice_number: history.invoiceNumber,
+      opened_at: history.openedDate,
+      closed_at: history.closedDate,
+      historical_status: history.status,
+      advisor_name: history.advisor,
+      assigned_tech_name: history.assignedTech,
+      priority: history.priority,
+      odometer: history.odometer,
+      symptom: history.symptom ?? history.complaint,
+      cause: history.cause,
+      correction: history.correction,
+      labor_hours: history.laborHours,
+      labor_sale: history.laborTotal,
+      parts_sale: history.partsSale,
+      shop_supplies: history.shopSupplies,
+      sublet_sale: history.subletSale,
+      discount: history.discount,
+      tax: history.tax,
+      total: history.total,
+      approval_state: history.approvalState,
+      payment_state: history.paymentState,
+      tags: history.tags,
+      source_payload: {
+        sourceExternalId: entity.source_external_id,
+        sourceRowId: entity.source_row_id,
+        normalizedHistory: history,
+      },
     };
 
     const { error: historyInsertError } = await sb
