@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
-import { fetchAllPaginatedRows } from "@/features/onboarding-agent/server/fetchAllPaginatedRows";
 import { buildOnboardingEntityPayloadLayers } from "@/features/onboarding-agent/server/onboardingEntityPayload";
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
@@ -240,6 +239,53 @@ type NormalizedVehicle = {
   make: string | null;
   model: string | null;
 };
+
+function collectBatchLookupValues(
+  historyRows: EntityShape[],
+): {
+  customerExternalIds: string[];
+  customerEmails: string[];
+  customerNames: string[];
+  vehicleExternalIds: string[];
+  vehicleVins: string[];
+  vehiclePlates: string[];
+} {
+  const customerExternalIds = new Set<string>();
+  const customerEmails = new Set<string>();
+  const customerNames = new Set<string>();
+  const vehicleExternalIds = new Set<string>();
+  const vehicleVins = new Set<string>();
+  const vehiclePlates = new Set<string>();
+
+  for (const row of historyRows) {
+    const history = toNormalizedHistory(row);
+    if (history.sourceCustomerId)
+      customerExternalIds.add(normalizeLookup(history.sourceCustomerId));
+    if (history.customerEmail)
+      customerEmails.add(normalizeLookup(history.customerEmail));
+    if (history.customerName)
+      customerNames.add(normalizeLookup(history.customerName));
+    if (history.sourceVehicleId)
+      vehicleExternalIds.add(normalizeLookup(history.sourceVehicleId));
+    if (history.vehicleVin) {
+      const normalizedVin = normalizeVin(history.vehicleVin);
+      if (normalizedVin) vehicleVins.add(normalizedVin);
+    }
+    if (history.vehiclePlate) {
+      const normalizedPlate = normalizePlate(history.vehiclePlate);
+      if (normalizedPlate) vehiclePlates.add(normalizedPlate);
+    }
+  }
+
+  return {
+    customerExternalIds: [...customerExternalIds],
+    customerEmails: [...customerEmails],
+    customerNames: [...customerNames],
+    vehicleExternalIds: [...vehicleExternalIds],
+    vehicleVins: [...vehicleVins],
+    vehiclePlates: [...vehiclePlates],
+  };
+}
 
 function customerIdentityKey(input: NormalizedCustomer): string | null {
   if (input.email) return `email:${normalizeLookup(input.email)}`;
@@ -1028,54 +1074,58 @@ export async function activateOnboardingHistory(params: {
     .eq("session_id", params.sessionId)
     .in("entity_type", ["historical_work_order", "history"])
     .order("id", { ascending: true })
-    .limit(historyBatchLimit + 1);
+    .range(0, historyBatchLimit);
 
   if (params.startAfterId) {
     historyQuery = historyQuery.gt("id", params.startAfterId);
   }
 
-  const [historyBatchResult, historyCountResult, customerRows, vehicleRows] =
-    await Promise.all([
-      historyQuery,
-      sb
-        .from("onboarding_entities")
-        .select("id", { head: true, count: "exact" })
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .in("entity_type", ["historical_work_order", "history"]),
-      fetchAllPaginatedRows<CustomerRow>((from, to) =>
-        sb
-          .from("customers")
-          .select(
-            "id, external_id, email, phone, phone_number, name, business_name, first_name, last_name",
-          )
-          .eq("shop_id", params.shopId)
-          .order("id", { ascending: true })
-          .range(from, to),
-      ),
-      fetchAllPaginatedRows<VehicleRow>((from, to) =>
-        sb
-          .from("vehicles")
-          .select(
-            "id, external_id, vin, license_plate, unit_number, year, make, model, customer_id",
-          )
-          .eq("shop_id", params.shopId)
-          .order("id", { ascending: true })
-          .range(from, to),
-      ),
-    ]);
+  const historyBatchResult = await historyQuery;
 
   if (historyBatchResult.error)
     throw new Error(historyBatchResult.error.message);
-  if (historyCountResult.error)
-    throw new Error(historyCountResult.error.message);
 
   const rawHistoryRows = (historyBatchResult.data ?? []) as EntityShape[];
   const hasMoreHistoryRows = rawHistoryRows.length > historyBatchLimit;
   const historyRows = rawHistoryRows.slice(0, historyBatchLimit);
-  const stagedHistoryRowsTotal = Number(
-    historyCountResult.count ?? historyRows.length,
-  );
+  const stagedHistoryRowsTotal = historyRows.length + (hasMoreHistoryRows ? 1 : 0);
+  const lookupValues = collectBatchLookupValues(historyRows);
+  const customerRowsById = new Map<string, CustomerRow>();
+  const vehicleRowsById = new Map<string, VehicleRow>();
+
+  for (const customerExternalChunk of chunkValues(lookupValues.customerExternalIds, 200)) {
+    const { data, error } = await sb.from("customers").select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name").eq("shop_id", params.shopId).in("external_id", customerExternalChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as CustomerRow[]) customerRowsById.set(row.id, row);
+  }
+  for (const customerEmailChunk of chunkValues(lookupValues.customerEmails, 200)) {
+    const { data, error } = await sb.from("customers").select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name").eq("shop_id", params.shopId).in("email", customerEmailChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as CustomerRow[]) customerRowsById.set(row.id, row);
+  }
+  for (const customerNameChunk of chunkValues(lookupValues.customerNames, 200)) {
+    const { data, error } = await sb.from("customers").select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name").eq("shop_id", params.shopId).in("name", customerNameChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as CustomerRow[]) customerRowsById.set(row.id, row);
+  }
+  for (const vehicleExternalChunk of chunkValues(lookupValues.vehicleExternalIds, 200)) {
+    const { data, error } = await sb.from("vehicles").select("id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("external_id", vehicleExternalChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as VehicleRow[]) vehicleRowsById.set(row.id, row);
+  }
+  for (const vehicleVinChunk of chunkValues(lookupValues.vehicleVins, 200)) {
+    const { data, error } = await sb.from("vehicles").select("id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("vin", vehicleVinChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as VehicleRow[]) vehicleRowsById.set(row.id, row);
+  }
+  for (const vehiclePlateChunk of chunkValues(lookupValues.vehiclePlates, 200)) {
+    const { data, error } = await sb.from("vehicles").select("id, external_id, vin, license_plate, unit_number, year, make, model, customer_id").eq("shop_id", params.shopId).in("license_plate", vehiclePlateChunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as VehicleRow[]) vehicleRowsById.set(row.id, row);
+  }
+
+  const customerRows = [...customerRowsById.values()];
+  const vehicleRows = [...vehicleRowsById.values()];
 
   const batchHistoryEntityIds = historyRows.map((row) => row.id);
 
@@ -1490,6 +1540,8 @@ export async function activateOnboardingHistory(params: {
   );
 
   let historyRowsWithBothLinkedEntities = 0;
+  const historyInsertPayloads: HistoryInsert[] = [];
+  let historyInsertOperation = "prepare_batch";
   for (const entity of historyRowsForThisRun) {
     const history = toNormalizedHistory(entity);
     const layerRecords = collectSearchRecords(
@@ -2033,15 +2085,20 @@ export async function activateOnboardingHistory(params: {
       },
     };
 
-    const { error: historyInsertError } = await sb
-      .from("history")
-      .insert(historyPayload);
-
-    if (historyInsertError) throw new Error(historyInsertError.message);
-
-    historicalWorkOrdersCreated += 1;
+    historyInsertPayloads.push(historyPayload);
     if (!vehicleId) historicalWorkOrdersCreatedWithoutVehicle += 1;
     if (description) linesCreated += 1;
+  }
+
+  for (const payloadChunk of chunkValues(historyInsertPayloads, 50)) {
+    historyInsertOperation = "insert_history_chunk";
+    const { error: historyInsertError } = await sb.from("history").insert(payloadChunk);
+    if (historyInsertError) {
+      throw new Error(
+        `history_insert_failed:${historyInsertOperation}:${historyInsertError.code ?? "unknown"}:${historyInsertError.message}`,
+      );
+    }
+    historicalWorkOrdersCreated += payloadChunk.length;
   }
 
   for (const grouped of groupedReviewItems.values()) {

@@ -33,15 +33,19 @@ function isCanonicalActivationResult(value: unknown): value is CanonicalActivati
     && typeof record.message === "string";
 }
 
-function activationErrorMessage(errorPayload: any, fallback: string): string {
+function activationErrorMessage(errorPayload: unknown, fallback: string): string {
+  const payload = (errorPayload && typeof errorPayload === "object" ? errorPayload : null) as Record<string, unknown> | null;
   if (typeof errorPayload === "string") return errorPayload;
-  if (errorPayload?.code === "activation_review_item_write_failed") {
-    const phase = typeof errorPayload.phase === "string" ? errorPayload.phase : "unknown";
-    const reason = typeof errorPayload.reason === "string" ? errorPayload.reason : "Unknown reason";
-    const details = typeof errorPayload.details === "string" ? errorPayload.details : "n/a";
+  if (payload?.code === "activation_review_item_write_failed") {
+    const phase = typeof payload.phase === "string" ? payload.phase : "unknown";
+    const reason = typeof payload.reason === "string" ? payload.reason : "Unknown reason";
+    const details = typeof payload.details === "string" ? payload.details : "n/a";
     return `Activation review item write failed. Phase: ${phase}. Reason: ${reason}. Developer details: ${details}`;
   }
-  if (typeof errorPayload?.message === "string") return errorPayload.message;
+  if (payload?.code === "history_activation_failed") {
+    return "History activation timed out while processing a large batch. Continue canonical activation to resume.";
+  }
+  if (typeof payload?.message === "string") return payload.message;
   return fallback;
 }
 

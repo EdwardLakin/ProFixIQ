@@ -98,12 +98,16 @@ export async function upsertOnboardingReviewItems(params: {
   const sb = params.supabase;
 
   const domains = Array.from(new Set(params.reviewItems.map((item) => String(item.domain ?? ""))));
+  const issueTypes = Array.from(new Set(params.reviewItems.map((item) => String(item.issue_type ?? ""))));
+  const severities = Array.from(new Set(params.reviewItems.map((item) => String(item.severity ?? "medium"))));
   let existingQuery = sb
     .from("onboarding_review_items")
     .select("id, shop_id, session_id, domain, issue_type, severity, details, status, summary, entity_id, link_id")
     .eq("shop_id", params.shopId)
     .eq("session_id", params.sessionId);
   if (domains.length > 0) existingQuery = existingQuery.in("domain", domains);
+  if (issueTypes.length > 0) existingQuery = existingQuery.in("issue_type", issueTypes);
+  if (severities.length > 0) existingQuery = existingQuery.in("severity", severities);
 
   const { data: existingRows, error: existingError } = await existingQuery;
   if (existingError) throw new Error(existingError.message);
