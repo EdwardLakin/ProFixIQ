@@ -4,6 +4,7 @@ import type { Database } from "@/features/shared/types/types/supabase";
 
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 type OnboardingReviewItemRow = Database["public"]["Tables"]["onboarding_review_items"]["Row"];
+type OnboardingReviewItemDetails = OnboardingReviewItemInsert["details"];
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -143,7 +144,7 @@ export async function upsertOnboardingReviewItems(params: {
       issue_type: existing?.issue_type ?? item.issue_type,
       entity_id: existing?.entity_id ?? item.entity_id ?? null,
       link_id: existing?.link_id ?? item.link_id ?? null,
-      details: mergedDetails as any,
+      details: mergedDetails as OnboardingReviewItemDetails,
     };
     payload.push(normalizedItem);
 
@@ -169,7 +170,7 @@ export async function upsertOnboardingReviewItems(params: {
     if (current) {
       const updatePayload = {
         summary: current.summary || item.summary,
-        details: mergeDetails(canonicalDetails(current.details ?? {}), canonicalDetails(item.details ?? {})) as any,
+        details: mergeDetails(canonicalDetails(current.details ?? {}), canonicalDetails(item.details ?? {})) as OnboardingReviewItemDetails,
         entity_id: current.entity_id ?? item.entity_id ?? null,
         link_id: current.link_id ?? item.link_id ?? null,
       };
