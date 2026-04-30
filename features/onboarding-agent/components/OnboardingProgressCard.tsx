@@ -46,6 +46,13 @@ export function OnboardingProgressCard({ summary }: { summary?: SummaryRecord | 
       </p>
       <p className="mt-1 text-xs text-slate-300">Readiness: {String(summary?.activationReadiness ?? "not_ready")}</p>
 
+      {typeof asRecord(summary?.assistantHandoff)?.summaryText === "string" ? (
+        <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-100">
+          <p className="font-semibold">Completion handoff</p>
+          <p className="mt-1 text-emerald-100/80">{String(asRecord(summary?.assistantHandoff)?.summaryText)}</p>
+        </div>
+      ) : null}
+
       {checkpointStatus ? (
         <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
           <p className="font-semibold">Customer/vehicle activation: {checkpointStatus}</p>

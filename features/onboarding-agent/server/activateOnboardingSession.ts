@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { activateOnboardingCustomersVehicles } from "@/features/onboarding-agent/server/activateOnboardingCustomersVehicles";
+import {
+  buildOnboardingCompletionSummary,
+  mergeCompletionSummary,
+} from "@/features/onboarding-agent/server/buildOnboardingCompletionSummary";
 import { activateOnboardingHistory } from "@/features/onboarding-agent/server/activateOnboardingHistory";
 import { activateOnboardingParts } from "@/features/onboarding-agent/server/activateOnboardingParts";
 import { activateOnboardingVendors } from "@/features/onboarding-agent/server/activateOnboardingVendors";
@@ -99,7 +103,7 @@ async function completeSession(params: {
   actorId: string;
 }): Promise<ActivateOnboardingSessionResult> {
   const now = new Date().toISOString();
-  const summary = await writePhaseStatus({
+  const phaseSummary = await writePhaseStatus({
     supabase: params.supabase,
     shopId: params.shopId,
     sessionId: params.sessionId,
@@ -111,6 +115,14 @@ async function completeSession(params: {
       completedAt: now,
     },
   });
+
+  const completion = await buildOnboardingCompletionSummary({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+    actorId: params.actorId,
+  });
+  const summary = mergeCompletionSummary(phaseSummary, completion);
 
   const { error } = await params.supabase
     .from("onboarding_sessions")

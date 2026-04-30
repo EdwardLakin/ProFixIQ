@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildOnboardingSummary, ENTITY_BUCKETS, LINK_BUCKETS } from "@/features/onboarding-agent/lib/summaries";
+import type { Database } from "@/features/shared/types/types/supabase";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
 import {
   countOnboardingEntities,
@@ -8,14 +9,66 @@ import {
   countOnboardingRawRows,
 } from "@/features/onboarding-agent/server/rawRowCounts";
 
-export async function getOnboardingSession(params: { supabase: SupabaseClient; shopId: string; sessionId: string }) {
-  const sb = params.supabase as any;
+type AdminSupabase = SupabaseClient<Database>;
+
+type JsonObject = Record<string, unknown>;
+
+type ReviewSeverity = "low" | "medium" | "high" | "blocking";
+
+type ReviewSampleRow = {
+  id: string;
+  severity: ReviewSeverity | null;
+  status: string | null;
+  domain: string | null;
+  issue_type: string | null;
+  summary: string | null;
+  created_at: string | null;
+};
+
+type PostgrestResult<T> = {
+  data: T | null;
+  error: { message: string } | null;
+};
+
+type SessionFetchRow = {
+  id: string;
+  shop_id: string;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  analyzed_at: string | null;
+  summary: unknown;
+};
+
+type FileFetchRow = {
+  id: string;
+  shop_id: string;
+  session_id: string;
+  file_name: string | null;
+  file_type: string | null;
+  file_size: number | null;
+  status: string | null;
+  row_count: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+function toReviewSeverity(value: string | null): ReviewSeverity {
+  return value === "low" || value === "medium" || value === "high" || value === "blocking" ? value : "medium";
+}
+
+function asJsonObject(value: unknown): JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
+}
+
+export async function getOnboardingSession(params: { supabase: AdminSupabase; shopId: string; sessionId: string }) {
+  const sb = params.supabase;
   const sessionTimingsMs: Record<string, number> = {};
   const sessionRowCounts: Record<string, number> = {};
   const startedAt = Date.now();
   let currentStage = "session:ownership";
 
-  const stage = async <T>(name: string, run: () => Promise<T>) => {
+  const stage = async <T>(name: string, run: () => PromiseLike<T>) => {
     currentStage = name;
     const started = Date.now();
     const result = await run();
@@ -58,7 +111,7 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
-    .then(({ data, error }: { data: any; error: any }) => {
+    .then(({ data, error }) => {
       if (error) {
         console.warn("[onboarding-agent][session:get] activation plan lookup skipped", {
           shopId: params.shopId,
@@ -80,9 +133,17 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     stage("links:total-count", async () => countOnboardingEntityLinks({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId })),
     stage("reviews:pending-count", async () => countOnboardingPendingReviewItems({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId })),
   ]);
-  const session = (sessionResult as any)?.data ?? null;
-  const files = (filesResult as any)?.data ?? [];
-  const reviewSample = (reviewSampleResult as any)?.data ?? [];
+  const typedSessionResult = sessionResult as PostgrestResult<SessionFetchRow>;
+  const typedFilesResult = filesResult as PostgrestResult<FileFetchRow[]>;
+  const typedReviewSampleResult = reviewSampleResult as PostgrestResult<ReviewSampleRow[]>;
+
+  if (typedSessionResult.error) throw new Error(typedSessionResult.error.message);
+  if (typedFilesResult.error) throw new Error(typedFilesResult.error.message);
+  if (typedReviewSampleResult.error) throw new Error(typedReviewSampleResult.error.message);
+
+  const session = typedSessionResult.data ?? null;
+  const files = typedFilesResult.data ?? [];
+  const reviewSample: ReviewSampleRow[] = typedReviewSampleResult.data ?? [];
   sessionRowCounts.files = (files ?? []).length;
   sessionRowCounts.reviewSamples = (reviewSample ?? []).length;
   sessionRowCounts.entities = totalEntitiesCount;
@@ -123,11 +184,11 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
       return sev;
     }),
     stage("reviews:domain-counts", async () => {
-      const domains = Array.from(new Set((reviewSample ?? []).map((r: any) => String(r.domain ?? "unknown")))) as string[];
+      const domains = Array.from(new Set((reviewSample ?? []).map((r) => String(r.domain ?? "unknown"))));
       const out: Record<string, number> = {};
       await Promise.all(domains.map(async (d: string) => {
         out[d] = d === "unknown"
-          ? await sb.from("onboarding_review_items").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId).eq("session_id", params.sessionId).or("status.is.null,status.eq.pending").is("domain", null).then(({ count, error }: any) => { if (error) throw new Error(error.message); return Number(count ?? 0); })
+          ? await sb.from("onboarding_review_items").select("id", { head: true, count: "exact" }).eq("shop_id", params.shopId).eq("session_id", params.sessionId).or("status.is.null,status.eq.pending").is("domain", null).then(({ count, error }) => { if (error) throw new Error(error.message); return Number(count ?? 0); })
           : await countByField("onboarding_review_items", "domain", d, "status.is.null,status.eq.pending");
       }));
       return out;
@@ -138,13 +199,13 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
     rowsParsed: rowsParsedTotal,
     entityRows: [],
     linkRows: [],
-    reviewRows: (reviewSample ?? []).map((row: any) => ({
+    reviewRows: (reviewSample ?? []).map((row) => ({
       id: row.id,
-      severity: row.severity,
+      severity: toReviewSeverity(row.severity),
       status: row.status,
       domain: row.domain,
       issue_type: row.issue_type,
-      summary: row.summary,
+      summary: row.summary ?? "Onboarding review item needs attention.",
       details: {},
     })),
     groupedExceptionCount: totalPendingReviewCount,
@@ -162,23 +223,26 @@ export async function getOnboardingSession(params: { supabase: SupabaseClient; s
   }, {});
 
   const reviewCounts = { ...reviewSeverityCounts, byDomain: reviewDomainCounts };
+  const sessionSummary = asJsonObject(session?.summary);
 
   const canonicalSummary = {
     ...canonical.summaryCounts,
-    effectiveFileMappings: Array.isArray((session?.summary ?? {})?.effectiveFileMappings) ? (session?.summary ?? {}).effectiveFileMappings : [],
-    filePipelineTraces: Array.isArray((session?.summary ?? {})?.filePipelineTraces) ? (session?.summary ?? {}).filePipelineTraces : [],
-    aiRowsSampled: Number((session?.summary ?? {})?.aiRowsSampled ?? canonical.summaryCounts.aiRowsSampled ?? 0),
-    aiFilesSampled: Number((session?.summary ?? {})?.aiFilesSampled ?? canonical.summaryCounts.aiFilesSampled ?? 0),
+    effectiveFileMappings: Array.isArray(sessionSummary.effectiveFileMappings) ? sessionSummary.effectiveFileMappings : [],
+    filePipelineTraces: Array.isArray(sessionSummary.filePipelineTraces) ? sessionSummary.filePipelineTraces : [],
+    aiRowsSampled: Number(sessionSummary.aiRowsSampled ?? canonical.summaryCounts.aiRowsSampled ?? 0),
+    aiFilesSampled: Number(sessionSummary.aiFilesSampled ?? canonical.summaryCounts.aiFilesSampled ?? 0),
     entitiesDiscovered: totalEntitiesCount,
     linksFound: totalLinksCount,
     reviewExceptions: totalPendingReviewCount,
     activationReadiness: canonical.activation_readiness,
     activationPlanSummary: canonical.activation_plan_summary,
-    liveRecordsCreated: Number((session?.summary ?? {})?.liveRecordsCreated ?? 0),
-    agentReport: (session?.summary ?? {})?.agentReport ?? null,
-    agentPlan: (session?.summary ?? {})?.agentPlan ?? null,
-    activationProgress: (session?.summary ?? {})?.activationProgress ?? null,
-    onboardingActivation: (session?.summary ?? {})?.onboardingActivation ?? null,
+    liveRecordsCreated: Number(sessionSummary.liveRecordsCreated ?? 0),
+    agentReport: sessionSummary.agentReport ?? null,
+    agentPlan: sessionSummary.agentPlan ?? null,
+    activationProgress: sessionSummary.activationProgress ?? null,
+    onboardingActivation: sessionSummary.onboardingActivation ?? null,
+    completion: sessionSummary.completion ?? null,
+    assistantHandoff: sessionSummary.assistantHandoff ?? null,
   };
 
   return {
