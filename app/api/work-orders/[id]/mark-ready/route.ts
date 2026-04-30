@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { buildWorkOrderCompletedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 
 type DB = Database;
 
@@ -55,7 +56,15 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ ok: true });
+    let historySync: { ok: true; historyId: string | null; skippedReason?: string } | null = null;
+
+    try {
+      historySync = await syncWorkOrderToHistory(supabase, woId);
+    } catch (historyError) {
+      console.warn("[work-orders/mark-ready] history sync failed:", historyError);
+    }
+
+    return NextResponse.json({ ok: true, historySync });
   } catch (e: unknown) {
     const msg = isError(e) ? e.message : "Failed to mark ready";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

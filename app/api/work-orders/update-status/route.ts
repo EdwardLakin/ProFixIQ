@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 
 export const runtime = "nodejs";
 
@@ -109,7 +110,17 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, updated: updateFields });
+    let historySync: { ok: true; historyId: string | null; skippedReason?: string } | null = null;
+
+    if (command === "complete") {
+      try {
+        historySync = await syncWorkOrderToHistory(supabase, workOrderId);
+      } catch (historyError) {
+        console.warn("[work-orders/update-status] history sync failed:", historyError);
+      }
+    }
+
+    return NextResponse.json({ success: true, updated: updateFields, historySync });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Work order update failed:", message);

@@ -48,16 +48,10 @@ type VehicleRow = Pick<
   | "model"
   | "customer_id"
 >;
-type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
-type WorkOrderLineInsert =
-  Database["public"]["Tables"]["work_order_lines"]["Insert"];
+type HistoryInsert = Database["public"]["Tables"]["history"]["Insert"];
 type OnboardingReviewItemInsert =
   Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 type ReviewItemDetails = NonNullable<OnboardingReviewItemInsert["details"]>;
-
-const HISTORICAL_WORK_ORDER_STATUS: WorkOrderInsert["status"] = "completed";
-const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> =
-  "historical_import";
 
 type HistoryActivationResult = {
   ok: true;
@@ -1138,7 +1132,7 @@ export async function activateOnboardingHistory(params: {
   let skippedUnresolved = 0;
   let skippedMissingCustomer = 0;
   let skippedMissingVehicle = 0;
-  let historicalWorkOrdersCreatedWithoutCustomer = 0;
+  const historicalWorkOrdersCreatedWithoutCustomer = 0;
   let historicalWorkOrdersCreatedWithoutVehicle = 0;
   let skippedMissingIdentifier = 0;
   let skippedInvalidDate = 0;
@@ -1426,7 +1420,7 @@ export async function activateOnboardingHistory(params: {
     : null;
   const completed = !hasMoreHistoryRows;
 
-  const existingSourceRowKeys = historyRowsForThisRun.map((row) =>
+  const plannedHistoryRecordIds = historyRowsForThisRun.map((row) =>
     stableUuidFromParts([
       params.shopId,
       params.sessionId,
@@ -1434,50 +1428,21 @@ export async function activateOnboardingHistory(params: {
       resolveCanonicalHistoryId(row.id),
     ]),
   );
-  const existingCustomIds = historyRowsForThisRun
-    .map((row) => {
-      const history = toNormalizedHistory(row);
-      return history.sourceWorkOrderId ?? history.invoiceNumber;
-    })
-    .filter((value): value is string => Boolean(value));
 
-  const [existingBySourceResult, existingByCustomIdResult] = await Promise.all([
-    existingSourceRowKeys.length > 0
-      ? sb
-          .from("work_orders")
-          .select("id, source_row_id, custom_id")
-          .eq("shop_id", params.shopId)
-          .in("source_row_id", existingSourceRowKeys)
-      : Promise.resolve({ data: [], error: null }),
-    existingCustomIds.length > 0
-      ? sb
-          .from("work_orders")
-          .select("id, source_row_id, custom_id")
-          .eq("shop_id", params.shopId)
-          .in("custom_id", existingCustomIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  const existingHistoryResult = plannedHistoryRecordIds.length
+    ? await sb
+        .from("history")
+        .select("id")
+        .in("id", plannedHistoryRecordIds)
+    : { data: [], error: null };
 
-  if (existingBySourceResult.error)
-    throw new Error(existingBySourceResult.error.message);
-  if (existingByCustomIdResult.error)
-    throw new Error(existingByCustomIdResult.error.message);
+  if (existingHistoryResult.error)
+    throw new Error(existingHistoryResult.error.message);
 
-  const existingSourceRowIdSet = new Set(
-    [
-      ...(existingBySourceResult.data ?? []),
-      ...(existingByCustomIdResult.data ?? []),
-    ]
-      .map((row) => row.source_row_id)
+  const existingHistoryIdSet = new Set(
+    (existingHistoryResult.data ?? [])
+      .map((row) => row.id)
       .filter((value): value is string => Boolean(value)),
-  );
-  const existingCustomIdSet = new Set(
-    [
-      ...(existingBySourceResult.data ?? []),
-      ...(existingByCustomIdResult.data ?? []),
-    ]
-      .map((row) => normalizeLookup(row.custom_id))
-      .filter(Boolean),
   );
 
   let historyRowsWithBothLinkedEntities = 0;
@@ -1906,19 +1871,14 @@ export async function activateOnboardingHistory(params: {
     }
     rowsWithBothLiveCustomerAndVehicle += 1;
 
-    const sourceRowKey = stableUuidFromParts([
+    const historyRecordId = stableUuidFromParts([
       params.shopId,
       params.sessionId,
       "history",
       canonicalHistoryId,
     ]);
-    const customIdKey = normalizeLookup(
-      history.sourceWorkOrderId ?? history.invoiceNumber,
-    );
-    const existing =
-      existingSourceRowIdSet.has(sourceRowKey) ||
-      (customIdKey ? existingCustomIdSet.has(customIdKey) : false);
-    if (existing) {
+
+    if (existingHistoryIdSet.has(historyRecordId)) {
       existingMatched += 1;
       continue;
     }
@@ -1938,75 +1898,74 @@ export async function activateOnboardingHistory(params: {
           entityId: entity.id,
           issueType: "history_customer_vehicle_mismatch",
           summary:
-            "Historical row customer mapping did not match the resolved vehicle owner; vehicle owner was used for the imported history work order.",
+            "Historical row customer mapping did not match the resolved vehicle owner; vehicle owner was used for the imported history record.",
           severity: "low",
         });
       }
       customerId = vehicleOwnerCustomerId;
     }
 
-    const payload: WorkOrderInsert = {
-      shop_id: params.shopId,
-      created_by: params.actorId,
-      created_at: effectiveOpenedDate,
-      updated_at: history.closedDate ?? effectiveOpenedDate,
-      custom_id: history.sourceWorkOrderId ?? history.invoiceNumber,
-      customer_id: customerId ?? null,
+    if (!customerId) {
+      skipped += 1;
+      skippedMissingCustomer += 1;
+      needsReview += 1;
+      trackGroupedReview(groupedReviewItems, {
+        entityId: entity.id,
+        issueType: "missing_customer_for_history",
+        summary:
+          "Historical record could not be imported because public.history requires a live customer.",
+        severity: "high",
+      });
+      continue;
+    }
+
+    const description = [
+      history.complaint,
+      history.correction,
+    ]
+      .map((value) => normalizeText(value))
+      .filter(Boolean)
+      .join(" | ");
+
+    const notes = [
+      history.sourceWorkOrderId ? `Work order: ${history.sourceWorkOrderId}` : null,
+      history.invoiceNumber ? `Invoice: ${history.invoiceNumber}` : null,
+      history.total != null ? `Total: ${history.total}` : null,
+      history.laborTotal != null ? `Labor: ${history.laborTotal}` : null,
+      normalizeText(entity.source_external_id)
+        ? `Source external ID: ${normalizeText(entity.source_external_id)}`
+        : null,
+      normalizeText(entity.source_row_id)
+        ? `Source row ID: ${normalizeText(entity.source_row_id)}`
+        : null,
+      `Onboarding session: ${params.sessionId}`,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n");
+
+    const historyPayload: HistoryInsert = {
+      id: historyRecordId,
+      customer_id: customerId,
       vehicle_id: vehicleId ?? null,
-      customer_name: history.customerName,
-      vehicle_vin: history.vehicleVin,
-      vehicle_license_plate: history.vehiclePlate,
-      status: HISTORICAL_WORK_ORDER_STATUS,
-      type: HISTORICAL_WORK_ORDER_TYPE,
-      source_intake_id: params.sessionId,
-      source_row_id: sourceRowKey,
-      invoice_total: history.total,
-      labor_total: history.laborTotal,
-      notes: history.complaint ?? history.correction,
-      is_waiter: false,
+      work_order_id: null,
+      service_date: effectiveOpenedDate,
+      description:
+        description ||
+        history.invoiceNumber ||
+        history.sourceWorkOrderId ||
+        "Imported historical service record",
+      notes,
     };
 
-    const { data: created, error } = await sb
-      .from("work_orders")
-      .insert(payload)
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-    historicalWorkOrdersCreated += 1;
-    if (!customerId) historicalWorkOrdersCreatedWithoutCustomer += 1;
-    if (!vehicleId) historicalWorkOrdersCreatedWithoutVehicle += 1;
+    const { error: historyInsertError } = await sb
+      .from("history")
+      .insert(historyPayload);
 
-    if (history.complaint || history.correction) {
-      const linePayload: WorkOrderLineInsert = {
-        shop_id: params.shopId,
-        work_order_id: created?.id,
-        status: "completed",
-        line_type: "labor",
-        line_status: "closed",
-        description: history.complaint ?? history.correction,
-        complaint: history.complaint,
-        correction: history.correction,
-        labor_time: null,
-        price_estimate: history.total,
-        source_intake_id: params.sessionId,
-        source_row_id: sourceRowKey,
-      };
-      const { error: lineError } = await sb
-        .from("work_order_lines")
-        .insert(linePayload);
-      if (lineError) {
-        warnings.push(`Unable to create history line for ${entity.id}`);
-        trackGroupedReview(groupedReviewItems, {
-          entityId: entity.id,
-          issueType: "unsupported_history_line_format",
-          summary:
-            "Historical lines could not be created safely for some rows.",
-        });
-        needsReview += 1;
-      } else {
-        linesCreated += 1;
-      }
-    }
+    if (historyInsertError) throw new Error(historyInsertError.message);
+
+    historicalWorkOrdersCreated += 1;
+    if (!vehicleId) historicalWorkOrdersCreatedWithoutVehicle += 1;
+    if (description) linesCreated += 1;
   }
 
   for (const grouped of groupedReviewItems.values()) {

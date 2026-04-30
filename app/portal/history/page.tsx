@@ -12,16 +12,14 @@ import {
   requirePortalCustomer,
 } from "@/features/portal/server/portalAuth";
 
-const COPPER = "#C57A4A";
-
 type DB = Database;
 
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type HistoryRow = DB["public"]["Tables"]["history"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
-type WorkOrderLite = Pick<
-  WorkOrderRow,
-  "id" | "custom_id" | "status" | "created_at" | "updated_at" | "vehicle_id"
+type HistoryLite = Pick<
+  HistoryRow,
+  "id" | "customer_id" | "vehicle_id" | "service_date" | "description" | "notes" | "created_at"
 >;
 
 type VehicleLite = Pick<
@@ -48,10 +46,10 @@ function fmtDate(iso: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function woLabel(wo: WorkOrderLite): string {
-  const c = (wo.custom_id ?? "").trim();
-  if (c) return c;
-  return `Work Order ${wo.id.slice(0, 8)}…`;
+function historyLabel(row: HistoryLite): string {
+  const desc = (row.description ?? "").trim();
+  if (desc) return desc.length > 68 ? `${desc.slice(0, 68)}…` : desc;
+  return `History ${row.id.slice(0, 8)}…`;
 }
 
 function vehicleLabel(v: VehicleLite | undefined): string {
@@ -80,29 +78,21 @@ export default async function HistoryPage() {
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
 
-    // ✅ Define "history" as completed-ish work orders
-    const HISTORY_STATUSES = [
-      "completed",
-      "invoiced",
-      "paid",
-      "ready_to_invoice",
-    ] as const;
-
-    const { data: woRows, error: woErr } = await supabase
-      .from("work_orders")
-      .select("id, custom_id, status, created_at, updated_at, vehicle_id")
+    const { data: historyRows, error: historyErr } = await supabase
+      .from("history")
+      .select("id, customer_id, vehicle_id, service_date, description, notes, created_at")
       .eq("customer_id", customer.id)
-      .in("status", HISTORY_STATUSES as unknown as string[])
-      .order("updated_at", { ascending: false })
-      .returns<WorkOrderLite[]>();
+      .order("service_date", { ascending: false })
+      .limit(100)
+      .returns<HistoryLite[]>();
 
-    if (woErr) throw new Error(woErr.message);
+    if (historyErr) throw new Error(historyErr.message);
 
-    const workOrders = Array.isArray(woRows) ? woRows : [];
+    const history = Array.isArray(historyRows) ? historyRows : [];
     const vehicleIds = Array.from(
       new Set(
-        workOrders
-          .map((w) => w.vehicle_id)
+        history
+          .map((item) => item.vehicle_id)
           .filter((id): id is string => typeof id === "string" && id.length > 0),
       ),
     );
@@ -130,74 +120,66 @@ export default async function HistoryPage() {
             Service history
           </h1>
           <p className="text-xs text-neutral-400">
-            Completed visits and finalized work orders.
+            Read-only historical service records connected to your account.
           </p>
 
-          <div
-            className="mt-3 h-px w-full"
-            style={{
-              background:
-                "linear-gradient(90deg, rgba(197,122,74,0.0), rgba(197,122,74,0.35), rgba(197,122,74,0.0))",
-            }}
-          />
+          <div className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-sky-400/25 to-transparent" />
         </header>
 
-        {workOrders.length === 0 ? (
+        {history.length === 0 ? (
           <div className={emptyCardClass()}>
-            No service history yet. Once a visit is completed (or invoiced), it
-            will appear here.
+            No service history yet. Once historical records are imported or service is archived, they will appear here.
           </div>
         ) : (
           <div className={cardClass()}>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Past visits
+                Past service
               </div>
               <div className="text-[11px] text-neutral-500">
-                {workOrders.length} item(s)
+                {history.length} item(s)
               </div>
             </div>
 
             <div className="space-y-2">
-              {workOrders.map((wo) => {
+              {history.map((item) => {
                 const v =
-                  typeof wo.vehicle_id === "string"
-                    ? vehiclesById.get(wo.vehicle_id)
+                  typeof item.vehicle_id === "string"
+                    ? vehiclesById.get(item.vehicle_id)
                     : undefined;
 
                 return (
-                  <Link
-                    key={wo.id}
-                    href={`/portal/work-orders/${wo.id}`}
-                    className="block rounded-2xl border border-white/10 bg-black/35 px-4 py-3 transition hover:bg-black/45 hover:border-white/14"
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3"
                   >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-neutral-100">
-                          {woLabel(wo)}
+                        <div className="text-sm font-semibold text-neutral-100">
+                          {historyLabel(item)}
                         </div>
                         <div className="mt-0.5 text-[11px] text-neutral-500">
-                          {vehicleLabel(v)} {" • "} Status:{" "}
-                          <span className="text-neutral-300">
-                            {(wo.status ?? "—") as string}
-                          </span>
+                          {vehicleLabel(v)}
                         </div>
                         <div className="mt-0.5 text-[11px] text-neutral-500">
-                          Updated:{" "}
+                          Service date:{" "}
                           <span className="text-neutral-300">
-                            {fmtDate(wo.updated_at ?? wo.created_at)}
+                            {fmtDate(item.service_date ?? item.created_at)}
                           </span>
                         </div>
                       </div>
 
-                      <div
-                        className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-                        style={{ color: COPPER }}
-                      >
-                        View
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">
+                        Read only
                       </div>
                     </div>
-                  </Link>
+
+                    {item.notes ? (
+                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-[11px] leading-relaxed text-neutral-400">
+                        {item.notes}
+                      </pre>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
