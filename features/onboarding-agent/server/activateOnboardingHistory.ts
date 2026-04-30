@@ -55,6 +55,8 @@ type HistoryActivationResult = {
   skippedUnresolved: number;
   skippedMissingCustomer: number;
   skippedMissingVehicle: number;
+  historicalWorkOrdersCreatedWithoutCustomer: number;
+  historicalWorkOrdersCreatedWithoutVehicle: number;
   skippedMissingIdentifier: number;
   skippedInvalidDate: number;
   skippedInvalidTotal: number;
@@ -110,6 +112,8 @@ type HistoryActivationResult = {
     historyRowsMissingUsableDate: number;
     historyRowsMissingUsableIdentifier: number;
     workOrdersCreated: number;
+    workOrdersCreatedWithoutCustomer: number;
+    workOrdersCreatedWithoutVehicle: number;
     workOrdersMatchedExisting: number;
     linkEndpointEntityTypesByCount: Record<string, number>;
     customerWorkOrderEndpointTypesByCount: Record<string, number>;
@@ -658,6 +662,8 @@ export async function activateOnboardingHistory(params: {
   let skippedUnresolved = 0;
   let skippedMissingCustomer = 0;
   let skippedMissingVehicle = 0;
+  let historicalWorkOrdersCreatedWithoutCustomer = 0;
+  let historicalWorkOrdersCreatedWithoutVehicle = 0;
   let skippedMissingIdentifier = 0;
   let skippedInvalidDate = 0;
   let skippedInvalidTotal = 0;
@@ -982,9 +988,9 @@ export async function activateOnboardingHistory(params: {
       if (!customerId) rowsMissingLiveCustomer += 1;
       if (!vehicleId) rowsMissingLiveVehicle += 1;
       if (!customerId && !vehicleId) rowsMissingBoth += 1;
-      skipped += 1;
       skippedUnresolved += 1;
       let finalSkipReason = "unresolved_live_customer";
+
       if (!customerId) {
         skippedMissingCustomer += 1;
         if (!stagedCustomerLink.id) unresolvedDueToMissingCustomerLink += 1;
@@ -999,9 +1005,9 @@ export async function activateOnboardingHistory(params: {
               ? "Historical work orders are missing customer_work_order links."
               : "Historical work orders have customer links but no resolvable live customer mapping.",
         });
-        if (!stagedCustomerLink.id) finalSkipReason = "missing_customer_link";
-        else finalSkipReason = "unresolved_live_customer";
+        finalSkipReason = !stagedCustomerLink.id ? "missing_customer_link" : "unresolved_live_customer";
       }
+
       if (!vehicleId) {
         skippedMissingVehicle += 1;
         if (!stagedVehicleLink.id) unresolvedDueToMissingVehicleLink += 1;
@@ -1016,9 +1022,9 @@ export async function activateOnboardingHistory(params: {
               ? "Historical work orders are missing vehicle_work_order links."
               : "Historical work orders have vehicle links but no resolvable live vehicle mapping.",
         });
-        if (!stagedVehicleLink.id) finalSkipReason = "missing_vehicle_link";
-        else if (customerId) finalSkipReason = "unresolved_live_vehicle";
+        finalSkipReason = !stagedVehicleLink.id ? "missing_vehicle_link" : customerId ? "unresolved_live_vehicle" : finalSkipReason;
       }
+
       if (unresolvedSamples.length < 5) {
         unresolvedSamples.push({
           historyEntityId: entity.id,
@@ -1049,7 +1055,6 @@ export async function activateOnboardingHistory(params: {
           searchLayerKeySamples: layerKeySamples,
         });
       }
-      continue;
     }
     rowsWithBothLiveCustomerAndVehicle += 1;
 
@@ -1066,8 +1071,8 @@ export async function activateOnboardingHistory(params: {
       created_at: history.openedDate,
       updated_at: history.closedDate ?? history.openedDate,
       custom_id: history.sourceWorkOrderId ?? history.invoiceNumber,
-      customer_id: customerId,
-      vehicle_id: vehicleId,
+      customer_id: customerId ?? null,
+      vehicle_id: vehicleId ?? null,
       customer_name: history.customerName,
       vehicle_vin: history.vehicleVin,
       vehicle_license_plate: history.vehiclePlate,
@@ -1084,6 +1089,8 @@ export async function activateOnboardingHistory(params: {
     const { data: created, error } = await sb.from("work_orders").insert(payload).select("id").single();
     if (error) throw new Error(error.message);
     historicalWorkOrdersCreated += 1;
+    if (!customerId) historicalWorkOrdersCreatedWithoutCustomer += 1;
+    if (!vehicleId) historicalWorkOrdersCreatedWithoutVehicle += 1;
 
     if (history.complaint || history.correction) {
       const linePayload: WorkOrderLineInsert = {
@@ -1153,7 +1160,7 @@ export async function activateOnboardingHistory(params: {
     .eq("status", "pending");
   if (reviewItemsOpenError) throw new Error(reviewItemsOpenError.message);
   if (skippedUnresolved > 0) {
-    warnings.push("Most skipped history rows were unresolved because no live customer/vehicle mapping could be resolved from staged links.");
+    warnings.push("Some historical rows were created with unresolved customer or vehicle linkage and were sent to review.");
   }
 
   const result: HistoryActivationResult = {
@@ -1168,6 +1175,8 @@ export async function activateOnboardingHistory(params: {
     skippedUnresolved,
     skippedMissingCustomer,
     skippedMissingVehicle,
+    historicalWorkOrdersCreatedWithoutCustomer,
+    historicalWorkOrdersCreatedWithoutVehicle,
     skippedMissingIdentifier,
     skippedInvalidDate,
     skippedInvalidTotal,
@@ -1219,6 +1228,8 @@ export async function activateOnboardingHistory(params: {
       historyRowsMissingUsableDate,
       historyRowsMissingUsableIdentifier,
       workOrdersCreated: historicalWorkOrdersCreated,
+      workOrdersCreatedWithoutCustomer: historicalWorkOrdersCreatedWithoutCustomer,
+      workOrdersCreatedWithoutVehicle: historicalWorkOrdersCreatedWithoutVehicle,
       workOrdersMatchedExisting: existingMatched,
       linkEndpointEntityTypesByCount,
       customerWorkOrderEndpointTypesByCount,
@@ -1260,6 +1271,8 @@ export async function activateOnboardingHistory(params: {
     linkedVehicleLiveResolved: result.diagnostics.linkedVehicleLiveResolved,
     rowsWithBothLiveCustomerAndVehicle: result.diagnostics.rowsWithBothLiveCustomerAndVehicle,
     workOrdersCreated: result.diagnostics.workOrdersCreated,
+    workOrdersCreatedWithoutCustomer: result.diagnostics.workOrdersCreatedWithoutCustomer,
+    workOrdersCreatedWithoutVehicle: result.diagnostics.workOrdersCreatedWithoutVehicle,
     workOrdersMatchedExisting: result.diagnostics.workOrdersMatchedExisting,
     skippedUnresolved: result.skippedUnresolved,
   });
