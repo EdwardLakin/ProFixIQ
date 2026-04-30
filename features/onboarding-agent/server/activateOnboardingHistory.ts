@@ -33,6 +33,7 @@ type VehicleRow = Pick<
   | "year"
   | "make"
   | "model"
+  | "customer_id"
 >;
 type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
 type WorkOrderLineInsert = Database["public"]["Tables"]["work_order_lines"]["Insert"];
@@ -658,7 +659,7 @@ export async function activateOnboardingHistory(params: {
     fetchAllPaginatedRows<VehicleRow>((from, to) =>
       sb
         .from("vehicles")
-        .select("id, external_id, vin, license_plate, unit_number, year, make, model")
+        .select("id, external_id, vin, license_plate, unit_number, year, make, model, customer_id")
         .eq("shop_id", params.shopId)
         .order("id", { ascending: true })
         .range(from, to)),
@@ -1199,6 +1200,23 @@ export async function activateOnboardingHistory(params: {
     if (existing) {
       existingMatched += 1;
       continue;
+    }
+
+    const vehicleOwnerCustomerId = vehicleId
+      ? vehicleRows.find((row) => row.id === vehicleId)?.customer_id ?? null
+      : null;
+
+    if (vehicleId && vehicleOwnerCustomerId && customerId !== vehicleOwnerCustomerId) {
+      if (customerId) {
+        needsReview += 1;
+        trackGroupedReview(groupedReviewItems, {
+          entityId: entity.id,
+          issueType: "history_customer_vehicle_mismatch",
+          summary: "Historical row customer mapping did not match the resolved vehicle owner; vehicle owner was used for the imported history work order.",
+          severity: "low",
+        });
+      }
+      customerId = vehicleOwnerCustomerId;
     }
 
     const payload: WorkOrderInsert = {
