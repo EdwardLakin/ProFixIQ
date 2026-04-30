@@ -49,6 +49,20 @@ export async function POST(_: Request, context: RouteContext) {
     }
 
     const message = error instanceof Error ? error.message : "Failed to activate onboarding session";
+    if (message.includes("history_activation_failed:")) {
+      return NextResponse.json({
+        ok: false,
+        error: {
+          code: "history_activation_failed",
+          message: "History activation timed out while processing a large batch. Continue canonical activation to resume.",
+          phase: "history",
+          operation: "activateOnboardingHistory",
+          developer: {
+            message,
+          },
+        },
+      }, { status: 500 });
+    }
     const status = message.includes("Session not found") ? 404 : 500;
     return NextResponse.json({ ok: false, error: message }, { status });
   }

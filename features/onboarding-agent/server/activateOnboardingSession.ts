@@ -270,12 +270,17 @@ export async function activateOnboardingSession(params: {
 
   if (getPhaseStatus(summary, "history") !== "completed") {
     await writePhaseStatus({ ...params, phase: "history", status: "running" });
-
-    const result = await activateOnboardingHistory({
-      ...params,
-      limit: HISTORY_ACTIVATION_BATCH_LIMIT,
-      startAfterId: getHistoryChunkCursor(summary),
-    });
+    let result;
+    try {
+      result = await activateOnboardingHistory({
+        ...params,
+        limit: HISTORY_ACTIVATION_BATCH_LIMIT,
+        startAfterId: getHistoryChunkCursor(summary),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown history activation error";
+      throw new Error(`history_activation_failed:phase=history:operation=activateOnboardingHistory:message=${message}`);
+    }
 
     const now = new Date().toISOString();
     const checkpoint = await writePhaseStatus({
