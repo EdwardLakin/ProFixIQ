@@ -594,41 +594,36 @@ export async function activateOnboardingHistory(params: {
   const sb = params.supabase;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
-  const [historyRows, entityRows, linkRows, endpointEntities, customerRows, vehicleRows] = await Promise.all([
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id" | "source_external_id">>((from, to) =>
-      sb
-        .from("onboarding_entities")
-        .select("id, normalized, entity_type, source_row_id, source_external_id")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .in("entity_type", ["historical_work_order", "history"])
-        .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name" | "source_row_id" | "status" | "canonical_table" | "canonical_id">>((from, to) =>
-      sb
-        .from("onboarding_entities")
-        .select("id, normalized, entity_type, source_external_id, display_name, source_row_id, status, canonical_table, canonical_id")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .in("entity_type", ["customer", "vehicle"])
-        .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllPaginatedRows<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>((from, to) =>
-      sb
-        .from("onboarding_entity_links")
-        .select("id, from_entity_id, to_entity_id, link_type")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllPaginatedRows<EntityShape>((from, to) =>
-      sb
-        .from("onboarding_entities")
-        .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
-        .eq("shop_id", params.shopId)
-        .eq("session_id", params.sessionId)
-        .order("id", { ascending: true })
-        .range(from, to)),
+  const historyBatchLimit = typeof params.limit === "number" && Number.isFinite(params.limit)
+    ? Math.max(1, Math.floor(params.limit))
+    : 100;
+
+  let historyQuery = sb
+    .from("onboarding_entities")
+    .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
+    .eq("shop_id", params.shopId)
+    .eq("session_id", params.sessionId)
+    .in("entity_type", ["historical_work_order", "history"])
+    .order("id", { ascending: true })
+    .limit(historyBatchLimit + 1);
+
+  if (params.startAfterId) {
+    historyQuery = historyQuery.gt("id", params.startAfterId);
+  }
+
+  const [
+    historyBatchResult,
+    historyCountResult,
+    customerRows,
+    vehicleRows,
+  ] = await Promise.all([
+    historyQuery,
+    sb
+      .from("onboarding_entities")
+      .select("id", { head: true, count: "exact" })
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .in("entity_type", ["historical_work_order", "history"]),
     fetchAllPaginatedRows<CustomerRow>((from, to) =>
       sb
         .from("customers")
@@ -644,6 +639,54 @@ export async function activateOnboardingHistory(params: {
         .order("id", { ascending: true })
         .range(from, to)),
   ]);
+
+  if (historyBatchResult.error) throw new Error(historyBatchResult.error.message);
+  if (historyCountResult.error) throw new Error(historyCountResult.error.message);
+
+  const rawHistoryRows = (historyBatchResult.data ?? []) as EntityShape[];
+  const hasMoreHistoryRows = rawHistoryRows.length > historyBatchLimit;
+  const historyRows = rawHistoryRows.slice(0, historyBatchLimit);
+  const stagedHistoryRowsTotal = Number(historyCountResult.count ?? historyRows.length);
+
+  const batchHistoryEntityIds = historyRows.map((row) => row.id);
+
+  let linkRows: Array<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">> = [];
+  if (batchHistoryEntityIds.length > 0) {
+    const scopedIds = batchHistoryEntityIds.join(",");
+    const { data, error } = await sb
+      .from("onboarding_entity_links")
+      .select("id, from_entity_id, to_entity_id, link_type")
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .in("link_type", ["customer_work_order", "vehicle_work_order"])
+      .or(`from_entity_id.in.(${scopedIds}),to_entity_id.in.(${scopedIds})`)
+      .order("id", { ascending: true });
+
+    if (error) throw new Error(error.message);
+    linkRows = data ?? [];
+  }
+
+  const endpointIds = new Set<string>(batchHistoryEntityIds);
+  for (const link of linkRows) {
+    endpointIds.add(link.from_entity_id);
+    endpointIds.add(link.to_entity_id);
+  }
+
+  let endpointEntities: EntityShape[] = [];
+  if (endpointIds.size > 0) {
+    const { data, error } = await sb
+      .from("onboarding_entities")
+      .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
+      .eq("shop_id", params.shopId)
+      .eq("session_id", params.sessionId)
+      .in("id", [...endpointIds])
+      .order("id", { ascending: true });
+
+    if (error) throw new Error(error.message);
+    endpointEntities = (data ?? []) as EntityShape[];
+  }
+
+  const entityRows = endpointEntities.filter((row) => row.entity_type === "customer" || row.entity_type === "vehicle");
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
   const warnings: string[] = [];
@@ -833,17 +876,11 @@ export async function activateOnboardingHistory(params: {
     return (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
   };
 
-  const orderedHistoryRows = [...combinedHistoryRows.values()].sort((a, b) => a.id.localeCompare(b.id));
-  const requestedLimit = typeof params.limit === "number" && Number.isFinite(params.limit)
-    ? Math.max(1, Math.floor(params.limit))
-    : orderedHistoryRows.length;
-  const startIndex = params.startAfterId
-    ? Math.max(0, orderedHistoryRows.findIndex((row) => row.id === params.startAfterId) + 1)
-    : 0;
-  const historyRowsForThisRun = orderedHistoryRows.slice(startIndex, startIndex + requestedLimit);
+  const orderedHistoryRows = [...historyRows].sort((a, b) => a.id.localeCompare(b.id));
+  const historyRowsForThisRun = orderedHistoryRows;
   const lastProcessedHistoryRow = historyRowsForThisRun.at(-1) ?? null;
-  const nextCursor = lastProcessedHistoryRow?.id ?? params.startAfterId ?? null;
-  const completed = startIndex + historyRowsForThisRun.length >= orderedHistoryRows.length;
+  const nextCursor = hasMoreHistoryRows ? lastProcessedHistoryRow?.id ?? params.startAfterId ?? null : null;
+  const completed = !hasMoreHistoryRows;
 
   const existingSourceRowKeys = historyRowsForThisRun.map((row) =>
     stableUuidFromParts([params.shopId, params.sessionId, "history", resolveCanonicalHistoryId(row.id)]),
@@ -1217,7 +1254,7 @@ export async function activateOnboardingHistory(params: {
     completed,
     processedThisRun: historyRowsForThisRun.length,
     nextCursor,
-    stagedHistoryRows: historyRows.length,
+    stagedHistoryRows: stagedHistoryRowsTotal,
     historicalWorkOrdersCreated,
     existingMatched,
     linesCreated,
@@ -1250,7 +1287,7 @@ export async function activateOnboardingHistory(params: {
     unresolvedDueToMissingLiveVehicle,
     diagnostics: {
       runtime: runtimeDiagnostics,
-      stagedHistoryRows: historyRows.length,
+      stagedHistoryRows: stagedHistoryRowsTotal,
       customerWorkOrderLinks,
       vehicleWorkOrderLinks,
       historyRowsWithCustomerLink,
