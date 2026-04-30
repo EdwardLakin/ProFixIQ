@@ -8,9 +8,22 @@ import type { Database } from "@/features/shared/types/types/supabase";
 
 type AdminSupabase = SupabaseClient<Database>;
 type JsonObject = Record<string, unknown>;
-type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
-type EntityShape = Pick<OnboardingEntityRow, "id" | "entity_type" | "status" | "source_row_id" | "source_external_id" | "normalized" | "display_name" | "canonical_table" | "canonical_id">;
-type OnboardingEntityLinkRow = Database["public"]["Tables"]["onboarding_entity_links"]["Row"];
+type OnboardingEntityRow =
+  Database["public"]["Tables"]["onboarding_entities"]["Row"];
+type EntityShape = Pick<
+  OnboardingEntityRow,
+  | "id"
+  | "entity_type"
+  | "status"
+  | "source_row_id"
+  | "source_external_id"
+  | "normalized"
+  | "display_name"
+  | "canonical_table"
+  | "canonical_id"
+>;
+type OnboardingEntityLinkRow =
+  Database["public"]["Tables"]["onboarding_entity_links"]["Row"];
 type CustomerRow = Pick<
   Database["public"]["Tables"]["customers"]["Row"],
   | "id"
@@ -36,12 +49,15 @@ type VehicleRow = Pick<
   | "customer_id"
 >;
 type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
-type WorkOrderLineInsert = Database["public"]["Tables"]["work_order_lines"]["Insert"];
-type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
+type WorkOrderLineInsert =
+  Database["public"]["Tables"]["work_order_lines"]["Insert"];
+type OnboardingReviewItemInsert =
+  Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
 type ReviewItemDetails = NonNullable<OnboardingReviewItemInsert["details"]>;
 
 const HISTORICAL_WORK_ORDER_STATUS: WorkOrderInsert["status"] = "completed";
-const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> = "historical_import";
+const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> =
+  "historical_import";
 
 type HistoryActivationResult = {
   ok: true;
@@ -216,7 +232,8 @@ type NormalizedVehicle = {
 
 function customerIdentityKey(input: NormalizedCustomer): string | null {
   if (input.email) return `email:${normalizeLookup(input.email)}`;
-  if (input.sourceCustomerId) return `external:${normalizeLookup(input.sourceCustomerId)}`;
+  if (input.sourceCustomerId)
+    return `external:${normalizeLookup(input.sourceCustomerId)}`;
   if (input.phone) return `phone:${input.phone}`;
   if (input.name) return `name:${normalizeLookup(input.name)}`;
   return null;
@@ -224,7 +241,8 @@ function customerIdentityKey(input: NormalizedCustomer): string | null {
 
 function vehicleIdentityKey(input: NormalizedVehicle): string | null {
   if (input.vin) return `vin:${normalizeVin(input.vin)}`;
-  if (input.sourceVehicleId) return `external:${normalizeLookup(input.sourceVehicleId)}`;
+  if (input.sourceVehicleId)
+    return `external:${normalizeLookup(input.sourceVehicleId)}`;
   if (input.plate) return `plate:${normalizePlate(input.plate)}`;
   if (input.unitNumber) return `unit:${normalizeLookup(input.unitNumber)}`;
   const descriptor = vehicleDescriptorKey(input);
@@ -236,7 +254,10 @@ function normalizeText(value: unknown): string {
 }
 
 function normalizeLookup(value: unknown): string {
-  return normalizeText(value).toLowerCase().replace(/[\s\-_.]+/g, " ").trim();
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[\s\-_.]+/g, " ")
+    .trim();
 }
 
 function parseMoney(value: unknown): number | null {
@@ -270,8 +291,14 @@ function parseDate(value: unknown): string | null {
   return d.toISOString();
 }
 
-function fallbackHistoryDate(params: { sourceExternalId?: string | null; sourceRowId?: string | null }): string {
-  const seed = normalizeText(params.sourceExternalId) || normalizeText(params.sourceRowId) || "history";
+function fallbackHistoryDate(params: {
+  sourceExternalId?: string | null;
+  sourceRowId?: string | null;
+}): string {
+  const seed =
+    normalizeText(params.sourceExternalId) ||
+    normalizeText(params.sourceRowId) ||
+    "history";
   let hash = 0;
   for (const char of seed) {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -284,11 +311,24 @@ function fallbackHistoryDate(params: { sourceExternalId?: string | null; sourceR
   return parsed.toISOString();
 }
 
-function collectSearchRecords(normalized: Record<string, unknown>, entity?: Partial<Pick<OnboardingEntityRow, "source_external_id" | "source_row_id" | "display_name">> & { details?: unknown; payload?: unknown }): Record<string, unknown>[] {
-  return buildOnboardingEntityPayloadLayers({ normalized, ...entity }).map((item) => item as Record<string, unknown>);
+function collectSearchRecords(
+  normalized: Record<string, unknown>,
+  entity?: Partial<
+    Pick<
+      OnboardingEntityRow,
+      "source_external_id" | "source_row_id" | "display_name"
+    >
+  > & { details?: unknown; payload?: unknown },
+): Record<string, unknown>[] {
+  return buildOnboardingEntityPayloadLayers({ normalized, ...entity }).map(
+    (item) => item as Record<string, unknown>,
+  );
 }
 
-function firstTextAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
+function firstTextAlias(
+  records: Record<string, unknown>[],
+  aliases: string[],
+): { value: string | null; aliasUsed: string | null } {
   for (const record of records) {
     for (const alias of aliases) {
       const value = normalizeText(record[alias]);
@@ -298,7 +338,10 @@ function firstTextAlias(records: Record<string, unknown>[], aliases: string[]): 
   return { value: null, aliasUsed: null };
 }
 
-function firstDateAlias(records: Record<string, unknown>[], aliases: string[]): { value: string | null; aliasUsed: string | null } {
+function firstDateAlias(
+  records: Record<string, unknown>[],
+  aliases: string[],
+): { value: string | null; aliasUsed: string | null } {
   for (const record of records) {
     for (const alias of aliases) {
       const value = parseDate(record[alias]);
@@ -311,12 +354,16 @@ function firstDateAlias(records: Record<string, unknown>[], aliases: string[]): 
 type ResolveLiveIdResult = { id: string | null; ambiguous: boolean };
 
 function liveIdFromCanonicalBridge(
-  stagedEntity: Pick<OnboardingEntityRow, "canonical_table" | "canonical_id"> | null,
+  stagedEntity: Pick<
+    OnboardingEntityRow,
+    "canonical_table" | "canonical_id"
+  > | null,
   expectedTable: "customers" | "vehicles",
 ): string | null {
   if (!stagedEntity) return null;
   if (stagedEntity.canonical_table !== expectedTable) return null;
-  return typeof stagedEntity.canonical_id === "string" && stagedEntity.canonical_id.trim()
+  return typeof stagedEntity.canonical_id === "string" &&
+    stagedEntity.canonical_id.trim()
     ? stagedEntity.canonical_id
     : null;
 }
@@ -328,7 +375,9 @@ function normalizeEmail(value: unknown): string | null {
 function normalizePhone(value: unknown): string | null {
   const digits = normalizeText(value).replace(/\D+/g, "");
   if (!digits) return null;
-  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return digits.length === 11 && digits.startsWith("1")
+    ? digits.slice(1)
+    : digits;
 }
 
 function normalizeVin(value: unknown): string | null {
@@ -347,86 +396,220 @@ function normalizeNumber(value: unknown): number | null {
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
-function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null): NormalizedCustomer {
-  const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
+function toNormalizedCustomer(
+  entity: Pick<
+    OnboardingEntityRow,
+    "source_external_id" | "display_name" | "normalized"
+  > | null,
+): NormalizedCustomer {
+  const normalized = (entity?.normalized ?? {}) as Record<string, unknown>;
   const records = collectSearchRecords(normalized, entity ?? undefined);
   return {
-    sourceCustomerId: firstTextAlias(records, ["live_customer_id","customer_id","matched_customer_id","imported_customer_id","source_external_id","sourceExternalId","sourceCustomerId","customerExternalId","account_number","source_row_id","sourceRowId","external_id"]).value,
-    email: normalizeEmail(firstTextAlias(records, ["email","email_address","customer_email","contact_email"]).value),
-    phone: normalizePhone(firstTextAlias(records, ["phone","phone_number","mobile","cell","work_phone","contact_phone"]).value),
-    name: normalizeText(firstTextAlias(records, ["display_name","name","full_name","customer_name","company","company_name","businessName"]).value ?? entity?.display_name) || null,
+    sourceCustomerId: firstTextAlias(records, [
+      "live_customer_id",
+      "customer_id",
+      "matched_customer_id",
+      "imported_customer_id",
+      "source_external_id",
+      "sourceExternalId",
+      "sourceCustomerId",
+      "customerExternalId",
+      "account_number",
+      "source_row_id",
+      "sourceRowId",
+      "external_id",
+    ]).value,
+    email: normalizeEmail(
+      firstTextAlias(records, [
+        "email",
+        "email_address",
+        "customer_email",
+        "contact_email",
+      ]).value,
+    ),
+    phone: normalizePhone(
+      firstTextAlias(records, [
+        "phone",
+        "phone_number",
+        "mobile",
+        "cell",
+        "work_phone",
+        "contact_phone",
+      ]).value,
+    ),
+    name:
+      normalizeText(
+        firstTextAlias(records, [
+          "display_name",
+          "name",
+          "full_name",
+          "customer_name",
+          "company",
+          "company_name",
+          "businessName",
+        ]).value ?? entity?.display_name,
+      ) || null,
   };
 }
-function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null): NormalizedVehicle {
-  const normalized = ((entity?.normalized ?? {}) as JsonObject);
+function toNormalizedVehicle(
+  entity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null,
+): NormalizedVehicle {
+  const normalized = (entity?.normalized ?? {}) as JsonObject;
   const records = collectSearchRecords(
     normalized,
     entity
       ? {
-        ...entity,
-        source_row_id: null,
-        display_name: null,
-      }
+          ...entity,
+          source_row_id: null,
+          display_name: null,
+        }
       : undefined,
   );
   return {
-    sourceVehicleId: firstTextAlias(records, ["live_vehicle_id","vehicle_id","matched_vehicle_id","imported_vehicle_id","source_external_id","sourceExternalId","sourceVehicleId","vehicleExternalId","unit_id","source_row_id","sourceRowId"]).value,
-    vin: normalizeVin(firstTextAlias(records, ["vin","VIN","vehicle_vin"]).value),
-    plate: normalizePlate(firstTextAlias(records, ["plate","license_plate","licence_plate","vehiclePlate","licensePlate"]).value),
-    unitNumber: normalizeLookup(firstTextAlias(records, ["unit","unit_number","fleet_number","unitNumber","vehicleUnitNumber"]).value),
+    sourceVehicleId: firstTextAlias(records, [
+      "live_vehicle_id",
+      "vehicle_id",
+      "matched_vehicle_id",
+      "imported_vehicle_id",
+      "source_external_id",
+      "sourceExternalId",
+      "sourceVehicleId",
+      "vehicleExternalId",
+      "unit_id",
+      "source_row_id",
+      "sourceRowId",
+    ]).value,
+    vin: normalizeVin(
+      firstTextAlias(records, ["vin", "VIN", "vehicle_vin"]).value,
+    ),
+    plate: normalizePlate(
+      firstTextAlias(records, [
+        "plate",
+        "license_plate",
+        "licence_plate",
+        "vehiclePlate",
+        "licensePlate",
+      ]).value,
+    ),
+    unitNumber: normalizeLookup(
+      firstTextAlias(records, [
+        "unit",
+        "unit_number",
+        "fleet_number",
+        "unitNumber",
+        "vehicleUnitNumber",
+      ]).value,
+    ),
     year: normalizeNumber(firstTextAlias(records, ["year"]).value),
     make: normalizeLookup(firstTextAlias(records, ["make"]).value),
     model: normalizeLookup(firstTextAlias(records, ["model"]).value),
   };
 }
-function vehicleDescriptorKey(input: { year: number | null; make: string | null; model: string | null }): string | null {
+function vehicleDescriptorKey(input: {
+  year: number | null;
+  make: string | null;
+  model: string | null;
+}): string | null {
   if (!input.year || !input.make || !input.model) return null;
   return `${input.year}|${input.make}|${input.model}`;
 }
 
-function pushMapValue(map: Map<string, Set<string>>, key: string | null, value: string) {
+function pushMapValue(
+  map: Map<string, Set<string>>,
+  key: string | null,
+  value: string,
+) {
   if (!key) return;
   const next = map.get(key) ?? new Set<string>();
   next.add(value);
   map.set(key, next);
 }
 
-function mapSingleValue(map: Map<string, Set<string>>, key: string | null): { id: string | null; ambiguous: boolean } {
+function mapSingleValue(
+  map: Map<string, Set<string>>,
+  key: string | null,
+): { id: string | null; ambiguous: boolean } {
   if (!key) return { id: null, ambiguous: false };
   const values = map.get(key);
   if (!values || values.size === 0) return { id: null, ambiguous: false };
-  if (values.size === 1) return { id: [...values][0] ?? null, ambiguous: false };
+  if (values.size === 1)
+    return { id: [...values][0] ?? null, ambiguous: false };
   return { id: null, ambiguous: true };
 }
 
-function resolveLiveCustomerIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "display_name" | "normalized"> | null, customerRows: CustomerRow[]): ResolveLiveIdResult {
+function resolveLiveCustomerIdFromStagedEntity(
+  stagedEntity: Pick<
+    OnboardingEntityRow,
+    "source_external_id" | "display_name" | "normalized"
+  > | null,
+  customerRows: CustomerRow[],
+): ResolveLiveIdResult {
   if (!stagedEntity) return { id: null, ambiguous: false };
   const normalized = toNormalizedCustomer(stagedEntity);
-  const matches = customerRows.filter((row) =>
-    (normalized.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(normalized.sourceCustomerId))
-    || (normalized.email && normalizeLookup(row.email) === normalizeLookup(normalized.email))
-    || (normalized.phone && normalizePhone(row.phone ?? row.phone_number) === normalized.phone)
-    || (normalized.name && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(normalized.name)));
+  const matches = customerRows.filter(
+    (row) =>
+      (normalized.sourceCustomerId &&
+        normalizeLookup(row.external_id) ===
+          normalizeLookup(normalized.sourceCustomerId)) ||
+      (normalized.email &&
+        normalizeLookup(row.email) === normalizeLookup(normalized.email)) ||
+      (normalized.phone &&
+        normalizePhone(row.phone ?? row.phone_number) === normalized.phone) ||
+      (normalized.name &&
+        normalizeLookup(
+          row.business_name ||
+            row.name ||
+            `${row.first_name ?? ""} ${row.last_name ?? ""}`,
+        ) === normalizeLookup(normalized.name)),
+  );
   if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
   return { id: null, ambiguous: matches.length > 1 };
 }
 
-function resolveLiveVehicleIdFromStagedEntity(stagedEntity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null, vehicleRows: VehicleRow[]): ResolveLiveIdResult {
+function resolveLiveVehicleIdFromStagedEntity(
+  stagedEntity: Pick<
+    OnboardingEntityRow,
+    "source_external_id" | "normalized"
+  > | null,
+  vehicleRows: VehicleRow[],
+): ResolveLiveIdResult {
   if (!stagedEntity) return { id: null, ambiguous: false };
   const normalized = toNormalizedVehicle(stagedEntity);
   const descriptor = vehicleDescriptorKey(normalized);
-  const matches = vehicleRows.filter((row) =>
-    (normalized.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(normalized.sourceVehicleId))
-    || (normalized.vin && normalizeVin(row.vin) === normalized.vin)
-    || (normalized.plate && normalizePlate(row.license_plate) === normalized.plate)
-    || (normalized.unitNumber && normalizeLookup(row.unit_number) === normalized.unitNumber)
-    || (descriptor && vehicleDescriptorKey({ year: row.year, make: normalizeLookup(row.make), model: normalizeLookup(row.model) }) === descriptor));
+  const matches = vehicleRows.filter(
+    (row) =>
+      (normalized.sourceVehicleId &&
+        normalizeLookup(row.external_id) ===
+          normalizeLookup(normalized.sourceVehicleId)) ||
+      (normalized.vin && normalizeVin(row.vin) === normalized.vin) ||
+      (normalized.plate &&
+        normalizePlate(row.license_plate) === normalized.plate) ||
+      (normalized.unitNumber &&
+        normalizeLookup(row.unit_number) === normalized.unitNumber) ||
+      (descriptor &&
+        vehicleDescriptorKey({
+          year: row.year,
+          make: normalizeLookup(row.make),
+          model: normalizeLookup(row.model),
+        }) === descriptor),
+  );
   if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
   return { id: null, ambiguous: matches.length > 1 };
 }
 
-function buildGroupedCustomerLiveMap(customerEntities: Array<Pick<OnboardingEntityRow, "id" | "source_external_id" | "display_name" | "normalized">>, customerRows: CustomerRow[]) {
-  const grouped = new Map<string, { entityIds: string[]; normalized: NormalizedCustomer }>();
+function buildGroupedCustomerLiveMap(
+  customerEntities: Array<
+    Pick<
+      OnboardingEntityRow,
+      "id" | "source_external_id" | "display_name" | "normalized"
+    >
+  >,
+  customerRows: CustomerRow[],
+) {
+  const grouped = new Map<
+    string,
+    { entityIds: string[]; normalized: NormalizedCustomer }
+  >();
   for (const entity of customerEntities) {
     const normalized = toNormalizedCustomer(entity);
     const key = customerIdentityKey(normalized) ?? `entity:${entity.id}`;
@@ -437,7 +620,8 @@ function buildGroupedCustomerLiveMap(customerEntities: Array<Pick<OnboardingEnti
     }
     existing.entityIds.push(entity.id);
     existing.normalized = {
-      sourceCustomerId: existing.normalized.sourceCustomerId ?? normalized.sourceCustomerId,
+      sourceCustomerId:
+        existing.normalized.sourceCustomerId ?? normalized.sourceCustomerId,
       email: existing.normalized.email ?? normalized.email,
       phone: existing.normalized.phone ?? normalized.phone,
       name: existing.normalized.name ?? normalized.name,
@@ -446,20 +630,42 @@ function buildGroupedCustomerLiveMap(customerEntities: Array<Pick<OnboardingEnti
 
   const stagedCustomerEntityIdToLiveCustomerId = new Map<string, string>();
   for (const group of grouped.values()) {
-    const matches = customerRows.filter((row) =>
-      (group.normalized.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(group.normalized.sourceCustomerId))
-      || (group.normalized.email && normalizeLookup(row.email) === normalizeLookup(group.normalized.email))
-      || (group.normalized.phone && normalizePhone(row.phone ?? row.phone_number) === group.normalized.phone)
-      || (group.normalized.name && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(group.normalized.name)));
+    const matches = customerRows.filter(
+      (row) =>
+        (group.normalized.sourceCustomerId &&
+          normalizeLookup(row.external_id) ===
+            normalizeLookup(group.normalized.sourceCustomerId)) ||
+        (group.normalized.email &&
+          normalizeLookup(row.email) ===
+            normalizeLookup(group.normalized.email)) ||
+        (group.normalized.phone &&
+          normalizePhone(row.phone ?? row.phone_number) ===
+            group.normalized.phone) ||
+        (group.normalized.name &&
+          normalizeLookup(
+            row.business_name ||
+              row.name ||
+              `${row.first_name ?? ""} ${row.last_name ?? ""}`,
+          ) === normalizeLookup(group.normalized.name)),
+    );
     if (matches.length !== 1) continue;
     const id = matches[0]!.id;
-    for (const entityId of group.entityIds) stagedCustomerEntityIdToLiveCustomerId.set(entityId, id);
+    for (const entityId of group.entityIds)
+      stagedCustomerEntityIdToLiveCustomerId.set(entityId, id);
   }
   return stagedCustomerEntityIdToLiveCustomerId;
 }
 
-function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntityRow, "id" | "source_external_id" | "normalized">>, vehicleRows: VehicleRow[]) {
-  const grouped = new Map<string, { entityIds: string[]; normalized: NormalizedVehicle }>();
+function buildGroupedVehicleLiveMap(
+  vehicleEntities: Array<
+    Pick<OnboardingEntityRow, "id" | "source_external_id" | "normalized">
+  >,
+  vehicleRows: VehicleRow[],
+) {
+  const grouped = new Map<
+    string,
+    { entityIds: string[]; normalized: NormalizedVehicle }
+  >();
   for (const entity of vehicleEntities) {
     const normalized = toNormalizedVehicle(entity);
     const key = vehicleIdentityKey(normalized) ?? `entity:${entity.id}`;
@@ -470,7 +676,8 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
     }
     existing.entityIds.push(entity.id);
     existing.normalized = {
-      sourceVehicleId: existing.normalized.sourceVehicleId ?? normalized.sourceVehicleId,
+      sourceVehicleId:
+        existing.normalized.sourceVehicleId ?? normalized.sourceVehicleId,
       vin: existing.normalized.vin ?? normalized.vin,
       plate: existing.normalized.plate ?? normalized.plate,
       unitNumber: existing.normalized.unitNumber ?? normalized.unitNumber,
@@ -483,38 +690,157 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
   const stagedVehicleEntityIdToLiveVehicleId = new Map<string, string>();
   for (const group of grouped.values()) {
     const descriptor = vehicleDescriptorKey(group.normalized);
-    const matches = vehicleRows.filter((row) =>
-      (group.normalized.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(group.normalized.sourceVehicleId))
-      || (group.normalized.vin && normalizeVin(row.vin) === group.normalized.vin)
-      || (group.normalized.plate && normalizePlate(row.license_plate) === group.normalized.plate)
-      || (group.normalized.unitNumber && normalizeLookup(row.unit_number) === group.normalized.unitNumber)
-      || (descriptor && vehicleDescriptorKey({ year: row.year, make: normalizeLookup(row.make), model: normalizeLookup(row.model) }) === descriptor));
+    const matches = vehicleRows.filter(
+      (row) =>
+        (group.normalized.sourceVehicleId &&
+          normalizeLookup(row.external_id) ===
+            normalizeLookup(group.normalized.sourceVehicleId)) ||
+        (group.normalized.vin &&
+          normalizeVin(row.vin) === group.normalized.vin) ||
+        (group.normalized.plate &&
+          normalizePlate(row.license_plate) === group.normalized.plate) ||
+        (group.normalized.unitNumber &&
+          normalizeLookup(row.unit_number) === group.normalized.unitNumber) ||
+        (descriptor &&
+          vehicleDescriptorKey({
+            year: row.year,
+            make: normalizeLookup(row.make),
+            model: normalizeLookup(row.model),
+          }) === descriptor),
+    );
     if (matches.length !== 1) continue;
     const id = matches[0]!.id;
-    for (const entityId of group.entityIds) stagedVehicleEntityIdToLiveVehicleId.set(entityId, id);
+    for (const entityId of group.entityIds)
+      stagedVehicleEntityIdToLiveVehicleId.set(entityId, id);
   }
   return stagedVehicleEntityIdToLiveVehicleId;
 }
 
-function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized" | "source_external_id" | "source_row_id">): NormalizedHistory {
+function toNormalizedHistory(
+  entity: Pick<
+    OnboardingEntityRow,
+    "normalized" | "source_external_id" | "source_row_id"
+  >,
+): NormalizedHistory {
   const normalized = (entity.normalized ?? {}) as JsonObject;
   const records = collectSearchRecords(normalized, {
     ...entity,
     display_name: null,
   });
-  const identifier = firstTextAlias(records, ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","order_number","orderNumber","invoice_number","invoiceNumber","reference","reference_number","source_work_order_id","sourceWorkOrderId","source_external_id","sourceExternalId","source_row_id","sourceRowId"]);
-  const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","created_at","createdAt","date","Date","service_date","serviceDate","serviceDateTime","repair_date","repairDate","work_order_date","workOrderDate","invoice_date","invoiceDate","posted_date","postedDate","completed_at","completedAt","completed_date","completedDate","closed_at","closedAt","closed_date","closedDate"]);
+  const identifier = firstTextAlias(records, [
+    "work_order_number",
+    "workOrderNumber",
+    "ro_number",
+    "roNumber",
+    "repair_order_number",
+    "repairOrderNumber",
+    "order_number",
+    "orderNumber",
+    "invoice_number",
+    "invoiceNumber",
+    "reference",
+    "reference_number",
+    "source_work_order_id",
+    "sourceWorkOrderId",
+    "source_external_id",
+    "sourceExternalId",
+    "source_row_id",
+    "sourceRowId",
+  ]);
+  const opened = firstDateAlias(records, [
+    "opened_at",
+    "openedAt",
+    "opened_date",
+    "openedDate",
+    "date_opened",
+    "dateOpened",
+    "created_at",
+    "createdAt",
+    "date",
+    "Date",
+    "service_date",
+    "serviceDate",
+    "serviceDateTime",
+    "repair_date",
+    "repairDate",
+    "work_order_date",
+    "workOrderDate",
+    "invoice_date",
+    "invoiceDate",
+    "posted_date",
+    "postedDate",
+    "completed_at",
+    "completedAt",
+    "completed_date",
+    "completedDate",
+    "closed_at",
+    "closedAt",
+    "closed_date",
+    "closedDate",
+  ]);
   return {
     sourceWorkOrderId: identifier.value,
-    invoiceNumber: firstTextAlias(records, ["invoiceNumber", "invoice_number", "invoiceId", "sourceInvoiceId", "sourceExternalId", "source_external_id"]).value,
+    invoiceNumber: firstTextAlias(records, [
+      "invoiceNumber",
+      "invoice_number",
+      "invoiceId",
+      "sourceInvoiceId",
+      "sourceExternalId",
+      "source_external_id",
+    ]).value,
     openedDate: opened.value,
-    closedDate: firstDateAlias(records, ["closedDate", "closedAt", "closed_date", "completedAt", "completed_date", "invoiceDate", "invoice_date"]).value,
-    customerName: firstTextAlias(records, ["customerName", "customer_name", "name", "businessName", "business_name", "company", "company_name"]).value,
-    customerEmail: firstTextAlias(records, ["customerEmail", "email"]).value?.toLowerCase() ?? null,
-    sourceCustomerId: firstTextAlias(records, ["sourceCustomerId", "source_customer_id", "customerId", "customer_id", "customerExternalId", "customer_external_id", "source_external_id"]).value,
-    sourceVehicleId: firstTextAlias(records, ["sourceVehicleId", "source_vehicle_id", "vehicleId", "vehicle_id", "vehicleExternalId", "vehicle_external_id", "source_external_id"]).value,
-    vehicleVin: firstTextAlias(records, ["vehicleVin", "vin"]).value?.toUpperCase() ?? null,
-    vehiclePlate: firstTextAlias(records, ["vehiclePlate", "vehicle_plate", "plate", "licensePlate", "license_plate"]).value?.toUpperCase() ?? null,
+    closedDate: firstDateAlias(records, [
+      "closedDate",
+      "closedAt",
+      "closed_date",
+      "completedAt",
+      "completed_date",
+      "invoiceDate",
+      "invoice_date",
+    ]).value,
+    customerName: firstTextAlias(records, [
+      "customerName",
+      "customer_name",
+      "name",
+      "businessName",
+      "business_name",
+      "company",
+      "company_name",
+    ]).value,
+    customerEmail:
+      firstTextAlias(records, [
+        "customerEmail",
+        "email",
+      ]).value?.toLowerCase() ?? null,
+    sourceCustomerId: firstTextAlias(records, [
+      "sourceCustomerId",
+      "source_customer_id",
+      "customerId",
+      "customer_id",
+      "customerExternalId",
+      "customer_external_id",
+      "source_external_id",
+    ]).value,
+    sourceVehicleId: firstTextAlias(records, [
+      "sourceVehicleId",
+      "source_vehicle_id",
+      "vehicleId",
+      "vehicle_id",
+      "vehicleExternalId",
+      "vehicle_external_id",
+      "source_external_id",
+    ]).value,
+    vehicleVin:
+      firstTextAlias(records, ["vehicleVin", "vin"]).value?.toUpperCase() ??
+      null,
+    vehiclePlate:
+      firstTextAlias(records, [
+        "vehiclePlate",
+        "vehicle_plate",
+        "plate",
+        "licensePlate",
+        "license_plate",
+      ]).value?.toUpperCase() ?? null,
     complaint: normalizeText(normalized.complaint) || null,
     correction: normalizeText(normalized.correction) || null,
     laborTotal: parseMoney(normalized.laborTotal ?? normalized.laborRaw),
@@ -532,12 +858,15 @@ type GroupedReviewBucket = {
   sampleEntityIds: string[];
 };
 
-function trackGroupedReview(grouped: Map<string, GroupedReviewBucket>, input: {
-  issueType: string;
-  summary: string;
-  entityId: string;
-  severity?: "low" | "medium" | "high" | "blocking";
-}) {
+function trackGroupedReview(
+  grouped: Map<string, GroupedReviewBucket>,
+  input: {
+    issueType: string;
+    summary: string;
+    entityId: string;
+    severity?: "low" | "medium" | "high" | "blocking";
+  },
+) {
   const existing = grouped.get(input.issueType) ?? {
     issueType: input.issueType,
     summary: input.summary,
@@ -546,19 +875,30 @@ function trackGroupedReview(grouped: Map<string, GroupedReviewBucket>, input: {
     sampleEntityIds: [],
   };
   existing.count += 1;
-  if (existing.sampleEntityIds.length < 5) existing.sampleEntityIds.push(input.entityId);
+  if (existing.sampleEntityIds.length < 5)
+    existing.sampleEntityIds.push(input.entityId);
   grouped.set(input.issueType, existing);
 }
 
-function endpointKind(entity: EntityShape | undefined): "history" | "customer" | "vehicle" | "unknown" {
+function endpointKind(
+  entity: EntityShape | undefined,
+): "history" | "customer" | "vehicle" | "unknown" {
   if (!entity) return "unknown";
   const type = normalizeLookup(entity.entity_type);
   const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
   if (type.includes("customer")) return "customer";
   if (type.includes("vehicle")) return "vehicle";
   if (type.includes("history") || type.includes("historical")) return "history";
-  if (normalizeLookup(entity.display_name).includes("history")) return "history";
-  if (normalized.sourceWorkOrderId || normalized.roNumber || normalized.invoiceNumber || normalized.openedDate || normalized.serviceDate) return "history";
+  if (normalizeLookup(entity.display_name).includes("history"))
+    return "history";
+  if (
+    normalized.sourceWorkOrderId ||
+    normalized.roNumber ||
+    normalized.invoiceNumber ||
+    normalized.openedDate ||
+    normalized.serviceDate
+  )
+    return "history";
   return "unknown";
 }
 
@@ -566,13 +906,18 @@ function bump(map: Record<string, number>, key: string) {
   map[key] = (map[key] ?? 0) + 1;
 }
 
-function toReviewItemDetails(details?: Record<string, unknown>): ReviewItemDetails {
+function toReviewItemDetails(
+  details?: Record<string, unknown>,
+): ReviewItemDetails {
   return (details ?? {}) as ReviewItemDetails;
 }
 
 const POSTGREST_IN_FILTER_CHUNK_SIZE = 100;
 
-function chunkValues<T>(values: T[], size = POSTGREST_IN_FILTER_CHUNK_SIZE): T[][] {
+function chunkValues<T>(
+  values: T[],
+  size = POSTGREST_IN_FILTER_CHUNK_SIZE,
+): T[][] {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) {
     chunks.push(values.slice(index, index + size));
@@ -590,7 +935,14 @@ function reviewItem(params: {
   severity?: "low" | "medium" | "high" | "blocking";
 }): OnboardingReviewItemInsert {
   return {
-    id: stableUuidFromParts(["onboarding-review", params.shopId, params.sessionId, "history", params.issueType, params.entityId]),
+    id: stableUuidFromParts([
+      "onboarding-review",
+      params.shopId,
+      params.sessionId,
+      "history",
+      params.issueType,
+      params.entityId,
+    ]),
     shop_id: params.shopId,
     session_id: params.sessionId,
     entity_id: params.entityId,
@@ -612,20 +964,28 @@ export async function activateOnboardingHistory(params: {
   startAfterId?: string | null;
 }): Promise<HistoryActivationResult> {
   const runtimeDiagnostics = {
-    activationModule: "features/onboarding-agent/server/activateOnboardingHistory.ts",
+    activationModule:
+      "features/onboarding-agent/server/activateOnboardingHistory.ts",
     diagnosticVersion: "history-endpoint-first-v3",
     executedAt: new Date().toISOString(),
   };
   const sb = params.supabase;
-  await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
+  await assertOnboardingSessionOwnership({
+    supabase: params.supabase,
+    shopId: params.shopId,
+    sessionId: params.sessionId,
+  });
 
-  const historyBatchLimit = typeof params.limit === "number" && Number.isFinite(params.limit)
-    ? Math.max(1, Math.floor(params.limit))
-    : 100;
+  const historyBatchLimit =
+    typeof params.limit === "number" && Number.isFinite(params.limit)
+      ? Math.max(1, Math.floor(params.limit))
+      : 100;
 
   let historyQuery = sb
     .from("onboarding_entities")
-    .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
+    .select(
+      "id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id",
+    )
     .eq("shop_id", params.shopId)
     .eq("session_id", params.sessionId)
     .in("entity_type", ["historical_work_order", "history"])
@@ -636,48 +996,65 @@ export async function activateOnboardingHistory(params: {
     historyQuery = historyQuery.gt("id", params.startAfterId);
   }
 
-  const [
-    historyBatchResult,
-    historyCountResult,
-    customerRows,
-    vehicleRows,
-  ] = await Promise.all([
-    historyQuery,
-    sb
-      .from("onboarding_entities")
-      .select("id", { head: true, count: "exact" })
-      .eq("shop_id", params.shopId)
-      .eq("session_id", params.sessionId)
-      .in("entity_type", ["historical_work_order", "history"]),
-    fetchAllPaginatedRows<CustomerRow>((from, to) =>
+  const [historyBatchResult, historyCountResult, customerRows, vehicleRows] =
+    await Promise.all([
+      historyQuery,
       sb
-        .from("customers")
-        .select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name")
+        .from("onboarding_entities")
+        .select("id", { head: true, count: "exact" })
         .eq("shop_id", params.shopId)
-        .order("id", { ascending: true })
-        .range(from, to)),
-    fetchAllPaginatedRows<VehicleRow>((from, to) =>
-      sb
-        .from("vehicles")
-        .select("id, external_id, vin, license_plate, unit_number, year, make, model, customer_id")
-        .eq("shop_id", params.shopId)
-        .order("id", { ascending: true })
-        .range(from, to)),
-  ]);
+        .eq("session_id", params.sessionId)
+        .in("entity_type", ["historical_work_order", "history"]),
+      fetchAllPaginatedRows<CustomerRow>((from, to) =>
+        sb
+          .from("customers")
+          .select(
+            "id, external_id, email, phone, phone_number, name, business_name, first_name, last_name",
+          )
+          .eq("shop_id", params.shopId)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      fetchAllPaginatedRows<VehicleRow>((from, to) =>
+        sb
+          .from("vehicles")
+          .select(
+            "id, external_id, vin, license_plate, unit_number, year, make, model, customer_id",
+          )
+          .eq("shop_id", params.shopId)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+    ]);
 
-  if (historyBatchResult.error) throw new Error(historyBatchResult.error.message);
-  if (historyCountResult.error) throw new Error(historyCountResult.error.message);
+  if (historyBatchResult.error)
+    throw new Error(historyBatchResult.error.message);
+  if (historyCountResult.error)
+    throw new Error(historyCountResult.error.message);
 
   const rawHistoryRows = (historyBatchResult.data ?? []) as EntityShape[];
   const hasMoreHistoryRows = rawHistoryRows.length > historyBatchLimit;
   const historyRows = rawHistoryRows.slice(0, historyBatchLimit);
-  const stagedHistoryRowsTotal = Number(historyCountResult.count ?? historyRows.length);
+  const stagedHistoryRowsTotal = Number(
+    historyCountResult.count ?? historyRows.length,
+  );
 
   const batchHistoryEntityIds = historyRows.map((row) => row.id);
 
-  let linkRows: Array<Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">> = [];
+  let linkRows: Array<
+    Pick<
+      OnboardingEntityLinkRow,
+      "id" | "from_entity_id" | "to_entity_id" | "link_type"
+    >
+  > = [];
   if (batchHistoryEntityIds.length > 0) {
-    const byId = new Map<string, Pick<OnboardingEntityLinkRow, "id" | "from_entity_id" | "to_entity_id" | "link_type">>();
+    const byId = new Map<
+      string,
+      Pick<
+        OnboardingEntityLinkRow,
+        "id" | "from_entity_id" | "to_entity_id" | "link_type"
+      >
+    >();
 
     for (const idChunk of chunkValues(batchHistoryEntityIds)) {
       const [fromLinkResult, toLinkResult] = await Promise.all([
@@ -702,7 +1079,10 @@ export async function activateOnboardingHistory(params: {
       if (fromLinkResult.error) throw new Error(fromLinkResult.error.message);
       if (toLinkResult.error) throw new Error(toLinkResult.error.message);
 
-      for (const row of [...(fromLinkResult.data ?? []), ...(toLinkResult.data ?? [])]) {
+      for (const row of [
+        ...(fromLinkResult.data ?? []),
+        ...(toLinkResult.data ?? []),
+      ]) {
         byId.set(row.id, row);
       }
     }
@@ -723,7 +1103,9 @@ export async function activateOnboardingHistory(params: {
     for (const idChunk of chunkValues([...endpointIds])) {
       const { data, error } = await sb
         .from("onboarding_entities")
-        .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
+        .select(
+          "id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id",
+        )
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .in("id", idChunk)
@@ -735,10 +1117,14 @@ export async function activateOnboardingHistory(params: {
       }
     }
 
-    endpointEntities = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+    endpointEntities = [...byId.values()].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
   }
 
-  const entityRows = endpointEntities.filter((row) => row.entity_type === "customer" || row.entity_type === "vehicle");
+  const entityRows = endpointEntities.filter(
+    (row) => row.entity_type === "customer" || row.entity_type === "vehicle",
+  );
 
   const reviewItems: OnboardingReviewItemInsert[] = [];
   const warnings: string[] = [];
@@ -788,17 +1174,32 @@ export async function activateOnboardingHistory(params: {
   let rowsMissingLiveCustomer = 0;
   let rowsMissingLiveVehicle = 0;
   let rowsMissingBoth = 0;
-  const unresolvedSamples: HistoryActivationResult["diagnostics"]["unresolvedSamples"] = [];
+  const unresolvedSamples: HistoryActivationResult["diagnostics"]["unresolvedSamples"] =
+    [];
   const linkedTripleSamples: Array<Record<string, unknown>> = [];
 
-  const customerWorkOrderLinks = linkRows.filter((row) => row.link_type === "customer_work_order").length;
-  const vehicleWorkOrderLinks = linkRows.filter((row) => row.link_type === "vehicle_work_order").length;
+  const customerWorkOrderLinks = linkRows.filter(
+    (row) => row.link_type === "customer_work_order",
+  ).length;
+  const vehicleWorkOrderLinks = linkRows.filter(
+    (row) => row.link_type === "vehicle_work_order",
+  ).length;
 
   const groupedReviewItems = new Map<string, GroupedReviewBucket>();
   const historyEntityIdSet = new Set(historyRows.map((row) => row.id));
-  const entityById = new Map<string, EntityShape>(endpointEntities.map((row) => [row.id, row]));
-  const customerEntityById = new Map(entityRows.filter((row) => row.entity_type === "customer").map((row) => [row.id, row]));
-  const vehicleEntityById = new Map(entityRows.filter((row) => row.entity_type === "vehicle").map((row) => [row.id, row]));
+  const entityById = new Map<string, EntityShape>(
+    endpointEntities.map((row) => [row.id, row]),
+  );
+  const customerEntityById = new Map(
+    entityRows
+      .filter((row) => row.entity_type === "customer")
+      .map((row) => [row.id, row]),
+  );
+  const vehicleEntityById = new Map(
+    entityRows
+      .filter((row) => row.entity_type === "vehicle")
+      .map((row) => [row.id, row]),
+  );
   const historyToCustomerEntityIds = new Map<string, Set<string>>();
   const historyToVehicleEntityIds = new Map<string, Set<string>>();
   const historyToCustomerDirection = new Map<string, string>();
@@ -816,28 +1217,56 @@ export async function activateOnboardingHistory(params: {
   const discoveredHistoryLikeEntityIds = new Set<string>();
   const discoveredCustomerLikeEntityIds = new Set<string>();
   const discoveredVehicleLikeEntityIds = new Set<string>();
-  const firstFiveLinkEndpointSamples: HistoryActivationResult["diagnostics"]["firstFiveLinkEndpointSamples"] = [];
-  const sampleResolvedHistoryLinks: HistoryActivationResult["diagnostics"]["sampleResolvedHistoryLinks"] = [];
+  const firstFiveLinkEndpointSamples: HistoryActivationResult["diagnostics"]["firstFiveLinkEndpointSamples"] =
+    [];
+  const sampleResolvedHistoryLinks: HistoryActivationResult["diagnostics"]["sampleResolvedHistoryLinks"] =
+    [];
 
   for (const link of linkRows) {
-    if (link.link_type !== "customer_work_order" && link.link_type !== "vehicle_work_order") continue;
+    if (
+      link.link_type !== "customer_work_order" &&
+      link.link_type !== "vehicle_work_order"
+    )
+      continue;
     const from = entityById.get(link.from_entity_id);
     const to = entityById.get(link.to_entity_id);
     if (firstFiveLinkEndpointSamples.length < 5) {
-      firstFiveLinkEndpointSamples.push({ linkId: link.id, linkType: link.link_type, fromEntityId: link.from_entity_id, toEntityId: link.to_entity_id, fromEntityType: from?.entity_type ?? null, toEntityType: to?.entity_type ?? null, fromStatus: from?.status ?? null, toStatus: to?.status ?? null, fromSourceRowId: from?.source_row_id ?? null, toSourceRowId: to?.source_row_id ?? null, fromSourceExternalId: from?.source_external_id ?? null, toSourceExternalId: to?.source_external_id ?? null });
+      firstFiveLinkEndpointSamples.push({
+        linkId: link.id,
+        linkType: link.link_type,
+        fromEntityId: link.from_entity_id,
+        toEntityId: link.to_entity_id,
+        fromEntityType: from?.entity_type ?? null,
+        toEntityType: to?.entity_type ?? null,
+        fromStatus: from?.status ?? null,
+        toStatus: to?.status ?? null,
+        fromSourceRowId: from?.source_row_id ?? null,
+        toSourceRowId: to?.source_row_id ?? null,
+        fromSourceExternalId: from?.source_external_id ?? null,
+        toSourceExternalId: to?.source_external_id ?? null,
+      });
     }
     const fromType = from?.entity_type ?? "missing";
     const toType = to?.entity_type ?? "missing";
     bump(linkEndpointEntityTypesByCount, fromType);
     bump(linkEndpointEntityTypesByCount, toType);
-    if (link.link_type === "customer_work_order") { bump(customerWorkOrderEndpointTypesByCount, fromType); bump(customerWorkOrderEndpointTypesByCount, toType); }
-    if (link.link_type === "vehicle_work_order") { bump(vehicleWorkOrderEndpointTypesByCount, fromType); bump(vehicleWorkOrderEndpointTypesByCount, toType); }
-    if (historyEntityIdSet.has(link.from_entity_id)) linksPointingToFetchedHistoryIdsFrom += 1;
-    if (historyEntityIdSet.has(link.to_entity_id)) linksPointingToFetchedHistoryIdsTo += 1;
+    if (link.link_type === "customer_work_order") {
+      bump(customerWorkOrderEndpointTypesByCount, fromType);
+      bump(customerWorkOrderEndpointTypesByCount, toType);
+    }
+    if (link.link_type === "vehicle_work_order") {
+      bump(vehicleWorkOrderEndpointTypesByCount, fromType);
+      bump(vehicleWorkOrderEndpointTypesByCount, toType);
+    }
+    if (historyEntityIdSet.has(link.from_entity_id))
+      linksPointingToFetchedHistoryIdsFrom += 1;
+    if (historyEntityIdSet.has(link.to_entity_id))
+      linksPointingToFetchedHistoryIdsTo += 1;
     if (!from || !to) continue;
     const fromKind = endpointKind(from);
     const toKind = endpointKind(to);
-    if (fromKind === "history" || toKind === "history") linksPointingToDiscoveredHistoryLikeEntities += 1;
+    if (fromKind === "history" || toKind === "history")
+      linksPointingToDiscoveredHistoryLikeEntities += 1;
     if (fromKind === "history") discoveredHistoryLikeEntityIds.add(from.id);
     if (toKind === "history") discoveredHistoryLikeEntityIds.add(to.id);
     if (fromKind === "customer") discoveredCustomerLikeEntityIds.add(from.id);
@@ -846,12 +1275,28 @@ export async function activateOnboardingHistory(params: {
     if (toKind === "vehicle") discoveredVehicleLikeEntityIds.add(to.id);
 
     if (link.link_type === "customer_work_order") {
-      if (fromKind === "history" && toKind === "customer") { pushMapValue(historyToCustomerEntityIds, from.id, to.id); historyToCustomerDirection.set(from.id, "history_to_customer"); customerLinksResolvedByEndpointClassification += 1; }
-      if (toKind === "history" && fromKind === "customer") { pushMapValue(historyToCustomerEntityIds, to.id, from.id); historyToCustomerDirection.set(to.id, "customer_to_history"); customerLinksResolvedByEndpointClassification += 1; }
+      if (fromKind === "history" && toKind === "customer") {
+        pushMapValue(historyToCustomerEntityIds, from.id, to.id);
+        historyToCustomerDirection.set(from.id, "history_to_customer");
+        customerLinksResolvedByEndpointClassification += 1;
+      }
+      if (toKind === "history" && fromKind === "customer") {
+        pushMapValue(historyToCustomerEntityIds, to.id, from.id);
+        historyToCustomerDirection.set(to.id, "customer_to_history");
+        customerLinksResolvedByEndpointClassification += 1;
+      }
     }
     if (link.link_type === "vehicle_work_order") {
-      if (fromKind === "history" && toKind === "vehicle") { pushMapValue(historyToVehicleEntityIds, from.id, to.id); historyToVehicleDirection.set(from.id, "history_to_vehicle"); vehicleLinksResolvedByEndpointClassification += 1; }
-      if (toKind === "history" && fromKind === "vehicle") { pushMapValue(historyToVehicleEntityIds, to.id, from.id); historyToVehicleDirection.set(to.id, "vehicle_to_history"); vehicleLinksResolvedByEndpointClassification += 1; }
+      if (fromKind === "history" && toKind === "vehicle") {
+        pushMapValue(historyToVehicleEntityIds, from.id, to.id);
+        historyToVehicleDirection.set(from.id, "history_to_vehicle");
+        vehicleLinksResolvedByEndpointClassification += 1;
+      }
+      if (toKind === "history" && fromKind === "vehicle") {
+        pushMapValue(historyToVehicleEntityIds, to.id, from.id);
+        historyToVehicleDirection.set(to.id, "vehicle_to_history");
+        vehicleLinksResolvedByEndpointClassification += 1;
+      }
     }
   }
   for (const id of historyToCustomerEntityIds.keys()) {
@@ -859,39 +1304,66 @@ export async function activateOnboardingHistory(params: {
     else historyLinkedViaSparseDuplicateCount += 1;
   }
 
-  const stagedCustomerEntityIdToLiveCustomerId = buildGroupedCustomerLiveMap([...customerEntityById.values()], customerRows);
+  const stagedCustomerEntityIdToLiveCustomerId = buildGroupedCustomerLiveMap(
+    [...customerEntityById.values()],
+    customerRows,
+  );
   const stagedCustomerSourceRowIdToLiveCustomerId = new Map<string, string>();
   const stagedCustomerExternalIdToLiveCustomerId = new Map<string, string>();
   for (const entity of customerEntityById.values()) {
-    const resolvedId = liveIdFromCanonicalBridge(entity, "customers") ?? stagedCustomerEntityIdToLiveCustomerId.get(entity.id);
+    const resolvedId =
+      liveIdFromCanonicalBridge(entity, "customers") ??
+      stagedCustomerEntityIdToLiveCustomerId.get(entity.id);
     if (!resolvedId) continue;
     stagedCustomerEntityIdToLiveCustomerId.set(entity.id, resolvedId);
     const sourceRowKey = normalizeText(entity.source_row_id);
-    if (sourceRowKey) stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolvedId);
+    if (sourceRowKey)
+      stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
-    if (externalKey) stagedCustomerExternalIdToLiveCustomerId.set(externalKey, resolvedId);
+    if (externalKey)
+      stagedCustomerExternalIdToLiveCustomerId.set(externalKey, resolvedId);
   }
 
-  const stagedVehicleEntityIdToLiveVehicleId = buildGroupedVehicleLiveMap([...vehicleEntityById.values()], vehicleRows);
+  const stagedVehicleEntityIdToLiveVehicleId = buildGroupedVehicleLiveMap(
+    [...vehicleEntityById.values()],
+    vehicleRows,
+  );
   const stagedVehicleSourceRowIdToLiveVehicleId = new Map<string, string>();
   const stagedVehicleExternalIdToLiveVehicleId = new Map<string, string>();
   const stagedVehicleVinToLiveVehicleId = new Map<string, string>();
   for (const entity of vehicleEntityById.values()) {
-    const resolvedId = liveIdFromCanonicalBridge(entity, "vehicles") ?? stagedVehicleEntityIdToLiveVehicleId.get(entity.id);
+    const resolvedId =
+      liveIdFromCanonicalBridge(entity, "vehicles") ??
+      stagedVehicleEntityIdToLiveVehicleId.get(entity.id);
     if (!resolvedId) continue;
     stagedVehicleEntityIdToLiveVehicleId.set(entity.id, resolvedId);
     const sourceRowKey = normalizeText(entity.source_row_id);
-    if (sourceRowKey) stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolvedId);
+    if (sourceRowKey)
+      stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
-    if (externalKey) stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolvedId);
-    const normalized = entity.normalized && typeof entity.normalized === "object" && !Array.isArray(entity.normalized)
-      ? entity.normalized as Record<string, unknown>
-      : {};
+    if (externalKey)
+      stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolvedId);
+    const normalized =
+      entity.normalized &&
+      typeof entity.normalized === "object" &&
+      !Array.isArray(entity.normalized)
+        ? (entity.normalized as Record<string, unknown>)
+        : {};
     const vinKey = normalizeVin(normalized.vin);
     if (vinKey) stagedVehicleVinToLiveVehicleId.set(vinKey, resolvedId);
   }
 
-  const combinedHistoryRows = new Map<string, Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_row_id" | "source_external_id">>();
+  const combinedHistoryRows = new Map<
+    string,
+    Pick<
+      OnboardingEntityRow,
+      | "id"
+      | "normalized"
+      | "entity_type"
+      | "source_row_id"
+      | "source_external_id"
+    >
+  >();
   for (const row of historyRows) combinedHistoryRows.set(row.id, row);
   for (const discoveredId of discoveredHistoryLikeEntityIds) {
     if (combinedHistoryRows.has(discoveredId)) continue;
@@ -908,12 +1380,19 @@ export async function activateOnboardingHistory(params: {
   const historyCanonicalBySourceRow = new Map<string, string>();
   for (const row of combinedHistoryRows.values()) {
     const sourceRow = normalizeText(row.source_row_id);
-    if (sourceRow && row.entity_type === "historical_work_order") historyCanonicalBySourceRow.set(sourceRow, row.id);
+    if (sourceRow && row.entity_type === "historical_work_order")
+      historyCanonicalBySourceRow.set(sourceRow, row.id);
   }
-  const remapHistoryLinkMapToCanonical = (sourceMap: Map<string, Set<string>>) => {
+  const remapHistoryLinkMapToCanonical = (
+    sourceMap: Map<string, Set<string>>,
+  ) => {
     for (const [historyEntityId, linkedIds] of [...sourceMap.entries()]) {
-      const sourceRow = normalizeText(combinedHistoryRows.get(historyEntityId)?.source_row_id);
-      const canonicalId = (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
+      const sourceRow = normalizeText(
+        combinedHistoryRows.get(historyEntityId)?.source_row_id,
+      );
+      const canonicalId =
+        (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) ||
+        historyEntityId;
       if (canonicalId === historyEntityId) continue;
       const current = sourceMap.get(canonicalId) ?? new Set<string>();
       for (const linkedId of linkedIds) current.add(linkedId);
@@ -923,19 +1402,37 @@ export async function activateOnboardingHistory(params: {
   remapHistoryLinkMapToCanonical(historyToCustomerEntityIds);
   remapHistoryLinkMapToCanonical(historyToVehicleEntityIds);
   const resolveCanonicalHistoryId = (historyEntityId: string): string => {
-    if (combinedHistoryRows.get(historyEntityId)?.entity_type === "historical_work_order") return historyEntityId;
-    const sourceRow = normalizeText(combinedHistoryRows.get(historyEntityId)?.source_row_id);
-    return (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) || historyEntityId;
+    if (
+      combinedHistoryRows.get(historyEntityId)?.entity_type ===
+      "historical_work_order"
+    )
+      return historyEntityId;
+    const sourceRow = normalizeText(
+      combinedHistoryRows.get(historyEntityId)?.source_row_id,
+    );
+    return (
+      (sourceRow && historyCanonicalBySourceRow.get(sourceRow)) ||
+      historyEntityId
+    );
   };
 
-  const orderedHistoryRows = [...historyRows].sort((a, b) => a.id.localeCompare(b.id));
+  const orderedHistoryRows = [...historyRows].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  );
   const historyRowsForThisRun = orderedHistoryRows;
   const lastProcessedHistoryRow = historyRowsForThisRun.at(-1) ?? null;
-  const nextCursor = hasMoreHistoryRows ? lastProcessedHistoryRow?.id ?? params.startAfterId ?? null : null;
+  const nextCursor = hasMoreHistoryRows
+    ? (lastProcessedHistoryRow?.id ?? params.startAfterId ?? null)
+    : null;
   const completed = !hasMoreHistoryRows;
 
   const existingSourceRowKeys = historyRowsForThisRun.map((row) =>
-    stableUuidFromParts([params.shopId, params.sessionId, "history", resolveCanonicalHistoryId(row.id)]),
+    stableUuidFromParts([
+      params.shopId,
+      params.sessionId,
+      "history",
+      resolveCanonicalHistoryId(row.id),
+    ]),
   );
   const existingCustomIds = historyRowsForThisRun
     .map((row) => {
@@ -947,30 +1444,38 @@ export async function activateOnboardingHistory(params: {
   const [existingBySourceResult, existingByCustomIdResult] = await Promise.all([
     existingSourceRowKeys.length > 0
       ? sb
-        .from("work_orders")
-        .select("id, source_row_id, custom_id")
-        .eq("shop_id", params.shopId)
-        .in("source_row_id", existingSourceRowKeys)
+          .from("work_orders")
+          .select("id, source_row_id, custom_id")
+          .eq("shop_id", params.shopId)
+          .in("source_row_id", existingSourceRowKeys)
       : Promise.resolve({ data: [], error: null }),
     existingCustomIds.length > 0
       ? sb
-        .from("work_orders")
-        .select("id, source_row_id, custom_id")
-        .eq("shop_id", params.shopId)
-        .in("custom_id", existingCustomIds)
+          .from("work_orders")
+          .select("id, source_row_id, custom_id")
+          .eq("shop_id", params.shopId)
+          .in("custom_id", existingCustomIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (existingBySourceResult.error) throw new Error(existingBySourceResult.error.message);
-  if (existingByCustomIdResult.error) throw new Error(existingByCustomIdResult.error.message);
+  if (existingBySourceResult.error)
+    throw new Error(existingBySourceResult.error.message);
+  if (existingByCustomIdResult.error)
+    throw new Error(existingByCustomIdResult.error.message);
 
   const existingSourceRowIdSet = new Set(
-    [...(existingBySourceResult.data ?? []), ...(existingByCustomIdResult.data ?? [])]
+    [
+      ...(existingBySourceResult.data ?? []),
+      ...(existingByCustomIdResult.data ?? []),
+    ]
       .map((row) => row.source_row_id)
       .filter((value): value is string => Boolean(value)),
   );
   const existingCustomIdSet = new Set(
-    [...(existingBySourceResult.data ?? []), ...(existingByCustomIdResult.data ?? [])]
+    [
+      ...(existingBySourceResult.data ?? []),
+      ...(existingByCustomIdResult.data ?? []),
+    ]
       .map((row) => normalizeLookup(row.custom_id))
       .filter(Boolean),
   );
@@ -978,17 +1483,36 @@ export async function activateOnboardingHistory(params: {
   let historyRowsWithBothLinkedEntities = 0;
   for (const entity of historyRowsForThisRun) {
     const history = toNormalizedHistory(entity);
-    const layerRecords = collectSearchRecords((entity.normalized ?? {}) as JsonObject, {
-      ...entity,
-      display_name: null,
-    });
-    const layerKeySamples = layerRecords.slice(0, 4).map((record, index) => ({ layerIndex: index, keys: Object.keys(record).slice(0, 20) }));
-    if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
+    const layerRecords = collectSearchRecords(
+      (entity.normalized ?? {}) as JsonObject,
+      {
+        ...entity,
+        display_name: null,
+      },
+    );
+    const layerKeySamples = layerRecords.slice(0, 4).map((record, index) => ({
+      layerIndex: index,
+      keys: Object.keys(record).slice(0, 20),
+    }));
+    if (
+      !history.sourceWorkOrderId &&
+      !history.invoiceNumber &&
+      !history.openedDate
+    ) {
       skipped += 1;
       skippedMissingIdentifier += 1;
       historyRowsMissingUsableIdentifier += 1;
       needsReview += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "missing_required_history_identifier", summary: "Historical row skipped: missing identifier.", severity: "high" }));
+      reviewItems.push(
+        reviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: "missing_required_history_identifier",
+          summary: "Historical row skipped: missing identifier.",
+          severity: "high",
+        }),
+      );
       if (unresolvedSamples.length < 5) {
         unresolvedSamples.push({
           historyEntityId: entity.id,
@@ -1001,121 +1525,255 @@ export async function activateOnboardingHistory(params: {
           customerResolutionAttemptedKeys: [],
           vehicleResolutionAttemptedKeys: [],
           finalSkipReason: "missing_required_history_identifier",
-          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
+          normalizedKeysSample: Object.keys(
+            (entity.normalized ?? {}) as Record<string, unknown>,
+          ).slice(0, 12),
           searchLayerKeySamples: layerKeySamples,
         });
       }
       continue;
     }
-    const effectiveOpenedDate = history.openedDate ?? history.closedDate ?? fallbackHistoryDate({
-      sourceExternalId: normalizeText(entity.source_external_id) || history.invoiceNumber || history.sourceWorkOrderId,
-      sourceRowId: normalizeText(entity.source_row_id) || entity.id,
-    });
+    const effectiveOpenedDate =
+      history.openedDate ??
+      history.closedDate ??
+      fallbackHistoryDate({
+        sourceExternalId:
+          normalizeText(entity.source_external_id) ||
+          history.invoiceNumber ||
+          history.sourceWorkOrderId,
+        sourceRowId: normalizeText(entity.source_row_id) || entity.id,
+      });
 
     if (!history.openedDate) {
       skippedInvalidDate += 1;
       historyRowsMissingUsableDate += 1;
       needsReview += 1;
-      reviewItems.push(reviewItem({
-        shopId: params.shopId,
-        sessionId: params.sessionId,
+      trackGroupedReview(groupedReviewItems, {
         entityId: entity.id,
         issueType: "missing_history_opened_date",
-        summary: "Historical row imported with a fallback date because no opened/service date was available.",
-        details: {
-          fallbackOpenedDate: effectiveOpenedDate,
-          sourceExternalId: normalizeText(entity.source_external_id) || null,
-          sourceRowId: normalizeText(entity.source_row_id) || null,
-        },
+        summary:
+          "Historical work orders had no usable opened/service date, so the import used a deterministic fallback date.",
         severity: "low",
-      }));
+      });
     }
     if (history.total !== null && history.total < 0) {
       skippedInvalidTotal += 1;
-      reviewItems.push(reviewItem({ shopId: params.shopId, sessionId: params.sessionId, entityId: entity.id, issueType: "invalid_history_total", summary: "Historical row has invalid total.", details: { total: history.total } }));
+      reviewItems.push(
+        reviewItem({
+          shopId: params.shopId,
+          sessionId: params.sessionId,
+          entityId: entity.id,
+          issueType: "invalid_history_total",
+          summary: "Historical row has invalid total.",
+          details: { total: history.total },
+        }),
+      );
       needsReview += 1;
     }
 
     const canonicalHistoryId = resolveCanonicalHistoryId(entity.id);
-    const stagedCustomerLink = mapSingleValue(historyToCustomerEntityIds, canonicalHistoryId);
-    const stagedVehicleLink = mapSingleValue(historyToVehicleEntityIds, canonicalHistoryId);
+    const stagedCustomerLink = mapSingleValue(
+      historyToCustomerEntityIds,
+      canonicalHistoryId,
+    );
+    const stagedVehicleLink = mapSingleValue(
+      historyToVehicleEntityIds,
+      canonicalHistoryId,
+    );
     if (stagedCustomerLink.id) historyRowsWithCustomerLink += 1;
     if (stagedVehicleLink.id) historyRowsWithVehicleLink += 1;
-    if (stagedCustomerLink.id && stagedVehicleLink.id) historyRowsWithBothLinkedEntities += 1;
-    if (sampleResolvedHistoryLinks.length < 5) sampleResolvedHistoryLinks.push({ historyEntityId: entity.id, linkedCustomerEntityId: stagedCustomerLink.id ?? null, linkedVehicleEntityId: stagedVehicleLink.id ?? null, customerLinkDirection: historyToCustomerDirection.get(canonicalHistoryId) ?? null, vehicleLinkDirection: historyToVehicleDirection.get(canonicalHistoryId) ?? null });
-    const linkedStagedCustomer = stagedCustomerLink.id ? customerEntityById.get(stagedCustomerLink.id) ?? null : null;
-    const linkedStagedVehicle = stagedVehicleLink.id ? vehicleEntityById.get(stagedVehicleLink.id) ?? null : null;
+    if (stagedCustomerLink.id && stagedVehicleLink.id)
+      historyRowsWithBothLinkedEntities += 1;
+    if (sampleResolvedHistoryLinks.length < 5)
+      sampleResolvedHistoryLinks.push({
+        historyEntityId: entity.id,
+        linkedCustomerEntityId: stagedCustomerLink.id ?? null,
+        linkedVehicleEntityId: stagedVehicleLink.id ?? null,
+        customerLinkDirection:
+          historyToCustomerDirection.get(canonicalHistoryId) ?? null,
+        vehicleLinkDirection:
+          historyToVehicleDirection.get(canonicalHistoryId) ?? null,
+      });
+    const linkedStagedCustomer = stagedCustomerLink.id
+      ? (customerEntityById.get(stagedCustomerLink.id) ?? null)
+      : null;
+    const linkedStagedVehicle = stagedVehicleLink.id
+      ? (vehicleEntityById.get(stagedVehicleLink.id) ?? null)
+      : null;
     if (linkedStagedCustomer) linkedCustomerStagedEntitiesFound += 1;
     if (linkedStagedVehicle) linkedVehicleStagedEntitiesFound += 1;
 
-    const customerCanonicalId = liveIdFromCanonicalBridge(linkedStagedCustomer, "customers");
-    const vehicleCanonicalId = liveIdFromCanonicalBridge(linkedStagedVehicle, "vehicles");
+    const customerCanonicalId = liveIdFromCanonicalBridge(
+      linkedStagedCustomer,
+      "customers",
+    );
+    const vehicleCanonicalId = liveIdFromCanonicalBridge(
+      linkedStagedVehicle,
+      "vehicles",
+    );
     const customerResolvedByLink = customerCanonicalId
       ? { id: customerCanonicalId, ambiguous: false }
-      : resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
+      : resolveLiveCustomerIdFromStagedEntity(
+          linkedStagedCustomer,
+          customerRows,
+        );
     const vehicleResolvedByLink = vehicleCanonicalId
       ? { id: vehicleCanonicalId, ambiguous: false }
       : resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
     if (linkedTripleSamples.length < 5) {
       linkedTripleSamples.push({
-        historyEntityId: entity.id, historyEntityType: entity.entity_type, historyStatus: (entityById.get(entity.id)?.status ?? null),
-        historySourceRowId: entity.source_row_id, historySourceExternalId: entity.source_external_id, historyDisplayName: entityById.get(entity.id)?.display_name ?? null,
-        historyNormalizedKeys: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 20),
-        linkedCustomerEntityId: linkedStagedCustomer?.id ?? null, linkedCustomerEntityType: linkedStagedCustomer?.entity_type ?? null, linkedCustomerStatus: linkedStagedCustomer?.status ?? null,
-        linkedVehicleEntityId: linkedStagedVehicle?.id ?? null, linkedVehicleEntityType: linkedStagedVehicle?.entity_type ?? null, linkedVehicleStatus: linkedStagedVehicle?.status ?? null,
-        liveCustomerLookupResult: { method: customerCanonicalId ? "canonical_bridge" : customerResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(customerResolvedByLink.id) },
-        liveVehicleLookupResult: { method: vehicleCanonicalId ? "canonical_bridge" : vehicleResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(vehicleResolvedByLink.id) },
+        historyEntityId: entity.id,
+        historyEntityType: entity.entity_type,
+        historyStatus: entityById.get(entity.id)?.status ?? null,
+        historySourceRowId: entity.source_row_id,
+        historySourceExternalId: entity.source_external_id,
+        historyDisplayName: entityById.get(entity.id)?.display_name ?? null,
+        historyNormalizedKeys: Object.keys(
+          (entity.normalized ?? {}) as Record<string, unknown>,
+        ).slice(0, 20),
+        linkedCustomerEntityId: linkedStagedCustomer?.id ?? null,
+        linkedCustomerEntityType: linkedStagedCustomer?.entity_type ?? null,
+        linkedCustomerStatus: linkedStagedCustomer?.status ?? null,
+        linkedVehicleEntityId: linkedStagedVehicle?.id ?? null,
+        linkedVehicleEntityType: linkedStagedVehicle?.entity_type ?? null,
+        linkedVehicleStatus: linkedStagedVehicle?.status ?? null,
+        liveCustomerLookupResult: {
+          method: customerCanonicalId
+            ? "canonical_bridge"
+            : customerResolvedByLink.id
+              ? "staged_entity_lookup"
+              : "none",
+          matchedId: Boolean(customerResolvedByLink.id),
+        },
+        liveVehicleLookupResult: {
+          method: vehicleCanonicalId
+            ? "canonical_bridge"
+            : vehicleResolvedByLink.id
+              ? "staged_entity_lookup"
+              : "none",
+          matchedId: Boolean(vehicleResolvedByLink.id),
+        },
       });
     }
 
-    let customerId = customerResolvedByLink.id
-      ?? (stagedCustomerLink.id ? stagedCustomerEntityIdToLiveCustomerId.get(stagedCustomerLink.id) ?? null : null)
-      ?? (stagedCustomerLink.id ? stagedCustomerSourceRowIdToLiveCustomerId.get(normalizeText(customerEntityById.get(stagedCustomerLink.id)?.source_row_id)) ?? null : null)
-      ?? (stagedCustomerLink.id ? stagedCustomerExternalIdToLiveCustomerId.get(normalizeLookup(customerEntityById.get(stagedCustomerLink.id)?.source_external_id)) ?? null : null);
-    let vehicleId = vehicleResolvedByLink.id
-      ?? (stagedVehicleLink.id ? stagedVehicleEntityIdToLiveVehicleId.get(stagedVehicleLink.id) ?? null : null)
-      ?? (stagedVehicleLink.id ? stagedVehicleSourceRowIdToLiveVehicleId.get(normalizeText(vehicleEntityById.get(stagedVehicleLink.id)?.source_row_id)) ?? null : null)
-      ?? (stagedVehicleLink.id ? stagedVehicleExternalIdToLiveVehicleId.get(normalizeLookup(vehicleEntityById.get(stagedVehicleLink.id)?.source_external_id)) ?? null : null);
+    let customerId =
+      customerResolvedByLink.id ??
+      (stagedCustomerLink.id
+        ? (stagedCustomerEntityIdToLiveCustomerId.get(stagedCustomerLink.id) ??
+          null)
+        : null) ??
+      (stagedCustomerLink.id
+        ? (stagedCustomerSourceRowIdToLiveCustomerId.get(
+            normalizeText(
+              customerEntityById.get(stagedCustomerLink.id)?.source_row_id,
+            ),
+          ) ?? null)
+        : null) ??
+      (stagedCustomerLink.id
+        ? (stagedCustomerExternalIdToLiveCustomerId.get(
+            normalizeLookup(
+              customerEntityById.get(stagedCustomerLink.id)?.source_external_id,
+            ),
+          ) ?? null)
+        : null);
+    let vehicleId =
+      vehicleResolvedByLink.id ??
+      (stagedVehicleLink.id
+        ? (stagedVehicleEntityIdToLiveVehicleId.get(stagedVehicleLink.id) ??
+          null)
+        : null) ??
+      (stagedVehicleLink.id
+        ? (stagedVehicleSourceRowIdToLiveVehicleId.get(
+            normalizeText(
+              vehicleEntityById.get(stagedVehicleLink.id)?.source_row_id,
+            ),
+          ) ?? null)
+        : null) ??
+      (stagedVehicleLink.id
+        ? (stagedVehicleExternalIdToLiveVehicleId.get(
+            normalizeLookup(
+              vehicleEntityById.get(stagedVehicleLink.id)?.source_external_id,
+            ),
+          ) ?? null)
+        : null);
 
-    if (customerId && stagedCustomerLink.id) resolvedViaCustomerWorkOrderLink += 1;
+    if (customerId && stagedCustomerLink.id)
+      resolvedViaCustomerWorkOrderLink += 1;
     if (vehicleId && stagedVehicleLink.id) resolvedViaVehicleWorkOrderLink += 1;
 
     if (!customerId) {
-      const fallbackCustomerMatches = customerRows.filter((row) =>
-        (history.sourceCustomerId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceCustomerId))
-        || (history.customerEmail && normalizeLookup(row.email) === normalizeLookup(history.customerEmail))
-        || (history.customerName && normalizeLookup(row.business_name || row.name || `${row.first_name ?? ""} ${row.last_name ?? ""}`) === normalizeLookup(history.customerName)));
-      if (fallbackCustomerMatches.length === 1) customerId = fallbackCustomerMatches[0]!.id;
-      else if (fallbackCustomerMatches.length > 1 && !customerResolvedByLink.ambiguous) customerResolvedByLink.ambiguous = true;
+      const fallbackCustomerMatches = customerRows.filter(
+        (row) =>
+          (history.sourceCustomerId &&
+            normalizeLookup(row.external_id) ===
+              normalizeLookup(history.sourceCustomerId)) ||
+          (history.customerEmail &&
+            normalizeLookup(row.email) ===
+              normalizeLookup(history.customerEmail)) ||
+          (history.customerName &&
+            normalizeLookup(
+              row.business_name ||
+                row.name ||
+                `${row.first_name ?? ""} ${row.last_name ?? ""}`,
+            ) === normalizeLookup(history.customerName)),
+      );
+      if (fallbackCustomerMatches.length === 1)
+        customerId = fallbackCustomerMatches[0]!.id;
+      else if (
+        fallbackCustomerMatches.length > 1 &&
+        !customerResolvedByLink.ambiguous
+      )
+        customerResolvedByLink.ambiguous = true;
     }
     if (!vehicleId) {
-      const fallbackVehicleMatches = vehicleRows.filter((row) =>
-        (history.sourceVehicleId && normalizeLookup(row.external_id) === normalizeLookup(history.sourceVehicleId))
-        || (history.vehicleVin && normalizeVin(row.vin) === normalizeVin(history.vehicleVin))
-        || (history.vehiclePlate && normalizePlate(row.license_plate) === normalizePlate(history.vehiclePlate)));
+      const fallbackVehicleMatches = vehicleRows.filter(
+        (row) =>
+          (history.sourceVehicleId &&
+            normalizeLookup(row.external_id) ===
+              normalizeLookup(history.sourceVehicleId)) ||
+          (history.vehicleVin &&
+            normalizeVin(row.vin) === normalizeVin(history.vehicleVin)) ||
+          (history.vehiclePlate &&
+            normalizePlate(row.license_plate) ===
+              normalizePlate(history.vehiclePlate)),
+      );
       if (!vehicleId && history.vehicleVin) {
-        const byStagedVin = stagedVehicleVinToLiveVehicleId.get(normalizeVin(history.vehicleVin) ?? "");
+        const byStagedVin = stagedVehicleVinToLiveVehicleId.get(
+          normalizeVin(history.vehicleVin) ?? "",
+        );
         if (byStagedVin) vehicleId = byStagedVin;
       }
-      if (fallbackVehicleMatches.length === 1) vehicleId = fallbackVehicleMatches[0]!.id;
-      else if (fallbackVehicleMatches.length > 1 && !vehicleResolvedByLink.ambiguous) vehicleResolvedByLink.ambiguous = true;
+      if (fallbackVehicleMatches.length === 1)
+        vehicleId = fallbackVehicleMatches[0]!.id;
+      else if (
+        fallbackVehicleMatches.length > 1 &&
+        !vehicleResolvedByLink.ambiguous
+      )
+        vehicleResolvedByLink.ambiguous = true;
     }
 
     if (customerId) customerLinksResolved += 1;
     if (vehicleId) vehicleLinksResolved += 1;
-    if (history.identifierAliasUsed) historyIdentifierResolvedByAlias[history.identifierAliasUsed] = (historyIdentifierResolvedByAlias[history.identifierAliasUsed] ?? 0) + 1;
-    if (history.openedDateAliasUsed) historyDateResolvedByAlias[history.openedDateAliasUsed] = (historyDateResolvedByAlias[history.openedDateAliasUsed] ?? 0) + 1;
+    if (history.identifierAliasUsed)
+      historyIdentifierResolvedByAlias[history.identifierAliasUsed] =
+        (historyIdentifierResolvedByAlias[history.identifierAliasUsed] ?? 0) +
+        1;
+    if (history.openedDateAliasUsed)
+      historyDateResolvedByAlias[history.openedDateAliasUsed] =
+        (historyDateResolvedByAlias[history.openedDateAliasUsed] ?? 0) + 1;
     if (customerId) {
       linkedCustomerLiveResolved += 1;
       if (customerCanonicalId) linkedCustomerLiveResolvedByCanonicalBridge += 1;
-      else if (history.sourceCustomerId) linkedCustomerLiveResolvedBySourceExternalId += 1;
+      else if (history.sourceCustomerId)
+        linkedCustomerLiveResolvedBySourceExternalId += 1;
       else if (history.customerEmail) linkedCustomerLiveResolvedByEmail += 1;
       else if (history.customerName) linkedCustomerLiveResolvedByName += 1;
     }
     if (vehicleId) {
       linkedVehicleLiveResolved += 1;
       if (vehicleCanonicalId) linkedVehicleLiveResolvedByCanonicalBridge += 1;
-      else if (history.sourceVehicleId) linkedVehicleLiveResolvedBySourceExternalId += 1;
+      else if (history.sourceVehicleId)
+        linkedVehicleLiveResolvedBySourceExternalId += 1;
       else if (history.vehicleVin) linkedVehicleLiveResolvedByVin += 1;
       else if (history.vehiclePlate) linkedVehicleLiveResolvedByPlate += 1;
     }
@@ -1134,14 +1792,20 @@ export async function activateOnboardingHistory(params: {
         needsReview += 1;
         trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
-          issueType: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous ? "ambiguous_customer_match_for_history" : "missing_customer_for_history",
-          summary: customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous
-            ? "Historical work orders have ambiguous customer mapping."
-            : !stagedCustomerLink.id
-              ? "Historical work orders are missing customer_work_order links."
-              : "Historical work orders have customer links but no resolvable live customer mapping.",
+          issueType:
+            customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous
+              ? "ambiguous_customer_match_for_history"
+              : "missing_customer_for_history",
+          summary:
+            customerResolvedByLink.ambiguous || stagedCustomerLink.ambiguous
+              ? "Historical work orders have ambiguous customer mapping."
+              : !stagedCustomerLink.id
+                ? "Historical work orders are missing customer_work_order links."
+                : "Historical work orders have customer links but no resolvable live customer mapping.",
         });
-        finalSkipReason = !stagedCustomerLink.id ? "missing_customer_link" : "unresolved_live_customer";
+        finalSkipReason = !stagedCustomerLink.id
+          ? "missing_customer_link"
+          : "unresolved_live_customer";
       }
 
       if (!vehicleId) {
@@ -1151,14 +1815,22 @@ export async function activateOnboardingHistory(params: {
         needsReview += 1;
         trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
-          issueType: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous ? "ambiguous_vehicle_match_for_history" : "missing_vehicle_for_history",
-          summary: vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous
-            ? "Historical work orders have ambiguous vehicle mapping."
-            : !stagedVehicleLink.id
-              ? "Historical work orders are missing vehicle_work_order links."
-              : "Historical work orders have vehicle links but no resolvable live vehicle mapping.",
+          issueType:
+            vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous
+              ? "ambiguous_vehicle_match_for_history"
+              : "missing_vehicle_for_history",
+          summary:
+            vehicleResolvedByLink.ambiguous || stagedVehicleLink.ambiguous
+              ? "Historical work orders have ambiguous vehicle mapping."
+              : !stagedVehicleLink.id
+                ? "Historical work orders are missing vehicle_work_order links."
+                : "Historical work orders have vehicle links but no resolvable live vehicle mapping.",
         });
-        finalSkipReason = !stagedVehicleLink.id ? "missing_vehicle_link" : customerId ? "unresolved_live_vehicle" : finalSkipReason;
+        finalSkipReason = !stagedVehicleLink.id
+          ? "missing_vehicle_link"
+          : customerId
+            ? "unresolved_live_vehicle"
+            : finalSkipReason;
       }
 
       if (unresolvedSamples.length < 5) {
@@ -1180,39 +1852,93 @@ export async function activateOnboardingHistory(params: {
             `vehicleVin:${history.vehicleVin ?? ""}`,
             `vehiclePlate:${history.vehiclePlate ?? ""}`,
           ].filter((value) => value.split(":")[1]),
-          mappedCustomerSourceExternalId: normalizeText(linkedStagedCustomer?.source_external_id) || null,
-          mappedCustomerSourceRowId: normalizeText(linkedStagedCustomer?.source_row_id) || null,
-          mappedVehicleSourceExternalId: normalizeText(linkedStagedVehicle?.source_external_id) || null,
-          mappedVehicleSourceRowId: normalizeText(linkedStagedVehicle?.source_row_id) || null,
+          mappedCustomerSourceExternalId:
+            normalizeText(linkedStagedCustomer?.source_external_id) || null,
+          mappedCustomerSourceRowId:
+            normalizeText(linkedStagedCustomer?.source_row_id) || null,
+          mappedVehicleSourceExternalId:
+            normalizeText(linkedStagedVehicle?.source_external_id) || null,
+          mappedVehicleSourceRowId:
+            normalizeText(linkedStagedVehicle?.source_row_id) || null,
           finalSkipReason,
-          identifierAliasesChecked: ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","invoice_number","invoiceNumber","reference","source_external_id","sourceExternalId","source_row_id","sourceRowId"],
-          dateAliasesChecked: ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","service_date","serviceDate","repair_date","repairDate","invoice_date","invoiceDate","closed_at","closedAt","completed_at","completedAt","created_at","createdAt","date"],
-          normalizedKeysSample: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 12),
+          identifierAliasesChecked: [
+            "work_order_number",
+            "workOrderNumber",
+            "ro_number",
+            "roNumber",
+            "repair_order_number",
+            "repairOrderNumber",
+            "invoice_number",
+            "invoiceNumber",
+            "reference",
+            "source_external_id",
+            "sourceExternalId",
+            "source_row_id",
+            "sourceRowId",
+          ],
+          dateAliasesChecked: [
+            "opened_at",
+            "openedAt",
+            "opened_date",
+            "openedDate",
+            "date_opened",
+            "dateOpened",
+            "service_date",
+            "serviceDate",
+            "repair_date",
+            "repairDate",
+            "invoice_date",
+            "invoiceDate",
+            "closed_at",
+            "closedAt",
+            "completed_at",
+            "completedAt",
+            "created_at",
+            "createdAt",
+            "date",
+          ],
+          normalizedKeysSample: Object.keys(
+            (entity.normalized ?? {}) as Record<string, unknown>,
+          ).slice(0, 12),
           searchLayerKeySamples: layerKeySamples,
         });
       }
     }
     rowsWithBothLiveCustomerAndVehicle += 1;
 
-    const sourceRowKey = stableUuidFromParts([params.shopId, params.sessionId, "history", canonicalHistoryId]);
-    const customIdKey = normalizeLookup(history.sourceWorkOrderId ?? history.invoiceNumber);
-    const existing = existingSourceRowIdSet.has(sourceRowKey) || (customIdKey ? existingCustomIdSet.has(customIdKey) : false);
+    const sourceRowKey = stableUuidFromParts([
+      params.shopId,
+      params.sessionId,
+      "history",
+      canonicalHistoryId,
+    ]);
+    const customIdKey = normalizeLookup(
+      history.sourceWorkOrderId ?? history.invoiceNumber,
+    );
+    const existing =
+      existingSourceRowIdSet.has(sourceRowKey) ||
+      (customIdKey ? existingCustomIdSet.has(customIdKey) : false);
     if (existing) {
       existingMatched += 1;
       continue;
     }
 
     const vehicleOwnerCustomerId = vehicleId
-      ? vehicleRows.find((row) => row.id === vehicleId)?.customer_id ?? null
+      ? (vehicleRows.find((row) => row.id === vehicleId)?.customer_id ?? null)
       : null;
 
-    if (vehicleId && vehicleOwnerCustomerId && customerId !== vehicleOwnerCustomerId) {
+    if (
+      vehicleId &&
+      vehicleOwnerCustomerId &&
+      customerId !== vehicleOwnerCustomerId
+    ) {
       if (customerId) {
         needsReview += 1;
         trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
           issueType: "history_customer_vehicle_mismatch",
-          summary: "Historical row customer mapping did not match the resolved vehicle owner; vehicle owner was used for the imported history work order.",
+          summary:
+            "Historical row customer mapping did not match the resolved vehicle owner; vehicle owner was used for the imported history work order.",
           severity: "low",
         });
       }
@@ -1240,7 +1966,11 @@ export async function activateOnboardingHistory(params: {
       is_waiter: false,
     };
 
-    const { data: created, error } = await sb.from("work_orders").insert(payload).select("id").single();
+    const { data: created, error } = await sb
+      .from("work_orders")
+      .insert(payload)
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
     historicalWorkOrdersCreated += 1;
     if (!customerId) historicalWorkOrdersCreatedWithoutCustomer += 1;
@@ -1261,13 +1991,16 @@ export async function activateOnboardingHistory(params: {
         source_intake_id: params.sessionId,
         source_row_id: sourceRowKey,
       };
-      const { error: lineError } = await sb.from("work_order_lines").insert(linePayload);
+      const { error: lineError } = await sb
+        .from("work_order_lines")
+        .insert(linePayload);
       if (lineError) {
         warnings.push(`Unable to create history line for ${entity.id}`);
         trackGroupedReview(groupedReviewItems, {
           entityId: entity.id,
           issueType: "unsupported_history_line_format",
-          summary: "Historical lines could not be created safely for some rows.",
+          summary:
+            "Historical lines could not be created safely for some rows.",
         });
         needsReview += 1;
       } else {
@@ -1277,19 +2010,21 @@ export async function activateOnboardingHistory(params: {
   }
 
   for (const grouped of groupedReviewItems.values()) {
-    reviewItems.push(reviewItem({
-      shopId: params.shopId,
-      sessionId: params.sessionId,
-      entityId: `history-group:${grouped.issueType}`,
-      issueType: grouped.issueType,
-      summary: grouped.summary,
-      severity: grouped.severity,
-      details: {
-        grouped: true,
-        affectedRows: grouped.count,
-        sampleEntityIds: grouped.sampleEntityIds,
-      },
-    }));
+    reviewItems.push(
+      reviewItem({
+        shopId: params.shopId,
+        sessionId: params.sessionId,
+        entityId: `history-group:${grouped.issueType}`,
+        issueType: grouped.issueType,
+        summary: grouped.summary,
+        severity: grouped.severity,
+        details: {
+          grouped: true,
+          affectedRows: grouped.count,
+          sampleEntityIds: grouped.sampleEntityIds,
+        },
+      }),
+    );
   }
 
   let reviewItemsPersisted = 0;
@@ -1314,7 +2049,9 @@ export async function activateOnboardingHistory(params: {
     .eq("status", "pending");
   if (reviewItemsOpenError) throw new Error(reviewItemsOpenError.message);
   if (skippedUnresolved > 0) {
-    warnings.push("Some historical rows were created with unresolved customer or vehicle linkage and were sent to review.");
+    warnings.push(
+      "Some historical rows were created with unresolved customer or vehicle linkage and were sent to review.",
+    );
   }
 
   const result: HistoryActivationResult = {
@@ -1385,8 +2122,10 @@ export async function activateOnboardingHistory(params: {
       historyRowsMissingUsableDate,
       historyRowsMissingUsableIdentifier,
       workOrdersCreated: historicalWorkOrdersCreated,
-      workOrdersCreatedWithoutCustomer: historicalWorkOrdersCreatedWithoutCustomer,
-      workOrdersCreatedWithoutVehicle: historicalWorkOrdersCreatedWithoutVehicle,
+      workOrdersCreatedWithoutCustomer:
+        historicalWorkOrdersCreatedWithoutCustomer,
+      workOrdersCreatedWithoutVehicle:
+        historicalWorkOrdersCreatedWithoutVehicle,
       workOrdersMatchedExisting: existingMatched,
       linkEndpointEntityTypesByCount,
       customerWorkOrderEndpointTypesByCount,
@@ -1424,15 +2163,21 @@ export async function activateOnboardingHistory(params: {
     vehicleWorkOrderLinks: result.vehicleWorkOrderLinks,
     historyRowsWithCustomerLink: result.diagnostics.historyRowsWithCustomerLink,
     historyRowsWithVehicleLink: result.diagnostics.historyRowsWithVehicleLink,
-    discoveredHistoryLikeEndpointCount: result.diagnostics.discoveredHistoryLikeEntityCount,
-    linkedCustomerStagedEntitiesFound: result.diagnostics.linkedCustomerStagedEntitiesFound,
-    linkedVehicleStagedEntitiesFound: result.diagnostics.linkedVehicleStagedEntitiesFound,
+    discoveredHistoryLikeEndpointCount:
+      result.diagnostics.discoveredHistoryLikeEntityCount,
+    linkedCustomerStagedEntitiesFound:
+      result.diagnostics.linkedCustomerStagedEntitiesFound,
+    linkedVehicleStagedEntitiesFound:
+      result.diagnostics.linkedVehicleStagedEntitiesFound,
     linkedCustomerLiveResolved: result.diagnostics.linkedCustomerLiveResolved,
     linkedVehicleLiveResolved: result.diagnostics.linkedVehicleLiveResolved,
-    rowsWithBothLiveCustomerAndVehicle: result.diagnostics.rowsWithBothLiveCustomerAndVehicle,
+    rowsWithBothLiveCustomerAndVehicle:
+      result.diagnostics.rowsWithBothLiveCustomerAndVehicle,
     workOrdersCreated: result.diagnostics.workOrdersCreated,
-    workOrdersCreatedWithoutCustomer: result.diagnostics.workOrdersCreatedWithoutCustomer,
-    workOrdersCreatedWithoutVehicle: result.diagnostics.workOrdersCreatedWithoutVehicle,
+    workOrdersCreatedWithoutCustomer:
+      result.diagnostics.workOrdersCreatedWithoutCustomer,
+    workOrdersCreatedWithoutVehicle:
+      result.diagnostics.workOrdersCreatedWithoutVehicle,
     workOrdersMatchedExisting: result.diagnostics.workOrdersMatchedExisting,
     skippedUnresolved: result.skippedUnresolved,
   });
