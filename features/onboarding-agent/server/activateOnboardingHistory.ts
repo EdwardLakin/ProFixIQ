@@ -1973,12 +1973,13 @@ export async function activateOnboardingHistory(params: {
       reviewItem({
         shopId: params.shopId,
         sessionId: params.sessionId,
-        entityId: `history-group:${grouped.issueType}`,
+        entityId: null,
         issueType: grouped.issueType,
         summary: grouped.summary,
         severity: grouped.severity,
         details: {
           grouped: true,
+          groupKey: `history-group:${grouped.issueType}`,
           affectedRows: grouped.count,
           sampleEntityIds: grouped.sampleEntityIds,
         },

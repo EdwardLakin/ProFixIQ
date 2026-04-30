@@ -94,7 +94,7 @@ export async function upsertOnboardingReviewItems(params: {
   reviewItems: OnboardingReviewItemInsert[];
 }): Promise<{ persisted: number; reused: number }> {
   if (params.reviewItems.length === 0) return { persisted: 0, reused: 0 };
-  const sb = params.supabase as any;
+  const sb = params.supabase;
 
   const domains = Array.from(new Set(params.reviewItems.map((item) => String(item.domain ?? ""))));
   let existingQuery = sb
