@@ -1,6 +1,6 @@
 const PAGE_SIZE = 1000;
 
-export async function fetchAllPaginatedRows<T>(buildQuery: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+export async function fetchAllPaginatedRows<T>(buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const rows: T[] = [];
   let from = 0;
 

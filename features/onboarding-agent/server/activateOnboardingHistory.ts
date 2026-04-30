@@ -6,15 +6,39 @@ import { buildOnboardingEntityPayloadLayers } from "@/features/onboarding-agent/
 import { upsertOnboardingReviewItems } from "@/features/onboarding-agent/server/upsertOnboardingReviewItems";
 import type { Database } from "@/features/shared/types/types/supabase";
 
+type AdminSupabase = SupabaseClient<Database>;
+type JsonObject = Record<string, unknown>;
 type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
-type EntityShape = Pick<OnboardingEntityRow, "id" | "entity_type" | "status" | "source_row_id" | "source_external_id" | "normalized" | "display_name">;
+type EntityShape = Pick<OnboardingEntityRow, "id" | "entity_type" | "status" | "source_row_id" | "source_external_id" | "normalized" | "display_name" | "canonical_table" | "canonical_id">;
 type OnboardingEntityLinkRow = Database["public"]["Tables"]["onboarding_entity_links"]["Row"];
-type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
-type VehicleRow = Database["public"]["Tables"]["vehicles"]["Row"];
+type CustomerRow = Pick<
+  Database["public"]["Tables"]["customers"]["Row"],
+  | "id"
+  | "external_id"
+  | "email"
+  | "phone"
+  | "phone_number"
+  | "name"
+  | "business_name"
+  | "first_name"
+  | "last_name"
+>;
+type VehicleRow = Pick<
+  Database["public"]["Tables"]["vehicles"]["Row"],
+  | "id"
+  | "external_id"
+  | "vin"
+  | "license_plate"
+  | "unit_number"
+  | "year"
+  | "make"
+  | "model"
+>;
 type WorkOrderRow = Database["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderInsert = Database["public"]["Tables"]["work_orders"]["Insert"];
 type WorkOrderLineInsert = Database["public"]["Tables"]["work_order_lines"]["Insert"];
 type OnboardingReviewItemInsert = Database["public"]["Tables"]["onboarding_review_items"]["Insert"];
+type ReviewItemDetails = NonNullable<OnboardingReviewItemInsert["details"]>;
 
 const HISTORICAL_WORK_ORDER_STATUS: WorkOrderInsert["status"] = "completed";
 const HISTORICAL_WORK_ORDER_TYPE: NonNullable<WorkOrderInsert["type"]> = "historical_import";
@@ -69,6 +93,8 @@ type HistoryActivationResult = {
     linkedCustomerLiveResolvedByEmail: number;
     linkedCustomerLiveResolvedByPhone: number;
     linkedCustomerLiveResolvedByName: number;
+    linkedCustomerLiveResolvedByCanonicalBridge: number;
+    linkedVehicleLiveResolvedByCanonicalBridge: number;
     linkedVehicleLiveResolvedBySourceExternalId: number;
     linkedVehicleLiveResolvedByVin: number;
     linkedVehicleLiveResolvedByPlate: number;
@@ -263,6 +289,17 @@ function firstDateAlias(records: Record<string, unknown>[], aliases: string[]): 
 
 type ResolveLiveIdResult = { id: string | null; ambiguous: boolean };
 
+function liveIdFromCanonicalBridge(
+  stagedEntity: Pick<OnboardingEntityRow, "canonical_table" | "canonical_id"> | null,
+  expectedTable: "customers" | "vehicles",
+): string | null {
+  if (!stagedEntity) return null;
+  if (stagedEntity.canonical_table !== expectedTable) return null;
+  return typeof stagedEntity.canonical_id === "string" && stagedEntity.canonical_id.trim()
+    ? stagedEntity.canonical_id
+    : null;
+}
+
 function normalizeEmail(value: unknown): string | null {
   const normalized = normalizeText(value).toLowerCase();
   return normalized || null;
@@ -300,8 +337,17 @@ function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "source_external
   };
 }
 function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "source_external_id" | "normalized"> | null): NormalizedVehicle {
-  const normalized = ((entity?.normalized ?? {}) as Record<string, unknown>);
-  const records = collectSearchRecords(normalized, entity ? { ...entity, source_row_id: null, display_name: null } as any : undefined);
+  const normalized = ((entity?.normalized ?? {}) as JsonObject);
+  const records = collectSearchRecords(
+    normalized,
+    entity
+      ? {
+        ...entity,
+        source_row_id: null,
+        display_name: null,
+      }
+      : undefined,
+  );
   return {
     sourceVehicleId: firstTextAlias(records, ["live_vehicle_id","vehicle_id","matched_vehicle_id","imported_vehicle_id","source_external_id","sourceExternalId","sourceVehicleId","vehicleExternalId","unit_id","source_row_id","sourceRowId"]).value,
     vin: normalizeVin(firstTextAlias(records, ["vin","VIN","vehicle_vin"]).value),
@@ -429,9 +475,12 @@ function buildGroupedVehicleLiveMap(vehicleEntities: Array<Pick<OnboardingEntity
   return stagedVehicleEntityIdToLiveVehicleId;
 }
 
-function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized">): NormalizedHistory {
-  const normalized = (entity.normalized ?? {}) as Record<string, unknown>;
-  const records = collectSearchRecords(normalized, entity as any);
+function toNormalizedHistory(entity: Pick<OnboardingEntityRow, "normalized" | "source_external_id" | "source_row_id">): NormalizedHistory {
+  const normalized = (entity.normalized ?? {}) as JsonObject;
+  const records = collectSearchRecords(normalized, {
+    ...entity,
+    display_name: null,
+  });
   const identifier = firstTextAlias(records, ["work_order_number","workOrderNumber","ro_number","roNumber","repair_order_number","repairOrderNumber","order_number","orderNumber","invoice_number","invoiceNumber","reference","reference_number","source_work_order_id","sourceWorkOrderId","source_external_id","sourceExternalId","source_row_id","sourceRowId"]);
   const opened = firstDateAlias(records, ["opened_at","openedAt","opened_date","openedDate","date_opened","dateOpened","created_at","createdAt","date","Date","service_date","serviceDate","serviceDateTime","repair_date","repairDate","work_order_date","workOrderDate","invoice_date","invoiceDate","posted_date","postedDate","completed_at","completedAt","completed_date","completedDate","closed_at","closedAt","closed_date","closedDate"]);
   return {
@@ -496,6 +545,10 @@ function bump(map: Record<string, number>, key: string) {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+function toReviewItemDetails(details?: Record<string, unknown>): ReviewItemDetails {
+  return (details ?? {}) as ReviewItemDetails;
+}
+
 function reviewItem(params: {
   shopId: string;
   sessionId: string;
@@ -515,12 +568,12 @@ function reviewItem(params: {
     severity: params.severity ?? "medium",
     status: "pending",
     domain: "history",
-    details: (params.details ?? {}) as any,
+    details: toReviewItemDetails(params.details),
   };
 }
 
 export async function activateOnboardingHistory(params: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
   actorId: string;
@@ -530,7 +583,7 @@ export async function activateOnboardingHistory(params: {
     diagnosticVersion: "history-endpoint-first-v3",
     executedAt: new Date().toISOString(),
   };
-  const sb = params.supabase as any;
+  const sb = params.supabase;
   await assertOnboardingSessionOwnership({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId });
 
   const [historyRows, entityRows, linkRows, endpointEntities, customerRows, vehicleRows, workOrders] = await Promise.all([
@@ -543,10 +596,10 @@ export async function activateOnboardingHistory(params: {
         .in("entity_type", ["historical_work_order", "history"])
         .order("id", { ascending: true })
         .range(from, to)),
-    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name" | "source_row_id" | "status">>((from, to) =>
+    fetchAllPaginatedRows<Pick<OnboardingEntityRow, "id" | "normalized" | "entity_type" | "source_external_id" | "display_name" | "source_row_id" | "status" | "canonical_table" | "canonical_id">>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, normalized, entity_type, source_external_id, display_name, source_row_id, status")
+        .select("id, normalized, entity_type, source_external_id, display_name, source_row_id, status, canonical_table, canonical_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .in("entity_type", ["customer", "vehicle"])
@@ -563,7 +616,7 @@ export async function activateOnboardingHistory(params: {
     fetchAllPaginatedRows<EntityShape>((from, to) =>
       sb
         .from("onboarding_entities")
-        .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name")
+        .select("id, entity_type, status, source_row_id, source_external_id, normalized, display_name, canonical_table, canonical_id")
         .eq("shop_id", params.shopId)
         .eq("session_id", params.sessionId)
         .order("id", { ascending: true })
@@ -625,6 +678,8 @@ export async function activateOnboardingHistory(params: {
   let linkedCustomerLiveResolvedByEmail = 0;
   const linkedCustomerLiveResolvedByPhone = 0;
   let linkedCustomerLiveResolvedByName = 0;
+  let linkedCustomerLiveResolvedByCanonicalBridge = 0;
+  let linkedVehicleLiveResolvedByCanonicalBridge = 0;
   let linkedVehicleLiveResolvedBySourceExternalId = 0;
   let linkedVehicleLiveResolvedByVin = 0;
   let linkedVehicleLiveResolvedByPlate = 0;
@@ -712,8 +767,9 @@ export async function activateOnboardingHistory(params: {
   const stagedCustomerSourceRowIdToLiveCustomerId = new Map<string, string>();
   const stagedCustomerExternalIdToLiveCustomerId = new Map<string, string>();
   for (const entity of customerEntityById.values()) {
-    const resolvedId = stagedCustomerEntityIdToLiveCustomerId.get(entity.id);
+    const resolvedId = liveIdFromCanonicalBridge(entity, "customers") ?? stagedCustomerEntityIdToLiveCustomerId.get(entity.id);
     if (!resolvedId) continue;
+    stagedCustomerEntityIdToLiveCustomerId.set(entity.id, resolvedId);
     const sourceRowKey = normalizeText(entity.source_row_id);
     if (sourceRowKey) stagedCustomerSourceRowIdToLiveCustomerId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
@@ -725,13 +781,17 @@ export async function activateOnboardingHistory(params: {
   const stagedVehicleExternalIdToLiveVehicleId = new Map<string, string>();
   const stagedVehicleVinToLiveVehicleId = new Map<string, string>();
   for (const entity of vehicleEntityById.values()) {
-    const resolvedId = stagedVehicleEntityIdToLiveVehicleId.get(entity.id);
+    const resolvedId = liveIdFromCanonicalBridge(entity, "vehicles") ?? stagedVehicleEntityIdToLiveVehicleId.get(entity.id);
     if (!resolvedId) continue;
+    stagedVehicleEntityIdToLiveVehicleId.set(entity.id, resolvedId);
     const sourceRowKey = normalizeText(entity.source_row_id);
     if (sourceRowKey) stagedVehicleSourceRowIdToLiveVehicleId.set(sourceRowKey, resolvedId);
     const externalKey = normalizeLookup(entity.source_external_id);
     if (externalKey) stagedVehicleExternalIdToLiveVehicleId.set(externalKey, resolvedId);
-    const vinKey = normalizeVin((entity.normalized ?? ({} as any)).vin);
+    const normalized = entity.normalized && typeof entity.normalized === "object" && !Array.isArray(entity.normalized)
+      ? entity.normalized as Record<string, unknown>
+      : {};
+    const vinKey = normalizeVin(normalized.vin);
     if (vinKey) stagedVehicleVinToLiveVehicleId.set(vinKey, resolvedId);
   }
 
@@ -775,7 +835,10 @@ export async function activateOnboardingHistory(params: {
   let historyRowsWithBothLinkedEntities = 0;
   for (const entity of combinedHistoryRows.values()) {
     const history = toNormalizedHistory(entity);
-    const layerRecords = collectSearchRecords((entity.normalized ?? {}) as Record<string, unknown>, entity as any);
+    const layerRecords = collectSearchRecords((entity.normalized ?? {}) as JsonObject, {
+      ...entity,
+      display_name: null,
+    });
     const layerKeySamples = layerRecords.slice(0, 4).map((record, index) => ({ layerIndex: index, keys: Object.keys(record).slice(0, 20) }));
     if (!history.sourceWorkOrderId && !history.invoiceNumber && !history.openedDate) {
       skipped += 1;
@@ -843,8 +906,14 @@ export async function activateOnboardingHistory(params: {
     if (linkedStagedCustomer) linkedCustomerStagedEntitiesFound += 1;
     if (linkedStagedVehicle) linkedVehicleStagedEntitiesFound += 1;
 
-    const customerResolvedByLink = resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
-    const vehicleResolvedByLink = resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
+    const customerCanonicalId = liveIdFromCanonicalBridge(linkedStagedCustomer, "customers");
+    const vehicleCanonicalId = liveIdFromCanonicalBridge(linkedStagedVehicle, "vehicles");
+    const customerResolvedByLink = customerCanonicalId
+      ? { id: customerCanonicalId, ambiguous: false }
+      : resolveLiveCustomerIdFromStagedEntity(linkedStagedCustomer, customerRows);
+    const vehicleResolvedByLink = vehicleCanonicalId
+      ? { id: vehicleCanonicalId, ambiguous: false }
+      : resolveLiveVehicleIdFromStagedEntity(linkedStagedVehicle, vehicleRows);
     if (linkedTripleSamples.length < 5) {
       linkedTripleSamples.push({
         historyEntityId: entity.id, historyEntityType: entity.entity_type, historyStatus: (entityById.get(entity.id)?.status ?? null),
@@ -852,8 +921,8 @@ export async function activateOnboardingHistory(params: {
         historyNormalizedKeys: Object.keys((entity.normalized ?? {}) as Record<string, unknown>).slice(0, 20),
         linkedCustomerEntityId: linkedStagedCustomer?.id ?? null, linkedCustomerEntityType: linkedStagedCustomer?.entity_type ?? null, linkedCustomerStatus: linkedStagedCustomer?.status ?? null,
         linkedVehicleEntityId: linkedStagedVehicle?.id ?? null, linkedVehicleEntityType: linkedStagedVehicle?.entity_type ?? null, linkedVehicleStatus: linkedStagedVehicle?.status ?? null,
-        liveCustomerLookupResult: { method: customerResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(customerResolvedByLink.id) },
-        liveVehicleLookupResult: { method: vehicleResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(vehicleResolvedByLink.id) },
+        liveCustomerLookupResult: { method: customerCanonicalId ? "canonical_bridge" : customerResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(customerResolvedByLink.id) },
+        liveVehicleLookupResult: { method: vehicleCanonicalId ? "canonical_bridge" : vehicleResolvedByLink.id ? "staged_entity_lookup" : "none", matchedId: Boolean(vehicleResolvedByLink.id) },
       });
     }
 
@@ -896,13 +965,15 @@ export async function activateOnboardingHistory(params: {
     if (history.openedDateAliasUsed) historyDateResolvedByAlias[history.openedDateAliasUsed] = (historyDateResolvedByAlias[history.openedDateAliasUsed] ?? 0) + 1;
     if (customerId) {
       linkedCustomerLiveResolved += 1;
-      if (history.sourceCustomerId) linkedCustomerLiveResolvedBySourceExternalId += 1;
+      if (customerCanonicalId) linkedCustomerLiveResolvedByCanonicalBridge += 1;
+      else if (history.sourceCustomerId) linkedCustomerLiveResolvedBySourceExternalId += 1;
       else if (history.customerEmail) linkedCustomerLiveResolvedByEmail += 1;
       else if (history.customerName) linkedCustomerLiveResolvedByName += 1;
     }
     if (vehicleId) {
       linkedVehicleLiveResolved += 1;
-      if (history.sourceVehicleId) linkedVehicleLiveResolvedBySourceExternalId += 1;
+      if (vehicleCanonicalId) linkedVehicleLiveResolvedByCanonicalBridge += 1;
+      else if (history.sourceVehicleId) linkedVehicleLiveResolvedBySourceExternalId += 1;
       else if (history.vehicleVin) linkedVehicleLiveResolvedByVin += 1;
       else if (history.vehiclePlate) linkedVehicleLiveResolvedByPlate += 1;
     }
@@ -1131,6 +1202,8 @@ export async function activateOnboardingHistory(params: {
       linkedCustomerLiveResolvedByEmail,
       linkedCustomerLiveResolvedByPhone,
       linkedCustomerLiveResolvedByName,
+      linkedCustomerLiveResolvedByCanonicalBridge,
+      linkedVehicleLiveResolvedByCanonicalBridge,
       linkedVehicleLiveResolvedBySourceExternalId,
       linkedVehicleLiveResolvedByVin,
       linkedVehicleLiveResolvedByPlate,

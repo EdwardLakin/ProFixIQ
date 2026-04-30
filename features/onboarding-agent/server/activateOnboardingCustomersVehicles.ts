@@ -6,12 +6,45 @@ import { buildOnboardingEntityPayloadLayers, firstTextFromLayers } from "@/featu
 import type { Database } from "@/features/shared/types/types/supabase";
 
 type JsonObject = Record<string, unknown>;
+type AdminSupabase = SupabaseClient<Database>;
+type QueryResult<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 type OnboardingEntityRow = Database["public"]["Tables"]["onboarding_entities"]["Row"];
 type OnboardingEntityLinkRow = Database["public"]["Tables"]["onboarding_entity_links"]["Row"];
-type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
+type CustomerRow = Pick<
+  Database["public"]["Tables"]["customers"]["Row"],
+  | "id"
+  | "shop_id"
+  | "external_id"
+  | "email"
+  | "phone"
+  | "phone_number"
+  | "name"
+  | "first_name"
+  | "last_name"
+  | "business_name"
+  | "street"
+  | "address"
+  | "city"
+  | "province"
+  | "postal_code"
+  | "notes"
+  | "source_row_id"
+>;
 type CustomerInsert = Database["public"]["Tables"]["customers"]["Insert"];
 type CustomerUpdate = Database["public"]["Tables"]["customers"]["Update"];
-type VehicleRow = Database["public"]["Tables"]["vehicles"]["Row"];
+type VehicleRow = Pick<
+  Database["public"]["Tables"]["vehicles"]["Row"],
+  | "id"
+  | "shop_id"
+  | "external_id"
+  | "vin"
+  | "license_plate"
+  | "unit_number"
+  | "year"
+  | "make"
+  | "model"
+  | "customer_id"
+>;
 type VehicleInsert = Database["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
 type OnboardingReviewItemRow = Database["public"]["Tables"]["onboarding_review_items"]["Row"];
@@ -265,7 +298,7 @@ function buildCustomerDisplayName(parts: { businessName: string | null; contactN
 }
 
 function toNormalizedCustomer(entity: Pick<OnboardingEntityRow, "normalized" | "display_name" | "source_external_id" | "source_row_id">, stats?: CustomerExtractionStats): NormalizedCustomer {
-  const layers = buildOnboardingEntityPayloadLayers(entity as any);
+  const layers = buildOnboardingEntityPayloadLayers(entity);
   const businessName = readLayeredText(layers, ["business_name", "businessName", "company_name", "companyName", "company", "Company", "Company Name", "Business Name"], stats);
   const firstName = readLayeredText(layers, ["first_name", "firstName", "First Name"], stats);
   const lastName = readLayeredText(layers, ["last_name", "lastName", "Last Name"], stats);
@@ -303,7 +336,11 @@ function readLayeredText(layers: JsonObject[], aliases: string[], stats?: Custom
 }
 
 function toNormalizedVehicle(entity: Pick<OnboardingEntityRow, "normalized" | "source_external_id">): NormalizedVehicle {
-  const layers = buildOnboardingEntityPayloadLayers(entity as any);
+  const layers = buildOnboardingEntityPayloadLayers({
+    ...entity,
+    display_name: null,
+    source_row_id: null,
+  });
   return {
     externalId: textOrNull(entity.source_external_id) ?? firstTextFromLayers(layers, ["source_external_id", "sourceExternalId", "sourceVehicleId", "vehicleExternalId", "external_id"]).value,
     vin: normalizeVin(firstTextFromLayers(layers, ["vin", "vehicle_vin"]).value),
@@ -554,12 +591,12 @@ function issueReasonLabel(reason: CustomerVehicleLinkIssue["reason"]): string {
 }
 
 async function persistUnresolvedLinkReviewItems(args: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
   issues: CustomerVehicleLinkIssue[];
 }) {
-  const sb = args.supabase as any;
+  const sb = args.supabase;
   const issueType = "unresolved_customer_vehicle_link";
   const unresolved = args.issues.filter((issue) => issue.reason !== "unknown");
   const unresolvedLinkIds = new Set(unresolved.map((issue) => issue.linkId));
@@ -675,11 +712,11 @@ function vehicleMatchesInPriority(args: {
 }
 
 export async function activateOnboardingCustomersVehicles(params: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
 }): Promise<CustomerVehicleActivationResult> {
-  const sb = params.supabase as any;
+  const sb = params.supabase;
   const timingsMs: Record<string, number> = {};
   async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
     const started = Date.now();
@@ -687,7 +724,7 @@ export async function activateOnboardingCustomersVehicles(params: {
     timingsMs[label] = Date.now() - started;
     return result;
   }
-  async function fetchAllRows<T>(buildQuery: (from: number, to: number) => any): Promise<T[]> {
+  async function fetchAllRows<T>(buildQuery: (from: number, to: number) => QueryResult<T>): Promise<T[]> {
     const rows: T[] = [];
     let from = 0;
     while (true) {
@@ -1055,7 +1092,11 @@ export async function activateOnboardingCustomersVehicles(params: {
       });
     }
     const normalized = toNormalizedVehicle(entity);
-    const vehicleLayers = buildOnboardingEntityPayloadLayers(entity as any);
+    const vehicleLayers = buildOnboardingEntityPayloadLayers({
+      ...entity,
+      display_name: null,
+      source_row_id: null,
+    });
     const sourceCustomerExternalId = firstTextFromLayers(vehicleLayers, [
       "sourceCustomerId",
       "source_customer_id",
