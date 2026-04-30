@@ -31,7 +31,7 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "Expected multipart/form-data" }, { status: 400 });
   }
 
-  const { data: session, error: sessionError } = await (admin as any)
+  const { data: session, error: sessionError } = await admin
     .from("onboarding_sessions")
     .select("id")
     .eq("id", sessionId)

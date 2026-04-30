@@ -44,13 +44,14 @@ type FileFetchRow = {
   id: string;
   shop_id: string;
   session_id: string;
-  file_name: string | null;
-  file_type: string | null;
-  file_size: number | null;
-  status: string | null;
-  row_count: number | null;
-  created_at: string | null;
-  updated_at: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  parse_status: string;
+  detected_domain: string | null;
+  row_count: number;
+  created_at: string;
+  updated_at: string;
 };
 
 function toReviewSeverity(value: string | null): ReviewSeverity {
@@ -125,7 +126,7 @@ export async function getOnboardingSession(params: { supabase: AdminSupabase; sh
 
   const [sessionResult, filesResult, reviewSampleResult, latestPlan, rowsParsedTotal, totalEntitiesCount, totalLinksCount, totalPendingReviewCount] = await Promise.all([
     stage("session:fetch", () => sb.from("onboarding_sessions").select("id,shop_id,status,created_at,updated_at,analyzed_at,summary").eq("shop_id", params.shopId).eq("id", params.sessionId).maybeSingle()),
-    stage("files:fetch", () => sb.from("onboarding_files").select("id,shop_id,session_id,file_name,file_type,file_size,status,row_count,created_at,updated_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false })),
+    stage("files:fetch", () => sb.from("onboarding_files").select("id,shop_id,session_id,original_filename,mime_type,file_size_bytes,parse_status,detected_domain,row_count,created_at,updated_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).order("created_at", { ascending: false })),
     stage("reviews:samples", () => sb.from("onboarding_review_items").select("id,severity,status,domain,summary,issue_type,created_at").eq("shop_id", params.shopId).eq("session_id", params.sessionId).or("status.is.null,status.eq.pending").order("created_at", { ascending: false }).range(0, 249)),
     stage("activation:latest-plan", async () => latestPlanPromise),
     stage("rows:raw-count", async () => countOnboardingRawRows({ supabase: params.supabase, shopId: params.shopId, sessionId: params.sessionId })),

@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertOnboardingSessionOwnership } from "@/features/onboarding-agent/server/assertOnboardingSessionOwnership";
+import type { Database } from "@/features/shared/types/types/supabase";
+
+type AdminSupabase = SupabaseClient<Database>;
 
 export async function registerOnboardingFile(params: {
-  supabase: SupabaseClient;
+  supabase: AdminSupabase;
   shopId: string;
   sessionId: string;
   storageBucket: string;
@@ -16,7 +19,7 @@ export async function registerOnboardingFile(params: {
     sessionId: params.sessionId,
   });
 
-  const { data, error } = await (params.supabase as any)
+  const { data, error } = await params.supabase
     .from("onboarding_files")
     .insert({
       shop_id: params.shopId,
@@ -32,7 +35,7 @@ export async function registerOnboardingFile(params: {
 
   if (error) throw new Error(error.message);
 
-  await (params.supabase as any)
+  await params.supabase
     .from("onboarding_sessions")
     .update({ status: "files_uploaded" })
     .eq("id", params.sessionId)
