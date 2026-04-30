@@ -357,8 +357,9 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
     ? session.summary.activationProgress
     : null;
   const customerVehicleCheckpoint = session?.summary?.onboardingActivation?.customersVehicles ?? null;
-  const activationProgressCurrent = asNumber(activationProgress?.current);
-  const activationProgressTotal = asNumber(activationProgress?.total);
+  const visibleActivationProgress = activationProgress ?? customerVehicleCheckpoint;
+  const activationProgressCurrent = asNumber(visibleActivationProgress?.current);
+  const activationProgressTotal = asNumber(visibleActivationProgress?.total);
   const activationProgressPercent = activationProgressTotal > 0
     ? Math.min(100, Math.max(0, Math.round((activationProgressCurrent / activationProgressTotal) * 100)))
     : 0;
@@ -474,12 +475,12 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
               />
             </div>
             <div className="mt-2 grid gap-1 text-[11px] text-cyan-100/85 sm:grid-cols-3">
-              <div>Customers: {asNumber(activationProgress.customersProcessed).toLocaleString()} / {asNumber(activationProgress.customersTotal).toLocaleString()}</div>
-              <div>Vehicles: {asNumber(activationProgress.vehiclesProcessed).toLocaleString()} / {asNumber(activationProgress.vehiclesTotal).toLocaleString()}</div>
-              <div>Links: {asNumber(activationProgress.linksProcessed).toLocaleString()} / {asNumber(activationProgress.linksTotal).toLocaleString()}</div>
+              <div>Customers: {asNumber(visibleActivationProgress?.customersProcessed).toLocaleString()} / {asNumber(visibleActivationProgress?.customersTotal).toLocaleString()}</div>
+              <div>Vehicles: {asNumber(visibleActivationProgress?.vehiclesProcessed).toLocaleString()} / {asNumber(visibleActivationProgress?.vehiclesTotal).toLocaleString()}</div>
+              <div>Links: {asNumber(visibleActivationProgress?.linksProcessed).toLocaleString()} / {asNumber(visibleActivationProgress?.linksTotal).toLocaleString()}</div>
             </div>
             <p className="mt-1 text-[10px] text-cyan-100/65">
-              Last update: {String(activationProgress.updatedAt ?? "unknown")}
+              Last update: {String(visibleActivationProgress?.updatedAt ?? "unknown")}
             </p>
           </div>
         ) : null}
