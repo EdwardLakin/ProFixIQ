@@ -6,6 +6,30 @@ const HEADER_TIMESTAMP = "x-onboarding-agent-timestamp";
 const HEADER_SHOP_ID = "x-shop-id";
 const MAX_SKEW_MS = 5 * 60 * 1000;
 
+type AuthDiagnosticMeta = {
+  route: string;
+  method: string;
+  bodyKeys: string[];
+  hasShopIdHeader: boolean;
+  hasTimestampHeader: boolean;
+  hasSignatureHeader: boolean;
+  timestampAgeBucket: "missing" | "invalid" | "le_5m" | "gt_5m";
+  shopIdMismatch: boolean;
+  signatureVerificationFailed: boolean;
+  schemaFailure?: string;
+};
+
+export function logConnectorReject(meta: AuthDiagnosticMeta): void {
+  console.warn("[onboarding-agent][connector][reject]", meta);
+}
+
+export function timestampAgeBucket(timestamp: string | null): AuthDiagnosticMeta["timestampAgeBucket"] {
+  if (!timestamp) return "missing";
+  const tsMillis = Number(timestamp);
+  if (!Number.isFinite(tsMillis)) return "invalid";
+  return Math.abs(Date.now() - tsMillis) <= MAX_SKEW_MS ? "le_5m" : "gt_5m";
+}
+
 function safeCompare(a: string, b: string): boolean {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
