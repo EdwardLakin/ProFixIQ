@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { connectorActionBodySchema, CONNECTOR_CAPABILITIES, type ConnectorResponse, validateShopBodySchema } from "./types";
-import { verifySignedRequest } from "./internal-auth";
+import { logConnectorReject, timestampAgeBucket, verifySignedRequest } from "./internal-auth";
 
 function skipped(message: string): ConnectorResponse {
   return { ok: false, status: "skipped", message };
@@ -9,23 +9,76 @@ function skipped(message: string): ConnectorResponse {
 
 async function parseAndAuthorize<T>(request: Request, schema: { safeParse: (v: unknown) => { success: boolean; data?: T } }): Promise<{ ok: true; body: T; shopId: string } | { ok: false; response: NextResponse }> {
   const rawBody = await request.text();
+  const timestamp = request.headers.get("x-onboarding-agent-timestamp");
+  const shopHeader = request.headers.get("x-shop-id");
+  const signature = request.headers.get("x-onboarding-agent-signature");
+  const baseMeta = {
+    route: new URL(request.url).pathname,
+    method: request.method,
+    hasShopIdHeader: !!shopHeader,
+    hasTimestampHeader: !!timestamp,
+    hasSignatureHeader: !!signature,
+    timestampAgeBucket: timestampAgeBucket(timestamp),
+  } as const;
+
   const auth = verifySignedRequest(request, rawBody);
-  if (!auth.ok) return auth;
-  const parsedJson = rawBody ? JSON.parse(rawBody) : {};
+  if (!auth.ok) {
+    let bodyKeys: string[] = [];
+    try {
+      const parsed = rawBody ? JSON.parse(rawBody) : {};
+      bodyKeys = parsed && typeof parsed === "object" ? Object.keys(parsed as Record<string, unknown>) : [];
+    } catch {
+      bodyKeys = [];
+    }
+    logConnectorReject({ ...baseMeta, bodyKeys, shopIdMismatch: false, signatureVerificationFailed: true });
+    return auth;
+  }
+
+  let parsedJson: unknown = {};
+  try {
+    parsedJson = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    logConnectorReject({ ...baseMeta, bodyKeys: [], shopIdMismatch: false, signatureVerificationFailed: false, schemaFailure: "invalid JSON" });
+    return { ok: false, response: NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 }) };
+  }
+
   const parsed = schema.safeParse(parsedJson);
-  if (!parsed.success) return { ok: false, response: NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 }) };
+  if (!parsed.success) {
+    const bodyKeys = parsedJson && typeof parsedJson === "object" ? Object.keys(parsedJson as Record<string, unknown>) : [];
+    logConnectorReject({ ...baseMeta, bodyKeys, shopIdMismatch: false, signatureVerificationFailed: false, schemaFailure: "schema validation failed" });
+    return { ok: false, response: NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 }) };
+  }
   const bodyRecord = parsed.data as Record<string, unknown>;
   const bodyShopId = typeof bodyRecord.shopId === "string" ? bodyRecord.shopId : undefined;
-  if (!bodyShopId || bodyShopId !== auth.shopId) return { ok: false, response: NextResponse.json({ ok: false, error: "shopId mismatch" }, { status: 403 }) };
+  if (!bodyShopId || bodyShopId !== auth.shopId) {
+    logConnectorReject({ ...baseMeta, bodyKeys: Object.keys(bodyRecord), shopIdMismatch: true, signatureVerificationFailed: false });
+    return { ok: false, response: NextResponse.json({ ok: false, error: "shopId mismatch" }, { status: 403 }) };
+  }
   return { ok: true, body: parsed.data as T, shopId: auth.shopId };
 }
 
 export async function handleValidateShop(request: Request) {
   const parsed = await parseAndAuthorize(request, validateShopBodySchema);
   if (!parsed.ok) return parsed.response;
+  if (parsed.body.shopId !== parsed.body.expectedShopId) {
+    logConnectorReject({
+      route: new URL(request.url).pathname,
+      method: request.method,
+      bodyKeys: Object.keys(parsed.body),
+      hasShopIdHeader: true,
+      hasTimestampHeader: true,
+      hasSignatureHeader: true,
+      timestampAgeBucket: "le_5m",
+      shopIdMismatch: true,
+      signatureVerificationFailed: false,
+      schemaFailure: "body shopId does not equal expectedShopId",
+    });
+    return NextResponse.json({ ok: false, error: "shopId mismatch" }, { status: 400 });
+  }
   const admin = createAdminSupabase();
   const { data } = await admin.from("shops").select("id").eq("id", parsed.body.shopId).maybeSingle();
-  return NextResponse.json({ ok: !!data && parsed.body.shopId === parsed.body.expectedShopId, capabilities: CONNECTOR_CAPABILITIES });
+  if (!data) return NextResponse.json({ ok: false, error: "shop not found" }, { status: 404 });
+  return NextResponse.json({ ok: true, capabilities: CONNECTOR_CAPABILITIES });
 }
 
 export async function handleCustomerUpsert(request: Request) {
