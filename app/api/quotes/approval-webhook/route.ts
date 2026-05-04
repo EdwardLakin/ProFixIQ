@@ -27,6 +27,9 @@ function dedupe(items: string[]): string[] {
 }
 
 export async function POST(req: Request) {
+  // Compatibility note:
+  // This route is an authenticated approval-submission endpoint (not an anonymous third-party webhook).
+  // Keep this path for backward compatibility; future cleanup may alias/rename to /api/quotes/approve.
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   const {
@@ -89,30 +92,40 @@ export async function POST(req: Request) {
 
   const workOrder = rawWorkOrder;
 
-  let requesterIsShopStaff = false;
-  if (!customer?.id) {
-    const { data: requesterProfile, error: requesterProfileErr } = await supabase
-      .from("profiles")
-      .select("shop_id, role")
-      .eq("user_id", user.id)
-      .maybeSingle<{ shop_id: string | null; role: string | null }>();
-
-    if (!requesterProfileErr && requesterProfile?.shop_id && workOrder.shop_id) {
-      const role = (requesterProfile.role ?? "").toLowerCase();
-      const canActForShop =
-        role === "owner" || role === "admin" || role === "manager" || role === "advisor";
-      requesterIsShopStaff = canActForShop && requesterProfile.shop_id === workOrder.shop_id;
-    }
-  }
-
-  if (customerErr || (!customer?.id && !requesterIsShopStaff)) {
+  if (customerErr) {
     return NextResponse.json(
       { error: "Customer account not found for this user" } satisfies Json,
       { status: 404 },
     );
   }
 
-  if (customer?.id && workOrder.customer_id !== customer.id) {
+  const customerId = customer?.id ?? null;
+  const isCustomerActor = Boolean(customerId);
+  let isStaffActor = false;
+
+  if (!isCustomerActor) {
+    const { data: requesterProfile, error: requesterProfileErr } = await supabase
+      .from("profiles")
+      .select("shop_id, role")
+      .eq("user_id", user.id)
+      .maybeSingle<{ shop_id: string | null; role: string | null }>();
+
+    if (requesterProfileErr || !requesterProfile?.shop_id || !workOrder.shop_id) {
+      return NextResponse.json({ error: "Not allowed" } satisfies Json, { status: 403 });
+    }
+
+    const role = (requesterProfile.role ?? "").toLowerCase();
+    const canActForShop =
+      role === "owner" || role === "admin" || role === "manager" || role === "advisor";
+
+    isStaffActor = canActForShop && requesterProfile.shop_id === workOrder.shop_id;
+
+    if (!isStaffActor) {
+      return NextResponse.json({ error: "Not allowed" } satisfies Json, { status: 403 });
+    }
+  }
+
+  if (customerId && workOrder.customer_id !== customerId) {
     return NextResponse.json(
       { error: "Work order not found for this customer" } satisfies Json,
       { status: 404 },
@@ -192,8 +205,10 @@ export async function POST(req: Request) {
       })
       .eq("id", workOrderId);
 
-    if (customer?.id) {
-      woUpdateQuery = woUpdateQuery.eq("customer_id", customer.id);
+    if (customerId) {
+      woUpdateQuery = woUpdateQuery.eq("customer_id", customerId);
+    } else if (workOrder.shop_id) {
+      woUpdateQuery = woUpdateQuery.eq("shop_id", workOrder.shop_id);
     }
 
     const { error: woUpdateErr } = await woUpdateQuery;
@@ -205,7 +220,7 @@ export async function POST(req: Request) {
     await logOperationalEvent({
       supabase,
       event: "work_order_approval_decision_recorded",
-      actorId: body.approverId ?? user.id,
+      actorId: user.id,
       entityType: "work_order",
       entityId: workOrderId,
       details: {
