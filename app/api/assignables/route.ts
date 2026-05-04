@@ -1,15 +1,17 @@
 // app/api/assignables/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY! // server-side ONLY
 );
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const shopId = searchParams.get("shopId");
+export async function GET() {
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id;
 
   let query = supabase
     .from("profiles")
@@ -17,10 +19,7 @@ export async function GET(req: Request) {
     .in("role", ["mechanic", "tech", "foreman", "lead_hand"])
     .order("full_name", { ascending: true });
 
-  // if you pass ?shopId=... from the page, we can scope
-  if (shopId) {
-    query = query.eq("shop_id", shopId);
-  }
+  query = query.eq("shop_id", shopId);
 
   const { data, error } = await query;
 

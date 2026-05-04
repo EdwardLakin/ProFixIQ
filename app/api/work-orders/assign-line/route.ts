@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -16,13 +17,14 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       work_order_line_id?: string;
       tech_id?: string;
-      // optional, so we can record who assigned
-      assigned_by?: string | null;
     };
 
     const lineId = body.work_order_line_id;
     const techId = body.tech_id;
-    const assignedBy = body.assigned_by ?? null;
+    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+    if (!access.ok) return access.response;
+    const assignedBy = access.profile.id;
+    const shopId = access.profile.shop_id;
 
     if (!lineId || !techId) {
       return NextResponse.json(
@@ -37,8 +39,9 @@ export async function POST(req: Request) {
 
     const { data: line, error: lineReadErr } = await supabase
       .from("work_order_lines")
-      .select("id, line_type")
+      .select("id, line_type, work_order_id, work_orders!inner(id, shop_id)")
       .eq("id", lineId)
+      .eq("work_orders.shop_id", shopId)
       .maybeSingle();
 
     if (lineReadErr) {
@@ -51,11 +54,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Info lines cannot be technician-assigned." }, { status: 409 });
     }
 
+    const { data: technician, error: technicianErr } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", techId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    if (technicianErr) {
+      return NextResponse.json({ error: technicianErr.message }, { status: 400 });
+    }
+    if (!technician) {
+      return NextResponse.json({ error: "Technician not found" }, { status: 404 });
+    }
+
     // 1) keep the simple column up to date
     const { error: lineErr } = await supabase
       .from("work_order_lines")
       .update({ assigned_tech_id: techId })
-      .eq("id", lineId);
+      .eq("id", lineId)
+      .eq("work_order_id", line.work_order_id);
 
     if (lineErr) {
       return NextResponse.json({ error: lineErr.message }, { status: 400 });
