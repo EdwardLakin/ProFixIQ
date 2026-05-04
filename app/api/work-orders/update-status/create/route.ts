@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +20,10 @@ function generateWorkOrderNumber(): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+    if (!access.ok) return access.response;
+    const shopId = access.profile.shop_id;
+
     const body = await req.json();
     const {
       customer_id,
@@ -27,11 +32,10 @@ export async function POST(req: NextRequest) {
       type = "maintenance",
       complaint,
       appointment,
-      shop_id,
     } = body;
 
     // ✅ Validate required fields
-    if (!customer_id || !vehicle_id || !type || !shop_id) {
+    if (!customer_id || !vehicle_id || !type) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 },
@@ -49,6 +53,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Compatibility route: preserve payload/response while deriving tenant from auth context.
     const workOrderNumber = generateWorkOrderNumber();
 
     const { data, error } = await supabase
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest) {
         appointment: appointment ?? null,
         created_at: new Date().toISOString(),
         location: null,
-        shop_id,
+        shop_id: shopId,
         number: workOrderNumber,
       })
       .select()

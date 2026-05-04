@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,10 @@ interface RequestBody {
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+    if (!access.ok) return access.response;
+    const shopId = access.profile.shop_id;
+
     const body = (await req.json()) as RequestBody;
     const { workOrderId, command, quote, summary } = body;
 
@@ -50,6 +55,7 @@ export async function POST(req: NextRequest) {
       .from("work_orders")
       .select("id, status")
       .eq("id", workOrderId)
+      .eq("shop_id", shopId)
       .maybeSingle();
 
     if (existingErr) {
@@ -92,7 +98,8 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase
       .from("work_orders")
       .update(updateFields)
-      .eq("id", workOrderId);
+      .eq("id", workOrderId)
+      .eq("shop_id", shopId);
 
     if (error) {
       throw error;
