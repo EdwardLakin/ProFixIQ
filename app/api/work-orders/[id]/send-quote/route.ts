@@ -1,33 +1,20 @@
 // /app/api/work-orders/[id]/send-quote/route.ts
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
-
-function isUuid(v: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    v,
-  );
-}
-
-async function resolveWorkOrderId(rawId: string): Promise<string | null> {
+async function resolveWorkOrderId(
+  rawId: string,
+  shopId: string,
+  accessSupabase: ReturnType<typeof createServerSupabaseRoute>,
+): Promise<string | null> {
   const id = rawId.trim();
   if (!id) return null;
-  if (isUuid(id)) return id;
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !key) return null;
-
-  const sb = createClient<DB>(url, key);
-
-  const { data, error } = await sb
+  const { data, error } = await accessSupabase
     .from("work_orders")
     .select("id")
-    .eq("custom_id", id)
+    .eq("shop_id", shopId)
+    .or(`id.eq.${id},custom_id.eq.${id}`)
     .maybeSingle<{ id: string }>();
 
   if (error) return null;
@@ -58,7 +45,22 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     .toString(16)
     .slice(2)}`;
 
-  const resolvedId = await resolveWorkOrderId(id);
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canAuthorizeQuotes",
+  });
+  if (!access.ok) {
+    const payload = await access.response.json().catch(() => ({ error: "Forbidden" }));
+    return NextResponse.json(
+      { ok: false, trace, error: payload?.error ?? "Forbidden" },
+      { status: access.response.status },
+    );
+  }
+  const shopId = access.profile.shop_id;
+  if (!shopId) {
+    return NextResponse.json({ ok: false, trace, error: "Profile for current user not found" }, { status: 403 });
+  }
+
+  const resolvedId = await resolveWorkOrderId(id, shopId, access.supabase);
 
   if (!resolvedId) {
     return NextResponse.json(
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   };
 
   const url = new URL(req.url);
+  // Compatibility wrapper: canonical quote send behavior lives at /api/quotes/send.
   url.pathname = "/api/quotes/send";
   url.search = "";
 
