@@ -21,6 +21,9 @@ const supabaseAdmin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+// Service role is intentionally retained for post-auth privileged invoice-send
+// side effects (email/persistence/logging). Ownership is validated against the
+// caller's shop boundary before any privileged operations execute.
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
@@ -262,6 +265,7 @@ export async function POST(req: Request) {
         "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name, status",
       )
       .eq("id", workOrderId)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle<
         Pick<
           WorkOrderRow,
@@ -524,7 +528,8 @@ export async function POST(req: Request) {
               invoice_url: portalInvoiceUrl,
               invoice_pdf_url: invoicePdfUrl,
             } as DB["public"]["Tables"]["work_orders"]["Update"])
-            .eq("id", workOrderId);
+            .eq("id", workOrderId)
+            .eq("shop_id", wo.shop_id);
           if (error) throw new Error(error.message);
         },
       },
