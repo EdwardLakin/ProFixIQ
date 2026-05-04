@@ -20,7 +20,8 @@
     "db:dump:schema": "npx supabase db dump --schema public --data-only=false --file db/sql/schema.sql --use-copy",
     "db:dump:policies": "npx supabase db dump --schema public --data-only=false --include-roles --file db/sql/policies.sql --use-copy",
     "db:dump:all": "npx supabase db dump --file db/sql/schema.sql --schema public --schema extensions",
-    "db:check:size": "node shared/types/types/scripts/check-dump-size.cjs"
+    "db:check:size": "node shared/types/types/scripts/check-dump-size.cjs",
+    "audit:api-routes": "node scripts/audit-api-routes.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
