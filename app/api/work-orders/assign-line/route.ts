@@ -6,6 +6,8 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 
 type DB = Database;
 
+const ASSIGNABLE_TECH_ROLES = ["mechanic", "tech", "foreman", "lead_hand"] as const;
+
 function must(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env ${name}`);
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
 
     const { data: technician, error: technicianErr } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, role")
       .eq("id", techId)
       .eq("shop_id", shopId)
       .maybeSingle();
@@ -64,6 +66,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: technicianErr.message }, { status: 400 });
     }
     if (!technician) {
+      return NextResponse.json({ error: "Technician not found" }, { status: 404 });
+    }
+    if (!technician.role || !ASSIGNABLE_TECH_ROLES.includes(technician.role as (typeof ASSIGNABLE_TECH_ROLES)[number])) {
       return NextResponse.json({ error: "Technician not found" }, { status: 404 });
     }
 
