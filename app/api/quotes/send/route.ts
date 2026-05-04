@@ -3,8 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -83,19 +82,16 @@ export async function POST(req: Request) {
 
   try {
 
-    const actor = createServerSupabaseRoute();
-    const {
-      data: { user },
-      error: userErr,
-    } = await actor.auth.getUser();
-
-    if (userErr) {
-      return NextResponse.json({ ok: false, trace, error: userErr.message }, { status: 500 });
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canAuthorizeQuotes",
+    });
+    if (!access.ok) {
+      const payload = await access.response.json().catch(() => ({ error: "Forbidden" }));
+      return NextResponse.json(
+        { ok: false, trace, error: safeStr(payload?.error) || "Forbidden" },
+        { status: access.response.status },
+      );
     }
-    if (!user) {
-      return NextResponse.json({ ok: false, trace, error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json().catch(() => null)) as RequestBody | null;
     const workOrderId = safeStr(body?.workOrderId).trim();
 
@@ -123,6 +119,7 @@ export async function POST(req: Request) {
       .from("work_orders")
       .select("id, customer_id, shop_id, vehicle_id, quote_url")
       .eq("id", workOrderId)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle<
         Pick<
           WorkOrderRow,
@@ -157,28 +154,13 @@ export async function POST(req: Request) {
     }
 
 
-    const { data: me, error: meErr } = await actor
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (meErr || !me) {
-      return NextResponse.json({ ok: false, trace, error: "Unable to load actor profile" }, { status: 403 });
-    }
-    const actorCaps = getActorCapabilities({ role: me.role });
-    if (!actorCaps.isKnownRole || !actorCaps.canAuthorizeQuotes) {
-      return NextResponse.json({ ok: false, trace, error: "Forbidden" }, { status: 403 });
-    }
-    if (!me.shop_id || me.shop_id !== wo.shop_id) {
-      return NextResponse.json({ ok: false, trace, error: "Cross-shop access denied" }, { status: 403 });
-    }
-
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
     let customerEmail = safeStr(body?.customerEmail).trim() || "";
     let customerName = safeStr(body?.customerName).trim() || "";
 
+    // Service-role client is intentionally retained after canonical shop-scoped auth
+    // for privileged quote-send side effects (email/persistence/notifications).
     if (wo.customer_id) {
       const { data: customer, error: customerErr } = await supabaseAdmin
         .from("customers")
@@ -369,10 +351,15 @@ export async function POST(req: Request) {
       ? `${normalizedAppUrl}/portal/quotes/${workOrderId}`
       : null;
 
-    await sendQuoteReadyEmail({
+    const requestAllowsResend = req.headers.get("x-profix-resend") === "1";
+    const quoteUrlForSend = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "";
+    const shouldSkipAsDuplicate = Boolean(wo.quote_url) && wo.quote_url === quoteUrlForSend && !requestAllowsResend;
+
+    if (!shouldSkipAsDuplicate) {
+      await sendQuoteReadyEmail({
       shopId: wo.shop_id,
       to: customerEmail,
-      quoteUrl: portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "",
+      quoteUrl: quoteUrlForSend,
       quoteTotal: quoteTotal ?? null,
       vehicleLabel: buildVehicleLabel(vehicleInfo),
       shopName: shopName || undefined,
@@ -380,6 +367,7 @@ export async function POST(req: Request) {
       brandPrimaryColor: brand?.colors.primary ?? null,
       brandSecondaryColor: brand?.colors.secondary ?? null,
     });
+    }
 
     const newQuoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? null;
 
@@ -426,12 +414,13 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         trace,
+        deduped: shouldSkipAsDuplicate,
         sentWithWarnings: true,
         warnings: postSendWarnings,
       });
     }
 
-    return NextResponse.json({ ok: true, trace });
+    return NextResponse.json({ ok: true, trace, deduped: shouldSkipAsDuplicate });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown error sending quote";
