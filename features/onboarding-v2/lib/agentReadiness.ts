@@ -14,6 +14,16 @@ export type AgentReadiness = {
   requiredEnv?: string[];
 };
 
+export function isVerifyOnlyConfigured(readiness: AgentReadiness): boolean {
+  return (
+    readiness.ok &&
+    readiness.rolloutStage === "http_verify_only" &&
+    readiness.connector.configured &&
+    !readiness.connector.liveMaterializationEnabled &&
+    readiness.connector.canValidateShop
+  );
+}
+
 export function defaultAgentReadiness(): AgentReadiness {
   return {
     ok: false,
