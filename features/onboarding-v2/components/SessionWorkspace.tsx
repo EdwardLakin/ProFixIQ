@@ -1,7 +1,11 @@
+import React from "react";
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
+import { ConfirmActivationPanel } from "@/features/onboarding-v2/components/ConfirmActivationPanel";
+import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
 
 type JsonMap = Record<string, unknown>;
 type ApiListResponse = { items?: JsonMap[]; message?: string };
@@ -18,6 +22,9 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
   const [files, setFiles] = useState<JsonMap[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState<AgentReadiness>(defaultAgentReadiness());
+  const [readinessLoading, setReadinessLoading] = useState(true);
+  const [readinessError, setReadinessError] = useState("");
 
   const terminal = ["completed", "failed", "cancelled"].includes(String(session?.status ?? ""));
 
@@ -25,23 +32,32 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
     let active = true;
     const run = async () => {
       try {
-        const [s, e, a, f] = await Promise.all([
+        const [s, e, a, f, r] = await Promise.all([
           getJson<JsonMap>(`/api/onboarding-v2/sessions/${sessionId}`),
           getJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/events?limit=50`),
           getJson<JsonMap>(`/api/onboarding-v2/sessions/${sessionId}/activation-summary`),
           getJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/files`),
+          getJson<unknown>(`/api/onboarding-v2/agent-readiness`),
         ]);
         if (!active) return;
         setSession(s);
         setEvents(e.items ?? []);
         setSummary(a);
         setFiles(f.items ?? []);
+        setReadiness(normalizeAgentReadiness(r));
         setError("");
-      } catch {
+        setReadinessError("");
+      } catch (fetchError) {
         if (!active) return;
+        const message = fetchError instanceof Error ? fetchError.message : "";
         setError("Unable to load onboarding session data.");
+        setReadiness(defaultAgentReadiness());
+        setReadinessError(message ? "Readiness check unavailable. Verify-only safe mode remains enforced." : "");
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setReadinessLoading(false);
+        }
       }
     };
     void run();
@@ -71,6 +87,7 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-4 text-sm text-slate-200">
+      <AgentReadinessBanner readiness={readiness} loading={readinessLoading} degradedMessage={readinessError} />
       <div className="rounded-xl border border-white/10 p-4">Session <b>{sessionId}</b> • Status: {String(session?.status ?? "unknown")}</div>
       <div className="grid gap-4 lg:grid-cols-2">
         <UploadCard sessionId={sessionId} />
@@ -81,7 +98,7 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
         <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Files</div>{files.length === 0 ? <div className="text-slate-400">No files yet.</div> : files.map((f, i) => <div key={`${String(f.fileName ?? "file")}-${i}`}>{String(f.fileName ?? "file")}</div>)}</div>
         <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Timeline</div>{events.length === 0 ? <div className="text-slate-400">No events.</div> : events.map((e, i) => <div key={`${String(e.type ?? "event")}-${i}`} className="text-xs">{String(e.type ?? "event")} • {String(e.status ?? "")}</div>)}</div>
       </div>
-      <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Confirm Activation</div><button disabled className="mt-2 rounded bg-slate-700 px-3 py-2 text-slate-300">Confirm activation (verify-only mode)</button></div>
+      <ConfirmActivationPanel readiness={readiness} summary={summary as { canConfirm?: boolean } | null} />
       <div className="flex gap-3"><Link href={`/dashboard/onboarding-v2/${sessionId}/review`} className="underline">Review exceptions</Link></div>
     </div>
   );
