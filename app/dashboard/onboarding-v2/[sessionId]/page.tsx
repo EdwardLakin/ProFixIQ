@@ -13,7 +13,7 @@ export default async function OnboardingV2SessionPage({ params }: Props) {
   return (
     <OnboardingV2Shell title="Onboarding Agent Session">
       <SafeModeVerifyOnlyBanner />
-      <AgentReadinessBanner ready={true} detail="Readiness verification proxied through server routes." />
+      <AgentReadinessBanner ready detail="Readiness verification is served via ProFixIQ proxy routes only." />
       <SessionWorkspace sessionId={sessionId} />
     </OnboardingV2Shell>
   );

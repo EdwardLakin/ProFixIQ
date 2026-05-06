@@ -1,6 +1,8 @@
 import { getOnboardingAgentConfig } from "@/features/onboarding-v2/server/config";
 import { signOnboardingAgentPayload } from "@/features/onboarding-v2/server/signing";
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
 export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path: string; shopId: string; body?: string; query?: URLSearchParams }): Promise<Response> {
   const config = getOnboardingAgentConfig();
 
@@ -16,9 +18,10 @@ export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path
   const timestampMs = Date.now();
   const signature = signOnboardingAgentPayload({ secret: config.internalSecret, shopId: input.shopId, timestampMs, rawBody });
   const url = new URL(input.path, config.baseUrl.endsWith("/") ? config.baseUrl : `${config.baseUrl}/`);
-  if (input.query) {
-    input.query.forEach((value, key) => url.searchParams.set(key, value));
-  }
+  if (input.query) input.query.forEach((value, key) => url.searchParams.set(key, value));
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     return await fetch(url, {
@@ -31,8 +34,14 @@ export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path
       },
       body: input.method === "POST" ? rawBody : undefined,
       cache: "no-store",
+      signal: controller.signal,
     });
-  } catch {
-    return Response.json({ ok: false, status: "unreachable", message: "Onboarding agent is unreachable." }, { status: 502 });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return Response.json({ ok: false, failureKind: "agent_timeout", message: "Onboarding agent timed out." }, { status: 504 });
+    }
+    return Response.json({ ok: false, failureKind: "agent_unreachable", message: "Onboarding agent is unreachable." }, { status: 502 });
+  } finally {
+    clearTimeout(timeout);
   }
 }

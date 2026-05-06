@@ -2,6 +2,28 @@ import { NextResponse } from "next/server";
 import { proxyJson, withOnboardingAccess } from "@/features/onboarding-v2/server/apiProxy";
 
 const MAX_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_MIME = new Set(["text/csv", "application/csv", "application/vnd.ms-excel"]);
+
+function parseApproxBase64Bytes(contentBase64: string): number {
+  return Math.floor((contentBase64.length * 3) / 4);
+}
+
+function isCsvLikeExcel(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(".csv");
+}
+
+function isAllowedUploadType(mimeType: string, fileName: string): { ok: boolean; message?: string } {
+  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return { ok: false, message: "xlsx_not_supported_by_agent" };
+  }
+  if (SUPPORTED_MIME.has(mimeType)) {
+    if (mimeType === "application/vnd.ms-excel" && !isCsvLikeExcel(fileName)) {
+      return { ok: false, message: "excel_mime_requires_csv_extension" };
+    }
+    return { ok: true };
+  }
+  return { ok: false, message: "unsupported_file_type" };
+}
 
 export async function POST(request: Request, context: { params: Promise<{ sessionId: string }> }) {
   const access = await withOnboardingAccess();
@@ -9,6 +31,11 @@ export async function POST(request: Request, context: { params: Promise<{ sessio
   const { sessionId } = await context.params;
   const shopId = access.profile.shop_id;
   if (!shopId) return Response.json({ error: "Missing shop context" }, { status: 403 });
+
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BYTES + 256_000) {
+    return NextResponse.json({ error: "file_too_large", maxBytes: MAX_BYTES }, { status: 413 });
+  }
 
   const contentType = request.headers.get("content-type") ?? "";
   let body: Record<string, unknown> = {};
@@ -18,15 +45,26 @@ export async function POST(request: Request, context: { params: Promise<{ sessio
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "file_missing" }, { status: 400 });
     if (file.size > MAX_BYTES) return NextResponse.json({ error: "file_too_large", maxBytes: MAX_BYTES }, { status: 413 });
+
+    const mimeType = file.type || "application/octet-stream";
+    const allowed = isAllowedUploadType(mimeType, file.name);
+    if (!allowed.ok) return NextResponse.json({ error: allowed.message }, { status: 415 });
+
     const buffer = Buffer.from(await file.arrayBuffer());
-    body = { fileName: file.name, mimeType: file.type || "application/octet-stream", sizeBytes: file.size, contentBase64: buffer.toString("base64") };
+    body = { originalFilename: file.name, mimeType, contentBase64: buffer.toString("base64") };
   } else {
-    const parsed = (await request.json().catch(() => null)) as { fileName?: string; mimeType?: string; contentBase64?: string } | null;
-    if (!parsed?.fileName || !parsed.contentBase64) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
-    const approxBytes = Math.floor((parsed.contentBase64.length * 3) / 4);
-    if (approxBytes > MAX_BYTES) return NextResponse.json({ error: "file_too_large", maxBytes: MAX_BYTES }, { status: 413 });
-    body = { fileName: parsed.fileName, mimeType: (parsed.mimeType ?? "application/octet-stream"), contentBase64: parsed.contentBase64 };
+    const parsed = (await request.json().catch(() => null)) as { originalFilename?: string; mimeType?: string; contentBase64?: string } | null;
+    if (!parsed?.originalFilename || !parsed.contentBase64 || !parsed.mimeType) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+
+    const allowed = isAllowedUploadType(parsed.mimeType, parsed.originalFilename);
+    if (!allowed.ok) return NextResponse.json({ error: allowed.message }, { status: 415 });
+
+    if (parseApproxBase64Bytes(parsed.contentBase64) > MAX_BYTES) return NextResponse.json({ error: "file_too_large", maxBytes: MAX_BYTES }, { status: 413 });
+
+    body = { originalFilename: parsed.originalFilename, mimeType: parsed.mimeType, contentBase64: parsed.contentBase64 };
   }
 
   return proxyJson({ method: "POST", path: `/onboarding/sessions/${encodeURIComponent(sessionId)}/files/content`, shopId, body });
 }
+
+export const __testables = { isAllowedUploadType, parseApproxBase64Bytes, MAX_BYTES };
