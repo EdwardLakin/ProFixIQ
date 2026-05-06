@@ -15,7 +15,19 @@ describe("readiness UI", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<SessionWorkspace sessionId="sess_1" />);
-    expect(await screen.findByText(/Agent readiness: Verify-only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Agent readiness: Connected \/ verify-only/i)).toBeInTheDocument();
+  });
+
+  it("normalizer maps configured http_verify_only as connected verify-only", () => {
+    const readiness = normalizeAgentReadiness({
+      ok: true,
+      rolloutStage: "http_verify_only",
+      connector: { mode: "unknown", configured: true, liveMaterializationEnabled: false, canValidateShop: true, canWriteLive: false },
+      warnings: [],
+    });
+    expect(readiness.ok).toBe(true);
+    expect(readiness.connector.configured).toBe(true);
+    expect(readiness.rolloutStage).toBe("http_verify_only");
   });
 
   it("confirm panel disables when canWriteLive is false", () => {

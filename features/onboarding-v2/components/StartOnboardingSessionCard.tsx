@@ -12,8 +12,13 @@ export function StartOnboardingSessionCard() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sourceSystem: "profixiq-onboarding-v2" }),
     });
-    const payload = (await response.json()) as { sessionId?: string; message?: string };
-    setStatus(payload.sessionId ? `Session created: ${payload.sessionId}` : payload.message ?? "Unable to create session");
+    const payload = (await response.json()) as { ok?: boolean; sessionId?: string; message?: string; failureKind?: string; upstreamStatus?: number };
+    if (payload.sessionId) {
+      setStatus(`Session created: ${payload.sessionId}`);
+      return;
+    }
+    const detail = payload.failureKind ? `${payload.failureKind}${payload.upstreamStatus ? ` (${payload.upstreamStatus})` : ""}` : "";
+    setStatus(payload.message ? `${payload.message}${detail ? ` — ${detail}` : ""}` : "Unable to create session");
   }
 
   return (
