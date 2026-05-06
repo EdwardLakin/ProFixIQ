@@ -2,22 +2,12 @@ import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-acces
 import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
 import { OnboardingV2Shell } from "@/features/onboarding-v2/components/OnboardingV2Shell";
 import { SafeModeVerifyOnlyBanner } from "@/features/onboarding-v2/components/SafeModeVerifyOnlyBanner";
-import { normalizeAgentReadiness, defaultAgentReadiness, type AgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
+import { getAgentReadinessForDashboard } from "@/features/onboarding-v2/lib/agentReadinessServer";
 import { StartOnboardingSessionCard } from "@/features/onboarding-v2/components/StartOnboardingSessionCard";
-
-async function getReadiness(): Promise<AgentReadiness> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/onboarding-v2/agent-readiness`, { cache: "no-store" });
-    if (!response.ok) return defaultAgentReadiness();
-    return normalizeAgentReadiness(await response.json());
-  } catch {
-    return defaultAgentReadiness();
-  }
-}
 
 export default async function OnboardingV2Page() {
   await requireAdminPageAccess({ allow: ["owner", "admin"], redirectTo: "/dashboard" });
-  const readiness = await getReadiness();
+  const readiness = await getAgentReadinessForDashboard();
 
   return (
     <OnboardingV2Shell title="Onboarding Agent">
