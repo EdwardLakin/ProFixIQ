@@ -13,7 +13,41 @@ type ApiListResponse = { items?: JsonMap[]; message?: string };
 
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { cache: "no-store" });
-  return (await r.json()) as T;
+  const response = r as Response & { json?: () => Promise<unknown>; text?: () => Promise<string> };
+
+  const payload =
+    typeof response.text === "function"
+      ? (() => {
+          return response.text().then((text) => (text ? JSON.parse(text) : {}));
+        })()
+      : typeof response.json === "function"
+        ? response.json()
+        : Promise.resolve({});
+
+  const parsed = await payload;
+
+  const failed = typeof r.ok === "boolean" ? !r.ok : false;
+
+  if (failed) {
+    const message =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as { message?: unknown }).message === "string"
+        ? (parsed as { message: string }).message
+        : `Request failed: ${r.status}`;
+
+    throw new Error(message);
+  }
+
+  return parsed as T;
+}
+
+async function getOptionalJson<T>(path: string, fallback: T): Promise<T> {
+  try {
+    return await getJson<T>(path);
+  } catch {
+    return fallback;
+  }
 }
 
 export function SessionWorkspace({ sessionId }: { sessionId: string }) {
@@ -35,25 +69,23 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
       try {
         const [s, e, a, f, r] = await Promise.all([
           getJson<JsonMap>(`/api/onboarding-v2/sessions/${sessionId}`),
-          getJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/events?limit=50`),
-          getJson<JsonMap>(`/api/onboarding-v2/sessions/${sessionId}/activation-summary`),
-          getJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/files`),
-          getJson<unknown>(`/api/onboarding-v2/agent-readiness`),
+          getOptionalJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/events?limit=50`, { items: [] }),
+          getOptionalJson<JsonMap>(`/api/onboarding-v2/sessions/${sessionId}/activation-summary`, {}),
+          getOptionalJson<ApiListResponse>(`/api/onboarding-v2/sessions/${sessionId}/files`, { items: [] }),
+          getOptionalJson<unknown>(`/api/onboarding-v2/agent-readiness`, null),
         ]);
         if (!active) return;
         setSession(s);
         setEvents(e.items ?? []);
         setSummary(a);
         setFiles(f.items ?? []);
-        setReadiness(normalizeAgentReadiness(r));
+        setReadiness(r === null ? defaultAgentReadiness() : normalizeAgentReadiness(r));
         setError("");
-        setReadinessError("");
+        setReadinessError(r === null ? "Readiness check unavailable. Verify-only safe mode remains enforced." : "");
       } catch (fetchError) {
         if (!active) return;
-        const message = fetchError instanceof Error ? fetchError.message : "";
-        setError("Unable to load onboarding session data.");
-        setReadiness(defaultAgentReadiness());
-        setReadinessError(message ? "Readiness check unavailable. Verify-only safe mode remains enforced." : "");
+        const message = fetchError instanceof Error ? fetchError.message : "Unable to load onboarding session data.";
+        setError(message);
       } finally {
         if (active) {
           setLoading(false);
