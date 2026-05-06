@@ -1,5 +1,7 @@
-import React from "react";
 "use client";
+
+import React from "react";
+
 import { useEffect, useState } from "react";
 import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
 import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
