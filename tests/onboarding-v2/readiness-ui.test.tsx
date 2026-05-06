@@ -5,6 +5,7 @@ import { ConfirmActivationPanel } from "@/features/onboarding-v2/components/Conf
 import { SessionWorkspace } from "@/features/onboarding-v2/components/SessionWorkspace";
 import { ReviewItemsQueue } from "@/features/onboarding-v2/components/ReviewItemsQueue";
 import { normalizeAgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
+import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
 
 describe("readiness UI", () => {
   it("session workspace renders verify-only readiness from proxy", async () => {
@@ -28,6 +29,34 @@ describe("readiness UI", () => {
     expect(readiness.ok).toBe(true);
     expect(readiness.connector.configured).toBe(true);
     expect(readiness.rolloutStage).toBe("http_verify_only");
+    expect(readiness.connector.mode).toBe("http_verify_only");
+    expect(readiness.connector.canValidateShop).toBe(true);
+    expect(readiness.connector.canWriteLive).toBe(false);
+    expect(readiness.connector.liveMaterializationEnabled).toBe(false);
+  });
+
+  it("readiness banner renders connected verify-only and not disabled for configured verify-only", () => {
+    const readiness = normalizeAgentReadiness({
+      ok: true,
+      rolloutStage: "http_verify_only",
+      connector: { mode: "unknown", configured: true, liveMaterializationEnabled: false, canValidateShop: true, canWriteLive: false },
+      warnings: [],
+    });
+
+    render(<AgentReadinessBanner readiness={readiness} />);
+    expect(screen.getByText(/Agent readiness: Connected \/ verify-only/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Disabled \/ not configured/i)).not.toBeInTheDocument();
+  });
+
+  it("preserves disabled state when not ok or not configured", () => {
+    const badOk = normalizeAgentReadiness({
+      ok: false,
+      rolloutStage: "http_verify_only",
+      connector: { mode: "unknown", configured: false, liveMaterializationEnabled: false, canValidateShop: true, canWriteLive: false },
+      warnings: [],
+    });
+    render(<AgentReadinessBanner readiness={badOk} />);
+    expect(screen.getByText(/Disabled \/ not configured/i)).toBeInTheDocument();
   });
 
   it("confirm panel disables when canWriteLive is false", () => {
