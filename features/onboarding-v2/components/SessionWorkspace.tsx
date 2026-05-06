@@ -100,7 +100,10 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
         <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Timeline</div>{events.length === 0 ? <div className="text-slate-400">No events.</div> : events.map((e, i) => <div key={`${String(e.type ?? "event")}-${i}`} className="text-xs">{String(e.type ?? "event")} • {String(e.status ?? "")}</div>)}</div>
       </div>
       <ConfirmActivationPanel readiness={readiness} summary={summary as { canConfirm?: boolean } | null} />
-      <div className="flex gap-3"><Link href={`/dashboard/onboarding-v2/${sessionId}/review`} className="underline">Review exceptions</Link></div>
+      <div className="flex gap-3">
+        <Link href={`/dashboard/onboarding-v2/${sessionId}/review`} className="underline">Review exceptions</Link>
+        <Link href={`/dashboard/onboarding-v2/${sessionId}/summary`} className="underline">Final summary</Link>
+      </div>
     </div>
   );
 }

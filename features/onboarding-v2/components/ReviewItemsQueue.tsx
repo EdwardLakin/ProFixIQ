@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
 import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
@@ -39,5 +40,6 @@ export function ReviewItemsQueue({ sessionId }: { sessionId: string }) {
     <div className="rounded-xl border border-white/10 p-4">
       {displayItems.length === 0 ? <div>No exceptions found.</div> : displayItems.map((item, i) => <div key={item.id ?? i} className="border-b border-white/10 py-2"><span>{item.severity ?? "unknown"}</span> • <span>{item.status ?? "unknown"}</span> • {item.title ?? item.message ?? "Review item"}</div>)}
     </div>
+    <div><Link href={`/dashboard/onboarding-v2/${sessionId}/summary`} className="underline">Open final summary</Link></div>
   </div>;
 }
