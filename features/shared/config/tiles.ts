@@ -139,7 +139,7 @@ export const TILES: Tile[] = [
   },
   {
     href: "/dashboard/onboarding",
-    title: "Onboarding Agent",
+    title: "Legacy Onboarding",
     subtitle: "Stage files and prepare activation safely",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
@@ -147,11 +147,11 @@ export const TILES: Tile[] = [
   },
   {
     href: "/dashboard/onboarding-v2",
-    title: "Onboarding v2",
-    subtitle: "Verify-only onboarding foundation",
+    title: "Onboarding Agent",
+    subtitle: "Guided onboarding workspace",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Tools",
+    section: "Admin",
   },
 
   /* ---------------------------------------------------------------------- */

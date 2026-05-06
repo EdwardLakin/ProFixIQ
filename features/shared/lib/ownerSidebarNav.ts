@@ -52,6 +52,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/dashboard/admin/shops": "Admin & Oversight",
   "/dashboard/admin/audit": "Admin & Oversight",
   "/dashboard/onboarding": "Admin & Oversight",
+  "/dashboard/onboarding-v2": "Admin & Oversight",
   "/dashboard/marketing": "Growth",
   "/dashboard/reviews": "Growth",
   "/compare-plans": "Billing & Plan",
@@ -68,6 +69,7 @@ const OWNER_TITLE_OVERRIDES_BY_HREF: Record<string, string> = {
   "/billing": "Customer Billing",
   "/parts/requests": "Parts Requests",
   "/dashboard/onboarding": "Data Onboarding",
+  "/dashboard/onboarding-v2": "Onboarding Agent",
 };
 
 export function getOwnerTileOverrides(tile: Tile): Pick<Tile, "section" | "title"> {
