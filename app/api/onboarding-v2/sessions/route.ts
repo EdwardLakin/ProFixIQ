@@ -18,11 +18,36 @@ export async function POST(request: Request) {
   const body = JSON.stringify({ shopId, ...parsed.data });
   const response = await proxyOnboardingAgent({ method: "POST", path: "/onboarding/sessions", shopId, body });
   const upstream = (await response.json().catch(() => ({ ok: false, failureKind: "invalid_agent_response", message: "Invalid onboarding agent response." }))) as Record<string, unknown>;
+  const sessionId =
+    typeof upstream.sessionId === "string"
+      ? upstream.sessionId
+      : typeof upstream.id === "string"
+        ? upstream.id
+        : undefined;
+
+  const failureKind =
+    typeof upstream.failureKind === "string"
+      ? upstream.failureKind
+      : typeof upstream.status === "string"
+        ? upstream.status
+        : typeof upstream.error === "string"
+          ? upstream.error
+          : undefined;
+
+  const message =
+    typeof upstream.message === "string"
+      ? upstream.message
+      : typeof upstream.error === "string"
+        ? upstream.error
+        : response.ok
+          ? undefined
+          : `Onboarding agent session request failed with status ${response.status}.`;
+
   const safePayload = {
-    ok: upstream.ok === true,
-    sessionId: typeof upstream.sessionId === "string" ? upstream.sessionId : undefined,
-    failureKind: typeof upstream.failureKind === "string" ? upstream.failureKind : undefined,
-    message: typeof upstream.message === "string" ? upstream.message : undefined,
+    ok: upstream.ok === true || Boolean(sessionId),
+    sessionId,
+    failureKind,
+    message,
     upstreamStatus: response.status,
   };
   return NextResponse.json(safePayload, { status: response.status });

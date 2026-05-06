@@ -18,7 +18,7 @@ export function StartOnboardingSessionCard() {
       return;
     }
     const detail = payload.failureKind ? `${payload.failureKind}${payload.upstreamStatus ? ` (${payload.upstreamStatus})` : ""}` : "";
-    setStatus(payload.message ? `${payload.message}${detail ? ` — ${detail}` : ""}` : "Unable to create session");
+    setStatus(payload.message ? `${payload.message}${detail ? ` — ${detail}` : ""}` : `Unable to create session${payload.upstreamStatus ? ` (${payload.upstreamStatus})` : ""}`);
   }
 
   return (
