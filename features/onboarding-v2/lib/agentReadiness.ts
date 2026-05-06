@@ -53,16 +53,24 @@ export function normalizeAgentReadiness(input: unknown): AgentReadiness {
   const connectorInput = (typeof source.connector === "object" && source.connector !== null ? source.connector : {}) as Record<string, unknown>;
   const stage = source.rolloutStage;
   const rolloutStage: ReadinessRolloutStage = stage === "dry_run" || stage === "http_verify_only" || stage === "live_enabled" ? stage : null;
+  const ok = asBoolean(source.ok);
+  const configured = asBoolean(connectorInput.configured);
+  const canValidateShop = asBoolean(connectorInput.canValidateShop);
+  const liveMaterializationEnabled = asBoolean(connectorInput.liveMaterializationEnabled);
+  const canWriteLive = asBoolean(connectorInput.canWriteLive);
+  const inferredVerifyOnly = ok && rolloutStage === "http_verify_only" && configured && canValidateShop;
+  const connectorMode = typeof connectorInput.mode === "string" ? connectorInput.mode : "unknown";
+  const normalizedMode = connectorMode === "unknown" && inferredVerifyOnly ? "http_verify_only" : connectorMode;
 
   return {
-    ok: asBoolean(source.ok),
+    ok,
     rolloutStage,
     connector: {
-      mode: typeof connectorInput.mode === "string" ? connectorInput.mode : "unknown",
-      configured: asBoolean(connectorInput.configured),
-      liveMaterializationEnabled: asBoolean(connectorInput.liveMaterializationEnabled),
-      canValidateShop: asBoolean(connectorInput.canValidateShop),
-      canWriteLive: asBoolean(connectorInput.canWriteLive),
+      mode: normalizedMode,
+      configured,
+      liveMaterializationEnabled,
+      canValidateShop,
+      canWriteLive,
     },
     warnings: asStringArray(source.warnings),
     requiredEnv: asStringArray(source.requiredEnv),
