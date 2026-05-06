@@ -1,5 +1,8 @@
+import React from "react";
 "use client";
 import { useEffect, useState } from "react";
+import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
+import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } from "@/features/onboarding-v2/lib/agentReadiness";
 
 type Item = { id?: string; severity?: string; status?: string; title?: string; message?: string; kind?: string };
 
@@ -7,6 +10,14 @@ export function ReviewItemsQueue({ sessionId }: { sessionId: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [status, setStatus] = useState("open");
   const [severity, setSeverity] = useState("all");
+  const [readiness, setReadiness] = useState<AgentReadiness>(defaultAgentReadiness());
+
+  useEffect(() => {
+    void fetch(`/api/onboarding-v2/agent-readiness`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: unknown) => setReadiness(normalizeAgentReadiness(j)))
+      .catch(() => setReadiness(defaultAgentReadiness()));
+  }, []);
 
   useEffect(() => {
     const query = new URLSearchParams({ status, limit: "100" });
@@ -19,6 +30,7 @@ export function ReviewItemsQueue({ sessionId }: { sessionId: string }) {
   const displayItems = items.filter((item) => String(item.kind ?? "exception") !== "normal");
 
   return <div className="space-y-4">
+    <AgentReadinessBanner readiness={readiness} />
     <div className="rounded-xl border border-white/10 p-4">Read-only exception queue. Resolve actions are intentionally disabled until the backend resolve endpoint is finalized.</div>
     <div className="flex gap-2">{["open", "resolved"].map((s) => <button key={s} onClick={() => setStatus(s)} className="rounded border border-white/20 px-3 py-1">{s}</button>)}</div>
     <div className="flex gap-2">{["all", "low", "medium", "high", "critical"].map((s) => <button key={s} onClick={() => setSeverity(s)} className="rounded border border-white/20 px-3 py-1">{s}</button>)}</div>
