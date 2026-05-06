@@ -1,0 +1,20 @@
+import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import { AgentReadinessBanner } from "@/features/onboarding-v2/components/AgentReadinessBanner";
+import { OnboardingSessionOverview } from "@/features/onboarding-v2/components/OnboardingSessionOverview";
+import { OnboardingV2Shell } from "@/features/onboarding-v2/components/OnboardingV2Shell";
+import { SafeModeVerifyOnlyBanner } from "@/features/onboarding-v2/components/SafeModeVerifyOnlyBanner";
+
+type Props = { params: Promise<{ sessionId: string }> };
+
+export default async function OnboardingV2SessionPage({ params }: Props) {
+  await requireAdminPageAccess({ allow: ["owner", "admin"], redirectTo: "/dashboard" });
+  const { sessionId } = await params;
+
+  return (
+    <OnboardingV2Shell title="Onboarding Agent Session">
+      <SafeModeVerifyOnlyBanner />
+      <AgentReadinessBanner ready={true} detail="Readiness verification proxied through server routes." />
+      <OnboardingSessionOverview sessionId={sessionId} status="pending" />
+    </OnboardingV2Shell>
+  );
+}
