@@ -94,9 +94,14 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
       }
     };
     void run();
+    const refreshHandler = () => {
+      void run();
+    };
+    window.addEventListener("onboarding-v2:refresh-session", refreshHandler);
     const id = setInterval(() => void run(), terminal ? 15000 : 7000);
     return () => {
       active = false;
+      window.removeEventListener("onboarding-v2:refresh-session", refreshHandler);
       clearInterval(id);
     };
   }, [sessionId, terminal]);
@@ -143,12 +148,31 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
 function UploadCard({ sessionId }: { sessionId: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+
+  const refreshFiles = async () => {
+    window.dispatchEvent(new CustomEvent("onboarding-v2:refresh-session"));
+  };
+
   const upload = async () => {
     if (!file) return;
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`/api/onboarding-v2/sessions/${sessionId}/files/content`, { method: "POST", body: form });
-    setStatus(res.ok ? "Uploaded" : "Upload failed");
+    setUploading(true);
+    setStatus("Uploading…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/onboarding-v2/sessions/${sessionId}/files/content`, { method: "POST", body: form });
+      if (res.ok) {
+        setStatus("Uploaded");
+        await refreshFiles();
+        setFile(null);
+        return;
+      }
+      const payload = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+      setStatus(payload?.error ?? payload?.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
-  return <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Upload legacy files</div><input type="file" accept=".csv,text/csv,application/csv,application/vnd.ms-excel" className="mt-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /><button onClick={upload} className="ml-2 rounded bg-cyan-700 px-3 py-1">Upload</button><div className="mt-2 text-xs text-slate-400">{status}</div></div>;
+  return <div className="rounded-xl border border-white/10 p-4"><div className="font-semibold">Upload legacy files</div><input type="file" accept=".csv,text/csv,application/csv,application/vnd.ms-excel" className="mt-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /><button onClick={upload} disabled={!file || uploading} className="ml-2 rounded bg-cyan-700 px-3 py-1 disabled:opacity-50">Upload</button><div className="mt-2 text-xs text-slate-400">{status}</div></div>;
 }
