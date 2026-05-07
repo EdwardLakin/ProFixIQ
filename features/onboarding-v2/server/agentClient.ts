@@ -3,6 +3,44 @@ import { signOnboardingAgentPayload } from "@/features/onboarding-v2/server/sign
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
+function maskEdge(value: string, edge: number): string {
+  if (!value) return "";
+  if (value.length <= edge * 2) return value;
+  return `${value.slice(0, edge)}...${value.slice(-edge)}`;
+}
+
+async function logInvalidSignatureDiagnostic(input: {
+  response: Response;
+  path: string;
+  method: "GET" | "POST";
+  shopId: string;
+  rawBody: string;
+  timestampMs: number;
+  signature: string;
+  secret: string;
+}): Promise<void> {
+  if (input.response.status !== 400) return;
+  const text = (await input.response.clone().text().catch(() => "")).toLowerCase();
+  if (!text.includes("invalid signature")) return;
+
+  const ageMs = Date.now() - input.timestampMs;
+  console.error("[onboarding-auth-diagnostic] Invalid signature", {
+    routePath: input.path,
+    method: input.method,
+    shopIdPresent: Boolean(input.shopId),
+    shopIdMasked: maskEdge(input.shopId, 4),
+    timestampMs: input.timestampMs,
+    ageMs,
+    rawBodyLength: input.rawBody.length,
+    candidatePayloadLabelsTested: ["timestamp.shopId.rawBody"],
+    signatureLength: input.signature.length,
+    signatureMasked: maskEdge(input.signature, 6),
+    envSecretName: "INTERNAL_HMAC_SECRET",
+    secretLength: input.secret.length,
+    nodeEnv: process.env.NODE_ENV ?? "",
+  });
+}
+
 export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path: string; shopId: string; body?: string; query?: URLSearchParams }): Promise<Response> {
   const config = getOnboardingAgentConfig();
 
@@ -24,7 +62,7 @@ export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       method: input.method,
       headers: {
         "content-type": "application/json",
@@ -36,6 +74,17 @@ export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path
       cache: "no-store",
       signal: controller.signal,
     });
+    await logInvalidSignatureDiagnostic({
+      response,
+      path: input.path,
+      method: input.method,
+      shopId: input.shopId,
+      rawBody,
+      timestampMs,
+      signature,
+      secret: config.internalSecret,
+    });
+    return response;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       return Response.json({ ok: false, failureKind: "agent_timeout", message: "Onboarding agent timed out." }, { status: 504 });
