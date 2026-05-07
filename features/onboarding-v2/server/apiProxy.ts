@@ -29,12 +29,15 @@ export async function withOnboardingAccess() {
 }
 
 export async function proxyJson(params: { method: "GET" | "POST"; path: string; shopId: string; body?: unknown; query?: URLSearchParams }) {
+  const query = new URLSearchParams(params.query);
+  if (!query.get("shopId")) query.set("shopId", params.shopId);
+
   const response = await proxyOnboardingAgent({
     method: params.method,
     path: params.path,
     shopId: params.shopId,
     body: params.body === undefined ? undefined : JSON.stringify(params.body),
-    query: params.query,
+    query,
   });
 
   const payloadRaw = (await response.json().catch(() => ({ ok: false, failureKind: "invalid_agent_response", message: "Invalid onboarding agent response." }))) as unknown;
