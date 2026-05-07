@@ -52,7 +52,7 @@ export async function proxyOnboardingAgent(input: { method: "GET" | "POST"; path
     return Response.json({ ok: false, status: "not_configured", message: "Onboarding agent is not configured." }, { status: 503 });
   }
 
-  const rawBody = input.body ?? "";
+  const rawBody = input.method === "POST" ? (input.body ?? "{}") : "";
   const timestampMs = Date.now();
   const signature = signOnboardingAgentPayload({ secret: config.internalSecret, shopId: input.shopId, timestampMs, rawBody });
   const url = new URL(input.path, config.baseUrl.endsWith("/") ? config.baseUrl : `${config.baseUrl}/`);
