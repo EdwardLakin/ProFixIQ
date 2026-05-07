@@ -9,6 +9,14 @@ import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } f
 
 type Item = { id?: string; severity?: string; status?: string; title?: string; message?: string; kind?: string };
 
+function toItems(payload: unknown): Item[] {
+  if (Array.isArray(payload)) return payload as Item[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as { items?: unknown }).items)) {
+    return (payload as { items: Item[] }).items;
+  }
+  return [];
+}
+
 export function ReviewItemsQueue({ sessionId }: { sessionId: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [status, setStatus] = useState("open");
@@ -27,7 +35,7 @@ export function ReviewItemsQueue({ sessionId }: { sessionId: string }) {
     if (severity !== "all") query.set("severity", severity);
     void fetch(`/api/onboarding-v2/sessions/${sessionId}/review-items?${query.toString()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((j: { items?: Item[] }) => setItems(j.items ?? []));
+      .then((j: unknown) => setItems(toItems(j)));
   }, [sessionId, severity, status]);
 
   const displayItems = items.filter((item) => String(item.kind ?? "exception") !== "normal");

@@ -15,6 +15,14 @@ function toCount(value: unknown): number {
 type JsonObj = Record<string, unknown>;
 type Recommendation = { title?: string; summary?: string; details?: string; type?: string; category?: string; label?: string };
 
+function toRecommendations(payload: unknown): Recommendation[] {
+  if (Array.isArray(payload)) return payload as Recommendation[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as { items?: unknown }).items)) {
+    return (payload as { items: Recommendation[] }).items;
+  }
+  return [];
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: "no-store" });
   return (await response.json()) as T;
@@ -35,7 +43,7 @@ export function OnboardingSummaryPage({ sessionId }: { sessionId: string }) {
         getJson<unknown>("/api/onboarding-v2/agent-readiness"),
         getJson<JsonObj>(`/api/onboarding-v2/sessions/${sessionId}`),
         getJson<JsonObj>(`/api/onboarding-v2/sessions/${sessionId}/summary`),
-        getJson<{ items?: Recommendation[] }>(`/api/onboarding-v2/sessions/${sessionId}/recommendations`),
+        getJson<unknown>(`/api/onboarding-v2/sessions/${sessionId}/recommendations`),
         getJson<JsonObj>(`/api/onboarding-v2/sessions/${sessionId}/activation-summary`),
         getJson<JsonObj>(`/api/onboarding-v2/sessions/${sessionId}/materialization-records`),
       ]);
@@ -43,7 +51,7 @@ export function OnboardingSummaryPage({ sessionId }: { sessionId: string }) {
       setReadiness(normalizeAgentReadiness(r));
       setSession(s);
       setSummary(f);
-      setRecommendations(rec.items ?? []);
+      setRecommendations(toRecommendations(rec));
       setActivationSummary(act);
       setMaterializationRecords(mat);
     };

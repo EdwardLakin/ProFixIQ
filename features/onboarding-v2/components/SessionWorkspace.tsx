@@ -11,6 +11,14 @@ import { defaultAgentReadiness, normalizeAgentReadiness, type AgentReadiness } f
 type JsonMap = Record<string, unknown>;
 type ApiListResponse = { items?: JsonMap[]; message?: string };
 
+function toItems(payload: unknown): JsonMap[] {
+  if (Array.isArray(payload)) return payload.filter((item): item is JsonMap => typeof item === "object" && item !== null);
+  if (payload && typeof payload === "object" && Array.isArray((payload as { items?: unknown }).items)) {
+    return (payload as { items: unknown[] }).items.filter((item): item is JsonMap => typeof item === "object" && item !== null);
+  }
+  return [];
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { cache: "no-store" });
   const response = r as Response & { json?: () => Promise<unknown>; text?: () => Promise<string> };
@@ -76,9 +84,9 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
         ]);
         if (!active) return;
         setSession(s);
-        setEvents(e.items ?? []);
+        setEvents(toItems(e));
         setSummary(a);
-        setFiles(f.items ?? []);
+        setFiles(toItems(f));
         setReadiness(r === null ? defaultAgentReadiness() : normalizeAgentReadiness(r));
         setError("");
         setReadinessError(r === null ? "Readiness check unavailable. Verify-only safe mode remains enforced." : "");
