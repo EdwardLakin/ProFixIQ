@@ -5,6 +5,11 @@ import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-mo
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  enforceAIOperationalPolicy,
+  estimateAICostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 
 const openai = isOpenAIConfigured() ? getOpenAIClient() : null;
 
@@ -15,6 +20,11 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const enforcement = enforceAIOperationalPolicy({
+    feature: "ai_summarize_stats",
+    endpoint: "/api/ai/summarize-stats",
+    shopId: null,
+  });
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -25,6 +35,11 @@ export async function POST(req: Request) {
       { error: "OPENAI_API_KEY is not set" },
       { status: 500 }
     );
+  }
+  if (!enforcement.allowed) {
+    return NextResponse.json({
+      summary: "Summary is temporarily unavailable due to usage limits. Please retry shortly.",
+    });
   }
 
   const body = await req.json().catch(() => null);
@@ -65,9 +80,20 @@ ${JSON.stringify(body.stats, null, 2)}
       prompt_tokens: res.usage?.prompt_tokens ?? null,
       completion_tokens: res.usage?.completion_tokens ?? null,
       total_tokens: res.usage?.total_tokens ?? null,
+      estimated_cost_usd: estimateAICostUsd("ai_summarize_stats", res.usage?.total_tokens ?? null),
       status: "success",
       error_code: null,
       error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: "ai_summarize_stats",
+      endpoint: "/api/ai/summarize-stats",
+      shopId: null,
+      model,
+      totalTokens: res.usage?.total_tokens ?? null,
+      estimatedCostUsd: estimateAICostUsd("ai_summarize_stats", res.usage?.total_tokens ?? null),
+      status: "success",
+      errorCode: null,
     });
 
     return NextResponse.json({
@@ -85,9 +111,20 @@ ${JSON.stringify(body.stats, null, 2)}
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
+      estimated_cost_usd: 0,
       status: "error",
       error_code: "ai_summary_error",
       error_message: message,
+    });
+    registerAIUsageEvent({
+      feature: "ai_summarize_stats",
+      endpoint: "/api/ai/summarize-stats",
+      shopId: null,
+      model,
+      totalTokens: null,
+      estimatedCostUsd: 0,
+      status: "error",
+      errorCode: "ai_summary_error",
     });
 
     if (policy.fallbackMode === "graceful_empty") {

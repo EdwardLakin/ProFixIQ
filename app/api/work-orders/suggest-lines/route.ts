@@ -8,6 +8,11 @@ import { openai } from "lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  enforceAIOperationalPolicy,
+  estimateAICostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 
 export const runtime = "nodejs";
 
@@ -240,6 +245,18 @@ export async function POST(req: Request) {
       "Only output raw JSON (no markdown).",
     ].join(" ");
 
+    const enforcement = enforceAIOperationalPolicy({
+      feature: "work_orders_suggest_lines",
+      endpoint: "/api/work-orders/suggest-lines",
+      shopId: shopIdForContext,
+    });
+    if (!enforcement.allowed) {
+      return NextResponse.json({
+        suggestions: [],
+        message: "AI suggestions are temporarily limited for this shop. Please retry shortly.",
+      });
+    }
+
     const completion = await Promise.race([
       openai.chat.completions.create({
         model,
@@ -281,9 +298,20 @@ export async function POST(req: Request) {
       prompt_tokens: completion.usage?.prompt_tokens ?? null,
       completion_tokens: completion.usage?.completion_tokens ?? null,
       total_tokens: completion.usage?.total_tokens ?? null,
+      estimated_cost_usd: estimateAICostUsd("work_orders_suggest_lines", completion.usage?.total_tokens ?? null),
       status: "success",
       error_code: null,
       error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: "work_orders_suggest_lines",
+      endpoint: "/api/work-orders/suggest-lines",
+      shopId: shopIdForContext,
+      model,
+      totalTokens: completion.usage?.total_tokens ?? null,
+      estimatedCostUsd: estimateAICostUsd("work_orders_suggest_lines", completion.usage?.total_tokens ?? null),
+      status: "success",
+      errorCode: null,
     });
 
     return NextResponse.json({ suggestions });
@@ -299,9 +327,20 @@ export async function POST(req: Request) {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
+      estimated_cost_usd: 0,
       status: "error",
       error_code: "suggest_lines_error",
       error_message: message,
+    });
+    registerAIUsageEvent({
+      feature: "work_orders_suggest_lines",
+      endpoint: "/api/work-orders/suggest-lines",
+      shopId: shopIdForContext,
+      model,
+      totalTokens: null,
+      estimatedCostUsd: 0,
+      status: "error",
+      errorCode: "suggest_lines_error",
     });
     if (policy.fallbackMode === "graceful_empty") {
       return NextResponse.json({ suggestions: [] });

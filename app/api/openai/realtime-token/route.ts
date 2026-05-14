@@ -3,6 +3,11 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  enforceAIOperationalPolicy,
+  estimateAICostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,6 +85,17 @@ export async function GET() {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) {
     return access.response;
+  }
+  const enforcement = enforceAIOperationalPolicy({
+    feature: "openai_realtime_token",
+    endpoint: "/api/openai/realtime-token",
+    shopId: access.profile.shop_id,
+  });
+  if (!enforcement.allowed) {
+    return NextResponse.json(
+      { error: "AI token issuance temporarily limited", code: enforcement.code },
+      { status: 429 },
+    );
   }
 
   try {
@@ -187,9 +203,20 @@ export async function GET() {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
+      estimated_cost_usd: estimateAICostUsd("openai_realtime_token", 1),
       status: "success",
       error_code: null,
       error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: "openai_realtime_token",
+      endpoint: "/api/openai/realtime-token",
+      shopId: access.profile.shop_id,
+      model: transcriptionModel,
+      totalTokens: 1,
+      estimatedCostUsd: estimateAICostUsd("openai_realtime_token", 1),
+      status: "success",
+      errorCode: null,
     });
 
     return NextResponse.json(
@@ -211,9 +238,20 @@ export async function GET() {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
+      estimated_cost_usd: 0,
       status: "error",
       error_code: "realtime_token_error",
       error_message: message,
+    });
+    registerAIUsageEvent({
+      feature: "openai_realtime_token",
+      endpoint: "/api/openai/realtime-token",
+      shopId: access.profile.shop_id,
+      model: getOpenAIRealtimeTranscriptionModel(),
+      totalTokens: null,
+      estimatedCostUsd: 0,
+      status: "error",
+      errorCode: "realtime_token_error",
     });
     console.error("[realtime-token] Unhandled error", err);
     return NextResponse.json(

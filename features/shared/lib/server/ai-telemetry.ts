@@ -12,6 +12,7 @@ export type AITelemetryEvent = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
+  estimated_cost_usd?: number | null;
   status: "success" | "error";
   error_code: string | null;
   error_message: string | null;
