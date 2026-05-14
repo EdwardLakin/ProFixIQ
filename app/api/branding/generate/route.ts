@@ -5,6 +5,11 @@ import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/l
 import { buildLogoPrompt, getOpenAIClient } from "@/features/branding/server/logo-generation";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  enforceAIOperationalPolicy,
+  estimateAICostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 
 type DB = Database;
 
@@ -85,6 +90,18 @@ export async function POST(req: Request) {
   });
 
   try {
+    const enforcement = enforceAIOperationalPolicy({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shopId: auth.shopId,
+    });
+    if (!enforcement.allowed) {
+      return NextResponse.json(
+        { error: "AI branding generation temporarily limited", code: enforcement.code },
+        { status: 429 },
+      );
+    }
+
     const openai = getOpenAIClient();
     const model = "gpt-image-1.5";
 
@@ -183,9 +200,26 @@ export async function POST(req: Request) {
       prompt_tokens: (result.usage as { input_tokens?: number } | undefined)?.input_tokens ?? null,
       completion_tokens: (result.usage as { output_tokens?: number } | undefined)?.output_tokens ?? null,
       total_tokens: (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      estimated_cost_usd: estimateAICostUsd(
+        "branding_generate_logo",
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      ),
       status: "success",
       error_code: null,
       error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shopId: auth.shopId,
+      model,
+      totalTokens: (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      estimatedCostUsd: estimateAICostUsd(
+        "branding_generate_logo",
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      ),
+      status: "success",
+      errorCode: null,
     });
 
     return NextResponse.json({
@@ -205,9 +239,20 @@ export async function POST(req: Request) {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
+      estimated_cost_usd: 0,
       status: "error",
       error_code: "branding_generate_error",
       error_message: message,
+    });
+    registerAIUsageEvent({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shopId: auth.shopId,
+      model: "gpt-image-1.5",
+      totalTokens: null,
+      estimatedCostUsd: 0,
+      status: "error",
+      errorCode: "branding_generate_error",
     });
     return NextResponse.json({ error: message }, { status: 500 });
   }
