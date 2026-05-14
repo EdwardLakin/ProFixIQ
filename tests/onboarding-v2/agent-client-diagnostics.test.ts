@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { proxyOnboardingAgent } from "@/features/onboarding-v2/server/agentClient";
+import { proxyJson } from "@/features/onboarding-v2/server/apiProxy";
 
 const originalEnv = process.env;
 
@@ -52,5 +53,27 @@ describe("onboarding agent diagnostics", () => {
     await proxyOnboardingAgent({ method: "POST", path: "/onboarding/sessions", shopId: "shop_1234", body: "{}" });
 
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes through stable invalid signature JSON response shape via proxyJson", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('{"ok":false,"error":"invalid signature"}', { status: 401, headers: { "content-type": "application/json" } }),
+    );
+
+    const response = await proxyJson({ method: "POST", path: "/connector/events", shopId: "shop_1234", body: { event: "x" } });
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body).toEqual({ ok: false, error: "invalid signature" });
+  });
+
+  it("supports readiness probe contract as healthy", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"status":"ok"}', { status: 200 }));
+
+    const response = await proxyOnboardingAgent({ method: "GET", path: "/health/ready", shopId: "shop_1234" });
+    const json = await response.json();
+
+    expect(response.ok).toBe(true);
+    expect(json.status).toBe("ok");
   });
 });
