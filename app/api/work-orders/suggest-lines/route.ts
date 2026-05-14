@@ -6,6 +6,8 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 
 export const runtime = "nodejs";
 
@@ -77,7 +79,12 @@ function coerceSuggestion(u: unknown): Suggestion | null {
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  const policy = getAIPolicy("work_orders_suggest_lines");
+  const model = getOpenAIModelForPurpose(policy.modelPurpose);
   const supabase = createServerComponentClient<DB>({ cookies });
+  let userId: string | null = null;
+  let shopIdForContext: string | null = null;
 
   try {
     const body = (await req.json()) as ReqBody;
@@ -90,9 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
 
-    // We’ll set shop context if we can determine a shop id from the WO (best effort).
-    // This reduces “RLS hidden” reads for work_order_lines in shops that rely on current_shop_id().
-    let shopIdForContext: string | null = null;
+    userId = user.id;
 
     // Gather context
     let complaint: string | null = null;
@@ -235,15 +240,20 @@ export async function POST(req: Request) {
       "Only output raw JSON (no markdown).",
     ].join(" ");
 
-    const completion = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("fast"),
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContext },
-      ],
-      max_tokens: 500,
-    });
+    const completion = await Promise.race([
+      openai.chat.completions.create({
+        model,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userContext },
+        ],
+        max_tokens: policy.maxTokens,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+      ),
+    ]);
 
     const raw = completion.choices[0]?.message?.content ?? "[]";
 
@@ -261,8 +271,41 @@ export async function POST(req: Request) {
           .slice(0, 6)
       : [];
 
+    recordAITelemetry({
+      feature: "work_orders_suggest_lines",
+      endpoint: "/api/work-orders/suggest-lines",
+      shop_id: shopIdForContext,
+      user_id: userId,
+      model,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      completion_tokens: completion.usage?.completion_tokens ?? null,
+      total_tokens: completion.usage?.total_tokens ?? null,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+
     return NextResponse.json({ suggestions });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to generate suggestions";
+    recordAITelemetry({
+      feature: "work_orders_suggest_lines",
+      endpoint: "/api/work-orders/suggest-lines",
+      shop_id: shopIdForContext,
+      user_id: userId,
+      model,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: null,
+      completion_tokens: null,
+      total_tokens: null,
+      status: "error",
+      error_code: "suggest_lines_error",
+      error_message: message,
+    });
+    if (policy.fallbackMode === "graceful_empty") {
+      return NextResponse.json({ suggestions: [] });
+    }
     return NextResponse.json(
       { error: "Failed to generate suggestions" },
       { status: 500 },

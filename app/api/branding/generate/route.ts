@@ -3,6 +3,8 @@ import type { Database } from "@shared/types/types/supabase";
 import { requireBrandShopWriteAccess, safeFilePart } from "@/features/branding/server/brand";
 import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { buildLogoPrompt, getOpenAIClient } from "@/features/branding/server/logo-generation";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 
 type DB = Database;
 
@@ -20,6 +22,8 @@ function decodeBase64Image(b64: string): Buffer {
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  const policy = getAIPolicy("branding_generate_logo");
   const body = (await req.json().catch(() => ({}))) as GenerateLogoBody;
 
   const auth = await requireBrandShopWriteAccess(body.shopId);
@@ -82,17 +86,23 @@ export async function POST(req: Request) {
 
   try {
     const openai = getOpenAIClient();
+    const model = "gpt-image-1.5";
 
-    const result = await openai.images.generate({
-      model: "gpt-image-1.5",
-      prompt: finalPrompt,
-      n: count,
-      size: "1024x1024",
-      quality: "medium",
-      output_format: "png",
-      background: transparentBackground ? "transparent" : "auto",
-      user: auth.userId,
-    });
+    const result = await Promise.race([
+      openai.images.generate({
+        model,
+        prompt: finalPrompt,
+        n: count,
+        size: "1024x1024",
+        quality: "medium",
+        output_format: "png",
+        background: transparentBackground ? "transparent" : "auto",
+        user: auth.userId,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+      ),
+    ]);
 
     const images = result.data ?? [];
     if (!images.length) {
@@ -163,6 +173,21 @@ export async function POST(req: Request) {
       createdAssets.push(asset);
     }
 
+    recordAITelemetry({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shop_id: auth.shopId,
+      user_id: auth.userId,
+      model,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: (result.usage as { input_tokens?: number } | undefined)?.input_tokens ?? null,
+      completion_tokens: (result.usage as { output_tokens?: number } | undefined)?.output_tokens ?? null,
+      total_tokens: (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+
     return NextResponse.json({
       ok: true,
       assets: createdAssets,
@@ -170,6 +195,20 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Logo generation failed";
+    recordAITelemetry({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shop_id: auth.shopId,
+      user_id: auth.userId,
+      model: "gpt-image-1.5",
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: null,
+      completion_tokens: null,
+      total_tokens: null,
+      status: "error",
+      error_code: "branding_generate_error",
+      error_message: message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

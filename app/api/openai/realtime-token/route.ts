@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +75,8 @@ function extractToken(
 /* ----------------------------- Route ----------------------------- */
 
 export async function GET() {
+  const startedAt = Date.now();
+  const policy = getAIPolicy("openai_realtime_token");
   const access = await requireShopScopedApiAccess();
   if (!access.ok) {
     return access.response;
@@ -117,17 +121,19 @@ export async function GET() {
       },
     };
 
-    const response = await fetch(
-      "https://api.openai.com/v1/realtime/client_secrets",
-      {
+    const response = await Promise.race([
+      fetch("https://api.openai.com/v1/realtime/client_secrets", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(sessionConfig),
-      },
-    );
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+      ),
+    ]);
 
     const rawText = await response.text();
 
@@ -171,6 +177,21 @@ export async function GET() {
       );
     }
 
+    recordAITelemetry({
+      feature: "openai_realtime_token",
+      endpoint: "/api/openai/realtime-token",
+      shop_id: access.profile.shop_id,
+      user_id: access.profile.id,
+      model: transcriptionModel,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: null,
+      completion_tokens: null,
+      total_tokens: null,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+
     return NextResponse.json(
       {
         token: extracted.token,
@@ -179,6 +200,21 @@ export async function GET() {
       { status: 200 },
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Unhandled realtime token error";
+    recordAITelemetry({
+      feature: "openai_realtime_token",
+      endpoint: "/api/openai/realtime-token",
+      shop_id: access.profile.shop_id,
+      user_id: access.profile.id,
+      model: getOpenAIRealtimeTranscriptionModel(),
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: null,
+      completion_tokens: null,
+      total_tokens: null,
+      status: "error",
+      error_code: "realtime_token_error",
+      error_message: message,
+    });
     console.error("[realtime-token] Unhandled error", err);
     return NextResponse.json(
       { error: "Unhandled realtime token error" },
