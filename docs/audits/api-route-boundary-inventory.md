@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-05-04T21:39:00.993Z
+Generated: 2026-05-14T02:53:21.273Z
 
 ## Summary
-- Total route count: **309**
-- Routes exporting GET: **81**
-- Routes exporting POST: **234**
+- Total route count: **326**
+- Routes exporting GET: **93**
+- Routes exporting POST: **239**
 - Routes exporting PUT: **6**
 - Routes exporting PATCH: **16**
 - Routes exporting DELETE: **12**
 - Routes with service-role pattern: **19**
-- Routes using requireShopScopedApiAccess: **71**
+- Routes using requireShopScopedApiAccess: **75**
 - Routes with auth.getUser references: **147**
 
 ## High-Risk Routes
@@ -36,6 +36,10 @@ Generated: 2026-05-04T21:39:00.993Z
 - `app/api/integrations/quickbooks/invoice/[id]/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/maintenance/suggestions/dismiss/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ocr/registration/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/activation-tick/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/analyze/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/confirm/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/files/content/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/onboarding/shop-boost/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/consume/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/items/[itemId]/receive/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -131,6 +135,19 @@ Generated: 2026-05-04T21:39:00.993Z
 - `app/api/maintenance/suggestions/dismiss/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/mobile/home-payload/route.ts` | methods: GET | riskFlags: none
 - `app/api/ocr/registration/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/activation-summary/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/activation-tick/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/analyze/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/confirm/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/entities/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/events/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/files/content/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/onboarding-v2/sessions/[sessionId]/files/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/links/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/materialization-records/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/recommendations/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/review-items/route.ts` | methods: GET | riskFlags: none
+- `app/api/onboarding-v2/sessions/[sessionId]/summary/route.ts` | methods: GET | riskFlags: none
 - `app/api/onboarding/shop-boost/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/consume/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/items/[itemId]/receive/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
