@@ -24,3 +24,10 @@ describe("onboarding session proxy contract", () => {
     expect(route.includes("raw_data")).toBe(false);
   });
 });
+
+it("agent diagnostics route asserts upstream service contract", () => {
+  const route = fs.readFileSync(path.join(process.cwd(), "app/api/onboarding-v2/agent-diagnostics/route.ts"), "utf8");
+  expect(route.includes('path: "/health"')).toBe(true);
+  expect(route.includes('path: "/health/ready"')).toBe(true);
+  expect(route.includes('service === "profixiq-onboarding-agent"')).toBe(true);
+});
