@@ -29,3 +29,11 @@ Future iterations can incrementally extract shared modules for:
 
 No database migrations are applied as part of this step.
 Any future schema expansion should be documented and applied manually.
+
+
+## Step 2: OperationsPortalShell
+
+- `FleetShell` now uses a shared `OperationsPortalShell` extracted under `features/operations/components`.
+- This provides reusable portal shell structure for operations verticals while preserving existing fleet portal behavior and routes.
+- Property operations can later reuse this shell with property terminology/routes.
+- This step is UI-structure extraction only: no live property routes/pages and no database changes were introduced.
