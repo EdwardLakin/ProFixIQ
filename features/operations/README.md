@@ -45,3 +45,10 @@ Any future schema expansion should be documented and applied manually.
 - Fleet remains the only live operations vertical in-app.
 - Property can later reuse this layout via property-specific adapters and property data sources.
 - This step introduces no schema, migration, or route changes.
+
+## Step 4: OperationsAssetDetailScreen
+
+- `Fleet AssetDetailScreen` now delegates the shared asset detail layout to `OperationsAssetDetailScreen` under `features/operations/components`.
+- Fleet remains the only live implementation; the existing fleet asset detail fetch, actions, issue actions, stats, and routes are preserved.
+- Property operations can later reuse this foundation for property, unit, appliance, or asset records once those pages are intentionally built.
+- This step introduces no schema changes, migrations, route changes, or Supabase RLS changes.

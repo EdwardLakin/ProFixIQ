@@ -3,6 +3,7 @@ import type {
   OperationsAssignment,
   OperationsIssue,
 } from "@/features/operations";
+import type { OperationsAssetMetadataItem } from "@/features/operations/components/OperationsAssetDetailScreen";
 import type {
   DispatchAssignment,
   FleetIssue,
@@ -25,6 +26,17 @@ export function mapFleetUnitToOperationsAsset(unit: FleetUnit): OperationsAsset 
           : "offline",
     nextInspectionDate: unit.nextInspectionDate,
   };
+}
+
+export function mapFleetUnitToOperationsAssetMetadata(
+  unit: FleetUnit,
+): OperationsAssetMetadataItem[] {
+  return [
+    { label: "Plate", value: unit.plate, mono: true },
+    { label: "VIN", value: unit.vin, mono: true },
+    { label: "Class", value: unit.class },
+    { label: "Location", value: unit.location },
+  ];
 }
 
 export function mapFleetIssueToOperationsIssue(issue: FleetIssue): OperationsIssue {
