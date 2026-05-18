@@ -37,3 +37,11 @@ Any future schema expansion should be documented and applied manually.
 - This provides reusable portal shell structure for operations verticals while preserving existing fleet portal behavior and routes.
 - Property operations can later reuse this shell with property terminology/routes.
 - This step is UI-structure extraction only: no live property routes/pages and no database changes were introduced.
+
+
+## Step 3: MaintenanceControlTower
+
+- `FleetControlTower` now uses a shared `MaintenanceControlTower` foundation under `features/operations/components`.
+- Fleet remains the only live operations vertical in-app.
+- Property can later reuse this layout via property-specific adapters and property data sources.
+- This step introduces no schema, migration, or route changes.
