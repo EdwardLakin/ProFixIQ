@@ -7,6 +7,7 @@ import {
   propertyOperationsRoutes,
   propertyOperationsTerminology,
 } from "@/features/operations";
+import type { PropertyOperationsDashboardData } from "../server/propertyOperationsQueries";
 import {
   propertyDemoAssets,
   propertyDemoAssignments,
@@ -17,6 +18,7 @@ type PropertyMaintenanceDashboardProps = {
   title?: string;
   subtitle?: string;
   modeLabel?: string;
+  liveData?: PropertyOperationsDashboardData;
 };
 
 type FocusFilter = "all" | "open_requests";
@@ -24,34 +26,55 @@ type FocusFilter = "all" | "open_requests";
 export default function PropertyMaintenanceDashboard({
   title = "Property Maintenance Tower",
   subtitle = "Track open requests, inspections, vendor work, and asset history across properties.",
-  modeLabel = "Static property demo",
+  modeLabel,
+  liveData,
 }: PropertyMaintenanceDashboardProps) {
+  const hasLiveData = Boolean(
+    liveData &&
+    (liveData.assets.length > 0 ||
+      liveData.issues.length > 0 ||
+      liveData.assignments.length > 0),
+  );
+  const assets = hasLiveData ? liveData!.assets : propertyDemoAssets;
+  const issues = hasLiveData ? liveData!.issues : propertyDemoIssues;
+  const assignments = hasLiveData
+    ? liveData!.assignments
+    : propertyDemoAssignments;
+  const effectiveModeLabel =
+    modeLabel ??
+    (hasLiveData
+      ? "Live property data · RLS read-only"
+      : "Static property demo");
   const [locationFilter, setLocationFilter] = useState<string | "all">("all");
   const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
 
   const locations = useMemo(() => {
     const set = new Set<string>();
-    for (const asset of propertyDemoAssets) {
+    for (const asset of assets) {
       if (asset.location?.trim()) set.add(asset.location.trim());
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, []);
+  }, [assets]);
 
   const filteredAssets = useMemo(() => {
-    let assets = propertyDemoAssets;
+    let nextAssets = assets;
     if (locationFilter !== "all") {
-      assets = assets.filter((asset) => asset.location === locationFilter);
+      nextAssets = nextAssets.filter(
+        (asset) => asset.location === locationFilter,
+      );
     }
     if (focusFilter === "open_requests") {
       const assetIdsWithOpenIssues = new Set(
-        propertyDemoIssues
+        issues
           .filter((issue) => issue.status !== "completed")
           .map((issue) => issue.assetId),
       );
-      assets = assets.filter((asset) => assetIdsWithOpenIssues.has(asset.id));
+      nextAssets = nextAssets.filter((asset) =>
+        assetIdsWithOpenIssues.has(asset.id),
+      );
     }
-    return assets;
-  }, [focusFilter, locationFilter]);
+    return nextAssets;
+  }, [assets, focusFilter, issues, locationFilter]);
 
   const filteredAssetIds = useMemo(
     () => new Set(filteredAssets.map((asset) => asset.id)),
@@ -59,9 +82,8 @@ export default function PropertyMaintenanceDashboard({
   );
 
   const visibleIssues = useMemo(
-    () =>
-      propertyDemoIssues.filter((issue) => filteredAssetIds.has(issue.assetId)),
-    [filteredAssetIds],
+    () => issues.filter((issue) => filteredAssetIds.has(issue.assetId)),
+    [filteredAssetIds, issues],
   );
 
   const summary = useMemo(() => {
@@ -72,12 +94,16 @@ export default function PropertyMaintenanceDashboard({
       {
         label: propertyOperationsTerminology.assetPluralLabel,
         value: filteredAssets.length,
-        helper: "Static demo assets in current filter",
+        helper: hasLiveData
+          ? "Live property records visible through RLS"
+          : "Static demo assets in current filter",
       },
       {
         label: `Open ${propertyOperationsTerminology.requestPluralLabel}`,
         value: openIssues.length,
-        helper: "Tenant and site requests awaiting action",
+        helper: hasLiveData
+          ? "Property requests visible to internal staff"
+          : "Tenant and site requests awaiting action",
       },
       {
         label: "Limited / Offline",
@@ -87,20 +113,22 @@ export default function PropertyMaintenanceDashboard({
       },
       {
         label: "Vendor Follow-ups",
-        value: propertyDemoAssignments.filter((assignment) =>
+        value: assignments.filter((assignment) =>
           ["blocked", "in_progress", "inspection_due"].includes(
             assignment.state,
           ),
         ).length,
-        helper: "Demo assignments only — no dispatch integration",
+        helper: hasLiveData
+          ? "Read-only vendor assignment status"
+          : "Demo assignments only — no dispatch integration",
       },
     ];
-  }, [filteredAssets, visibleIssues]);
+  }, [assignments, filteredAssets, hasLiveData, visibleIssues]);
 
   return (
     <MaintenanceControlTower
       headerLabel="Property Operations"
-      modeLabel={modeLabel}
+      modeLabel={effectiveModeLabel}
       title={title}
       subtitle={subtitle}
       actorSurfaceLabel="Property operations"
@@ -118,13 +146,12 @@ export default function PropertyMaintenanceDashboard({
       aiSummary={
         <section className="metal-card rounded-3xl p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-            Placeholder scope
+            {hasLiveData ? "Read-only live scope" : "Placeholder scope"}
           </div>
           <p className="mt-2 text-sm text-neutral-300">
-            This property branch is intentionally powered by static demo data.
-            It proves the operations shell, control tower, terminology, and
-            routes without property tables, RLS changes, live requests, or
-            tenant/vendor authentication.
+            {hasLiveData
+              ? "Internal staff are viewing property operations rows through Supabase RLS. This screen remains read-only: no property writes, tenant/vendor authentication, request creation, or work-order conversion is wired yet."
+              : "This property branch is intentionally powered by static demo data. It proves the operations shell, control tower, terminology, and routes while no live property rows are visible through RLS."}
           </p>
         </section>
       }
@@ -160,11 +187,14 @@ export default function PropertyMaintenanceDashboard({
             <div className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-2">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                  Demo maintenance requests
+                  {hasLiveData
+                    ? "Live maintenance requests"
+                    : "Demo maintenance requests"}
                 </div>
                 <p className="mt-1 text-xs text-neutral-400">
-                  Static property maintenance requests for architecture
-                  validation.
+                  {hasLiveData
+                    ? "Read-only property maintenance requests visible through RLS."
+                    : "Static property maintenance requests for architecture validation."}
                 </p>
               </div>
               <Link
@@ -217,7 +247,7 @@ export default function PropertyMaintenanceDashboard({
               Vendor work placeholders
             </div>
             <div className="mt-3 space-y-3">
-              {propertyDemoAssignments.map((assignment) => (
+              {assignments.map((assignment) => (
                 <div
                   key={assignment.id}
                   className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-xs"
