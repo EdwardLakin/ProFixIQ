@@ -47,10 +47,19 @@ The draft proposes additive property maintenance tables for:
 
 - Every proposed table is scoped by `shop_id`.
 - RLS is enabled on every proposed table.
+- Policy creation is idempotent for manual re-runs by dropping each named policy before recreating it, because PostgreSQL does not support `CREATE POLICY IF NOT EXISTS`.
 - Internal staff policies are scoped through `profiles.id = auth.uid()` and `profiles.shop_id`.
 - Property member read policies are intentionally scoped to explicit portfolio, property, or unit memberships.
+- The current draft avoids recursive `property_members` policies. There is no existing reusable property-membership helper-function pattern in the repo, so richer future member/role write policies should introduce a reviewed helper rather than nesting broader `property_members` lookups inside that table's own RLS.
 - Tenant requesters can only draft maintenance requests inside their membership scope.
-- Vendor RLS remains a TODO because a safe user-to-vendor link is not represented yet.
+- Vendor RLS remains deferred because a safe user-to-vendor link is not represented yet; the draft does not infer vendor access from contact fields or the `vendor` member role.
+
+### Step 6 production-safety hardening
+
+- Tenant-consistency validation triggers prevent child rows from mismatching `shop_id` or parent scope across portfolios, properties, units, assets, maintenance requests, inspections, vendor assignments, and approval thresholds.
+- `property_vendor_assignments` requires at least one parent link through `request_id` or `work_order_id`.
+- Conservative `NOT VALID` check constraints define expected values for `property_members.role`, `property_maintenance_requests.severity`, and `property_maintenance_requests.status`; these remain safe for production-like data because existing rows can be audited and validated separately.
+- Optional work-order links are checked for matching `work_orders.shop_id` where present, but the draft still does not add or wire runtime work-order conversion behavior.
 
 ### Explicit exclusions
 
