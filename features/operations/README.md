@@ -60,3 +60,9 @@ Any future schema expansion should be documented and applied manually.
 - The property branch uses property terminology and property route config with demo assets, demo requests, and demo vendor follow-ups only.
 - No database migrations, schema changes, Supabase RLS changes, tenant/vendor auth wiring, API calls, request conversion, rent, accounting, or lease features are introduced.
 - This step only proves the branch-aware UI architecture before any live property maintenance data model is added.
+
+## Step 6: Property operations SQL draft
+
+- A manual Supabase SQL draft was created for future property maintenance operations at `supabase/manual/property-operations-step-6.sql`.
+- The draft has not been applied and no SQL was executed as part of this step.
+- No app runtime code, APIs, live routes, existing fleet/shop RLS policies, or work-order conversion flows are wired to the proposed tables yet.
