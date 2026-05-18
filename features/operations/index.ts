@@ -4,3 +4,5 @@ export * from "./routes";
 export * from "./verticals";
 
 export * from "./components/OperationsPortalShell";
+
+export * from "./components/MaintenanceControlTower";

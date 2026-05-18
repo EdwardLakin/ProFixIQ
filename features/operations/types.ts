@@ -34,3 +34,42 @@ export type OperationsVerticalConfig = {
   terminology: OperationsTerminology;
   routes: OperationsRoutes;
 };
+
+
+export type OperationsAssetStatus = "active" | "limited" | "offline";
+
+export type OperationsAsset = {
+  id: string;
+  label: string;
+  identifier?: string | null;
+  secondaryIdentifier?: string | null;
+  class?: string | null;
+  location?: string | null;
+  status: OperationsAssetStatus;
+  nextInspectionDate?: string | null;
+};
+
+export type OperationsIssueSeverity = "safety" | "compliance" | "recommend" | "urgent";
+
+export type OperationsIssueStatus = "open" | "scheduled" | "completed";
+
+export type OperationsIssue = {
+  id: string;
+  assetId: string;
+  assetLabel: string;
+  severity: OperationsIssueSeverity;
+  summary: string;
+  createdAt: string;
+  status: OperationsIssueStatus;
+};
+
+export type OperationsAssignment = {
+  id: string;
+  requesterName: string;
+  requesterId: string;
+  assetLabel: string;
+  assetId: string;
+  routeLabel?: string | null;
+  nextInspectionDue?: string | null;
+  state: "inspection_due" | "active" | "in_service" | "in_progress" | "blocked";
+};
