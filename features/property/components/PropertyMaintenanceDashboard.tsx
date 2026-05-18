@@ -145,8 +145,15 @@ export default function PropertyMaintenanceDashboard({
       }}
       aiSummary={
         <section className="metal-card rounded-3xl p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-            {hasLiveData ? "Read-only live scope" : "Placeholder scope"}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              {hasLiveData ? "Read-only live scope" : "Placeholder scope"}
+            </div>
+            {hasLiveData ? (
+              <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                Live data loaded
+              </span>
+            ) : null}
           </div>
           <p className="mt-2 text-sm text-neutral-300">
             {hasLiveData
