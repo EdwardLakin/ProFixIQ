@@ -30,14 +30,12 @@ Future iterations can incrementally extract shared modules for:
 No database migrations are applied as part of this step.
 Any future schema expansion should be documented and applied manually.
 
-
 ## Step 2: OperationsPortalShell
 
 - `FleetShell` now uses a shared `OperationsPortalShell` extracted under `features/operations/components`.
 - This provides reusable portal shell structure for operations verticals while preserving existing fleet portal behavior and routes.
 - Property operations can later reuse this shell with property terminology/routes.
 - This step is UI-structure extraction only: no live property routes/pages and no database changes were introduced.
-
 
 ## Step 3: MaintenanceControlTower
 
@@ -52,3 +50,13 @@ Any future schema expansion should be documented and applied manually.
 - Fleet remains the only live implementation; the existing fleet asset detail fetch, actions, issue actions, stats, and routes are preserved.
 - Property operations can later reuse this foundation for property, unit, appliance, or asset records once those pages are intentionally built.
 - This step introduces no schema changes, migrations, route changes, or Supabase RLS changes.
+
+## Step 5: Property placeholder branch
+
+- Property now has static/demo placeholder routes that reuse the shared operations components:
+  - `OperationsPortalShell` for the property portal frame.
+  - `MaintenanceControlTower` for the property maintenance dashboard.
+  - `OperationsAssetDetailScreen` for property asset detail demos.
+- The property branch uses property terminology and property route config with demo assets, demo requests, and demo vendor follow-ups only.
+- No database migrations, schema changes, Supabase RLS changes, tenant/vendor auth wiring, API calls, request conversion, rent, accounting, or lease features are introduced.
+- This step only proves the branch-aware UI architecture before any live property maintenance data model is added.
