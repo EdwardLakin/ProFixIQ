@@ -8,6 +8,10 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
+import {
+  fleetOperationsRoutes,
+  fleetOperationsTerminology,
+} from "@/features/operations";
 
 type DB = Database;
 
@@ -17,9 +21,15 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
-  { href: "/portal/fleet", label: "Dashboard" },
-  { href: "/portal/fleet/service-requests", label: "Service Requests" },
-  { href: "/portal/fleet/pretrip-history", label: "Pre-trip History" },
+  { href: fleetOperationsRoutes.portalHome, label: "Dashboard" },
+  {
+    href: fleetOperationsRoutes.portalRequests,
+    label: fleetOperationsTerminology.requestPluralLabel,
+  },
+  {
+    href: fleetOperationsRoutes.portalInspections,
+    label: fleetOperationsTerminology.inspectionPluralLabel,
+  },
 ];
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -75,8 +85,8 @@ function NavPill({
 }
 
 export default function FleetShell({
-  title = "Fleet Portal",
-  subtitle = "Dispatch view for pre-trips, service requests, and fleet history",
+  title = fleetOperationsTerminology.portalLabel,
+  subtitle = `Dispatch view for pre-trips, ${fleetOperationsTerminology.requestPluralLabel.toLowerCase()}, and fleet history`,
   children,
 }: {
   title?: string;
@@ -99,9 +109,9 @@ export default function FleetShell({
     if (exact) return exact.href;
 
     const starts = NAV.find(
-      (x) => x.href !== "/portal/fleet" && pathname.startsWith(x.href),
+      (x) => x.href !== fleetOperationsRoutes.portalHome && pathname.startsWith(x.href),
     );
-    return starts?.href ?? "/portal/fleet";
+    return starts?.href ?? fleetOperationsRoutes.portalHome;
   }, [pathname]);
 
   // Load session + must_change_password (fleet portal)
@@ -214,7 +224,7 @@ export default function FleetShell({
 
         <div className="flex items-center gap-2">
           <Link
-            href="/portal/fleet"
+            href={fleetOperationsRoutes.portalHome}
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
             <span style={{ color: FLEET_ACCENT }}>Dashboard</span>
