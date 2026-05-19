@@ -66,3 +66,9 @@ Any future schema expansion should be documented and applied manually.
 - A manual Supabase SQL draft was created for future property maintenance operations at `supabase/manual/property-operations-step-6.sql`.
 - The draft has not been applied and no SQL was executed as part of this step.
 - No app runtime code, APIs, live routes, existing fleet/shop RLS policies, or work-order conversion flows are wired to the proposed tables yet.
+
+## Step 9: Internal property maintenance request creation
+
+- Internal staff can now create property maintenance requests from `/property/requests/new` using authenticated Supabase RLS-scoped reads/writes.
+- Request creation is still internal-only for the property branch: no tenant/vendor auth, no public submission surface, and no vendor portal behavior were added.
+- Request-to-work-order conversion is still not implemented.

@@ -204,12 +204,20 @@ export default function PropertyMaintenanceDashboard({
                     : "Static property maintenance requests for architecture validation."}
                 </p>
               </div>
-              <Link
-                href={propertyOperationsRoutes.portalRequests}
-                className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-              >
-                Requests
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/property/requests/new"
+                  className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-[color:var(--accent-copper)]/30"
+                >
+                  New maintenance request
+                </Link>
+                <Link
+                  href={propertyOperationsRoutes.portalRequests}
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
+                >
+                  Requests
+                </Link>
+              </div>
             </div>
 
             <div className="space-y-3">
