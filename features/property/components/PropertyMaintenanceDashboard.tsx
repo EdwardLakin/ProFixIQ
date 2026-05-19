@@ -212,6 +212,18 @@ export default function PropertyMaintenanceDashboard({
                   New maintenance request
                 </Link>
                 <Link
+                  href="/property/inspections"
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
+                >
+                  Inspections
+                </Link>
+                <Link
+                  href="/property/inspections/new?type=move_in"
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
+                >
+                  New inspection
+                </Link>
+                <Link
                   href={propertyOperationsRoutes.portalRequests}
                   className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
                 >

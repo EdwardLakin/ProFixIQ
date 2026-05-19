@@ -153,3 +153,18 @@ Any future schema expansion should be documented and applied manually.
 - Data is loaded with the existing authenticated Supabase client and RLS-scoped queries only (no service role usage).
 - Behavior is fully additive/read-only: no schema changes, no tenant/vendor auth wiring, and no vendor portal behavior were added.
 - Existing non-property work order behavior remains unchanged when no linked property request exists.
+
+## Step 15: Internal property inspection templates + create/fill/list/detail flow
+
+- Added dedicated property inspection templates (move-in, move-out, periodic, maintenance follow-up) in `features/property/lib/propertyInspectionTemplates.ts` for property-maintenance-specific forms (separate from vehicle inspection builders).
+- Added internal-only property inspection routes:
+  - `/property/inspections` (list)
+  - `/property/inspections/new` (template-driven create/fill)
+  - `/property/inspections/[id]` (read-only detail)
+- Findings are persisted to `property_inspections.findings` JSONB with section/item/status/notes and optional `photo_notes` placeholder.
+- No image upload was added in this step; `photo_notes` is a temporary placeholder until later tenant/request media work.
+- No tenant request form was added.
+- No tenant auth or vendor auth was added.
+- No quote flow wiring was added.
+- No failed-item conversion or inspection-findings-to-request/work-order conversion was added.
+- No schema or migration changes were introduced in this step.
