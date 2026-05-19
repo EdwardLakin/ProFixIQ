@@ -2,6 +2,7 @@ import "server-only";
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
 
@@ -48,12 +49,15 @@ type PropertyRow = {
 
 type PropertyInsert = {
   shop_id: string;
-  portfolio_id: string;
+  portfolio_id?: string | null;
   name: string;
-  property_type: string;
-  city: string;
-  region: string;
-  country: string;
+  property_type?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
   status?: string;
 };
 
@@ -384,6 +388,134 @@ async function createPropertyDemoDataset() {
   redirect("/property/setup?status=created");
 }
 
+async function createPropertyPortfolio(formData: FormData) {
+  "use server";
+  const supabase = createPropertySetupClient();
+  const { user, profile } = await getCurrentProfile(supabase);
+  if (!user) redirect("/sign-in");
+  const shopId = profile?.shop_id;
+  if (!shopId) redirect("/property/setup?status=missing-shop");
+
+  const name = String(formData.get("name") ?? "").trim();
+  const descriptionRaw = String(formData.get("description") ?? "").trim();
+  const description = descriptionRaw.length > 0 ? descriptionRaw : null;
+
+  if (!name) {
+    redirect("/property/setup?status=validation-error&message=Portfolio%20name%20is%20required.");
+  }
+
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from("property_portfolios")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("name", name)
+    .maybeSingle();
+
+  if (duplicateError) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(duplicateError.message)}`,
+    );
+  }
+
+  if (duplicate) {
+    redirect(
+      "/property/setup?status=validation-error&message=Portfolio%20name%20already%20exists%20for%20this%20shop.",
+    );
+  }
+
+  const { error } = await supabase.from("property_portfolios").insert({
+    shop_id: shopId,
+    name,
+    description,
+  });
+
+  if (error) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(error.message)}`,
+    );
+  }
+
+  revalidatePath("/property");
+  revalidatePath("/property/setup");
+  redirect("/property/setup?status=portfolio-created");
+}
+
+async function createPropertyProperty(formData: FormData) {
+  "use server";
+  const supabase = createPropertySetupClient();
+  const { user, profile } = await getCurrentProfile(supabase);
+  if (!user) redirect("/sign-in");
+  const shopId = profile?.shop_id;
+  if (!shopId) redirect("/property/setup?status=missing-shop");
+
+  const portfolioIdRaw = String(formData.get("portfolio_id") ?? "").trim();
+  const portfolioId = portfolioIdRaw.length > 0 ? portfolioIdRaw : null;
+  const name = String(formData.get("name") ?? "").trim();
+  const propertyType = String(formData.get("property_type") ?? "").trim() || null;
+  const addressLine1 = String(formData.get("address_line1") ?? "").trim() || null;
+  const addressLine2 = String(formData.get("address_line2") ?? "").trim() || null;
+  const city = String(formData.get("city") ?? "").trim() || null;
+  const region = String(formData.get("region") ?? "").trim() || null;
+  const postalCode = String(formData.get("postal_code") ?? "").trim() || null;
+  const country = String(formData.get("country") ?? "").trim() || "CA";
+  const status = String(formData.get("status") ?? "active").trim() || "active";
+
+  if (!name) {
+    redirect("/property/setup?status=validation-error&message=Property%20name%20is%20required.");
+  }
+
+  if (!["active", "limited", "inactive"].includes(status)) {
+    redirect(
+      "/property/setup?status=validation-error&message=Property%20status%20must%20be%20active%2C%20limited%2C%20or%20inactive.",
+    );
+  }
+
+  if (portfolioId) {
+    const { data: portfolio, error: portfolioError } = await supabase
+      .from("property_portfolios")
+      .select("id,shop_id")
+      .eq("id", portfolioId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+
+    if (portfolioError) {
+      redirect(
+        `/property/setup?status=error&message=${encodeURIComponent(portfolioError.message)}`,
+      );
+    }
+
+    if (!portfolio) {
+      redirect(
+        "/property/setup?status=validation-error&message=Selected%20portfolio%20is%20not%20available%20for%20this%20shop.",
+      );
+    }
+  }
+
+  const { error } = await supabase.from("property_properties").insert({
+    shop_id: shopId,
+    portfolio_id: portfolioId,
+    name,
+    property_type: propertyType,
+    address_line1: addressLine1,
+    address_line2: addressLine2,
+    city,
+    region,
+    postal_code: postalCode,
+    country,
+    status,
+  });
+
+  if (error) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(error.message)}`,
+    );
+  }
+
+  revalidatePath("/property");
+  revalidatePath("/property/setup");
+  redirect("/property/setup?status=property-created");
+}
+
 export default async function PropertySetupPage({
   searchParams,
 }: SetupPageProps) {
@@ -584,6 +716,93 @@ export default async function PropertySetupPage({
           </p>
         </section>
 
+        {hasShop ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <article className="metal-card rounded-3xl p-5">
+              <h2 className="text-base font-semibold text-neutral-100">
+                Create portfolio
+              </h2>
+              <form action={createPropertyPortfolio} className="mt-4 space-y-3">
+                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                  Name
+                  <input
+                    name="name"
+                    required
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                  />
+                </label>
+                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                  Description (optional)
+                  <textarea
+                    name="description"
+                    rows={3}
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+                >
+                  Create portfolio
+                </button>
+              </form>
+            </article>
+
+            <article className="metal-card rounded-3xl p-5">
+              <h2 className="text-base font-semibold text-neutral-100">
+                Create property
+              </h2>
+              <form action={createPropertyProperty} className="mt-4 space-y-3">
+                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                  Portfolio (optional)
+                  <select
+                    name="portfolio_id"
+                    defaultValue=""
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                  >
+                    <option value="">No portfolio</option>
+                    {(portfoliosResult?.data ?? []).map((portfolio) => (
+                      <option key={portfolio.id} value={portfolio.id}>
+                        {portfolio.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                  Name
+                  <input
+                    name="name"
+                    required
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input name="property_type" placeholder="Property type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="address_line1" placeholder="Address line 1" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="address_line2" placeholder="Address line 2" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="city" placeholder="City" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="region" placeholder="Region / province" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="postal_code" placeholder="Postal code" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input name="country" defaultValue="CA" placeholder="Country" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    <option value="active">active</option>
+                    <option value="limited">limited</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+                >
+                  Create property
+                </button>
+              </form>
+            </article>
+          </section>
+        ) : null}
+
         {status ? (
           <SetupStatusCard status={status} message={message} />
         ) : null}
@@ -683,6 +902,39 @@ function SetupStatusCard({
         <p className="mt-2 text-amber-100/80">
           Your authenticated profile does not have a shop_id, so setup did not
           insert property data.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "portfolio-created") {
+    return (
+      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        <div className="font-semibold">Portfolio created.</div>
+        <p className="mt-2 text-emerald-100/80">
+          The new portfolio is now available in setup overview and property creation.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "property-created") {
+    return (
+      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        <div className="font-semibold">Property created.</div>
+        <p className="mt-2 text-emerald-100/80">
+          The new property is now available in setup overview for this shop.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "validation-error") {
+    return (
+      <section className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 text-sm text-amber-100">
+        <div className="font-semibold">Validation error.</div>
+        <p className="mt-2 text-amber-100/80">
+          {message ?? "Please review form values and try again."}
         </p>
       </section>
     );

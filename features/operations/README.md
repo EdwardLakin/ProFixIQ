@@ -88,3 +88,16 @@ Any future schema expansion should be documented and applied manually.
 - Create forms for setup entities are still pending.
 - No tenant/vendor auth wiring was added.
 - No request-to-work-order conversion was added.
+
+## Step 11B: Property setup create forms (portfolio + property only)
+
+- `/property/setup` now includes internal create forms for:
+  - Property portfolios
+  - Properties
+- Portfolio creation supports required `name` and optional `description`, scoped to `profile.shop_id`.
+- Property creation supports optional portfolio selection plus property address/status fields, with server-side validation and RLS-visible portfolio checks.
+- Setup status handling now includes `portfolio-created`, `property-created`, and `validation-error`.
+- Unit, asset, and vendor create forms are still pending for a later step.
+- No tenant/vendor auth wiring was added.
+- No request-to-work-order conversion was added.
+- No schema or migration changes were introduced in this step.
