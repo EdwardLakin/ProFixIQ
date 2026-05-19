@@ -27,7 +27,21 @@ export type Tile = {
   roles: Role[];
   scopes: Scope[];
   section?: string; // sidebar grouping label
+  allowedEmails?: string[];
 };
+
+export function canShowTileForEmail(
+  tile: Pick<Tile, "allowedEmails">,
+  email?: string | null,
+) {
+  if (!tile.allowedEmails?.length) return true;
+  if (!email) return false;
+
+  const normalizedEmail = email.toLowerCase();
+  return tile.allowedEmails.some(
+    (allowed) => allowed.toLowerCase() === normalizedEmail,
+  );
+}
 
 export const TILES: Tile[] = [
   /* ---------------------------------------------------------------------- */
@@ -331,6 +345,28 @@ export const TILES: Tile[] = [
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "settings", "all"],
     section: "Fleet",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* PROPERTY                                                                */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/property",
+    title: "Property Maintenance",
+    subtitle: "Requests, assets & repair history",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "work_orders", "all"],
+    section: "Property",
+    allowedEmails: ["edwardlakin35@gmail.com"],
+  },
+  {
+    href: "/property/setup",
+    title: "Property Setup",
+    subtitle: "Seed internal demo data",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Property",
+    allowedEmails: ["edwardlakin35@gmail.com"],
   },
 
   /* ---------------------------------------------------------------------- */

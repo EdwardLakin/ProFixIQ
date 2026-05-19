@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Role, Scope } from "./tiles";
 import { TILES } from "./tiles";
+import { canShowTileForEmail } from "@/features/shared/config/tiles";
 import { useTabsScopedStorageKey } from "@/features/shared/components/tabs/TabsBridge";
 
-const SCOPE_LABEL: Record<Scope | "other", string> = {
+const SECTION_LABEL: Record<string, string> = {
   work_orders: "Work Orders",
   inspections: "Inspections",
   parts: "Parts",
@@ -18,7 +19,7 @@ const SCOPE_LABEL: Record<Scope | "other", string> = {
   other: "Other",
 };
 
-function useSectionOpenState(scopes: (Scope | "other")[]) {
+function useSectionOpenState(scopes: string[]) {
   const key = useTabsScopedStorageKey("dashboard:section-open");
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
@@ -53,25 +54,28 @@ export default function RoleHubTiles({
   scope = "all",
   heading = "Navigation",
   description,
+  userEmail,
 }: {
   roles: Role[];
   scope?: Scope | "all";
   heading?: string;
   description?: string;
+  userEmail?: string | null;
 }) {
   const visible = useMemo(() => {
     const roleSet = new Set(roles);
     return TILES.filter(
       (t) =>
         t.roles.some((r) => roleSet.has(r)) &&
-        (scope === "all" || t.scopes.includes(scope) || t.scopes.includes("all"))
+        (scope === "all" || t.scopes.includes(scope) || t.scopes.includes("all")) &&
+        canShowTileForEmail(t, userEmail)
     );
-  }, [roles, scope]);
+  }, [roles, scope, userEmail]);
 
   const grouped = useMemo(() => {
     const buckets: Record<string, typeof visible> = {};
     for (const t of visible) {
-      const primary = (t.scopes.find((s) => s !== "all") ?? "other") as Scope | "other";
+      const primary = t.section?.trim() || t.scopes.find((s) => s !== "all") || "other";
       if (!buckets[primary]) buckets[primary] = [];
       buckets[primary].push(t);
     }
@@ -79,13 +83,23 @@ export default function RoleHubTiles({
     return buckets;
   }, [visible]);
 
-  const sections = useMemo<(Scope | "other")[]>(
-    () =>
-      (["work_orders", "inspections", "parts", "tech", "management", "settings", "other"] as const).filter(
-        (s) => grouped[s]?.length
-      ),
-    [grouped]
-  );
+  const sections = useMemo<string[]>(() => {
+    const ordered = [
+      "work_orders",
+      "inspections",
+      "parts",
+      "tech",
+      "management",
+      "Property",
+      "settings",
+      "other",
+    ];
+    const groupedSections = Object.keys(grouped);
+    return [
+      ...ordered.filter((s) => grouped[s]?.length),
+      ...groupedSections.filter((s) => !ordered.includes(s)).sort(),
+    ];
+  }, [grouped]);
 
   const { open, setOpen } = useSectionOpenState(sections);
 
@@ -106,7 +120,7 @@ export default function RoleHubTiles({
               onClick={() => setOpen((prev) => ({ ...prev, [s]: !prev[s] }))}
               className="flex w-full items-center justify-between px-4 py-3 text-left"
             >
-              <div className="text-sm font-medium text-foreground">{SCOPE_LABEL[s]}</div>
+              <div className="text-sm font-medium text-foreground">{SECTION_LABEL[s] ?? s}</div>
               <span className="text-xs text-muted-foreground">{isOpen ? "Hide" : "Show"}</span>
             </button>
 
