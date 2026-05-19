@@ -247,3 +247,31 @@ Any future schema expansion should be documented and applied manually.
   - no unauthenticated tenant access
   - no vendor portal behavior
 - No schema or migration changes were introduced in this step.
+
+## Step 21C: Authenticated property member portal surfaces
+
+- Added authenticated property member portal routes:
+  - `/portal/property/member`
+  - `/portal/property/member/requests`
+  - `/portal/property/member/requests/[id]`
+- Access is derived from existing `property_members` rows (`user_id = auth.user.id`) and remains RLS-authenticated only via `createServerSupabaseRSC`.
+- If no `property_members` rows exist for the logged-in user, the portal shows:
+  - `No property portal access is assigned to this account.`
+- Member dashboard now shows assigned scope context (shop/portfolio/property/unit/role) and links to member-visible requests.
+- Requests list shows RLS-visible `property_maintenance_requests` within membership shop scope with title, status, severity, labels, created date, and detail links.
+- Request detail shows tenant-visible context only:
+  - request summary/status/severity/category/property-unit-asset context
+  - timeline entries limited to `tenant_visible` and `all_parties`
+  - attachment metadata visible through existing RLS reads
+  - no internal notes rendered
+- Added tenant-visible comment server action (`actions.ts` colocated in request detail route):
+  - inserts `property_request_events` as `event_type=comment`, `actor_type=tenant`, `visibility=tenant_visible`
+  - requires body + request id and uses authenticated/RLS Supabase client only (no service role)
+  - if insert fails (including RLS policy block), an explicit error is surfaced to the user
+- Explicitly not included in this step:
+  - no public invites
+  - no unauthenticated tenant access
+  - no email invite sending
+  - no vendor portal behavior
+  - no tenant file upload yet
+- No schema or migration changes were introduced in this step.
