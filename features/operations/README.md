@@ -358,3 +358,14 @@ Any future schema expansion should be documented and applied manually.
 - Acceptance status handling now maps safe statuses for UI messaging: `invite-accepted`, `invite-invalid`, `invite-expired`, `invite-email-mismatch`, and `invite-error`.
 - Invite preview now uses a safe generic authenticated confirmation surface when token is present, with details confirmed after secure acceptance.
 - No schema or migration changes were introduced in this step.
+
+## Step 22F: One-time property invite link display on create
+
+- Updated `/property/invites` invite creation UX to show a one-time invite acceptance link immediately after a successful invite insert.
+- The invite link is returned only in server action state for the current request lifecycle and is not persisted.
+- Raw invite token continues to be generated server-side and only `token_hash` is stored in `property_portal_invites`.
+- Raw token is not passed through redirect query params and no token is exposed in invite list rows.
+- Existing invite rows remain token-blind and now explicitly show: `Link not available. Create a new invite to generate a one-time link.`
+- Email sending is still not wired.
+- No auth user creation was added.
+- No schema or migration changes were introduced in this step.
