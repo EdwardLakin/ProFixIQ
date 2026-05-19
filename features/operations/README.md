@@ -323,3 +323,12 @@ Any future schema expansion should be documented and applied manually.
   - service-role usage
   - vendor portal behavior
   - schema or migration changes.
+
+## Step 22C: Authenticated property invite acceptance shell
+
+- Added authenticated acceptance route at `/portal/property/invite/accept?token=<raw_token>` with invite summary + accept action wiring.
+- Acceptance flow is designed to hash the raw token server-side (`sha256`) and query by `token_hash` only; raw token storage is not added.
+- Flow intentionally does **not** send emails, does **not** create Supabase Auth users, and does **not** add unauthenticated/public invite acceptance.
+- On successful validation, acceptance attempts to insert `property_members` (duplicate-safe), mark invite accepted, revalidate `/portal/property/member`, and redirect to `?status=invite-accepted`.
+- **RLS blocker handling:** if current `property_portal_invites` RLS blocks invitee `SELECT/UPDATE` by token hash, the route/action surfaces a controlled blocker message indicating Step 22D must add a controlled acceptance policy or RPC before runtime acceptance can proceed.
+- No schema or migration changes were introduced in this step.
