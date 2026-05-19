@@ -1,6 +1,7 @@
 import "server-only";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -8,7 +9,7 @@ import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
 
 type RequestStatus = "open" | "triaged" | "approval_required" | "assigned" | "scheduled" | "in_progress" | "completed" | "cancelled";
 const ALLOWED_STATUSES: RequestStatus[] = ["open", "triaged", "approval_required", "assigned", "scheduled", "in_progress", "completed", "cancelled"];
-type DB = { public: { Tables: { profiles: { Row: { id: string; shop_id: string | null } }; property_maintenance_requests: { Row: { id: string; shop_id: string; property_id: string; unit_id: string | null; asset_id: string | null; requester_profile_id: string | null; title: string; summary: string; category: string | null; severity: string; status: string; source: string; access_notes: string | null; preferred_window: string | null; work_order_id: string | null; created_at: string } }; property_properties: { Row: { id: string; name: string } }; property_units: { Row: { id: string; unit_label: string } }; property_assets: { Row: { id: string; name: string } }; property_vendor_assignments: { Row: { id: string; request_id: string | null; vendor_id: string; status: string; scheduled_for: string | null; notes: string | null; created_at: string } }; property_vendors: { Row: { id: string; shop_id: string; name: string; trade: string | null } }; } } };
+type DB = { public: { Tables: { profiles: { Row: { id: string; shop_id: string | null } }; property_maintenance_requests: { Row: { id: string; shop_id: string; property_id: string; unit_id: string | null; asset_id: string | null; requester_profile_id: string | null; title: string; summary: string; category: string | null; severity: string; status: string; source: string; access_notes: string | null; preferred_window: string | null; work_order_id: string | null; created_at: string } }; property_properties: { Row: { id: string; name: string } }; property_units: { Row: { id: string; unit_label: string } }; property_assets: { Row: { id: string; name: string } }; property_vendor_assignments: { Row: { id: string; request_id: string | null; vendor_id: string; status: string; scheduled_for: string | null; notes: string | null; created_at: string } }; property_vendors: { Row: { id: string; shop_id: string; name: string; trade: string | null } }; work_orders: { Row: { id: string }; Insert: { shop_id: string; status?: string; approval_state?: string | null; customer_id?: string | null; vehicle_id?: string | null; notes?: string | null } }; } } };
 const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 const parseStatus = (v: FormDataEntryValue | null) => (typeof v === "string" && ALLOWED_STATUSES.includes(v.trim() as RequestStatus) ? (v.trim() as RequestStatus) : null);
 
@@ -91,6 +92,74 @@ export async function assignPropertyVendorToRequest(formData: FormData) {
   redirect(`/property/requests/${requestId}`);
 }
 
+export async function convertPropertyRequestToWorkOrder(formData: FormData) {
+  "use server";
+  const supabase = client();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
+  const { data: profile } = await supabase.from("profiles").select("id,shop_id").eq("id", user.id).maybeSingle();
+  if (!profile?.shop_id) redirect("/property?error=" + encodeURIComponent("Missing shop context."));
+
+  const requestId = typeof formData.get("request_id") === "string" ? String(formData.get("request_id")).trim() : "";
+  if (!requestId) redirect("/property?status=validation-error");
+
+  const { data: requestRow } = await supabase
+    .from("property_maintenance_requests")
+    .select("id,shop_id,property_id,unit_id,asset_id,work_order_id,status,title,summary,severity,category,source")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!requestRow) redirect("/property?status=validation-error");
+  if (requestRow.shop_id !== profile.shop_id) redirect("/property?status=validation-error");
+  if (requestRow.work_order_id) redirect(`/property/requests/${requestId}?status=already-converted`);
+  if (!requestRow.property_id) redirect(`/property/requests/${requestId}?status=validation-error`);
+
+  const [{ data: property }, { data: unit }, { data: asset }] = await Promise.all([
+    supabase.from("property_properties").select("id,name").eq("id", requestRow.property_id).maybeSingle(),
+    requestRow.unit_id ? supabase.from("property_units").select("id,unit_label").eq("id", requestRow.unit_id).maybeSingle() : Promise.resolve({ data: null }),
+    requestRow.asset_id ? supabase.from("property_assets").select("id,name").eq("id", requestRow.asset_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  if (!property) redirect(`/property/requests/${requestId}?status=validation-error`);
+
+  const propertyContext = [
+    `Property request: ${requestRow.title}`,
+    `Summary: ${requestRow.summary}`,
+    `Property: ${property.name}`,
+    unit?.unit_label ? `Unit: ${unit.unit_label}` : null,
+    asset?.name ? `Asset: ${asset.name}` : null,
+    requestRow.category ? `Category: ${requestRow.category}` : null,
+    `Severity: ${requestRow.severity}`,
+    `Source: ${requestRow.source}`,
+  ].filter(Boolean).join(" · ");
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .insert({
+      shop_id: profile.shop_id,
+      status: "awaiting_approval",
+      approval_state: "pending",
+      customer_id: null,
+      vehicle_id: null,
+      notes: propertyContext,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (workOrderError || !workOrder) redirect(`/property/requests/${requestId}?status=conversion-error`);
+
+  const nextStatus = requestRow.status === "assigned" ? "assigned" : "scheduled";
+  const { error: updateError } = await supabase
+    .from("property_maintenance_requests")
+    .update({ work_order_id: workOrder.id, status: nextStatus })
+    .eq("id", requestId)
+    .eq("shop_id", profile.shop_id)
+    .is("work_order_id", null);
+  if (updateError) redirect(`/property/requests/${requestId}?status=conversion-error`);
+
+  revalidatePath("/property");
+  revalidatePath(`/property/requests/${requestId}`);
+  redirect(`/property/requests/${requestId}?status=converted`);
+}
+
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
   const p = (await searchParams) ?? {};
@@ -115,9 +184,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   ]);
   const vendor = assignment?.vendor_id ? (await supabase.from("property_vendors").select("id,name,trade").eq("id", assignment.vendor_id).maybeSingle()).data : null;
 
-  return <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(193,122,74,0.18),transparent_34%),#020617] p-6 text-white"><div className="mx-auto max-w-4xl rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/40 p-6"><div className="mb-4 flex items-center justify-between gap-2"><div><div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Internal only · Property request detail</div><h1 className="mt-1 text-2xl font-semibold">{requestRow.title}</h1></div><Link href="/property" className="text-xs underline">Back to dashboard</Link></div>{err ? <div className="mb-4 rounded border border-rose-400/30 bg-rose-500/10 p-2 text-sm">{err}</div> : null}{status === "vendor-already-assigned" ? <div className="mb-4 rounded border border-amber-300/40 bg-amber-500/10 p-2 text-sm text-amber-100">This vendor is already actively assigned to this request.</div> : null}<div className="grid gap-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 text-sm md:grid-cols-2"><Field label="Summary" value={requestRow.summary} wide /><Field label="Status" value={requestRow.status} /><Field label="Severity" value={requestRow.severity} /><Field label="Category" value={requestRow.category ?? "—"} /><Field label="Source" value={requestRow.source} /><Field label="Created" value={new Date(requestRow.created_at).toLocaleString()} /><Field label="Preferred window" value={requestRow.preferred_window ?? "—"} /><Field label="Access notes" value={requestRow.access_notes ?? "—"} /><Field label="Property" value={property?.name ?? requestRow.property_id} /><Field label="Unit" value={unit?.unit_label ?? "—"} /><Field label="Asset" value={asset?.name ?? "—"} /><Field label="Requester profile" value={requestRow.requester_profile_id ?? "—"} /><Field label="Vendor assignment" value={assignment ? `${vendor?.name ?? assignment.vendor_id} (${assignment.status})` : "—"} /><Field label="Work order" value={requestRow.work_order_id ?? "—"} /></div><form action={updatePropertyMaintenanceRequestStatus} className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4"><input type="hidden" name="request_id" value={requestRow.id} /><label className="text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="status">Update status</label><select id="status" name="status" defaultValue={requestRow.status} className="rounded border bg-black/50 p-2 text-sm">{ALLOWED_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</select><button type="submit" className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-4 py-2 text-xs font-semibold uppercase">Save status</button></form><section className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4"><h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-neutral-200">Vendor assignment</h2><p className="mt-2 text-xs text-neutral-400">Vendor contacts are records only. Vendor portal access is not wired yet.</p>{assignment ? <div className="mt-3 grid gap-2 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3 text-sm md:grid-cols-2"><Field label="Vendor" value={vendor?.name ?? assignment.vendor_id} /><Field label="Trade" value={vendor?.trade ?? "—"} /><Field label="Status" value={assignment.status} /><Field label="Scheduled for" value={assignment.scheduled_for ? new Date(assignment.scheduled_for).toLocaleString() : "—"} /><Field label="Notes" value={assignment.notes ?? "—"} wide /></div> : <p className="mt-3 text-sm text-neutral-300">No vendor assignment yet.</p>}{(vendors?.length ?? 0) === 0 ? <p className="mt-3 text-sm text-neutral-300">Create a vendor in Property Setup first. <Link href="/property/setup" className="underline">Go to Property Setup</Link>.</p> : <form action={assignPropertyVendorToRequest} className="mt-3 grid gap-3"><input type="hidden" name="request_id" value={requestRow.id} /><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="vendor_id">Vendor<select id="vendor_id" name="vendor_id" required className="rounded border bg-black/50 p-2 text-sm"><option value="">Select vendor</option>{vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}{v.trade ? ` (${v.trade})` : ""}</option>)}</select></label><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="scheduled_for">Scheduled for (optional)<input id="scheduled_for" name="scheduled_for" type="datetime-local" className="rounded border bg-black/50 p-2 text-sm" /></label><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="notes">Notes (optional)<textarea id="notes" name="notes" rows={3} className="rounded border bg-black/50 p-2 text-sm" /></label><div><button type="submit" className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-4 py-2 text-xs font-semibold uppercase">Assign vendor</button></div></form>}</section></div></main>;
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(193,122,74,0.18),transparent_34%),#020617] p-6 text-white"><div className="mx-auto max-w-4xl rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/40 p-6"><div className="mb-4 flex items-center justify-between gap-2"><div><div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Internal only · Property request detail</div><h1 className="mt-1 text-2xl font-semibold">{requestRow.title}</h1></div><Link href="/property" className="text-xs underline">Back to dashboard</Link></div>{err ? <div className="mb-4 rounded border border-rose-400/30 bg-rose-500/10 p-2 text-sm">{err}</div> : null}{status === "vendor-already-assigned" ? <div className="mb-4 rounded border border-amber-300/40 bg-amber-500/10 p-2 text-sm text-amber-100">This vendor is already actively assigned to this request.</div> : null}{status === "converted" ? <div className="mb-4 rounded border border-emerald-300/40 bg-emerald-500/10 p-2 text-sm text-emerald-100">Request was converted to a work order.</div> : null}{status === "already-converted" ? <div className="mb-4 rounded border border-amber-300/40 bg-amber-500/10 p-2 text-sm text-amber-100">This request is already linked to a work order.</div> : null}{status === "conversion-error" ? <div className="mb-4 rounded border border-rose-400/30 bg-rose-500/10 p-2 text-sm">Unable to convert this request to a work order.</div> : null}{status === "validation-error" ? <div className="mb-4 rounded border border-amber-300/40 bg-amber-500/10 p-2 text-sm text-amber-100">Validation failed. Review request context and try again.</div> : null}<div className="grid gap-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 text-sm md:grid-cols-2"><Field label="Summary" value={requestRow.summary} wide /><Field label="Status" value={requestRow.status} /><Field label="Severity" value={requestRow.severity} /><Field label="Category" value={requestRow.category ?? "—"} /><Field label="Source" value={requestRow.source} /><Field label="Created" value={new Date(requestRow.created_at).toLocaleString()} /><Field label="Preferred window" value={requestRow.preferred_window ?? "—"} /><Field label="Access notes" value={requestRow.access_notes ?? "—"} /><Field label="Property" value={property?.name ?? requestRow.property_id} /><Field label="Unit" value={unit?.unit_label ?? "—"} /><Field label="Asset" value={asset?.name ?? "—"} /><Field label="Requester profile" value={requestRow.requester_profile_id ?? "—"} /><Field label="Vendor assignment" value={assignment ? `${vendor?.name ?? assignment.vendor_id} (${assignment.status})` : "—"} /><Field label="Work order" value={requestRow.work_order_id ? <Link href={`/work-orders/${requestRow.work_order_id}`} className="underline">{requestRow.work_order_id}</Link> : "—"} /></div><form action={updatePropertyMaintenanceRequestStatus} className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4"><input type="hidden" name="request_id" value={requestRow.id} /><label className="text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="status">Update status</label><select id="status" name="status" defaultValue={requestRow.status} className="rounded border bg-black/50 p-2 text-sm">{ALLOWED_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</select><button type="submit" className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-4 py-2 text-xs font-semibold uppercase">Save status</button></form><section className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4"><h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-neutral-200">Work order conversion</h2>{requestRow.work_order_id ? <p className="mt-2 text-sm text-neutral-200">Linked work order: <Link href={`/work-orders/${requestRow.work_order_id}`} className="underline">{requestRow.work_order_id}</Link></p> : <form action={convertPropertyRequestToWorkOrder} className="mt-3 space-y-3"><input type="hidden" name="request_id" value={requestRow.id} /><p className="text-xs text-neutral-400">Creates a shop work order from this property maintenance request.</p><button type="submit" className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-4 py-2 text-xs font-semibold uppercase">Convert to work order</button></form>}</section><section className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4"><h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-neutral-200">Vendor assignment</h2><p className="mt-2 text-xs text-neutral-400">Vendor contacts are records only. Vendor portal access is not wired yet.</p>{assignment ? <div className="mt-3 grid gap-2 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3 text-sm md:grid-cols-2"><Field label="Vendor" value={vendor?.name ?? assignment.vendor_id} /><Field label="Trade" value={vendor?.trade ?? "—"} /><Field label="Status" value={assignment.status} /><Field label="Scheduled for" value={assignment.scheduled_for ? new Date(assignment.scheduled_for).toLocaleString() : "—"} /><Field label="Notes" value={assignment.notes ?? "—"} wide /></div> : <p className="mt-3 text-sm text-neutral-300">No vendor assignment yet.</p>}{(vendors?.length ?? 0) === 0 ? <p className="mt-3 text-sm text-neutral-300">Create a vendor in Property Setup first. <Link href="/property/setup" className="underline">Go to Property Setup</Link>.</p> : <form action={assignPropertyVendorToRequest} className="mt-3 grid gap-3"><input type="hidden" name="request_id" value={requestRow.id} /><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="vendor_id">Vendor<select id="vendor_id" name="vendor_id" required className="rounded border bg-black/50 p-2 text-sm"><option value="">Select vendor</option>{vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}{v.trade ? ` (${v.trade})` : ""}</option>)}</select></label><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="scheduled_for">Scheduled for (optional)<input id="scheduled_for" name="scheduled_for" type="datetime-local" className="rounded border bg-black/50 p-2 text-sm" /></label><label className="grid gap-1 text-xs uppercase tracking-[0.12em] text-neutral-400" htmlFor="notes">Notes (optional)<textarea id="notes" name="notes" rows={3} className="rounded border bg-black/50 p-2 text-sm" /></label><div><button type="submit" className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-4 py-2 text-xs font-semibold uppercase">Assign vendor</button></div></form>}</section></div></main>;
 }
 
-function Field({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+function Field({ label, value, wide = false }: { label: string; value: ReactNode; wide?: boolean }) {
   return <div className={wide ? "md:col-span-2" : undefined}><div className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">{label}</div><div className="mt-1 text-neutral-100">{value}</div></div>;
 }
