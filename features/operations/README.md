@@ -332,3 +332,17 @@ Any future schema expansion should be documented and applied manually.
 - On successful validation, acceptance attempts to insert `property_members` (duplicate-safe), mark invite accepted, revalidate `/portal/property/member`, and redirect to `?status=invite-accepted`.
 - **RLS blocker handling:** if current `property_portal_invites` RLS blocks invitee `SELECT/UPDATE` by token hash, the route/action surfaces a controlled blocker message indicating Step 22D must add a controlled acceptance policy or RPC before runtime acceptance can proceed.
 - No schema or migration changes were introduced in this step.
+
+## Step 22D: Manual SQL draft for authenticated property invite acceptance
+
+- Added manual SQL draft at `supabase/manual/property-portal-invite-acceptance-step-22d.sql`.
+- Draft proposes a `SECURITY DEFINER` RPC (`public.accept_property_portal_invite(text)`) so authenticated acceptance can be handled without adding broad invite token/email read policies.
+- Function validates token hash match, pending status, expiry, and authenticated email match before membership creation/reuse and invite acceptance update.
+- RLS posture remains conservative: `property_portal_invites` stays internal-only and no broad token lookup policy is added.
+- This step is documentation + manual SQL draft only:
+  - no SQL executed
+  - no runtime code wiring
+  - no service role usage
+  - no email sending flow
+  - no auth user creation flow
+  - no unauthenticated/public acceptance
