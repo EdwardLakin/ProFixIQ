@@ -346,3 +346,15 @@ Any future schema expansion should be documented and applied manually.
   - no email sending flow
   - no auth user creation flow
   - no unauthenticated/public acceptance
+
+## Step 22E: Property portal invite acceptance runtime via SECURITY DEFINER RPC
+
+- Updated `/portal/property/invite/accept` acceptance action to use `public.accept_property_portal_invite(p_raw_token)` through the authenticated Supabase RLS client.
+- Acceptance no longer performs direct invite table select/update in runtime action logic.
+- No service-role client usage was added.
+- No email sending was added.
+- No Supabase Auth user creation was added.
+- No unauthenticated acceptance path was added.
+- Acceptance status handling now maps safe statuses for UI messaging: `invite-accepted`, `invite-invalid`, `invite-expired`, `invite-email-mismatch`, and `invite-error`.
+- Invite preview now uses a safe generic authenticated confirmation surface when token is present, with details confirmed after secure acceptance.
+- No schema or migration changes were introduced in this step.
