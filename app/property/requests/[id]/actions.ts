@@ -9,6 +9,8 @@ type RequestStatus = "open" | "triaged" | "approval_required" | "assigned" | "sc
 const ALLOWED_STATUSES: RequestStatus[] = ["open", "triaged", "approval_required", "assigned", "scheduled", "in_progress", "completed", "cancelled"];
 const TIMELINE_EVENT_TYPES = ["comment", "internal_note"] as const;
 const TIMELINE_VISIBILITY = ["internal", "tenant_visible"] as const;
+const ATTACHMENT_KINDS = ["image", "video", "document", "other"] as const;
+type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 
 type DB = {
   public: {
@@ -40,6 +42,21 @@ type DB = {
       property_vendor_assignments: { Row: { id: string; request_id: string | null; vendor_id: string; status: string; scheduled_for: string | null; notes: string | null; created_at: string } };
       property_vendors: { Row: { id: string; shop_id: string; name: string; trade: string | null } };
       property_request_events: { Insert: { shop_id: string; request_id: string; actor_profile_id: string | null; actor_type: string; event_type: string; visibility: string; body: string; metadata: Record<string, unknown> } };
+      property_request_attachments: {
+        Insert: {
+          shop_id: string;
+          request_id: string;
+          uploaded_by_profile_id: string | null;
+          file_kind: AttachmentKind;
+          original_filename: string | null;
+          content_type: string | null;
+          caption: string | null;
+          metadata: Record<string, unknown>;
+          storage_bucket: string | null;
+          storage_path: string | null;
+          size_bytes: number | null;
+        };
+      };
       work_orders: { Row: { id: string }; Insert: { shop_id: string; status?: string; approval_state?: string | null; customer_id?: string | null; vehicle_id?: string | null; notes?: string | null } };
     };
   };
@@ -110,6 +127,70 @@ export async function addPropertyRequestTimelineEvent(formData: FormData) {
   revalidatePath("/property");
   revalidatePath(`/property/requests/${requestId}`);
   redirect(`/property/requests/${requestId}?status=timeline-event-added`);
+}
+
+export async function addPropertyRequestAttachmentPlaceholder(formData: FormData) {
+  "use server";
+  const supabase = client();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
+
+  const { data: profile } = await supabase.from("profiles").select("id,shop_id").eq("id", user.id).maybeSingle();
+  if (!profile?.shop_id) redirect("/property?error=" + encodeURIComponent("Missing shop context."));
+
+  const requestId = typeof formData.get("request_id") === "string" ? String(formData.get("request_id")).trim() : "";
+  const fileKindRaw = typeof formData.get("file_kind") === "string" ? String(formData.get("file_kind")).trim() : "";
+  const originalFilenameRaw = typeof formData.get("original_filename") === "string" ? String(formData.get("original_filename")).trim() : "";
+  const contentTypeRaw = typeof formData.get("content_type") === "string" ? String(formData.get("content_type")).trim() : "";
+  const captionRaw = typeof formData.get("caption") === "string" ? String(formData.get("caption")).trim() : "";
+  const notesRaw = typeof formData.get("notes") === "string" ? String(formData.get("notes")).trim() : "";
+
+  if (!requestId) redirect("/property?error=" + encodeURIComponent("Missing request id."));
+  if (!ATTACHMENT_KINDS.includes(fileKindRaw as AttachmentKind)) redirect(`/property/requests/${requestId}?error=${encodeURIComponent("Invalid attachment kind.")}`);
+  const fileKind = fileKindRaw as AttachmentKind;
+
+  const { data: requestRow } = await supabase.from("property_maintenance_requests").select("id,shop_id").eq("id", requestId).maybeSingle();
+  if (!requestRow) redirect("/property?error=" + encodeURIComponent("Request not found or not visible."));
+  if (requestRow.shop_id !== profile.shop_id) redirect("/property?error=" + encodeURIComponent("Unauthorized shop scope for request."));
+
+  const originalFilename = originalFilenameRaw || null;
+  const contentType = contentTypeRaw || null;
+  const caption = captionRaw || null;
+  const notes = notesRaw || null;
+
+  const { error: attachmentError } = await supabase.from("property_request_attachments").insert({
+    shop_id: profile.shop_id,
+    request_id: requestId,
+    uploaded_by_profile_id: user.id,
+    file_kind: fileKind,
+    original_filename: originalFilename,
+    content_type: contentType,
+    caption,
+    metadata: notes ? { notes } : {},
+    storage_bucket: null,
+    storage_path: null,
+    size_bytes: null,
+  });
+  if (attachmentError) redirect(`/property/requests/${requestId}?error=${encodeURIComponent(`Unable to add attachment placeholder: ${attachmentError.message}`)}`);
+
+  const attachmentLabel = originalFilename || fileKind;
+  const { error: eventError } = await supabase.from("property_request_events").insert({
+    shop_id: profile.shop_id,
+    request_id: requestId,
+    actor_profile_id: user.id,
+    actor_type: "internal",
+    event_type: "attachment_added",
+    visibility: "internal",
+    body: `Attachment placeholder added: ${attachmentLabel}`,
+    metadata: { attachment_kind: fileKind, caption },
+  });
+  if (eventError) redirect(`/property/requests/${requestId}?error=${encodeURIComponent(`Attachment was saved, but timeline event failed: ${eventError.message}`)}`);
+
+  revalidatePath("/property");
+  revalidatePath(`/property/requests/${requestId}`);
+  redirect(`/property/requests/${requestId}?status=attachment-placeholder-added`);
 }
 
 export async function updatePropertyMaintenanceRequestStatus(formData: FormData) {

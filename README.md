@@ -283,3 +283,9 @@ When a stock move is recorded with `stock_move_reason = 'consume'`:
 - Optional global aggregation (opt-in, anonymized)
 
 > No UI depends on this yet. This system is intentionally backend-only until enough data exists.
+## Property Operations Rollout – Step 19A
+
+- Added internal-only attachment placeholder metadata wiring on `/property/requests/[id]`.
+- Placeholders now create `property_request_attachments` rows with metadata only (no file upload).
+- No Supabase Storage upload flow, no storage bucket creation, and no service-role usage in this step.
+- Tenant/vendor auth wiring is still intentionally deferred.
