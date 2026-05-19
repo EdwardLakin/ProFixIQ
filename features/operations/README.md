@@ -181,3 +181,18 @@ Any future schema expansion should be documented and applied manually.
 - No real file/media upload was added; `photo_notes` is placeholder-only text (`"Describe any photos/videos you would attach. File upload comes later."`).
 - No read receipts schema or two-party timeline schema was added yet; UI includes a note that these arrive in a later phase.
 - No schema or migration changes were introduced in this step.
+
+## Step 17: Internal conversion of failed property inspection findings to maintenance requests
+
+- Added internal-only conversion on `/property/inspections/[id]` to create property maintenance requests from selected failed findings.
+- Conversion uses authenticated/RLS-scoped Supabase server actions only (`createServerSupabaseRSC`, logged-in user, profile + `shop_id` checks) and never trusts `shop_id` from form data.
+- Conversion validates that selected finding keys exist in the loaded inspection findings and are `status: fail` before insert.
+- Each created request is inserted into `property_maintenance_requests` with inspection-derived property/unit context and conservative defaults:
+  - `status: open`
+  - `source: inspection_failed_finding`
+  - `category: Inspection`
+  - `severity: routine`
+- Duplicate prevention is implemented without schema changes by checking for existing visible requests with matching property/unit/source and similar title before insert.
+- UX includes conversion status banners, failed-item checkbox selection, and explicit note that this step creates requests only (no quotes/work orders).
+- No schema or migration changes were introduced.
+- No tenant auth, vendor auth, vendor portal behavior, quote flow, vehicle inspection builder changes, or direct work-order conversion from findings were added.
