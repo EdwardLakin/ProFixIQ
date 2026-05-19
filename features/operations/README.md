@@ -72,3 +72,10 @@ Any future schema expansion should be documented and applied manually.
 - Internal staff can now create property maintenance requests from `/property/requests/new` using authenticated Supabase RLS-scoped reads/writes.
 - Request creation is still internal-only for the property branch: no tenant/vendor auth, no public submission surface, and no vendor portal behavior were added.
 - Request-to-work-order conversion is still not implemented.
+
+## Step 10: Internal property maintenance request detail + status management
+
+- Added internal request detail at `/property/requests/[id]` with RLS-backed request visibility and linked property/unit/asset/vendor context.
+- Internal staff can update request status with constrained server-side validation to approved states only.
+- This remains internal-only property maintenance scope: no tenant/vendor auth, no vendor portal behavior, and no public request submission were added.
+- Request-to-work-order conversion is still not implemented.
