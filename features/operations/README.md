@@ -258,6 +258,7 @@ Any future schema expansion should be documented and applied manually.
 - If no `property_members` rows exist for the logged-in user, the portal shows:
   - `No property portal access is assigned to this account.`
 - Member dashboard now shows assigned scope context (shop/portfolio/property/unit/role) and links to member-visible requests.
+
 - Requests list shows RLS-visible `property_maintenance_requests` within membership shop scope with title, status, severity, labels, created date, and detail links.
 - Request detail shows tenant-visible context only:
   - request summary/status/severity/category/property-unit-asset context
@@ -294,3 +295,31 @@ Any future schema expansion should be documented and applied manually.
 - Attachment metadata is inserted into `property_request_attachments` and corresponding tenant-visible `attachment_added` timeline events are inserted into `property_request_events`.
 - Member request detail now includes image upload form, status banners, and attachment listing with signed previews when available.
 - No public invite flow, no unauthenticated access, no vendor portal behavior, no public bucket behavior, and no schema/migration changes were added.
+
+## Step 22B: Internal property portal invite record creation
+
+- Added `/property/invites` for internal staff to create and review `property_portal_invites` records using authenticated Supabase RSC + RLS only.
+- Invite creation validates:
+  - required normalized `invited_email`
+  - role allowlist (`property_manager`, `owner_approver`, `tenant_requester`, `viewer`)
+  - `expires_in_days` range (1–30)
+  - same-shop visibility for optional `portfolio_id`, `property_id`, `unit_id`
+  - unit/property hierarchy when both are provided
+  - required scope unless role is `property_manager`
+- Invite insertion uses only current profile context for tenancy fields:
+  - `shop_id` is sourced from `profile.shop_id` only
+  - `created_by_profile_id` is set to `auth.user.id`
+- Token handling is internal-safe:
+  - raw token is generated server-side
+  - only SHA-256 hash is stored in `token_hash`
+  - raw token is not exposed in URL/history/UI yet
+  - UI confirms invite creation and states email + acceptance wiring are deferred
+- Added an internal dashboard action link from `/property` to `/property/invites`.
+- This step does **not** add:
+  - public invite acceptance routes
+  - unauthenticated access
+  - email delivery
+  - Supabase Auth user creation
+  - service-role usage
+  - vendor portal behavior
+  - schema or migration changes.
