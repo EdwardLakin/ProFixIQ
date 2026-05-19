@@ -245,12 +245,20 @@ export default function PropertyMaintenanceDashboard({
                     <span className="uppercase tracking-[0.14em]">
                       {issue.severity}
                     </span>
-                    <Link
-                      href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`}
-                      className="ml-auto text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
-                    >
-                      View asset →
-                    </Link>
+                    <div className="ml-auto flex items-center gap-3">
+                      <Link
+                        href={`/property/requests/${issue.id}`}
+                        className="text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+                      >
+                        View request →
+                      </Link>
+                      <Link
+                        href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`}
+                        className="text-neutral-500 underline decoration-white/10 underline-offset-4 hover:text-neutral-300"
+                      >
+                        Asset
+                      </Link>
+                    </div>
                   </div>
                 </article>
               ))}
