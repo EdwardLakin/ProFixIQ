@@ -234,3 +234,16 @@ Any future schema expansion should be documented and applied manually.
 - No public bucket behavior or public URL generation was added.
 - No tenant auth, vendor auth, or vendor portal behavior was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 21B: Internal property member management
+
+- Added `/property/members` for internal staff to manage `property_members` access scopes for existing users/profiles in the same shop.
+- Create flow uses authenticated Supabase RSC + RLS only, requires current `profile.shop_id`, and never trusts `shop_id` from form data.
+- Server-side validation enforces same-shop user and scope visibility (portfolio/property/unit), role allowlist, scope rules, and duplicate prevention.
+- Existing member rows are listed with role and scope context for internal review.
+- This step remains internal-only and existing-profile-only:
+  - no public invites
+  - no email invites
+  - no unauthenticated tenant access
+  - no vendor portal behavior
+- No schema or migration changes were introduced in this step.
