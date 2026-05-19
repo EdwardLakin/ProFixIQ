@@ -19,19 +19,9 @@ export default function NavFromTiles({
   description?: string;
   rolesOverride?: Role[];
 }) {
-  if (rolesOverride && rolesOverride.length > 0) {
-    return (
-      <RoleHubTiles
-        roles={rolesOverride}
-        scope={scope}
-        heading={heading}
-        description={description}
-      />
-    );
-  }
-
   const supabase = createClientComponentClient<Database>();
   const [roles, setRoles] = useState<Role[]>([]);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,9 +35,14 @@ export default function NavFromTiles({
         } = await supabase.auth.getUser();
 
         if (!user) {
-          if (!cancelled) setRoles([]);
+          if (!cancelled) {
+            setRoles([]);
+            setUserEmail(null);
+          }
           return;
         }
+
+        if (!cancelled) setUserEmail(user.email ?? null);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -66,6 +61,19 @@ export default function NavFromTiles({
       cancelled = true;
     };
   }, [supabase]);
+
+
+  if (rolesOverride && rolesOverride.length > 0) {
+    return (
+      <RoleHubTiles
+        roles={rolesOverride}
+        scope={scope}
+        heading={heading}
+        description={description}
+        userEmail={userEmail}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -91,6 +99,7 @@ export default function NavFromTiles({
       scope={scope}
       heading={heading}
       description={description}
+      userEmail={userEmail}
     />
   );
 }

@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
   TILES,
+  canShowTileForEmail,
   type Role,
   type Scope,
   type Tile,
@@ -24,6 +25,7 @@ const GROUP_ORDER = [
   "Operations",
   "Parts",
   "Fleet",
+  "Property",
   "Tools",
   "Admin",
   "Billing",
@@ -63,6 +65,7 @@ export default function RoleSidebar() {
   const pathname = usePathname();
 
   const [role, setRole] = useState<Role | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [scopeFilter] = useState<Scope | "all">("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
@@ -72,6 +75,7 @@ export default function RoleSidebar() {
         data: { session },
       } = await supabase.auth.getSession();
       const uid = session?.user?.id;
+      setUserEmail(session?.user?.email ?? null);
       if (!uid) return;
 
       const { data: profile } = await supabase
@@ -90,11 +94,12 @@ export default function RoleSidebar() {
     const navV2Enabled = isOnboardingV2NavEnabled();
     const filteredTiles = TILES.filter((t) => t.roles.includes(role))
       .filter((t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter))
+      .filter((t) => canShowTileForEmail(t, userEmail))
       .filter((t) => (t.href === "/dashboard/onboarding-v2" ? navV2Enabled : true));
 
     if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
     return filteredTiles;
-  }, [role, scopeFilter]);
+  }, [role, scopeFilter, userEmail]);
 
   const canonicalActiveTile = useMemo(
     () => getCanonicalActiveTile(pathname, tiles),
