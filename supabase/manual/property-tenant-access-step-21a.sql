@@ -1,0 +1,93 @@
+-- Step 21A: Tenant Access to Property Requests (MANUAL DRAFT ONLY)
+-- -----------------------------------------------------------------
+-- STATUS: Planning draft. DO NOT EXECUTE in this step.
+-- PURPOSE: Capture candidate SQL/policy direction for review.
+--
+-- Constraints for this step:
+-- - No SQL execution
+-- - No schema changes applied
+-- - No runtime code changes
+-- - No public unauthenticated access
+-- - No vendor auth
+
+-- ================================================================
+-- 1) Tenant identity and scope source
+-- ================================================================
+-- Authorization source: property_members.user_id
+-- Tenant role target: tenant_requester
+-- Scope columns: portfolio_id, property_id, unit_id
+-- Boundary: shop_id must match on every policy predicate
+
+-- ================================================================
+-- 2) Candidate helper predicate (conceptual; not executed)
+-- ================================================================
+-- PSEUDOCODE ONLY:
+-- tenant_has_scope(request.shop_id, request.portfolio_id, request.property_id, request.unit_id)
+-- returns true when an authenticated user has a property_members row with:
+--   - property_members.user_id = auth.uid() mapped app user id
+--   - property_members.role = 'tenant_requester'
+--   - matching shop_id
+--   - and one of:
+--       a) unit-level match
+--       b) property-level match
+--       c) portfolio-level match
+
+-- ================================================================
+-- 3) Candidate policy intents (draft statements, not executable as-is)
+-- ================================================================
+-- A) Requests: tenant insert
+--   allow insert where tenant_has_scope(target_request_scope)
+--
+-- B) Timeline: tenant read
+--   allow select where request_in_tenant_scope
+--     and visibility in ('tenant_visible', 'all_parties')
+--     (plus optional owner-authored visibility rule)
+--
+-- C) Timeline comments: tenant insert
+--   allow insert where request_in_tenant_scope
+--     and visibility = 'tenant_visible'
+--
+-- D) Attachments (future step)
+--   allow insert/select where request_in_tenant_scope
+
+-- ================================================================
+-- 4) Read receipt plan (future SQL, not applied)
+-- ================================================================
+-- Candidate table (name TBD): property_request_read_receipts
+-- fields (draft):
+--   id uuid
+--   shop_id
+--   request_id
+--   tenant_user_id
+--   last_seen_event_id (optional)
+--   read_at timestamptz
+--
+-- Candidate constraints/indexes (future):
+--   - unique(shop_id, request_id, tenant_user_id)
+--   - index on (shop_id, tenant_user_id, read_at desc)
+
+-- ================================================================
+-- 5) Future onboarding table review (draft only, not created)
+-- ================================================================
+-- property_portal_invites
+--   id uuid
+--   shop_id
+--   email
+--   portfolio_id
+--   property_id
+--   unit_id
+--   role default 'tenant_requester'
+--   token_hash
+--   expires_at
+--   accepted_at
+--   created_at
+
+-- Reasoning:
+-- - property_members is sufficient for immediate access control once user identity exists.
+-- - invite table is beneficial later for email-token onboarding lifecycle.
+
+-- ================================================================
+-- 6) Explicit non-action confirmation for this file
+-- ================================================================
+-- This file is documentation-only for Step 21A.
+-- No commands in this file should be executed during this step.
