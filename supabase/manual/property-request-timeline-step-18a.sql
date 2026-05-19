@@ -275,7 +275,7 @@ using (
        or (pm.unit_id is not null and pm.unit_id = pmr.unit_id)
      )
     where pmr.id = property_request_events.request_id
-      and pm.profile_id = auth.uid()
+      and pm.user_id = auth.uid()
   )
 );
 
@@ -299,7 +299,7 @@ with check (
        or (pm.unit_id is not null and pm.unit_id = pmr.unit_id)
      )
     where pmr.id = property_request_events.request_id
-      and pm.profile_id = auth.uid()
+      and pm.user_id = auth.uid()
       and pmr.shop_id = property_request_events.shop_id
   )
 );
@@ -341,7 +341,7 @@ with check (
        or (pm.unit_id is not null and pm.unit_id = pmr.unit_id)
      )
     where pmr.id = property_request_read_receipts.request_id
-      and pm.profile_id = auth.uid()
+      and pm.user_id = auth.uid()
       and pmr.shop_id = property_request_read_receipts.shop_id
   )
 );
@@ -382,7 +382,7 @@ using (
        or (pm.unit_id is not null and pm.unit_id = pmr.unit_id)
      )
     where pmr.id = property_request_attachments.request_id
-      and pm.profile_id = auth.uid()
+      and pm.user_id = auth.uid()
   )
 );
 
