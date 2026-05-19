@@ -10614,6 +10614,804 @@ export type Database = {
           },
         ]
       }
+      property_approval_thresholds: {
+        Row: {
+          created_at: string
+          id: string
+          portfolio_id: string | null
+          property_id: string | null
+          requires_owner_approval: boolean
+          shop_id: string
+          threshold_cents: number
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          portfolio_id?: string | null
+          property_id?: string | null
+          requires_owner_approval?: boolean
+          shop_id: string
+          threshold_cents?: number
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          portfolio_id?: string | null
+          property_id?: string | null
+          requires_owner_approval?: boolean
+          shop_id?: string
+          threshold_cents?: number
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_approval_thresholds_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "property_portfolios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_approval_thresholds_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_approval_thresholds_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_approval_thresholds_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_approval_thresholds_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_assets: {
+        Row: {
+          asset_type: string | null
+          created_at: string
+          id: string
+          install_date: string | null
+          location_note: string | null
+          manufacturer: string | null
+          metadata: Json
+          model: string | null
+          name: string
+          next_service_date: string | null
+          property_id: string
+          serial_number: string | null
+          shop_id: string
+          status: string
+          unit_id: string | null
+          updated_at: string
+          warranty_expires_on: string | null
+        }
+        Insert: {
+          asset_type?: string | null
+          created_at?: string
+          id?: string
+          install_date?: string | null
+          location_note?: string | null
+          manufacturer?: string | null
+          metadata?: Json
+          model?: string | null
+          name: string
+          next_service_date?: string | null
+          property_id: string
+          serial_number?: string | null
+          shop_id: string
+          status?: string
+          unit_id?: string | null
+          updated_at?: string
+          warranty_expires_on?: string | null
+        }
+        Update: {
+          asset_type?: string | null
+          created_at?: string
+          id?: string
+          install_date?: string | null
+          location_note?: string | null
+          manufacturer?: string | null
+          metadata?: Json
+          model?: string | null
+          name?: string
+          next_service_date?: string | null
+          property_id?: string
+          serial_number?: string | null
+          shop_id?: string
+          status?: string
+          unit_id?: string | null
+          updated_at?: string
+          warranty_expires_on?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_assets_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_assets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_assets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_assets_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_inspections: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          findings: Json
+          id: string
+          inspection_type: string
+          performed_by_profile_id: string | null
+          property_id: string
+          shop_id: string
+          status: string
+          summary: string | null
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          findings?: Json
+          id?: string
+          inspection_type?: string
+          performed_by_profile_id?: string | null
+          property_id: string
+          shop_id: string
+          status?: string
+          summary?: string | null
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          findings?: Json
+          id?: string
+          inspection_type?: string
+          performed_by_profile_id?: string | null
+          property_id?: string
+          shop_id?: string
+          status?: string
+          summary?: string | null
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_inspections_performed_by_profile_id_fkey"
+            columns: ["performed_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspections_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspections_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_maintenance_requests: {
+        Row: {
+          access_notes: string | null
+          ai_triage: Json
+          asset_id: string | null
+          category: string | null
+          created_at: string
+          id: string
+          photos: Json
+          preferred_window: string | null
+          property_id: string
+          requester_profile_id: string | null
+          severity: string
+          shop_id: string
+          source: string
+          status: string
+          summary: string
+          title: string
+          unit_id: string | null
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          access_notes?: string | null
+          ai_triage?: Json
+          asset_id?: string | null
+          category?: string | null
+          created_at?: string
+          id?: string
+          photos?: Json
+          preferred_window?: string | null
+          property_id: string
+          requester_profile_id?: string | null
+          severity?: string
+          shop_id: string
+          source?: string
+          status?: string
+          summary: string
+          title: string
+          unit_id?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          access_notes?: string | null
+          ai_triage?: Json
+          asset_id?: string | null
+          category?: string | null
+          created_at?: string
+          id?: string
+          photos?: Json
+          preferred_window?: string | null
+          property_id?: string
+          requester_profile_id?: string | null
+          severity?: string
+          shop_id?: string
+          source?: string
+          status?: string
+          summary?: string
+          title?: string
+          unit_id?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_maintenance_requests_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "property_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_requester_profile_id_fkey"
+            columns: ["requester_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_maintenance_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_members: {
+        Row: {
+          created_at: string
+          id: string
+          portfolio_id: string | null
+          property_id: string | null
+          role: string
+          shop_id: string
+          unit_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          portfolio_id?: string | null
+          property_id?: string | null
+          role: string
+          shop_id: string
+          unit_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          portfolio_id?: string | null
+          property_id?: string | null
+          role?: string
+          shop_id?: string
+          unit_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_members_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "property_portfolios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_members_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_members_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_members_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_members_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_portfolios: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_portfolios_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portfolios_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_properties: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          id: string
+          name: string
+          portfolio_id: string | null
+          postal_code: string | null
+          property_type: string | null
+          region: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          portfolio_id?: string | null
+          postal_code?: string | null
+          property_type?: string | null
+          region?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          portfolio_id?: string | null
+          postal_code?: string | null
+          property_type?: string | null
+          region?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_properties_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "property_portfolios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_properties_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_properties_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_units: {
+        Row: {
+          access_notes: string | null
+          created_at: string
+          id: string
+          occupancy_status: string | null
+          property_id: string
+          shop_id: string
+          status: string
+          unit_label: string
+          unit_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_notes?: string | null
+          created_at?: string
+          id?: string
+          occupancy_status?: string | null
+          property_id: string
+          shop_id: string
+          status?: string
+          unit_label: string
+          unit_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_notes?: string | null
+          created_at?: string
+          id?: string
+          occupancy_status?: string | null
+          property_id?: string
+          shop_id?: string
+          status?: string
+          unit_label?: string
+          unit_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_units_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_units_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_units_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_vendor_assignments: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          request_id: string | null
+          scheduled_for: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          vendor_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          request_id?: string | null
+          scheduled_for?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+          vendor_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          request_id?: string | null
+          scheduled_for?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          vendor_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_vendor_assignments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "property_maintenance_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "property_vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "property_vendor_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_vendors: {
+        Row: {
+          contact_name: string | null
+          created_at: string
+          email: string | null
+          id: string
+          metadata: Json
+          name: string
+          phone: string | null
+          shop_id: string
+          status: string
+          trade: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          phone?: string | null
+          shop_id: string
+          status?: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          phone?: string | null
+          shop_id?: string
+          status?: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_vendors_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_vendors_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       punch_events: {
         Row: {
           created_at: string | null
