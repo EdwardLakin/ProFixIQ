@@ -196,3 +196,16 @@ Any future schema expansion should be documented and applied manually.
 - UX includes conversion status banners, failed-item checkbox selection, and explicit note that this step creates requests only (no quotes/work orders).
 - No schema or migration changes were introduced.
 - No tenant auth, vendor auth, vendor portal behavior, quote flow, vehicle inspection builder changes, or direct work-order conversion from findings were added.
+
+## Step 18A: Manual property request timeline schema draft
+
+- Added `supabase/manual/property-request-timeline-step-18a.sql` as a **manual draft only** for future property request timeline support.
+- Draft proposes additive tables for:
+  - request timeline events (`property_request_events`)
+  - event/request read receipts (`property_request_read_receipts`)
+  - attachment metadata placeholders (`property_request_attachments`)
+- Includes draft validation triggers to enforce request/event/attachment `shop_id` + `request_id` consistency.
+- Includes conservative RLS draft policies for internal staff and limited property-member visibility.
+- Vendor RLS remains intentionally deferred pending explicit vendor-user linkage.
+- No SQL was executed and no schema was applied by this step.
+- No runtime code, route behavior, tenant auth, vendor auth, or real file upload wiring was added.

@@ -68,3 +68,43 @@ This step does not introduce rent collection, accounting, lease management, tena
 ### Future optional work-order context
 
 The SQL file includes a clearly commented optional `work_orders` source-context section for a later phase. It should not be applied automatically with the maintenance schema until the conversion flow is intentionally designed.
+
+## Step 18A: Manual property request timeline SQL draft
+
+Step 18A adds a review-only SQL draft at `supabase/manual/property-request-timeline-step-18a.sql` for future property request timeline support. This draft is documentation-only and is not applied by this branch.
+
+### Proposed timeline schema additions
+
+- `property_request_events` (append-only timeline/event stream)
+  - supports system/internal/vendor/tenant actor typing
+  - supports event typing for comments, status changes, links, and system entries
+  - supports visibility levels for internal-only vs tenant/shared surfaces
+- `property_request_read_receipts` (request-level and event-level read tracking)
+  - supports optional `event_id` for per-event receipts
+  - includes partial unique indexes to avoid duplicate receipt rows
+- `property_request_attachments` (metadata placeholders only)
+  - stores attachment metadata references for future media/file uploads
+  - does not create or configure Supabase Storage buckets
+
+### Data safety and tenant consistency
+
+- Adds validation triggers/functions to enforce `shop_id` consistency across requests, events, receipts, and attachments.
+- Enforces that `event_id` references (when present) match the same `request_id` + `shop_id`.
+- Keeps schema additive and scoped to property maintenance request records.
+
+### RLS scope in this draft
+
+- Enables RLS on all three new tables.
+- Adds conservative internal staff CRUD policies scoped to `profiles.shop_id`.
+- Adds property-member select scope for tenant-visible/all-parties request events.
+- Adds tenant-requester insert scope for `tenant_visible` `comment` events only.
+- Adds self-insert read-receipt policy (`reader_profile_id = auth.uid()`).
+- Defers vendor-specific RLS until explicit vendor-user linkage exists.
+
+### Explicit exclusions for Step 18A
+
+- No runtime wiring or app behavior changes.
+- No migration execution or schema application in this branch.
+- No tenant portal auth implementation.
+- No vendor auth implementation.
+- No real image/video/document upload implementation.
