@@ -7,9 +7,110 @@ import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
 
 type RequestStatus = "open" | "triaged" | "approval_required" | "assigned" | "scheduled" | "in_progress" | "completed" | "cancelled";
 const ALLOWED_STATUSES: RequestStatus[] = ["open", "triaged", "approval_required", "assigned", "scheduled", "in_progress", "completed", "cancelled"];
-type DB = { public: { Tables: { profiles: { Row: { id: string; shop_id: string | null } }; property_maintenance_requests: { Row: { id: string; shop_id: string; property_id: string; unit_id: string | null; asset_id: string | null; requester_profile_id: string | null; title: string; summary: string; category: string | null; severity: string; status: string; source: string; access_notes: string | null; preferred_window: string | null; work_order_id: string | null; created_at: string } }; property_properties: { Row: { id: string; name: string } }; property_units: { Row: { id: string; unit_label: string } }; property_assets: { Row: { id: string; name: string } }; property_vendor_assignments: { Row: { id: string; request_id: string | null; vendor_id: string; status: string; scheduled_for: string | null; notes: string | null; created_at: string } }; property_vendors: { Row: { id: string; shop_id: string; name: string; trade: string | null } }; work_orders: { Row: { id: string }; Insert: { shop_id: string; status?: string; approval_state?: string | null; customer_id?: string | null; vehicle_id?: string | null; notes?: string | null } }; } } };
+const TIMELINE_EVENT_TYPES = ["comment", "internal_note"] as const;
+const TIMELINE_VISIBILITY = ["internal", "tenant_visible"] as const;
+
+type DB = {
+  public: {
+    Tables: {
+      profiles: { Row: { id: string; shop_id: string | null } };
+      property_maintenance_requests: {
+        Row: {
+          id: string;
+          shop_id: string;
+          property_id: string;
+          unit_id: string | null;
+          asset_id: string | null;
+          requester_profile_id: string | null;
+          title: string;
+          summary: string;
+          category: string | null;
+          severity: string;
+          status: string;
+          source: string;
+          access_notes: string | null;
+          preferred_window: string | null;
+          work_order_id: string | null;
+          created_at: string;
+        };
+      };
+      property_properties: { Row: { id: string; name: string } };
+      property_units: { Row: { id: string; unit_label: string } };
+      property_assets: { Row: { id: string; name: string } };
+      property_vendor_assignments: { Row: { id: string; request_id: string | null; vendor_id: string; status: string; scheduled_for: string | null; notes: string | null; created_at: string } };
+      property_vendors: { Row: { id: string; shop_id: string; name: string; trade: string | null } };
+      property_request_events: { Insert: { shop_id: string; request_id: string; actor_profile_id: string | null; actor_type: string; event_type: string; visibility: string; body: string; metadata: Record<string, unknown> } };
+      work_orders: { Row: { id: string }; Insert: { shop_id: string; status?: string; approval_state?: string | null; customer_id?: string | null; vehicle_id?: string | null; notes?: string | null } };
+    };
+  };
+};
+
 const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 const parseStatus = (v: FormDataEntryValue | null) => (typeof v === "string" && ALLOWED_STATUSES.includes(v.trim() as RequestStatus) ? (v.trim() as RequestStatus) : null);
+
+async function logPropertyRequestEvent(
+  supabase: SupabaseClient<DB>,
+  input: { shopId: string; requestId: string; actorProfileId: string; eventType: string; visibility?: "internal" | "tenant_visible"; body: string; metadata?: Record<string, unknown> }
+) {
+  const { error } = await supabase.from("property_request_events").insert({
+    shop_id: input.shopId,
+    request_id: input.requestId,
+    actor_profile_id: input.actorProfileId,
+    actor_type: "internal",
+    event_type: input.eventType,
+    visibility: input.visibility ?? "internal",
+    body: input.body,
+    metadata: input.metadata ?? {},
+  });
+  return !error;
+}
+
+export async function addPropertyRequestTimelineEvent(formData: FormData) {
+  "use server";
+  const supabase = client();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
+
+  const { data: profile } = await supabase.from("profiles").select("id,shop_id").eq("id", user.id).maybeSingle();
+  if (!profile?.shop_id) redirect("/property?error=" + encodeURIComponent("Missing shop context."));
+
+  const requestId = typeof formData.get("request_id") === "string" ? String(formData.get("request_id")).trim() : "";
+  const eventType = typeof formData.get("event_type") === "string" ? String(formData.get("event_type")).trim() : "";
+  const visibility = typeof formData.get("visibility") === "string" ? String(formData.get("visibility")).trim() : "";
+  const body = typeof formData.get("body") === "string" ? String(formData.get("body")).trim() : "";
+
+  if (!requestId) redirect("/property?error=" + encodeURIComponent("Missing request id."));
+  if (!TIMELINE_EVENT_TYPES.includes(eventType as (typeof TIMELINE_EVENT_TYPES)[number])) {
+    redirect(`/property/requests/${requestId}?error=${encodeURIComponent("Invalid event type.")}`);
+  }
+  if (!TIMELINE_VISIBILITY.includes(visibility as (typeof TIMELINE_VISIBILITY)[number])) {
+    redirect(`/property/requests/${requestId}?error=${encodeURIComponent("Invalid visibility value.")}`);
+  }
+  if (!body) redirect(`/property/requests/${requestId}?error=${encodeURIComponent("Timeline body is required.")}`);
+
+  const { data: requestRow } = await supabase.from("property_maintenance_requests").select("id,shop_id").eq("id", requestId).maybeSingle();
+  if (!requestRow) redirect("/property?error=" + encodeURIComponent("Request not found or not visible."));
+  if (requestRow.shop_id !== profile.shop_id) redirect("/property?error=" + encodeURIComponent("Unauthorized shop scope for request."));
+
+  const { error } = await supabase.from("property_request_events").insert({
+    shop_id: profile.shop_id,
+    request_id: requestId,
+    actor_profile_id: user.id,
+    actor_type: "internal",
+    event_type: eventType,
+    visibility,
+    body,
+    metadata: {},
+  });
+
+  if (error) redirect(`/property/requests/${requestId}?error=${encodeURIComponent(`Unable to add timeline note: ${error.message}`)}`);
+
+  revalidatePath("/property");
+  revalidatePath(`/property/requests/${requestId}`);
+  redirect(`/property/requests/${requestId}?status=timeline-event-added`);
+}
 
 export async function updatePropertyMaintenanceRequestStatus(formData: FormData) {
   "use server";
@@ -30,6 +131,8 @@ export async function updatePropertyMaintenanceRequestStatus(formData: FormData)
 
   const { error } = await supabase.from("property_maintenance_requests").update({ status: nextStatus }).eq("id", requestId).eq("shop_id", profile.shop_id);
   if (error) redirect(`/property/requests/${requestId}?error=${encodeURIComponent(`Unable to update status: ${error.message}`)}`);
+
+  await logPropertyRequestEvent(supabase, { shopId: profile.shop_id, requestId, actorProfileId: user.id, eventType: "status_changed", body: `Status updated to ${nextStatus}.`, metadata: { next_status: nextStatus } });
 
   revalidatePath("/property");
   revalidatePath(`/property/requests/${requestId}`);
@@ -83,6 +186,8 @@ export async function assignPropertyVendorToRequest(formData: FormData) {
   });
   if (insertError) redirect(`/property/requests/${requestId}?error=${encodeURIComponent(`Unable to assign vendor: ${insertError.message}`)}`);
 
+  await logPropertyRequestEvent(supabase, { shopId: profile.shop_id, requestId, actorProfileId: user.id, eventType: "vendor_assigned", body: `Vendor assigned: ${vendorRow.id}.`, metadata: { vendor_id: vendorRow.id, scheduled_for: scheduledFor } });
+
   revalidatePath("/property");
   revalidatePath(`/property/requests/${requestId}`);
   redirect(`/property/requests/${requestId}`);
@@ -125,7 +230,9 @@ export async function convertPropertyRequestToWorkOrder(formData: FormData) {
     requestRow.category ? `Category: ${requestRow.category}` : null,
     `Severity: ${requestRow.severity}`,
     `Source: ${requestRow.source}`,
-  ].filter(Boolean).join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
@@ -150,6 +257,8 @@ export async function convertPropertyRequestToWorkOrder(formData: FormData) {
     .eq("shop_id", profile.shop_id)
     .is("work_order_id", null);
   if (updateError) redirect(`/property/requests/${requestId}?status=conversion-error`);
+
+  await logPropertyRequestEvent(supabase, { shopId: profile.shop_id, requestId, actorProfileId: user.id, eventType: "work_order_linked", body: `Linked to work order ${workOrder.id}.`, metadata: { work_order_id: workOrder.id } });
 
   revalidatePath("/property");
   revalidatePath(`/property/requests/${requestId}`);

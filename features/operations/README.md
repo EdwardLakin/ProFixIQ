@@ -209,3 +209,18 @@ Any future schema expansion should be documented and applied manually.
 - Vendor RLS remains intentionally deferred pending explicit vendor-user linkage.
 - No SQL was executed and no schema was applied by this step.
 - No runtime code, route behavior, tenant auth, vendor auth, or real file upload wiring was added.
+
+## Step 18B: Internal property request timeline wiring
+
+- `/property/requests/[id]` now reads and renders RLS-visible `property_request_events` in ascending `created_at` order under a new **Request Timeline** section.
+- Internal users can add timeline events from request detail using `comment` or `internal_note` with `internal` or `tenant_visible` visibility via a dedicated server action.
+- Existing internal actions now attempt additive timeline logging (non-blocking) for:
+  - `status_changed`
+  - `vendor_assigned`
+  - `work_order_linked`
+- This step remains internal-preview only:
+  - tenant/vendor auth wiring is still not implemented
+  - vendor portal behavior is still not implemented
+  - real attachment/image upload is still not implemented
+  - read receipts remain deferred (schema ready, party-specific writes pending)
+- No schema or migration changes were introduced in this step.
