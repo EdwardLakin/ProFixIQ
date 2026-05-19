@@ -114,3 +114,13 @@ Any future schema expansion should be documented and applied manually.
 - No tenant/vendor auth wiring was added.
 - No request-to-work-order conversion was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 11D: Property setup create form (vendor)
+
+- `/property/setup` now also includes an internal create form for vendor records.
+- Vendor creation is scoped to `profile.shop_id`, requires `name`, supports optional `trade` / `contact_name` / `email` / `phone`, validates status (`active` or `inactive`), and keeps `email` as optional record data only.
+- Setup status handling now also includes `vendor-created` while keeping prior statuses.
+- Vendor auth/linking is still pending and was not added.
+- No tenant/vendor auth wiring was added.
+- No request-to-work-order conversion was added.
+- No schema or migration changes were introduced in this step.

@@ -138,7 +138,10 @@ type VendorRow = {
 type VendorInsert = {
   shop_id: string;
   name: string;
-  trade: string;
+  trade?: string | null;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
   status: string;
 };
 
@@ -687,6 +690,68 @@ async function createPropertyAsset(formData: FormData) {
   redirect("/property/setup?status=asset-created");
 }
 
+async function createPropertyVendor(formData: FormData) {
+  "use server";
+  const supabase = createPropertySetupClient();
+  const { user, profile } = await getCurrentProfile(supabase);
+  if (!user) redirect("/sign-in");
+  const shopId = profile?.shop_id;
+  if (!shopId) redirect("/property/setup?status=missing-shop");
+
+  const name = String(formData.get("name") ?? "").trim();
+  const trade = String(formData.get("trade") ?? "").trim() || null;
+  const contactName = String(formData.get("contact_name") ?? "").trim() || null;
+  const email = String(formData.get("email") ?? "").trim() || null;
+  const phone = String(formData.get("phone") ?? "").trim() || null;
+  const status = String(formData.get("status") ?? "active").trim() || "active";
+
+  if (!name) {
+    redirect("/property/setup?status=validation-error&message=Vendor%20name%20is%20required.");
+  }
+  if (!["active", "inactive"].includes(status)) {
+    redirect(
+      "/property/setup?status=validation-error&message=Vendor%20status%20must%20be%20active%20or%20inactive.",
+    );
+  }
+
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from("property_vendors")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("name", name)
+    .maybeSingle();
+
+  if (duplicateError) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(duplicateError.message)}`,
+    );
+  }
+  if (duplicate) {
+    redirect(
+      "/property/setup?status=validation-error&message=Vendor%20name%20already%20exists%20for%20this%20shop.",
+    );
+  }
+
+  const { error } = await supabase.from("property_vendors").insert({
+    shop_id: shopId,
+    name,
+    trade,
+    contact_name: contactName,
+    email,
+    phone,
+    status,
+  });
+
+  if (error) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(error.message)}`,
+    );
+  }
+  revalidatePath("/property");
+  revalidatePath("/property/setup");
+  redirect("/property/setup?status=vendor-created");
+}
+
 export default async function PropertySetupPage({
   searchParams,
 }: SetupPageProps) {
@@ -1048,6 +1113,31 @@ export default async function PropertySetupPage({
               )}
             </article>
             </section>
+
+            <section className="grid gap-4 md:grid-cols-2">
+              <article className="metal-card rounded-3xl p-5">
+                <h2 className="text-base font-semibold text-neutral-100">
+                  Create vendor
+                </h2>
+                <p className="mt-2 text-xs text-neutral-400">
+                  Vendor contacts are records only. Vendor portal access is not wired yet.
+                </p>
+                <form action={createPropertyVendor} className="mt-4 space-y-3">
+                  <input name="name" required placeholder="Vendor name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="trade" placeholder="Trade (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="contact_name" placeholder="Contact name (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input name="email" type="email" placeholder="Email (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="phone" placeholder="Phone (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  </div>
+                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create vendor</button>
+                </form>
+              </article>
+            </section>
           </>
         ) : null}
 
@@ -1194,6 +1284,17 @@ function SetupStatusCard({
         <div className="font-semibold">Asset created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new asset is now available in setup overview for this shop.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "vendor-created") {
+    return (
+      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        <div className="font-semibold">Vendor created.</div>
+        <p className="mt-2 text-emerald-100/80">
+          The new vendor record is now available in setup overview for this shop.
         </p>
       </section>
     );
