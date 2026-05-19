@@ -72,8 +72,9 @@ type UnitInsert = {
   shop_id: string;
   property_id: string;
   unit_label: string;
-  unit_type: string;
-  occupancy_status: string;
+  unit_type?: string | null;
+  occupancy_status?: string | null;
+  access_notes?: string | null;
   status?: string;
 };
 
@@ -90,14 +91,17 @@ type AssetRow = {
 type AssetInsert = {
   shop_id: string;
   property_id: string;
-  unit_id: string;
+  unit_id?: string | null;
   name: string;
-  asset_type: string;
+  asset_type?: string | null;
   manufacturer?: string | null;
   model?: string | null;
+  serial_number?: string | null;
+  install_date?: string | null;
+  warranty_expires_on?: string | null;
   location_note?: string | null;
   status: string;
-  next_service_date: string;
+  next_service_date?: string | null;
 };
 
 type MaintenanceRequestRow = {
@@ -516,6 +520,173 @@ async function createPropertyProperty(formData: FormData) {
   redirect("/property/setup?status=property-created");
 }
 
+async function createPropertyUnit(formData: FormData) {
+  "use server";
+  const supabase = createPropertySetupClient();
+  const { user, profile } = await getCurrentProfile(supabase);
+  if (!user) redirect("/sign-in");
+  const shopId = profile?.shop_id;
+  if (!shopId) redirect("/property/setup?status=missing-shop");
+
+  const propertyId = String(formData.get("property_id") ?? "").trim();
+  const unitLabel = String(formData.get("unit_label") ?? "").trim();
+  const unitType = String(formData.get("unit_type") ?? "").trim() || null;
+  const occupancyStatus =
+    String(formData.get("occupancy_status") ?? "").trim() || null;
+  const accessNotes = String(formData.get("access_notes") ?? "").trim() || null;
+  const status = String(formData.get("status") ?? "active").trim() || "active";
+
+  if (!propertyId) {
+    redirect("/property/setup?status=validation-error&message=Property%20is%20required%20for%20a%20unit.");
+  }
+  if (!unitLabel) {
+    redirect("/property/setup?status=validation-error&message=Unit%20label%20is%20required.");
+  }
+  if (!["active", "limited", "inactive"].includes(status)) {
+    redirect(
+      "/property/setup?status=validation-error&message=Unit%20status%20must%20be%20active%2C%20limited%2C%20or%20inactive.",
+    );
+  }
+
+  const { data: property, error: propertyError } = await supabase
+    .from("property_properties")
+    .select("id,shop_id")
+    .eq("id", propertyId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (propertyError) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(propertyError.message)}`,
+    );
+  }
+  if (!property) {
+    redirect(
+      "/property/setup?status=validation-error&message=Selected%20property%20is%20not%20available%20for%20this%20shop.",
+    );
+  }
+
+  const { error } = await supabase.from("property_units").insert({
+    shop_id: shopId,
+    property_id: propertyId,
+    unit_label: unitLabel,
+    unit_type: unitType,
+    occupancy_status: occupancyStatus,
+    access_notes: accessNotes,
+    status,
+  });
+
+  if (error) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(error.message)}`,
+    );
+  }
+
+  revalidatePath("/property");
+  revalidatePath("/property/setup");
+  redirect("/property/setup?status=unit-created");
+}
+
+async function createPropertyAsset(formData: FormData) {
+  "use server";
+  const supabase = createPropertySetupClient();
+  const { user, profile } = await getCurrentProfile(supabase);
+  if (!user) redirect("/sign-in");
+  const shopId = profile?.shop_id;
+  if (!shopId) redirect("/property/setup?status=missing-shop");
+
+  const propertyId = String(formData.get("property_id") ?? "").trim();
+  const unitIdRaw = String(formData.get("unit_id") ?? "").trim();
+  const unitId = unitIdRaw.length > 0 ? unitIdRaw : null;
+  const name = String(formData.get("name") ?? "").trim();
+  const assetType = String(formData.get("asset_type") ?? "").trim() || null;
+  const manufacturer = String(formData.get("manufacturer") ?? "").trim() || null;
+  const model = String(formData.get("model") ?? "").trim() || null;
+  const serialNumber = String(formData.get("serial_number") ?? "").trim() || null;
+  const installDate = String(formData.get("install_date") ?? "").trim() || null;
+  const warrantyExpiresOn =
+    String(formData.get("warranty_expires_on") ?? "").trim() || null;
+  const locationNote = String(formData.get("location_note") ?? "").trim() || null;
+  const status = String(formData.get("status") ?? "active").trim() || "active";
+  const nextServiceDate =
+    String(formData.get("next_service_date") ?? "").trim() || null;
+
+  if (!propertyId) {
+    redirect("/property/setup?status=validation-error&message=Property%20is%20required%20for%20an%20asset.");
+  }
+  if (!name) {
+    redirect("/property/setup?status=validation-error&message=Asset%20name%20is%20required.");
+  }
+  if (!["active", "limited", "offline", "retired"].includes(status)) {
+    redirect(
+      "/property/setup?status=validation-error&message=Asset%20status%20must%20be%20active%2C%20limited%2C%20offline%2C%20or%20retired.",
+    );
+  }
+
+  const { data: property, error: propertyError } = await supabase
+    .from("property_properties")
+    .select("id,shop_id")
+    .eq("id", propertyId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (propertyError) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(propertyError.message)}`,
+    );
+  }
+  if (!property) {
+    redirect(
+      "/property/setup?status=validation-error&message=Selected%20property%20is%20not%20available%20for%20this%20shop.",
+    );
+  }
+
+  if (unitId) {
+    const { data: unit, error: unitError } = await supabase
+      .from("property_units")
+      .select("id,property_id")
+      .eq("id", unitId)
+      .eq("shop_id", shopId)
+      .eq("property_id", propertyId)
+      .maybeSingle();
+    if (unitError) {
+      redirect(
+        `/property/setup?status=error&message=${encodeURIComponent(unitError.message)}`,
+      );
+    }
+    if (!unit) {
+      redirect(
+        "/property/setup?status=validation-error&message=Selected%20unit%20is%20not%20available%20for%20the%20selected%20property.",
+      );
+    }
+  }
+
+  const { error } = await supabase.from("property_assets").insert({
+    shop_id: shopId,
+    property_id: propertyId,
+    unit_id: unitId,
+    name,
+    asset_type: assetType,
+    manufacturer,
+    model,
+    serial_number: serialNumber,
+    install_date: installDate,
+    warranty_expires_on: warrantyExpiresOn,
+    location_note: locationNote,
+    status,
+    next_service_date: nextServiceDate,
+  });
+
+  if (error) {
+    redirect(
+      `/property/setup?status=error&message=${encodeURIComponent(error.message)}`,
+    );
+  }
+  revalidatePath("/property");
+  revalidatePath("/property/setup");
+  redirect("/property/setup?status=asset-created");
+}
+
 export default async function PropertySetupPage({
   searchParams,
 }: SetupPageProps) {
@@ -717,7 +888,8 @@ export default async function PropertySetupPage({
         </section>
 
         {hasShop ? (
-          <section className="grid gap-4 md:grid-cols-2">
+          <>
+            <section className="grid gap-4 md:grid-cols-2">
             <article className="metal-card rounded-3xl p-5">
               <h2 className="text-base font-semibold text-neutral-100">
                 Create portfolio
@@ -800,7 +972,83 @@ export default async function PropertySetupPage({
                 </button>
               </form>
             </article>
-          </section>
+            </section>
+
+            <section className="grid gap-4 md:grid-cols-2">
+            <article className="metal-card rounded-3xl p-5">
+              <h2 className="text-base font-semibold text-neutral-100">
+                Create unit
+              </h2>
+              {propertiesResult?.data?.length ? (
+                <form action={createPropertyUnit} className="mt-4 space-y-3">
+                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    {(propertiesResult?.data ?? []).map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input name="unit_label" required placeholder="Unit label" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="unit_type" placeholder="Unit type (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="occupancy_status" placeholder="Occupancy status (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <textarea name="access_notes" rows={2} placeholder="Access notes (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    <option value="active">active</option>
+                    <option value="limited">limited</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create unit</button>
+                </form>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-400">Create a property first.</p>
+              )}
+            </article>
+            <article className="metal-card rounded-3xl p-5">
+              <h2 className="text-base font-semibold text-neutral-100">
+                Create asset
+              </h2>
+              {propertiesResult?.data?.length ? (
+                <form action={createPropertyAsset} className="mt-4 space-y-3">
+                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    {(propertiesResult?.data ?? []).map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select name="unit_id" defaultValue="" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    <option value="">No unit / property-level asset</option>
+                    {(unitsResult?.data ?? []).map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.unit_label} • {unit.property_id}
+                      </option>
+                    ))}
+                  </select>
+                  <input name="name" required placeholder="Asset name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input name="asset_type" placeholder="Asset type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="manufacturer" placeholder="Manufacturer" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="model" placeholder="Model" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="serial_number" placeholder="Serial number" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="install_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="warranty_expires_on" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="next_service_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                      <option value="active">active</option>
+                      <option value="limited">limited</option>
+                      <option value="offline">offline</option>
+                      <option value="retired">retired</option>
+                    </select>
+                  </div>
+                  <textarea name="location_note" rows={2} placeholder="Location note (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create asset</button>
+                </form>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-400">Create a property first.</p>
+              )}
+            </article>
+            </section>
+          </>
         ) : null}
 
         {status ? (
@@ -924,6 +1172,28 @@ function SetupStatusCard({
         <div className="font-semibold">Property created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new property is now available in setup overview for this shop.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "unit-created") {
+    return (
+      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        <div className="font-semibold">Unit created.</div>
+        <p className="mt-2 text-emerald-100/80">
+          The new unit is now available for property setup and asset linking.
+        </p>
+      </section>
+    );
+  }
+
+  if (status === "asset-created") {
+    return (
+      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        <div className="font-semibold">Asset created.</div>
+        <p className="mt-2 text-emerald-100/80">
+          The new asset is now available in setup overview for this shop.
         </p>
       </section>
     );
