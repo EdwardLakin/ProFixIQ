@@ -285,3 +285,12 @@ Any future schema expansion should be documented and applied manually.
 - New requests are inserted into `property_maintenance_requests` with `status: open`, `source: member_portal`, `photos: []`, and tenant actor timeline bootstrap event in `property_request_events`.
 - This step does **not** add public invite flow, unauthenticated access, tenant image upload, or vendor portal behavior.
 - No schema or migration changes were introduced in this step.
+
+## Step 21E: Authenticated property member request image upload
+
+- Added authenticated property member image upload on `/portal/property/member/requests/[id]` using server-action writes with Supabase RLS and no service role.
+- Uploads are restricted to private bucket `property_request_attachments` with scoped storage path: `<shop_id>/property-requests/<request_id>/member-<user_id>-<timestamp>-<safeFileName>`.
+- Server-side validation enforces authenticated user, request visibility via `property_members` membership scope, allowed image MIME types (JPEG/PNG/WEBP/HEIC/HEIF), and 10 MB max size.
+- Attachment metadata is inserted into `property_request_attachments` and corresponding tenant-visible `attachment_added` timeline events are inserted into `property_request_events`.
+- Member request detail now includes image upload form, status banners, and attachment listing with signed previews when available.
+- No public invite flow, no unauthenticated access, no vendor portal behavior, no public bucket behavior, and no schema/migration changes were added.
