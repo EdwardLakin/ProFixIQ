@@ -275,3 +275,13 @@ Any future schema expansion should be documented and applied manually.
   - no vendor portal behavior
   - no tenant file upload yet
 - No schema or migration changes were introduced in this step.
+
+## Step 21D: Authenticated property member request submission
+
+- Added authenticated member portal request submission route: `/portal/property/member/requests/new`.
+- Submission uses a colocated server action (`createMemberPropertyMaintenanceRequest`) with authenticated `createServerSupabaseRSC` + RLS only.
+- Access requires an existing `property_members` row for `auth.user.id`; users without member rows see no-access messaging.
+- Validation enforces member-scope property/unit/asset constraints and severity allowlist, and does not trust `shop_id` from form data.
+- New requests are inserted into `property_maintenance_requests` with `status: open`, `source: member_portal`, `photos: []`, and tenant actor timeline bootstrap event in `property_request_events`.
+- This step does **not** add public invite flow, unauthenticated access, tenant image upload, or vendor portal behavior.
+- No schema or migration changes were introduced in this step.
