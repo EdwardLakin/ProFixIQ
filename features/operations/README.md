@@ -224,3 +224,13 @@ Any future schema expansion should be documented and applied manually.
   - real attachment/image upload is still not implemented
   - read receipts remain deferred (schema ready, party-specific writes pending)
 - No schema or migration changes were introduced in this step.
+
+## Step 19C: Internal property request image upload wiring
+
+- `/property/requests/[id]` now supports internal-only image upload via server action-backed storage writes to the private `property_request_attachments` bucket.
+- Uploads are validated server-side for authenticated internal users, RLS-visible request/shop scope, allowed image MIME types, and 10 MB max file size.
+- Uploaded file paths follow the storage contract: `<shop_id>/property-requests/<request_id>/<timestamp>-<safeFileName>`.
+- Attachments persist metadata into `property_request_attachments`, and timeline audit events are logged into `property_request_events`.
+- No public bucket behavior or public URL generation was added.
+- No tenant auth, vendor auth, or vendor portal behavior was added.
+- No schema or migration changes were introduced in this step.

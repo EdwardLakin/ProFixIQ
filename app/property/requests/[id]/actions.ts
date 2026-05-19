@@ -12,6 +12,20 @@ const TIMELINE_VISIBILITY = ["internal", "tenant_visible"] as const;
 const ATTACHMENT_KINDS = ["image", "video", "document", "other"] as const;
 type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 
+const ATTACHMENT_IMAGE_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"] as const;
+const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_BUCKET = "property_request_attachments";
+
+function sanitizeAttachmentFileName(fileName: string) {
+  return fileName
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 120) || "upload";
+}
+
 type DB = {
   public: {
     Tables: {
@@ -191,6 +205,88 @@ export async function addPropertyRequestAttachmentPlaceholder(formData: FormData
   revalidatePath("/property");
   revalidatePath(`/property/requests/${requestId}`);
   redirect(`/property/requests/${requestId}?status=attachment-placeholder-added`);
+}
+
+export async function uploadPropertyRequestAttachment(formData: FormData) {
+  "use server";
+  const supabase = client();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
+
+  const { data: profile } = await supabase.from("profiles").select("id,shop_id").eq("id", user.id).maybeSingle();
+  if (!profile?.shop_id) redirect("/property?error=" + encodeURIComponent("Missing shop context."));
+
+  const requestId = typeof formData.get("request_id") === "string" ? String(formData.get("request_id")).trim() : "";
+  const captionRaw = typeof formData.get("caption") === "string" ? String(formData.get("caption")).trim() : "";
+  const fileEntry = formData.get("file");
+
+  if (!requestId) redirect("/property?error=" + encodeURIComponent("Missing request id."));
+
+  const { data: requestRow } = await supabase.from("property_maintenance_requests").select("id,shop_id").eq("id", requestId).maybeSingle();
+  if (!requestRow) redirect("/property?error=" + encodeURIComponent("Request not found or not visible."));
+  if (requestRow.shop_id !== profile.shop_id) redirect("/property?error=" + encodeURIComponent("Unauthorized shop scope for request."));
+
+  if (!(fileEntry instanceof File)) {
+    redirect(`/property/requests/${requestId}?status=invalid-attachment&error=${encodeURIComponent("A file is required.")}`);
+  }
+
+  const contentType = fileEntry.type;
+  if (!ATTACHMENT_IMAGE_CONTENT_TYPES.includes(contentType as (typeof ATTACHMENT_IMAGE_CONTENT_TYPES)[number])) {
+    redirect(`/property/requests/${requestId}?status=invalid-attachment&error=${encodeURIComponent("Unsupported file type. Upload JPEG, PNG, WEBP, HEIC, or HEIF.")}`);
+  }
+
+  if (fileEntry.size > MAX_ATTACHMENT_SIZE_BYTES) {
+    redirect(`/property/requests/${requestId}?status=invalid-attachment&error=${encodeURIComponent("File exceeds 10 MB limit.")}`);
+  }
+
+  const safeFileName = sanitizeAttachmentFileName(fileEntry.name || "upload");
+  const timestamp = Date.now();
+  const storagePath = `${profile.shop_id}/property-requests/${requestId}/${timestamp}-${safeFileName}`;
+
+  const { error: uploadError } = await supabase.storage.from(ATTACHMENT_BUCKET).upload(storagePath, fileEntry, { contentType });
+  if (uploadError) {
+    redirect(`/property/requests/${requestId}?status=attachment-upload-error&error=${encodeURIComponent(`Unable to upload file: ${uploadError.message}`)}`);
+  }
+
+  const caption = captionRaw || null;
+  const { error: attachmentError } = await supabase.from("property_request_attachments").insert({
+    shop_id: profile.shop_id,
+    request_id: requestId,
+    uploaded_by_profile_id: user.id,
+    file_kind: "image",
+    original_filename: fileEntry.name || safeFileName,
+    content_type: contentType,
+    caption,
+    metadata: {},
+    storage_bucket: ATTACHMENT_BUCKET,
+    storage_path: storagePath,
+    size_bytes: fileEntry.size,
+  });
+
+  if (attachmentError) {
+    redirect(`/property/requests/${requestId}?status=attachment-upload-error&error=${encodeURIComponent(`Upload succeeded but metadata insert failed: ${attachmentError.message}`)}`);
+  }
+
+  const { error: eventError } = await supabase.from("property_request_events").insert({
+    shop_id: profile.shop_id,
+    request_id: requestId,
+    actor_profile_id: user.id,
+    actor_type: "internal",
+    event_type: "attachment_added",
+    visibility: "internal",
+    body: `Image attachment uploaded: ${fileEntry.name || safeFileName}`,
+    metadata: { storage_path: storagePath, caption, content_type: contentType, size_bytes: fileEntry.size },
+  });
+
+  if (eventError) {
+    redirect(`/property/requests/${requestId}?status=attachment-upload-error&error=${encodeURIComponent(`Attachment saved, but timeline event failed: ${eventError.message}`)}`);
+  }
+
+  revalidatePath("/property");
+  revalidatePath(`/property/requests/${requestId}`);
+  redirect(`/property/requests/${requestId}?status=attachment-uploaded`);
 }
 
 export async function updatePropertyMaintenanceRequestStatus(formData: FormData) {
