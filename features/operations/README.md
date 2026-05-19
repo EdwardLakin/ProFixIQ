@@ -101,3 +101,16 @@ Any future schema expansion should be documented and applied manually.
 - No tenant/vendor auth wiring was added.
 - No request-to-work-order conversion was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 11C: Property setup create forms (unit + asset)
+
+- `/property/setup` now also includes internal create forms for:
+  - Units
+  - Assets
+- Unit creation is scoped to `profile.shop_id`, requires an RLS-visible property, validates required `unit_label`, and limits `status` to allowed values.
+- Asset creation is scoped to `profile.shop_id`, requires an RLS-visible property, optionally links an RLS-visible unit for that property, validates required `name`, and limits `status` to allowed values.
+- Setup status handling now also includes `unit-created` and `asset-created` while keeping prior statuses.
+- Vendor creation is still pending for a later step.
+- No tenant/vendor auth wiring was added.
+- No request-to-work-order conversion was added.
+- No schema or migration changes were introduced in this step.
