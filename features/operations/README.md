@@ -134,3 +134,14 @@ Any future schema expansion should be documented and applied manually.
 - No tenant auth changes were added.
 - No request-to-work-order conversion was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 13: Internal property request to work-order conversion
+
+- `/property/requests/[id]` now supports internal-only conversion of an RLS-visible property maintenance request into a shop work order.
+- Conversion uses authenticated user context + `profile.shop_id` checks and never trusts `shop_id` from form input.
+- Conversion is idempotent for already-linked requests (`already-converted`) and validates request visibility + shop scope + property context before insert.
+- New work orders are created with existing safe work-order defaults (`status: awaiting_approval`, `approval_state: pending`) and include property request context in `work_orders.notes`.
+- On successful conversion, `property_maintenance_requests.work_order_id` is linked and request status transitions to `scheduled` (or remains `assigned` when already assigned).
+- This step remains internal-only: no tenant/vendor auth wiring, no vendor portal behavior, and no public request submission were added.
+- No schema or migration changes were introduced in this step.
+- Source-context limitation remains: no `source_property_maintenance_request_id` column is used because it is not part of the current applied `work_orders` schema/types.
