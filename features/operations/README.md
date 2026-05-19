@@ -124,3 +124,13 @@ Any future schema expansion should be documented and applied manually.
 - No tenant/vendor auth wiring was added.
 - No request-to-work-order conversion was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 12: Internal vendor assignment on property request detail
+
+- `/property/requests/[id]` now supports internal-only vendor assignment using RLS-visible vendor records.
+- Assignment captures vendor, optional scheduled datetime, and optional notes into `property_vendor_assignments` with assigned status.
+- Request detail now shows the latest/current vendor assignment summary and an internal assignment form.
+- Vendor contacts remain records only in this step: no vendor portal behavior, no vendor auth, and no vendor-user linking were added.
+- No tenant auth changes were added.
+- No request-to-work-order conversion was added.
+- No schema or migration changes were introduced in this step.
