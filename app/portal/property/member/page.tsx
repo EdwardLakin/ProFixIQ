@@ -84,6 +84,9 @@ export default async function PropertyMemberPortalPage() {
         <Link href="/portal/property/member/requests" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
           View maintenance requests
         </Link>
+        <Link href="/portal/property/member/requests/new" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
+          Submit maintenance request
+        </Link>
       </div>
 
       <div className="mt-6 overflow-x-auto">

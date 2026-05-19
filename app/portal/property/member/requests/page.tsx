@@ -52,6 +52,11 @@ export default async function PropertyMemberRequestsPage() {
     <section className="metal-card rounded-3xl p-5">
       <h1 className="text-2xl text-neutral-100">Property member requests</h1>
       <p className="mt-2 text-sm text-neutral-300">Requests visible to your authenticated property membership.</p>
+      <div className="mt-4">
+        <Link href="/portal/property/member/requests/new" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
+          Submit maintenance request
+        </Link>
+      </div>
       <div className="mt-5 space-y-3">
         {(requests ?? []).map((request) => (
           <article key={request.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
