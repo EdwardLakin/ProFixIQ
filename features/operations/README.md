@@ -168,3 +168,16 @@ Any future schema expansion should be documented and applied manually.
 - No quote flow wiring was added.
 - No failed-item conversion or inspection-findings-to-request/work-order conversion was added.
 - No schema or migration changes were introduced in this step.
+
+## Step 16: Tenant-side maintenance request intake preview foundation
+
+- Added `/portal/property/request` as a tenant/customer-facing **preview** intake form for property maintenance requests.
+- This route currently uses the existing authenticated Supabase RSC + RLS path only (`createServerSupabaseRSC` with logged-in user and `profile.shop_id`), because full tenant portal auth is not wired yet.
+- Form submission validates RLS-visible property/unit/asset relationships server-side and inserts into `property_maintenance_requests` with:
+  - `status: open`
+  - `source: tenant_preview`
+  - `photos: []` placeholder
+- No public tenant auth, vendor auth, vendor portal behavior, or request-to-work-order conversion changes were added in this step.
+- No real file/media upload was added; `photo_notes` is placeholder-only text (`"Describe any photos/videos you would attach. File upload comes later."`).
+- No read receipts schema or two-party timeline schema was added yet; UI includes a note that these arrive in a later phase.
+- No schema or migration changes were introduced in this step.
