@@ -80,6 +80,22 @@ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
 };
 type JobLinePriority = "low" | "normal" | "high" | "urgent";
 
+
+type PropertyContext = {
+  requestId: string;
+  requestTitle: string | null;
+  requestStatus: string | null;
+  severity: string | null;
+  category: string | null;
+  preferredWindow: string | null;
+  accessNotes: string | null;
+  propertyName: string | null;
+  unitLabel: string | null;
+  assetName: string | null;
+  assetType: string | null;
+  latestVendorAssignment: string | null;
+};
+
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
@@ -247,6 +263,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [reviewIssuesByLine, setReviewIssuesByLine] = useState<Record<string, ReviewIssue[]>>(
     {},
   );
+  const [propertyContext, setPropertyContext] = useState<PropertyContext | null>(null);
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;
@@ -501,7 +518,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes, shopRes] = await Promise.all([
+        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -533,6 +550,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                 .eq("id", woRow.shop_id)
                 .maybeSingle<WorkOrderShopRateRow>()
             : Promise.resolve({ data: null, error: null } as const),
+          supabase
+            .from("property_maintenance_requests")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .maybeSingle(),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -555,6 +577,64 @@ export default function WorkOrderIdClient(): JSX.Element {
             ? shopRes.data.labor_rate
             : null,
         );
+
+        if (propertyReqRes?.error) throw propertyReqRes.error;
+        const propertyRequest = (propertyReqRes?.data as Record<string, unknown> | null) ?? null;
+        if (!propertyRequest) {
+          setPropertyContext(null);
+        } else {
+          const requestId = String(propertyRequest.id ?? "");
+          const [propertyRes, unitRes, assetRes, assignmentRes] = await Promise.all([
+            propertyRequest.property_id
+              ? supabase.from("property_properties").select("name").eq("id", String(propertyRequest.property_id)).maybeSingle()
+              : Promise.resolve({ data: null, error: null } as const),
+            propertyRequest.unit_id
+              ? supabase.from("property_units").select("label").eq("id", String(propertyRequest.unit_id)).maybeSingle()
+              : Promise.resolve({ data: null, error: null } as const),
+            propertyRequest.asset_id
+              ? supabase.from("property_assets").select("name, asset_type").eq("id", String(propertyRequest.asset_id)).maybeSingle()
+              : Promise.resolve({ data: null, error: null } as const),
+            supabase
+              .from("property_vendor_assignments")
+              .select("vendor_id, created_at")
+              .eq("property_request_id", requestId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+          ]);
+
+          if (propertyRes?.error) throw propertyRes.error;
+          if (unitRes?.error) throw unitRes.error;
+          if (assetRes?.error) throw assetRes.error;
+          if (assignmentRes?.error) throw assignmentRes.error;
+
+          let latestVendorAssignment: string | null = null;
+          const latestAssignment = assignmentRes.data as { vendor_id?: string | null } | null;
+          if (latestAssignment?.vendor_id) {
+            const vendorRes = await supabase
+              .from("property_vendors")
+              .select("name")
+              .eq("id", latestAssignment.vendor_id)
+              .maybeSingle();
+            if (vendorRes.error) throw vendorRes.error;
+            latestVendorAssignment = (vendorRes.data as { name?: string | null } | null)?.name ?? null;
+          }
+
+          setPropertyContext({
+            requestId,
+            requestTitle: (propertyRequest.title as string | null) ?? null,
+            requestStatus: (propertyRequest.status as string | null) ?? null,
+            severity: (propertyRequest.severity as string | null) ?? null,
+            category: (propertyRequest.category as string | null) ?? null,
+            preferredWindow: (propertyRequest.preferred_window as string | null) ?? null,
+            accessNotes: (propertyRequest.access_notes as string | null) ?? null,
+            propertyName: (propertyRes.data as { name?: string | null } | null)?.name ?? null,
+            unitLabel: (unitRes.data as { label?: string | null } | null)?.label ?? null,
+            assetName: (assetRes.data as { name?: string | null } | null)?.name ?? null,
+            assetType: (assetRes.data as { asset_type?: string | null } | null)?.asset_type ?? null,
+            latestVendorAssignment,
+          });
+        }
 
         // allocations + line techs
         if (lineRows.length) {
@@ -1399,6 +1479,28 @@ export default function WorkOrderIdClient(): JSX.Element {
             ) : null}
             <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
             <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+
+            {propertyContext ? (
+              <section className={cn(PANEL_VARIANTS.secondary, "p-2") }>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Property Maintenance Context
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 text-xs">
+                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Request</div><div className="mt-1 text-sm text-foreground">{propertyContext.requestTitle ?? "—"}</div><div className="mt-1 text-muted-foreground">{propertyContext.requestStatus ?? "—"} • {propertyContext.severity ?? "—"}</div></div>
+                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Category</div><div className="mt-1 text-foreground">{propertyContext.category ?? "—"}</div><div className="mt-1 text-muted-foreground">Property: {propertyContext.propertyName ?? "—"}</div>{propertyContext.unitLabel ? <div className="text-muted-foreground">Unit: {propertyContext.unitLabel}</div> : null}</div>
+                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Asset / Vendor</div><div className="mt-1 text-foreground">{propertyContext.assetName ?? "—"}{propertyContext.assetType ? ` (${propertyContext.assetType})` : ""}</div><div className="mt-1 text-muted-foreground">Vendor: {propertyContext.latestVendorAssignment ?? "—"}</div></div>
+                </div>
+                {(propertyContext.preferredWindow || propertyContext.accessNotes) ? (
+                  <div className="mt-2 rounded-md border border-[color:var(--metal-border-soft,#374151)] bg-black/20 p-2 text-xs text-muted-foreground">
+                    {propertyContext.preferredWindow ? <div>Preferred window: {propertyContext.preferredWindow}</div> : null}
+                    {propertyContext.accessNotes ? <div>Access notes: {propertyContext.accessNotes}</div> : null}
+                  </div>
+                ) : null}
+                <Link href={`/property/requests/${propertyContext.requestId}`} className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline">
+                  View property request →
+                </Link>
+              </section>
+            ) : null}
 
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
               <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">

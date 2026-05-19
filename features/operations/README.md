@@ -145,3 +145,11 @@ Any future schema expansion should be documented and applied manually.
 - This step remains internal-only: no tenant/vendor auth wiring, no vendor portal behavior, and no public request submission were added.
 - No schema or migration changes were introduced in this step.
 - Source-context limitation remains: no `source_property_maintenance_request_id` column is used because it is not part of the current applied `work_orders` schema/types.
+
+## Step 14: Property context card on linked work orders
+
+- Work order detail (`/work-orders/[id]`) now renders a compact, read-only **Property Maintenance Context** card only when the current work order is linked from `property_maintenance_requests.work_order_id`.
+- The card shows request metadata (title/status/severity/category), property/unit/asset context, preferred window/access notes, latest vendor assignment, and a link back to `/property/requests/[id]`.
+- Data is loaded with the existing authenticated Supabase client and RLS-scoped queries only (no service role usage).
+- Behavior is fully additive/read-only: no schema changes, no tenant/vendor auth wiring, and no vendor portal behavior were added.
+- Existing non-property work order behavior remains unchanged when no linked property request exists.
