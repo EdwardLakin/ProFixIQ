@@ -67,3 +67,38 @@ Key goals:
 - This draft is additive and non-breaking, but should be reviewed against live table shapes (`property_portfolios`, `property_properties`, `property_units`, `profiles`) before application.
 - Trigger assumptions about hierarchy columns should be confirmed in staging.
 - Because public access is intentionally not added, this draft does not yet enable external self-serve acceptance.
+
+## Step 22D: Manual SQL draft for authenticated invite acceptance (SECURITY DEFINER RPC)
+
+- Added manual SQL draft at `supabase/manual/property-portal-invite-acceptance-step-22d.sql`.
+- This draft intentionally does **not** execute SQL and does **not** change runtime code.
+- The proposed acceptance path is a narrow `SECURITY DEFINER` RPC:
+  - `public.accept_property_portal_invite(p_raw_token text)`
+- The function design keeps invite table RLS internal-only and avoids broad invite lookup policies.
+
+### Why RPC over broad RLS lookup
+
+Authenticated invitees cannot safely query `property_portal_invites` by `token_hash` with broad read policies without risking invite record exposure. The function validates token hash + email + invite state and performs membership upsert + invite acceptance atomically.
+
+### Function behavior summary
+
+- Requires `auth.uid()` and non-empty raw token input.
+- Hashes token using `pgcrypto` `encode(digest(..., 'sha256'), 'hex')`.
+- Resolves authenticated email from `auth.users` (no service role).
+- Accepts only matching invite rows where:
+  - `status = pending`
+  - `expires_at > now()`
+  - `lower(invited_email) = lower(authenticated_email)`
+- Reuses an identical `property_members` row when present.
+- Otherwise inserts a safe scoped `property_members` row from invite values.
+- Marks invite as accepted (`status`, `accepted_by_profile_id`, `accepted_at`).
+- Returns JSON payload with `success`, `message`, `invite_id`, `member_id`.
+
+### Explicitly deferred/non-goals (unchanged)
+
+- Email delivery remains deferred.
+- Auth user creation remains deferred.
+- Invite creation remains internal-only.
+- Public/unauthenticated acceptance is not supported.
+- Runtime route wiring changes are deferred to a later step.
+- No broad invite RLS lookup policy is added.
