@@ -42,6 +42,8 @@ type PropertyRow = {
   shop_id: string;
   portfolio_id: string | null;
   name: string;
+  city: string | null;
+  region: string | null;
 };
 
 type PropertyInsert = {
@@ -77,6 +79,8 @@ type AssetRow = {
   property_id: string;
   unit_id: string | null;
   name: string;
+  asset_type: string | null;
+  status: string | null;
 };
 
 type AssetInsert = {
@@ -119,6 +123,8 @@ type VendorRow = {
   id: string;
   shop_id: string;
   name: string;
+  trade: string | null;
+  status: string | null;
 };
 
 type VendorInsert = {
@@ -392,6 +398,104 @@ export default async function PropertySetupPage({
   const status = firstSearchValue(resolvedSearchParams.status);
   const message = firstSearchValue(resolvedSearchParams.message);
   const hasShop = Boolean(profile?.shop_id);
+  const shopId = profile?.shop_id ?? null;
+
+  const [portfoliosResult, propertiesResult, unitsResult, assetsResult, vendorsResult] =
+    shopId
+      ? await Promise.all([
+          supabase
+            .from("property_portfolios")
+            .select("id,name")
+            .eq("shop_id", shopId)
+            .order("name", { ascending: true })
+            .limit(5),
+          supabase
+            .from("property_properties")
+            .select("id,name,city,region")
+            .eq("shop_id", shopId)
+            .order("name", { ascending: true })
+            .limit(5),
+          supabase
+            .from("property_units")
+            .select("id,unit_label,property_id")
+            .eq("shop_id", shopId)
+            .order("unit_label", { ascending: true })
+            .limit(5),
+          supabase
+            .from("property_assets")
+            .select("id,name,asset_type,status")
+            .eq("shop_id", shopId)
+            .order("name", { ascending: true })
+            .limit(5),
+          supabase
+            .from("property_vendors")
+            .select("id,name,trade,status")
+            .eq("shop_id", shopId)
+            .order("name", { ascending: true })
+            .limit(5),
+        ])
+      : [null, null, null, null, null];
+
+  const overviewItems = [
+    {
+      title: "Portfolios",
+      count: portfoliosResult?.data?.length ?? 0,
+      emptyLabel: "No portfolios yet.",
+      rows:
+        portfoliosResult?.data?.map((portfolio) => ({
+          id: portfolio.id,
+          primary: portfolio.name,
+          secondary: null as string | null,
+        })) ?? [],
+    },
+    {
+      title: "Properties",
+      count: propertiesResult?.data?.length ?? 0,
+      emptyLabel: "No properties yet.",
+      rows:
+        propertiesResult?.data?.map((property) => ({
+          id: property.id,
+          primary: property.name,
+          secondary:
+            property.city || property.region
+              ? [property.city, property.region].filter(Boolean).join(", ")
+              : "Location not set",
+        })) ?? [],
+    },
+    {
+      title: "Units",
+      count: unitsResult?.data?.length ?? 0,
+      emptyLabel: "No units yet.",
+      rows:
+        unitsResult?.data?.map((unit) => ({
+          id: unit.id,
+          primary: unit.unit_label,
+          secondary: `Property: ${unit.property_id}`,
+        })) ?? [],
+    },
+    {
+      title: "Assets",
+      count: assetsResult?.data?.length ?? 0,
+      emptyLabel: "No assets yet.",
+      rows:
+        assetsResult?.data?.map((asset) => ({
+          id: asset.id,
+          primary: asset.name,
+          secondary: [asset.asset_type, asset.status].filter(Boolean).join(" • "),
+        })) ?? [],
+    },
+    {
+      title: "Vendors",
+      count: vendorsResult?.data?.length ?? 0,
+      emptyLabel: "No vendors yet.",
+      rows:
+        vendorsResult?.data?.map((vendor) => ({
+          id: vendor.id,
+          primary: vendor.name,
+          secondary: [vendor.trade, vendor.status].filter(Boolean).join(" • "),
+        })) ?? [],
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(193,122,74,0.18),transparent_34%),#020617] px-4 py-6 text-white md:px-8">
@@ -408,12 +512,14 @@ export default async function PropertySetupPage({
             Internal setup
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-100 md:text-4xl">
-            Property Maintenance Demo Seed
+            Property Setup
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-300">
-            Create a minimal property operations dataset for the current
-            internal shop so the live read-only property dashboard can be
-            verified without manual SQL inserts.
+            Create and review portfolios, properties, units, assets, and
+            vendors for property maintenance.
+          </p>
+          <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Internal setup only — no tenant/vendor portal access is wired yet.
           </p>
 
           <div className="mt-5 grid gap-3 text-xs text-neutral-400 sm:grid-cols-3">
@@ -427,6 +533,55 @@ export default async function PropertySetupPage({
               No tenant/vendor auth wiring
             </div>
           </div>
+        </section>
+
+        <section className="metal-card rounded-3xl p-5 md:p-6">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold text-neutral-100">
+              Setup overview
+            </h2>
+            <span className="text-xs uppercase tracking-[0.16em] text-neutral-400">
+              Read-only
+            </span>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {overviewItems.map((section) => (
+              <article
+                key={section.title}
+                className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-neutral-100">
+                    {section.title}
+                  </h3>
+                  <span className="text-xs text-neutral-400">
+                    {section.count} shown
+                  </span>
+                </div>
+                {section.rows.length === 0 ? (
+                  <p className="mt-3 text-sm text-neutral-500">
+                    {section.emptyLabel}
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {section.rows.map((row) => (
+                      <li key={row.id} className="text-sm text-neutral-300">
+                        <div>{row.primary}</div>
+                        {row.secondary ? (
+                          <div className="text-xs text-neutral-500">
+                            {row.secondary}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </article>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-neutral-500">
+            Each list shows up to 5 RLS-visible records for your current shop.
+          </p>
         </section>
 
         {status ? (
@@ -445,8 +600,15 @@ export default async function PropertySetupPage({
         ) : (
           <section className="metal-card rounded-3xl p-5">
             <h2 className="text-lg font-semibold text-neutral-100">
-              Dataset to create
+              Demo tools
             </h2>
+            <p className="mt-2 text-sm text-neutral-300">
+              Seed a compact internal dataset when you need baseline records for
+              local validation or demos.
+            </p>
+            <h3 className="mt-4 text-base font-semibold text-neutral-100">
+              Dataset to create
+            </h3>
             <ul className="mt-4 space-y-2 text-sm text-neutral-300">
               <li>• Portfolio: Property Maintenance Demo Portfolio</li>
               <li>• Property: Riverbend Duplex in Calgary, AB</li>

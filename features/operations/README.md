@@ -79,3 +79,12 @@ Any future schema expansion should be documented and applied manually.
 - Internal staff can update request status with constrained server-side validation to approved states only.
 - This remains internal-only property maintenance scope: no tenant/vendor auth, no vendor portal behavior, and no public request submission were added.
 - Request-to-work-order conversion is still not implemented.
+
+## Step 11A: Property setup workspace shell + read-only setup overview
+
+- `/property/setup` is now a Property Setup workspace shell for internal operations configuration.
+- Added live read-only, RLS-scoped lists for portfolios, properties, units, assets, and vendors (up to 5 rows each with counts and empty states).
+- Existing internal demo seed action is preserved and moved into a dedicated Demo tools section.
+- Create forms for setup entities are still pending.
+- No tenant/vendor auth wiring was added.
+- No request-to-work-order conversion was added.
