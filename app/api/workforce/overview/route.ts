@@ -1,0 +1,90 @@
+import { NextResponse } from "next/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+
+type AdminClient = ReturnType<typeof createAdminSupabase>;
+type Severity = "blocking" | "warning" | "info";
+type WorkforceInboxItem = { id: string; type: string; severity: Severity; title: string; description: string; count?: number; personId?: string; personName?: string; href: string; createdAt?: string };
+const ACTIVE_LINE_EXCLUDED = ["completed", "cancelled", "closed", "invoiced", "declined"];
+const OVERLOAD_THRESHOLD = 6;
+
+export async function GET() {
+  const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin", "manager"] });
+  if (!access.ok) return access.response;
+  const admin: AdminClient = createAdminSupabase();
+  const shopId = access.profile.shop_id;
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
+  const tomorrowEnd = new Date(todayEnd); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
+  const in30 = new Date(todayStart); in30.setDate(in30.getDate() + 30);
+
+  const [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes, lineTechRes] = await Promise.all([
+    admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
+    admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", shopId),
+    admin.from("staff_time_off_requests").select("id, created_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: true }),
+    admin.from("payroll_pay_periods").select("id, period_start").eq("shop_id", shopId).order("period_start", { ascending: false }).limit(1),
+    admin.from("staff_certifications").select("expiry_date, status").eq("shop_id", shopId),
+    admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
+    admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEnd.toISOString()).gte("ends_at", todayStart.toISOString()),
+    admin.from("work_order_lines").select("id, assigned_tech_id, line_status, status, voided_at").eq("shop_id", shopId).is("voided_at", null),
+    admin.from("work_order_line_technicians").select("work_order_line_id, technician_id"),
+  ]);
+  const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes, lineTechRes].find((r) => r.error);
+  if (firstError?.error) return NextResponse.json({ error: firstError.error.message }, { status: 500 });
+
+  const profileName = new Map((profilesRes.data ?? []).map((p) => [p.id, p.full_name || "Unknown"]));
+  const activeStaff = new Set((workforceRes.data ?? []).filter((w) => w.employment_status === "active").map((w) => w.user_id));
+  const templateUsers = new Set((templatesRes.data ?? []).map((t) => t.user_id));
+  const blocks = blocksRes.data ?? [];
+  const overlap = (start: string, end: string, from: Date, to: Date) => new Date(start) < to && new Date(end) > from;
+  const awayTodayUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, todayStart, todayEnd)).map((b) => b.user_id));
+  const awayTomorrowUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, todayEnd, tomorrowEnd)).map((b) => b.user_id));
+
+  let payrollBlocking = 0; let payrollWarnings = 0;
+  const periodId = periodsRes.data?.[0]?.id;
+  if (periodId) {
+    const exRes = await admin.from("payroll_time_exceptions").select("severity").eq("shop_id", shopId).eq("period_id", periodId).eq("resolved", false);
+    if (exRes.error) return NextResponse.json({ error: exRes.error.message }, { status: 500 });
+    for (const ex of exRes.data ?? []) { if (ex.severity === "blocking") payrollBlocking += 1; if (ex.severity === "warning") payrollWarnings += 1; }
+  }
+
+  let expiredCertifications = 0; let expiringCertifications = 0;
+  for (const cert of certsRes.data ?? []) {
+    const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
+    if (cert.status === "expired" || (expiry && expiry < now)) expiredCertifications += 1;
+    else if (expiry && expiry >= now && expiry <= in30) expiringCertifications += 1;
+  }
+
+  const lineTechMap = new Map<string, string[]>();
+  for (const row of lineTechRes.data ?? []) lineTechMap.set(row.work_order_line_id, [...(lineTechMap.get(row.work_order_line_id) ?? []), row.technician_id]);
+
+  const activeLines = (linesRes.data ?? []).filter((l) => !ACTIVE_LINE_EXCLUDED.includes((l.line_status || l.status || "").toLowerCase()));
+  let unassignedJobs = 0; let assignedToUnavailable = 0;
+  const loadByTech = new Map<string, number>();
+  for (const line of activeLines) {
+    const assigned = new Set<string>([...(line.assigned_tech_id ? [line.assigned_tech_id] : []), ...(lineTechMap.get(line.id) ?? [])]);
+    if (assigned.size === 0) unassignedJobs += 1;
+    for (const tech of assigned) { loadByTech.set(tech, (loadByTech.get(tech) ?? 0) + 1); if (awayTodayUsers.has(tech)) assignedToUnavailable += 1; }
+  }
+  const overloaded = [...loadByTech.entries()].filter(([, count]) => count >= OVERLOAD_THRESHOLD);
+  const pendingTimeOff = (timeOffRes.data ?? []).length;
+  const scheduleGaps = [...activeStaff].filter((id) => !templateUsers.has(id)).length;
+
+  const sections: Record<string, WorkforceInboxItem[]> = { timeOff: [], payroll: [], certifications: [], scheduling: [], operations: [] };
+  const add = (section: keyof typeof sections, item: WorkforceInboxItem) => sections[section].push(item);
+  if (pendingTimeOff > 0) add("timeOff", { id: "timeoff-pending", type: "pending_time_off", severity: "warning", title: "Pending time-off approvals", description: `${pendingTimeOff} request${pendingTimeOff > 1 ? "s" : ""} awaiting review.`, count: pendingTimeOff, href: "/dashboard/workforce/time-off", createdAt: timeOffRes.data?.[0]?.created_at ?? undefined });
+  if (payrollBlocking > 0) add("payroll", { id: "payroll-blocking", type: "payroll_blocking", severity: "blocking", title: "Payroll blocking exceptions", description: `${payrollBlocking} blocking exception${payrollBlocking > 1 ? "s" : ""} in active period.`, count: payrollBlocking, href: "/dashboard/workforce/payroll-review" });
+  if (payrollWarnings > 0) add("payroll", { id: "payroll-warnings", type: "payroll_warning", severity: "warning", title: "Payroll warnings", description: `${payrollWarnings} warning exception${payrollWarnings > 1 ? "s" : ""} in active period.`, count: payrollWarnings, href: "/dashboard/workforce/payroll-review" });
+  if (expiredCertifications > 0) add("certifications", { id: "cert-expired", type: "cert_expired", severity: "blocking", title: "Expired certifications", description: `${expiredCertifications} certification${expiredCertifications > 1 ? "s are" : " is"} expired.`, count: expiredCertifications, href: "/dashboard/workforce/certifications" });
+  if (expiringCertifications > 0) add("certifications", { id: "cert-expiring", type: "cert_expiring", severity: "warning", title: "Certifications expiring soon", description: `${expiringCertifications} certification${expiringCertifications > 1 ? "s" : ""} expiring in 30 days.`, count: expiringCertifications, href: "/dashboard/workforce/certifications" });
+  if (scheduleGaps > 0) add("scheduling", { id: "schedule-gaps", type: "schedule_gaps", severity: "warning", title: "Missing recurring schedule templates", description: `${scheduleGaps} active staff member${scheduleGaps > 1 ? "s" : ""} without a template.`, count: scheduleGaps, href: "/dashboard/workforce/scheduling" });
+  if (unassignedJobs > 0) add("operations", { id: "unassigned-jobs", type: "unassigned_jobs", severity: "warning", title: "Unassigned active jobs", description: `${unassignedJobs} active job line${unassignedJobs > 1 ? "s" : ""} without technician assignment.`, count: unassignedJobs, href: "/dashboard/work-orders" });
+  if (assignedToUnavailable > 0) add("operations", { id: "jobs-unavailable-tech", type: "assigned_to_unavailable", severity: "blocking", title: "Jobs assigned to unavailable techs", description: `${assignedToUnavailable} active assignment${assignedToUnavailable > 1 ? "s" : ""} conflict with time away today.`, count: assignedToUnavailable, href: "/dashboard/workforce/scheduling" });
+  for (const [personId, count] of overloaded) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: "/dashboard/workforce/people" });
+
+  const severityOrder: Record<Severity, number> = { blocking: 0, warning: 1, info: 2 };
+  const inbox = Object.values(sections).flat().sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || ((a.createdAt && b.createdAt) ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : 0));
+
+  return NextResponse.json({ summary: { workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0), awayToday: awayTodayUsers.size, awayTomorrow: awayTomorrowUsers.size, pendingTimeOff, payrollBlocking, payrollWarnings, expiringCertifications, expiredCertifications, scheduleGaps, unassignedJobs, assignedToUnavailable, overloadedTechs: overloaded.length }, inbox, sections, generatedAt: new Date().toISOString() });
+}
