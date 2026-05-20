@@ -9,6 +9,7 @@ import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
 
 import type { Database } from "@shared/types/types/supabase";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 
 type DB = Database;
 
@@ -114,18 +115,6 @@ function pickShopName(
   return out.length ? out : undefined;
 }
 
-function currencyFromInvoice(v: unknown): "CAD" | "USD" | null {
-  const c = String(v ?? "").trim().toUpperCase();
-  if (c === "CAD") return "CAD";
-  if (c === "USD") return "USD";
-  return null;
-}
-
-function currencyFromShopCountry(country: unknown): "CAD" | "USD" {
-  const c = String(country ?? "").trim().toUpperCase();
-  return c === "CA" ? "CAD" : "USD";
-}
-
 type PartDisplayRow = {
   name: string;
   partNumber?: string;
@@ -205,6 +194,7 @@ export async function GET(
   if (woErr || !wo?.id) {
     return NextResponse.json({ error: "Work order not found" }, { status: 404 });
   }
+  const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId });
 
   const { data: inv, error: invErr } = await supabase
     .from("invoices")
@@ -268,8 +258,8 @@ export async function GET(
     (shop?.email ?? "").trim() || undefined,
   ]);
 
-  const currency: "CAD" | "USD" =
-    currencyFromInvoice(inv?.currency) ?? currencyFromShopCountry(shop?.country);
+  // Canonical totals/currency source: shared invoice snapshot to prevent drift.
+  const currency: "CAD" | "USD" = snapshot.currency;
 
   const laborRate = safeMoney(shop?.labor_rate);
 

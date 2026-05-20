@@ -224,6 +224,7 @@ export default function InvoicePreviewPageClient({
 
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [canonicalInvoiceTotal, setCanonicalInvoiceTotal] = useState<number>(0);
 
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewOk, setReviewOk] = useState<boolean>(false);
@@ -403,6 +404,14 @@ export default function InvoicePreviewPageClient({
 
       if (cancelled) return;
       setInvoiceId(invoiceRow?.id ?? null);
+      const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
+      const snapshotJson = (await snapshotRes.json().catch(() => null)) as
+        | { snapshot?: { total?: number | null } }
+        | null;
+      const snapshotTotal = snapshotJson?.snapshot?.total;
+      setCanonicalInvoiceTotal(
+        typeof snapshotTotal === "number" && Number.isFinite(snapshotTotal) ? Math.max(0, snapshotTotal) : 0,
+      );
 
       // ✅ include labor_rate
       const { data: shop, error: sErr } = await supabase
@@ -746,7 +755,7 @@ export default function InvoicePreviewPageClient({
       return;
     }
 
-    const invoiceTotal = derivedInvoiceTotal;
+    const invoiceTotal = canonicalInvoiceTotal > 0 ? canonicalInvoiceTotal : derivedInvoiceTotal;
 
     const payloadLines: InvoiceLinePayload[] = (effectiveLines ?? []).map((l) => {
       const lineId = getLineIdFromRepairLine(l);
@@ -811,6 +820,7 @@ export default function InvoicePreviewPageClient({
     derivedLaborTotal,
     derivedPartsTotal,
     derivedInvoiceTotal,
+    canonicalInvoiceTotal,
     onSent,
     handleBack,
     signatureImage,
@@ -890,6 +900,7 @@ export default function InvoicePreviewPageClient({
                   stripeAccountId={stripeAccountId as string}
                   currency={currency}
                   workOrderId={workOrderId}
+                  defaultAmountCents={Math.round((canonicalInvoiceTotal > 0 ? canonicalInvoiceTotal : derivedInvoiceTotal) * 100)}
                 />
               </div>
             ) : null}

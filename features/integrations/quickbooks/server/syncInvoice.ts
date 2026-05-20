@@ -9,6 +9,7 @@ import type { Json } from "@shared/types/types/supabase";
 import { quickBooksFetch } from "./http";
 import { ensureQuickBooksCustomer } from "./syncCustomer";
 import { mapInvoiceToQuickBooksPayload } from "./mapInvoice";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 
 type QuickBooksItemEntity = {
   Id: string;
@@ -161,8 +162,14 @@ export async function syncInvoiceToQuickBooks(
 
     const qbSalesItemId = await ensureQuickBooksSalesItem(connection);
 
-    const payload = mapInvoiceToQuickBooksPayload({
-      invoice: invoice as Pick<
+    const snapshot = invoice.work_order_id
+      ? await getInvoiceSnapshotForWorkOrder({
+          supabase: supabase as SupabaseClient<DB>,
+          workOrderId: invoice.work_order_id,
+        })
+      : null;
+    const canonicalInvoice = {
+      ...(invoice as Pick<
         InvoiceRow,
         | "id"
         | "invoice_number"
@@ -175,7 +182,15 @@ export async function syncInvoiceToQuickBooks(
         | "tax_total"
         | "total"
         | "work_order_id"
-      >,
+      >),
+      labor_cost: snapshot?.laborCost ?? invoice.labor_cost,
+      parts_cost: snapshot?.partsCost ?? invoice.parts_cost,
+      discount_total: snapshot?.discountTotal ?? invoice.discount_total,
+      tax_total: snapshot?.taxTotal ?? invoice.tax_total,
+      total: snapshot?.total ?? invoice.total,
+    };
+    const payload = mapInvoiceToQuickBooksPayload({
+      invoice: canonicalInvoice,
       workOrder,
       qbCustomerId,
       qbSalesItemId,

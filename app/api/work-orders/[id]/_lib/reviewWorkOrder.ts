@@ -22,6 +22,17 @@ export async function reviewWorkOrder({
   shopId,
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
+  const { data: allocRows } = await supabase
+    .from("work_order_part_allocations")
+    .select("work_order_line_id, qty")
+    .eq("work_order_id", workOrderId)
+    .eq("shop_id", shopId);
+  const hasBillablePartsByLine = new Map<string, boolean>();
+  for (const row of allocRows ?? []) {
+    const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
+    const qty = Number(row.qty ?? 0);
+    if (lineId && qty > 0) hasBillablePartsByLine.set(lineId, true);
+  }
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("*")
@@ -89,7 +100,11 @@ export async function reviewWorkOrder({
       });
     }
 
-    if (!(typeof ln.labor_time === "number" && ln.labor_time > 0)) {
+    const noCharge = (ln as Record<string, unknown>)["no_charge"] === true;
+    const laborNA = (ln as Record<string, unknown>)["labor_marked_na"] === true;
+    const hasBillableParts = hasBillablePartsByLine.get(String(ln.id)) === true;
+    const laborRequired = !noCharge && !laborNA && !hasBillableParts;
+    if (laborRequired && !(typeof ln.labor_time === "number" && ln.labor_time > 0)) {
       issues.push({
         kind: "no_labor_time",
         lineId: ln.id,
