@@ -22,7 +22,7 @@ export default async function PropertyMemberRequestsPage() {
 
   const { data: memberships } = await supabase.from('property_members').select('id,shop_id,user_id,property_id,unit_id').eq('user_id', user.id);
   if (!(memberships ?? []).length) {
-    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-neutral-100">Property member requests</h1><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Member Portal</p><h1 className="text-2xl text-neutral-100">Maintenance Requests</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Portal home</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
   }
 
   const shopIds = Array.from(new Set((memberships ?? []).map((m) => m.shop_id)));
@@ -50,11 +50,11 @@ export default async function PropertyMemberRequestsPage() {
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <h1 className="text-2xl text-neutral-100">Property member requests</h1>
-      <p className="mt-2 text-sm text-neutral-300">Requests visible to your authenticated property membership.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Member Portal</p><h1 className="text-2xl text-neutral-100">Maintenance Requests</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Portal home</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
+      
       <div className="mt-4">
         <Link href="/portal/property/member/requests/new" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
-          Submit maintenance request
+          New maintenance request
         </Link>
       </div>
       <div className="mt-5 space-y-3">
@@ -66,7 +66,7 @@ export default async function PropertyMemberRequestsPage() {
             </div>
             <p className="mt-1 text-sm text-neutral-300">Status: {request.status} · Severity: {request.severity}</p>
             <p className="mt-1 text-sm text-neutral-400">Property: {propertyById.get(request.property_id) ?? '—'} · Unit: {request.unit_id ? (unitById.get(request.unit_id) ?? '—') : '—'} · Asset: {request.asset_id ? (assetById.get(request.asset_id) ?? '—') : '—'}</p>
-            <Link href={`/portal/property/member/requests/${request.id}`} className="mt-2 inline-flex text-sm text-cyan-300 underline">Open request</Link>
+            <Link href={`/portal/property/member/requests/${request.id}`} className="mt-2 inline-flex text-sm text-cyan-300 underline">View details</Link>
           </article>
         ))}
       </div>

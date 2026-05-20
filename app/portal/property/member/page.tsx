@@ -29,6 +29,12 @@ type DB = {
 
 const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 
+const portalLinks = [
+  { href: "/portal/property/member/requests", label: "Maintenance Requests", description: "Track open and completed requests" },
+  { href: "/portal/property/member/requests/new", label: "New Request", description: "Report a maintenance issue" },
+  { href: "/portal/property/member/inspections", label: "Inspections", description: "View inspection updates and results" },
+] as const;
+
 export default async function PropertyMemberPortalPage() {
   const supabase = client();
   const {
@@ -46,10 +52,8 @@ export default async function PropertyMemberPortalPage() {
   if (!(memberships ?? []).length) {
     return (
       <section className="metal-card rounded-3xl p-5">
-        <h1 className="text-2xl text-neutral-100">Property member portal</h1>
-        <p className="mt-3 text-sm text-neutral-300">
-          No property portal access is assigned to this account.
-        </p>
+        <h1 className="text-2xl text-neutral-100">Member Portal</h1>
+        <p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p>
       </section>
     );
   }
@@ -76,51 +80,37 @@ export default async function PropertyMemberPortalPage() {
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Portal</p>
-      <h1 className="mt-2 text-2xl text-neutral-100">Property member portal</h1>
-      <p className="mt-2 text-sm text-neutral-300">Your access comes from assigned property membership scopes.</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Access</p>
+      <h1 className="mt-2 text-2xl text-neutral-100">Member Portal</h1>
+      <p className="mt-2 text-sm text-neutral-300">Use this portal to manage Maintenance Requests and review Inspections for your assigned properties.</p>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Link href="/portal/property/member/requests" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
-          View maintenance requests
-        </Link>
-        <Link href="/portal/property/member/requests/new" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
-          Submit maintenance request
-        </Link>
-        <Link href="/portal/property/member/inspections" className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
-          View inspections
-        </Link>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {portalLinks.map((link) => (
+          <Link key={link.href} href={link.href} className="rounded-xl border border-cyan-400/25 bg-cyan-500/10 p-3 transition hover:border-cyan-300/50">
+            <p className="text-sm font-semibold text-cyan-100">{link.label}</p>
+            <p className="mt-1 text-xs text-cyan-200/80">{link.description}</p>
+          </Link>
+        ))}
       </div>
 
-      <div className="mt-6 overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="text-neutral-400">
-            <tr>
-              <th className="px-3 py-2">Role</th>
-              <th className="px-3 py-2">Scope</th>
-              <th className="px-3 py-2">Shop</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(memberships ?? []).map((member) => {
-              const property = member.property_id ? propertyById.get(member.property_id) : null;
-              const unit = member.unit_id ? unitById.get(member.unit_id) : null;
-              const portfolio = member.portfolio_id ? portfolioById.get(member.portfolio_id) : null;
+      <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">Your memberships</h2>
+        <div className="mt-3 space-y-3">
+          {(memberships ?? []).map((member) => {
+            const property = member.property_id ? propertyById.get(member.property_id) : null;
+            const unit = member.unit_id ? unitById.get(member.unit_id) : null;
+            const portfolio = member.portfolio_id ? portfolioById.get(member.portfolio_id) : null;
 
-              return (
-                <tr key={member.id} className="border-t border-white/10 text-neutral-200">
-                  <td className="px-3 py-2">{member.role}</td>
-                  <td className="px-3 py-2">
-                    <div>Portfolio: {portfolio?.name ?? "All visible portfolios"}</div>
-                    <div>Property: {property?.name ?? "All visible properties"}</div>
-                    <div>Unit: {unit?.unit_label ?? "All visible units"}</div>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-neutral-400">{member.shop_id}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            return (
+              <article key={member.id} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-neutral-200">
+                <p className="font-medium text-neutral-100">Role: {member.role}</p>
+                <p className="mt-1 text-neutral-300">Portfolio: {portfolio?.name ?? "All visible portfolios"}</p>
+                <p className="text-neutral-300">Property: {property?.name ?? "All visible properties"}</p>
+                <p className="text-neutral-300">Unit: {unit?.unit_label ?? "All visible units"}</p>
+              </article>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
