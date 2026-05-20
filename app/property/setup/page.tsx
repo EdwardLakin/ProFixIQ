@@ -791,7 +791,7 @@ export default async function PropertySetupPage({
             .limit(5),
           supabase
             .from("property_assets")
-            .select("id,name,asset_type,status")
+            .select("id,name,asset_type,status,property_id,unit_id")
             .eq("shop_id", shopId)
             .order("name", { ascending: true })
             .limit(5),
@@ -803,6 +803,13 @@ export default async function PropertySetupPage({
             .limit(5),
         ])
       : [null, null, null, null, null];
+
+  const propertyNameById = new Map(
+    (propertiesResult?.data ?? []).map((property) => [property.id, property.name]),
+  );
+  const unitLabelById = new Map(
+    (unitsResult?.data ?? []).map((unit) => [unit.id, unit.unit_label]),
+  );
 
   const overviewItems = [
     {
@@ -838,7 +845,7 @@ export default async function PropertySetupPage({
         unitsResult?.data?.map((unit) => ({
           id: unit.id,
           primary: unit.unit_label,
-          secondary: `Property: ${unit.property_id}`,
+          secondary: `Property: ${propertyNameById.get(unit.property_id) ?? "Unknown property"}`,
         })) ?? [],
     },
     {
@@ -849,7 +856,16 @@ export default async function PropertySetupPage({
         assetsResult?.data?.map((asset) => ({
           id: asset.id,
           primary: asset.name,
-          secondary: [asset.asset_type, asset.status].filter(Boolean).join(" • "),
+          secondary: [
+            asset.asset_type,
+            asset.status,
+            `Property: ${propertyNameById.get(asset.property_id) ?? "Unknown property"}`,
+            asset.unit_id
+              ? `Unit: ${unitLabelById.get(asset.unit_id) ?? "Unknown unit"}`
+              : "Property-level",
+          ]
+            .filter(Boolean)
+            .join(" • "),
         })) ?? [],
     },
     {
@@ -867,7 +883,7 @@ export default async function PropertySetupPage({
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(193,122,74,0.18),transparent_34%),#020617] px-4 py-6 text-white md:px-8">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <Link
           href="/property"
           className="w-fit rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:border-[color:var(--accent-copper)]/70 hover:text-white"
@@ -875,35 +891,42 @@ export default async function PropertySetupPage({
           ← Back to property dashboard
         </Link>
 
-        <section className="metal-card rounded-3xl p-6 md:p-8">
+        <section className="rounded-2xl border border-[color:var(--metal-border-soft)]/70 bg-black/20 p-5 md:p-6">
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">
-            Internal setup
+            Internal setup workspace
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-100 md:text-4xl">
             Property Setup
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-300">
-            Create and review portfolios, properties, units, assets, and
-            vendors for property maintenance.
+            Configure portfolios, properties, units, assets, and vendors for property maintenance.
           </p>
           <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            Internal setup only — no tenant/vendor portal access is wired yet.
+            Admin setup workspace. Create the property records that power requests, inspections, members, invites, and vendor workflows.
           </p>
+          <p className="mt-3 text-sm text-neutral-400">
+            Tenant/member access is managed through Property Members and Invites.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+            <Link href="/property" className="hover:text-white">Property Dashboard</Link>
+            <Link href="/property/members" className="hover:text-white">Members</Link>
+            <Link href="/property/invites" className="hover:text-white">Invites</Link>
+          </div>
 
           <div className="mt-5 grid gap-3 text-xs text-neutral-400 sm:grid-cols-3">
             <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
-              Uses current profile.shop_id
+              Uses current shop profile
             </div>
             <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
-              No service role or schema changes
+              RLS scoped
             </div>
             <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
-              No tenant/vendor auth wiring
+              Admin records only
             </div>
           </div>
         </section>
 
-        <section className="metal-card rounded-3xl p-5 md:p-6">
+        <section className="rounded-2xl border border-[color:var(--metal-border-soft)]/70 bg-black/20 p-5 md:p-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-lg font-semibold text-neutral-100">
               Setup overview
@@ -912,12 +935,9 @@ export default async function PropertySetupPage({
               Read-only
             </span>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="mt-4 divide-y divide-[color:var(--metal-border-soft)]/70">
             {overviewItems.map((section) => (
-              <article
-                key={section.title}
-                className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-4"
-              >
+              <article key={section.title} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-neutral-100">
                     {section.title}
@@ -931,7 +951,7 @@ export default async function PropertySetupPage({
                     {section.emptyLabel}
                   </p>
                 ) : (
-                  <ul className="mt-3 space-y-2">
+                  <ul className="mt-3 space-y-1.5">
                     {section.rows.map((row) => (
                       <li key={row.id} className="text-sm text-neutral-300">
                         <div>{row.primary}</div>
@@ -1120,7 +1140,7 @@ export default async function PropertySetupPage({
                   Create vendor
                 </h2>
                 <p className="mt-2 text-xs text-neutral-400">
-                  Vendor contacts are records only. Vendor portal access is not wired yet.
+                  Tenant/member access is managed through Property Members and Invites.
                 </p>
                 <form action={createPropertyVendor} className="mt-4 space-y-3">
                   <input name="name" required placeholder="Vendor name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
