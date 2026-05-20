@@ -1,6 +1,7 @@
 import "server-only";
 
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
@@ -55,7 +56,7 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <h1 className="text-2xl text-neutral-100">{requestRow.title}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">{requestRow.title}</h1></div><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Back to requests</Link></div>
       <p className="mt-2 text-sm text-neutral-300">{requestRow.summary}</p>
       <p className="mt-2 text-sm text-neutral-400">Status: {requestRow.status} · Severity: {requestRow.severity} · Category: {requestRow.category ?? '—'}</p>
       <p className="mt-1 text-sm text-neutral-400">Property: {property?.name ?? '—'} · Unit: {unit?.unit_label ?? '—'} · Asset: {asset?.name ?? '—'}</p>
@@ -68,7 +69,7 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
       {error ? <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div> : null}
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Timeline</h2>
+        <h2 className="text-lg text-neutral-100">Request Timeline</h2><p className="mt-1 text-xs text-neutral-400">Updates shared with residents are listed in time order.</p>
         <div className="mt-2 space-y-2">
           {(events ?? []).map((event) => (
             <article key={event.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
@@ -80,7 +81,7 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
       </div>
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Attachments</h2>
+        <h2 className="text-lg text-neutral-100">Attachments</h2><p className="mt-1 text-xs text-neutral-400">Photos and files linked to this maintenance request.</p>
         <div className="mt-2 space-y-2">
           {(attachments ?? []).map((attachment) => (
             <article key={attachment.id} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
