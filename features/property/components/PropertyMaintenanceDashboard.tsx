@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
-  MaintenanceControlTower,
   propertyOperationsRoutes,
   propertyOperationsTerminology,
 } from "@/features/operations";
@@ -24,27 +23,24 @@ type PropertyMaintenanceDashboardProps = {
 type FocusFilter = "all" | "open_requests";
 
 export default function PropertyMaintenanceDashboard({
-  title = "Property Maintenance Tower",
-  subtitle = "Track open requests, inspections, vendor work, and asset history across properties.",
+  title = "Property Maintenance",
+  subtitle = "Requests, inspections, assets, vendors, and repair history.",
   modeLabel,
   liveData,
 }: PropertyMaintenanceDashboardProps) {
   const hasLiveData = Boolean(
     liveData &&
-    (liveData.assets.length > 0 ||
-      liveData.issues.length > 0 ||
-      liveData.assignments.length > 0),
+      (liveData.assets.length > 0 ||
+        liveData.issues.length > 0 ||
+        liveData.assignments.length > 0),
   );
+
   const assets = hasLiveData ? liveData!.assets : propertyDemoAssets;
   const issues = hasLiveData ? liveData!.issues : propertyDemoIssues;
   const assignments = hasLiveData
     ? liveData!.assignments
     : propertyDemoAssignments;
-  const effectiveModeLabel =
-    modeLabel ??
-    (hasLiveData
-      ? "Live property data · RLS read-only"
-      : "Static property demo");
+
   const [locationFilter, setLocationFilter] = useState<string | "all">("all");
   const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
 
@@ -59,9 +55,7 @@ export default function PropertyMaintenanceDashboard({
   const filteredAssets = useMemo(() => {
     let nextAssets = assets;
     if (locationFilter !== "all") {
-      nextAssets = nextAssets.filter(
-        (asset) => asset.location === locationFilter,
-      );
+      nextAssets = nextAssets.filter((asset) => asset.location === locationFilter);
     }
     if (focusFilter === "open_requests") {
       const assetIdsWithOpenIssues = new Set(
@@ -69,9 +63,7 @@ export default function PropertyMaintenanceDashboard({
           .filter((issue) => issue.status !== "completed")
           .map((issue) => issue.assetId),
       );
-      nextAssets = nextAssets.filter((asset) =>
-        assetIdsWithOpenIssues.has(asset.id),
-      );
+      nextAssets = nextAssets.filter((asset) => assetIdsWithOpenIssues.has(asset.id));
     }
     return nextAssets;
   }, [assets, focusFilter, issues, locationFilter]);
@@ -86,235 +78,182 @@ export default function PropertyMaintenanceDashboard({
     [filteredAssetIds, issues],
   );
 
-  const summary = useMemo(() => {
-    const openIssues = visibleIssues.filter(
-      (issue) => issue.status !== "completed",
-    );
-    return [
-      {
-        label: propertyOperationsTerminology.assetPluralLabel,
-        value: filteredAssets.length,
-        helper: hasLiveData
-          ? "Live property records visible through RLS"
-          : "Static demo assets in current filter",
-      },
-      {
-        label: `Open ${propertyOperationsTerminology.requestPluralLabel}`,
-        value: openIssues.length,
-        helper: hasLiveData
-          ? "Property requests visible to internal staff"
-          : "Tenant and site requests awaiting action",
-      },
-      {
-        label: "Limited / Offline",
-        value: filteredAssets.filter((asset) => asset.status !== "active")
-          .length,
-        helper: "Assets needing operating attention",
-      },
-      {
-        label: "Vendor Follow-ups",
-        value: assignments.filter((assignment) =>
-          ["blocked", "in_progress", "inspection_due"].includes(
-            assignment.state,
-          ),
-        ).length,
-        helper: hasLiveData
-          ? "Read-only vendor assignment status"
-          : "Demo assignments only — no dispatch integration",
-      },
-    ];
-  }, [assignments, filteredAssets, hasLiveData, visibleIssues]);
+  const openIssues = useMemo(
+    () => visibleIssues.filter((issue) => issue.status !== "completed"),
+    [visibleIssues],
+  );
+
+  const inProgressIssues = useMemo(
+    () => visibleIssues.filter((issue) => ["in_progress", "scheduled"].includes(issue.status)).length,
+    [visibleIssues],
+  );
+
+  const inspectionFindings = useMemo(
+    () =>
+      visibleIssues.filter((issue) => ["safety", "compliance"].includes(issue.severity))
+        .length,
+    [visibleIssues],
+  );
+
+  const pendingVendorFollowUps = useMemo(
+    () =>
+      assignments.filter((assignment) =>
+        ["blocked", "in_progress", "inspection_due"].includes(assignment.state),
+      ),
+    [assignments],
+  );
+
+  const recentInspectionItems = useMemo(
+    () =>
+      visibleIssues
+        .filter((issue) => ["safety", "compliance", "recommend"].includes(issue.severity))
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        .slice(0, 5),
+    [visibleIssues],
+  );
 
   return (
-    <MaintenanceControlTower
-      headerLabel="Property Operations"
-      modeLabel={effectiveModeLabel}
-      title={title}
-      subtitle={subtitle}
-      actorSurfaceLabel="Property operations"
-      locationFilter={{
-        value: locationFilter,
-        options: locations,
-        onChange: (value) => setLocationFilter(value as typeof locationFilter),
-        allLabel: "All property locations",
-      }}
-      focusFilter={{
-        active: focusFilter === "open_requests",
-        label: `Assets with open ${propertyOperationsTerminology.requestPluralLabel.toLowerCase()}`,
-        onClear: () => setFocusFilter("all"),
-      }}
-      aiSummary={
-        <section className="metal-card rounded-3xl p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-              {hasLiveData ? "Read-only live scope" : "Placeholder scope"}
-            </div>
-            {hasLiveData ? (
-              <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                Live data loaded
-              </span>
-            ) : null}
+    <section className="space-y-6">
+      <header className="border-b border-[color:var(--metal-border-soft)] pb-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              Property operations
+            </p>
+            <h1 className="mt-1 text-3xl text-neutral-100 md:text-4xl" style={{ fontFamily: "var(--font-blackops)" }}>
+              {title}
+            </h1>
+            <p className="mt-2 text-sm text-neutral-400">
+              {subtitle}
+            </p>
           </div>
-          <p className="mt-2 text-sm text-neutral-300">
-            {hasLiveData
-              ? "Internal staff are viewing property operations rows through Supabase RLS. This screen remains read-only: no property writes, tenant/vendor authentication, request creation, or work-order conversion is wired yet."
-              : "This property branch is intentionally powered by static demo data. It proves the operations shell, control tower, terminology, and routes while no live property rows are visible through RLS."}
-          </p>
-        </section>
-      }
-      summaryCards={
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summary.map((card) => (
-            <button
-              key={card.label}
-              type="button"
-              onClick={() => {
-                if (card.label.startsWith("Open")) {
-                  setFocusFilter((prev) =>
-                    prev === "open_requests" ? "all" : "open_requests",
-                  );
-                }
-              }}
-              className="metal-card rounded-3xl p-4 text-left transition hover:border-[color:var(--accent-copper)]/70"
+          <div className="flex items-center gap-3">
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value as typeof locationFilter)}
+              className="rounded-lg border border-[color:var(--metal-border-soft)] bg-black/50 px-3 py-2 text-xs text-neutral-200"
             >
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                {card.label}
+              <option value="all">All property locations</option>
+              {locations.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${hasLiveData ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100" : "border-[color:var(--metal-border-soft)] bg-black/40 text-neutral-300"}`}>
+              {modeLabel ?? (hasLiveData ? "Live data" : "Demo fallback")}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <section className="flex flex-wrap items-center gap-2 border-b border-[color:var(--metal-border-soft)] pb-4">
+        {[
+          { href: "/property/requests/new", label: "New maintenance request", accent: true },
+          { href: "/property/inspections/new", label: "New inspection" },
+          { href: "/property/setup", label: "Property Setup" },
+          { href: "/property/members", label: "Members" },
+          { href: "/property/invites", label: "Invites" },
+        ].map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${action.accent ? "border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 text-neutral-100 hover:bg-[color:var(--accent-copper)]/30" : "border-[color:var(--metal-border-soft)] bg-black/35 text-neutral-200 hover:bg-black/55"}`}
+          >
+            {action.label}
+          </Link>
+        ))}
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setFocusFilter((prev) => (prev === "open_requests" ? "all" : "open_requests"))}
+          className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3 text-left"
+        >
+          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Open requests</div>
+          <div className="mt-1 text-3xl text-neutral-100">{openIssues.length}</div>
+        </button>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Scheduled / in progress</div>
+          <div className="mt-1 text-3xl text-neutral-100">{inProgressIssues}</div>
+        </div>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Inspection issues</div>
+          <div className="mt-1 text-3xl text-neutral-100">{inspectionFindings}</div>
+        </div>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">{propertyOperationsTerminology.assetPluralLabel}</div>
+          <div className="mt-1 text-3xl text-neutral-100">{filteredAssets.length}</div>
+        </div>
+      </section>
+
+      <section className="grid gap-5 lg:grid-cols-2">
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+          <div className="flex items-center justify-between border-b border-[color:var(--metal-border-soft)] pb-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Requests needing attention</h2>
+            <Link href={propertyOperationsRoutes.portalRequests} className="text-xs text-neutral-400 hover:text-neutral-200">All requests</Link>
+          </div>
+          {openIssues.slice(0, 8).map((issue) => (
+            <div key={issue.id} className="border-b border-white/5 pb-2 last:border-b-0">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-neutral-100">{issue.assetLabel}</span>
+                <span className="text-neutral-400 uppercase">{issue.status.replaceAll("_", " ")}</span>
               </div>
-              <div className="mt-2 text-3xl font-semibold text-neutral-100">
-                {card.value}
+              <p className="mt-1 text-xs text-neutral-300">{issue.summary}</p>
+              <div className="mt-2 flex items-center gap-3 text-[11px] text-neutral-500">
+                <Link href={`/property/requests/${issue.id}`} className="hover:text-neutral-200">Request</Link>
+                <Link href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`} className="hover:text-neutral-200">Asset</Link>
               </div>
-              <p className="mt-1 text-xs text-neutral-400">{card.helper}</p>
-            </button>
+            </div>
           ))}
-        </section>
-      }
-      issueTables={
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-          <div className="metal-card rounded-3xl p-4">
-            <div className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-2">
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+          <div className="flex items-center justify-between border-b border-[color:var(--metal-border-soft)] pb-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Recent inspections</h2>
+            <Link href="/property/inspections" className="text-xs text-neutral-400 hover:text-neutral-200">All inspections</Link>
+          </div>
+          {recentInspectionItems.length > 0 ? recentInspectionItems.map((issue) => (
+            <div key={issue.id} className="border-b border-white/5 pb-2 last:border-b-0 text-xs">
+              <div className="font-semibold text-neutral-100">{issue.assetLabel}</div>
+              <div className="mt-1 text-neutral-300">{issue.summary}</div>
+              <div className="mt-1 text-neutral-500">{new Date(issue.createdAt).toLocaleDateString()}</div>
+            </div>
+          )) : <p className="text-xs text-neutral-400">No recent inspection findings in current scope.</p>}
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+          <div className="border-b border-[color:var(--metal-border-soft)] pb-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Assets / properties</h2>
+          </div>
+          {filteredAssets.slice(0, 8).map((asset) => (
+            <div key={asset.id} className="flex items-center justify-between border-b border-white/5 pb-2 last:border-b-0 text-xs">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                  {hasLiveData
-                    ? "Live maintenance requests"
-                    : "Demo maintenance requests"}
-                </div>
-                <p className="mt-1 text-xs text-neutral-400">
-                  {hasLiveData
-                    ? "Read-only property maintenance requests visible through RLS."
-                    : "Static property maintenance requests for architecture validation."}
-                </p>
+                <div className="font-semibold text-neutral-100">{asset.label}</div>
+                <div className="text-neutral-400">{asset.location ?? "Unassigned location"}</div>
               </div>
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/property/requests/new"
-                  className="rounded-full border border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-[color:var(--accent-copper)]/30"
-                >
-                  New maintenance request
-                </Link>
-                <Link
-                  href="/property/members"
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-                >
-                  Members
-                </Link>
-                <Link
-                  href="/property/invites"
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-                >
-                  Invites
-                </Link>
-                <Link
-                  href="/property/inspections"
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-                >
-                  Inspections
-                </Link>
-                <Link
-                  href="/property/inspections/new?type=move_in"
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-                >
-                  New inspection
-                </Link>
-                <Link
-                  href={propertyOperationsRoutes.portalRequests}
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
-                >
-                  Requests
-                </Link>
-              </div>
+              <Link href={`${propertyOperationsRoutes.assetDetailBase}/${asset.id}`} className="text-neutral-300 hover:text-neutral-100">View</Link>
             </div>
+          ))}
+        </div>
 
-            <div className="space-y-3">
-              {visibleIssues.map((issue) => (
-                <article
-                  key={issue.id}
-                  className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-neutral-100">
-                      {issue.assetLabel}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-neutral-300">
-                      {issue.status}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-neutral-300">
-                    {issue.summary}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
-                    <span>
-                      {new Date(issue.createdAt).toLocaleDateString()}
-                    </span>
-                    <span>•</span>
-                    <span className="uppercase tracking-[0.14em]">
-                      {issue.severity}
-                    </span>
-                    <div className="ml-auto flex items-center gap-3">
-                      <Link
-                        href={`/property/requests/${issue.id}`}
-                        className="text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
-                      >
-                        View request →
-                      </Link>
-                      <Link
-                        href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`}
-                        className="text-neutral-500 underline decoration-white/10 underline-offset-4 hover:text-neutral-300"
-                      >
-                        Asset
-                      </Link>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+          <div className="border-b border-[color:var(--metal-border-soft)] pb-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Vendor follow-ups</h2>
           </div>
-
-          <div className="metal-card rounded-3xl p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-              Vendor work placeholders
+          {pendingVendorFollowUps.slice(0, 8).map((assignment) => (
+            <div key={assignment.id} className="border-b border-white/5 pb-2 last:border-b-0 text-xs">
+              <div className="font-semibold text-neutral-100">{assignment.routeLabel}</div>
+              <div className="mt-1 text-neutral-400">{assignment.assetLabel} · {assignment.requesterName}</div>
+              <div className="mt-1 uppercase tracking-[0.12em] text-neutral-500">{assignment.state.replaceAll("_", " ")}</div>
             </div>
-            <div className="mt-3 space-y-3">
-              {assignments.map((assignment) => (
-                <div
-                  key={assignment.id}
-                  className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-xs"
-                >
-                  <div className="font-semibold text-neutral-100">
-                    {assignment.routeLabel}
-                  </div>
-                  <div className="mt-1 text-neutral-400">
-                    {assignment.assetLabel} · requested by{" "}
-                    {assignment.requesterName}
-                  </div>
-                  <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    {assignment.state.replaceAll("_", " ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      }
-    />
+          ))}
+        </div>
+      </section>
+    </section>
   );
 }
