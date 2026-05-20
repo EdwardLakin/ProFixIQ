@@ -27,6 +27,21 @@ import type { InviteCreateActionState } from "./inviteCreateState";
 
 let sendgridConfigured = false;
 
+
+function getAppBaseUrl() {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl}`.replace(/\/$/, "");
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:3000";
+  }
+
+  throw new Error("NEXT_PUBLIC_APP_URL is required to create property portal invite links in production.");
+}
+
 function sendgridEnvReady() {
   const apiKey = process.env.SENDGRID_API_KEY?.trim() || "";
   const fromEmail = process.env.SENDGRID_FROM_EMAIL?.trim() || "";
@@ -124,6 +139,15 @@ export async function createPropertyPortalInvite(
   const tokenHash = createHash("sha256").update(rawToken, "utf8").digest("hex");
   const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
 
+  let appBaseUrl: string;
+  try {
+    appBaseUrl = getAppBaseUrl();
+  } catch {
+    return { status: "validation-error", message: "Invite could not be created because the app URL is not configured." };
+  }
+
+  const inviteLink = `${appBaseUrl}/portal/property/invite/accept?token=${rawToken}`;
+
   const { error } = await supabase.from("property_portal_invites").insert({
     shop_id: currentShopId,
     invited_email: invitedEmail,
@@ -140,9 +164,6 @@ export async function createPropertyPortalInvite(
   if (error) {
     return { status: "validation-error", message: error.message };
   }
-
-  const origin = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
-  const inviteLink = `${origin}/portal/property/invite/accept?token=${rawToken}`;
 
   revalidatePath("/property/invites");
   revalidatePath("/property");

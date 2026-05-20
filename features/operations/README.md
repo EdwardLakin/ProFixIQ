@@ -369,3 +369,9 @@ Any future schema expansion should be documented and applied manually.
 - Email sending is still not wired.
 - No auth user creation was added.
 - No schema or migration changes were introduced in this step.
+
+## Property invite link configuration
+
+- Property invite links require `NEXT_PUBLIC_APP_URL` in production.
+- If `NEXT_PUBLIC_APP_URL` is not set, `VERCEL_URL` is used as a fallback when available.
+
