@@ -294,6 +294,56 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     icon: "📈",
     roles: ["owner", "admin", "manager"],
   },
+  "/dashboard/workforce": {
+    title: () => "Workforce",
+    icon: "👥",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/overview": {
+    title: () => "Workforce Overview",
+    icon: "🧭",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/people": {
+    title: () => "People",
+    icon: "👤",
+    roles: ["owner", "admin"],
+  },
+  "/dashboard/workforce/scheduling": {
+    title: () => "Scheduling",
+    icon: "🗓️",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/time-off": {
+    title: () => "Time Off",
+    icon: "🌴",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/attendance": {
+    title: () => "Attendance",
+    icon: "🕒",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/payroll-review": {
+    title: () => "Payroll Review",
+    icon: "⏱️",
+    roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/documents": {
+    title: () => "Documents",
+    icon: "📁",
+    roles: ["owner", "admin"],
+  },
+  "/dashboard/workforce/certifications": {
+    title: () => "Certifications",
+    icon: "🎓",
+    roles: ["owner", "admin"],
+  },
+  "/dashboard/workforce/insights": {
+    title: () => "Insights",
+    icon: "📊",
+    roles: ["owner", "admin", "manager"],
+  },
   "/dashboard/admin": {
     title: () => "Admin",
     icon: "🛡️",

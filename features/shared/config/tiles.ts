@@ -389,6 +389,50 @@ export const TILES: Tile[] = [
   section: "Tech",
   },
 
+
+  /* ---------------------------------------------------------------------- */
+  /* WORKFORCE                                                               */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/dashboard/workforce/overview",
+    title: "Workforce",
+    subtitle: "People operations command surface",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Workforce",
+  },
+  {
+    href: "/dashboard/workforce/people",
+    title: "People",
+    subtitle: "Staff directory and person-level workforce details",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Workforce",
+  },
+  {
+    href: "/dashboard/workforce/scheduling",
+    title: "Scheduling",
+    subtitle: "Shift planning and time-off workflow",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Workforce",
+  },
+  {
+    href: "/dashboard/workforce/payroll-review",
+    title: "Payroll Review",
+    subtitle: "Time, exceptions, and export readiness",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Workforce",
+  },
+  {
+    href: "/dashboard/workforce/documents",
+    title: "Employee Documents",
+    subtitle: "Document storage and compliance records",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Workforce",
+  },
   /* ---------------------------------------------------------------------- */
   /* ADMIN                                                                   */
   /* ---------------------------------------------------------------------- */
