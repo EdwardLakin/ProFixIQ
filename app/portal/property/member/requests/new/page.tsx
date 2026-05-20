@@ -25,7 +25,7 @@ export default async function NewMemberPropertyRequestPage({ searchParams }: { s
 
   const { data: memberships } = await supabase.from("property_members").select("id,user_id,property_id,unit_id").eq("user_id", user.id);
   if (!(memberships ?? []).length) {
-    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">New Maintenance Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Back to requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
   }
 
   const [propertiesResult, unitsResult, assetsResult] = await Promise.all([
@@ -40,14 +40,14 @@ export default async function NewMemberPropertyRequestPage({ searchParams }: { s
   const assets = (assetsResult.data ?? []).filter((a) => properties.some((p) => p.id === a.property_id));
 
   if (!properties.length) {
-    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">New Maintenance Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Back to requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No member-scoped properties are available for request submission.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No member-scoped properties are available for request submission.</p></section>;
   }
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">New Maintenance Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Back to requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
-      <p className="mt-2 text-sm text-neutral-300">Property Access portal — public invite access is not wired yet.</p>
-      <p className="mt-1 text-sm text-neutral-400">Share request details below. You can include access notes to help the service team.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
+      <p className="mt-2 text-sm text-neutral-300">Submit a maintenance request for a property or unit you have access to.</p>
+      <p className="mt-1 text-sm text-neutral-400">Add issue details, scheduling notes, and access instructions to help resolve your request quickly.</p>
       {error ? <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div> : null}
 
       <form action={createMemberPropertyMaintenanceRequest} className="mt-6 grid gap-3 md:grid-cols-2">
@@ -82,9 +82,9 @@ export default async function NewMemberPropertyRequestPage({ searchParams }: { s
         <textarea name="access_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
         <label className="text-sm text-neutral-300 md:col-span-2">Preferred window (optional)</label>
         <input name="preferred_window" placeholder="Example: Weekdays 9am–12pm" className="rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300 md:col-span-2">Photo notes (placeholder only)</label>
+        <label className="text-sm text-neutral-300 md:col-span-2">Photo notes (optional)</label>
         <textarea name="photo_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <button type="submit" className="mt-2 rounded-lg md:col-span-2 border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Submit maintenance request</button>
+        <button type="submit" className="mt-2 rounded-lg md:col-span-2 border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Submit request</button>
       </form>
     </section>
   );
