@@ -30,7 +30,24 @@ let sendgridConfigured = false;
 
 function getAppBaseUrl() {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
+  if (configured) {
+    const normalized = configured.replace(/\/$/, "");
+    if (process.env.NODE_ENV === "production") {
+      let parsed: URL;
+      try {
+        parsed = new URL(normalized);
+      } catch {
+        throw new Error("NEXT_PUBLIC_APP_URL must be a valid absolute URL in production.");
+      }
+      if (parsed.protocol !== "https:") {
+        throw new Error("NEXT_PUBLIC_APP_URL must use https in production.");
+      }
+      if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+        throw new Error("NEXT_PUBLIC_APP_URL cannot point to localhost in production.");
+      }
+    }
+    return normalized;
+  }
 
   const vercelUrl = process.env.VERCEL_URL?.trim();
   if (vercelUrl) return `https://${vercelUrl}`.replace(/\/$/, "");
