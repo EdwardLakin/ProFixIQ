@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type InboxSeverity = "blocking" | "warning" | "info";
+
 type InboxItem = {
   id: string;
   type: string;
-  severity: "blocking" | "warning" | "info";
+  severity: InboxSeverity;
   title: string;
   description: string;
   personName?: string;
@@ -17,7 +19,7 @@ type OverviewPayload = {
   summary: Record<string, number>;
   inbox: InboxItem[];
   sections: Record<string, InboxItem[]>;
-  generatedAt: string;
+  generatedAt: string | null;
 };
 
 const headerActions = [
@@ -26,7 +28,7 @@ const headerActions = [
   { href: "/dashboard/workforce/people", title: "People" },
 ];
 
-const severityStyles: Record<InboxItem["severity"], { chip: string; border: string; dot: string; label: string }> = {
+const severityStyles: Record<InboxSeverity, { chip: string; border: string; dot: string; label: string }> = {
   blocking: {
     chip: "bg-red-500/15 text-red-200 border-red-400/40",
     border: "border-red-500/30 hover:border-red-400/60",
@@ -49,6 +51,51 @@ const severityStyles: Record<InboxItem["severity"], { chip: string; border: stri
 
 const sectionOrder = ["operations", "time", "payroll", "compliance", "certification"];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeSeverity(value: unknown): InboxSeverity {
+  return value === "blocking" || value === "warning" || value === "info" ? value : "info";
+}
+
+function safeHref(value: unknown): string {
+  return typeof value === "string" && value.trim().length > 0 ? value : "/dashboard/workforce/overview";
+}
+
+function buildInboxItem(item: Record<string, unknown>, fallbackId: string): InboxItem | null {
+  const title = typeof item.title === "string" ? item.title.trim() : "";
+  const description = typeof item.description === "string" ? item.description.trim() : "";
+  if (!title || !description) return null;
+
+  const normalized: InboxItem = {
+    id: typeof item.id === "string" && item.id.trim() ? item.id : fallbackId,
+    type: typeof item.type === "string" ? item.type : "info",
+    severity: normalizeSeverity(item.severity),
+    title,
+    description,
+    href: safeHref(item.href),
+  };
+
+  if (typeof item.personName === "string" && item.personName.trim()) {
+    normalized.personName = item.personName;
+  }
+  if (typeof item.count === "number" && Number.isFinite(item.count)) {
+    normalized.count = item.count;
+  }
+
+  return normalized;
+}
+
+
 function formatSectionLabel(key: string) {
   const normalized = key.replace(/[_-]/g, " ").trim();
   return normalized
@@ -57,8 +104,11 @@ function formatSectionLabel(key: string) {
     .join(" ");
 }
 
-function formatGeneratedAt(value: string) {
-  return new Date(value).toLocaleString(undefined, {
+function formatGeneratedAt(value: string | null) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -74,15 +124,43 @@ export default function WorkforceOverviewClient() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/workforce/overview", { cache: "no-store" });
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/workforce/overview", { cache: "no-store" });
+      if (!res.ok) {
+        setError("Unable to load workforce overview.");
+        setData(null);
+        return;
+      }
+
+      const json = (await res.json()) as unknown;
+      const summary = isRecord(json) && isRecord(json.summary) ? json.summary : {};
+      const inbox = isRecord(json) ? asArray<Record<string, unknown>>(json.inbox) : [];
+      const sections = isRecord(json) && isRecord(json.sections) ? json.sections : {};
+      const generatedAt = isRecord(json) && typeof json.generatedAt === "string" ? json.generatedAt : null;
+
+      const normalizedData: OverviewPayload = {
+        summary: Object.fromEntries(Object.entries(summary).map(([key, value]) => [key, num(value)])),
+        inbox: inbox
+          .map((item, index) => buildInboxItem(item, `inbox-${index}`))
+          .filter((item): item is InboxItem => item !== null),
+        sections: Object.fromEntries(
+          Object.entries(sections).map(([key, value]) => [
+            key,
+            asArray<Record<string, unknown>>(value)
+              .map((item, index) => buildInboxItem(item, `${key}-${index}`))
+              .filter((item): item is InboxItem => item !== null),
+          ]),
+        ),
+        generatedAt,
+      };
+
+      setData(normalizedData);
+    } catch {
       setError("Unable to load workforce overview.");
+      setData(null);
+    } finally {
       setLoading(false);
-      return;
     }
-    const json = (await res.json()) as OverviewPayload;
-    setData(json);
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -198,7 +276,7 @@ export default function WorkforceOverviewClient() {
       </header>
 
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
-        <div className="grid min-w-[860px] gap-3 lg:min-w-0 lg:grid-cols-3">
+        <div className="grid min-w-[680px] gap-3 md:grid-cols-2 lg:min-w-0 lg:grid-cols-3">
           {kpiGroups.map((group) => (
             <article key={group.title} className="rounded-2xl border border-white/10 bg-black/30 p-4">
               <h2 className={`text-sm font-semibold ${group.accent}`}>{group.title}</h2>
@@ -206,7 +284,7 @@ export default function WorkforceOverviewClient() {
                 {group.items.map((item) => (
                   <div key={item.label} className={`rounded-lg border bg-black/25 p-3 ${item.tone}`}>
                     <p className="text-xs text-neutral-400">{item.label}</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">{item.value}</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">{num(item.value)}</p>
                   </div>
                 ))}
               </div>
@@ -242,7 +320,7 @@ export default function WorkforceOverviewClient() {
                       const styles = severityStyles[item.severity];
                       return (
                         <Link
-                          href={item.href}
+                          href={safeHref(item.href)}
                           key={item.id}
                           className={`block rounded-xl border bg-black/30 p-3 transition ${styles.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70`}
                         >
@@ -278,7 +356,7 @@ export default function WorkforceOverviewClient() {
               <ul className="mt-3 space-y-2">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <Link href={item.href} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
+                    <Link href={safeHref(item.href)} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
                       <span>
                         <span className="font-medium text-white">{item.title}</span>
                         <span className="mt-0.5 block text-xs text-neutral-400">{item.description}</span>
