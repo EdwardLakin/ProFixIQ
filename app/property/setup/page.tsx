@@ -185,21 +185,21 @@ export default async function PropertySetupPage({
           ← Back to property dashboard
         </Link>
 
-        <section className="rounded-2xl border border-[color:var(--metal-border-soft)]/70 bg-black/20 p-5 md:p-6">
+        <section className="rounded-xl border border-[color:var(--metal-border-soft)]/55 bg-black/15 p-4 md:p-5">
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">
-            Internal setup workspace
+            Admin records workspace
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-100 md:text-4xl">
             Property Setup
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-300">
-            Configure portfolios, properties, units, assets, and vendors for property maintenance.
+            Configure the records that power requests, inspections, members, invites, and vendor workflows.
           </p>
           <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            Admin setup workspace. Create the property records that power requests, inspections, members, invites, and vendor workflows.
+            Admin records only. Member access is managed through Members and Invites.
           </p>
           <p className="mt-3 text-sm text-neutral-400">
-            Tenant/member access is managed through Property Members and Invites.
+            Member access is managed through Members and Invites.
           </p>
           <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
             <Link href="/property" className="hover:text-white">Property Dashboard</Link>
@@ -229,9 +229,9 @@ export default async function PropertySetupPage({
               Read-only
             </span>
           </div>
-          <div className="mt-4 divide-y divide-[color:var(--metal-border-soft)]/70">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {overviewItems.map((section) => (
-              <article key={section.title} className="py-3 first:pt-0 last:pb-0">
+              <article key={section.title} className="rounded-lg border border-[color:var(--metal-border-soft)]/40 bg-black/20 p-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-neutral-100">
                     {section.title}
@@ -269,11 +269,11 @@ export default async function PropertySetupPage({
         {hasShop ? (
           <>
             <section className="grid gap-4 md:grid-cols-2">
-            <article className="metal-card rounded-3xl p-5">
+            <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
               <h2 className="text-base font-semibold text-neutral-100">
                 Create portfolio
               </h2>
-              <form action={createPropertyPortfolio} className="mt-4 space-y-3">
+              <form action={createPropertyPortfolio} className="mt-3 space-y-2.5">
                 <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
                   Name
                   <input
@@ -299,11 +299,11 @@ export default async function PropertySetupPage({
               </form>
             </article>
 
-            <article className="metal-card rounded-3xl p-5">
+            <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
               <h2 className="text-base font-semibold text-neutral-100">
                 Create property
               </h2>
-              <form action={createPropertyProperty} className="mt-4 space-y-3">
+              <form action={createPropertyProperty} className="mt-3 space-y-2.5">
                 <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
                   Portfolio (optional)
                   <select
@@ -354,12 +354,12 @@ export default async function PropertySetupPage({
             </section>
 
             <section className="grid gap-4 md:grid-cols-2">
-            <article className="metal-card rounded-3xl p-5">
+            <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
               <h2 className="text-base font-semibold text-neutral-100">
                 Create unit
               </h2>
               {propertiesResult?.data?.length ? (
-                <form action={createPropertyUnit} className="mt-4 space-y-3">
+                <form action={createPropertyUnit} className="mt-3 space-y-2.5">
                   <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     {(propertiesResult?.data ?? []).map((property) => (
                       <option key={property.id} value={property.id}>
@@ -382,12 +382,12 @@ export default async function PropertySetupPage({
                 <p className="mt-3 text-sm text-neutral-400">Create a property first.</p>
               )}
             </article>
-            <article className="metal-card rounded-3xl p-5">
+            <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
               <h2 className="text-base font-semibold text-neutral-100">
                 Create asset
               </h2>
               {propertiesResult?.data?.length ? (
-                <form action={createPropertyAsset} className="mt-4 space-y-3">
+                <form action={createPropertyAsset} className="mt-3 space-y-2.5">
                   <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     {(propertiesResult?.data ?? []).map((property) => (
                       <option key={property.id} value={property.id}>
@@ -429,14 +429,14 @@ export default async function PropertySetupPage({
             </section>
 
             <section className="grid gap-4 md:grid-cols-2">
-              <article className="metal-card rounded-3xl p-5">
+              <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
                 <h2 className="text-base font-semibold text-neutral-100">
                   Create vendor
                 </h2>
                 <p className="mt-2 text-xs text-neutral-400">
-                  Tenant/member access is managed through Property Members and Invites.
+                  Member access is managed through Members and Invites.
                 </p>
-                <form action={createPropertyVendor} className="mt-4 space-y-3">
+                <form action={createPropertyVendor} className="mt-3 space-y-2.5">
                   <input name="name" required placeholder="Vendor name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                   <input name="trade" placeholder="Trade (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                   <input name="contact_name" placeholder="Contact name (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
@@ -460,7 +460,7 @@ export default async function PropertySetupPage({
         ) : null}
 
         {!hasShop ? (
-          <section className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 text-sm text-amber-100">
+          <section className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3.5 text-xs text-amber-100">
             <div className="font-semibold">No shop is assigned.</div>
             <p className="mt-2 text-amber-100/80">
               Your authenticated profile does not have a shop_id, so property
@@ -469,13 +469,12 @@ export default async function PropertySetupPage({
             </p>
           </section>
         ) : (
-          <section className="metal-card rounded-3xl p-5">
+          <section className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
             <h2 className="text-lg font-semibold text-neutral-100">
               Demo tools
             </h2>
             <p className="mt-2 text-sm text-neutral-300">
-              Seed a compact internal dataset when you need baseline records for
-              local validation or demos.
+              Seed baseline records for local validation.
             </p>
             <h3 className="mt-4 text-base font-semibold text-neutral-100">
               Dataset to create
@@ -513,7 +512,7 @@ function SetupStatusCard({
 }) {
   if (status === "created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Demo data created.</div>
         <p className="mt-2 text-emerald-100/80">
           The live property maintenance dataset is now available through the
@@ -521,7 +520,7 @@ function SetupStatusCard({
         </p>
         <Link
           href="/property"
-          className="mt-4 inline-flex rounded-full border border-emerald-200/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-50 hover:bg-emerald-100/10"
+          className="mt-3 inline-flex rounded-full border border-emerald-200/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-50 hover:bg-emerald-100/10"
         >
           View property dashboard
         </Link>
@@ -531,7 +530,7 @@ function SetupStatusCard({
 
   if (status === "exists") {
     return (
-      <section className="rounded-3xl border border-sky-400/30 bg-sky-500/10 p-5 text-sm text-sky-100">
+      <section className="rounded-xl border border-sky-400/30 bg-sky-500/10 p-3.5 text-xs text-sky-100">
         <div className="font-semibold">Demo data already exists.</div>
         <p className="mt-2 text-sky-100/80">
           A portfolio named {DEMO_PORTFOLIO_NAME} already exists for this shop,
@@ -539,7 +538,7 @@ function SetupStatusCard({
         </p>
         <Link
           href="/property"
-          className="mt-4 inline-flex rounded-full border border-sky-200/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-50 hover:bg-sky-100/10"
+          className="mt-3 inline-flex rounded-full border border-sky-200/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-50 hover:bg-sky-100/10"
         >
           View property dashboard
         </Link>
@@ -549,7 +548,7 @@ function SetupStatusCard({
 
   if (status === "missing-shop") {
     return (
-      <section className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 text-sm text-amber-100">
+      <section className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3.5 text-xs text-amber-100">
         <div className="font-semibold">No shop is assigned.</div>
         <p className="mt-2 text-amber-100/80">
           Your authenticated profile does not have a shop_id, so setup did not
@@ -561,7 +560,7 @@ function SetupStatusCard({
 
   if (status === "portfolio-created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Portfolio created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new portfolio is now available in setup overview and property creation.
@@ -572,7 +571,7 @@ function SetupStatusCard({
 
   if (status === "property-created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Property created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new property is now available in setup overview for this shop.
@@ -583,7 +582,7 @@ function SetupStatusCard({
 
   if (status === "unit-created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Unit created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new unit is now available for property setup and asset linking.
@@ -594,7 +593,7 @@ function SetupStatusCard({
 
   if (status === "asset-created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Asset created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new asset is now available in setup overview for this shop.
@@ -605,7 +604,7 @@ function SetupStatusCard({
 
   if (status === "vendor-created") {
     return (
-      <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100">
         <div className="font-semibold">Vendor created.</div>
         <p className="mt-2 text-emerald-100/80">
           The new vendor record is now available in setup overview for this shop.
@@ -616,7 +615,7 @@ function SetupStatusCard({
 
   if (status === "validation-error") {
     return (
-      <section className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 text-sm text-amber-100">
+      <section className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3.5 text-xs text-amber-100">
         <div className="font-semibold">Validation error.</div>
         <p className="mt-2 text-amber-100/80">
           {message ?? "Please review form values and try again."}
@@ -627,7 +626,7 @@ function SetupStatusCard({
 
   if (status === "error") {
     return (
-      <section className="rounded-3xl border border-red-400/30 bg-red-500/10 p-5 text-sm text-red-100">
+      <section className="rounded-xl border border-red-400/30 bg-red-500/10 p-3.5 text-xs text-red-100">
         <div className="font-semibold">Setup failed.</div>
         <p className="mt-2 text-red-100/80">
           {message ?? "Property demo data could not be created."}
