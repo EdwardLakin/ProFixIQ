@@ -11,9 +11,12 @@ type DB = { public: { Functions: {
   accept_property_portal_invite: {
     Args: { p_raw_token: string };
     Returns: {
-      ok: boolean;
-      code: string;
-      message: string;
+      success?: boolean;
+      ok?: boolean;
+      code?: string;
+      message?: string;
+      invite_id?: string;
+      member_id?: string;
     };
   };
 } } };
@@ -42,6 +45,15 @@ function mapRpcCodeToStatus(code: string | null | undefined): "invite-invalid" |
   }
 }
 
+function mapRpcMessageToStatus(message: string | null | undefined): "invite-invalid" | "invite-expired" | "invite-email-mismatch" | "invite-error" {
+  const lower = (message ?? "").toLowerCase();
+  if (lower.includes("expired") || lower.includes("already handled")) return "invite-expired";
+  if (lower.includes("does not match")) return "invite-email-mismatch";
+  if (lower.includes("authentication required")) return "invite-error";
+  if (lower) return "invite-invalid";
+  return "invite-error";
+}
+
 export async function getPropertyPortalInvitePreview(token: string) {
   const clean = token.trim();
   if (!clean) return { error: "Missing invite token." as const };
@@ -68,12 +80,20 @@ export async function acceptPropertyPortalInvite(formData: FormData) {
   const rpcRes = await supabase.rpc("accept_property_portal_invite", { p_raw_token: token });
 
   if (rpcRes.error) {
+    console.warn("accept_property_portal_invite rpc error", {
+      message: rpcRes.error.message,
+      userId: user.id,
+      tokenPresent: true,
+    });
     redirect(acceptUrl(token, "invite-error"));
   }
 
   const result = rpcRes.data;
-  if (!result?.ok) {
-    redirect(acceptUrl(token, mapRpcCodeToStatus(result?.code)));
+  const isSuccess = result?.success === true || result?.ok === true;
+  if (!isSuccess) {
+    const statusFromCode = result?.code ? mapRpcCodeToStatus(result.code) : null;
+    const status = statusFromCode ?? mapRpcMessageToStatus(result?.message);
+    redirect(acceptUrl(token, status));
   }
 
   revalidatePath("/portal/property/member");
