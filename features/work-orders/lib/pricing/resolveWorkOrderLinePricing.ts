@@ -45,6 +45,10 @@ export function resolveWorkOrderLinePricing(args: {
   partsTotal: number;
   lineTotal: number;
 } {
+  // NOTE:
+  // - Creation/insert paths may normalize missing labor_time to 1 hour before persisting.
+  // - Read/display/invoice paths should generally keep this runtime fallback disabled so
+  //   historical rows with null labor_time remain unchanged unless a caller explicitly opts in.
   const {
     line,
     quote,
