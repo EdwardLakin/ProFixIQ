@@ -414,3 +414,14 @@ Any future schema expansion should be documented and applied manually.
 - No schema or migration changes were introduced.
 - No service role usage was introduced.
 - No quote flow or vehicle inspection builder behavior was changed.
+
+## Step 25A: Property inspection print/export pages
+
+- Added authenticated print/export routes for property inspections:
+  - Internal: `/property/inspections/[id]/print`
+  - Member portal: `/portal/property/member/inspections/[id]/print`
+- Print pages render a clean white report layout with inspection metadata, status counts, section-grouped findings, optional signed photo thumbnails, and recorded signatures.
+- Export is browser-native only via `window.print()` (print-to-PDF); no generated PDF service/library is introduced in this step.
+- Access remains authenticated/RLS-scoped only (no public unauthenticated access).
+- No quote flow changes were added.
+- No schema or migration changes were introduced in this step.
