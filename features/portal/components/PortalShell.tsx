@@ -291,6 +291,7 @@ export default function PortalShell({
                   </div>
                 </div>
                 <button
+                  type="button"
                   className="desktop-btn-secondary rounded-full border px-3 py-1 text-xs text-neutral-100"
                   onClick={() => setMobileOpen(false)}
                 >
@@ -329,7 +330,7 @@ export default function PortalShell({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="min-h-full">{children}</div>
+          <div className="desktop-panel-soft min-h-full rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-md md:p-4">{children}</div>
         </div>
       </div>
     </div>
