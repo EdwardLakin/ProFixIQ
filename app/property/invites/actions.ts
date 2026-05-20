@@ -23,16 +23,7 @@ const roles = ["property_manager", "owner_approver", "tenant_requester", "viewer
 const roleSet = new Set<string>(roles);
 const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 
-export type InviteCreateActionState = {
-  status: "idle" | "validation-error" | "invite-created";
-  message?: string;
-  warning?: string;
-  inviteLink?: string;
-  invitedEmail?: string;
-  expiresAt?: string;
-};
-
-export const initialInviteCreateActionState: InviteCreateActionState = { status: "idle" };
+import type { InviteCreateActionState } from "./inviteCreateState";
 
 let sendgridConfigured = false;
 
