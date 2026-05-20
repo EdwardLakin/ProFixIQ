@@ -7,6 +7,22 @@ type Severity = "blocking" | "warning" | "info";
 type WorkforceInboxItem = { id: string; type: string; severity: Severity; title: string; description: string; count?: number; personId?: string; personName?: string; href: string; createdAt?: string };
 const ACTIVE_LINE_EXCLUDED = ["completed", "cancelled", "closed", "invoiced", "declined"];
 const OVERLOAD_THRESHOLD = 6;
+const OVERLOADED_INBOX_CAP = 10;
+const INBOX_MAX_ITEMS = 25;
+const TYPE_PRIORITY: Record<string, number> = {
+  payroll_blocking: 0,
+  assigned_to_unavailable: 1,
+  cert_expired: 2,
+  pending_time_off: 3,
+  payroll_warning: 4,
+  cert_expiring: 5,
+  schedule_gaps: 6,
+  unassigned_jobs: 7,
+  overloaded_tech: 8,
+  away_today: 9,
+  away_tomorrow: 10,
+  info: 11,
+};
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin", "manager"] });
@@ -73,9 +89,16 @@ export async function GET() {
   for (const line of activeLines) {
     const assigned = new Set<string>([...(line.assigned_tech_id ? [line.assigned_tech_id] : []), ...(lineTechMap.get(line.id) ?? [])]);
     if (assigned.size === 0) unassignedJobs += 1;
-    for (const tech of assigned) { loadByTech.set(tech, (loadByTech.get(tech) ?? 0) + 1); if (awayTodayUsers.has(tech)) assignedToUnavailable += 1; }
+    let lineHasUnavailableAssignee = false;
+    for (const tech of assigned) {
+      loadByTech.set(tech, (loadByTech.get(tech) ?? 0) + 1);
+      if (awayTodayUsers.has(tech)) lineHasUnavailableAssignee = true;
+    }
+    if (lineHasUnavailableAssignee) assignedToUnavailable += 1;
   }
-  const overloaded = [...loadByTech.entries()].filter(([, count]) => count >= OVERLOAD_THRESHOLD);
+  const overloaded = [...loadByTech.entries()]
+    .filter(([, count]) => count >= OVERLOAD_THRESHOLD)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const pendingTimeOff = (timeOffRes.data ?? []).length;
   const scheduleGaps = [...activeStaff].filter((id) => !templateUsers.has(id)).length;
 
@@ -89,14 +112,20 @@ export async function GET() {
   if (scheduleGaps > 0) add("scheduling", { id: "schedule-gaps", type: "schedule_gaps", severity: "warning", title: "Missing recurring schedule templates", description: `${scheduleGaps} active staff member${scheduleGaps > 1 ? "s" : ""} without a template.`, count: scheduleGaps, href: "/dashboard/workforce/scheduling" });
   if (unassignedJobs > 0) add("operations", { id: "unassigned-jobs", type: "unassigned_jobs", severity: "warning", title: "Unassigned active jobs", description: `${unassignedJobs} active job line${unassignedJobs > 1 ? "s" : ""} without technician assignment.`, count: unassignedJobs, href: "/dashboard/work-orders" });
   if (assignedToUnavailable > 0) add("operations", { id: "jobs-unavailable-tech", type: "assigned_to_unavailable", severity: "blocking", title: "Jobs assigned to unavailable techs", description: `${assignedToUnavailable} active assignment${assignedToUnavailable > 1 ? "s" : ""} conflict with time away today.`, count: assignedToUnavailable, href: "/dashboard/workforce/scheduling" });
-  for (const [personId, count] of overloaded) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: "/dashboard/workforce/people" });
+  for (const [personId, count] of overloaded.slice(0, OVERLOADED_INBOX_CAP)) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: `/dashboard/workforce/people/${personId}` });
 
   const severityOrder: Record<Severity, number> = { blocking: 0, warning: 1, info: 2 };
-  const inbox = Object.values(sections).flat().sort((a, b) =>
-    severityOrder[a.severity] - severityOrder[b.severity]
-    || ((a.createdAt && b.createdAt) ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : 0)
-    || a.id.localeCompare(b.id),
-  );
+  const typePriority = (type: string) => TYPE_PRIORITY[type] ?? Number.MAX_SAFE_INTEGER;
+  const inbox = Object.values(sections)
+    .flat()
+    .sort((a, b) =>
+      severityOrder[a.severity] - severityOrder[b.severity]
+      || typePriority(a.type) - typePriority(b.type)
+      || ((a.createdAt && b.createdAt) ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : 0)
+      || a.type.localeCompare(b.type)
+      || a.id.localeCompare(b.id),
+    )
+    .slice(0, INBOX_MAX_ITEMS);
 
   return NextResponse.json({ summary: { workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0), awayToday: awayTodayUsers.size, awayTomorrow: awayTomorrowUsers.size, pendingTimeOff, payrollBlocking, payrollWarnings, expiringCertifications, expiredCertifications, scheduleGaps, unassignedJobs, assignedToUnavailable, overloadedTechs: overloaded.length }, inbox, sections, generatedAt: new Date().toISOString() });
 }
