@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { createPropertyPortalInvite, initialInviteCreateActionState } from "./actions";
+import { createPropertyPortalInvite } from "./actions";
+import { initialInviteCreateActionState } from "./inviteCreateState";
 
 type Option = { id: string; label: string };
 
