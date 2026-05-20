@@ -264,6 +264,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     {},
   );
   const [propertyContext, setPropertyContext] = useState<PropertyContext | null>(null);
+  const isPropertySourcedWorkOrder = propertyContext !== null;
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;
@@ -1481,14 +1482,36 @@ export default function WorkOrderIdClient(): JSX.Element {
             <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
 
             {propertyContext ? (
-              <section className={cn(PANEL_VARIANTS.secondary, "p-2") }>
+              <section
+                className={cn(
+                  PANEL_VARIANTS.secondary,
+                  "border-[rgba(184,115,51,0.55)] bg-[rgba(184,115,51,0.08)] p-3",
+                )}
+              >
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Property Maintenance Context
+                  Property Maintenance Work Order
                 </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 text-xs">
-                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Request</div><div className="mt-1 text-sm text-foreground">{propertyContext.requestTitle ?? "—"}</div><div className="mt-1 text-muted-foreground">{propertyContext.requestStatus ?? "—"} • {propertyContext.severity ?? "—"}</div></div>
-                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Category</div><div className="mt-1 text-foreground">{propertyContext.category ?? "—"}</div><div className="mt-1 text-muted-foreground">Property: {propertyContext.propertyName ?? "—"}</div>{propertyContext.unitLabel ? <div className="text-muted-foreground">Unit: {propertyContext.unitLabel}</div> : null}</div>
-                  <div className={cardInner}><div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Asset / Vendor</div><div className="mt-1 text-foreground">{propertyContext.assetName ?? "—"}{propertyContext.assetType ? ` (${propertyContext.assetType})` : ""}</div><div className="mt-1 text-muted-foreground">Vendor: {propertyContext.latestVendorAssignment ?? "—"}</div></div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
+                  <div className={cardInner}>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Property</div>
+                    <div className="mt-1 text-sm text-foreground">{propertyContext.propertyName ?? "—"}</div>
+                    <div className="mt-1 text-muted-foreground">Unit: {propertyContext.unitLabel ?? "—"}</div>
+                  </div>
+                  <div className={cardInner}>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Asset</div>
+                    <div className="mt-1 text-sm text-foreground">{propertyContext.assetName ?? "—"}</div>
+                    <div className="mt-1 text-muted-foreground">{propertyContext.assetType ?? "Unspecified asset type"}</div>
+                  </div>
+                  <div className={cardInner}>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Request</div>
+                    <div className="mt-1 text-sm text-foreground">{propertyContext.requestTitle ?? "—"}</div>
+                    <div className="mt-1 text-muted-foreground">Category: {propertyContext.category ?? "—"}</div>
+                  </div>
+                  <div className={cardInner}>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Status / Severity</div>
+                    <div className="mt-1 text-foreground">{propertyContext.requestStatus ?? "—"} • {propertyContext.severity ?? "—"}</div>
+                    <div className="mt-1 text-muted-foreground">Vendor: {propertyContext.latestVendorAssignment ?? "—"}</div>
+                  </div>
                 </div>
                 {(propertyContext.preferredWindow || propertyContext.accessNotes) ? (
                   <div className="mt-2 rounded-md border border-[color:var(--metal-border-soft,#374151)] bg-black/20 p-2 text-xs text-muted-foreground">
@@ -1544,7 +1567,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Vehicle &amp; Customer
+                    {isPropertySourcedWorkOrder ? "Linked entities" : "Vehicle & Customer"}
                   </h2>
                   <button
                     type="button"
@@ -1558,82 +1581,94 @@ export default function WorkOrderIdClient(): JSX.Element {
 
                 {showDetails ? (
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                {/* Vehicle */}
-                <div className={cardInner}>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Vehicle
-                  </h3>
-                  {vehicle ? (
-                    <>
-                      <p className="text-sm font-medium text-foreground">
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
-                        {vehicle.model ?? ""}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
-                        <br />
-                        Plate:{" "}
-                        {vehicle.license_plate ?? (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                        <br />
-                        Mileage:{" "}
-                        {vehicle.mileage
-                          ? vehicle.mileage
-                          : wo?.odometer_km != null
-                            ? `${wo.odometer_km} km`
-                            : "—"}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
-                  )}
-                </div>
+                    {isPropertySourcedWorkOrder ? (
+                      <div className={cn(cardInner, "sm:col-span-2 xl:col-span-1")}>
+                        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Property-linked work order
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Vehicle and customer details are hidden for property-sourced work orders.
+                          Use the property context panel above for location, request, and assignment.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Vehicle */}
+                        <div className={cardInner}>
+                          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Vehicle
+                          </h3>
+                          {vehicle ? (
+                            <>
+                              <p className="text-sm font-medium text-foreground">
+                                {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+                                {vehicle.model ?? ""}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
+                                <br />
+                                Plate:{" "}
+                                {vehicle.license_plate ?? (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                                <br />
+                                Mileage:{" "}
+                                {vehicle.mileage
+                                  ? vehicle.mileage
+                                  : wo?.odometer_km != null
+                                    ? `${wo.odometer_km} km`
+                                    : "—"}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
+                          )}
+                        </div>
 
-                {/* Customer */}
-                <div className={cardInner}>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Customer
-                  </h3>
-                  {customer ? (
-                    <>
-                      <p className="text-sm font-medium text-foreground">
-                        {[customer.first_name ?? "", customer.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ") || "—"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {customer.phone ?? "—"}{" "}
-                        {customer.email ? (
-                          <>
-                            <span className="mx-1 text-muted-foreground">•</span>
-                            {customer.email}
-                          </>
-                        ) : null}
-                      </p>
-                      {customer.id && (
-                        <Link
-                          href={`/customers/${customer.id}`}
-                          className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                          title="Open customer profile"
-                        >
-                          View customer profile →
-                        </Link>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No customer linked yet.</p>
-                  )}
-                </div>
+                        {/* Customer */}
+                        <div className={cardInner}>
+                          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Customer
+                          </h3>
+                          {customer ? (
+                            <>
+                              <p className="text-sm font-medium text-foreground">
+                                {[customer.first_name ?? "", customer.last_name ?? ""]
+                                  .filter(Boolean)
+                                  .join(" ") || "—"}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {customer.phone ?? "—"}{" "}
+                                {customer.email ? (
+                                  <>
+                                    <span className="mx-1 text-muted-foreground">•</span>
+                                    {customer.email}
+                                  </>
+                                ) : null}
+                              </p>
+                              {customer.id && (
+                                <Link
+                                  href={`/customers/${customer.id}`}
+                                  className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                                  title="Open customer profile"
+                                >
+                                  View customer profile →
+                                </Link>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No customer linked yet.</p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className={cn(cardInner, "mt-2 flex items-center justify-between gap-2 p-2")}>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}
-                      {" • "}
-                      {customer
-                        ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer linked"
-                        : "No customer linked"}
+                      {isPropertySourcedWorkOrder
+                        ? "Property-linked work order context is shown above."
+                        : `${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"} • ${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer linked" : "No customer linked"}`}
                     </p>
                   </div>
                 )}
