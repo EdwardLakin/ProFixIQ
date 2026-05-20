@@ -6,6 +6,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
+import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 type DB = Database;
 
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
     // ✅ Always derive shop_id from the work order (keeps data consistent)
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, vehicle_id")
+      .select("id, shop_id, vehicle_id, shops(labor_rate)")
       .eq("id", workOrderId)
       .maybeSingle<Pick<WoRow, "id" | "shop_id" | "vehicle_id">>();
 
@@ -212,8 +213,11 @@ export async function POST(req: Request) {
     if (suggestion.summary?.trim()) notesParts.push(`AI: ${suggestion.summary.trim()}`);
     const notes = notesParts.length ? notesParts.join(" • ") : null;
 
-    const laborTime: number | null = finiteNumberOrNull(suggestion?.laborHours);
-    const laborRate: number | null = finiteNumberOrNull(suggestion?.laborRate);
+    const laborTime = normalizeLaborHoursInput(suggestion?.laborHours, true);
+    const shopLaborRate = finiteNumberOrNull(
+      (wo as unknown as { shops?: { labor_rate?: unknown } | null }).shops?.labor_rate,
+    );
+    const laborRate: number | null = finiteNumberOrNull(suggestion?.laborRate) ?? shopLaborRate;
     const parts = normalizeParts(suggestion?.parts);
 
     const priceEstimate = computePriceEstimate({

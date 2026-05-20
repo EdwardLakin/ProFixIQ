@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
+import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 type DB = Database;
 
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
       cause: repairItem.cause || null,
       correction: repairItem.correction || null,
       notes: pricingNotes || null,
-      labor_time: laborOverride ?? repairItem.labor_hours ?? null,
+      labor_time: normalizeLaborHoursInput(laborOverride ?? repairItem.labor_hours, true),
       price_estimate: activePrice ?? repairItem.price_estimate ?? null,
       job_type: "repair",
       approval_state: "pending",

@@ -32,6 +32,7 @@ import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
 import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
+import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -903,52 +904,23 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [quoteLines]);
 
   const pricingByLine = useMemo(() => {
-    const toNum = (value: unknown): number | null => {
-      if (typeof value === "number" && Number.isFinite(value)) return value;
-      if (typeof value === "string") {
-        const n = Number(value);
-        if (Number.isFinite(n)) return n;
-      }
-      return null;
-    };
-
     const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number }> = {};
     for (const line of lines) {
       const quoteCandidates = activeQuotesByLine[line.id] ?? [];
       const quote = quoteCandidates[quoteCandidates.length - 1];
-
-      const lineHours = toNum(line.labor_time) ?? 0;
-      const quotedHours = toNum(quote?.est_labor_hours) ?? toNum(quote?.labor_hours);
-      const effectiveHours = quotedHours ?? lineHours;
-
-      const quotedLaborTotal = toNum(quote?.labor_total);
-      const laborTotal = quotedLaborTotal ?? effectiveHours * (shopLaborRate ?? 0);
-
-      const stagedPartsTotal = (stagedPartsByLine[line.id] ?? []).reduce((sum, part) => {
-        const total = toNum(part.total_price);
-        if (total != null) return sum + total;
-        return sum + (toNum(part.quantity) ?? 0) * (toNum(part.unit_price) ?? 0);
-      }, 0);
-
-      const allocPartsTotal = (allocsByLine[line.id] ?? []).reduce((sum, part) => {
-        const allocPart = part as AllocationRow & {
-          total_price?: number | null;
-          quantity?: number | null;
-          unit_price?: number | null;
-        };
-        const total = toNum(allocPart.total_price);
-        if (total != null) return sum + total;
-        return (
-          sum +
-          (toNum(allocPart.quantity) ?? 0) *
-            ((toNum(allocPart.unit_price) ?? toNum(part.unit_cost)) ?? 0)
-        );
-      }, 0);
-
-      const partsTotal = toNum(quote?.parts_total) ?? stagedPartsTotal + allocPartsTotal;
-      const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? laborTotal + partsTotal;
-
-      byLine[line.id] = { laborTotal, partsTotal, lineTotal };
+      const resolved = resolveWorkOrderLinePricing({
+        line,
+        quote,
+        shopLaborRate,
+        stagedParts: stagedPartsByLine[line.id] ?? [],
+        allocatedParts: allocsByLine[line.id] ?? [],
+        defaultLaborHoursWhenMissing: true,
+      });
+      byLine[line.id] = {
+        laborTotal: resolved.laborTotal,
+        partsTotal: resolved.partsTotal,
+        lineTotal: resolved.lineTotal,
+      };
     }
     return byLine;
   }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);

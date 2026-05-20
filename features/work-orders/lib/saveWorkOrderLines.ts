@@ -1,6 +1,7 @@
 // features/work-orders/lib/saveWorkOrderLines.ts
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,7 @@ export async function saveWorkOrderLines(
     cause: l.cause ?? null,
     correction: l.correction ?? null,
     tools: l.tools ?? null,
-    labor_time: l.labor_time ?? null,
+    labor_time: normalizeLaborHoursInput(l.labor_time, true),
     status: l.status ?? "awaiting",
     job_type: l.job_type ?? null,
   }));
