@@ -167,15 +167,25 @@ to authenticated
 using (
   exists (
     select 1
-    from public.property_member_units pmu
-    join public.property_inspections pi
-      on pi.id = property_inspection_signatures.inspection_id
-     and pi.shop_id = property_inspection_signatures.shop_id
-    where pmu.profile_id = auth.uid()
-      and pmu.shop_id = property_inspection_signatures.shop_id
+    from public.property_inspections pi
+    join public.property_members pm
+      on pm.shop_id = pi.shop_id
+    where pi.id = property_inspection_signatures.inspection_id
+      and pi.shop_id = property_inspection_signatures.shop_id
+      and pm.user_id = auth.uid()
+      and pm.shop_id = property_inspection_signatures.shop_id
       and (
-        pmu.unit_id = pi.unit_id
-        or pmu.property_id = pi.property_id
+        pm.unit_id = pi.unit_id
+        or pm.property_id = pi.property_id
+        or (
+          pm.portfolio_id is not null
+          and exists (
+            select 1
+            from public.property_properties pp
+            where pp.id = pi.property_id
+              and pp.portfolio_id = pm.portfolio_id
+          )
+        )
       )
   )
 );
@@ -190,15 +200,25 @@ with check (
   signer_profile_id = auth.uid()
   and exists (
     select 1
-    from public.property_member_units pmu
-    join public.property_inspections pi
-      on pi.id = property_inspection_signatures.inspection_id
-     and pi.shop_id = property_inspection_signatures.shop_id
-    where pmu.profile_id = auth.uid()
-      and pmu.shop_id = property_inspection_signatures.shop_id
+    from public.property_inspections pi
+    join public.property_members pm
+      on pm.shop_id = pi.shop_id
+    where pi.id = property_inspection_signatures.inspection_id
+      and pi.shop_id = property_inspection_signatures.shop_id
+      and pm.user_id = auth.uid()
+      and pm.shop_id = property_inspection_signatures.shop_id
       and (
-        pmu.unit_id = pi.unit_id
-        or pmu.property_id = pi.property_id
+        pm.unit_id = pi.unit_id
+        or pm.property_id = pi.property_id
+        or (
+          pm.portfolio_id is not null
+          and exists (
+            select 1
+            from public.property_properties pp
+            where pp.id = pi.property_id
+              and pp.portfolio_id = pm.portfolio_id
+          )
+        )
       )
   )
 );
