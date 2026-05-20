@@ -375,3 +375,22 @@ Any future schema expansion should be documented and applied manually.
 - Property invite links require `NEXT_PUBLIC_APP_URL` in production.
 - If `NEXT_PUBLIC_APP_URL` is not set, `VERCEL_URL` is used as a fallback when available.
 
+
+## Step 22: Property inspection worksheet revamp + private inspection photos + member portal inspections
+
+- Revamped internal inspection create UI at `/property/inspections/new` from nested card stacks to a flatter worksheet layout with a clear header, compact type tabs, context controls, and row-based section items.
+- Added real inspection image uploads (internal-only) during inspection creation using the existing private `property_request_attachments` bucket path contract:
+  - `<shop_id>/property-inspections/<inspection_id>/<finding_key>/<timestamp>-<filename>`
+- Inspection findings in `property_inspections.findings` now persist photo metadata arrays (`photos`) per finding JSON object; no schema changes were made.
+- Upload flow is resilient: inspection rows are created first, images are attempted after insert, successful uploads are stored, and failed uploads surface warnings without losing the inspection.
+- Revamped internal inspection detail at `/property/inspections/[id]` with flatter summary/findings layout and inline photo metadata + signed preview URLs (private signed URLs only, short expiry).
+- Moved failed-finding conversion server action out of `app/property/inspections/[id]/page.tsx` into `app/property/inspections/[id]/actions.ts` (behavior preserved: creates `property_maintenance_requests` only, no quote flow, no direct work-order conversion from findings).
+- Added authenticated property member portal inspection surfaces:
+  - `/portal/property/member/inspections`
+  - `/portal/property/member/inspections/[id]`
+- Member inspection pages are read-only, membership-scoped, and include signed private photo previews where possible.
+- Added navigation link from `/portal/property/member` to member inspections.
+- No vehicle custom inspection builder integration was added.
+- No quote flow was added.
+- No tenant/vendor auth expansion was added.
+- No schema or migration changes were introduced.
