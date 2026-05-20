@@ -31,7 +31,7 @@ const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 
 const portalLinks = [
   { href: "/portal/property/member/requests", label: "Maintenance Requests", description: "Track open and completed requests" },
-  { href: "/portal/property/member/requests/new", label: "New Request", description: "Report a maintenance issue" },
+  { href: "/portal/property/member/requests/new", label: "Submit Request", description: "Report a maintenance issue" },
   { href: "/portal/property/member/inspections", label: "Inspections", description: "View inspection updates and results" },
 ] as const;
 
@@ -52,7 +52,7 @@ export default async function PropertyMemberPortalPage() {
   if (!(memberships ?? []).length) {
     return (
       <section className="metal-card rounded-3xl p-5">
-        <h1 className="text-2xl text-neutral-100">Member Portal</h1>
+        <h1 className="text-2xl text-neutral-100">Property Portal</h1>
         <p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p>
       </section>
     );
@@ -81,8 +81,8 @@ export default async function PropertyMemberPortalPage() {
   return (
     <section className="metal-card rounded-3xl p-5">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Access</p>
-      <h1 className="mt-2 text-2xl text-neutral-100">Member Portal</h1>
-      <p className="mt-2 text-sm text-neutral-300">Use this portal to manage Maintenance Requests and review Inspections for your assigned properties.</p>
+      <h1 className="mt-2 text-2xl text-neutral-100">Property Portal</h1>
+      <p className="mt-2 text-sm text-neutral-300">View maintenance requests, inspections, photos, and property updates.</p>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         {portalLinks.map((link) => (
@@ -94,7 +94,7 @@ export default async function PropertyMemberPortalPage() {
       </div>
 
       <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">Your memberships</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">Property Access</h2>
         <div className="mt-3 space-y-3">
           {(memberships ?? []).map((member) => {
             const property = member.property_id ? propertyById.get(member.property_id) : null;
@@ -103,7 +103,7 @@ export default async function PropertyMemberPortalPage() {
 
             return (
               <article key={member.id} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-neutral-200">
-                <p className="font-medium text-neutral-100">Role: {member.role}</p>
+                <p className="font-medium text-neutral-100">Assigned role: {member.role}</p>
                 <p className="mt-1 text-neutral-300">Portfolio: {portfolio?.name ?? "All visible portfolios"}</p>
                 <p className="text-neutral-300">Property: {property?.name ?? "All visible properties"}</p>
                 <p className="text-neutral-300">Unit: {unit?.unit_label ?? "All visible units"}</p>

@@ -13,7 +13,7 @@ function sv(v: string | string[] | undefined) { return Array.isArray(v) ? v[0] :
 function statusMessage(status: string | undefined) {
   switch (status) {
     case "invite-accepted":
-      return { tone: "ok", message: "Invite accepted. Redirecting to your property member portal." } as const;
+      return { tone: "ok", message: "Invite accepted. After accepting, you’ll be taken to your Property Portal." } as const;
     case "invite-invalid":
       return { tone: "warn", message: "This invite is invalid or no longer available." } as const;
     case "invite-expired":
@@ -47,7 +47,7 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
   return (
     <section className="metal-card rounded-3xl p-5 text-neutral-100">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Portal</p>
-      <h1 className="mt-2 text-2xl">Accept property invite</h1>
+      <h1 className="mt-2 text-2xl">Accept property portal invite</h1>
       {banner && (
         <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${banner.tone === "ok" ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200" : "border-amber-400/40 bg-amber-500/10 text-amber-200"}`}>
           {banner.message}
@@ -55,7 +55,7 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
       )}
 
       <div className="mt-5 space-y-2 text-sm text-neutral-300">
-        <p className="text-neutral-200">Ready to accept property portal invite.</p>
+        <p className="text-neutral-200">Sign in with the invited email address to continue.</p>
         <p>{preview.message}</p>
         <form action={acceptPropertyPortalInvite} className="pt-2">
           <input type="hidden" name="token" value={token} />
@@ -63,7 +63,7 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
         </form>
       </div>
 
-      <div className="mt-5"><Link href="/portal/property/member" className="text-sm text-cyan-300 underline">Go to property member portal</Link></div>
+      <div className="mt-5"><Link href="/portal/property/member" className="text-sm text-cyan-300 underline">Go to Property Portal</Link></div>
     </section>
   );
 }

@@ -56,7 +56,7 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">{requestRow.title}</h1></div><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Back to requests</Link></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Portal</p><h1 className="text-2xl text-neutral-100">{requestRow.title}</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
       <p className="mt-2 text-sm text-neutral-300">{requestRow.summary}</p>
       <p className="mt-2 text-sm text-neutral-400">Status: {requestRow.status} · Severity: {requestRow.severity} · Category: {requestRow.category ?? '—'}</p>
       <p className="mt-1 text-sm text-neutral-400">Property: {property?.name ?? '—'} · Unit: {unit?.unit_label ?? '—'} · Asset: {asset?.name ?? '—'}</p>
@@ -69,25 +69,25 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
       {error ? <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div> : null}
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Request Timeline</h2><p className="mt-1 text-xs text-neutral-400">Updates shared with residents are listed in time order.</p>
+        <h2 className="text-lg text-neutral-100">Messages & updates</h2><p className="mt-1 text-xs text-neutral-400">Updates shared for this request are listed in time order.</p>
         <div className="mt-2 space-y-2">
           {(events ?? []).map((event) => (
             <article key={event.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
               <p className="text-sm text-neutral-200">{event.body}</p>
-              <p className="mt-1 text-xs text-neutral-500">{event.event_type} · {event.actor_type} · {event.visibility} · {new Date(event.created_at).toLocaleString()}</p>
+              <p className="mt-1 text-xs text-neutral-500">{new Date(event.created_at).toLocaleString()}</p>
             </article>
           ))}
         </div>
       </div>
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Attachments</h2><p className="mt-1 text-xs text-neutral-400">Photos and files linked to this maintenance request.</p>
+        <h2 className="text-lg text-neutral-100">Photos</h2><p className="mt-1 text-xs text-neutral-400">Photos linked to this maintenance request.</p>
         <div className="mt-2 space-y-2">
           {(attachments ?? []).map((attachment) => (
             <article key={attachment.id} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
               <p>Filename: {attachment.original_filename ?? "—"}</p>
               <p>Caption: {attachment.caption ?? "—"}</p>
-              <p>MIME: {attachment.content_type ?? '—'} · Size: {attachment.size_bytes ?? '—'} bytes</p>
+              <p>Size: {attachment.size_bytes ?? "—"} bytes</p>
               <p>Created: {new Date(attachment.created_at).toLocaleString()}</p>
               {signedUrlByAttachmentId.get(attachment.id) ? <Image src={signedUrlByAttachmentId.get(attachment.id) ?? ""} alt={attachment.original_filename ?? "Attachment"} width={640} height={360} unoptimized className="mt-2 h-auto max-h-64 w-full rounded-lg border border-white/10 object-cover" /> : null}
             </article>
@@ -107,9 +107,9 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
       <form action={addTenantVisibleComment} className="mt-6 space-y-2">
         <input type="hidden" name="request_id" value={requestRow.id} />
-        <label className="block text-sm text-neutral-300" htmlFor="body">Add comment</label>
+        <label className="block text-sm text-neutral-300" htmlFor="body">Add message</label>
         <textarea id="body" name="body" required className="min-h-[100px] w-full rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <button type="submit" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Post comment</button>
+        <button type="submit" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Post message</button>
       </form>
     </section>
   );
