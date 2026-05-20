@@ -11,6 +11,9 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type WorkOrderQuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
+import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 export type InvoiceSnapshotPart = {
   id: string;
@@ -297,6 +300,26 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     >();
 
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
+  const { data: stagedPartsRaw } = await supabase
+    .from("work_order_parts")
+    .select("id, work_order_line_id, quantity, unit_price, total_price")
+    .eq("work_order_id", workOrderId)
+    .returns<
+      Array<
+        Pick<WorkOrderPartRow, "id" | "work_order_line_id" | "quantity" | "unit_price" | "total_price">
+      >
+    >();
+  const stagedParts = Array.isArray(stagedPartsRaw) ? stagedPartsRaw : [];
+
+  const { data: quoteRaw } = await supabase
+    .from("work_order_quote_lines")
+    .select("id, work_order_line_id, status, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total")
+    .eq("work_order_id", workOrderId)
+    .returns<Array<Pick<WorkOrderQuoteLineRow, "id" | "work_order_line_id" | "status" | "labor_hours" | "est_labor_hours" | "labor_total" | "parts_total" | "subtotal" | "grand_total">>>();
+  const activeQuotes = (Array.isArray(quoteRaw) ? quoteRaw : []).filter((q) => {
+    const s = String(q.status ?? "").toLowerCase();
+    return s !== "converted" && s !== "declined";
+  });
 
   const partIds = Array.from(
     new Set(
@@ -366,8 +389,39 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       ? parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0)
       : null;
 
-  const laborCost = invLabor ?? woLabor ?? null;
-  const partsCost = invParts ?? partsTotalFromAlloc ?? woParts ?? null;
+  const byLineStaged = new Map<string, typeof stagedParts>();
+  for (const part of stagedParts) {
+    if (!part.work_order_line_id) continue;
+    byLineStaged.set(part.work_order_line_id, [...(byLineStaged.get(part.work_order_line_id) ?? []), part]);
+  }
+  const byLineAlloc = new Map<string, typeof allocs>();
+  for (const alloc of allocs) {
+    if (!alloc.work_order_line_id) continue;
+    byLineAlloc.set(alloc.work_order_line_id, [...(byLineAlloc.get(alloc.work_order_line_id) ?? []), alloc]);
+  }
+  const byLineQuote = new Map<string, typeof activeQuotes[number]>();
+  for (const q of activeQuotes) {
+    if (!q.work_order_line_id) continue;
+    byLineQuote.set(q.work_order_line_id, q);
+  }
+
+  let resolvedLabor = 0;
+  let resolvedParts = 0;
+  for (const line of lines) {
+    const resolved = resolveWorkOrderLinePricing({
+      line,
+      quote: byLineQuote.get(line.id) ?? null,
+      shopLaborRate: safeNumberOrNull(shop?.labor_rate),
+      stagedParts: byLineStaged.get(line.id) ?? [],
+      allocatedParts: byLineAlloc.get(line.id) ?? [],
+      defaultLaborHoursWhenMissing: true,
+    });
+    resolvedLabor += resolved.laborTotal;
+    resolvedParts += resolved.partsTotal;
+  }
+
+  const laborCost = invLabor ?? (resolvedLabor > 0 ? resolvedLabor : woLabor) ?? null;
+  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : partsTotalFromAlloc ?? woParts) ?? null;
 
   const subtotal =
     invSubtotal ??

@@ -10,6 +10,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { estimateLabor } from "@ai/lib/ai/estimateLabor";
+import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 type DB = Database;
 
@@ -117,7 +118,7 @@ export async function insertPrioritizedJobsFromInspection(
 
       if (!shouldInclude) continue;
 
-      const laborTime = await estimateLabor(item.name, jobType);
+      const laborTime = normalizeLaborHoursInput(await estimateLabor(item.name, jobType), true);
 
       const complaintParts: string[] = [];
       if (item.name) complaintParts.push(item.name);
@@ -135,7 +136,7 @@ export async function insertPrioritizedJobsFromInspection(
         punched_out_at: null,
         hold_reason: null,
         assigned_tech_id: null,
-        labor_time: laborTime ?? null,
+        labor_time: laborTime,
       };
 
       allJobs.push(job);
