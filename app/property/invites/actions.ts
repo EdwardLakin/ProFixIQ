@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
+import sgMail from "@sendgrid/mail";
 
 type DB = { public: { Tables: {
   profiles: { Row: { id: string; shop_id: string | null }; Insert: never; Update: never; Relationships: [] };
@@ -25,12 +26,58 @@ const client = () => createServerSupabaseRSC() as unknown as SupabaseClient<DB>;
 export type InviteCreateActionState = {
   status: "idle" | "validation-error" | "invite-created";
   message?: string;
+  warning?: string;
   inviteLink?: string;
   invitedEmail?: string;
   expiresAt?: string;
 };
 
 export const initialInviteCreateActionState: InviteCreateActionState = { status: "idle" };
+
+let sendgridConfigured = false;
+
+function sendgridEnvReady() {
+  const apiKey = process.env.SENDGRID_API_KEY?.trim() || "";
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL?.trim() || "";
+  return { apiKey, fromEmail, ready: Boolean(apiKey && fromEmail) };
+}
+
+async function sendPropertyInviteEmail(input: {
+  to: string;
+  invitedName: string | null;
+  inviteLink: string;
+  expiresAt: string;
+}) {
+  const { apiKey, fromEmail, ready } = sendgridEnvReady();
+  if (!ready) {
+    throw new Error("SendGrid is not configured (missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL).");
+  }
+
+  if (!sendgridConfigured) {
+    sgMail.setApiKey(apiKey);
+    sendgridConfigured = true;
+  }
+
+  const expiresLabel = new Date(input.expiresAt).toLocaleString();
+  const greeting = input.invitedName ? `Hello ${input.invitedName},` : "Hello,";
+
+  await sgMail.send({
+    to: input.to,
+    from: fromEmail,
+    subject: "Your property maintenance portal invite",
+    text: [
+      greeting,
+      "",
+      "You were invited to access the property maintenance portal.",
+      "Use this one-time invite link:",
+      input.inviteLink,
+      "",
+      `This invite expires on: ${expiresLabel}`,
+      "",
+      "This portal access is only for property maintenance requests.",
+    ].join("\n"),
+  });
+}
 
 export async function createPropertyPortalInvite(
   _prevState: InviteCreateActionState,
@@ -55,6 +102,7 @@ export async function createPropertyPortalInvite(
   const propertyId = String(formData.get("property_id") || "").trim() || null;
   const unitId = String(formData.get("unit_id") || "").trim() || null;
   const expiresInDays = Number.parseInt(String(formData.get("expires_in_days") || "7").trim(), 10);
+  const shouldEmailInvite = String(formData.get("email_invite") || "") === "on";
 
   if (!invitedEmail) return { status: "validation-error", message: "Invited email is required." };
   if (!roleSet.has(role)) return { status: "validation-error", message: "Invalid role." };
@@ -108,8 +156,23 @@ export async function createPropertyPortalInvite(
   revalidatePath("/property/invites");
   revalidatePath("/property");
 
+  let warning: string | undefined;
+  if (shouldEmailInvite) {
+    try {
+      await sendPropertyInviteEmail({
+        to: invitedEmail,
+        invitedName,
+        inviteLink,
+        expiresAt,
+      });
+    } catch {
+      warning = "Invite created, but email could not be sent. Copy the link manually.";
+    }
+  }
+
   return {
     status: "invite-created",
+    warning,
     inviteLink,
     invitedEmail,
     expiresAt,
