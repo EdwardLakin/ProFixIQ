@@ -14,12 +14,13 @@ export async function GET() {
   const admin: AdminClient = createAdminSupabase();
   const shopId = access.profile.shop_id;
   const now = new Date();
+  // TODO: Normalize "today" boundaries to the shop timezone instead of server-local midnight.
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
   const tomorrowEnd = new Date(todayEnd); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
   const in30 = new Date(todayStart); in30.setDate(in30.getDate() + 30);
 
-  const [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes, lineTechRes] = await Promise.all([
+  const [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes] = await Promise.all([
     admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
     admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", shopId),
     admin.from("staff_time_off_requests").select("id, created_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: true }),
@@ -28,10 +29,17 @@ export async function GET() {
     admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
     admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEnd.toISOString()).gte("ends_at", todayStart.toISOString()),
     admin.from("work_order_lines").select("id, assigned_tech_id, line_status, status, voided_at").eq("shop_id", shopId).is("voided_at", null),
-    admin.from("work_order_line_technicians").select("work_order_line_id, technician_id"),
   ]);
-  const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes, lineTechRes].find((r) => r.error);
+  const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes].find((r) => r.error);
   if (firstError?.error) return NextResponse.json({ error: firstError.error.message }, { status: 500 });
+  const activeLineIds = (linesRes.data ?? [])
+    .filter((l) => !ACTIVE_LINE_EXCLUDED.includes((l.line_status || l.status || "").toLowerCase()))
+    .map((l) => l.id);
+  // Two-step scope: technician assignments are constrained by already shop-scoped line IDs to prevent cross-tenant leakage.
+  const lineTechRes = activeLineIds.length > 0
+    ? await admin.from("work_order_line_technicians").select("work_order_line_id, technician_id").in("work_order_line_id", activeLineIds)
+    : { data: [], error: null };
+  if (lineTechRes.error) return NextResponse.json({ error: lineTechRes.error.message }, { status: 500 });
 
   const profileName = new Map((profilesRes.data ?? []).map((p) => [p.id, p.full_name || "Unknown"]));
   const activeStaff = new Set((workforceRes.data ?? []).filter((w) => w.employment_status === "active").map((w) => w.user_id));
@@ -84,7 +92,11 @@ export async function GET() {
   for (const [personId, count] of overloaded) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: "/dashboard/workforce/people" });
 
   const severityOrder: Record<Severity, number> = { blocking: 0, warning: 1, info: 2 };
-  const inbox = Object.values(sections).flat().sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || ((a.createdAt && b.createdAt) ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : 0));
+  const inbox = Object.values(sections).flat().sort((a, b) =>
+    severityOrder[a.severity] - severityOrder[b.severity]
+    || ((a.createdAt && b.createdAt) ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : 0)
+    || a.id.localeCompare(b.id),
+  );
 
   return NextResponse.json({ summary: { workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0), awayToday: awayTodayUsers.size, awayTomorrow: awayTomorrowUsers.size, pendingTimeOff, payrollBlocking, payrollWarnings, expiringCertifications, expiredCertifications, scheduleGaps, unassignedJobs, assignedToUnavailable, overloadedTechs: overloaded.length }, inbox, sections, generatedAt: new Date().toISOString() });
 }
