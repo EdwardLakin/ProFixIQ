@@ -129,7 +129,7 @@ export async function GET() {
         severity: "blocking",
         label: `${payrollExceptions.blocking} payroll blocking issue${payrollExceptions.blocking > 1 ? "s" : ""}`,
         action_label: "Review payroll entries",
-        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+        action_href: `/dashboard/workforce/payroll-review?person_id=${profile.id}`,
       });
     }
     if (!workforceRow?.payroll_ready) {
@@ -138,7 +138,7 @@ export async function GET() {
         severity: "blocking",
         label: "Payroll profile is not ready",
         action_label: "Fix payroll data",
-        action_href: `/dashboard/admin/people/${profile.id}`,
+        action_href: `/dashboard/workforce/people/${profile.id}`,
       });
     }
     if (missingWorkforceData) {
@@ -147,7 +147,7 @@ export async function GET() {
         severity: "blocking",
         label: "Workforce role is missing",
         action_label: "Complete workforce profile",
-        action_href: `/dashboard/admin/people/${profile.id}`,
+        action_href: `/dashboard/workforce/people/${profile.id}`,
       });
     }
     if (cert.expired > 0) {
@@ -156,7 +156,7 @@ export async function GET() {
         severity: "blocking",
         label: `${cert.expired} certification${cert.expired > 1 ? "s are" : " is"} expired`,
         action_label: "Update certification",
-        action_href: `/dashboard/admin/people/${profile.id}#certifications`,
+        action_href: `/dashboard/workforce/people/${profile.id}#certifications`,
       });
     }
     if (payrollExceptions.warning > 0) {
@@ -165,7 +165,7 @@ export async function GET() {
         severity: "warning",
         label: `${payrollExceptions.warning} payroll warning${payrollExceptions.warning > 1 ? "s" : ""}`,
         action_label: "Review payroll entries",
-        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+        action_href: `/dashboard/workforce/payroll-review?person_id=${profile.id}`,
       });
     }
     if (cert.expiring30 > 0) {
@@ -174,7 +174,7 @@ export async function GET() {
         severity: "warning",
         label: `${cert.expiring30} certification${cert.expiring30 > 1 ? "s" : ""} expiring in 30 days`,
         action_label: "Renew certification",
-        action_href: `/dashboard/admin/people/${profile.id}#certifications`,
+        action_href: `/dashboard/workforce/people/${profile.id}#certifications`,
       });
     }
     if (employmentStatus === "inactive" && openPeriodEntries > 0) {
@@ -183,7 +183,7 @@ export async function GET() {
         severity: "informational",
         label: "Inactive employee still has open payroll entries",
         action_label: "Review payroll entries",
-        action_href: `/dashboard/admin/payroll-time?person_id=${profile.id}`,
+        action_href: `/dashboard/workforce/payroll-review?person_id=${profile.id}`,
       });
     }
     if (employmentStatus === "active" && !hasTemplate.has(profile.id)) {
@@ -192,7 +192,7 @@ export async function GET() {
         severity: "warning",
         label: "No recurring schedule configured",
         action_label: "Configure schedule",
-        action_href: `/dashboard/admin/scheduling`,
+        action_href: `/dashboard/workforce/scheduling`,
       });
     }
     if (pendingTimeOffCount > 0) {
@@ -201,7 +201,7 @@ export async function GET() {
         severity: "informational",
         label: `${pendingTimeOffCount} pending time-off request${pendingTimeOffCount > 1 ? "s" : ""}`,
         action_label: "Review in scheduling",
-        action_href: `/dashboard/admin/scheduling`,
+        action_href: `/dashboard/workforce/scheduling`,
       });
     }
 
