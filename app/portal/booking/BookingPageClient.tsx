@@ -225,7 +225,7 @@ export default function PortalBookingPage() {
     selectedDate && closedWeekdays.has(selectedDate.getDay());
 
   return (
-    <div className="mx-auto max-w-5xl px-3 py-6 text-white">
+    <div className="mx-auto max-w-6xl px-3 py-6 text-white">
       <Toaster position="top-center" />
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -234,14 +234,14 @@ export default function PortalBookingPage() {
             className="text-lg tracking-[0.18em] text-[var(--accent-copper-light)]"
             style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
           >
-            Book an appointment
+            Book service appointment
           </h1>
           <p className="mt-1 text-xs text-neutral-400">
-            Choose a shop, then pick a date and time.
+            Guided flow: Shop → Date → Time → Confirmation.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 shadow-card backdrop-blur-xl">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[linear-gradient(145deg,rgba(197,122,74,0.12),rgba(7,10,20,0.65)_55%)] px-3 py-3 backdrop-blur-xl">
           <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
             Shop
           </label>
@@ -268,8 +268,8 @@ export default function PortalBookingPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-xl">
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
           <Calendar
             className="shadow-inner"
             month={month}
@@ -280,8 +280,8 @@ export default function PortalBookingPage() {
           />
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
-          <h2 className="mb-1 font-semibold text-white">Available times</h2>
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-xl">
+          <h2 className="mb-1 font-semibold text-white">Step 3 • Select time</h2>
           <p className="mb-3 text-xs text-neutral-400">
             Times shown in <span className="font-medium">{tz}</span>.
             {closedLabel && (
@@ -293,20 +293,20 @@ export default function PortalBookingPage() {
 
           {!shopSlug ? (
             <p className="text-sm text-neutral-400">
-              Select a shop to view availability.
+              Select a shop in Step 1 to load availability.
             </p>
           ) : !selectedDate ? (
             <p className="text-sm text-neutral-400">
-              Pick a date on the calendar to see times.
+              Pick a date in Step 2 to see time slots.
             </p>
           ) : loading ? (
-            <p className="text-sm text-neutral-400">Loading…</p>
+            <p className="text-sm text-neutral-400">Loading available times…</p>
           ) : daySlots.length === 0 ? (
             isSelectedClosed ? (
               <p className="text-sm text-neutral-400">Shop is closed on this day.</p>
             ) : (
               <p className="text-sm text-neutral-400">
-                No available slots for this date.
+                No available slots on this date. Try another day.
               </p>
             )
           ) : (
@@ -315,7 +315,8 @@ export default function PortalBookingPage() {
                 <li key={i}>
                   <button
                     onClick={() => book(s.start, s.end)}
-                    className="w-full rounded-xl border border-[rgba(193,102,59,0.28)] bg-black/40 px-3 py-2 text-sm font-medium text-neutral-100 transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)]"
+                    className="w-full rounded-xl border border-[rgba(193,102,59,0.38)] bg-black/35 px-3 py-2 text-sm font-medium text-neutral-100 transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)]"
+                    aria-label="Book this time slot"
                     style={{
                       boxShadow: "inset 0 0 0 1px rgba(193,102,59,0.12)",
                     }}

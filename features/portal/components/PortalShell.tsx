@@ -95,7 +95,7 @@ export default function PortalShell({
   const supabase = createClientComponentClient<DB>();
 
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopOpen, setDesktopOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
 
   const hideNav =
@@ -122,9 +122,6 @@ export default function PortalShell({
     }
   };
 
-  const ShellCard =
-    "desktop-panel-soft rounded-3xl border p-4 backdrop-blur-md shadow-card sm:p-6";
-
   // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
@@ -135,7 +132,7 @@ export default function PortalShell({
         </div>
 
         {/* ✅ Removed `relative` to satisfy cssConflict lint */}
-        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
           <div className="flex flex-col leading-none">
             <span
               className="font-blackops text-xs tracking-[0.22em]"
@@ -157,7 +154,7 @@ export default function PortalShell({
           </button>
         </header>
 
-        <main className="relative min-h-[calc(100dvh-52px)] w-full">
+        <main className="relative min-h-[calc(100dvh-56px)] w-full">
           {children}
         </main>
       </div>
@@ -173,7 +170,7 @@ export default function PortalShell({
       </div>
 
       {/* ✅ Removed `relative` to satisfy cssConflict lint */}
-      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -230,7 +227,7 @@ export default function PortalShell({
         </div>
       </header>
 
-      <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
+      <div className="relative mx-auto flex min-h-[calc(100dvh-56px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
         <aside
           className={cx(
             "desktop-panel-soft hidden overflow-hidden rounded-2xl border backdrop-blur-md shadow-card transition-all duration-300 md:flex md:flex-col",
@@ -301,7 +298,7 @@ export default function PortalShell({
                 </button>
               </div>
 
-              <nav className="space-ymt-6 space-y-2 px-4 py-4">
+              <nav className="space-y-2 px-4 py-4">
                 {NAV.map((item) => (
                   <NavPill
                     key={item.href}
@@ -332,7 +329,7 @@ export default function PortalShell({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className={ShellCard}>{children}</div>
+          <div className="min-h-full">{children}</div>
         </div>
       </div>
     </div>

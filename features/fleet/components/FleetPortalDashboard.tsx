@@ -7,6 +7,8 @@ import type {
   DispatchAssignment,
 } from "./FleetControlTower";
 
+
+const fmtDateTime=(iso:string)=>{const d=new Date(iso);return Number.isNaN(d.getTime())?iso:d.toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});};
 type Props = {
   fleetName?: string | null;
   contactName?: string | null;
@@ -154,7 +156,7 @@ export default function FleetPortalDashboard({
                     <div className="text-neutral-500">
                       Next pre-trip due:{" "}
                       <span className="text-neutral-300">
-                        {assign.nextPreTripDue}
+                        {fmtDateTime(assign.nextPreTripDue)}
                       </span>
                     </div>
                   )}
@@ -212,7 +214,7 @@ export default function FleetPortalDashboard({
                   </span>
                 </div>
                 <p className="mt-2 text-neutral-200">{issue.summary}</p>
-                <p className="mt-1 text-[10px] text-neutral-500">
+                <p className="mt-1 text-[10px] text-neutral-500">Opened {fmtDateTime(issue.createdAt)} • 
                   Status: <span className="text-neutral-300">{issue.status}</span>
                 </p>
               </div>
