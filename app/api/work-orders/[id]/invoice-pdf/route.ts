@@ -532,7 +532,7 @@ export async function GET(
     }
   }
 
-  // ---- Derived totals (fallback) ----
+  // ---- Derived totals (fallback only) ----
   const derivedPartsCost = allPartRows.reduce(
     (sum, p) => sum + safeMoney(p.totalPrice),
     0,
@@ -548,17 +548,30 @@ export async function GET(
 
   const derivedSubtotal = derivedLaborCost + derivedPartsCost;
 
-  const derivedTaxTotal = 0;
-  // Totals: ALWAYS prefer live derived values from current work order lines + parts.
-  // Keep invoice row only for metadata such as invoice number / notes / issued_at.
-  const invDiscount = safeMoney(inv?.discount_total);
-  const invTax = safeMoney(inv?.tax_total);
-  const subtotal = derivedSubtotal;
-  const laborCost = derivedLaborCost;
-  const partsCost = derivedPartsCost;
-  const discountTotal = invDiscount > 0 ? invDiscount : 0;
-  const taxTotal = invTax > 0 ? invTax : derivedTaxTotal;
-  const grandTotal = Math.max(0, subtotal - discountTotal + taxTotal);
+  const subtotal =
+    snapshot.subtotal != null && Number.isFinite(snapshot.subtotal)
+      ? snapshot.subtotal
+      : derivedSubtotal;
+  const laborCost =
+    snapshot.laborCost != null && Number.isFinite(snapshot.laborCost)
+      ? snapshot.laborCost
+      : derivedLaborCost;
+  const partsCost =
+    snapshot.partsCost != null && Number.isFinite(snapshot.partsCost)
+      ? snapshot.partsCost
+      : derivedPartsCost;
+  const discountTotal =
+    snapshot.discountTotal != null && Number.isFinite(snapshot.discountTotal)
+      ? Math.max(0, snapshot.discountTotal)
+      : 0;
+  const taxTotal =
+    snapshot.taxTotal != null && Number.isFinite(snapshot.taxTotal)
+      ? Math.max(0, snapshot.taxTotal)
+      : 0;
+  const grandTotal =
+    snapshot.total != null && Number.isFinite(snapshot.total)
+      ? Math.max(0, snapshot.total)
+      : Math.max(0, subtotal - discountTotal + taxTotal);
 
   // ---------------- PDF (multi-page) ----------------
   const pdfDoc = await PDFDocument.create();

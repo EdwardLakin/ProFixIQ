@@ -508,7 +508,8 @@ export async function POST(req: Request) {
       .limit(1)
       .maybeSingle<{ id: string }>();
 
-    const invoiceWrite: DB["public"]["Tables"]["invoices"]["Update"] = {
+    const nowIso = new Date().toISOString();
+    const invoiceWriteBeforeSend: DB["public"]["Tables"]["invoices"]["Update"] = {
       shop_id: wo.shop_id,
       work_order_id: workOrderId,
       customer_id: wo.customer_id,
@@ -519,15 +520,35 @@ export async function POST(req: Request) {
       discount_total: snapshot.discountTotal ?? 0,
       tax_total: snapshot.taxTotal ?? 0,
       total: computedInvoiceTotal,
-      status: "issued",
-      issued_at: new Date().toISOString(),
+      status: "issued_pending_send",
+      issued_at: nowIso,
     };
+    let persistedInvoiceId: string | null = existingInvoice?.id ?? null;
     if (existingInvoice?.id) {
-      await supabaseAdmin.from("invoices").update(invoiceWrite).eq("id", existingInvoice.id);
-    } else {
-      await supabaseAdmin
+      const { error: updateErr } = await supabaseAdmin
         .from("invoices")
-        .insert(invoiceWrite as DB["public"]["Tables"]["invoices"]["Insert"]);
+        .update(invoiceWriteBeforeSend)
+        .eq("id", existingInvoice.id)
+        .eq("shop_id", wo.shop_id);
+      if (updateErr) {
+        return NextResponse.json(
+          { error: `Failed to persist invoice before send: ${updateErr.message}` },
+          { status: 500 },
+        );
+      }
+    } else {
+      const { data: insertedInvoice, error: insertErr } = await supabaseAdmin
+        .from("invoices")
+        .insert(invoiceWriteBeforeSend as DB["public"]["Tables"]["invoices"]["Insert"])
+        .select("id")
+        .maybeSingle<{ id: string }>();
+      if (insertErr || !insertedInvoice?.id) {
+        return NextResponse.json(
+          { error: `Failed to create invoice before send: ${insertErr?.message ?? "unknown error"}` },
+          { status: 500 },
+        );
+      }
+      persistedInvoiceId = insertedInvoice.id;
     }
 
     await sendInvoiceReadyEmail({
@@ -547,6 +568,38 @@ export async function POST(req: Request) {
     });
 
     const postSendWarnings = await runPostSendPersistence([
+      {
+        step: "invoice_status_after_send",
+        run: async () => {
+          if (!persistedInvoiceId) throw new Error("Missing persisted invoice id");
+
+          const sentUpdateBase: DB["public"]["Tables"]["invoices"]["Update"] = {
+            status: "issued",
+            issued_at: nowIso,
+          };
+
+          const sentUpdateWithOptionalCols = {
+            ...sentUpdateBase,
+            sent_at: nowIso,
+            sent_to: resolvedCustomerEmail,
+          } as DB["public"]["Tables"]["invoices"]["Update"];
+
+          const withOptional = await supabaseAdmin
+            .from("invoices")
+            .update(sentUpdateWithOptionalCols)
+            .eq("id", persistedInvoiceId)
+            .eq("shop_id", wo.shop_id);
+
+          if (withOptional.error) {
+            const fallback = await supabaseAdmin
+              .from("invoices")
+              .update(sentUpdateBase)
+              .eq("id", persistedInvoiceId)
+              .eq("shop_id", wo.shop_id);
+            if (fallback.error) throw new Error(fallback.error.message);
+          }
+        },
+      },
       {
         step: "work_order_invoice_state_update",
         run: async () => {
