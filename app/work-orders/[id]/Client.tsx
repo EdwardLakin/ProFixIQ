@@ -914,7 +914,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         shopLaborRate,
         stagedParts: stagedPartsByLine[line.id] ?? [],
         allocatedParts: allocsByLine[line.id] ?? [],
-        defaultLaborHoursWhenMissing: true,
       });
       byLine[line.id] = {
         laborTotal: resolved.laborTotal,

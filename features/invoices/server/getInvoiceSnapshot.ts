@@ -414,7 +414,6 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       shopLaborRate: safeNumberOrNull(shop?.labor_rate),
       stagedParts: byLineStaged.get(line.id) ?? [],
       allocatedParts: byLineAlloc.get(line.id) ?? [],
-      defaultLaborHoursWhenMissing: true,
     });
     resolvedLabor += resolved.laborTotal;
     resolvedParts += resolved.partsTotal;
