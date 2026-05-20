@@ -394,3 +394,23 @@ Any future schema expansion should be documented and applied manually.
 - No quote flow was added.
 - No tenant/vendor auth expansion was added.
 - No schema or migration changes were introduced.
+
+## Step 24B: Typed/acknowledged property inspection signatures wired
+
+- Wired runtime signature reads/writes for dedicated property inspection detail surfaces:
+  - Internal route: `/property/inspections/[id]`
+  - Property member portal route: `/portal/property/member/inspections/[id]`
+- Added internal signature action for typed/acknowledged signatures with authenticated user + `profile.shop_id` validation, RLS-visible inspection checks, role/type validation, duplicate prevention, and scoped revalidation/redirect statuses.
+- Added property member portal acknowledgement action with authenticated member visibility checks through `property_members` + inspection RLS visibility, conservative member-role-to-signer-role mapping, duplicate prevention, and scoped revalidation/redirect statuses.
+- Added UI sections and status banners for:
+  - `signature-added`
+  - `already-signed`
+  - `signature-error`
+  - `validation-error`
+- This step is explicitly limited to typed/acknowledged signature records only.
+- No public unauthenticated signing was added.
+- No drawn signature canvas was added.
+- No signature image upload was added.
+- No schema or migration changes were introduced.
+- No service role usage was introduced.
+- No quote flow or vehicle inspection builder behavior was changed.
