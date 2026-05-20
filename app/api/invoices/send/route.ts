@@ -498,6 +498,38 @@ export async function POST(req: Request) {
     const portalInvoiceUrl = `${base}/portal/invoices/${workOrderId}`;
     const invoicePdfUrl = `${base}/api/work-orders/${workOrderId}/invoice-pdf?download=1`;
 
+    // Canonical invoice persistence: materialize/update invoice row from the shared snapshot
+    // before sending so portal/PDF/email/QuickBooks all read identical totals.
+    const { data: existingInvoice } = await supabaseAdmin
+      .from("invoices")
+      .select("id")
+      .eq("work_order_id", workOrderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    const invoiceWrite: DB["public"]["Tables"]["invoices"]["Update"] = {
+      shop_id: wo.shop_id,
+      work_order_id: workOrderId,
+      customer_id: wo.customer_id,
+      currency: snapshot.currency,
+      subtotal: snapshot.subtotal ?? undefined,
+      labor_cost: snapshot.laborCost ?? undefined,
+      parts_cost: snapshot.partsCost ?? undefined,
+      discount_total: snapshot.discountTotal ?? 0,
+      tax_total: snapshot.taxTotal ?? 0,
+      total: computedInvoiceTotal,
+      status: "issued",
+      issued_at: new Date().toISOString(),
+    };
+    if (existingInvoice?.id) {
+      await supabaseAdmin.from("invoices").update(invoiceWrite).eq("id", existingInvoice.id);
+    } else {
+      await supabaseAdmin
+        .from("invoices")
+        .insert(invoiceWrite as DB["public"]["Tables"]["invoices"]["Insert"]);
+    }
+
     await sendInvoiceReadyEmail({
       shopId: wo.shop_id,
       to: resolvedCustomerEmail,

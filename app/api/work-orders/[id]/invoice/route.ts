@@ -8,6 +8,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 
 type DB = Database;
 
@@ -67,5 +68,22 @@ export async function POST(
       { ok: false, issues: [{ kind: "error", message: msg }] },
       { status: 500 },
     );
+  }
+}
+
+export async function GET(
+  _req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const params = await ctx.params;
+  const woId = typeof params?.id === "string" ? params.id : "";
+  if (!woId) return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
+  try {
+    const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId: woId });
+    return NextResponse.json({ snapshot });
+  } catch (e: unknown) {
+    const msg = isError(e) ? e.message : "Snapshot failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
