@@ -225,6 +225,7 @@ export default function InvoicePreviewPageClient({
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [canonicalInvoiceTotal, setCanonicalInvoiceTotal] = useState<number>(0);
+  const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewOk, setReviewOk] = useState<boolean>(false);
@@ -404,14 +405,27 @@ export default function InvoicePreviewPageClient({
 
       if (cancelled) return;
       setInvoiceId(invoiceRow?.id ?? null);
-      const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
-      const snapshotJson = (await snapshotRes.json().catch(() => null)) as
-        | { snapshot?: { total?: number | null } }
-        | null;
-      const snapshotTotal = snapshotJson?.snapshot?.total;
-      setCanonicalInvoiceTotal(
-        typeof snapshotTotal === "number" && Number.isFinite(snapshotTotal) ? Math.max(0, snapshotTotal) : 0,
-      );
+      try {
+        const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
+        const snapshotJson = (await snapshotRes.json().catch(() => null)) as
+          | { snapshot?: { total?: number | null } }
+          | null;
+        const snapshotTotal = snapshotJson?.snapshot?.total;
+        if (!snapshotRes.ok) {
+          setSnapshotWarning("Using locally derived totals; canonical invoice snapshot is unavailable.");
+          setCanonicalInvoiceTotal(0);
+        } else {
+          setCanonicalInvoiceTotal(
+            typeof snapshotTotal === "number" && Number.isFinite(snapshotTotal)
+              ? Math.max(0, snapshotTotal)
+              : 0,
+          );
+          setSnapshotWarning(null);
+        }
+      } catch {
+        setSnapshotWarning("Using locally derived totals; canonical invoice snapshot is unavailable.");
+        setCanonicalInvoiceTotal(0);
+      }
 
       // ✅ include labor_rate
       const { data: shop, error: sErr } = await supabase
@@ -908,6 +922,11 @@ export default function InvoicePreviewPageClient({
         </div>
 
         <WorkOrderCloseoutGatePreview workOrderId={workOrderId} />
+        {snapshotWarning ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[0.75rem] text-amber-100">
+            {snapshotWarning}
+          </div>
+        ) : null}
 
         {/* Review issues panel */}
         {!reviewOk ? (

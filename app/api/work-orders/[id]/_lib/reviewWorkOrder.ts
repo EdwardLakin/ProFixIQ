@@ -24,14 +24,28 @@ export async function reviewWorkOrder({
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const { data: allocRows } = await supabase
     .from("work_order_part_allocations")
-    .select("work_order_line_id, qty")
+    .select("work_order_line_id, qty, unit_cost")
     .eq("work_order_id", workOrderId)
     .eq("shop_id", shopId);
   const hasBillablePartsByLine = new Map<string, boolean>();
   for (const row of allocRows ?? []) {
     const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
     const qty = Number(row.qty ?? 0);
-    if (lineId && qty > 0) hasBillablePartsByLine.set(lineId, true);
+    const unitCostRaw = (row as Record<string, unknown>).unit_cost;
+    const unitCost =
+      typeof unitCostRaw === "number"
+        ? unitCostRaw
+        : typeof unitCostRaw === "string"
+          ? Number(unitCostRaw)
+          : null;
+    // Fallback behavior: if unit_cost is unavailable/non-numeric in this row,
+    // preserve existing qty-only billable detection to avoid false negatives.
+    const billableByQtyAndUnitCost =
+      qty > 0 && unitCost !== null && Number.isFinite(unitCost) && unitCost > 0;
+    const billableByQtyFallback = qty > 0 && unitCost === null;
+    if (lineId && (billableByQtyAndUnitCost || billableByQtyFallback)) {
+      hasBillablePartsByLine.set(lineId, true);
+    }
   }
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
