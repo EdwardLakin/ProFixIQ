@@ -1,6 +1,5 @@
 import "server-only";
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
@@ -91,11 +90,8 @@ export default async function PortalPropertyRequestIntakePage({
           Tenant request intake preview — full tenant portal access is not wired yet.
         </p>
         <p className="mt-2 text-sm text-neutral-400">
-          No properties are visible yet. Internal users can set up properties first.
+          No properties are visible yet. Contact your property manager for setup assistance.
         </p>
-        <Link href="/property/setup" className="mt-4 inline-flex text-sm underline">
-          Go to property setup
-        </Link>
       </section>
     );
   }
