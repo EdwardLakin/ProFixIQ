@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildDocumentRequirementsReadiness } from "@/features/shared/lib/workforce/documentReadiness";
+import {
+  DEFAULT_DOCUMENT_REQUIREMENTS,
+  buildEffectiveDocumentRequirements,
+  type WorkforceDocumentRequirementOverrideRow,
+} from "@/features/shared/lib/workforce/documentRequirementsDefaults";
 
 const makePerson = (overrides?: Partial<{ id: string; full_name: string; workforce_role: string | null; workforce_category: string | null; employment_status: string }>) => ({
   id: "1",
@@ -16,6 +21,9 @@ const makeDocuments = (status: string, expiresAt: string | null) => [
 ];
 
 describe("buildDocumentRequirementsReadiness", () => {
+  const applyOverrides = (overrides: WorkforceDocumentRequirementOverrideRow[]) =>
+    buildEffectiveDocumentRequirements(DEFAULT_DOCUMENT_REQUIREMENTS, overrides);
+
   it("marks active employee missing required doc", () => {
     const result = buildDocumentRequirementsReadiness({
       people: [{ id: "1", full_name: "Tech", workforce_role: "technician", workforce_category: null, employment_status: "active" }],
@@ -164,5 +172,172 @@ describe("buildDocumentRequirementsReadiness", () => {
     });
 
     expect(result.readinessItems[0].readiness).toBe("needs_review");
+  });
+
+  it("keeps B1 defaults unchanged when no override rows exist", () => {
+    const effective = applyOverrides([]);
+    expect(effective.slice().sort((a, b) => a.key.localeCompare(b.key))).toEqual(
+      DEFAULT_DOCUMENT_REQUIREMENTS.slice().sort((a, b) => a.key.localeCompare(b.key))
+    );
+  });
+
+  it("applies global override over global default and allows additive doc types", () => {
+    const effective = applyOverrides([
+      {
+        id: "g-tax",
+        workforce_role: null,
+        workforce_category: null,
+        doc_type: "tax_form",
+        label: "Shop Tax Form",
+        required: true,
+        expires_required: true,
+        warning_days: 15,
+        priority: 1,
+        is_active: true,
+      },
+      {
+        id: "g-other",
+        workforce_role: null,
+        workforce_category: null,
+        doc_type: "other",
+        label: "Custom Shop Doc",
+        required: true,
+        expires_required: false,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+    ]);
+    const globalTax = effective.find((rule) => rule.workforceRole === null && rule.workforceCategory === null && rule.docType === "tax_form");
+    const globalOther = effective.find((rule) => rule.workforceRole === null && rule.workforceCategory === null && rule.docType === "other");
+    expect(globalTax?.expiresRequired).toBe(true);
+    expect(globalTax?.warningDays).toBe(15);
+    expect(globalOther?.label).toBe("Custom Shop Doc");
+  });
+
+  it("prefers category override over global override/default", () => {
+    const effective = applyOverrides([
+      {
+        id: "g-cert",
+        workforce_role: null,
+        workforce_category: null,
+        doc_type: "certification",
+        label: "Global Cert",
+        required: true,
+        expires_required: false,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+      {
+        id: "c-cert",
+        workforce_role: null,
+        workforce_category: "driver",
+        doc_type: "certification",
+        label: "Driver Cert",
+        required: true,
+        expires_required: true,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+    ]);
+    const result = buildDocumentRequirementsReadiness({
+      people: [makePerson({ workforce_category: "driver" })],
+      documents: [{ id: "tax", user_id: "1", doc_type: "tax_form", status: "accepted", expires_at: null, uploaded_at: "2024-01-01" }],
+      requirements: effective,
+    });
+    expect(result.readinessItems[0].missingDocTypes).toContain("certification");
+  });
+
+  it("prefers role override over category/global/default", () => {
+    const effective = applyOverrides([
+      {
+        id: "cat-license",
+        workforce_role: null,
+        workforce_category: "mechanic",
+        doc_type: "drivers_license",
+        label: "Mechanic License",
+        required: true,
+        expires_required: true,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+      {
+        id: "role-license",
+        workforce_role: "technician",
+        workforce_category: null,
+        doc_type: "drivers_license",
+        label: "Technician License",
+        required: true,
+        expires_required: false,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+    ]);
+    const picked = effective.find((rule) => rule.workforceRole === "technician" && rule.docType === "drivers_license");
+    expect(picked?.expiresRequired).toBe(false);
+  });
+
+  it("ignores inactive overrides and keeps defaults", () => {
+    const effective = applyOverrides([
+      {
+        id: "inactive-global-tax",
+        workforce_role: null,
+        workforce_category: null,
+        doc_type: "tax_form",
+        label: "Ignored",
+        required: true,
+        expires_required: true,
+        warning_days: 5,
+        priority: 10,
+        is_active: false,
+      },
+    ]);
+    const globalTax = effective.find((rule) => rule.key === "default:active:tax_form");
+    expect(globalTax?.expiresRequired).toBe(false);
+  });
+
+  it("ignores override rows with unsupported doc_type", () => {
+    const effective = applyOverrides([
+      {
+        id: "bad-type",
+        workforce_role: null,
+        workforce_category: null,
+        doc_type: "passport",
+        label: "Passport",
+        required: true,
+        expires_required: true,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+    ]);
+    expect(effective.some((rule) => rule.label === "Passport")).toBe(false);
+  });
+
+  it("keeps readiness priority unchanged with overrides", () => {
+    const effective = applyOverrides([
+      {
+        id: "driver-cert",
+        workforce_role: null,
+        workforce_category: "driver",
+        doc_type: "certification",
+        label: "Driver Certification",
+        required: true,
+        expires_required: false,
+        warning_days: 30,
+        priority: 1,
+        is_active: true,
+      },
+    ]);
+    const result = buildDocumentRequirementsReadiness({
+      people: [makePerson({ workforce_category: "driver" })],
+      documents: [{ id: "cert", user_id: "1", doc_type: "certification", status: "pending", expires_at: null, uploaded_at: "2024-01-01" }],
+      requirements: effective,
+    });
+    expect(result.readinessItems[0].readiness).toBe("missing_required");
   });
 });

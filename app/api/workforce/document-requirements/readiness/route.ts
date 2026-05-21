@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildDocumentRequirementsReadiness } from "@/features/shared/lib/workforce/documentReadiness";
-import { DEFAULT_DOCUMENT_REQUIREMENTS } from "@/features/shared/lib/workforce/documentRequirementsDefaults";
+import {
+  DEFAULT_DOCUMENT_REQUIREMENTS,
+  buildEffectiveDocumentRequirements,
+} from "@/features/shared/lib/workforce/documentRequirementsDefaults";
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
@@ -11,19 +14,24 @@ export async function GET() {
   const admin = createAdminSupabase();
   const shopId = access.profile.shop_id;
 
-  const [{ data: workforceProfiles, error: workforceError }, { data: docs, error: docsError }, { data: people, error: peopleError }] = await Promise.all([
-    admin
-      .from("people_workforce_profiles")
-      .select("user_id, workforce_role, workforce_category, employment_status")
-      .eq("shop_id", shopId),
-    admin
-      .from("employee_documents")
-      .select("id, user_id, doc_type, status, expires_at, uploaded_at")
-      .eq("shop_id", shopId),
-    admin.from("profiles").select("id, full_name, email").eq("shop_id", shopId),
-  ]);
+  const [{ data: workforceProfiles, error: workforceError }, { data: docs, error: docsError }, { data: people, error: peopleError }, { data: requirementOverrides, error: requirementsError }] =
+    await Promise.all([
+      admin
+        .from("people_workforce_profiles")
+        .select("user_id, workforce_role, workforce_category, employment_status")
+        .eq("shop_id", shopId),
+      admin
+        .from("employee_documents")
+        .select("id, user_id, doc_type, status, expires_at, uploaded_at")
+        .eq("shop_id", shopId),
+      admin.from("profiles").select("id, full_name, email").eq("shop_id", shopId),
+      admin
+        .from("workforce_document_requirements")
+        .select("id, workforce_role, workforce_category, doc_type, label, required, expires_required, warning_days, priority, is_active")
+        .eq("shop_id", shopId),
+    ]);
 
-  const firstError = workforceError ?? docsError ?? peopleError;
+  const firstError = workforceError ?? docsError ?? peopleError ?? requirementsError;
   if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
   const personById = new Map((people ?? []).map((p) => [p.id, p]));
@@ -39,10 +47,12 @@ export async function GET() {
     };
   });
 
+  const effectiveRequirements = buildEffectiveDocumentRequirements(DEFAULT_DOCUMENT_REQUIREMENTS, requirementOverrides ?? []);
+
   const readiness = buildDocumentRequirementsReadiness({
     people: joinedPeople,
     documents: docs ?? [],
-    requirements: DEFAULT_DOCUMENT_REQUIREMENTS,
+    requirements: effectiveRequirements,
     warningDays: 30,
   });
 
