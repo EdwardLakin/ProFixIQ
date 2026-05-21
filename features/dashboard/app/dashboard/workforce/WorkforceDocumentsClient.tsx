@@ -31,6 +31,101 @@ type MatrixPayload = {
   generatedAt: string;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+const num = (value: unknown): number => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const safeString = (value: unknown): string => (typeof value === "string" ? value : "");
+const asStringArray = (value: unknown): string[] => asArray<unknown>(value).map((item) => safeString(item)).filter(Boolean);
+
+const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null; error: string | null } => {
+  if (!isRecord(value)) {
+    return { matrix: null, error: "Malformed matrix payload." };
+  }
+
+  const summaryRaw = isRecord(value.summary) ? value.summary : {};
+  const normalized: MatrixPayload = {
+    summary: {
+      activePeople: num(summaryRaw.activePeople),
+      ready: num(summaryRaw.ready),
+      missingRequired: num(summaryRaw.missingRequired),
+      expiredRequired: num(summaryRaw.expiredRequired),
+      needsReview: num(summaryRaw.needsReview),
+      expiringSoon: num(summaryRaw.expiringSoon),
+    },
+    requirements: asArray<unknown>(value.requirements).map((item, idx) => {
+      const row = isRecord(item) ? item : {};
+      const key = safeString(row.key) || `requirement-${idx}`;
+      return {
+        key,
+        workforceRole: safeString(row.workforceRole) || null,
+        workforceCategory: safeString(row.workforceCategory) || null,
+        docType: safeString(row.docType),
+        label: safeString(row.label) || safeString(row.docType) || "Document",
+        required: true,
+        expiresRequired: Boolean(row.expiresRequired),
+        warningDays: num(row.warningDays),
+      };
+    }),
+    readinessItems: asArray<unknown>(value.readinessItems).map((item, idx) => {
+      const row = isRecord(item) ? item : {};
+      return {
+        personId: safeString(row.personId) || `person-${idx}`,
+        personName: safeString(row.personName) || "Unknown",
+        personEmail: safeString(row.personEmail) || null,
+        workforceRole: safeString(row.workforceRole) || null,
+        workforceCategory: safeString(row.workforceCategory) || null,
+        readiness: safeString(row.readiness) || "ready",
+        missingDocTypes: asStringArray(row.missingDocTypes),
+        expiredDocTypes: asStringArray(row.expiredDocTypes),
+        expiringDocTypes: asStringArray(row.expiringDocTypes),
+        needsReviewDocTypes: asStringArray(row.needsReviewDocTypes),
+        href: safeString(row.href) || "/dashboard/workforce/people",
+      };
+    }),
+    missingByPerson: asArray<unknown>(value.missingByPerson).map((item, idx) => {
+      const row = isRecord(item) ? item : {};
+      return {
+        personId: safeString(row.personId) || `missing-person-${idx}`,
+        personName: safeString(row.personName) || "Unknown",
+        missingDocTypes: asStringArray(row.missingDocTypes),
+        href: safeString(row.href) || "/dashboard/workforce/people",
+      };
+    }),
+    missingByDocType: asArray<unknown>(value.missingByDocType).map((item) => {
+      const row = isRecord(item) ? item : {};
+      return {
+        docType: safeString(row.docType),
+        label: safeString(row.label) || safeString(row.docType) || "Document",
+        count: num(row.count),
+      };
+    }),
+    expiringRequired: asArray<unknown>(value.expiringRequired).map((item, idx) => {
+      const row = isRecord(item) ? item : {};
+      return {
+        personId: safeString(row.personId) || `expiring-person-${idx}`,
+        personName: safeString(row.personName) || "Unknown",
+        expiredDocTypes: asStringArray(row.expiredDocTypes),
+        expiringDocTypes: asStringArray(row.expiringDocTypes),
+        href: safeString(row.href) || "/dashboard/workforce/people",
+      };
+    }),
+    generatedAt: safeString(value.generatedAt),
+  };
+
+  const hasRenderableMatrixData =
+    normalized.requirements.length > 0 ||
+    normalized.readinessItems.length > 0 ||
+    normalized.missingByPerson.length > 0 ||
+    normalized.expiringRequired.length > 0;
+  if (!hasRenderableMatrixData) {
+    return { matrix: null, error: "Matrix payload malformed or empty." };
+  }
+  return { matrix: normalized, error: null };
+};
+
 export default function WorkforceDocumentsClient() {
   const [data, setData] = useState<DocsResponsePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +148,9 @@ export default function WorkforceDocumentsClient() {
         if (!matrixRes.ok) {
           setMatrixError(matrixJson?.error || "Failed loading matrix readiness");
         } else {
-          setMatrix(matrixJson);
+          const normalized = normalizeMatrixPayload(matrixJson);
+          setMatrix(normalized.matrix);
+          if (normalized.error) setMatrixError(normalized.error);
         }
       } catch (err) {
         setError((err as Error).message);
