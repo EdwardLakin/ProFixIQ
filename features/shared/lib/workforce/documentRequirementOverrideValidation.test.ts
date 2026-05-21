@@ -27,6 +27,38 @@ describe("document requirement override validation", () => {
     expect(parsed).toEqual({ is_active: false });
   });
 
+  it("rejects create is_required string", () => {
+    expect(() =>
+      validateDocumentRequirementPayload({ doc_type: "other", label: "x", is_required: "false" }, "create")
+    ).toThrow("is_required must be a boolean");
+  });
+
+  it("rejects create expires_required string", () => {
+    expect(() =>
+      validateDocumentRequirementPayload({ doc_type: "other", label: "x", expires_required: "true" }, "create")
+    ).toThrow("expires_required must be a boolean");
+  });
+
+  it("rejects create is_active number", () => {
+    expect(() => validateDocumentRequirementPayload({ doc_type: "other", label: "x", is_active: 1 }, "create")).toThrow(
+      "is_active must be a boolean"
+    );
+  });
+
+  it("rejects patch is_active string", () => {
+    expect(() => validateDocumentRequirementPayload({ is_active: "false" }, "patch")).toThrow("is_active must be a boolean");
+  });
+
+  it("accepts patch is_required false", () => {
+    const parsed = validateDocumentRequirementPayload({ is_required: false }, "patch");
+    expect(parsed).toEqual({ required: false });
+  });
+
+  it("accepts patch expires_required false", () => {
+    const parsed = validateDocumentRequirementPayload({ expires_required: false }, "patch");
+    expect(parsed).toEqual({ expires_required: false });
+  });
+
   it("detects unique conflict", () => {
     expect(
       isActiveOverrideConflict({ code: "23505", message: "duplicate key value violates unique constraint workforce_document_requirements_active" })
