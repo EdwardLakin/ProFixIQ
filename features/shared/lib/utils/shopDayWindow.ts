@@ -134,3 +134,44 @@ export function getShopLocalDayWindow(
     dayEndMs,
   };
 }
+
+function normalizeTimezone(timezone?: string | null): string {
+  if (!timezone) return "UTC";
+  try {
+    // Throws for invalid IANA timezone names.
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return timezone;
+  } catch {
+    return "UTC";
+  }
+}
+
+export function getShopDayRange(
+  timezone?: string | null,
+  referenceDate: Date = new Date(),
+): { timezone: string; start: string; end: string } {
+  const safeTimezone = normalizeTimezone(timezone);
+  const window = getShopLocalDayWindow(safeTimezone, referenceDate);
+  return {
+    timezone: safeTimezone,
+    start: window.dayStartIso,
+    end: window.dayEndIso,
+  };
+}
+
+export function getShopTodayTomorrowRanges(
+  timezone?: string | null,
+  now: Date = new Date(),
+): {
+  timezone: string;
+  today: { start: string; end: string };
+  tomorrow: { start: string; end: string };
+} {
+  const today = getShopDayRange(timezone, now);
+  const tomorrow = getShopDayRange(today.timezone, new Date(today.end));
+  return {
+    timezone: today.timezone,
+    today: { start: today.start, end: today.end },
+    tomorrow: { start: tomorrow.start, end: tomorrow.end },
+  };
+}
