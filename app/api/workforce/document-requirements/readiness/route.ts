@@ -27,7 +27,7 @@ export async function GET() {
       admin.from("profiles").select("id, full_name, email").eq("shop_id", shopId),
       admin
         .from("workforce_document_requirements")
-        .select("id, workforce_role, workforce_category, doc_type, label, required, expires_required, warning_days, priority, is_active")
+        .select("id, workforce_role, workforce_category, doc_type, label, is_required, expires_required, expires_warning_days, priority, is_active")
         .eq("shop_id", shopId),
     ]);
 

@@ -17,9 +17,9 @@ export type WorkforceDocumentRequirementOverrideRow = {
   workforce_category: string | null;
   doc_type: string;
   label: string | null;
-  required: boolean;
+  is_required: boolean;
   expires_required: boolean;
-  warning_days: number | null;
+  expires_warning_days: number | null;
   priority: number | null;
   is_active: boolean;
 };
@@ -150,7 +150,7 @@ export function buildEffectiveDocumentRequirements(
           label,
           required: true as const,
           expiresRequired: row.expires_required,
-          warningDays: row.warning_days ?? DEFAULT_WARNING_DAYS,
+          warningDays: row.expires_warning_days ?? DEFAULT_WARNING_DAYS,
         },
         precedenceRank: workforceRole ? 4 : workforceCategory ? 3 : 2,
         priority: row.priority ?? 0,
