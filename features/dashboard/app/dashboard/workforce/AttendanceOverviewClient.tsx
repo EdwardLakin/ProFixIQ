@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 
 type ShiftRow = {
   id?: string | null;
@@ -199,10 +200,7 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
         <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link href="/dashboard/workforce/scheduling" className="rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Scheduling</Link>
-          <Link href="/dashboard/workforce/payroll-review" className="rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Payroll Review</Link>
-        </div>
+        <WorkforceQuickLinks roleScope="manager" className="mt-4 flex flex-wrap gap-2" />
       </section>
 
       {loading && (
