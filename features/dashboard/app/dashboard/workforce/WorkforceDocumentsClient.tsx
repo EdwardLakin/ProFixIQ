@@ -306,8 +306,15 @@ export default function WorkforceDocumentsClient() {
   };
 
   const mapApiError = (status: number, payload: unknown): string => {
+    const serverCode = isRecord(payload) ? safeString(payload.code) : "";
     const serverError = isRecord(payload) ? safeString(payload.error) : "";
-    if (status === 409 && serverError === "ACTIVE_OVERRIDE_CONFLICT") return "An active override already exists for this role/category/doc type scope.";
+    const serverMessage = isRecord(payload) ? safeString(payload.message) : "";
+    const conflictText = `${serverError} ${serverMessage}`.toLowerCase();
+    const isActiveOverrideConflict =
+      serverCode === "ACTIVE_OVERRIDE_CONFLICT" ||
+      serverError === "ACTIVE_OVERRIDE_CONFLICT" ||
+      (status === 409 && conflictText.includes("active override already exists"));
+    if (isActiveOverrideConflict) return "An active override already exists for this role/category/doc type scope.";
     if (status === 401 || status === 403) return "You do not have permission to manage requirements.";
     if (status === 400) return serverError || "Validation failed. Please review your input.";
     return serverError || "Network or server error while saving override.";
