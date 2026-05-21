@@ -10775,6 +10775,89 @@ export type Database = {
           },
         ]
       }
+      property_inspection_signatures: {
+        Row: {
+          created_at: string
+          id: string
+          inspection_id: string
+          ip_address: unknown
+          metadata: Json
+          shop_id: string
+          signature_image_path: string | null
+          signature_text: string | null
+          signature_type: string
+          signed_at: string
+          signer_email: string | null
+          signer_name: string
+          signer_profile_id: string | null
+          signer_role: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inspection_id: string
+          ip_address?: unknown
+          metadata?: Json
+          shop_id: string
+          signature_image_path?: string | null
+          signature_text?: string | null
+          signature_type?: string
+          signed_at?: string
+          signer_email?: string | null
+          signer_name: string
+          signer_profile_id?: string | null
+          signer_role: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inspection_id?: string
+          ip_address?: unknown
+          metadata?: Json
+          shop_id?: string
+          signature_image_path?: string | null
+          signature_text?: string | null
+          signature_type?: string
+          signed_at?: string
+          signer_email?: string | null
+          signer_name?: string
+          signer_profile_id?: string | null
+          signer_role?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_inspection_signatures_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "property_inspections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspection_signatures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspection_signatures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_inspection_signatures_signer_profile_id_fkey"
+            columns: ["signer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_inspections: {
         Row: {
           completed_at: string | null
@@ -11076,6 +11159,113 @@ export type Database = {
           },
         ]
       }
+      property_portal_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by_profile_id: string | null
+          created_at: string
+          created_by_profile_id: string | null
+          expires_at: string
+          id: string
+          invited_email: string
+          invited_name: string | null
+          portfolio_id: string | null
+          property_id: string | null
+          role: string
+          shop_id: string
+          status: string
+          token_hash: string
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by_profile_id?: string | null
+          created_at?: string
+          created_by_profile_id?: string | null
+          expires_at: string
+          id?: string
+          invited_email: string
+          invited_name?: string | null
+          portfolio_id?: string | null
+          property_id?: string | null
+          role?: string
+          shop_id: string
+          status?: string
+          token_hash: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by_profile_id?: string | null
+          created_at?: string
+          created_by_profile_id?: string | null
+          expires_at?: string
+          id?: string
+          invited_email?: string
+          invited_name?: string | null
+          portfolio_id?: string | null
+          property_id?: string | null
+          role?: string
+          shop_id?: string
+          status?: string
+          token_hash?: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_portal_invites_accepted_by_profile_id_fkey"
+            columns: ["accepted_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_created_by_profile_id_fkey"
+            columns: ["created_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "property_portfolios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_portal_invites_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_portfolios: {
         Row: {
           created_at: string
@@ -11184,6 +11374,230 @@ export type Database = {
           },
           {
             foreignKeyName: "property_properties_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_request_attachments: {
+        Row: {
+          caption: string | null
+          content_type: string | null
+          created_at: string
+          event_id: string | null
+          file_kind: string
+          id: string
+          metadata: Json
+          original_filename: string | null
+          request_id: string
+          shop_id: string
+          size_bytes: number | null
+          storage_bucket: string | null
+          storage_path: string | null
+          uploaded_by_profile_id: string | null
+        }
+        Insert: {
+          caption?: string | null
+          content_type?: string | null
+          created_at?: string
+          event_id?: string | null
+          file_kind?: string
+          id?: string
+          metadata?: Json
+          original_filename?: string | null
+          request_id: string
+          shop_id: string
+          size_bytes?: number | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          uploaded_by_profile_id?: string | null
+        }
+        Update: {
+          caption?: string | null
+          content_type?: string | null
+          created_at?: string
+          event_id?: string | null
+          file_kind?: string
+          id?: string
+          metadata?: Json
+          original_filename?: string | null
+          request_id?: string
+          shop_id?: string
+          size_bytes?: number | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          uploaded_by_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_request_attachments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "property_request_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_attachments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "property_maintenance_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_attachments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_attachments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_attachments_uploaded_by_profile_id_fkey"
+            columns: ["uploaded_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_request_events: {
+        Row: {
+          actor_profile_id: string | null
+          actor_type: string
+          body: string | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          request_id: string
+          shop_id: string
+          visibility: string
+        }
+        Insert: {
+          actor_profile_id?: string | null
+          actor_type?: string
+          body?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          request_id: string
+          shop_id: string
+          visibility?: string
+        }
+        Update: {
+          actor_profile_id?: string | null
+          actor_type?: string
+          body?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          request_id?: string
+          shop_id?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_request_events_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "property_maintenance_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_request_read_receipts: {
+        Row: {
+          created_at: string
+          event_id: string | null
+          id: string
+          read_at: string
+          reader_profile_id: string | null
+          reader_type: string
+          request_id: string
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          read_at?: string
+          reader_profile_id?: string | null
+          reader_type?: string
+          request_id: string
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          read_at?: string
+          reader_profile_id?: string | null
+          reader_type?: string
+          request_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_request_read_receipts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "property_request_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_read_receipts_reader_profile_id_fkey"
+            columns: ["reader_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_read_receipts_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "property_maintenance_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_read_receipts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_request_read_receipts_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
@@ -20685,6 +21099,81 @@ export type Database = {
           },
         ]
       }
+      workforce_document_requirements: {
+        Row: {
+          accept_statuses: string[]
+          created_at: string
+          created_by: string | null
+          doc_type: string
+          expires_required: boolean
+          expires_warning_days: number
+          id: string
+          is_active: boolean
+          is_required: boolean
+          label: string
+          priority: number
+          review_statuses: string[]
+          shop_id: string
+          updated_at: string
+          updated_by: string | null
+          workforce_category: string | null
+          workforce_role: string | null
+        }
+        Insert: {
+          accept_statuses?: string[]
+          created_at?: string
+          created_by?: string | null
+          doc_type: string
+          expires_required?: boolean
+          expires_warning_days?: number
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          label: string
+          priority?: number
+          review_statuses?: string[]
+          shop_id: string
+          updated_at?: string
+          updated_by?: string | null
+          workforce_category?: string | null
+          workforce_role?: string | null
+        }
+        Update: {
+          accept_statuses?: string[]
+          created_at?: string
+          created_by?: string | null
+          doc_type?: string
+          expires_required?: boolean
+          expires_warning_days?: number
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          label?: string
+          priority?: number
+          review_statuses?: string[]
+          shop_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          workforce_category?: string | null
+          workforce_role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workforce_document_requirements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workforce_document_requirements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       ai_training_events_v: {
@@ -22061,6 +22550,10 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      accept_property_portal_invite: {
+        Args: { p_raw_token: string }
+        Returns: Json
+      }
       add_repair_line_from_vehicle_service: {
         Args: {
           p_engine_family: string
