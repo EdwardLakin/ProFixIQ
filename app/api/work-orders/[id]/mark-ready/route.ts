@@ -5,6 +5,8 @@ import type { Database } from "@shared/types/types/supabase";
 import { buildWorkOrderCompletedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 type DB = Database;
 
@@ -33,10 +35,8 @@ export async function POST(req: Request) {
     if (lnErr) throw lnErr;
 
     const notDone = (lines ?? []).some((l) => {
-      const normalized = String(l.status ?? "awaiting")
-        .toLowerCase()
-        .replaceAll(" ", "_");
-      return !["completed", "ready_to_invoice", "invoiced"].includes(normalized);
+      const normalized = normalizeWorkOrderLineStatus(l.status ?? "pending");
+      return !["completed", "declined", "deferred"].includes(normalized);
     });
     if (notDone) {
       return NextResponse.json({ ok: false, error: "All lines must be completed first." }, { status: 400 });
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     const { error: updErr } = await supabase
       .from("work_orders")
-      .update({ status: "ready_to_invoice" })
+      .update({ status: normalizeWorkOrderStatus("ready_to_invoice") })
       .eq("id", woId);
     if (updErr) throw updErr;
 
