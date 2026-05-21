@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 
 type InboxSeverity = "blocking" | "warning" | "info";
 
@@ -24,11 +25,6 @@ type OverviewPayload = {
     canAccessPeople: boolean;
   };
 };
-const baseHeaderActions = [
-  { href: "/dashboard/workforce/scheduling", title: "Scheduling" },
-  { href: "/dashboard/workforce/payroll-review", title: "Payroll Review" },
-];
-
 const severityStyles: Record<InboxSeverity, { chip: string; border: string; dot: string; label: string }> = {
   blocking: {
     chip: "bg-red-500/15 text-red-200 border-red-400/40",
@@ -96,6 +92,18 @@ function buildInboxItem(item: Record<string, unknown>, fallbackId: string): Inbo
   return normalized;
 }
 
+
+
+function roleSafeHref(href: string, canAccessPeople: boolean): string {
+  if (canAccessPeople) return href;
+  const blocked = [
+    "/dashboard/workforce/people",
+    "/dashboard/workforce/documents",
+    "/dashboard/workforce/certifications",
+    "/dashboard/workforce/required-document-matrix",
+  ];
+  return blocked.some((prefix) => href.startsWith(prefix)) ? "/dashboard/workforce/overview" : href;
+}
 
 function formatSectionLabel(key: string) {
   const normalized = key.replace(/[_-]/g, " ").trim();
@@ -251,10 +259,6 @@ export default function WorkforceOverviewClient() {
     });
     return ordered;
   }, [data.sections]);
-  const headerActions = data.permissions.canAccessPeople
-    ? [...baseHeaderActions, { href: "/dashboard/workforce/people", title: "People" }]
-    : baseHeaderActions;
-
   return (
     <div className="space-y-6">
       <header className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#171515] via-[#131418] to-[#191412] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.25)] md:p-6">
@@ -270,17 +274,10 @@ export default function WorkforceOverviewClient() {
             Last updated {formatGeneratedAt(data.generatedAt)}
           </p>
         </div>
-        <nav className="mt-4 flex flex-wrap gap-2" aria-label="Workforce quick actions">
-          {headerActions.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-md border border-orange-300/30 bg-orange-500/10 px-3 py-1.5 text-sm text-orange-100 transition hover:border-orange-300/60 hover:bg-orange-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70"
-            >
-              {link.title}
-            </Link>
-          ))}
-        </nav>
+        <WorkforceQuickLinks
+          roleScope={data.permissions.canAccessPeople ? "owner_admin" : "manager"}
+          className="mt-4 flex flex-wrap gap-2"
+        />
       </header>
 
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
@@ -328,7 +325,7 @@ export default function WorkforceOverviewClient() {
                       const styles = severityStyles[item.severity];
                       return (
                         <Link
-                          href={safeHref(item.href)}
+                          href={roleSafeHref(safeHref(item.href), data.permissions.canAccessPeople)}
                           key={item.id}
                           className={`block rounded-xl border bg-black/30 p-3 transition ${styles.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70`}
                         >
@@ -364,7 +361,7 @@ export default function WorkforceOverviewClient() {
               <ul className="mt-3 space-y-2">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <Link href={safeHref(item.href)} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
+                    <Link href={roleSafeHref(safeHref(item.href), data.permissions.canAccessPeople)} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
                       <span>
                         <span className="font-medium text-white">{item.title}</span>
                         <span className="mt-0.5 block text-xs text-neutral-400">{item.description}</span>
