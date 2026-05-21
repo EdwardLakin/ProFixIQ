@@ -246,7 +246,7 @@ export default function WorkforceSchedulingClient() {
                 <thead className="text-xs uppercase text-neutral-400"><tr><th className="text-left">Staff</th><th className="text-left">Role</th><th className="text-left">Recurring hrs/wk</th><th className="text-left">Template rows</th><th className="text-left">Overrides (7d)</th><th className="text-left">Away blocks (7d)</th><th className="text-left">Status</th></tr></thead>
                 <tbody className="divide-y divide-white/10">
                   {staff.map((s) => (
-                    <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-white/10" : "hover:bg-white/5"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10 ring-1 ring-amber-400/40" : ""} ${focus === "away" && ((awayDate === "today" && s.is_away_today) || awayDate === "tomorrow") ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
+                    <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-white/10" : "hover:bg-white/5"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10 ring-1 ring-amber-400/40" : ""} ${focus === "away" && awayDate === "today" && s.is_away_today ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
                       <td className="py-2">{s.full_name ?? "Unnamed"}</td>
                       <td>{s.role ?? "staff"}</td>
                       <td>{minsToHours(s.weekly_recurring_minutes)}</td>
