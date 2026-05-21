@@ -512,7 +512,7 @@ export const TILES: Tile[] = [
     href: "/dashboard/admin/payroll-time",
     title: "Payroll Time",
     subtitle: "Pay period review, exception triage, and export workflow",
-    roles: ["owner", "admin"],
+    roles: ["owner", "admin", "manager"],
     scopes: ["management", "all"],
     section: "Admin",
   },

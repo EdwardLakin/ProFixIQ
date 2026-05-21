@@ -334,6 +334,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard/workforce/payroll-review": {
     title: () => "Payroll Review",
     icon: "⏱️",
+    // Payroll Review is operational Workforce access and intentionally includes manager.
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce/documents": {
@@ -376,7 +377,8 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard/admin/payroll-time": {
     title: () => "Payroll Time",
     icon: "⏱️",
-    roles: ["owner", "admin"],
+    // Legacy mirror of Payroll Review keeps the same operational access policy.
+    roles: ["owner", "admin", "manager"],
   },
   "/dashboard/admin/employee-docs": {
     title: () => "Employee Documents",
