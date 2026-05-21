@@ -1,4 +1,5 @@
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createHash } from "crypto";
 
 export type PayrollPeriodStatus = "draft" | "open" | "approved" | "exported";
 
@@ -535,18 +536,60 @@ export async function exportPeriod(params: { shopId: string; periodId: string; a
     if (rowsErr) throw new Error(rowsErr.message);
   }
 
+  const csvHeaders = ["user_id", "employee_external_id", "regular_hours", "overtime_hours", "unpaid_break_hours", "total_hours"];
+  const csvLines = [
+    csvHeaders.join(","),
+    ...rows.map((r) => [r.user_id, r.employee_external_id ?? "", r.regular_hours, r.overtime_hours, r.unpaid_break_hours, r.total_hours].join(",")),
+  ];
+  const csv = csvLines.join("\n");
+
+  const storageBucket = "payroll-exports";
+  const storagePath = `${shopId}/${periodId}/${batch.id}.csv`;
+  const fileSizeBytes = Buffer.byteLength(csv, "utf8");
+  const fileSha256 = createHash("sha256").update(csv, "utf8").digest("hex");
+
+  const { error: uploadErr } = await admin.storage
+    .from(storageBucket)
+    .upload(storagePath, csv, { contentType: "text/csv; charset=utf-8", upsert: false });
+
+  if (uploadErr) {
+    await admin
+      .from("payroll_export_batches")
+      .update({ handoff_status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", batch.id)
+      .eq("shop_id", shopId);
+    throw new Error(`Failed to persist payroll export artifact: ${uploadErr.message}`);
+  }
+
+  const { error: batchMetaErr } = await admin
+    .from("payroll_export_batches")
+    .update({
+      storage_bucket: storageBucket,
+      storage_path: storagePath,
+      file_size_bytes: fileSizeBytes,
+      file_sha256: fileSha256,
+      provider_template_version: "generic-v1",
+      handoff_status: "generated",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", batch.id)
+    .eq("shop_id", shopId);
+
+  if (batchMetaErr) {
+    await admin
+      .from("payroll_export_batches")
+      .update({ handoff_status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", batch.id)
+      .eq("shop_id", shopId);
+    throw new Error(`Failed to save payroll export artifact metadata: ${batchMetaErr.message}`);
+  }
+
   const now = new Date().toISOString();
   await admin
     .from("payroll_pay_periods")
     .update({ status: "exported", exported_at: now, exported_by: actorId, locked_at: now, updated_at: now })
     .eq("id", periodId)
     .eq("shop_id", shopId);
-
-  const csvHeaders = ["user_id", "employee_external_id", "regular_hours", "overtime_hours", "unpaid_break_hours", "total_hours"];
-  const csvLines = [
-    csvHeaders.join(","),
-    ...rows.map((r) => [r.user_id, r.employee_external_id ?? "", r.regular_hours, r.overtime_hours, r.unpaid_break_hours, r.total_hours].join(",")),
-  ];
 
   void admin.from("audit_logs").insert({
     shop_id: shopId,
@@ -560,8 +603,11 @@ export async function exportPeriod(params: { shopId: string; periodId: string; a
       batch_id: batch.id,
       provider_type: providerType,
       row_count: rows.length,
+      has_artifact: true,
+      file_sha256: fileSha256,
+      file_size_bytes: fileSizeBytes,
     },
   });
 
-  return { batchId: batch.id, rowCount: rows.length, csv: csvLines.join("\n") };
+  return { batchId: batch.id, rowCount: rows.length, csv };
 }
