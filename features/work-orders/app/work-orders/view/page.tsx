@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
 import StatusPickerModal, {
@@ -726,7 +727,7 @@ export default function WorkOrdersView(): JSX.Element {
               Work Orders
             </h1>
             <p className="mt-2 text-sm text-neutral-300">
-              Advisor view with full actions. Same workflow logic, updated board-style layout.
+              Live repair jobs across inspection, approval, parts, technician work, and invoicing.
             </p>
 
             {!loading && !err ? (
@@ -874,6 +875,18 @@ export default function WorkOrdersView(): JSX.Element {
             const reviewedOk = Boolean(review?.ok);
             const issueCount = review?.issues?.length ?? 0;
             const techRollup = techRollupByWo[r.id] ?? "awaiting";
+            const canonicalStatus = normalizeWorkOrderStatus(r.status);
+            const nextAction =
+              canonicalStatus === "new" ? (r.assigned_tech ? "Start inspection" : "Assign technician") :
+              canonicalStatus === "awaiting_inspection" ? "Open inspection" :
+              canonicalStatus === "awaiting_approval" ? "Review approval" :
+              canonicalStatus === "approved" ? (r.assigned_tech ? "Start work" : "Schedule work") :
+              canonicalStatus === "in_progress" ? "Continue work" :
+              canonicalStatus === "waiting_parts" ? "Check parts" :
+              canonicalStatus === "ready_to_invoice" ? "Create invoice" :
+              canonicalStatus === "invoiced" ? "Review invoice" :
+              canonicalStatus === "completed" ? "View record" : "View cancelled";
+            const staleDays = Math.max(0, Math.floor((Date.now() - new Date(r.updated_at ?? r.created_at ?? Date.now()).getTime()) / 86400000));
 
             const accent = stageAccent(r.status);
             const priority = priorityLabel(r.priority);
@@ -908,7 +921,7 @@ export default function WorkOrdersView(): JSX.Element {
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${accent.badge}`}
                       >
-                        {(r.status ?? "awaiting").replaceAll("_", " ")}
+                        {normalizeWorkOrderStatus(r.status).replaceAll("_", " ")}
                       </span>
 
                       <span
@@ -983,6 +996,19 @@ export default function WorkOrdersView(): JSX.Element {
 
                 <div className="mt-4 flex min-h-[30px] items-center">
                   <WorkOrderAssignedSummary workOrderId={r.id} />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                  {canonicalStatus === "awaiting_approval" ? <span className="rounded-full border border-blue-400/50 bg-blue-500/10 px-2 py-0.5 text-blue-100">Needs approval</span> : null}
+                  {canonicalStatus === "waiting_parts" || techRollup === "on_hold" ? <span className="rounded-full border border-sky-400/45 bg-sky-500/10 px-2 py-0.5 text-sky-100">Waiting parts</span> : null}
+                  {!r.assigned_tech ? <span className="rounded-full border border-amber-400/50 bg-amber-500/10 px-2 py-0.5 text-amber-100">No technician assigned</span> : null}
+                  {!r.inspection_id ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
+                  {canonicalStatus === "ready_to_invoice" ? <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">Ready to invoice</span> : null}
+                  {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
+                </div>
+
+                <div className="mt-3 text-xs text-neutral-300">
+                  Next action: <span className="font-semibold text-white">{nextAction}</span>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">

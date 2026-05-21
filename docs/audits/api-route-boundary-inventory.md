@@ -1,6 +1,6 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-05-21T22:05:58.096Z
+Generated: 2026-05-21T22:17:42.743Z
 
 ## Summary
 - Total route count: **335**
