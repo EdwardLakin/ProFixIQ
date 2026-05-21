@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
-
-function toDayBounds(date: Date) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start: start.toISOString(), end: end.toISOString() };
-}
 
 export async function GET(req: NextRequest) {
   const access = await requireShopScopedApiAccess();
@@ -22,6 +15,9 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const from = url.searchParams.get("from") ?? new Date().toISOString();
   const to = url.searchParams.get("to") ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  const shopRes = await admin.from("shops").select("timezone").eq("id", access.profile.shop_id).maybeSingle();
+  if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
+  const todayBounds = getShopDayRange(shopRes.data?.timezone, new Date());
 
   const [profilesRes, templatesRes, overridesRes, blocksRes, requestsRes] = await Promise.all([
     admin.from("profiles").select("id, full_name, email, role").eq("shop_id", access.profile.shop_id).order("full_name", { ascending: true }),
@@ -54,7 +50,6 @@ export async function GET(req: NextRequest) {
       recurringMinutes += Math.max(0, (eh * 60 + em) - (sh * 60 + sm) - (row.unpaid_break_minutes ?? 0));
     }
 
-    const todayBounds = toDayBounds(new Date());
     const isAwayToday = personBlocks.some((b) => b.starts_at < todayBounds.end && b.ends_at > todayBounds.start);
 
     return {

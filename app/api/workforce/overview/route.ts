@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { getShopTodayTomorrowRanges } from "@/features/shared/lib/utils/shopDayWindow";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type Severity = "blocking" | "warning" | "info";
@@ -53,11 +54,14 @@ export async function GET() {
   const admin: AdminClient = createAdminSupabase();
   const shopId = access.profile.shop_id;
   const now = new Date();
-  // TODO: Normalize "today" boundaries to the shop timezone instead of server-local midnight.
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
-  const tomorrowEnd = new Date(todayEnd); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
-  const in30 = new Date(todayStart); in30.setDate(in30.getDate() + 30);
+  const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
+  const shopRes = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
+  if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
+  // Workforce day views intentionally use shop-local timezone day boundaries.
+  const dayRanges = getShopTodayTomorrowRanges(shopRes.data?.timezone, now);
+  const todayStartIso = dayRanges.today.start;
+  const todayEndIso = dayRanges.today.end;
+  const tomorrowEndIso = dayRanges.tomorrow.end;
 
   const [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes] = await Promise.all([
     admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
@@ -66,7 +70,7 @@ export async function GET() {
     admin.from("payroll_pay_periods").select("id, period_start").eq("shop_id", shopId).order("period_start", { ascending: false }).limit(1),
     admin.from("staff_certifications").select("expiry_date, status").eq("shop_id", shopId),
     admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
-    admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEnd.toISOString()).gte("ends_at", todayStart.toISOString()),
+    admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEndIso).gte("ends_at", todayStartIso),
     admin.from("work_order_lines").select("id, assigned_tech_id, line_status, status, voided_at").eq("shop_id", shopId).is("voided_at", null),
   ]);
   const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes].find((r) => r.error);
@@ -85,8 +89,8 @@ export async function GET() {
   const templateUsers = new Set((templatesRes.data ?? []).map((t) => t.user_id));
   const blocks = blocksRes.data ?? [];
   const overlap = (start: string, end: string, from: Date, to: Date) => new Date(start) < to && new Date(end) > from;
-  const awayTodayUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, todayStart, todayEnd)).map((b) => b.user_id));
-  const awayTomorrowUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, todayEnd, tomorrowEnd)).map((b) => b.user_id));
+  const awayTodayUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, new Date(todayStartIso), new Date(todayEndIso))).map((b) => b.user_id));
+  const awayTomorrowUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, new Date(todayEndIso), new Date(tomorrowEndIso))).map((b) => b.user_id));
 
   let payrollBlocking = 0; let payrollWarnings = 0;
   const periodId = periodsRes.data?.[0]?.id;
