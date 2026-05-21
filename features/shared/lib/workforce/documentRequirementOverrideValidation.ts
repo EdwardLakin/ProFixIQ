@@ -36,6 +36,11 @@ const normalizeStatuses = (value: unknown, allowed: readonly string[], field: st
   return normalized;
 };
 
+const parseBooleanField = (value: unknown, field: string) => {
+  if (typeof value !== "boolean") throw new Error(`${field} must be a boolean`);
+  return value;
+};
+
 export function validateDocumentRequirementPayload(payload: unknown, mode: Mode) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Body must be a JSON object");
@@ -67,8 +72,8 @@ export function validateDocumentRequirementPayload(payload: unknown, mode: Mode)
     output.label = label;
   }
 
-  if ("is_required" in input) output.required = Boolean(input.is_required);
-  if ("expires_required" in input) output.expires_required = Boolean(input.expires_required);
+  if ("is_required" in input) output.required = parseBooleanField(input.is_required, "is_required");
+  if ("expires_required" in input) output.expires_required = parseBooleanField(input.expires_required, "expires_required");
 
   if ("expires_warning_days" in input) {
     const n = Number(input.expires_warning_days);
@@ -82,7 +87,7 @@ export function validateDocumentRequirementPayload(payload: unknown, mode: Mode)
     output.priority = n;
   }
 
-  if ("is_active" in input) output.is_active = Boolean(input.is_active);
+  if ("is_active" in input) output.is_active = parseBooleanField(input.is_active, "is_active");
   if ("accept_statuses" in input) output.accept_statuses = normalizeStatuses(input.accept_statuses, ACCEPT_STATUSES, "accept_statuses");
   if ("review_statuses" in input) output.review_statuses = normalizeStatuses(input.review_statuses, REVIEW_STATUSES, "review_statuses");
 
