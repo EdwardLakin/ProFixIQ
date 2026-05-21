@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AdminPageHeader, AdminPageShell, AdminPanel, AdminPanelTitle } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 type Staff = {
@@ -44,6 +45,7 @@ function emptyTemplate(): TemplateRow[] {
 }
 
 export default function WorkforceSchedulingClient() {
+  const searchParams = useSearchParams();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [pending, setPending] = useState<TimeOffRequest[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
@@ -86,6 +88,20 @@ export default function WorkforceSchedulingClient() {
   }, [selectedStaffId]);
 
   const selected = useMemo(() => staff.find((s) => s.id === selectedStaffId) ?? null, [staff, selectedStaffId]);
+  const focus = searchParams.get("focus");
+  const status = searchParams.get("status");
+  const conflictType = searchParams.get("type");
+  const awayDate = searchParams.get("date");
+  const personId = searchParams.get("person_id");
+  const filterLabel = useMemo(() => {
+    if (focus === "time-off" && status === "pending") return "Pending time off";
+    if (focus === "away" && awayDate === "today") return "Away today";
+    if (focus === "away" && awayDate === "tomorrow") return "Away tomorrow";
+    if (focus === "conflicts" && conflictType === "assigned_to_unavailable") return "Assigned to unavailable";
+    if (focus === "schedule-gaps") return "Missing schedule templates";
+    if (focus === "workload" && personId) return "Workload context";
+    return null;
+  }, [awayDate, conflictType, focus, personId, status]);
 
   async function saveTemplate() {
     if (!selectedStaffId) return;
@@ -143,6 +159,12 @@ export default function WorkforceSchedulingClient() {
         title="Staff Scheduling + Time Away"
         subtitle="Recurring templates, one-off shift overrides, and time off approvals in one scheduling surface tied to People and Payroll Time."
       />
+      {filterLabel ? (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+          <span>Filtered from Workforce Overview: {filterLabel}</span>
+          <Link href="/dashboard/workforce/scheduling" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+        </div>
+      ) : null}
 
       <AdminPanel>
         <AdminPanelTitle title="Team Weekly Posture" description="Scan schedule readiness, override volume, and approved away blocks." />
@@ -151,7 +173,7 @@ export default function WorkforceSchedulingClient() {
             <thead className="text-xs uppercase text-neutral-400"><tr><th className="text-left">Staff</th><th className="text-left">Role</th><th className="text-left">Recurring hrs/wk</th><th className="text-left">Template rows</th><th className="text-left">Overrides (7d)</th><th className="text-left">Away blocks (7d)</th><th className="text-left">Status</th></tr></thead>
             <tbody className="divide-y divide-white/10">
               {staff.map((s) => (
-                <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-white/10" : "hover:bg-white/5"}`}>
+                <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-white/10" : "hover:bg-white/5"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10" : ""} ${focus === "away" && ((awayDate === "today" && s.is_away_today) || awayDate === "tomorrow") ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
                   <td className="py-2">{s.full_name ?? "Unnamed"}</td>
                   <td>{s.role ?? "staff"}</td>
                   <td>{minsToHours(s.weekly_recurring_minutes)}</td>
@@ -166,7 +188,7 @@ export default function WorkforceSchedulingClient() {
         </div>
       </AdminPanel>
 
-      <AdminPanel>
+      <AdminPanel className={focus === "time-off" && status === "pending" ? "ring-1 ring-orange-400/50" : ""}>
         <AdminPanelTitle title="Pending Time Off Requests" description="Approve or decline from here; approvals automatically create schedule availability blocks." />
         <div className="space-y-2 p-4 text-sm">
           {pending.length === 0 ? <p className="text-neutral-400">No pending requests.</p> : pending.map((r) => (
