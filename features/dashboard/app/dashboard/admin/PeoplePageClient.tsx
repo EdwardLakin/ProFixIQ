@@ -65,11 +65,16 @@ export default function PeoplePageClient() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "on_leave">("all");
   const [actionFilter, setActionFilter] = useState<"all" | "needs_action" | "payroll_issues" | "cert_expiry">("all");
+  const actionParam = searchParams.get("action");
+  const workforceAction = actionParam === "cert_expired" || actionParam === "cert_expiring" || actionParam === "missing_schedule_template" ? actionParam : null;
 
   useEffect(() => {
     const view = searchParams.get("view");
     if (view === "workforce") {
       setActionFilter("needs_action");
+    }
+    if (workforceAction === "cert_expired" || workforceAction === "cert_expiring") {
+      setActionFilter("cert_expiry");
     }
   }, [searchParams]);
 
@@ -99,13 +104,20 @@ export default function PeoplePageClient() {
             ? row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready
             : row.expired_certifications > 0 || row.expiring_certifications > 0;
       const text = `${row.full_name ?? ""} ${row.email ?? ""} ${row.phone ?? ""} ${row.role ?? ""} ${row.workforce_role ?? ""}`.toLowerCase();
-      return matchesStatus && matchesActionFilter && (!q || text.includes(q));
+      const matchesWorkforceAction = workforceAction === "cert_expired"
+        ? row.expired_certifications > 0
+        : workforceAction === "cert_expiring"
+          ? row.expiring_certifications > 0
+          : workforceAction === "missing_schedule_template"
+            ? !row.has_schedule_template
+            : true;
+      return matchesStatus && matchesActionFilter && matchesWorkforceAction && (!q || text.includes(q));
       })
       .sort((a, b) => {
         const score = (value: PersonRow["highest_action_severity"]) => (value === "blocking" ? 3 : value === "warning" ? 2 : value === "informational" ? 1 : 0);
         return score(b.highest_action_severity) - score(a.highest_action_severity);
       });
-  }, [rows, search, statusFilter, actionFilter]);
+  }, [rows, search, statusFilter, actionFilter, workforceAction]);
 
   const summary = useMemo(() => {
     const source = rows ?? [];
@@ -127,6 +139,12 @@ export default function PeoplePageClient() {
         title="People & Staff"
         subtitle="People is the canonical admin directory for identity governance, workforce posture, certifications/licensing readiness, and payroll-time follow-up."
       />
+      {workforceAction ? (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+          <span>Filtered from Workforce Overview: {workforceAction === "cert_expired" ? "Expired certifications" : workforceAction === "cert_expiring" ? "Expiring certifications" : "Missing schedule templates"}</span>
+          <Link href="/dashboard/workforce/people" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+        </div>
+      ) : null}
 
       <AdminPanel>
         <AdminPanelTitle

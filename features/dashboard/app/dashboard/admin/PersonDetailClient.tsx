@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@shared/components/ui/Button";
 import {
   AdminBadge,
@@ -111,6 +112,7 @@ function statusTone(status: "active" | "inactive" | "on_leave") {
 }
 
 export default function PersonDetailClient({ personId, from }: { personId: string; from?: string | null }) {
+  const searchParams = useSearchParams();
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -167,6 +169,9 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     }
     return groups;
   }, [detail]);
+  const fromContext = from ?? searchParams.get("from");
+  const focusParam = searchParams.get("focus");
+  const fromWorkforceOverview = fromContext === "workforce-overview" && focusParam === "workload";
 
   async function saveIdentityAndWorkforce() {
     if (!detail) return;
@@ -260,6 +265,11 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         title={detail.full_name ?? "Person record"}
         subtitle="Manage identity/access, workforce profile, certifications/licensing, payroll posture, and activity from one canonical staff record."
       />
+      {fromWorkforceOverview ? (
+        <AdminPanel>
+          <div className="px-4 py-3 text-xs text-orange-200">Opened from Workforce Overview for workload review.</div>
+        </AdminPanel>
+      ) : null}
 
       {from === "create-user" ? (
         <AdminPanel>

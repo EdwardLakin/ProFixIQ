@@ -68,6 +68,8 @@ export default function PayrollTimeClient() {
   const [exceptionSeverityFilter, setExceptionSeverityFilter] = useState<"all" | "blocking" | "warning">("all");
   const searchParams = useSearchParams();
   const personIdFilter = searchParams.get("person_id")?.trim() || "";
+  const severityParam = searchParams.get("severity");
+  const workforceSeverity = severityParam === "blocking" || severityParam === "warning" ? severityParam : null;
 
   const activePeriod = useMemo(
     () => periods.find((p) => p.id === activePeriodId) ?? null,
@@ -127,6 +129,10 @@ export default function PayrollTimeClient() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (workforceSeverity) setExceptionSeverityFilter(workforceSeverity);
+  }, [workforceSeverity]);
+
   async function runAction(path: string, actionName: string, payload: Record<string, unknown>) {
     setBusyAction(actionName);
     setError(null);
@@ -174,6 +180,12 @@ export default function PayrollTimeClient() {
         title="Payroll Time Tracking"
         subtitle="Attendance-first payroll-hour review by pay period with exception triage, approval locking, and export snapshots."
       />
+      {workforceSeverity ? (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+          <span>Filtered from Workforce Overview: {workforceSeverity === "blocking" ? "Blocking exceptions" : "Warning exceptions"}</span>
+          <Link href="/dashboard/workforce/payroll-review" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+        </div>
+      ) : null}
 
       <AdminPanel>
         <AdminPanelTitle
