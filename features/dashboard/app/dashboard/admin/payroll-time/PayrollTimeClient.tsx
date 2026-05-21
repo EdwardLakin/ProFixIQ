@@ -51,11 +51,37 @@ type Exception = {
   resolved: boolean;
 };
 
+
+
+type ExportBatch = {
+  id: string;
+  period_id: string;
+  provider_type: string | null;
+  status: string | null;
+  handoff_status: string | null;
+  row_count: number | null;
+  exported_at: string | null;
+  exported_by: string | null;
+  file_size_bytes: number | null;
+  file_sha256: string | null;
+  provider_template_version: string | null;
+  download_count: number | null;
+  last_downloaded_at: string | null;
+  created_at: string | null;
+};
 function fmtHours(minutes: number | null | undefined) {
   return ((minutes ?? 0) / 60).toFixed(2);
 }
 
+function fmtFileSize(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export default function PayrollTimeClient() {
+
   const [periods, setPeriods] = useState<Period[]>([]);
   const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -64,6 +90,9 @@ export default function PayrollTimeClient() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [csvPreview, setCsvPreview] = useState<string | null>(null);
+  const [exportHistory, setExportHistory] = useState<ExportBatch[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [exceptionSeverityFilter, setExceptionSeverityFilter] = useState<"all" | "blocking" | "warning">("all");
   const searchParams = useSearchParams();
@@ -133,6 +162,10 @@ export default function PayrollTimeClient() {
     if (workforceSeverity) setExceptionSeverityFilter(workforceSeverity);
   }, [workforceSeverity]);
 
+  useEffect(() => {
+    void loadExportHistory(activePeriodId);
+  }, [activePeriodId]);
+
   async function runAction(path: string, actionName: string, payload: Record<string, unknown>) {
     setBusyAction(actionName);
     setError(null);
@@ -171,6 +204,44 @@ export default function PayrollTimeClient() {
     });
     if (result?.csv) setCsvPreview(String(result.csv));
     await load(activePeriodId);
+  }
+
+  async function loadExportHistory(periodId?: string | null) {
+    const targetPeriodId = periodId ?? activePeriodId;
+    if (!targetPeriodId) {
+      setExportHistory([]);
+      return;
+    }
+
+    const res = await fetch(`/api/payroll-time/exports?period_id=${targetPeriodId}`, { cache: "no-store" });
+    const body = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      setHistoryError(body?.error ?? "Failed to load export history");
+      setExportHistory([]);
+      return;
+    }
+
+    setHistoryError(null);
+    setExportHistory((body?.batches ?? []) as ExportBatch[]);
+  }
+
+  async function handleDownload(batchId: string) {
+    setDownloadingBatchId(batchId);
+    setHistoryError(null);
+
+    const res = await fetch(`/api/payroll-time/exports/${batchId}/download`, { cache: "no-store" });
+    const body = await res.json().catch(() => null);
+
+    if (!res.ok || !body?.signedUrl) {
+      setHistoryError(body?.error ?? "Download unavailable. Please try again.");
+      setDownloadingBatchId(null);
+      return;
+    }
+
+    window.open(String(body.signedUrl), "_blank", "noopener,noreferrer");
+    setDownloadingBatchId(null);
+    await loadExportHistory(activePeriodId);
   }
 
   return (
@@ -373,6 +444,54 @@ export default function PayrollTimeClient() {
                     <td className="px-4 py-2.5">{item.work_date ?? "—"}</td>
                     <td className="px-4 py-2.5">{item.message}</td>
                     <td className="px-4 py-2.5">{item.resolved ? "resolved" : "open"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminPanel>
+
+
+      <AdminPanel>
+        <AdminPanelTitle title="Export History" description="Read-only export snapshots for this payroll period with secure download links." />
+        {historyError ? <p className="px-4 pb-4 text-xs text-amber-300">{historyError}</p> : null}
+        {exportHistory.length === 0 ? (
+          <AdminEmptyState title="No export batches yet" body="Run an export to create a period snapshot artifact." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Provider / Template</th>
+                  <th className="px-4 py-2.5 text-left">Status</th>
+                  <th className="px-4 py-2.5 text-right">Rows</th>
+                  <th className="px-4 py-2.5 text-left">Exported</th>
+                  <th className="px-4 py-2.5 text-left">File size</th>
+                  <th className="px-4 py-2.5 text-right">Downloads</th>
+                  <th className="px-4 py-2.5 text-left">Checksum</th>
+                  <th className="px-4 py-2.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {exportHistory.map((batch) => (
+                  <tr key={batch.id} className="text-neutral-200">
+                    <td className="px-4 py-2.5">{batch.provider_type ?? "csv"} / {batch.provider_template_version ?? "—"}</td>
+                    <td className="px-4 py-2.5">{batch.status ?? "—"} / {batch.handoff_status ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-right">{batch.row_count ?? 0}</td>
+                    <td className="px-4 py-2.5">{batch.exported_at ? new Date(batch.exported_at).toLocaleString() : "—"}</td>
+                    <td className="px-4 py-2.5">{fmtFileSize(batch.file_size_bytes)}</td>
+                    <td className="px-4 py-2.5 text-right">{batch.download_count ?? 0}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-neutral-400">{batch.file_sha256 ? `${batch.file_sha256.slice(0, 12)}…` : "—"}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
+                        onClick={() => void handleDownload(batch.id)}
+                        disabled={downloadingBatchId !== null}
+                      >
+                        {downloadingBatchId === batch.id ? "Preparing…" : "Download"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
