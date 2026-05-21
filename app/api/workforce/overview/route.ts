@@ -5,6 +5,28 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type Severity = "blocking" | "warning" | "info";
 type WorkforceInboxItem = { id: string; type: string; severity: Severity; title: string; description: string; count?: number; personId?: string; personName?: string; href: string; createdAt?: string };
+type WorkforceOverviewResponse = {
+  summary: {
+    workingToday: number;
+    awayToday: number;
+    awayTomorrow: number;
+    pendingTimeOff: number;
+    payrollBlocking: number;
+    payrollWarnings: number;
+    expiringCertifications: number;
+    expiredCertifications: number;
+    scheduleGaps: number;
+    unassignedJobs: number;
+    assignedToUnavailable: number;
+    overloadedTechs: number;
+  };
+  inbox: WorkforceInboxItem[];
+  sections: Record<string, WorkforceInboxItem[]>;
+  generatedAt: string;
+  permissions: {
+    canAccessPeople: boolean;
+  };
+};
 const ACTIVE_LINE_EXCLUDED = ["completed", "cancelled", "closed", "invoiced", "declined"];
 const OVERLOAD_THRESHOLD = 6;
 const OVERLOADED_INBOX_CAP = 10;
@@ -131,5 +153,28 @@ export async function GET() {
     )
     .slice(0, INBOX_MAX_ITEMS);
 
-  return NextResponse.json({ summary: { workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0), awayToday: awayTodayUsers.size, awayTomorrow: awayTomorrowUsers.size, pendingTimeOff, payrollBlocking, payrollWarnings, expiringCertifications, expiredCertifications, scheduleGaps, unassignedJobs, assignedToUnavailable, overloadedTechs: overloaded.length }, inbox, sections, generatedAt: new Date().toISOString() });
+  const response: WorkforceOverviewResponse = {
+    summary: {
+      workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0),
+      awayToday: awayTodayUsers.size,
+      awayTomorrow: awayTomorrowUsers.size,
+      pendingTimeOff,
+      payrollBlocking,
+      payrollWarnings,
+      expiringCertifications,
+      expiredCertifications,
+      scheduleGaps,
+      unassignedJobs,
+      assignedToUnavailable,
+      overloadedTechs: overloaded.length,
+    },
+    inbox,
+    sections,
+    generatedAt: new Date().toISOString(),
+    permissions: {
+      canAccessPeople,
+    },
+  };
+
+  return NextResponse.json(response);
 }
