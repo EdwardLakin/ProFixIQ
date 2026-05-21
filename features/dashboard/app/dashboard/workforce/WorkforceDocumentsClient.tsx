@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type WorkforceDocument = {
@@ -18,6 +19,38 @@ type WorkforceDocument = {
 type DocsResponsePayload = {
   summary: { total: number; recent: number; needsReview: number; expired: number; expiringSoon: number };
   documents: WorkforceDocument[];
+  generatedAt: string;
+};
+
+type RequirementRuleView = {
+  key: string;
+  workforceRole: string | null;
+  workforceCategory: string | null;
+  docType: string;
+  label: string;
+  required: boolean;
+  expiresRequired: boolean;
+  warningDays: number;
+  priority: number;
+};
+
+type RequirementOverrideView = {
+  id: string;
+  workforceRole: string | null;
+  workforceCategory: string | null;
+  docType: string;
+  label: string;
+  isRequired: boolean;
+  expiresRequired: boolean;
+  warningDays: number;
+  priority: number;
+  isActive: boolean;
+};
+
+type RequirementsPayload = {
+  defaults: RequirementRuleView[];
+  overrides: RequirementOverrideView[];
+  effective: RequirementRuleView[];
   generatedAt: string;
 };
 
@@ -39,6 +72,58 @@ const num = (value: unknown): number => {
 };
 const safeString = (value: unknown): string => (typeof value === "string" ? value : "");
 const asStringArray = (value: unknown): string[] => asArray<unknown>(value).map((item) => safeString(item)).filter(Boolean);
+
+const normalizeScopeChip = (workforceRole: string | null, workforceCategory: string | null): string => {
+  if (workforceRole && workforceCategory) return "Role+Category";
+  if (workforceRole) return "Role";
+  if (workforceCategory) return "Category";
+  return "Global";
+};
+
+const normalizeRequirementsPayload = (value: unknown): { data: RequirementsPayload | null; error: string | null } => {
+  if (!isRecord(value)) return { data: null, error: "Malformed requirements payload." };
+
+  const toRule = (item: unknown, idx: number): RequirementRuleView => {
+    const row = isRecord(item) ? item : {};
+    return {
+      key: safeString(row.key) || `rule-${idx}`,
+      workforceRole: safeString(row.workforceRole) || null,
+      workforceCategory: safeString(row.workforceCategory) || null,
+      docType: safeString(row.docType) || "other",
+      label: safeString(row.label) || safeString(row.docType) || "Document",
+      required: row.required === false ? false : true,
+      expiresRequired: Boolean(row.expiresRequired),
+      warningDays: num(row.warningDays),
+      priority: num(row.priority),
+    };
+  };
+
+  const toOverride = (item: unknown, idx: number): RequirementOverrideView => {
+    const row = isRecord(item) ? item : {};
+    return {
+      id: safeString(row.id) || `override-${idx}`,
+      workforceRole: safeString(row.workforce_role) || null,
+      workforceCategory: safeString(row.workforce_category) || null,
+      docType: safeString(row.doc_type) || "other",
+      label: safeString(row.label) || safeString(row.doc_type) || "Document",
+      isRequired: row.is_required === false ? false : true,
+      expiresRequired: Boolean(row.expires_required),
+      warningDays: num(row.expires_warning_days),
+      priority: num(row.priority),
+      isActive: row.is_active === false ? false : true,
+    };
+  };
+
+  return {
+    data: {
+      defaults: asArray<unknown>(value.defaults).map(toRule),
+      overrides: asArray<unknown>(value.overrides).map(toOverride),
+      effective: asArray<unknown>(value.effective).map(toRule),
+      generatedAt: safeString(value.generatedAt),
+    },
+    error: null,
+  };
+};
 
 const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null; error: string | null } => {
   if (!isRecord(value)) {
@@ -132,13 +217,18 @@ export default function WorkforceDocumentsClient() {
   const [error, setError] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<MatrixPayload | null>(null);
   const [matrixError, setMatrixError] = useState<string | null>(null);
+  const [requirements, setRequirements] = useState<RequirementsPayload | null>(null);
+  const [requirementsError, setRequirementsError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const requirementsMode = searchParams.get("mode") === "requirements";
 
   useEffect(() => {
     const run = async () => {
       try {
-        const [docsRes, matrixRes] = await Promise.all([
+        const [docsRes, matrixRes, requirementsRes] = await Promise.all([
           fetch("/api/workforce/documents-readiness", { cache: "no-store" }),
           fetch("/api/workforce/document-requirements/readiness", { cache: "no-store" }),
+          fetch("/api/workforce/document-requirements", { cache: "no-store" }),
         ]);
         const docsJson = await docsRes.json();
         if (!docsRes.ok) throw new Error(docsJson?.error || "Failed loading documents readiness");
@@ -151,6 +241,16 @@ export default function WorkforceDocumentsClient() {
           const normalized = normalizeMatrixPayload(matrixJson);
           setMatrix(normalized.matrix);
           if (normalized.error) setMatrixError(normalized.error);
+        }
+
+        const requirementsJson = await requirementsRes.json().catch(() => null);
+        if (!requirementsRes.ok) {
+          const reqError = isRecord(requirementsJson) ? safeString(requirementsJson.error) : "";
+          setRequirementsError(reqError || "Failed loading requirements manager");
+        } else {
+          const normalizedReq = normalizeRequirementsPayload(requirementsJson);
+          setRequirements(normalizedReq.data);
+          if (normalizedReq.error) setRequirementsError(normalizedReq.error);
         }
       } catch (err) {
         setError((err as Error).message);
@@ -214,12 +314,34 @@ export default function WorkforceDocumentsClient() {
     </div>
   );
 
+
+
+  const renderRequirementRows = (rows: RequirementRuleView[]) => (
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Scope</th><th className="px-3 py-2 text-left">Doc Type</th><th className="px-3 py-2 text-left">Label</th><th className="px-3 py-2 text-left">Required</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-left">Warning</th><th className="px-3 py-2 text-left">Priority</th></tr></thead><tbody>{rows.map((r) => <tr key={r.key} className="border-t border-white/10"><td className="px-3 py-2"><span className="rounded-full bg-white/10 px-2 py-0.5 text-xs mr-2">{normalizeScopeChip(r.workforceRole, r.workforceCategory)}</span>{r.workforceRole ?? "—"}/{r.workforceCategory ?? "—"}</td><td className="px-3 py-2 capitalize">{r.docType.replaceAll("_", " ")}</td><td className="px-3 py-2">{r.label}</td><td className="px-3 py-2">{r.required ? "Yes" : "No"}</td><td className="px-3 py-2">{r.expiresRequired ? "Required" : "Not required"}</td><td className="px-3 py-2">{r.warningDays}d</td><td className="px-3 py-2">{r.priority}</td></tr>)}{rows.length === 0 ? <tr><td colSpan={7} className="px-3 py-4 text-center text-neutral-400">No rows to display.</td></tr> : null}</tbody></table></div>
+  );
+
+  const renderOverrideRows = (rows: RequirementOverrideView[]) => (
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Scope</th><th className="px-3 py-2 text-left">Doc Type</th><th className="px-3 py-2 text-left">Label</th><th className="px-3 py-2 text-left">Required</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-left">Warning</th><th className="px-3 py-2 text-left">Priority</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id} className="border-t border-white/10"><td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${r.isActive ? "bg-emerald-500/20 text-emerald-200" : "bg-neutral-700/40 text-neutral-300"}`}>{r.isActive ? "Active" : "Inactive"}</span></td><td className="px-3 py-2"><span className="rounded-full bg-white/10 px-2 py-0.5 text-xs mr-2">{normalizeScopeChip(r.workforceRole, r.workforceCategory)}</span>{r.workforceRole ?? "—"}/{r.workforceCategory ?? "—"}</td><td className="px-3 py-2 capitalize">{r.docType.replaceAll("_", " ")}</td><td className="px-3 py-2">{r.label}</td><td className="px-3 py-2">{r.isRequired ? "Yes" : "No"}</td><td className="px-3 py-2">{r.expiresRequired ? "Required" : "Not required"}</td><td className="px-3 py-2">{r.warningDays}d</td><td className="px-3 py-2">{r.priority}</td></tr>)}{rows.length === 0 ? <tr><td colSpan={8} className="px-3 py-4 text-center text-neutral-400">No shop overrides yet.</td></tr> : null}</tbody></table></div>
+  );
+
   if (loading) return <div className="rounded-2xl border border-white/10 bg-black/25 p-5 text-neutral-300">Loading Documents Command…</div>;
   if (error) return <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-5 text-red-200">{error}</div>;
 
   return <div className="space-y-5">
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-5"><h1 className="text-2xl font-semibold text-white">Documents Command</h1><p className="mt-1 text-sm text-neutral-300">Workforce readiness for document collection and compliance.</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Link href="/dashboard/workforce/people" className="rounded border border-white/15 px-2 py-1 text-orange-300">Open People</Link><Link href="/dashboard/admin/employee-docs" className="rounded border border-white/15 px-2 py-1 text-neutral-300">Open Upload Console</Link></div></div>
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-5"><h1 className="text-2xl font-semibold text-white">Documents Command</h1><p className="mt-1 text-sm text-neutral-300">Workforce readiness for document collection and compliance.</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Link href="/dashboard/workforce/people" className="rounded border border-white/15 px-2 py-1 text-orange-300">Open People</Link><Link href="/dashboard/admin/employee-docs" className="rounded border border-white/15 px-2 py-1 text-neutral-300">Open Upload Console</Link><Link href={requirementsMode ? "/dashboard/workforce/documents" : "/dashboard/workforce/documents?mode=requirements"} className="rounded border border-cyan-500/40 px-2 py-1 text-cyan-300">{requirementsMode ? "Back to documents" : "Manage requirements"}</Link></div></div>
     <div className="grid gap-3 sm:grid-cols-5">{Object.entries({ Total: data?.summary.total ?? 0, Recent: data?.summary.recent ?? 0, "Needs Review": data?.summary.needsReview ?? 0, Expired: data?.summary.expired ?? 0, "Expiring Soon": data?.summary.expiringSoon ?? 0 }).map(([k, v]) => <div key={k} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-xs text-neutral-400">{k}</div><div className="text-xl font-semibold text-white">{v}</div></div>)}</div>
+
+
+    {requirementsMode ? <section className="space-y-3 rounded-2xl border border-cyan-500/20 bg-cyan-950/10 p-4">
+      <h2 className="text-base font-semibold text-cyan-200">Requirements Manager</h2>
+      <p className="text-xs text-cyan-100/80">Read-only surface. Editing controls are coming next.</p>
+      {requirementsError ? <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-sm text-yellow-100">Requirements manager unavailable: {requirementsError}</div> : null}
+      {requirements ? <>
+        <section className="space-y-2"><h3 className="text-sm font-semibold text-neutral-100">Defaults</h3><p className="text-xs text-neutral-400">System defaults apply when no active shop override exists.</p>{renderRequirementRows(requirements.defaults)}</section>
+        <section className="space-y-2"><h3 className="text-sm font-semibold text-neutral-100">Shop Overrides</h3><p className="text-xs text-neutral-400">Inactive overrides are ignored; defaults continue to apply.</p>{renderOverrideRows(requirements.overrides)}</section>
+        <section className="space-y-2"><h3 className="text-sm font-semibold text-neutral-100">Effective Requirements</h3><p className="text-xs text-neutral-400">Effective requirements are the rules currently used by readiness scoring.</p>{renderRequirementRows(requirements.effective)}</section>
+      </> : <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">Loading requirements manager…</div>}
+    </section> : null}
 
     {matrixError ? <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-4 text-sm text-yellow-100">Required Matrix readiness unavailable: {matrixError}</div> : null}
     {matrix ? <>
