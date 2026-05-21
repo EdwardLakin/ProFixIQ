@@ -20,12 +20,13 @@ type OverviewPayload = {
   inbox: InboxItem[];
   sections: Record<string, InboxItem[]>;
   generatedAt: string | null;
+  permissions: {
+    canAccessPeople: boolean;
+  };
 };
-
-const headerActions = [
+const baseHeaderActions = [
   { href: "/dashboard/workforce/scheduling", title: "Scheduling" },
   { href: "/dashboard/workforce/payroll-review", title: "Payroll Review" },
-  { href: "/dashboard/workforce/people", title: "People" },
 ];
 
 const severityStyles: Record<InboxSeverity, { chip: string; border: string; dot: string; label: string }> = {
@@ -137,6 +138,7 @@ export default function WorkforceOverviewClient() {
       const inbox = isRecord(json) ? asArray<Record<string, unknown>>(json.inbox) : [];
       const sections = isRecord(json) && isRecord(json.sections) ? json.sections : {};
       const generatedAt = isRecord(json) && typeof json.generatedAt === "string" ? json.generatedAt : null;
+      const permissions = isRecord(json) && isRecord(json.permissions) ? json.permissions : {};
 
       const normalizedData: OverviewPayload = {
         summary: Object.fromEntries(Object.entries(summary).map(([key, value]) => [key, num(value)])),
@@ -152,6 +154,9 @@ export default function WorkforceOverviewClient() {
           ]),
         ),
         generatedAt,
+        permissions: {
+          canAccessPeople: permissions.canAccessPeople === true,
+        },
       };
 
       setData(normalizedData);
@@ -246,6 +251,9 @@ export default function WorkforceOverviewClient() {
     });
     return ordered;
   }, [data.sections]);
+  const headerActions = data.permissions.canAccessPeople
+    ? [...baseHeaderActions, { href: "/dashboard/workforce/people", title: "People" }]
+    : baseHeaderActions;
 
   return (
     <div className="space-y-6">
