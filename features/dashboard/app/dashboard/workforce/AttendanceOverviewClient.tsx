@@ -80,7 +80,13 @@ function shiftStateFromPunches(punches: PunchRow[]): NowBucket {
   return "no_activity";
 }
 
-export function AttendanceOverviewClient() {
+type AttendanceOverviewClientProps = {
+  from: string;
+  to: string;
+  timezone?: string | null;
+};
+
+export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverviewClientProps) {
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,15 +96,8 @@ export function AttendanceOverviewClient() {
     setError(null);
 
     try {
-      const now = new Date();
-      // TODO: normalize this range to shop-specific timezone boundaries.
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(now);
-      end.setHours(23, 59, 59, 999);
-
       const res = await fetch(
-        `/api/scheduling/shifts?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`,
+        `/api/scheduling/shifts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
         { cache: "no-store" },
       );
 
@@ -115,7 +114,7 @@ export function AttendanceOverviewClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to]);
 
   useEffect(() => {
     void fetchAttendance();
@@ -197,6 +196,9 @@ export function AttendanceOverviewClient() {
       <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
         <h1 className="text-2xl font-semibold text-white">Attendance Command</h1>
         <p className="mt-1 text-sm text-neutral-300">Live shift posture, break states, and payroll handoff for today.</p>
+        <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
+          {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
+        </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href="/dashboard/workforce/scheduling" className="rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Scheduling</Link>
           <Link href="/dashboard/workforce/payroll-review" className="rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Payroll Review</Link>
