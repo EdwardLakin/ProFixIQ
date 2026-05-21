@@ -72,13 +72,13 @@ export function validateDocumentRequirementPayload(payload: unknown, mode: Mode)
     output.label = label;
   }
 
-  if ("is_required" in input) output.required = parseBooleanField(input.is_required, "is_required");
+  if ("is_required" in input) output.is_required = parseBooleanField(input.is_required, "is_required");
   if ("expires_required" in input) output.expires_required = parseBooleanField(input.expires_required, "expires_required");
 
   if ("expires_warning_days" in input) {
     const n = Number(input.expires_warning_days);
     if (!Number.isInteger(n) || n < 0 || n > 365) throw new Error("expires_warning_days must be an integer between 0 and 365");
-    output.warning_days = n;
+    output.expires_warning_days = n;
   }
 
   if ("priority" in input) {
@@ -92,9 +92,9 @@ export function validateDocumentRequirementPayload(payload: unknown, mode: Mode)
   if ("review_statuses" in input) output.review_statuses = normalizeStatuses(input.review_statuses, REVIEW_STATUSES, "review_statuses");
 
   if (mode === "create") {
-    if (!("required" in output)) output.required = true;
+    if (!("is_required" in output)) output.is_required = true;
     if (!("expires_required" in output)) output.expires_required = false;
-    if (!("warning_days" in output)) output.warning_days = 30;
+    if (!("expires_warning_days" in output)) output.expires_warning_days = 30;
     if (!("priority" in output)) output.priority = 0;
     if (!("is_active" in output)) output.is_active = true;
     if (!("accept_statuses" in output)) output.accept_statuses = ["active", "approved", "accepted"];

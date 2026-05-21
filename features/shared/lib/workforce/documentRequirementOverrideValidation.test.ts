@@ -51,12 +51,25 @@ describe("document requirement override validation", () => {
 
   it("accepts patch is_required false", () => {
     const parsed = validateDocumentRequirementPayload({ is_required: false }, "patch");
-    expect(parsed).toEqual({ required: false });
+    expect(parsed).toEqual({ is_required: false });
   });
 
   it("accepts patch expires_required false", () => {
     const parsed = validateDocumentRequirementPayload({ expires_required: false }, "patch");
     expect(parsed).toEqual({ expires_required: false });
+  });
+
+  it("applies create defaults using DB column keys", () => {
+    const parsed = validateDocumentRequirementPayload({ doc_type: "other", label: "x" }, "create") as Record<string, unknown>;
+    expect(parsed.is_required).toBe(true);
+    expect(parsed.expires_warning_days).toBe(30);
+    expect(parsed).not.toHaveProperty("required");
+    expect(parsed).not.toHaveProperty("warning_days");
+  });
+
+  it("accepts patch expires_warning_days", () => {
+    const parsed = validateDocumentRequirementPayload({ expires_warning_days: 14 }, "patch");
+    expect(parsed).toEqual({ expires_warning_days: 14 });
   });
 
   it("detects unique conflict", () => {
