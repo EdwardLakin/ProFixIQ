@@ -45,6 +45,8 @@ type RequirementOverrideView = {
   warningDays: number;
   priority: number;
   isActive: boolean;
+  acceptStatuses: string[];
+  reviewStatuses: string[];
 };
 
 type RequirementsPayload = {
@@ -111,6 +113,8 @@ const normalizeRequirementsPayload = (value: unknown): { data: RequirementsPaylo
       warningDays: num(row.expires_warning_days),
       priority: num(row.priority),
       isActive: row.is_active === false ? false : true,
+      acceptStatuses: asStringArray(row.accept_statuses),
+      reviewStatuses: asStringArray(row.review_statuses),
     };
   };
 
@@ -219,39 +223,63 @@ export default function WorkforceDocumentsClient() {
   const [matrixError, setMatrixError] = useState<string | null>(null);
   const [requirements, setRequirements] = useState<RequirementsPayload | null>(null);
   const [requirementsError, setRequirementsError] = useState<string | null>(null);
+  const [managerMessage, setManagerMessage] = useState<string | null>(null);
+  const [managerError, setManagerError] = useState<string | null>(null);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [showOverrideForm, setShowOverrideForm] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
+  const [overrideForm, setOverrideForm] = useState({
+    workforce_role: "",
+    workforce_category: "",
+    doc_type: "",
+    label: "",
+    is_required: true,
+    expires_required: false,
+    expires_warning_days: "0",
+    accept_statuses: "",
+    review_statuses: "",
+    priority: "100",
+    is_active: true,
+  });
   const searchParams = useSearchParams();
   const requirementsMode = searchParams.get("mode") === "requirements";
+
+  const fetchRequirements = async () => {
+    const requirementsRes = await fetch("/api/workforce/document-requirements", { cache: "no-store" });
+    const requirementsJson = await requirementsRes.json().catch(() => null);
+    if (!requirementsRes.ok) {
+      const reqError = isRecord(requirementsJson) ? safeString(requirementsJson.error) : "";
+      setRequirementsError(reqError || "Failed loading requirements manager");
+      return;
+    }
+    const normalizedReq = normalizeRequirementsPayload(requirementsJson);
+    setRequirements(normalizedReq.data);
+    setRequirementsError(normalizedReq.error);
+  };
+
+  const fetchMatrix = async () => {
+    const matrixRes = await fetch("/api/workforce/document-requirements/readiness", { cache: "no-store" });
+    const matrixJson = await matrixRes.json();
+    if (!matrixRes.ok) {
+      setMatrixError(matrixJson?.error || "Failed loading matrix readiness");
+      return;
+    }
+    const normalized = normalizeMatrixPayload(matrixJson);
+    setMatrix(normalized.matrix);
+    setMatrixError(normalized.error);
+  };
 
   useEffect(() => {
     const run = async () => {
       try {
-        const [docsRes, matrixRes, requirementsRes] = await Promise.all([
+        const [docsRes] = await Promise.all([
           fetch("/api/workforce/documents-readiness", { cache: "no-store" }),
-          fetch("/api/workforce/document-requirements/readiness", { cache: "no-store" }),
-          fetch("/api/workforce/document-requirements", { cache: "no-store" }),
         ]);
         const docsJson = await docsRes.json();
         if (!docsRes.ok) throw new Error(docsJson?.error || "Failed loading documents readiness");
         setData(docsJson);
-
-        const matrixJson = await matrixRes.json();
-        if (!matrixRes.ok) {
-          setMatrixError(matrixJson?.error || "Failed loading matrix readiness");
-        } else {
-          const normalized = normalizeMatrixPayload(matrixJson);
-          setMatrix(normalized.matrix);
-          if (normalized.error) setMatrixError(normalized.error);
-        }
-
-        const requirementsJson = await requirementsRes.json().catch(() => null);
-        if (!requirementsRes.ok) {
-          const reqError = isRecord(requirementsJson) ? safeString(requirementsJson.error) : "";
-          setRequirementsError(reqError || "Failed loading requirements manager");
-        } else {
-          const normalizedReq = normalizeRequirementsPayload(requirementsJson);
-          setRequirements(normalizedReq.data);
-          if (normalizedReq.error) setRequirementsError(normalizedReq.error);
-        }
+        await Promise.all([fetchMatrix(), fetchRequirements()]);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -260,6 +288,95 @@ export default function WorkforceDocumentsClient() {
     };
     void run();
   }, []);
+
+  const applyOverrideToForm = (row: RequirementOverrideView | null) => {
+    setOverrideForm({
+      workforce_role: row?.workforceRole ?? "",
+      workforce_category: row?.workforceCategory ?? "",
+      doc_type: row?.docType ?? "",
+      label: row?.label ?? "",
+      is_required: row?.isRequired ?? true,
+      expires_required: row?.expiresRequired ?? false,
+      expires_warning_days: String(row?.warningDays ?? 0),
+      accept_statuses: (row?.acceptStatuses ?? []).join(","),
+      review_statuses: (row?.reviewStatuses ?? []).join(","),
+      priority: String(row?.priority ?? 100),
+      is_active: row?.isActive ?? true,
+    });
+  };
+
+  const mapApiError = (status: number, payload: unknown): string => {
+    const serverError = isRecord(payload) ? safeString(payload.error) : "";
+    if (status === 409 && serverError === "ACTIVE_OVERRIDE_CONFLICT") return "An active override already exists for this role/category/doc type scope.";
+    if (status === 401 || status === 403) return "You do not have permission to manage requirements.";
+    if (status === 400) return serverError || "Validation failed. Please review your input.";
+    return serverError || "Network or server error while saving override.";
+  };
+
+  const normalizedDuplicateKey = (workforceRole: string, workforceCategory: string, docType: string) =>
+    `${workforceRole.trim().toLowerCase()}::${workforceCategory.trim().toLowerCase()}::${docType.trim().toLowerCase()}`;
+
+  const duplicateActiveOverride = useMemo(() => {
+    const key = normalizedDuplicateKey(overrideForm.workforce_role, overrideForm.workforce_category, overrideForm.doc_type);
+    if (!key.replaceAll(":", "").trim()) return null;
+    return requirements?.overrides.find((row) => {
+      if (!row.isActive) return false;
+      if (editingOverrideId && row.id === editingOverrideId) return false;
+      return key === normalizedDuplicateKey(row.workforceRole ?? "", row.workforceCategory ?? "", row.docType);
+    }) ?? null;
+  }, [editingOverrideId, overrideForm.doc_type, overrideForm.workforce_category, overrideForm.workforce_role, requirements?.overrides]);
+
+  const saveOverride = async () => {
+    setSavingOverride(true);
+    setManagerError(null);
+    setManagerMessage(null);
+    try {
+      const payload = {
+        workforce_role: overrideForm.workforce_role.trim() || null,
+        workforce_category: overrideForm.workforce_category.trim() || null,
+        doc_type: overrideForm.doc_type.trim(),
+        label: overrideForm.label.trim(),
+        is_required: overrideForm.is_required,
+        expires_required: overrideForm.expires_required,
+        expires_warning_days: Number(overrideForm.expires_warning_days),
+        accept_statuses: overrideForm.accept_statuses.split(",").map((s) => s.trim()).filter(Boolean),
+        review_statuses: overrideForm.review_statuses.split(",").map((s) => s.trim()).filter(Boolean),
+        priority: Number(overrideForm.priority),
+        is_active: overrideForm.is_active,
+      };
+      const isEdit = Boolean(editingOverrideId);
+      const url = isEdit ? `/api/workforce/document-requirements/${editingOverrideId}` : "/api/workforce/document-requirements";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(mapApiError(res.status, json));
+      await Promise.all([fetchRequirements(), fetchMatrix()]);
+      setManagerMessage(isEdit ? "Override updated." : "Override created.");
+      setShowOverrideForm(false);
+      setEditingOverrideId(null);
+    } catch (err) {
+      setManagerError((err as Error).message);
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const disableOverride = async (id: string) => {
+    setManagerError(null);
+    setManagerMessage(null);
+    const res = await fetch(`/api/workforce/document-requirements/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ is_active: false }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      setManagerError(mapApiError(res.status, json));
+      return;
+    }
+    await Promise.all([fetchRequirements(), fetchMatrix()]);
+    setManagerMessage("Override disabled. Overrides are disabled, not deleted.");
+  };
 
   const now = Date.now();
   const in30 = now + 1000 * 60 * 60 * 24 * 30;
@@ -321,7 +438,7 @@ export default function WorkforceDocumentsClient() {
   );
 
   const renderOverrideRows = (rows: RequirementOverrideView[]) => (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Scope</th><th className="px-3 py-2 text-left">Doc Type</th><th className="px-3 py-2 text-left">Label</th><th className="px-3 py-2 text-left">Required</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-left">Warning</th><th className="px-3 py-2 text-left">Priority</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id} className="border-t border-white/10"><td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${r.isActive ? "bg-emerald-500/20 text-emerald-200" : "bg-neutral-700/40 text-neutral-300"}`}>{r.isActive ? "Active" : "Inactive"}</span></td><td className="px-3 py-2"><span className="rounded-full bg-white/10 px-2 py-0.5 text-xs mr-2">{normalizeScopeChip(r.workforceRole, r.workforceCategory)}</span>{r.workforceRole ?? "—"}/{r.workforceCategory ?? "—"}</td><td className="px-3 py-2 capitalize">{r.docType.replaceAll("_", " ")}</td><td className="px-3 py-2">{r.label}</td><td className="px-3 py-2">{r.isRequired ? "Yes" : "No"}</td><td className="px-3 py-2">{r.expiresRequired ? "Required" : "Not required"}</td><td className="px-3 py-2">{r.warningDays}d</td><td className="px-3 py-2">{r.priority}</td></tr>)}{rows.length === 0 ? <tr><td colSpan={8} className="px-3 py-4 text-center text-neutral-400">No shop overrides yet.</td></tr> : null}</tbody></table></div>
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Scope</th><th className="px-3 py-2 text-left">Doc Type</th><th className="px-3 py-2 text-left">Label</th><th className="px-3 py-2 text-left">Required</th><th className="px-3 py-2 text-left">Expiry</th><th className="px-3 py-2 text-left">Warning</th><th className="px-3 py-2 text-left">Priority</th><th className="px-3 py-2 text-right">Actions</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id} className="border-t border-white/10"><td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${r.isActive ? "bg-emerald-500/20 text-emerald-200" : "bg-neutral-700/40 text-neutral-300"}`}>{r.isActive ? "Active" : "Inactive"}</span></td><td className="px-3 py-2"><span className="rounded-full bg-white/10 px-2 py-0.5 text-xs mr-2">{normalizeScopeChip(r.workforceRole, r.workforceCategory)}</span>{r.workforceRole ?? "—"}/{r.workforceCategory ?? "—"}</td><td className="px-3 py-2 capitalize">{r.docType.replaceAll("_", " ")}</td><td className="px-3 py-2">{r.label}</td><td className="px-3 py-2">{r.isRequired ? "Yes" : "No"}</td><td className="px-3 py-2">{r.expiresRequired ? "Required" : "Not required"}</td><td className="px-3 py-2">{r.warningDays}d</td><td className="px-3 py-2">{r.priority}</td><td className="px-3 py-2 text-right"><button className="rounded border border-white/15 px-2 py-1 hover:bg-white/10" onClick={() => { setShowOverrideForm(true); setEditingOverrideId(r.id); setShowAdvanced(true); applyOverrideToForm(r); }}>Edit</button>{r.isActive ? <button className="ml-2 rounded border border-red-400/40 px-2 py-1 text-red-200 hover:bg-red-500/20" onClick={() => void disableOverride(r.id)}>Disable</button> : null}</td></tr>)}{rows.length === 0 ? <tr><td colSpan={9} className="px-3 py-4 text-center text-neutral-400">No shop overrides yet.</td></tr> : null}</tbody></table></div>
   );
 
   if (loading) return <div className="rounded-2xl border border-white/10 bg-black/25 p-5 text-neutral-300">Loading Documents Command…</div>;
@@ -334,7 +451,33 @@ export default function WorkforceDocumentsClient() {
 
     {requirementsMode ? <section className="space-y-3 rounded-2xl border border-cyan-500/20 bg-cyan-950/10 p-4">
       <h2 className="text-base font-semibold text-cyan-200">Requirements Manager</h2>
-      <p className="text-xs text-cyan-100/80">Read-only surface. Editing controls are coming next.</p>
+      <p className="text-xs text-cyan-100/80">System defaults apply unless an active shop override exists.</p>
+      <p className="text-xs text-cyan-100/80">Inactive overrides are ignored; defaults continue to apply.</p>
+      <p className="text-xs text-cyan-100/80">Overrides are disabled, not deleted.</p>
+      <div><button className="rounded border border-cyan-500/40 px-3 py-1 text-sm text-cyan-200 hover:bg-cyan-500/10" onClick={() => { setShowOverrideForm(true); setEditingOverrideId(null); setShowAdvanced(false); applyOverrideToForm(null); }}>Create override</button></div>
+      {managerMessage ? <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-100">{managerMessage}</div> : null}
+      {managerError ? <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-3 text-sm text-red-100">{managerError}</div> : null}
+      {showOverrideForm ? <div className="space-y-2 rounded-xl border border-white/10 bg-black/30 p-3">
+        <div className="text-sm font-semibold text-white">{editingOverrideId ? "Edit override" : "Create override"}</div>
+        {duplicateActiveOverride ? <div className="rounded border border-yellow-500/40 bg-yellow-950/20 p-2 text-xs text-yellow-100">Warning: an active override already exists for this role/category/doc type scope.</div> : null}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="workforce_role" value={overrideForm.workforce_role} onChange={(e) => setOverrideForm((prev) => ({ ...prev, workforce_role: e.target.value }))} />
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="workforce_category" value={overrideForm.workforce_category} onChange={(e) => setOverrideForm((prev) => ({ ...prev, workforce_category: e.target.value }))} />
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="doc_type" value={overrideForm.doc_type} onChange={(e) => setOverrideForm((prev) => ({ ...prev, doc_type: e.target.value }))} />
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="label" value={overrideForm.label} onChange={(e) => setOverrideForm((prev) => ({ ...prev, label: e.target.value }))} />
+          <label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={overrideForm.expires_required} onChange={(e) => setOverrideForm((prev) => ({ ...prev, expires_required: e.target.checked }))} />expires_required</label>
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="expires_warning_days" value={overrideForm.expires_warning_days} onChange={(e) => setOverrideForm((prev) => ({ ...prev, expires_warning_days: e.target.value }))} />
+          <label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={overrideForm.is_active} onChange={(e) => setOverrideForm((prev) => ({ ...prev, is_active: e.target.checked }))} />is_active</label>
+        </div>
+        <button className="text-xs text-cyan-300 underline" onClick={() => setShowAdvanced((v) => !v)}>{showAdvanced ? "Hide advanced fields" : "Show advanced fields"}</button>
+        {showAdvanced ? <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={overrideForm.is_required} onChange={(e) => setOverrideForm((prev) => ({ ...prev, is_required: e.target.checked }))} />is_required</label>
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="priority" value={overrideForm.priority} onChange={(e) => setOverrideForm((prev) => ({ ...prev, priority: e.target.value }))} />
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="accept_statuses (comma-separated)" value={overrideForm.accept_statuses} onChange={(e) => setOverrideForm((prev) => ({ ...prev, accept_statuses: e.target.value }))} />
+          <input className="rounded border border-white/15 bg-black/30 px-2 py-1 text-sm" placeholder="review_statuses (comma-separated)" value={overrideForm.review_statuses} onChange={(e) => setOverrideForm((prev) => ({ ...prev, review_statuses: e.target.value }))} />
+        </div> : null}
+        <div className="flex gap-2"><button disabled={savingOverride} className="rounded border border-emerald-500/40 px-3 py-1 text-sm text-emerald-200 disabled:opacity-50" onClick={() => void saveOverride()}>{savingOverride ? "Saving..." : editingOverrideId ? "Save changes" : "Create override"}</button><button className="rounded border border-white/15 px-3 py-1 text-sm" onClick={() => { setShowOverrideForm(false); setEditingOverrideId(null); }}>Cancel</button></div>
+      </div> : null}
       {requirementsError ? <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 text-sm text-yellow-100">Requirements manager unavailable: {requirementsError}</div> : null}
       {requirements ? <>
         <section className="space-y-2"><h3 className="text-sm font-semibold text-neutral-100">Defaults</h3><p className="text-xs text-neutral-400">System defaults apply when no active shop override exists.</p>{renderRequirementRows(requirements.defaults)}</section>
