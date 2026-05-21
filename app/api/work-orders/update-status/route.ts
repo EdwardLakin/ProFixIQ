@@ -5,6 +5,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 export const runtime = "nodejs";
 
@@ -69,11 +70,11 @@ export async function POST(req: NextRequest) {
 
     if (command === "punch-in") {
       updateFields = {
-        status: "in_progress",
+        status: normalizeWorkOrderStatus("in_progress"),
       };
     } else if (command === "complete") {
       const nextFields: WorkOrderUpdate = {
-        status: "completed",
+        status: normalizeWorkOrderStatus("completed"),
       };
 
       if (quote && summary) {

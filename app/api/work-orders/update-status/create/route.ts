@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
         vehicle_id,
         inspection_id: inspection_id ?? null,
         customer_id,
-        status: "queued",
+        status: normalizeWorkOrderStatus("new"),
         type,
         complaint: complaint ?? null,
         appointment: appointment ?? null,
