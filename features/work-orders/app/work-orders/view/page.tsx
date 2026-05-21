@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
@@ -55,6 +55,7 @@ const ACTIVE_FLOW_STATUSES: StatusKey[] = [
   "planned",
 ];
 const SEEDED_DEFAULT_STATUSES: StatusKey[] = [...ACTIVE_FLOW_STATUSES, "completed"];
+const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
 
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -203,6 +204,7 @@ function priorityChip(priority: number | null | undefined): string {
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -232,6 +234,13 @@ export default function WorkOrdersView(): JSX.Element {
   const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
   const [statusPickerCurrent, setStatusPickerCurrent] =
     useState<WorkOrderStatus>("awaiting");
+  const workforceDrilldownActive = useMemo(
+    () =>
+      searchParams.get("assignment") === "unassigned" &&
+      searchParams.get("status") === "active" &&
+      searchParams.get("source") === "workforce",
+    [searchParams],
+  );
 
   const openStatusPicker = useCallback((wo: Row) => {
     const raw = String(wo.status ?? "awaiting")
@@ -283,7 +292,63 @@ export default function WorkOrdersView(): JSX.Element {
       query = query.eq("status", status);
     }
 
-    const { data, error } = await query;
+    let data: Row[] | null = null;
+    let error: { message: string } | null = null;
+
+    if (workforceDrilldownActive) {
+      const { data: activeLines, error: activeLinesErr } = await supabase
+        .from("work_order_lines")
+        .select("id, work_order_id, assigned_tech_id, line_status, status, voided_at")
+        .is("voided_at", null);
+      if (activeLinesErr) {
+        setErr(activeLinesErr.message);
+        setRows([]);
+        setTechRollupByWo({});
+        setLoading(false);
+        return;
+      }
+
+      const scopedActiveLines = (activeLines ?? []).filter(
+        (line) => !ACTIVE_LINE_EXCLUDED.has(String(line.line_status ?? line.status ?? "").toLowerCase()),
+      );
+      const lineIds = scopedActiveLines.map((line) => line.id);
+      const { data: bridgeRows, error: bridgeErr } = lineIds.length
+        ? await supabase
+            .from("work_order_line_technicians")
+            .select("work_order_line_id")
+            .in("work_order_line_id", lineIds)
+        : { data: [], error: null };
+
+      if (bridgeErr) {
+        setErr(bridgeErr.message);
+        setRows([]);
+        setTechRollupByWo({});
+        setLoading(false);
+        return;
+      }
+
+      const hasBridgeAssignment = new Set((bridgeRows ?? []).map((row) => row.work_order_line_id));
+      const unassignedWorkOrderIds = Array.from(
+        new Set(
+          scopedActiveLines
+            .filter((line) => !line.assigned_tech_id && !hasBridgeAssignment.has(line.id))
+            .map((line) => line.work_order_id)
+            .filter(Boolean),
+        ),
+      );
+
+      if (unassignedWorkOrderIds.length === 0) {
+        data = [];
+      } else {
+        const result = await query.in("id", unassignedWorkOrderIds);
+        data = (result.data ?? []) as Row[];
+        error = result.error;
+      }
+    } else {
+      const result = await query;
+      data = (result.data ?? []) as Row[];
+      error = result.error;
+    }
 
     if (error) {
       setErr(error.message);
@@ -362,7 +427,7 @@ export default function WorkOrdersView(): JSX.Element {
 
     setTechRollupByWo(rollups);
     setLoading(false);
-  }, [isSeededShop, q, status, supabase]);
+  }, [isSeededShop, q, status, supabase, workforceDrilldownActive]);
 
   const runInvoiceReview = useCallback(
     async (woId: string) => {
@@ -714,6 +779,14 @@ export default function WorkOrdersView(): JSX.Element {
       </section>
 
       <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur shadow-[0_16px_36px_rgba(2,6,23,0.5)]">
+        {workforceDrilldownActive ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100">
+            <span>Filtered from Workforce Overview: Unassigned active jobs</span>
+            <Link href="/dashboard/work-orders" className="underline underline-offset-2 hover:text-white">
+              Clear filter
+            </Link>
+          </div>
+        ) : null}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
           <input
             value={q}
@@ -770,7 +843,7 @@ export default function WorkOrdersView(): JSX.Element {
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-300">
-          No work orders match your current filters.
+          {workforceDrilldownActive ? "No unassigned active jobs right now." : "No work orders match your current filters."}
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
