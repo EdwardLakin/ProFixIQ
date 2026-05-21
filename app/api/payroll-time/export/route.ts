@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exportPeriod } from "@/features/payroll-time/server/payrollTime";
+import { exportPeriod, PayrollExportError } from "@/features/payroll-time/server/payrollTime";
 import { requirePayrollReviewer } from "../_lib/auth";
 
 export async function POST(req: Request) {
@@ -18,9 +18,13 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
+    if (error instanceof PayrollExportError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Export failed" },
-      { status: 400 },
+      { status: 500 },
     );
   }
 }

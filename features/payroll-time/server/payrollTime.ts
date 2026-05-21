@@ -14,6 +14,16 @@ export type PayrollException = {
 
 const MINUTES_IN_HOUR = 60;
 
+export class PayrollExportError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "PayrollExportError";
+    this.status = status;
+  }
+}
+
 function startOfUtcDay(dateIso: string): Date {
   const d = new Date(dateIso);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -435,6 +445,34 @@ export async function exportPeriod(params: { shopId: string; periodId: string; a
   const { shopId, periodId, actorId } = params;
   const providerType = params.providerType ?? "csv";
 
+  const { data: period, error: periodErr } = await admin
+    .from("payroll_pay_periods")
+    .select("id, status")
+    .eq("id", periodId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (periodErr) throw new Error(periodErr.message);
+  if (!period?.id) {
+    throw new PayrollExportError("Payroll period not found.", 404);
+  }
+  if (period.status !== "approved") {
+    throw new PayrollExportError("Payroll period must be approved before export.", 409);
+  }
+
+  const { count: unresolvedBlockingCount, error: blockingErr } = await admin
+    .from("payroll_time_exceptions")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("period_id", periodId)
+    .eq("severity", "blocking")
+    .eq("resolved", false);
+
+  if (blockingErr) throw new Error(blockingErr.message);
+  if ((unresolvedBlockingCount ?? 0) > 0) {
+    throw new PayrollExportError("Resolve blocking payroll exceptions before export.", 409);
+  }
+
   const { data: entries, error: entriesErr } = await admin
     .from("payroll_time_entries")
     .select("user_id, regular_minutes, overtime_minutes, unpaid_break_minutes, worked_minutes")
@@ -509,6 +547,21 @@ export async function exportPeriod(params: { shopId: string; periodId: string; a
     csvHeaders.join(","),
     ...rows.map((r) => [r.user_id, r.employee_external_id ?? "", r.regular_hours, r.overtime_hours, r.unpaid_break_hours, r.total_hours].join(",")),
   ];
+
+  void admin.from("audit_logs").insert({
+    shop_id: shopId,
+    actor_id: actorId,
+    action: "payroll.export.generated",
+    target_table: "payroll_export_batches",
+    target_id: batch.id,
+    metadata: {
+      shop_id: shopId,
+      period_id: periodId,
+      batch_id: batch.id,
+      provider_type: providerType,
+      row_count: rows.length,
+    },
+  });
 
   return { batchId: batch.id, rowCount: rows.length, csv: csvLines.join("\n") };
 }
