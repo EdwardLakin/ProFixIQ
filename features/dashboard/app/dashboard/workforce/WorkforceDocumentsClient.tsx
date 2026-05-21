@@ -15,24 +15,46 @@ type WorkforceDocument = {
   viewPath: string;
 };
 
-type ResponsePayload = {
+type DocsResponsePayload = {
   summary: { total: number; recent: number; needsReview: number; expired: number; expiringSoon: number };
   documents: WorkforceDocument[];
   generatedAt: string;
 };
 
+type MatrixPayload = {
+  requirements: Array<{ key: string; workforceRole: string | null; workforceCategory: string | null; docType: string; label: string; required: true; expiresRequired: boolean; warningDays: number }>;
+  readinessItems: Array<{ personId: string; personName: string; personEmail: string | null; workforceRole: string | null; workforceCategory: string | null; readiness: string; missingDocTypes: string[]; expiredDocTypes: string[]; expiringDocTypes: string[]; needsReviewDocTypes: string[]; href: string }>;
+  missingByPerson: Array<{ personId: string; personName: string; missingDocTypes: string[]; href: string }>;
+  missingByDocType: Array<{ docType: string; label: string; count: number }>;
+  expiringRequired: Array<{ personId: string; personName: string; expiredDocTypes: string[]; expiringDocTypes: string[]; href: string }>;
+  summary: { activePeople: number; ready: number; missingRequired: number; expiredRequired: number; needsReview: number; expiringSoon: number };
+  generatedAt: string;
+};
+
 export default function WorkforceDocumentsClient() {
-  const [data, setData] = useState<ResponsePayload | null>(null);
+  const [data, setData] = useState<DocsResponsePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [matrix, setMatrix] = useState<MatrixPayload | null>(null);
+  const [matrixError, setMatrixError] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
       try {
-        const res = await fetch("/api/workforce/documents-readiness", { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Failed loading documents readiness");
-        setData(json);
+        const [docsRes, matrixRes] = await Promise.all([
+          fetch("/api/workforce/documents-readiness", { cache: "no-store" }),
+          fetch("/api/workforce/document-requirements/readiness", { cache: "no-store" }),
+        ]);
+        const docsJson = await docsRes.json();
+        if (!docsRes.ok) throw new Error(docsJson?.error || "Failed loading documents readiness");
+        setData(docsJson);
+
+        const matrixJson = await matrixRes.json();
+        if (!matrixRes.ok) {
+          setMatrixError(matrixJson?.error || "Failed loading matrix readiness");
+        } else {
+          setMatrix(matrixJson);
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -63,6 +85,22 @@ export default function WorkforceDocumentsClient() {
     };
   }, [data, in30, now, recentCutoff]);
 
+  const byRole = useMemo(() => {
+    const map = new Map<string, { role: string; total: number; missing: number; expired: number; needsReview: number; expiring: number; ready: number }>();
+    for (const item of matrix?.readinessItems ?? []) {
+      const role = item.workforceRole ?? item.workforceCategory ?? "unassigned";
+      const current = map.get(role) ?? { role, total: 0, missing: 0, expired: 0, needsReview: 0, expiring: 0, ready: 0 };
+      current.total += 1;
+      if (item.readiness === "missing_required") current.missing += 1;
+      else if (item.readiness === "expired_required") current.expired += 1;
+      else if (item.readiness === "needs_review") current.needsReview += 1;
+      else if (item.readiness === "expiring_soon") current.expiring += 1;
+      else current.ready += 1;
+      map.set(role, current);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [matrix]);
+
   const openDoc = async (doc: WorkforceDocument) => {
     const res = await fetch(doc.viewPath, { cache: "no-store" });
     const json = await res.json();
@@ -75,45 +113,40 @@ export default function WorkforceDocumentsClient() {
 
   const renderRows = (rows: WorkforceDocument[]) => (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
-      <table className="min-w-full text-sm text-neutral-200">
-        <thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400">
-          <tr><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Uploaded</th><th className="px-3 py-2 text-left">Expires</th><th className="px-3 py-2 text-right">Action</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((doc) => (
-            <tr key={doc.id} className="border-t border-white/10">
-              <td className="px-3 py-2 capitalize">{(doc.docType ?? "other").replaceAll("_", " ")}</td>
-              <td className="px-3 py-2">{doc.status ?? "—"}</td>
-              <td className="px-3 py-2">{doc.personName ?? "Unknown"}<div className="text-xs text-neutral-400">{doc.personEmail ?? doc.userId}</div></td>
-              <td className="px-3 py-2">{doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "—"}</td>
-              <td className="px-3 py-2">{doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString() : "—"}</td>
-              <td className="px-3 py-2 text-right"><button onClick={() => void openDoc(doc)} className="rounded border border-white/15 px-2 py-1 hover:bg-white/10">Open</button></td>
-            </tr>
-          ))}
-          {rows.length === 0 ? <tr><td colSpan={6} className="px-3 py-4 text-center text-neutral-400">No documents in this section.</td></tr> : null}
-        </tbody>
-      </table>
+      <table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Uploaded</th><th className="px-3 py-2 text-left">Expires</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{rows.map((doc) => <tr key={doc.id} className="border-t border-white/10"><td className="px-3 py-2 capitalize">{(doc.docType ?? "other").replaceAll("_", " ")}</td><td className="px-3 py-2">{doc.status ?? "—"}</td><td className="px-3 py-2">{doc.personName ?? "Unknown"}<div className="text-xs text-neutral-400">{doc.personEmail ?? doc.userId}</div></td><td className="px-3 py-2">{doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "—"}</td><td className="px-3 py-2">{doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString() : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => void openDoc(doc)} className="rounded border border-white/15 px-2 py-1 hover:bg-white/10">Open</button></td></tr>)}{rows.length === 0 ? <tr><td colSpan={6} className="px-3 py-4 text-center text-neutral-400">No documents in this section.</td></tr> : null}</tbody></table>
     </div>
   );
 
   if (loading) return <div className="rounded-2xl border border-white/10 bg-black/25 p-5 text-neutral-300">Loading Documents Command…</div>;
   if (error) return <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-5 text-red-200">{error}</div>;
 
-  return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-        <h1 className="text-2xl font-semibold text-white">Documents Command</h1>
-        <p className="mt-1 text-sm text-neutral-300">Workforce readiness for document collection and compliance.</p>
-        <div className="mt-3 flex flex-wrap gap-2 text-xs"><Link href="/dashboard/workforce/people" className="rounded border border-white/15 px-2 py-1 text-orange-300">Open People</Link><Link href="/dashboard/admin/employee-docs" className="rounded border border-white/15 px-2 py-1 text-neutral-300">Open Upload Console</Link></div>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-5">{Object.entries({Total: data?.summary.total ?? 0, Recent: data?.summary.recent ?? 0, "Needs Review": data?.summary.needsReview ?? 0, Expired: data?.summary.expired ?? 0, "Expiring Soon": data?.summary.expiringSoon ?? 0}).map(([k, v]) => <div key={k} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-xs text-neutral-400">{k}</div><div className="text-xl font-semibold text-white">{v}</div></div>)}</div>
-      <div className="space-y-4">
-        <section><h2 className="mb-2 text-sm font-semibold text-orange-300">Needs Review</h2>{renderRows(sections.needsReview)}</section>
-        <section><h2 className="mb-2 text-sm font-semibold text-yellow-300">Expiring Soon</h2>{renderRows(sections.expiringSoon)}</section>
-        <section><h2 className="mb-2 text-sm font-semibold text-red-300">Expired</h2>{renderRows(sections.expired)}</section>
-        <section><h2 className="mb-2 text-sm font-semibold text-cyan-300">Recent Uploads</h2>{renderRows(sections.recent)}</section>
-        <section><h2 className="mb-2 text-sm font-semibold text-neutral-200">All Documents</h2>{renderRows(sections.all)}</section>
-      </div>
+  return <div className="space-y-5">
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-5"><h1 className="text-2xl font-semibold text-white">Documents Command</h1><p className="mt-1 text-sm text-neutral-300">Workforce readiness for document collection and compliance.</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Link href="/dashboard/workforce/people" className="rounded border border-white/15 px-2 py-1 text-orange-300">Open People</Link><Link href="/dashboard/admin/employee-docs" className="rounded border border-white/15 px-2 py-1 text-neutral-300">Open Upload Console</Link></div></div>
+    <div className="grid gap-3 sm:grid-cols-5">{Object.entries({ Total: data?.summary.total ?? 0, Recent: data?.summary.recent ?? 0, "Needs Review": data?.summary.needsReview ?? 0, Expired: data?.summary.expired ?? 0, "Expiring Soon": data?.summary.expiringSoon ?? 0 }).map(([k, v]) => <div key={k} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-xs text-neutral-400">{k}</div><div className="text-xl font-semibold text-white">{v}</div></div>)}</div>
+
+    {matrixError ? <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-4 text-sm text-yellow-100">Required Matrix readiness unavailable: {matrixError}</div> : null}
+    {matrix ? <>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-cyan-300">Required Matrix</h2>
+        <div className="grid gap-3 sm:grid-cols-6">{Object.entries({ "Active People": matrix.summary.activePeople, Ready: matrix.summary.ready, Missing: matrix.summary.missingRequired, Expired: matrix.summary.expiredRequired, "Needs Review": matrix.summary.needsReview, "Expiring Soon": matrix.summary.expiringSoon }).map(([k, v]) => <div key={k} className="rounded-xl border border-white/10 bg-black/20 p-3"><div className="text-xs text-neutral-400">{k}</div><div className="text-xl font-semibold text-white">{v}</div></div>)}</div>
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Category</th><th className="px-3 py-2 text-left">Document</th><th className="px-3 py-2 text-left">Expires Required</th></tr></thead><tbody>{matrix.requirements.map((r) => <tr key={r.key} className="border-t border-white/10"><td className="px-3 py-2">{r.workforceRole ?? "—"}</td><td className="px-3 py-2">{r.workforceCategory ?? "—"}</td><td className="px-3 py-2">{r.label}</td><td className="px-3 py-2">{r.expiresRequired ? `Yes (${r.warningDays}d warning)` : "No"}</td></tr>)}</tbody></table></div>
+      </section>
+
+      <section><h2 className="mb-2 text-sm font-semibold text-orange-300">Missing Required</h2><div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Missing Types</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{matrix.missingByPerson.map((row) => <tr key={row.personId} className="border-t border-white/10"><td className="px-3 py-2">{row.personName}</td><td className="px-3 py-2 capitalize">{row.missingDocTypes.join(", ").replaceAll("_", " ")}</td><td className="px-3 py-2 text-right"><Link className="rounded border border-white/15 px-2 py-1 hover:bg-white/10" href={row.href}>Open</Link></td></tr>)}{matrix.missingByPerson.length === 0 ? <tr><td colSpan={3} className="px-3 py-4 text-center text-neutral-400">No missing required documents.</td></tr> : null}</tbody></table></div></section>
+
+      <section><h2 className="mb-2 text-sm font-semibold text-yellow-300">Expiring Required</h2><div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Expired Types</th><th className="px-3 py-2 text-left">Expiring Soon Types</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{matrix.expiringRequired.map((row) => <tr key={row.personId} className="border-t border-white/10"><td className="px-3 py-2">{row.personName}</td><td className="px-3 py-2 capitalize">{row.expiredDocTypes.join(", ").replaceAll("_", " ") || "—"}</td><td className="px-3 py-2 capitalize">{row.expiringDocTypes.join(", ").replaceAll("_", " ") || "—"}</td><td className="px-3 py-2 text-right"><Link className="rounded border border-white/15 px-2 py-1 hover:bg-white/10" href={row.href}>Open</Link></td></tr>)}{matrix.expiringRequired.length === 0 ? <tr><td colSpan={4} className="px-3 py-4 text-center text-neutral-400">No expiring required documents.</td></tr> : null}</tbody></table></div></section>
+
+      <section><h2 className="mb-2 text-sm font-semibold text-indigo-300">By Role</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{byRole.map((row) => <div key={row.role} className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm"><div className="font-semibold capitalize text-white">{row.role.replaceAll("_", " ")}</div><div className="mt-2 text-neutral-300">Total: {row.total} · Ready: {row.ready}</div><div className="text-neutral-400">Missing: {row.missing} · Expired: {row.expired} · Review: {row.needsReview} · Expiring: {row.expiring}</div></div>)}</div></section>
+
+      <section><h2 className="mb-2 text-sm font-semibold text-emerald-300">By Person Readiness</h2><div className="overflow-hidden rounded-xl border border-white/10 bg-black/20"><table className="min-w-full text-sm text-neutral-200"><thead className="bg-white/5 text-xs uppercase tracking-wide text-neutral-400"><tr><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Readiness</th><th className="px-3 py-2 text-left">Flags</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{matrix.readinessItems.map((row) => <tr key={row.personId} className="border-t border-white/10"><td className="px-3 py-2">{row.personName}</td><td className="px-3 py-2">{row.workforceRole ?? row.workforceCategory ?? "—"}</td><td className="px-3 py-2 capitalize">{row.readiness.replaceAll("_", " ")}</td><td className="px-3 py-2 text-xs text-neutral-300">M:{row.missingDocTypes.length} E:{row.expiredDocTypes.length} R:{row.needsReviewDocTypes.length} S:{row.expiringDocTypes.length}</td><td className="px-3 py-2 text-right"><Link className="rounded border border-white/15 px-2 py-1 hover:bg-white/10" href={row.href}>Open</Link></td></tr>)}{matrix.readinessItems.length === 0 ? <tr><td colSpan={5} className="px-3 py-4 text-center text-neutral-400">No active workforce people found.</td></tr> : null}</tbody></table></div></section>
+    </> : null}
+
+    <div className="space-y-4">
+      <section><h2 className="mb-2 text-sm font-semibold text-orange-300">Needs Review</h2>{renderRows(sections.needsReview)}</section>
+      <section><h2 className="mb-2 text-sm font-semibold text-yellow-300">Expiring Soon</h2>{renderRows(sections.expiringSoon)}</section>
+      <section><h2 className="mb-2 text-sm font-semibold text-red-300">Expired</h2>{renderRows(sections.expired)}</section>
+      <section><h2 className="mb-2 text-sm font-semibold text-cyan-300">Recent Uploads</h2>{renderRows(sections.recent)}</section>
+      <section><h2 className="mb-2 text-sm font-semibold text-neutral-200">All Documents</h2>{renderRows(sections.all)}</section>
     </div>
-  );
+  </div>;
 }
