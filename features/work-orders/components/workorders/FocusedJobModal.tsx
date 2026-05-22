@@ -820,7 +820,7 @@ export default function FocusedJobModal(props: {
                     value={String(line.job_type ?? "—").replaceAll("_", " ")}
                   />
                   <MetaStat
-                    label="Assigned tech"
+                    label="Primary tech"
                     value={line.assigned_tech_id ? `${line.assigned_tech_id.slice(0, 8)}…` : "Unassigned"}
                   />
                   <MetaStat label="Parts count" value={String(partsCount)} />
