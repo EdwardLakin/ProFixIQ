@@ -12,7 +12,7 @@ function parseBooleanFilter(value: string | null): "all" | boolean {
 export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   });
 
   if (!access.ok) return access.response;

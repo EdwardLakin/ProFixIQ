@@ -16,7 +16,7 @@ function parseWorkOrderIds(body: unknown): string[] {
 
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
-    allowRoles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
     requiredCapability: "canManageWorkOrders",
   });
   if (!access.ok) return access.response;

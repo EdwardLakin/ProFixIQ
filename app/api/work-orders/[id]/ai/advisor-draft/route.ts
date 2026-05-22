@@ -90,7 +90,7 @@ function selectPrimaryRecommendation<T extends { status: string; created_at: str
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   });
   if (!access.ok) return access.response;
 
@@ -182,7 +182,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   });
   if (!access.ok) return access.response;
 

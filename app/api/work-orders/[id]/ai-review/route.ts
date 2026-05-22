@@ -35,7 +35,7 @@ async function getShopScopedWorkOrder(input: {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   });
   if (!access.ok) return access.response;
 
