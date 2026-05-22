@@ -1172,23 +1172,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         return;
       }
 
-      const workOrderId =
-        (typeof json.workOrderId === "string" && json.workOrderId.trim().length > 0
-          ? json.workOrderId
-          : null) ?? wo?.id ?? null;
-
-      if (workOrderId) {
-        const { error: woErr } = await supabase
-          .from("work_orders")
-          .update({ status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"])
-          .eq("id", workOrderId);
-
-        if (woErr) {
-          // eslint-disable-next-line no-console
-          console.error("[approveLine] failed to update work order status", woErr);
-        }
-      }
-
       toast.success("Line approved");
       void fetchAll();
     },
