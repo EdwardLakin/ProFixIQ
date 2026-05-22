@@ -75,7 +75,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   const firstTechLabel = useMemo(() => {
     if (!rows.length) return null;
     const first = rows[0];
-    const full = first.full_name || "Assigned tech";
+    const full = first.full_name || "Primary tech";
     const firstName = full.split(" ")[0] || full;
     return firstName;
   }, [rows]);
@@ -113,7 +113,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       title={
         hasActive
           ? "At least one job line is currently punched in."
-          : "Jobs assigned to technician(s) on this work order."
+          : "Primary tech first, plus any supporting techs on this work order."
       }
     >
       {hasActive && (
@@ -125,7 +125,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       <span>{firstTechLabel}</span>
       {extraCount > 0 && (
         <span className="text-[0.65rem] text-neutral-100/80">
-          +{extraCount} more
+          +{extraCount} collaborators
         </span>
       )}
     </span>

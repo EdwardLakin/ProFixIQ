@@ -113,11 +113,11 @@ export default function AssignTechModal({
         // ignore
       }
 
-      toast.success("Mechanic assigned.");
+      toast.success("Primary tech updated.");
       await onAssigned?.(techId);
       onClose();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to assign mechanic.";
+      const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -129,13 +129,16 @@ export default function AssignTechModal({
       isOpen={isOpen}
       onClose={onClose}
       onSubmit={submit}
-      title="Assign mechanic"
+      title="Set primary tech"
       submitText={submitting ? "Assigning…" : "Assign"}
       size="sm"
     >
+      <p className="mb-2 text-xs text-muted-foreground">
+        Primary tech is the operational owner. Additional techs are supporting collaborators.
+      </p>
       <label className="block text-sm">
         <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Choose mechanic
+          Choose primary tech
         </span>
         <select
           className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"

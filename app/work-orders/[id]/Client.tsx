@@ -1937,14 +1937,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     throw new Error(
                                       typeof json?.error === "string"
                                         ? json.error
-                                        : "Failed to assign technician."
+                                        : "Failed to update primary tech."
                                     );
                                   }
 
-                                  toast.success("Technician assigned.");
+                                  toast.success("Primary tech updated.");
                                   await fetchAll();
                                 } catch (e) {
-                                  const msg = e instanceof Error ? e.message : "Failed to assign technician.";
+                                  const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
                                   toast.error(msg);
                                 }
                               }
