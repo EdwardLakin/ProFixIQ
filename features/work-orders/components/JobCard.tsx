@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX, type MouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Wrench } from "lucide-react";
 
@@ -362,8 +362,12 @@ export function JobCard({
   const isBlocked = norm(line.status) === "on_hold" || norm(line.status) === "blocked";
   const waitingApproval = norm(line.approval_state) === "pending";
 
-  void canDelete;
-  void onDelete;
+  const showDeleteAction = canDelete === true && typeof onDelete === "function";
+
+  const handleDeleteActionClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onDelete?.();
+  };
 
   return (
     <div
@@ -456,6 +460,17 @@ export function JobCard({
                 {onAddPart ? (
                   <Button type="button" variant="secondary" size="sm" onClick={onAddPart}>
                     Add Part
+                  </Button>
+                ) : null}
+
+                {showDeleteAction ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDeleteActionClick}
+                  >
+                    Delete / Void
                   </Button>
                 ) : null}
 
