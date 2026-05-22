@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     // Ensure requester can see the WO (RLS enforced).
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id")
+      .select("id, shop_id, vehicle_id")
       .eq("id", workOrderId)
       .maybeSingle<{ id: string; shop_id: string | null }>();
 
@@ -54,6 +54,30 @@ export async function POST(req: Request) {
     }
     if (!wo) {
       return NextResponse.json({ error: "Work order not found." }, { status: 404 });
+    }
+
+    const { data: inspection, error: inspectionErr } = await supabase
+      .from("inspections")
+      .select("id, shop_id")
+      .eq("id", inspectionId)
+      .maybeSingle<{ id: string; shop_id: string | null }>();
+
+    if (inspectionErr) {
+      return NextResponse.json(
+        { error: `Failed to load inspection: ${inspectionErr.message}` },
+        { status: 400 },
+      );
+    }
+
+    if (!inspection) {
+      return NextResponse.json({ error: "Inspection not found." }, { status: 404 });
+    }
+
+    if (!inspection.shop_id || inspection.shop_id !== wo.shop_id) {
+      return NextResponse.json(
+        { error: "Inspection does not belong to this work order's shop." },
+        { status: 403 },
+      );
     }
 
     const res = await insertPrioritizedJobsFromInspection({
@@ -73,6 +97,8 @@ export async function POST(req: Request) {
       ok: true,
       insertedCount: res.insertedCount,
       partsRequestsCount: res.partsRequestsCount,
+      skippedCount: res.skippedCount,
+      skippedPartsRequestsCount: res.skippedPartsRequestsCount,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
