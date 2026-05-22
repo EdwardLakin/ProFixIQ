@@ -783,7 +783,7 @@ export default function WorkOrdersView(): JSX.Element {
         {workforceDrilldownActive ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100">
             <span>Filtered from Workforce Overview: Unassigned active jobs</span>
-            <Link href="/dashboard/work-orders" className="underline underline-offset-2 hover:text-white">
+            <Link href="/work-orders/view" className="underline underline-offset-2 hover:text-white">
               Clear filter
             </Link>
           </div>
