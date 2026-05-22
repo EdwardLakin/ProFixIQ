@@ -29,7 +29,7 @@ function toStringArray(x: unknown): string[] | null {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
-    allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    allowRoles: ["owner", "admin", "manager", "advisor", "service", "foreman"],
   });
 
   if (!access.ok) {
