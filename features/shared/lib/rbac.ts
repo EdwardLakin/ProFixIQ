@@ -7,6 +7,7 @@ export type CanonicalRole =
   | "parts"
   | "mechanic"
   | "lead_hand"
+  | "foreman"
   | "fleet_manager"
   | "dispatcher"
   | "driver"
@@ -25,7 +26,9 @@ const ROLE_ALIASES: Record<string, CanonicalRole> = {
   technician: "mechanic",
   lead_hand: "lead_hand",
   leadhand: "lead_hand",
+  "lead hand": "lead_hand",
   lead: "lead_hand",
+  foreman: "foreman",
   fleet_manager: "fleet_manager",
   dispatcher: "dispatcher",
   driver: "driver",
@@ -130,6 +133,14 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
   },
   lead_hand: {
     ...NONE,
+    canManageWorkOrders: true,
+    canRunInspections: true,
+    canViewShopWideData: true,
+    canManageScheduling: true,
+  },
+  foreman: {
+    ...NONE,
+    canAuthorizeQuotes: true,
     canManageWorkOrders: true,
     canRunInspections: true,
     canViewShopWideData: true,
