@@ -18,6 +18,7 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
@@ -38,11 +39,26 @@ const statusTextColor: Record<string, string> = {
   unassigned: "text-neutral-200",
   awaiting_approval: "text-blue-200",
   declined: "text-red-200",
+  deferred: "text-orange-200",
+  waiting_parts: "text-amber-200",
+  approved: "text-indigo-200",
+  pending: "text-slate-200",
 };
 
-const chip = (s: string | null) =>
-  statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
-  "text-neutral-200";
+const chip = (status: string) => statusTextColor[status] ?? "text-neutral-200";
+
+const displayStatusLabel = (status: string, punchedInAt: string | null): string => {
+  if (status === "in_progress" || (!!punchedInAt && status !== "completed" && status !== "declined" && status !== "deferred")) return "Active";
+  if (status === "waiting_parts") return "Waiting Parts";
+  if (status === "on_hold") return "On Hold";
+  if (status === "completed") return "Completed";
+  if (status === "declined") return "Declined";
+  if (status === "deferred") return "Deferred";
+  if (status === "awaiting_approval") return "Awaiting Approval";
+  if (status === "approved") return "Queued";
+  if (status === "pending" || status === "awaiting") return "Awaiting";
+  return status.replaceAll("_", " ");
+};
 
 const btnBase =
   "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
@@ -521,6 +537,9 @@ export default function FocusedJobModal(props: {
     (line?.description ?? "").trim() ||
     "Job";
 
+  const normalizedLineStatus = normalizeWorkOrderLineStatus(line?.status);
+  const statusLabel = displayStatusLabel(normalizedLineStatus, line?.punched_in_at ?? null);
+
   const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
   const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
@@ -614,17 +633,17 @@ export default function FocusedJobModal(props: {
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <span className={`inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(line?.status ?? null)}`}>
-              {String(line?.status || "awaiting").replaceAll("_", " ")}
+            <span className={`inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(normalizedLineStatus)}`}>
+              {statusLabel}
             </span>
 
-            {line?.status === "awaiting_approval" ? (
+            {normalizedLineStatus === "awaiting_approval" ? (
               <span className="inline-flex rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-100">
                 Awaiting approval
               </span>
             ) : null}
 
-            {line?.status === "declined" ? (
+            {normalizedLineStatus === "declined" ? (
               <span className="inline-flex rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-100">
                 Declined
               </span>
@@ -701,7 +720,7 @@ export default function FocusedJobModal(props: {
                       }}
                       disabled={busy}
                     >
-                      {line.status === "on_hold" ? "On Hold" : "Hold"}
+                      {normalizedLineStatus === "on_hold" ? "On Hold" : "Hold"}
                     </button>
 
                     <button
@@ -770,9 +789,9 @@ export default function FocusedJobModal(props: {
 
                   {completionBlocked ? (
                     <div className="mt-2 text-[11px] text-amber-300">
-                      {line.status === "awaiting_approval"
+                      {normalizedLineStatus === "awaiting_approval"
                         ? "Awaiting approval — punching disabled"
-                        : line.status === "declined"
+                        : normalizedLineStatus === "declined"
                           ? "Declined — punching disabled"
                           : line.approval_state && line.approval_state !== "approved"
                             ? "Not approved — punching disabled"
