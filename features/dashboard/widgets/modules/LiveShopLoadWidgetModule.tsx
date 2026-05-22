@@ -5,7 +5,7 @@ export const liveShopLoadWidgetModule: DashboardWidgetModule = {
   id: "live_shop_load",
   title: "Live Shop Load",
   description: "Real-time active jobs, tech capacity, and utilization",
-  roles: ["owner", "admin", "manager", "advisor", "parts"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman", "parts"],
   defaultW: 4,
   defaultH: 4,
   minW: 4,

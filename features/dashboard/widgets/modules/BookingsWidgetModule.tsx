@@ -5,7 +5,7 @@ export const bookingsWidgetModule: DashboardWidgetModule = {
   id: "bookings",
   title: "Bookings",
   description: "Upcoming appointment activity",
-  roles: ["owner", "admin", "manager", "advisor"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   defaultW: 4,
   defaultH: 4,
   minW: 3,

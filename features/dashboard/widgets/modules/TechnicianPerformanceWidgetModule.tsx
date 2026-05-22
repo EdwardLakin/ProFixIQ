@@ -5,7 +5,7 @@ export const technicianPerformanceWidgetModule: DashboardWidgetModule = {
   id: "tech_performance",
   title: "Technician Performance",
   description: "Completed jobs and average duration today",
-  roles: ["owner", "admin", "manager", "advisor", "parts"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman", "parts"],
   defaultW: 4,
   defaultH: 3,
   minW: 3,

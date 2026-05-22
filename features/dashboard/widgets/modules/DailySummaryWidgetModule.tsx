@@ -5,7 +5,7 @@ export const dailySummaryWidgetModule: DashboardWidgetModule = {
   id: "daily_summary",
   title: "Daily Summary",
   description: "Role-aware operational snapshot",
-  roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman", "parts", "mechanic", "tech", "technician"],
   defaultW: 4,
   defaultH: 3,
   minW: 3,
