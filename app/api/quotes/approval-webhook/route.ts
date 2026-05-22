@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 type DB = Database;
 type Json = Record<string, unknown>;
@@ -189,8 +190,8 @@ export async function POST(req: Request) {
     const approvedAt = workOrder.customer_approval_at ?? new Date().toISOString();
     const nextStatus =
       workOrder.status === "awaiting_approval" || workOrder.status === "awaiting"
-        ? "queued"
-        : (workOrder.status ?? "queued");
+        ? normalizeWorkOrderStatus("queued")
+        : normalizeWorkOrderStatus(workOrder.status ?? "queued");
 
     let woUpdateQuery = supabase
       .from("work_orders")
