@@ -394,7 +394,7 @@ export default function MobileHome() {
     );
   }
 
-  if (profile && (role === "manager" || role === "owner" || role === "admin")) {
+  if (profile && (role === "manager" || role === "owner" || role === "admin" || role === "foreman")) {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">

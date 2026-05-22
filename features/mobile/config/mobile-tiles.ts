@@ -9,6 +9,7 @@ export type MobileRole = Extract<
   | "advisor"
   | "mechanic"
   | "lead_hand"
+  | "foreman"
   | "parts"
   | "driver"
   | "dispatcher"
