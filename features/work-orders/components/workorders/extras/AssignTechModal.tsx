@@ -4,9 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { toast } from "sonner";
-import type { Database } from "@shared/types/types/supabase";
-
-type DB = Database;
 
 interface Assignable {
   id: string;
@@ -79,7 +76,6 @@ export default function AssignTechModal({
 
     setSubmitting(true);
     try {
-      // Prefer API route if available
       const res = await fetch("/api/work-orders/assign-line", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,27 +86,8 @@ export default function AssignTechModal({
       });
 
       if (!res.ok) {
-        // ✅ Correct DB column (NOT assigned_tech_id)
-        const { error } = await supabase
-          .from("work_order_lines")
-          .update(
-            { assigned_tech_id: techId } as DB["public"]["Tables"]["work_order_lines"]["Update"],
-          )
-          .eq("id", workOrderLineId);
-
-        if (error) throw error;
-      }
-
-      // Optional: also keep join table in sync (ignore if blocked/missing)
-      try {
-        await supabase
-          .from("work_order_line_technicians")
-          .upsert(
-            { work_order_line_id: workOrderLineId, technician_id: techId },
-            { onConflict: "work_order_line_id,technician_id" },
-          );
-      } catch {
-        // ignore
+        const json = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(json?.error || "Failed to update primary tech.");
       }
 
       toast.success("Primary tech updated.");
