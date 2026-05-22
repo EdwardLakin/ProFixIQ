@@ -44,6 +44,11 @@ export default function DashboardEntryPage() {
         return;
       }
 
+      if (role === "lead_hand" || role === "foreman") {
+        router.replace("/dashboard/operations");
+        return;
+      }
+
       const stored = window.localStorage.getItem(DASHBOARD_LAST_VIEW_KEY);
       const view: DashboardView = isDashboardView(stored) ? stored : "operations";
 
