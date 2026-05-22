@@ -132,7 +132,7 @@ type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
 
 // roles allowed to assign jobs
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
 
 // roles allowed to approve / decline
 const APPROVAL_ROLES = new Set([

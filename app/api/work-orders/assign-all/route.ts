@@ -3,12 +3,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
-
-type DB = Database;
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Body = {
   work_order_id: string;
@@ -22,14 +18,6 @@ type LineTechInsert = {
   assigned_by?: string | null;
 };
 
-const STAFF_CAN_ASSIGN = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "dispatcher",
-]);
-
 const ASSIGNABLE_ROLES = new Set([
   "mechanic",
   "tech",
@@ -37,17 +25,11 @@ const ASSIGNABLE_ROLES = new Set([
   "lead_hand",
 ]);
 
-function isStaffRole(role: unknown): boolean {
-  return STAFF_CAN_ASSIGN.has(String(role ?? "").toLowerCase());
-}
-
 function isAssignableRole(role: unknown): boolean {
   return ASSIGNABLE_ROLES.has(String(role ?? "").toLowerCase());
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
-
   try {
     const body = (await req.json()) as Partial<Body>;
     const { work_order_id, tech_id, only_unassigned = true } = body;
@@ -66,45 +48,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-
-    if (authErr || !user) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageWorkOrders",
+    });
+    if (!access.ok) return access.response;
 
     const admin = await createAdminSupabase();
-    const assigned_by = user.id;
-
-    // Caller profile: use admin client so profiles RLS does not hide rows
-    const { data: caller, error: callerErr } = await admin
-      .from("profiles")
-      .select("id, shop_id, role")
-      .eq("id", assigned_by)
-      .maybeSingle();
-
-    if (callerErr) {
-      return NextResponse.json({ error: callerErr.message }, { status: 400 });
-    }
-
-    if (!caller?.shop_id) {
-      return NextResponse.json(
-        { error: "Profile missing shop_id" },
-        { status: 403 },
-      );
-    }
-
-    if (!isStaffRole(caller.role)) {
-      return NextResponse.json(
-        { error: "Forbidden: role cannot assign work" },
-        { status: 403 },
-      );
-    }
+    const assigned_by = access.profile.id;
+    const shopId = access.profile.shop_id;
 
     // Work order: use admin client
     const { data: wo, error: woErr } = await admin
@@ -124,7 +75,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (wo.shop_id !== caller.shop_id) {
+    if (wo.shop_id !== shopId) {
       return NextResponse.json(
         { error: "Forbidden: cross-shop assignment" },
         { status: 403 },
@@ -152,7 +103,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (techProfile.shop_id !== caller.shop_id) {
+    if (techProfile.shop_id !== shopId) {
       return NextResponse.json(
         { error: "Tech is not in the same shop." },
         { status: 403 },
