@@ -8,6 +8,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartAllocation =
@@ -104,8 +105,9 @@ function statusLabelFromKey(status: string): string {
 
 function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boolean): StatusVisual {
   const raw = norm(status).replaceAll("-", "_");
+  const normalized = normalizeWorkOrderLineStatus(status);
 
-  if (isPunchedIn || raw === "in_progress" || raw === "active") {
+  if (isPunchedIn || normalized === "in_progress" || raw === "active") {
     return {
       label: "Active",
       railClass: "bg-cyan-400/90",
@@ -117,13 +119,9 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (
-    raw === "completed" ||
-    raw === "ready_to_invoice" ||
-    raw === "invoiced"
-  ) {
+  if (normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced") {
     return {
-      label: statusLabelFromKey(raw),
+      label: statusLabelFromKey(normalized),
       railClass: "bg-slate-400/75",
       chipClass: "border-slate-400/55 bg-slate-500/10 text-slate-200",
       orbClass: "bg-slate-300",
@@ -133,7 +131,7 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (raw === "on_hold") {
+  if (normalized === "on_hold") {
     return {
       label: "On Hold",
       railClass: "bg-amber-400/90",
@@ -145,7 +143,7 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (raw === "waiting_parts" || raw === "pending_parts") {
+  if (normalized === "waiting_parts" || raw === "pending_parts") {
     return {
       label: "Waiting Parts",
       railClass: "bg-indigo-400/90",
@@ -157,7 +155,7 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (raw === "awaiting_approval" || raw === "needs_approval") {
+  if (normalized === "awaiting_approval" || raw === "needs_approval") {
     return {
       label: "Awaiting Approval",
       railClass: "bg-amber-500/90",
@@ -169,9 +167,9 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (raw === "blocked" || raw === "declined" || raw === "critical") {
+  if (raw === "blocked" || raw === "critical" || normalized === "declined" || normalized === "deferred") {
     return {
-      label: "Blocked",
+      label: normalized === "deferred" ? "Deferred" : normalized === "declined" ? "Declined" : "Blocked",
       railClass: "bg-red-400/90",
       chipClass: "border-red-300/60 bg-red-500/12 text-red-100",
       orbClass: "bg-red-300",
@@ -181,9 +179,9 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     };
   }
 
-  if (raw === "queued" || raw === "ready") {
+  if (raw === "queued" || raw === "ready" || normalized === "approved") {
     return {
-      label: statusLabelFromKey(raw),
+      label: normalized === "approved" ? "Ready" : statusLabelFromKey(raw),
       railClass: "bg-sky-400/90",
       chipClass: "border-sky-300/60 bg-sky-500/12 text-sky-100",
       orbClass: "bg-sky-300",
@@ -194,7 +192,7 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
   }
 
   return {
-    label: raw ? statusLabelFromKey(raw) : "Awaiting",
+    label: normalized === "pending" ? "Awaiting" : raw ? statusLabelFromKey(raw) : "Awaiting",
     railClass: "bg-sky-500/80",
     chipClass: "border-sky-400/55 bg-sky-500/10 text-sky-100",
     orbClass: "bg-sky-300",
