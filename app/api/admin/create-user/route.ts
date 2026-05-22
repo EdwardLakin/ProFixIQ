@@ -12,6 +12,7 @@ import {
   normalizeProvisioningUsername,
   withShopUsernameSuffix,
 } from "@/features/users/lib/username";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type Body = {
   username: string;
@@ -37,8 +38,19 @@ export async function POST(req: Request) {
     const password = (raw.password ?? "").trim();
     const full_name = (raw.full_name ?? null) || null;
     const requestedRole = (raw.role ?? null) || null;
+    const canonicalRole = canonicalizeRole(requestedRole);
     const phone = (raw.phone ?? null) || null;
     const inputEmail = (raw.email ?? "").trim().toLowerCase();
+
+    if (canonicalRole === "unknown") {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid role. Allowed roles: owner, admin, manager, foreman, lead_hand, advisor, service, dispatcher, parts, mechanic, fleet_manager, driver, customer.",
+        },
+        { status: 400 }
+      );
+    }
 
     if (!password) {
       return NextResponse.json({ error: "Temporary password is required." }, { status: 400 });
@@ -118,7 +130,7 @@ export async function POST(req: Request) {
       email_confirm: true,
       user_metadata: {
         full_name,
-        role: requestedRole,
+        role: canonicalRole,
         shop_id: effectiveShopId, // force caller's shop
         phone,
         username,
@@ -144,7 +156,7 @@ export async function POST(req: Request) {
           email,
           full_name,
           phone,
-          role: requestedRole,
+          role: canonicalRole,
           shop_id: effectiveShopId,
           shop_name: null,
           username,

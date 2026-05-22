@@ -356,19 +356,20 @@ export default function CreateUserPage(): JSX.Element {
                 <option value="owner">Owner</option>
                 <option value="admin">Admin</option>
                 <option value="manager">Manager</option>
+                <option value="foreman">Foreman</option>
+                <option value="lead_hand">Lead Hand</option>
                 <option value="advisor">Advisor</option>
-                <option value="mechanic">Mechanic</option>
+                <option value="mechanic">Mechanic / Technician</option>
                 <option value="parts">Parts</option>
                 <option value="driver">Driver</option>
                 <option value="dispatcher">Dispatcher</option>
                 <option value="fleet_manager">Fleet manager</option>
               </select>
               <p className="text-[11px] text-neutral-500">
-                Use{" "}
-                <span style={{ color: COPPER }}>
-                  driver / dispatcher / fleet manager
-                </span>{" "}
-                for Fleet Portal accounts.
+                App role controls access and permissions. Workforce title/category is managed
+                separately in the People profile. Use{" "}
+                <span style={{ color: COPPER }}>driver / dispatcher / fleet manager</span> for
+                Fleet Portal accounts.
               </p>
             </div>
 
