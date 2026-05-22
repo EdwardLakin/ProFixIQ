@@ -92,6 +92,22 @@ const EMPTY_CERT: CertificationDraft = {
   notes: "",
 };
 
+const APP_ROLE_OPTIONS = [
+  { value: "owner", label: "Owner" },
+  { value: "admin", label: "Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "foreman", label: "Foreman" },
+  { value: "lead_hand", label: "Lead Hand" },
+  { value: "advisor", label: "Advisor" },
+  { value: "service", label: "Service" },
+  { value: "dispatcher", label: "Dispatcher" },
+  { value: "parts", label: "Parts" },
+  { value: "mechanic", label: "Mechanic / Technician" },
+  { value: "fleet_manager", label: "Fleet Manager" },
+  { value: "driver", label: "Driver" },
+  { value: "customer", label: "Customer" },
+] as const;
+
 function certPosture(cert: Certification) {
   if (cert.status === "revoked") return "Revoked";
   if (cert.status === "pending") return "Pending";
@@ -369,10 +385,24 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <AdminField label="Phone" className="flex-1">
             <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.phone ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, phone: e.target.value } : prev)} />
           </AdminField>
-          <AdminField label="Role" className="w-full md:w-64">
-            <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.role ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, role: e.target.value } : prev)} />
+          <AdminField label="App role" className="w-full md:w-64">
+            <select
+              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm"
+              value={detail.role ?? ""}
+              onChange={(e) => setDetail((prev) => (prev ? { ...prev, role: e.target.value || null } : prev))}
+            >
+              <option value="">Unassigned</option>
+              {APP_ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </AdminField>
         </AdminToolbar>
+        <div className="px-4 pb-4 text-xs text-neutral-400">
+          App role controls access and permissions. Workforce role/title is managed separately.
+        </div>
       </AdminPanel>
 
       <AdminPanel>
