@@ -168,7 +168,7 @@ export default function WorkOrderBoardCard(props: {
             Open {row.jobs_open ?? 0}
           </span>
           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
-            Blocked {row.jobs_blocked ?? 0}
+            Blocked (parts/on hold) {row.jobs_blocked ?? 0}
           </span>
           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
             Waiting parts {row.jobs_waiting_parts ?? 0}

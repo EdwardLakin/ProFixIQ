@@ -397,14 +397,14 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       targetKind: approvalTargetKind,
     },
     {
-      label: isTechnicianScoped ? "My waiting parts" : "Waiting parts",
+      label: isTechnicianScoped ? "My open parts requests" : "Open parts requests",
       value: String(payload.topSummary.waitingParts),
       tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
       href: waitingPartsTargetHref,
       targetKind: waitingPartsTargetKind,
     },
     {
-      label: isTechnicianScoped ? "My blocked jobs" : "On hold / blocked",
+      label: isTechnicianScoped ? "My blocked jobs (parts/on hold)" : "Blocked jobs (parts/on hold)",
       value: String(payload.topSummary.blockedJobs),
       tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
       href: blockedTargetHref,
@@ -432,7 +432,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: approvalTargetKind,
         },
         {
-          label: "My parts delays",
+          label: "My open parts requests",
           value: String(payload.topSummary.waitingParts),
           tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
           href: waitingPartsTargetHref,
@@ -450,7 +450,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: approvalTargetKind,
         },
         {
-          label: "Parts waiting",
+          label: "Open parts requests",
           value: String(payload.topSummary.waitingParts),
           tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
           href: waitingPartsTargetHref,
@@ -499,8 +499,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       ? {
           label: isTechnicianScoped ? "My blocked jobs need action" : "Blocked jobs climbing",
           detail: isTechnicianScoped
-            ? `${payload.topSummary.blockedJobs} of your assigned jobs are currently blocked.`
-            : `${payload.topSummary.blockedJobs} jobs currently in blocked stages.`,
+            ? `${payload.topSummary.blockedJobs} of your assigned jobs are waiting parts or on hold.`
+            : `${payload.topSummary.blockedJobs} jobs are currently waiting parts or on hold.`,
           tone: "critical",
           href: blockedTargetHref,
           targetKind: blockedTargetKind,
