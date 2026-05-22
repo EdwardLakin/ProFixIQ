@@ -7,7 +7,9 @@ export type Role =
   | "parts"
   | "dispatcher"
   | "driver"
-  | "fleet_manager";
+  | "fleet_manager"
+  | "lead_hand"
+  | "foreman";
 
 export type Scope =
   | "work_orders"
@@ -59,7 +61,7 @@ export const TILES: Tile[] = [
     href: "/tech/queue",
     title: "Tech Job Queue",
     subtitle: "My assigned work",
-    roles: ["mechanic", "manager", "owner", "admin"],
+    roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["tech", "all"],
     section: "Tech",
   },
@@ -67,7 +69,7 @@ export const TILES: Tile[] = [
     href: "/parts/requests?mine=1",
     title: "My Parts Requests",
     subtitle: "Requests involving me",
-    roles: ["mechanic", "manager", "owner", "admin"],
+    roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["parts", "tech", "all"],
     section: "Tech",
   },
@@ -96,7 +98,7 @@ export const TILES: Tile[] = [
     title: "Create Work Order",
     subtitle: "Start a new job",
     cta: "+",
-    roles: ["advisor", "manager", "owner", "admin"],
+    roles: ["advisor", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
     section: "Operations",
   },
@@ -136,7 +138,7 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed work",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
     section: "Operations",
   },

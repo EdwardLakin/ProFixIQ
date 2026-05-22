@@ -8,6 +8,8 @@ export type UserRole =
   | "dispatcher"
   | "driver"
   | "fleet_manager"
+  | "lead_hand"
+  | "foreman"
   | "agent_admin"
   // legacy / generic roles still used in some places
   | "service"
@@ -54,7 +56,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders/view": {
     title: () => "View Work Orders",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "advisor", "service"],
+    roles: ["owner", "admin", "manager", "advisor", "service", "lead_hand", "foreman"],
   },
   "/work-orders/create": {
     title: () => "New Work Order",
@@ -64,7 +66,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders/queue": {
     title: () => "Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
   "/work-orders/quote-review": {
     title: () => "Quote Review",
@@ -74,7 +76,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders/history": {
     title: () => "History",
     icon: "📜",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
   },
   "/billing": {
     title: () => "Billing",
@@ -86,7 +88,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: (href) => `WO #${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     persist: { keyParams: ["id"] },
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
 
   "/work-orders/view/[id]": {
@@ -121,19 +123,19 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/inspections": {
     title: () => "Inspections",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
 
   // Runtime screens
   "/inspections/run": {
     title: () => "Run Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
   "/inspections/fill": {
     title: () => "Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
 
   // Inspection templates (tiles.ts uses /inspections/templates for this)
@@ -188,7 +190,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
       return `Inspection – ${nice}`;
     },
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
 
   // Maintenance templates (if you still expose them directly)
@@ -426,7 +428,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/tech/queue": {
     title: () => "Tech Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "mechanic", "tech"],
+    roles: ["owner", "admin", "manager", "mechanic", "tech", "lead_hand", "foreman"],
   },
   "/tech/performance": {
     title: () => "My Performance",

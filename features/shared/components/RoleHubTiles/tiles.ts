@@ -4,7 +4,9 @@ export type Role =
   | "manager"
   | "advisor"
   | "mechanic"
-  | "parts";
+  | "parts"
+  | "lead_hand"
+  | "foreman";
 
 export type Scope =
   | "work_orders"
@@ -33,21 +35,21 @@ export const TILES: Tile[] = [
     title: "Create Work Order",
     subtitle: "Start a new job",
     cta: "+",
-    roles: ["advisor", "manager", "owner", "admin"],
+    roles: ["advisor", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   {
     href: "/work-orders/view",
     title: "View Work Orders",
     subtitle: "Browse & manage",
-    roles: ["advisor", "manager", "owner", "admin"],
+    roles: ["advisor", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   {
     href: "/work-orders/queue",
     title: "Job Queue",
     subtitle: "Active & in-progress",
-    roles: ["mechanic", "manager", "owner", "admin"],
+    roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   {
@@ -68,7 +70,7 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed Work Orders & Invoices",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic"],
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   // NEW: Billing (Ready to invoice)
@@ -205,14 +207,14 @@ export const TILES: Tile[] = [
     href: "/dashboard/appointments",
     title: "Scheduling",
     subtitle: "Calendar & bookings",
-    roles: ["owner", "admin", "manager", "advisor"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["management", "all"],
   },
   {
     href: "/dashboard/appointments",
     title: "Appointments",
     subtitle: "Customer bookings calendar",
-    roles: ["owner", "admin", "manager", "advisor"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["management", "all"],
   },
   {
@@ -313,7 +315,7 @@ export const TILES: Tile[] = [
     href: "/tech/queue",
     title: "Tech Job Queue",
     subtitle: "My assigned work",
-    roles: ["mechanic", "manager", "owner", "admin"],
+    roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["tech", "all"],
   },
 ];

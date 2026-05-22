@@ -74,6 +74,8 @@ describe("owner sidebar IA", () => {
       dispatcher: [],
       driver: [],
       fleet_manager: [],
+      lead_hand: [],
+      foreman: [],
       manager: [],
       owner: [],
     };
