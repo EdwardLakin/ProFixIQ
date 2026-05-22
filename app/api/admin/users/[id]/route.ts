@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -33,11 +34,11 @@ async function assertTargetInSameShop(
 type PutBody = {
   full_name?: string | null;
   phone?: string | null;
-  role?: DB["public"]["Enums"]["user_role_enum"] | null;
+  role?: string | null;
 };
 
 type RouteContext = { params: { id: string } };
-const ADMIN_LEVEL_ROLES = new Set<NonNullable<PutBody["role"]>>(["owner", "admin"]);
+const ADMIN_LEVEL_ROLES = new Set(["owner", "admin"]);
 
 export async function PUT(req: NextRequest, context: unknown) {
   const { params } = context as RouteContext;
@@ -70,16 +71,27 @@ export async function PUT(req: NextRequest, context: unknown) {
     return NextResponse.json({ error: check.message }, { status: 403 });
   }
 
+  const roleProvided = body.role !== undefined;
+  const canonicalRole = roleProvided ? canonicalizeRole(body.role) : null;
+
+  if (roleProvided && canonicalRole === "unknown") {
+    return NextResponse.json({ error: "Invalid role value" }, { status: 400 });
+  }
+
+  if (roleProvided && id === access.profile.id) {
+    return NextResponse.json({ error: "You cannot change your own role" }, { status: 403 });
+  }
+
   const update: Partial<DB["public"]["Tables"]["profiles"]["Update"]> = {
     ...(body.full_name !== undefined ? { full_name: body.full_name } : {}),
     ...(body.phone !== undefined ? { phone: body.phone } : {}),
-    ...(body.role !== undefined ? { role: body.role } : {}),
+    ...(body.role !== undefined ? { role: canonicalRole } : {}),
   };
 
   if (
-    body.role !== undefined &&
-    body.role !== null &&
-    ADMIN_LEVEL_ROLES.has(body.role) &&
+    roleProvided &&
+    canonicalRole !== null &&
+    ADMIN_LEVEL_ROLES.has(canonicalRole) &&
     access.canonicalRole !== "owner"
   ) {
     return NextResponse.json({ error: "Only owners can assign owner/admin roles" }, { status: 403 });
@@ -89,6 +101,15 @@ export async function PUT(req: NextRequest, context: unknown) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (roleProvided && canonicalRole !== null) {
+    const { error: authErr } = await admin.auth.admin.updateUserById(id, {
+      user_metadata: { role: canonicalRole },
+    });
+    if (authErr) {
+      return NextResponse.json({ error: authErr.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true });
