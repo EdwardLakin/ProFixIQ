@@ -5,7 +5,7 @@ export const waitingPartsWidgetModule: DashboardWidgetModule = {
   id: "waiting_parts",
   title: "Waiting Parts",
   description: "Blocked by parts availability",
-  roles: ["owner", "admin", "manager", "advisor", "parts", "mechanic", "tech", "technician"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman", "parts", "mechanic", "tech", "technician"],
   defaultW: 4,
   defaultH: 4,
   minW: 3,

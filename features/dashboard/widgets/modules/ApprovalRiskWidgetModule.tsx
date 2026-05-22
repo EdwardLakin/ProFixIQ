@@ -5,7 +5,7 @@ export const approvalRiskWidgetModule: DashboardWidgetModule = {
   id: "approval_risk",
   title: "Approval Risk",
   description: "Work awaiting decision",
-  roles: ["owner", "admin", "manager", "advisor"],
+  roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   defaultW: 4,
   defaultH: 4,
   minW: 3,
