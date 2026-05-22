@@ -58,7 +58,7 @@ const ACTIVE_FLOW_STATUSES: StatusKey[] = [
 const SEEDED_DEFAULT_STATUSES: StatusKey[] = [...ACTIVE_FLOW_STATUSES, "completed"];
 const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
 
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 const INPUT_DARK =
