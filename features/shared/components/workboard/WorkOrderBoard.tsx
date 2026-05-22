@@ -159,7 +159,7 @@ export default function WorkOrderBoard(props: {
                 Active: <span className="text-white">{activeCount}</span>
               </div>
               <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Stalled: <span className="text-white">{stalledCount}</span>
+                Needs attention: <span className="text-white">{stalledCount}</span>
               </div>
               <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
                 Waiters: <span className="text-white">{waiterCount}</span>
