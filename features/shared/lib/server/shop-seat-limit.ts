@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { PLAN_LIMITS } from "@/features/stripe/lib/stripe/constants";
+import { resolveSeatLimitForPlan } from "@/features/stripe/lib/stripe/constants";
 import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
 
 type SeatPlanSource = "shop.plan" | "trial-default" | "safe-default";
@@ -61,7 +61,7 @@ export async function getShopSeatLimitSnapshot(
 
   return {
     plan: resolved.plan,
-    cap: PLAN_LIMITS[resolved.plan],
+    cap: resolveSeatLimitForPlan(resolved.plan) ?? 10,
     activeUsers: typeof activeUsers === "number" ? activeUsers : 0,
     source: resolved.source,
   };
