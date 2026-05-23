@@ -31,6 +31,10 @@ import {
   buildDeterministicStockSuggestions,
   type DeterministicStockSuggestion,
 } from "@/features/parts/lib/parts/deterministicStockMatcher";
+import {
+  buildDeterministicSupplierSuggestions,
+  type DeterministicSupplierSuggestion,
+} from "@/features/parts/lib/parts/deterministicSupplierMatcher";
 
 type DB = Database;
 
@@ -193,6 +197,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
   const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
+  const [supplierSuggestionsByItemId, setSupplierSuggestionsByItemId] = useState<Record<string, DeterministicSupplierSuggestion[]>>({});
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -344,6 +349,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSuppliers([]);
       setSelectedPo("");
       setStockSuggestionsByItemId({});
+      setSupplierSuggestionsByItemId({});
       setLoading(false);
       return;
     }
@@ -454,6 +460,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             .eq("shop_id", shopId)
             .limit(2000),
         ]);
+      const poIds = ((poRows ?? []) as PurchaseOrderRow[]).map((po) => String(po.id));
+      let poLineRows: DB["public"]["Tables"]["purchase_order_lines"]["Row"][] = [];
+      if (poIds.length > 0) {
+        const { data: lineRows } = await supabase
+          .from("purchase_order_lines")
+          .select("po_id, part_id, description, unit_cost, created_at")
+          .in("po_id", poIds)
+          .order("created_at", { ascending: false })
+          .limit(2000);
+        poLineRows = ((lineRows ?? []) as unknown) as DB["public"]["Tables"]["purchase_order_lines"]["Row"][];
+      }
 
       const partRows = (ps ?? []) as PartRow[];
       setParts(partRows);
@@ -487,10 +504,18 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSuppliers((supRows ?? []) as SupplierRow[]);
 
       const suggestions: Record<string, DeterministicStockSuggestion[]> = {};
+      const supplierSuggestions: Record<string, DeterministicSupplierSuggestion[]> = {};
+      const stockSummaryRows = (((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][]);
+      const stockAvailableByPartId = new Map<string, number>();
+      for (const stockRow of stockSummaryRows) {
+        if (!stockRow.part_id) continue;
+        const qty = Number((stockRow as { qty_available?: number | null }).qty_available ?? stockRow.on_hand ?? 0);
+        stockAvailableByPartId.set(String(stockRow.part_id), Number.isFinite(qty) ? qty : 0);
+      }
       for (const req of uiRequests) {
         for (const item of req.items) {
           const desc = String(item.description ?? "").trim();
-          if (!desc || isUuid(item.part_id)) continue;
+          if (!desc) continue;
           const ranked = buildDeterministicStockSuggestions({
             requestedDescription: desc,
             requestedQty: toNum(item.qty, 1),
@@ -500,9 +525,44 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             limit: 2,
           });
           if (ranked.length > 0) suggestions[String(item.id)] = ranked;
+          const hasAttachedPart = isUuid(item.part_id);
+          const topStockSuggestion = ranked[0] ?? null;
+          const selectedPartId = isUuid(item.part_id) ? item.part_id : (isUuid(item.ui_part_id) ? item.ui_part_id : null);
+          const selectedPartStock = selectedPartId ? (stockAvailableByPartId.get(String(selectedPartId)) ?? 0) : 0;
+          const shouldSuggestSupplier =
+            !hasAttachedPart ||
+            !!topStockSuggestion?.recommended_action && topStockSuggestion.recommended_action === "order_part" ||
+            (selectedPartId != null && selectedPartStock <= 0);
+          if (shouldSuggestSupplier) {
+            supplierSuggestions[String(item.id)] = buildDeterministicSupplierSuggestions({
+              requestedDescription: desc,
+              partId: selectedPartId,
+              suppliers: ((supRows ?? []) as SupplierRow[]).map((s) => ({ id: s.id, name: s.name })),
+              purchaseOrders: ((poRows ?? []) as PurchaseOrderRow[]).map((po) => ({
+                id: po.id,
+                supplier_id: po.supplier_id,
+                status: po.status,
+                created_at: po.created_at,
+              })),
+              purchaseOrderLines: poLineRows.map((line) => ({
+                po_id: line.po_id,
+                part_id: line.part_id,
+                description: line.description,
+                unit_cost: line.unit_cost,
+                created_at: line.created_at,
+              })),
+              vendorPartNumbers: (((vendorRows ?? []) as unknown) as DB["public"]["Tables"]["vendor_part_numbers"]["Row"][]).map((v) => ({
+                part_id: v.part_id,
+                supplier_id: v.supplier_id,
+                vendor_sku: v.vendor_sku,
+              })),
+              parts: partRows.map((p) => ({ id: p.id, supplier: p.supplier })),
+            });
+          }
         }
       }
       setStockSuggestionsByItemId(suggestions);
+      setSupplierSuggestionsByItemId(supplierSuggestions);
       if (
         selectedPo &&
         !(poRows ?? []).some((p) => String(p.id) === selectedPo)
@@ -517,6 +577,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSuppliers([]);
       setSelectedPo("");
       setStockSuggestionsByItemId({});
+      setSupplierSuggestionsByItemId({});
     }
 
     setLoading(false);
@@ -1382,6 +1443,8 @@ if (!lineId || !isUuid(lineId)) {
                                   null) as string | null;
                                 const trustMeta = effectivePartId ? trustByPartId[effectivePartId] : null;
                                 const stockSuggestions = stockSuggestionsByItemId[String(it.id)] ?? [];
+                                const supplierSuggestions = supplierSuggestionsByItemId[String(it.id)] ?? [];
+                                const supplierSuggestion = supplierSuggestions[0] ?? null;
                                 const topSuggestion = stockSuggestions[0] ?? null;
                                 const hasAttachedPart = isUuid(it.part_id);
                                 const showSuggestion = !!topSuggestion && !hasAttachedPart;
@@ -1488,6 +1551,44 @@ if (!lineId || !isUuid(lineId)) {
                                         ) : hasAttachedPart && topSuggestion ? (
                                           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-500">
                                             Stock suggestion available as an alternative, but this row already has an attached part.
+                                          </div>
+                                        ) : null}
+                                        {supplierSuggestion ? (
+                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
+                                            <div>
+                                              Suggested supplier:{" "}
+                                              <span className="text-neutral-100">
+                                                {supplierSuggestion.supplier_name ?? "Review / manual"}
+                                              </span>
+                                              <span className="text-neutral-500"> · confidence {supplierSuggestion.confidence}</span>
+                                            </div>
+                                            {supplierSuggestion.open_po_number ? (
+                                              <div className="text-neutral-500">
+                                                Open PO available: {supplierSuggestion.open_po_number}
+                                              </div>
+                                            ) : null}
+                                            {supplierSuggestion.suggested_unit_cost != null ? (
+                                              <div className="text-neutral-500">
+                                                Last cost: ${supplierSuggestion.suggested_unit_cost.toFixed(2)}
+                                              </div>
+                                            ) : null}
+                                            <div className="mt-1 flex flex-wrap gap-1">
+                                              {supplierSuggestion.reasons.slice(0, 3).map((reason) => (
+                                                <span key={reason} className="rounded-full border border-[color:var(--desktop-border)] px-2 py-0.5 text-[10px] text-neutral-400">
+                                                  {reason}
+                                                </span>
+                                              ))}
+                                            </div>
+                                            {supplierSuggestion.supplier_id ? (
+                                              <button
+                                                type="button"
+                                                className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                onClick={() => updateItem(r.req.id, String(it.id), { ui_supplier_id: supplierSuggestion.supplier_id ?? "" })}
+                                                disabled={rowBusy || it.ui_supplier_id === supplierSuggestion.supplier_id}
+                                              >
+                                                Use suggested supplier (manual PO action still required)
+                                              </button>
+                                            ) : null}
                                           </div>
                                         ) : null}
                                         {approved > 0 ? (
