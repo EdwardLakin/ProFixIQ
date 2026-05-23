@@ -213,6 +213,107 @@ function compatibilityReasonParts(row: {
   return reasons;
 }
 
+
+function isSchemaDriftError(error: { code?: string | null; message?: string | null; details?: string | null } | null | undefined): boolean {
+  if (!error) return false;
+  const code = (error.code ?? "").toUpperCase();
+  const msg = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return (
+    code.startsWith("PGRST") ||
+    msg.includes("column") ||
+    msg.includes("does not exist") ||
+    msg.includes("schema") ||
+    msg.includes("relation") ||
+    msg.includes("not found")
+  );
+}
+
+async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuRepairItemRow[]> {
+  const baseSelect = "id, name, complaint, correction, labor_hours, parts";
+  const extendedSelect = `${baseSelect}, confidence_score, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type`;
+
+  let data: unknown[] | null = null;
+  let error: any = null;
+  ({ data, error } = await supabase.from("menu_repair_items").select(extendedSelect).eq("shop_id", shopId).order("updated_at", { ascending: false }).limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+
+  if (error && isSchemaDriftError(error)) {
+    console.warn("[inspections] menu_repair_items extended select unavailable; falling back to base select", { code: error.code, message: error.message });
+    ({ data, error } = await supabase.from("menu_repair_items").select(baseSelect).eq("shop_id", shopId).order("updated_at", { ascending: false }).limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+  }
+
+  if (error) {
+    console.warn("[inspections] menu_repair_items load skipped", { code: error.code, message: error.message });
+    return [];
+  }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id ?? ""),
+    name: (row.name as string | null) ?? null,
+    complaint: (row.complaint as string | null) ?? null,
+    correction: (row.correction as string | null) ?? null,
+    labor_hours: (row.labor_hours as number | null) ?? null,
+    parts: row.parts ?? null,
+    confidence_score: (row.confidence_score as number | null) ?? null,
+    vehicle_year: (row.vehicle_year as number | null) ?? null,
+    vehicle_make: (row.vehicle_make as string | null) ?? null,
+    vehicle_model: (row.vehicle_model as string | null) ?? null,
+    engine: (row.engine as string | null) ?? null,
+    drivetrain: (row.drivetrain as string | null) ?? null,
+    transmission: (row.transmission as string | null) ?? null,
+    fuel_type: (row.fuel_type as string | null) ?? null,
+  })).filter((row) => !!row.id);
+}
+
+async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuItemRow[]> {
+  const baseSelect = "id, name, description, complaint, cause, correction, labor_hours, total_price, category";
+  const extendedSelect = `${baseSelect}, service_key, vehicle_year, vehicle_make, vehicle_model, drivetrain, engine_type, transmission_type`;
+
+  let data: unknown[] | null = null;
+  let error: any = null;
+  ({ data, error } = await supabase
+    .from("menu_items")
+    .select(extendedSelect)
+    .eq("shop_id", shopId)
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
+
+  if (error && isSchemaDriftError(error)) {
+    console.warn("[inspections] menu_items extended select unavailable; falling back to base select", { code: error.code, message: error.message });
+    ({ data, error } = await supabase
+      .from("menu_items")
+      .select(baseSelect)
+      .eq("shop_id", shopId)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
+  }
+
+  if (error) {
+    console.warn("[inspections] menu_items load skipped", { code: error.code, message: error.message });
+    return [];
+  }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id ?? ""),
+    name: (row.name as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    complaint: (row.complaint as string | null) ?? null,
+    cause: (row.cause as string | null) ?? null,
+    correction: (row.correction as string | null) ?? null,
+    labor_hours: (row.labor_hours as number | null) ?? null,
+    total_price: (row.total_price as number | null) ?? null,
+    category: (row.category as string | null) ?? null,
+    service_key: (row.service_key as string | null) ?? null,
+    vehicle_year: (row.vehicle_year as number | null) ?? null,
+    vehicle_make: (row.vehicle_make as string | null) ?? null,
+    vehicle_model: (row.vehicle_model as string | null) ?? null,
+    drivetrain: (row.drivetrain as string | null) ?? null,
+    engine_type: (row.engine_type as string | null) ?? null,
+    transmission_type: (row.transmission_type as string | null) ?? null,
+  })).filter((row) => !!row.id);
+}
+
 function computePricingStatusFromDate(validUntil: string | null | undefined): "fresh" | "stale" | "expired" {
   if (!validUntil) return "expired";
 
@@ -427,14 +528,7 @@ export async function findSmartInspectionMatch(args: {
       .filter(Boolean),
   );
 
-  const { data: repairItems } = await supabase
-    .from("menu_repair_items")
-    .select(
-      "id, name, complaint, correction, labor_hours, parts, confidence_score, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type",
-    )
-    .eq("shop_id", shopId)
-    .order("updated_at", { ascending: false })
-    .limit(60);
+  const repairItems = await safeLoadMenuRepairItems(supabase, shopId);
 
 
   // 🔥 Load active pricing snapshots
@@ -454,7 +548,7 @@ export async function findSmartInspectionMatch(args: {
     ]),
   );
 
-  const rankedRepairItems = ((repairItems ?? []) as MenuRepairItemRow[])
+  const rankedRepairItems = repairItems
     .map((row) => {
       const haystack = [row.name ?? "", row.complaint ?? "", row.correction ?? ""]
         .join(" ")
@@ -567,18 +661,10 @@ export async function findSmartInspectionMatch(args: {
 
   const bestHistory = rankedHistory[0];
 
-  const { data: menuItems } = await supabase
-    .from("menu_items")
-    .select(
-      "id, name, description, complaint, cause, correction, labor_hours, total_price, category, service_key, vehicle_year, vehicle_make, vehicle_model, drivetrain, engine_type, transmission_type",
-    )
-    .eq("shop_id", shopId)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(80);
+  const menuItems = await safeLoadMenuItems(supabase, shopId);
 
   const broadComplaint = isBroadComplaint(noteText);
-  const rankedCatalogItems = ((menuItems ?? []) as MenuItemRow[])
+  const rankedCatalogItems = menuItems
     .map((row) => {
       const haystack = [
         row.name ?? "",
