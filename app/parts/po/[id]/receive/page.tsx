@@ -147,6 +147,7 @@ export default function PoReceivePage(): JSX.Element {
 
   const [manualPartId, setManualPartId] = useState<string>("");
   const [manualSearch, setManualSearch] = useState<string>("");
+  const [freeTextQtyByLineId, setFreeTextQtyByLineId] = useState<Record<string, number>>({});
 
   // scanner
   const videoRef = useRef<HTMLDivElement | null>(null);
@@ -279,6 +280,16 @@ export default function PoReceivePage(): JSX.Element {
     })();
   }, [poId, supabase]);
 
+  const refreshPoAndLines = async () => {
+    const [poRes, lineRes] = await Promise.all([
+      supabase.from("purchase_orders").select("*").eq("id", poId).maybeSingle(),
+      supabase.from("purchase_order_lines").select("*").eq("po_id", poId).order("created_at", { ascending: true }),
+    ]);
+
+    if (!poRes.error) setPo((poRes.data as PurchaseOrder | null) ?? null);
+    if (!lineRes.error) setLines((lineRes.data ?? []) as PurchaseOrderLine[]);
+  };
+
   const cleanupScannerHandlers = () => {
     try {
       if (Quagga && onDetectedRef.current && typeof Quagga.offDetected === "function") {
@@ -343,18 +354,46 @@ export default function PoReceivePage(): JSX.Element {
     setResult(parsed ?? {});
 
     // Refresh PO + lines so UI is accurate after receive
-    const [poRes, lineRes] = await Promise.all([
-      supabase.from("purchase_orders").select("*").eq("id", poId).maybeSingle(),
-      supabase
-        .from("purchase_order_lines")
-        .select("*")
-        .eq("po_id", poId)
-        .order("created_at", { ascending: true }),
-    ]);
+    await refreshPoAndLines();
 
-    if (!poRes.error) setPo((poRes.data as PurchaseOrder | null) ?? null);
-    if (!lineRes.error) setLines((lineRes.data ?? []) as PurchaseOrderLine[]);
+    window.dispatchEvent(new CustomEvent("parts:received"));
+  };
 
+  const receiveFreeTextLine = async (line: PurchaseOrderLine) => {
+    setErr(null);
+    setResult(null);
+
+    const lineId = String(line.id);
+    const ordered = n(line.qty);
+    const received = n(line.received_qty);
+    const rem = Math.max(0, ordered - received);
+    const requestedQty = n(freeTextQtyByLineId[lineId] ?? rem);
+    const receiveQty = Math.min(rem, requestedQty);
+
+    if (line.part_id) {
+      setErr("This line is inventory-linked. Use stock receive flow.");
+      return;
+    }
+    if (receiveQty <= 0) {
+      setErr("Quantity must be greater than 0 and within remaining quantity.");
+      return;
+    }
+
+    const nextReceived = received + receiveQty;
+    const { error } = await supabase
+      .from("purchase_order_lines")
+      .update({ received_qty: nextReceived })
+      .eq("id", line.id)
+      .eq("po_id", poId)
+      .is("part_id", null);
+
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+
+    setFreeTextQtyByLineId((prev) => ({ ...prev, [lineId]: Math.max(0, rem - receiveQty) }));
+    await refreshPoAndLines();
     window.dispatchEvent(new CustomEvent("parts:received"));
   };
 
@@ -664,12 +703,13 @@ export default function PoReceivePage(): JSX.Element {
                   <th className="p-3">Ordered</th>
                   <th className="p-3">Received</th>
                   <th className="p-3">Remaining</th>
+                  <th className="p-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td className="p-4 text-neutral-400" colSpan={4}>
+                    <td className="p-4 text-neutral-400" colSpan={5}>
                       No PO lines yet.
                     </td>
                   </tr>
@@ -699,6 +739,45 @@ export default function PoReceivePage(): JSX.Element {
                             <span className="text-[rgba(242,210,187,0.94)]">{rem}</span>
                           ) : (
                             <span className="text-neutral-500">0</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {ln.part_id ? (
+                            <span className="text-xs text-neutral-500">Inventory-linked line</span>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300/80">
+                                Non-inventory line
+                              </div>
+                              <div className="text-[11px] text-neutral-400">Free-text / match later</div>
+                              <div className="text-[11px] text-neutral-500">
+                                No stock movement will be created until this line is matched to an inventory part.
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  max={rem}
+                                  className="w-24 rounded-lg border border-white/10 bg-black/60 px-2 py-1 text-xs text-white"
+                                  value={freeTextQtyByLineId[String(ln.id)] ?? rem}
+                                  onChange={(e) =>
+                                    setFreeTextQtyByLineId((prev) => ({
+                                      ...prev,
+                                      [String(ln.id)]: Math.max(0, Number(e.target.value || 0)),
+                                    }))
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void receiveFreeTextLine(ln)}
+                                  disabled={rem <= 0 || n(freeTextQtyByLineId[String(ln.id)] ?? rem) <= 0}
+                                  className="rounded-full border border-amber-500/40 bg-amber-950/20 px-3 py-1 text-xs text-amber-100 hover:bg-amber-900/20 disabled:opacity-50"
+                                >
+                                  Receive line
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </td>
                       </tr>
