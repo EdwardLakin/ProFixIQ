@@ -27,6 +27,10 @@ import {
   type PartTrustLevel,
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
+import {
+  buildDeterministicStockSuggestions,
+  type DeterministicStockSuggestion,
+} from "@/features/parts/lib/parts/deterministicStockMatcher";
 
 type DB = Database;
 
@@ -188,6 +192,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [trustByPartId, setTrustByPartId] = useState<Record<string, PartTrustMeta>>({});
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
+  const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -338,6 +343,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setPOs([]);
       setSuppliers([]);
       setSelectedPo("");
+      setStockSuggestionsByItemId({});
       setLoading(false);
       return;
     }
@@ -413,7 +419,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const shopId = woRow.shop_id ?? null;
     if (shopId) {
-      const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }] =
+      const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }, { data: stockRows }, { data: vendorRows }] =
         await Promise.all([
           supabase
             .from("parts")
@@ -438,6 +444,15 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             .eq("shop_id", shopId)
             .order("name", { ascending: true })
             .limit(500),
+          supabase
+            .from("part_stock_summary")
+            .select("part_id, shop_id, on_hand, qty_available")
+            .eq("shop_id", shopId),
+          supabase
+            .from("vendor_part_numbers")
+            .select("id, part_id, shop_id, supplier_id, vendor_sku")
+            .eq("shop_id", shopId)
+            .limit(2000),
         ]);
 
       const partRows = (ps ?? []) as PartRow[];
@@ -471,6 +486,23 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setPOs((poRows ?? []) as PurchaseOrderRow[]);
       setSuppliers((supRows ?? []) as SupplierRow[]);
 
+      const suggestions: Record<string, DeterministicStockSuggestion[]> = {};
+      for (const req of uiRequests) {
+        for (const item of req.items) {
+          const desc = String(item.description ?? "").trim();
+          if (!desc || isUuid(item.part_id)) continue;
+          const ranked = buildDeterministicStockSuggestions({
+            requestedDescription: desc,
+            requestedQty: toNum(item.qty, 1),
+            parts: partRows,
+            stockSummaries: ((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][],
+            vendorPartNumbers: ((vendorRows ?? []) as unknown) as DB["public"]["Tables"]["vendor_part_numbers"]["Row"][],
+            limit: 2,
+          });
+          if (ranked.length > 0) suggestions[String(item.id)] = ranked;
+        }
+      }
+      setStockSuggestionsByItemId(suggestions);
       if (
         selectedPo &&
         !(poRows ?? []).some((p) => String(p.id) === selectedPo)
@@ -484,6 +516,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setPOs([]);
       setSuppliers([]);
       setSelectedPo("");
+      setStockSuggestionsByItemId({});
     }
 
     setLoading(false);
@@ -1348,6 +1381,8 @@ if (!lineId || !isUuid(lineId)) {
                                   it.ui_part_id ??
                                   null) as string | null;
                                 const trustMeta = effectivePartId ? trustByPartId[effectivePartId] : null;
+                                const stockSuggestions = stockSuggestionsByItemId[String(it.id)] ?? [];
+                                const topSuggestion = stockSuggestions[0] ?? null;
                                 const canReceive =
                                   !!effectivePartId &&
                                   approved > 0 &&
@@ -1425,6 +1460,27 @@ if (!lineId || !isUuid(lineId)) {
                                           ))}
                                         </select>
 
+
+
+                                        {topSuggestion ? (
+                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
+                                            Possible stock match: <span className="text-neutral-100">{topSuggestion.name}</span>
+                                            {topSuggestion.sku_or_part_number ? <span className="text-neutral-500"> · {topSuggestion.sku_or_part_number}</span> : null}
+                                            <span className="text-neutral-500"> · {topSuggestion.qty_available} available</span>
+                                            <span className="text-neutral-500"> · {topSuggestion.confidence}</span>
+                                            <div className="mt-1 text-neutral-500">{topSuggestion.reasons.slice(0, 3).join(" · ")} · action: {topSuggestion.recommended_action}</div>
+                                            {topSuggestion.part_id !== it.ui_part_id ? (
+                                              <button
+                                                type="button"
+                                                className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
+                                                disabled={rowBusy}
+                                              >
+                                                {topSuggestion.recommended_action === "allocate_from_stock" ? "Attach stock part" : "Review match"}
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
                                         {approved > 0 ? (
                                           <div className="text-[11px] text-neutral-500">
                                             State{" "}
