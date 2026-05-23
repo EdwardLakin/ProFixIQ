@@ -220,6 +220,11 @@ function isSchemaDriftError(error: { code?: string | null; message?: string | nu
   const msg = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
   return (
     code.startsWith("PGRST") ||
+    msg.includes("pgrst") ||
+    msg.includes("postgrest") ||
+    msg.includes("undefined column") ||
+    msg.includes("could not find") ||
+    msg.includes("schema cache") ||
     msg.includes("column") ||
     msg.includes("does not exist") ||
     msg.includes("schema") ||
@@ -228,20 +233,42 @@ function isSchemaDriftError(error: { code?: string | null; message?: string | nu
   );
 }
 
+function warnSchemaDrift(table: "menu_items" | "menu_repair_items", phase: "rich" | "minimal", error: { code?: string | null; message?: string | null; details?: string | null } | null | undefined): void {
+  if (process.env.NODE_ENV !== "development" || !error) return;
+  console.warn("[inspections] menu compatibility fallback", {
+    table,
+    phase,
+    code: error.code ?? null,
+    message: error.message ?? null,
+    details: error.details ?? null,
+  });
+}
+
 async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuRepairItemRow[]> {
   const baseSelect = "id, name, complaint, correction, labor_hours, parts";
   const extendedSelect = `${baseSelect}, confidence_score, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type`;
+  const minimalSelect = "id, name";
 
   let data: unknown[] | null = null;
   let error: any = null;
-  ({ data, error } = await supabase.from("menu_repair_items").select(extendedSelect).eq("shop_id", shopId).order("updated_at", { ascending: false }).limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+  ({ data, error } = await supabase
+    .from("menu_repair_items")
+    .select(extendedSelect)
+    .eq("shop_id", shopId)
+    .order("updated_at", { ascending: false })
+    .limit(60) as unknown as { data: unknown[] | null; error: typeof error });
 
   if (error && isSchemaDriftError(error)) {
-    console.warn("[inspections] menu_repair_items extended select unavailable; falling back to base select", { code: error.code, message: error.message });
-    ({ data, error } = await supabase.from("menu_repair_items").select(baseSelect).eq("shop_id", shopId).order("updated_at", { ascending: false }).limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+    warnSchemaDrift("menu_repair_items", "rich", error);
+    ({ data, error } = await supabase
+      .from("menu_repair_items")
+      .select(minimalSelect)
+      .eq("shop_id", shopId)
+      .limit(60) as unknown as { data: unknown[] | null; error: typeof error });
   }
 
   if (error) {
+    warnSchemaDrift("menu_repair_items", "minimal", error);
     console.warn("[inspections] menu_repair_items load skipped", { code: error.code, message: error.message });
     return [];
   }
@@ -267,6 +294,7 @@ async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: str
 async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuItemRow[]> {
   const baseSelect = "id, name, description, complaint, cause, correction, labor_hours, total_price, category";
   const extendedSelect = `${baseSelect}, service_key, vehicle_year, vehicle_make, vehicle_model, drivetrain, engine_type, transmission_type`;
+  const minimalSelect = "id, name";
 
   let data: unknown[] | null = null;
   let error: any = null;
@@ -279,17 +307,16 @@ async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): 
     .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
 
   if (error && isSchemaDriftError(error)) {
-    console.warn("[inspections] menu_items extended select unavailable; falling back to base select", { code: error.code, message: error.message });
+    warnSchemaDrift("menu_items", "rich", error);
     ({ data, error } = await supabase
       .from("menu_items")
-      .select(baseSelect)
+      .select(minimalSelect)
       .eq("shop_id", shopId)
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
       .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
   }
 
   if (error) {
+    warnSchemaDrift("menu_items", "minimal", error);
     console.warn("[inspections] menu_items load skipped", { code: error.code, message: error.message });
     return [];
   }
