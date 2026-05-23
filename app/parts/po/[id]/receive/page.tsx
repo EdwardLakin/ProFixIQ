@@ -56,6 +56,7 @@ if (typeof window !== "undefined") {
 type DB = Database;
 type PurchaseOrder = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type PurchaseOrderLine = DB["public"]["Tables"]["purchase_order_lines"]["Row"];
+type PurchaseOrderLineWithRequestItem = PurchaseOrderLine & { part_request_item_id?: string | null };
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
@@ -193,7 +194,7 @@ export default function PoReceivePage(): JSX.Element {
 
         const poRow = (poRes.data as PurchaseOrder | null) ?? null;
         setPo(poRow);
-        setLines((lineRes.data ?? []) as PurchaseOrderLine[]);
+        setLines((lineRes.data ?? []) as PurchaseOrderLineWithRequestItem[]);
         const locRows = (locRes.data ?? []) as StockLoc[];
         setLocs(locRows);
 
@@ -287,7 +288,7 @@ export default function PoReceivePage(): JSX.Element {
     ]);
 
     if (!poRes.error) setPo((poRes.data as PurchaseOrder | null) ?? null);
-    if (!lineRes.error) setLines((lineRes.data ?? []) as PurchaseOrderLine[]);
+    if (!lineRes.error) setLines((lineRes.data ?? []) as PurchaseOrderLineWithRequestItem[]);
   };
 
   const cleanupScannerHandlers = () => {
@@ -359,7 +360,7 @@ export default function PoReceivePage(): JSX.Element {
     window.dispatchEvent(new CustomEvent("parts:received"));
   };
 
-  const receiveFreeTextLine = async (line: PurchaseOrderLine) => {
+  const receiveFreeTextLine = async (line: PurchaseOrderLineWithRequestItem) => {
     setErr(null);
     setResult(null);
 
@@ -390,6 +391,43 @@ export default function PoReceivePage(): JSX.Element {
     if (error) {
       setErr(error.message);
       return;
+    }
+
+    const requestItemId = String(line.part_request_item_id ?? "");
+    if (requestItemId) {
+      const { data: requestItem, error: requestItemError } = await supabase
+        .from("part_request_items")
+        .select("id, qty, qty_approved, qty_received, status")
+        .eq("id", requestItemId)
+        .maybeSingle();
+
+      if (requestItemError) {
+        setErr(requestItemError.message);
+        return;
+      }
+
+      if (requestItem) {
+        const targetQtyRaw = n(requestItem.qty_approved) > 0 ? n(requestItem.qty_approved) : n(requestItem.qty);
+        const targetQty = Math.max(0, targetQtyRaw);
+        const currentQtyReceived = n(requestItem.qty_received);
+        const nextQtyReceived = Math.min(targetQty, currentQtyReceived + receiveQty);
+
+        let nextStatus = requestItem.status;
+        if (nextQtyReceived > 0) {
+          if (nextQtyReceived < targetQty) nextStatus = "partially_received";
+          else nextStatus = "received";
+        }
+
+        const { error: syncError } = await supabase
+          .from("part_request_items")
+          .update({ qty_received: nextQtyReceived, status: nextStatus })
+          .eq("id", requestItem.id);
+
+        if (syncError) {
+          setErr(syncError.message);
+          return;
+        }
+      }
     }
 
     setFreeTextQtyByLineId((prev) => ({ ...prev, [lineId]: Math.max(0, rem - receiveQty) }));
