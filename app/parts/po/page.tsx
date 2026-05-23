@@ -51,6 +51,7 @@ function toNum(v: unknown, fallback: number): number {
 type LineDraft = {
   id: string; // UI-only
   part_id: string | "";
+  description: string;
   vendor_part_number: string;
   ordered_qty: number;
   unit_cost: number;
@@ -87,7 +88,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
   const [poNote, setPoNote] = useState<string>("");
 
   const [lines, setLines] = useState<LineDraft[]>([
-    { id: uuidv4(), part_id: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" },
+    { id: uuidv4(), part_id: "", description: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" },
   ]);
 
   const [busyCreate, setBusyCreate] = useState(false);
@@ -155,7 +156,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
     setSupplierId("");
     setNewSupplierName("");
     setPoNote("");
-    setLines([{ id: uuidv4(), part_id: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" }]);
+    setLines([{ id: uuidv4(), part_id: "", description: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" }]);
     setErrorMsg(null);
   }
 
@@ -168,7 +169,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
   function addLine(): void {
     setLines((prev) => [
       ...prev,
-      { id: uuidv4(), part_id: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" },
+      { id: uuidv4(), part_id: "", description: "", vendor_part_number: "", ordered_qty: 1, unit_cost: 0, notes: "" },
     ]);
   }
 
@@ -188,14 +189,15 @@ export default function PurchaseOrdersPage(): JSX.Element {
       .map((l) => ({
         ...l,
         vendor_part_number: l.vendor_part_number.trim(),
+        description: l.description.trim(),
         notes: l.notes.trim(),
       }))
-      .filter((l) => l.part_id);
+      .filter((l) => l.part_id || l.description);
 
     if (cleaned.length === 0) return null; // allow “header-only” PO
 
     for (const l of cleaned) {
-      if (!isNonEmptyString(l.part_id)) return "Each line must have a part.";
+      if (!isNonEmptyString(l.part_id) && !isNonEmptyString(l.description)) return "Each line must have a stock part or description.";
       if (l.ordered_qty <= 0) return "Line qty must be greater than 0.";
       if (l.unit_cost < 0) return "Unit cost cannot be negative.";
     }
@@ -265,12 +267,20 @@ export default function PurchaseOrdersPage(): JSX.Element {
       if (lineError) throw new Error(lineError);
 
       const linesToInsert = lines
-        .filter((l) => isNonEmptyString(l.part_id))
+        .filter((l) => isNonEmptyString(l.part_id) || isNonEmptyString(l.description))
         .map((l): PurchaseOrderLineInsert => {
           const vendorPn = l.vendor_part_number.trim();
           const notes = l.notes.trim();
+          const typedDescription = l.description.trim();
+          const selectedPart = l.part_id ? parts.find((p) => String(p.id) === String(l.part_id)) ?? null : null;
+          const defaultPartDescription = selectedPart?.name ? String(selectedPart.name).trim() : "";
 
           const descriptionParts: string[] = [];
+          if (typedDescription) {
+            descriptionParts.push(typedDescription);
+          } else if (!l.part_id && defaultPartDescription) {
+            descriptionParts.push(defaultPartDescription);
+          }
           if (vendorPn) descriptionParts.push(`Vendor PN: ${vendorPn}`);
           if (notes) descriptionParts.push(notes);
 
@@ -279,7 +289,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
           return {
             id: uuidv4(),
             po_id: newPoId,
-            part_id: String(l.part_id),
+            part_id: isNonEmptyString(l.part_id) ? String(l.part_id) : null,
             qty: Math.max(0, Math.floor(toNum(l.ordered_qty, 0))),
             unit_cost: Math.max(0, toNum(l.unit_cost, 0)),
             sku: vendorPn ? vendorPn : null,
@@ -500,7 +510,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                       <div className="min-w-0">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">PO Lines</div>
                         <div className="mt-1 text-[11px] text-neutral-500">
-                          Add stock lines now, or you can create header-only and add lines later.
+                          Add lines now, or create header-only and add lines later. Select a stock part or type the part you want to order.
                         </div>
                       </div>
 
@@ -521,6 +531,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                           <thead>
                             <tr className="text-left text-neutral-400">
                               <th className="p-2">Part</th>
+                              <th className="p-2">Part / description</th>
                               <th className="p-2">Vendor Part #</th>
                               <th className="p-2 text-right">Qty</th>
                               <th className="p-2 text-right">Unit Cost</th>
@@ -545,6 +556,16 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                       </option>
                                     ))}
                                   </select>
+                                </td>
+
+                                <td className="p-2">
+                                  <input
+                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    value={l.description}
+                                    onChange={(e) => updateLine(l.id, { description: e.target.value })}
+                                    placeholder="Type part description"
+                                    disabled={busyCreate}
+                                  />
                                 </td>
 
                                 <td className="p-2">
@@ -631,7 +652,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                           <div className="grid gap-2">
                             <div>
-                              <div className="mb-1 text-[11px] text-neutral-500">Part</div>
+                              <div className="mb-1 text-[11px] text-neutral-500">Part / description</div>
                               <select
                                 className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
                                 value={l.part_id}
@@ -645,6 +666,17 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                   </option>
                                 ))}
                               </select>
+                            </div>
+
+                            <div>
+                              <div className="mb-1 text-[11px] text-neutral-500">Part / description</div>
+                              <input
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                value={l.description}
+                                onChange={(e) => updateLine(l.id, { description: e.target.value })}
+                                placeholder="Type part description"
+                                disabled={busyCreate}
+                              />
                             </div>
 
                             <div>

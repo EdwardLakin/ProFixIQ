@@ -84,6 +84,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
   // Add line form (generic stock PO)
   const [linePartId, setLinePartId] = useState<string>("");
+  const [lineDescription, setLineDescription] = useState<string>("");
   const [lineOrderedQty, setLineOrderedQty] = useState<number>(1);
   const [lineUnitCost, setLineUnitCost] = useState<number>(0);
 
@@ -341,10 +342,16 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
     if (busyAddLine) return;
 
     const pid = linePartId.trim();
-    if (!pid) {
-      toast.error("Select a part.");
+    const typedDescription = lineDescription.trim();
+    const selectedPart = pid ? partById.get(pid) ?? null : null;
+    const defaultDescription = selectedPart?.name ? String(selectedPart.name).trim() : "";
+    const description = typedDescription || defaultDescription;
+
+    if (!pid && !description) {
+      toast.error("Select a stock part or enter a description.");
       return;
     }
+
     const qty = Math.max(0, Math.floor(n(lineOrderedQty)));
     if (!qty || qty <= 0) {
       toast.error("Enter a quantity > 0.");
@@ -358,7 +365,8 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
       // If your generated types don't include ordered_qty/unit_cost, rename them to match your schema.
       const insert = {
         po_id: po.id,
-        part_id: pid,
+        part_id: pid || null,
+        description: description || null,
         ordered_qty: qty,
         unit_cost: n(lineUnitCost),
       } as unknown as POLineInsert;
@@ -377,6 +385,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
       setLines((prev) => [...prev, mapped]);
 
       setLinePartId("");
+      setLineDescription("");
       setLineOrderedQty(1);
       setLineUnitCost(0);
 
@@ -571,7 +580,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
             <div className="grid gap-3 md:grid-cols-4">
               <div className="md:col-span-2">
-                <div className="mb-1 text-xs text-neutral-400">Part</div>
+                <div className="mb-1 text-xs text-neutral-400">Part / description</div>
                 <select
                   className={select}
                   value={linePartId}
@@ -589,6 +598,20 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                     </option>
                   ))}
                 </select>
+                                <div className="mt-1 text-xs text-neutral-500">
+                  Select a stock part or type the part you want to order.
+                </div>
+
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="mb-1 text-xs text-neutral-400">Part / description</div>
+                <input
+                  className={input}
+                  value={lineDescription}
+                  onChange={(e) => setLineDescription(e.target.value)}
+                  placeholder="Type what you want to order"
+                />
               </div>
 
               <div>
