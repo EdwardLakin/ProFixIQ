@@ -227,6 +227,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showApprovalSummary, setShowApprovalSummary] = useState(false);
+  const [showAiSupport, setShowAiSupport] = useState(false);
+  const [showWoContext, setShowWoContext] = useState(false);
 
   // ✅ focused job
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -1124,6 +1126,25 @@ export default function WorkOrderIdClient(): JSX.Element {
     waiterFlagSource &&
     (waiterFlagSource.is_waiter || waiterFlagSource.waiter || waiterFlagSource.customer_waiting)
   );
+  const inProgressCount = useMemo(
+    () =>
+      jobLines.filter((line) => {
+        const status = resolveDecisionStatus({
+          approvalState: line.approval_state,
+          workStatus: line.status,
+        });
+        return status === "in_progress";
+      }).length,
+    [jobLines],
+  );
+  const blockedCount = useMemo(
+    () =>
+      jobLines.filter((line) => {
+        const status = (line.status ?? "").toLowerCase();
+        return status === "on_hold" || status === "waiting_for_parts" || status === "blocked";
+      }).length,
+    [jobLines],
+  );
 
   const openDeleteForLine = useCallback(
     (lineId: string) => {
@@ -1396,9 +1417,9 @@ export default function WorkOrderIdClient(): JSX.Element {
       />
 
       <PageShell
-        eyebrow={wo?.custom_id ? `Work order ${wo.custom_id}` : "Work order"}
-        title={wo?.custom_id ? `Operational cockpit · ${wo.custom_id}` : "Operational cockpit"}
-        description="Desktop command surface for active job processing."
+        eyebrow="Work order cockpit"
+        title={wo?.custom_id ? wo.custom_id : "Operational cockpit"}
+        description="Execution surface"
         actions={<PreviousPageButton />}
       >
         {authChecked && !currentUserId && (
@@ -1427,13 +1448,70 @@ export default function WorkOrderIdClient(): JSX.Element {
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
           <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
+            <section className={cn(PANEL_VARIANTS.secondary, "px-3 py-2")}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-sm font-semibold text-foreground">
+                  {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
+                </div>
+                <StatusBadge variant={formatDecisionStatus({ workStatus: wo.status }).variant} size="sm">
+                  {formatDecisionStatus({ workStatus: wo.status }).label}
+                </StatusBadge>
+                {hasAnyApprovalItems ? (
+                  <StatusBadge variant="warning" size="sm">
+                    {approvalPending.length + approvalPendingQuotes.length} awaiting approval
+                  </StatusBadge>
+                ) : null}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {isPropertySourcedWorkOrder
+                  ? "Property-linked work order"
+                  : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
+              </div>
+            </section>
+
+            <section className={cn(PANEL_VARIANTS.passive, "px-3 py-2")}>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">State: {formatDecisionStatus({ workStatus: wo.status }).label}</span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">Active jobs: {sortedLines.length}</span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
+                {hasAnyApprovalItems ? (
+                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
+                ) : null}
+                <span className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.12)] px-2 py-0.5 text-[rgba(255,210,170,0.95)]">
+                  AI support
+                </span>
+              </div>
+            </section>
+
             {loading ? (
               <div className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/50 px-3 py-2 text-xs text-muted-foreground">
                 Refreshing work order data…
               </div>
             ) : null}
-            <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
-            <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+            <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 text-left"
+                onClick={() => setShowAiSupport((prev) => !prev)}
+                aria-expanded={showAiSupport}
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  AI support
+                </span>
+                <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">{showAiSupport ? "Hide" : "Show"}</span>
+              </button>
+              {showAiSupport ? (
+                <div className="mt-2 space-y-2">
+                  <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
+                  <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+                </div>
+              ) : (
+                <p className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
+                  Freshness, recommendations, and advisor drafting are available on demand.
+                </p>
+              )}
+            </section>
 
             {propertyContext ? (
               <section
@@ -1480,7 +1558,21 @@ export default function WorkOrderIdClient(): JSX.Element {
             ) : null}
 
             <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
-              <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 text-left"
+                onClick={() => setShowWoContext((prev) => !prev)}
+                aria-expanded={showWoContext}
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Work order context</span>
+                <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">{showWoContext ? "Hide" : "Show"}</span>
+              </button>
+              {!showWoContext ? (
+                <div className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
+                  Target: {expectedCompletionText} • Created: {createdAtText}
+                </div>
+              ) : (
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Order state
@@ -1514,7 +1606,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                     <div className="mt-1 text-xs font-medium text-muted-foreground">{createdAtText}</div>
                   </div>
-              </div>
+                </div>
+              )}
             </section>
 
             <section className={cn("grid gap-2 xl:items-start", supportFullyCollapsed ? "xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.95fr)_minmax(0,1.1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]")}>
