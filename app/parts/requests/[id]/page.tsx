@@ -862,6 +862,52 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const ok = await setItemPo(String(item.id), poId);
     if (!ok) return;
 
+    const rawQty =
+      (item as unknown as { qty_approved?: unknown }).qty_approved ??
+      (item as unknown as { qty?: unknown }).qty;
+    const qty = Math.max(0, Math.floor(toNum(rawQty, 0)));
+    const description = String(item.description ?? "").trim();
+    const partId = isUuid(item.part_id) ? item.part_id : null;
+    const rawUnitCost =
+      (item as unknown as { unit_cost?: unknown }).unit_cost ??
+      (item as unknown as { quoted_price?: unknown }).quoted_price;
+    const unitCostNum = Number(rawUnitCost);
+    const unitCost = Number.isFinite(unitCostNum) ? Math.max(0, unitCostNum) : 0;
+
+    if (qty > 0 && description) {
+      const dedupeQuery = supabase
+        .from("purchase_order_lines")
+        .select("id")
+        .eq("po_id", poId)
+        .eq("description", description)
+        .eq("qty", qty)
+        .limit(1);
+
+      const { data: existingLines, error: lineCheckErr } = partId
+        ? await dedupeQuery.eq("part_id", partId)
+        : await dedupeQuery.is("part_id", null);
+
+      if (lineCheckErr) {
+        toast.warning(`PO line dedupe check skipped: ${lineCheckErr.message}`);
+      }
+
+      const hasExactLine = Array.isArray(existingLines) && existingLines.length > 0;
+
+      if (!hasExactLine) {
+        const { error: lineInsertErr } = await supabase.from("purchase_order_lines").insert({
+          po_id: poId,
+          description,
+          qty,
+          unit_cost: unitCost,
+          part_id: partId,
+        } as unknown as DB["public"]["Tables"]["purchase_order_lines"]["Insert"]);
+
+        if (lineInsertErr) {
+          toast.warning(`PO linked, but line insert failed: ${lineInsertErr.message}`);
+        }
+      }
+    }
+
     toast.success(`Assigned PO ${poId.slice(0, 8)}.`);
   }
 
