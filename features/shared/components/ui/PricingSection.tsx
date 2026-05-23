@@ -23,8 +23,9 @@ export type PricingSectionProps = {
   onStartFree: () => void;
 };
 
-type PricingPlan = {
+type CheckoutPricingPlan = {
   key: PlanKey;
+  checkoutEnabled: true;
   title: string;
   desc: string;
   priceLabel: string;
@@ -34,6 +35,21 @@ type PricingPlan = {
   featured: boolean;
   badge?: string;
 };
+
+type ContactPricingPlan = {
+  key: string;
+  checkoutEnabled: false;
+  title: string;
+  desc: string;
+  priceLabel: string;
+  subLabel: string;
+  features: string[];
+  cta: string;
+  featured: boolean;
+  badge?: string;
+};
+
+type PricingPlan = CheckoutPricingPlan | ContactPricingPlan;
 
 /* -------------------------------------------------------------------------- */
 /* Component                                                                  */
@@ -50,6 +66,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
     () => [
       {
         key: "starter",
+        checkoutEnabled: true,
         title: "Complete 10",
         desc: "One complete shop operating system for smaller teams. Full platform access with pricing sized for up to 10 active users.",
         priceLabel: "$299 / month",
@@ -67,6 +84,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
       },
       {
         key: "pro",
+        checkoutEnabled: true,
         title: "Complete 50",
         desc: "One complete shop operating system for growing shops. Full platform access with pricing sized for up to 50 active users.",
         priceLabel: "$399 / month",
@@ -84,7 +102,8 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
         cta: "Start free trial",
       },
       {
-        key: "pro",
+        key: "complete-100",
+        checkoutEnabled: false,
         title: "Complete 100",
         desc: "Complete platform for high-capacity shops scaling toward 100 active users. Launching for self-serve soon.",
         priceLabel: "Talk to us",
@@ -102,6 +121,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
       },
       {
         key: "unlimited",
+        checkoutEnabled: true,
         title: "Complete Unlimited",
         desc: "One complete shop operating system for larger operations with unlimited active users per location.",
         priceLabel: "$599 / month / location",
@@ -195,14 +215,14 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
-          const isBusy = busyKey === p.key;
+          const isBusy = p.checkoutEnabled ? busyKey === p.key : false;
 
           return (
             <button
               key={`${p.key}-${p.title}`}
               type="button"
-              onClick={() => (p.title === "Complete 100" ? (window.location.href = "/#contact") : void handlePlanClick(p.key))}
-              disabled={Boolean(busyKey) || p.title === "Complete 100"}
+              onClick={() => (p.checkoutEnabled ? void handlePlanClick(p.key) : (window.location.href = "/#contact"))}
+              disabled={Boolean(busyKey) || !p.checkoutEnabled}
               className={[
                 "group relative text-left",
                 "rounded-3xl border bg-black/35 p-6 backdrop-blur-xl transition",
