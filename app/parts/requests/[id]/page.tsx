@@ -41,6 +41,10 @@ type PartTrustFields = Pick<
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
+type PurchaseOrderLineInsert =
+  DB["public"]["Tables"]["purchase_order_lines"]["Insert"] & {
+    part_request_item_id?: string | null;
+  };
 
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineLite = Pick<WorkOrderLineRow, "id" | "complaint" | "description">;
@@ -875,32 +879,29 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const unitCost = Number.isFinite(unitCostNum) ? Math.max(0, unitCostNum) : 0;
 
     if (qty > 0 && description) {
-      const dedupeQuery = supabase
+      const { data: existingLinkedLine, error: lineCheckErr } = await supabase
         .from("purchase_order_lines")
         .select("id")
         .eq("po_id", poId)
-        .eq("description", description)
-        .eq("qty", qty)
+        .eq("part_request_item_id", String(item.id))
         .limit(1);
 
-      const { data: existingLines, error: lineCheckErr } = partId
-        ? await dedupeQuery.eq("part_id", partId)
-        : await dedupeQuery.is("part_id", null);
-
       if (lineCheckErr) {
-        toast.warning(`PO line dedupe check skipped: ${lineCheckErr.message}`);
+        toast.warning(`PO line linkage check skipped: ${lineCheckErr.message}`);
       }
 
-      const hasExactLine = Array.isArray(existingLines) && existingLines.length > 0;
+      const hasLinkedLine =
+        Array.isArray(existingLinkedLine) && existingLinkedLine.length > 0;
 
-      if (!hasExactLine) {
+      if (!hasLinkedLine) {
         const { error: lineInsertErr } = await supabase.from("purchase_order_lines").insert({
           po_id: poId,
           description,
           qty,
           unit_cost: unitCost,
           part_id: partId,
-        } as unknown as DB["public"]["Tables"]["purchase_order_lines"]["Insert"]);
+          part_request_item_id: String(item.id),
+        } as PurchaseOrderLineInsert);
 
         if (lineInsertErr) {
           toast.warning(`PO linked, but line insert failed: ${lineInsertErr.message}`);
