@@ -223,11 +223,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   // ✅ prevents “logged out” banner flashing / sticking
   const [authChecked, setAuthChecked] = useState<boolean>(false);
 
-  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", false);
+  const [showDetails] = useTabState<boolean>("wo:showDetails", false);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showApprovalSummary, setShowApprovalSummary] = useState(false);
-  const [showAiSupport, setShowAiSupport] = useState(false);
   const [showWoContext, setShowWoContext] = useState(false);
 
   // ✅ focused job
@@ -1400,7 +1399,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   const cardInner = cn(PANEL_VARIANTS.passive, "p-3");
-  const supportFullyCollapsed = !showDetails && !showApprovalSummary && !showTimeline;
+  const supportFullyCollapsed = !showDetails && !showWoContext;
 
   // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
@@ -1416,12 +1415,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={focusedJobId}
       />
 
-      <PageShell
-        eyebrow="Work order cockpit"
-        title={wo?.custom_id ? wo.custom_id : "Operational cockpit"}
-        description="Execution surface"
-        actions={<PreviousPageButton />}
-      >
+      <PageShell eyebrow="" title="" description="" actions={null}>
         {authChecked && !currentUserId && (
           <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}>
             You appear signed out on this tab. If actions fail, open{" "}
@@ -1450,6 +1444,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
             <section className={cn(PANEL_VARIANTS.secondary, "px-3 py-2")}>
               <div className="flex flex-wrap items-center gap-2">
+                <PreviousPageButton />
                 <div className="text-sm font-semibold text-foreground">
                   {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
                 </div>
@@ -1467,10 +1462,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   ? "Property-linked work order"
                   : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
               </div>
-            </section>
-
-            <section className={cn(PANEL_VARIANTS.passive, "px-3 py-2")}>
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                 <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">State: {formatDecisionStatus({ workStatus: wo.status }).label}</span>
                 <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">Active jobs: {sortedLines.length}</span>
                 <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
@@ -1478,9 +1470,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                 {hasAnyApprovalItems ? (
                   <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
                 ) : null}
-                <span className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.12)] px-2 py-0.5 text-[rgba(255,210,170,0.95)]">
-                  AI support
-                </span>
               </div>
             </section>
 
@@ -1493,86 +1482,23 @@ export default function WorkOrderIdClient(): JSX.Element {
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-2 text-left"
-                onClick={() => setShowAiSupport((prev) => !prev)}
-                aria-expanded={showAiSupport}
-              >
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  AI support
-                </span>
-                <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">{showAiSupport ? "Hide" : "Show"}</span>
-              </button>
-              {showAiSupport ? (
-                <div className="mt-2 space-y-2">
-                  <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
-                  <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
-                </div>
-              ) : (
-                <p className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
-                  Freshness, recommendations, and advisor drafting are available on demand.
-                </p>
-              )}
-            </section>
-
-            {propertyContext ? (
-              <section
-                className={cn(
-                  PANEL_VARIANTS.secondary,
-                  "border-[rgba(184,115,51,0.55)] bg-[rgba(184,115,51,0.08)] p-3",
-                )}
-              >
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Property Maintenance Work Order
-                </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
-                  <div className={cardInner}>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Property</div>
-                    <div className="mt-1 text-sm text-foreground">{propertyContext.propertyName ?? "—"}</div>
-                    <div className="mt-1 text-muted-foreground">Unit: {propertyContext.unitLabel ?? "—"}</div>
-                  </div>
-                  <div className={cardInner}>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Asset</div>
-                    <div className="mt-1 text-sm text-foreground">{propertyContext.assetName ?? "—"}</div>
-                    <div className="mt-1 text-muted-foreground">{propertyContext.assetType ?? "Unspecified asset type"}</div>
-                  </div>
-                  <div className={cardInner}>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Request</div>
-                    <div className="mt-1 text-sm text-foreground">{propertyContext.requestTitle ?? "—"}</div>
-                    <div className="mt-1 text-muted-foreground">Category: {propertyContext.category ?? "—"}</div>
-                  </div>
-                  <div className={cardInner}>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Status / Severity</div>
-                    <div className="mt-1 text-foreground">{propertyContext.requestStatus ?? "—"} • {propertyContext.severity ?? "—"}</div>
-                    <div className="mt-1 text-muted-foreground">Vendor: {propertyContext.latestVendorAssignment ?? "—"}</div>
-                  </div>
-                </div>
-                {(propertyContext.preferredWindow || propertyContext.accessNotes) ? (
-                  <div className="mt-2 rounded-md border border-[color:var(--metal-border-soft,#374151)] bg-black/20 p-2 text-xs text-muted-foreground">
-                    {propertyContext.preferredWindow ? <div>Preferred window: {propertyContext.preferredWindow}</div> : null}
-                    {propertyContext.accessNotes ? <div>Access notes: {propertyContext.accessNotes}</div> : null}
-                  </div>
-                ) : null}
-                <Link href={`/property/requests/${propertyContext.requestId}`} className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline">
-                  View property request →
-                </Link>
-              </section>
-            ) : null}
-
-            <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-2 text-left"
                 onClick={() => setShowWoContext((prev) => !prev)}
                 aria-expanded={showWoContext}
               >
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Work order context</span>
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Context &amp; AI
+                </span>
                 <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">{showWoContext ? "Hide" : "Show"}</span>
               </button>
               {!showWoContext ? (
                 <div className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
-                  Target: {expectedCompletionText} • Created: {createdAtText}
+                  AI support, approvals, vehicle/customer, timeline, and context available on demand.
                 </div>
               ) : (
-                <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-2 grid gap-2">
+                  <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
+                  <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+                  <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Order state
@@ -1607,26 +1533,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <div className="mt-1 text-xs font-medium text-muted-foreground">{createdAtText}</div>
                   </div>
                 </div>
-              )}
-            </section>
-
-            <section className={cn("grid gap-2 xl:items-start", supportFullyCollapsed ? "xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.95fr)_minmax(0,1.1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]")}>
-              <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {isPropertySourcedWorkOrder ? "Linked entities" : "Vehicle & Customer"}
-                  </h2>
-                  <button
-                    type="button"
-                    className="text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                    onClick={() => setShowDetails((v) => !v)}
-                    aria-expanded={showDetails}
-                  >
-                    {showDetails ? "Hide" : "Show"}
-                  </button>
-                </div>
-
-                {showDetails ? (
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                     {isPropertySourcedWorkOrder ? (
                       <div className={cn(cardInner, "sm:col-span-2 xl:col-span-1")}>
@@ -1710,18 +1616,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                       </>
                     )}
                   </div>
-                ) : (
-                  <div className={cn(cardInner, "mt-2 flex items-center justify-between gap-2 p-2")}>
-                    <p className="truncate text-[11px] text-muted-foreground">
-                      {isPropertySourcedWorkOrder
-                        ? "Property-linked work order context is shown above."
-                        : `${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"} • ${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer linked" : "No customer linked"}`}
-                    </p>
-                  </div>
-                )}
-              </section>
-
-              <section
+                  <section
                 className={cn(
                   PANEL_VARIANTS.secondary,
                   "p-2",
@@ -1904,9 +1799,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
                 </div>
               )}
-              </section>
-
-              <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+                  </section>
+                  <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-2 text-left"
@@ -1947,7 +1841,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                     Recent decision history is available when needed.
                   </p>
                 )}
-              </section>
+                  </section>
+                </div>
+              )}
             </section>
 
           {/* Workspace */}
