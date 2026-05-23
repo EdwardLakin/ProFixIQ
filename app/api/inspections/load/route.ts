@@ -31,20 +31,14 @@ export async function GET(req: NextRequest) {
         work_order_id: string | null;
         work_order_line_id: string | null;
         summary: Json | null;
-        locked: boolean | null;
-        finalized_at: string | null;
-        reopened_at?: string | null;
-        reopened_by?: string | null;
-        reopen_reason?: string | null;
+
       }
     | null = null;
 
   if (inspectionId) {
     const { data, error } = await supabase
       .from("inspections")
-      .select(
-        "id, work_order_id, work_order_line_id, summary, locked, finalized_at, reopened_at, reopened_by, reopen_reason",
-      )
+      .select("id, work_order_id, work_order_line_id, summary")
       .eq("id", inspectionId)
       .maybeSingle();
 
@@ -56,9 +50,7 @@ export async function GET(req: NextRequest) {
   } else if (workOrderLineId) {
     const { data, error } = await supabase
       .from("inspections")
-      .select(
-        "id, work_order_id, work_order_line_id, summary, locked, finalized_at, reopened_at, reopened_by, reopen_reason",
-      )
+      .select("id, work_order_id, work_order_line_id, summary")
       .eq("work_order_line_id", workOrderLineId)
       .maybeSingle();
 
@@ -113,11 +105,11 @@ export async function GET(req: NextRequest) {
     workOrderId: hydratedSession.workOrderId ?? null,
     workOrderLineId: hydratedSession.workOrderLineId ?? null,
     inspectionMeta: {
-      locked: inspectionRow?.locked ?? false,
-      finalizedAt: inspectionRow?.finalized_at ?? null,
-      reopenedAt: inspectionRow?.reopened_at ?? null,
-      reopenedBy: inspectionRow?.reopened_by ?? null,
-      reopenReason: inspectionRow?.reopen_reason ?? null,
+      locked: false,
+      finalizedAt: null,
+      reopenedAt: null,
+      reopenedBy: null,
+      reopenReason: null,
     },
   });
 }

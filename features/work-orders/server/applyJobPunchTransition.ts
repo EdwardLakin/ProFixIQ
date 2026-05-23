@@ -10,6 +10,7 @@ import {
   startLaborSegment,
   syncLinePunchMirrorFromSegments,
 } from "@/features/work-orders/server/laborSegments";
+import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 type DB = Database;
 
@@ -126,12 +127,13 @@ export async function applyJobPunchTransition({
 
       if (releaseErr) return err(400, releaseErr.message);
 
-      await supabase.from("activity_logs").insert({
-        entity_type: "work_order_line",
-        entity_id: lineId,
-        action: "resume",
-        actor_id: technicianId,
-        created_at: now,
+      await logOperationalEvent({
+        supabase,
+        event: "resume",
+        actorId: technicianId,
+        entityType: "work_order_line",
+        entityId: lineId,
+        at: now,
       });
 
       return { ok: true, payload: { ok: true } };
@@ -334,12 +336,13 @@ export async function applyJobPunchTransition({
 
     if (syncErr) return err(400, syncErr.message);
 
-    await supabase.from("activity_logs").insert({
-      entity_type: "work_order_line",
-      entity_id: lineId,
-      action,
-      actor_id: technicianId,
-      created_at: now,
+    await logOperationalEvent({
+      supabase,
+      event: action,
+      actorId: technicianId,
+      entityType: "work_order_line",
+      entityId: lineId,
+      at: now,
     });
 
     return { ok: true, payload: { ok: true } };
@@ -383,12 +386,13 @@ export async function applyJobPunchTransition({
     const { error: syncErr } = await syncLinePunchMirrorFromSegments({ supabase, workOrderLineId: lineId });
     if (syncErr) return err(400, syncErr.message);
 
-    await supabase.from("activity_logs").insert({
-      entity_type: "work_order_line",
-      entity_id: lineId,
-      action: "pause",
-      actor_id: technicianId,
-      created_at: now,
+    await logOperationalEvent({
+      supabase,
+      event: "pause",
+      actorId: technicianId,
+      entityType: "work_order_line",
+      entityId: lineId,
+      at: now,
     });
 
     return { ok: true, payload: { ok: true } };
@@ -471,12 +475,13 @@ export async function applyJobPunchTransition({
   }
 
   try {
-    await supabase.from("activity_logs").insert({
-      entity_type: "work_order_line",
-      entity_id: lineId,
-      action: "finish",
-      actor_id: technicianId,
-      created_at: nowIso,
+    await logOperationalEvent({
+      supabase,
+      event: "finish",
+      actorId: technicianId,
+      entityType: "work_order_line",
+      entityId: lineId,
+      at: nowIso,
     });
   } catch (error) {
     console.warn("[finish] activity log insert failed", error);
