@@ -50,49 +50,69 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
     () => [
       {
         key: "starter",
-        title: "Starter",
-        desc: "Perfect for smaller teams getting started — technician-first inspections, quotes, approvals, and customer transparency.",
+        title: "Complete 10",
+        desc: "One complete shop operating system for smaller teams. Full platform access with pricing sized for up to 10 active users.",
         priceLabel: "$299 / month",
-        subLabel: "Up to 10 users",
+        subLabel: "Up to 10 active users",
         features: [
           "14-day free trial included",
-          "Up to 10 users (techs, advisors, parts, admin)",
-          "HD + fleet-ready inspections (works great for automotive too)",
-          "Customer portal + proof-based approvals",
-          "Internal messaging + role-based dashboards",
+          "Up to 10 active users (techs, advisors, parts, admin)",
+          "Full repair operations: work orders, inspections, approvals, parts, and invoicing",
+          "Workforce Command: scheduling + attendance",
+          "Documents/certifications + Required Document Matrix readiness",
+          "Payroll review and export readiness with provider-ready export workflows",
         ],
         featured: false,
         cta: "Start free trial",
       },
       {
         key: "pro",
-        title: "Pro",
-        desc: "Best for most HD or mixed shops — everything you need to run the shop with less screen time and faster approvals.",
+        title: "Complete 50",
+        desc: "One complete shop operating system for growing shops. Full platform access with pricing sized for up to 50 active users.",
         priceLabel: "$399 / month",
-        subLabel: "Up to 50 users",
+        subLabel: "Up to 50 active users",
         features: [
           "14-day free trial included",
-          "Up to 50 users (techs, advisors, parts, admin)",
-          "Measured diagnostic inspections + automation workflows",
-          "Customer portal + fleet programs",
+          "Up to 50 active users (techs, advisors, parts, admin)",
+          "Everything in Complete 10 + expanded implementation support",
+          "Customer + fleet portal workflows included",
           "Priority support",
+          "Payroll Connect foundation + review/export readiness",
         ],
         featured: true,
         badge: "Most popular",
         cta: "Start free trial",
       },
       {
+        key: "pro",
+        title: "Complete 100",
+        desc: "Complete platform for high-capacity shops scaling toward 100 active users. Launching for self-serve soon.",
+        priceLabel: "Talk to us",
+        subLabel: "Up to 100 active users",
+        features: [
+          "Everything in Complete plans",
+          "Sized for up to 100 active users",
+          "Implementation planning and rollout guidance",
+          "Payroll Connect foundation + provider-ready export workflows",
+          "Coming soon for self-serve checkout",
+        ],
+        featured: false,
+        badge: "Coming soon",
+        cta: "Talk to us",
+      },
+      {
         key: "unlimited",
-        title: "Unlimited",
-        desc: "Unlimited users per location — ideal for larger HD operations, fleets, municipalities, and multi-role teams.",
+        title: "Complete Unlimited",
+        desc: "One complete shop operating system for larger operations with unlimited active users per location.",
         priceLabel: "$599 / month / location",
         subLabel: "Unlimited users",
         features: [
           "14-day free trial included",
-          "Unlimited users per location",
-          "Best for fleets + high-volume operations",
-          "All inspections, portal, messaging, and automation",
-          "Priority support",
+          "Unlimited active users per location",
+          "Everything in Complete plans with enterprise-scale operations",
+          "High-volume fleet + municipality readiness",
+          "Priority support with implementation coordination",
+          "Provider-ready payroll export workflows",
         ],
         featured: false,
         cta: "Start free trial",
@@ -140,12 +160,11 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
           </div>
 
           <p className="text-sm text-neutral-200/90">
-            No feature gating. Inspections, portals, messaging, and automation are included
-            from day one.
+            Every Complete plan includes the full ProFixIQ platform. Pricing scales by shop size, not by feature access.
           </p>
 
           <p className="text-xs text-neutral-400">
-            Start your free trial today — your Founding Shop discount applies at checkout.
+            No feature tax. Repair operations, workforce scheduling + attendance, customer/fleet portals, documents/certifications, required document readiness, and Payroll Connect foundation are included.
           </p>
 
           <button
@@ -168,16 +187,22 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
       </div>
 
       {/* Plans */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div
+        className="mt-5 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-neutral-300"
+      >
+        SMS, payment processing, heavy AI usage, storage overages, and custom integrations may be billed separately.
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
           const isBusy = busyKey === p.key;
 
           return (
             <button
-              key={p.key}
+              key={`${p.key}-${p.title}`}
               type="button"
-              onClick={() => void handlePlanClick(p.key)}
-              disabled={Boolean(busyKey)}
+              onClick={() => (p.title === "Complete 100" ? (window.location.href = "/#contact") : void handlePlanClick(p.key))}
+              disabled={Boolean(busyKey) || p.title === "Complete 100"}
               className={[
                 "group relative text-left",
                 "rounded-3xl border bg-black/35 p-6 backdrop-blur-xl transition",
@@ -253,7 +278,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
                   {p.priceLabel}
                 </div>
                 <div className="mt-2 text-xs text-neutral-400">
-                  Includes <span className="text-neutral-200">14-day free trial</span> •
+                  Includes <span className="text-neutral-200">full platform access</span> •
                   Founding discount at checkout
                 </div>
               </div>

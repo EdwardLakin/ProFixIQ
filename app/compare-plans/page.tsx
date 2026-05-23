@@ -85,7 +85,7 @@ export default function ComparePlansPage() {
               className="mt-2 text-3xl text-neutral-100 sm:text-4xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              Choose your plan
+              Choose your Complete plan
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-neutral-400">
               Accounts are created after checkout — we don&apos;t allow sign-up without a
