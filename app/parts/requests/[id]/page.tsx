@@ -1383,6 +1383,8 @@ if (!lineId || !isUuid(lineId)) {
                                 const trustMeta = effectivePartId ? trustByPartId[effectivePartId] : null;
                                 const stockSuggestions = stockSuggestionsByItemId[String(it.id)] ?? [];
                                 const topSuggestion = stockSuggestions[0] ?? null;
+                                const hasAttachedPart = isUuid(it.part_id);
+                                const showSuggestion = !!topSuggestion && !hasAttachedPart;
                                 const canReceive =
                                   !!effectivePartId &&
                                   approved > 0 &&
@@ -1462,23 +1464,30 @@ if (!lineId || !isUuid(lineId)) {
 
 
 
-                                        {topSuggestion ? (
+                                        {showSuggestion && topSuggestion ? (
                                           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
                                             Possible stock match: <span className="text-neutral-100">{topSuggestion.name}</span>
                                             {topSuggestion.sku_or_part_number ? <span className="text-neutral-500"> · {topSuggestion.sku_or_part_number}</span> : null}
                                             <span className="text-neutral-500"> · {topSuggestion.qty_available} available</span>
-                                            <span className="text-neutral-500"> · {topSuggestion.confidence}</span>
-                                            <div className="mt-1 text-neutral-500">{topSuggestion.reasons.slice(0, 3).join(" · ")} · action: {topSuggestion.recommended_action}</div>
-                                            {topSuggestion.part_id !== it.ui_part_id ? (
-                                              <button
-                                                type="button"
-                                                className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
-                                                onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
-                                                disabled={rowBusy}
-                                              >
-                                                {topSuggestion.recommended_action === "allocate_from_stock" ? "Attach stock part" : "Review match"}
-                                              </button>
+                                            <span className="text-neutral-500"> · confidence {topSuggestion.confidence}</span>
+                                            <div className="mt-1 text-neutral-500">{topSuggestion.reasons.slice(0, 3).join(" · ")} · recommended: {topSuggestion.recommended_action}</div>
+                                            <button
+                                              type="button"
+                                              className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
+                                              onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
+                                              disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
+                                            >
+                                              {topSuggestion.qty_available <= 0 || topSuggestion.confidence === "low"
+                                                ? "Review match"
+                                                : "Use this stock part"}
+                                            </button>
+                                            {topSuggestion.part_id === it.ui_part_id ? (
+                                              <div className="mt-1 text-neutral-500">Selected for review. Click <span className="text-neutral-300">Add</span> to run the normal attach flow.</div>
                                             ) : null}
+                                          </div>
+                                        ) : hasAttachedPart && topSuggestion ? (
+                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-500">
+                                            Stock suggestion available as an alternative, but this row already has an attached part.
                                           </div>
                                         ) : null}
                                         {approved > 0 ? (
