@@ -635,289 +635,44 @@ export default function TireGrid(props: Props) {
     return null;
   };
 
-  const TDColumn = (
-    cells: { outer?: Cell; inner?: Cell; single?: Cell },
-    label: string,
-    showInnerAlways: boolean,
+  const renderMeasureRow = (
+    leftLabel: string,
+    leftCell?: Cell,
+    rightLabel?: string,
+    rightCell?: Cell,
+    unitFallback = "psi",
   ) => {
-    const hasDual = !!(cells.outer || cells.inner);
-    const shouldShowInner = showInnerAlways || !!cells.inner;
-    const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "mm";
-    const isInches = (u: string) =>
-    u.toLowerCase() === "in" || u.toLowerCase() === "inch" || u === '"';
-
-  const isText = (cell: Cell | undefined) => isInches(U(cell));
-
+    const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || unitFallback;
+    const isInches = (u: string) => u.toLowerCase() === "in" || u.toLowerCase() === "inch" || u === '"';
+    const isText = (cell: Cell | undefined) => isInches(U(cell));
     return (
-      <div className="flex flex-col gap-2">
-        <div className={tinyLabelCls()}>{label}</div>
-
-        {!hasDual ? (
-          <div>
-            <div className="relative">
-              <input
-                defaultValue={cells.single?.initial ?? ""}
-                className={inputCls()}
-                placeholder={cells.single ? "TD" : "—"}
-                inputMode={isText(cells.single) ? "text" : "decimal"}
-                type={isText(cells.single) ? "text" : "number"}
-                onBlur={(e) => {
-                  if (!cells.single) return;
-                  commitValue(cells.single.idx, e.currentTarget.value);
-                }}
-                disabled={!cells.single}
-              />
-              <span className={unitCls()}>{U(cells.single)}</span>
-            </div>
-
-            {ItemActions(cells.single)}
-          </div>
-        ) : (
-          <>
-            <div>
-              <div className="relative">
-                <input
-                  defaultValue={cells.outer?.initial ?? ""}
-                  className={inputCls()}
-                  placeholder={cells.outer ? "TD Outer" : "—"}
-                  inputMode={isText(cells.outer) ? "text" : "decimal"}
-                  type={isText(cells.outer) ? "text" : "number"}                  
-                  onBlur={(e) => {
-                    if (!cells.outer) return;
-                    commitValue(cells.outer.idx, e.currentTarget.value);
-                  }}
-                  disabled={!cells.outer}
-                />
-                <span className={unitCls()}>{U(cells.outer)}</span>
-              </div>
-
-              {ItemActions(cells.outer)}
-            </div>
-
-            {shouldShowInner ? (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {[
+          { label: leftLabel, cell: leftCell },
+          rightLabel ? { label: rightLabel, cell: rightCell } : null,
+        ].filter(Boolean).map((entry) => {
+          const e = entry as { label: string; cell?: Cell };
+          return (
+            <div key={e.label} className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{e.label}</div>
               <div>
                 <div className="relative">
                   <input
-                    defaultValue={cells.inner?.initial ?? ""}
+                    defaultValue={e.cell?.initial ?? ""}
                     className={inputCls()}
-                    placeholder="TD Inner"
-                    inputMode={isText(cells.inner) ? "text" : "decimal"}
-                    type={isText(cells.inner) ? "text" : "number"}
-                    onBlur={(e) => {
-                      if (!cells.inner) return;
-                      commitValue(cells.inner.idx, e.currentTarget.value);
-                    }}
-                    disabled={!cells.inner}
+                    placeholder={e.cell ? "Value" : "—"}
+                    inputMode={isText(e.cell) ? "text" : "decimal"}
+                    type={isText(e.cell) ? "text" : "number"}
+                    onBlur={(ev) => e.cell && commitValue(e.cell.idx, ev.currentTarget.value)}
+                    disabled={!e.cell}
                   />
-                  <span className={unitCls()}>{U(cells.inner)}</span>
+                  <span className={unitCls()}>{U(e.cell)}</span>
                 </div>
-
-                {ItemActions(cells.inner)}
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    );
-  };
-
-  const TPCenter = (args: {
-    isDual: boolean;
-    left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
-    right: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
-  }) => {
-    const { isDual, left, right } = args;
-
-    const leftOuter = left.pressureOuter ?? left.pressure;
-    const leftInner = left.pressureInner;
-    const rightOuter = right.pressureOuter ?? right.pressure;
-    const rightInner = right.pressureInner;
-
-    const U = (_cell: Cell | undefined) => "psi";
-
-    if (!isDual) {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className={tinyLabelCls()}>Tire Pressure</div>
-
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
-            <div className="grid grid-cols-2 gap-px bg-white/10">
-              <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </div>
-
-                <div className="relative">
-                  <input
-                    defaultValue={leftOuter?.initial ?? ""}
-                    className={inputCls()}
-                    placeholder={leftOuter ? "TP" : "—"}
-                    inputMode="decimal"
-                    type="number"
-                    onBlur={(e) => {
-                      if (!leftOuter) return;
-                      commitValue(leftOuter.idx, e.currentTarget.value);
-                    }}
-                    disabled={!leftOuter}
-                  />
-                  <span className={unitCls()}>{U(leftOuter)}</span>
-                </div>
-
-                {ItemActions(leftOuter)}
-              </div>
-
-              <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </div>
-
-                <div className="relative">
-                  <input
-                    defaultValue={rightOuter?.initial ?? ""}
-                    className={inputCls()}
-                    placeholder={rightOuter ? "TP" : "—"}
-                    inputMode="decimal"
-                    type="number"
-                    onBlur={(e) => {
-                      if (!rightOuter) return;
-                      commitValue(rightOuter.idx, e.currentTarget.value);
-                    }}
-                    disabled={!rightOuter}
-                  />
-                  <span className={unitCls()}>{U(rightOuter)}</span>
-                </div>
-
-                {ItemActions(rightOuter)}
+                {ItemActions(e.cell)}
               </div>
             </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col gap-2">
-        <div className={tinyLabelCls()}>Tire Pressure</div>
-
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
-          <div className="grid grid-cols-2 gap-px bg-white/10">
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Outer
-                </span>
-              </div>
-
-              <div className="relative">
-                <input
-                  defaultValue={leftOuter?.initial ?? ""}
-                  className={inputCls()}
-                  placeholder={leftOuter ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onBlur={(e) => {
-                    if (!leftOuter) return;
-                    commitValue(leftOuter.idx, e.currentTarget.value);
-                  }}
-                  disabled={!leftOuter}
-                />
-                <span className={unitCls()}>{U(leftOuter)}</span>
-              </div>
-
-              {ItemActions(leftOuter)}
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Outer
-                </span>
-              </div>
-
-              <div className="relative">
-                <input
-                  defaultValue={rightOuter?.initial ?? ""}
-                  className={inputCls()}
-                  placeholder={rightOuter ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onBlur={(e) => {
-                    if (!rightOuter) return;
-                    commitValue(rightOuter.idx, e.currentTarget.value);
-                  }}
-                  disabled={!rightOuter}
-                />
-                <span className={unitCls()}>{U(rightOuter)}</span>
-              </div>
-
-              {ItemActions(rightOuter)}
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Inner
-                </span>
-              </div>
-
-              <div className="relative">
-                <input
-                  defaultValue={leftInner?.initial ?? ""}
-                  className={inputCls()}
-                  placeholder={leftInner ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onBlur={(e) => {
-                    if (!leftInner) return;
-                    commitValue(leftInner.idx, e.currentTarget.value);
-                  }}
-                  disabled={!leftInner}
-                />
-                <span className={unitCls()}>{U(leftInner)}</span>
-              </div>
-
-              {ItemActions(leftInner)}
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Inner
-                </span>
-              </div>
-
-              <div className="relative">
-                <input
-                  defaultValue={rightInner?.initial ?? ""}
-                  className={inputCls()}
-                  placeholder={rightInner ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onBlur={(e) => {
-                    if (!rightInner) return;
-                    commitValue(rightInner.idx, e.currentTarget.value);
-                  }}
-                  disabled={!rightInner}
-                />
-                <span className={unitCls()}>{U(rightInner)}</span>
-              </div>
-
-              {ItemActions(rightInner)}
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
     );
   };
@@ -1001,10 +756,35 @@ export default function TireGrid(props: Props) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] md:gap-4">
-                  {TDColumn(leftTD, "Left Tread Depth", isDual)}
-                  {TPCenter({ isDual, left: leftTP, right: rightTP })}
-                  {TDColumn(rightTD, "Right Tread Depth", isDual)}
+                <div className="space-y-4">
+                  <div>
+                    <div className={tinyLabelCls()}>Tread Depth</div>
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                      {isDual
+                        ? (
+                          <>
+                            {renderMeasureRow("Left Outer", leftTD.outer, "Right Outer", rightTD.outer, "mm")}
+                            {renderMeasureRow("Left Inner", leftTD.inner, "Right Inner", rightTD.inner, "mm")}
+                          </>
+                        )
+                        : renderMeasureRow("Left", leftTD.single, "Right", rightTD.single, "mm")}
+                    </div>
+                  </div>
+                  <div>
+                    <div className={tinyLabelCls()}>Pressure</div>
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                      {isDual
+                        ? (
+                          <>
+                            {renderMeasureRow("Left Outer", leftTP.pressureOuter ?? leftTP.pressure, "Right Outer", rightTP.pressureOuter ?? rightTP.pressure, "psi")}
+                            {(leftTP.pressureInner || rightTP.pressureInner)
+                              ? renderMeasureRow("Left Inner", leftTP.pressureInner, "Right Inner", rightTP.pressureInner, "psi")
+                              : null}
+                          </>
+                        )
+                        : renderMeasureRow("Left", leftTP.pressure, "Right", rightTP.pressure, "psi")}
+                    </div>
+                  </div>
                 </div>
 
                 {RowCondition(t)}

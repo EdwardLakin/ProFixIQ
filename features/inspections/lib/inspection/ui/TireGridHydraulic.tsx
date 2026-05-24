@@ -458,180 +458,34 @@ export default function TireGridHydraulic(props: Props) {
 
   const valOf = (c?: Cell) => (c ? getValue(items[c.idx]!) : "");
 
-  const TDColumn = (
-    cells: { outer?: Cell; inner?: Cell; single?: Cell },
-    label: string,
-    showInnerAlways: boolean,
+  const renderMeasureRow = (
+    leftLabel: string,
+    leftCell?: Cell,
+    rightLabel?: string,
+    rightCell?: Cell,
+    unitFallback = "psi",
   ) => {
-    const hasDual = !!(cells.outer || cells.inner);
-    const shouldShowInner = showInnerAlways || !!cells.inner;
-
-    const U = (c?: Cell) => (c?.unit ?? "").trim() || "mm";
+    const U = (c?: Cell) => (c?.unit ?? "").trim() || unitFallback;
     const isInches = (u: string) => u.toLowerCase() === "in" || u.toLowerCase() === "inch" || u === '"';
     const isText = (c?: Cell) => isInches(U(c));
-
     return (
-      <div className="flex flex-col gap-2">
-        <div className={tinyLabelCls()}>{label}</div>
-
-        {!hasDual ? (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{leftLabel}</div>
           <div className="relative">
-            <input
-              value={cells.single ? valOf(cells.single) : ""}
-              className={inputCls()}
-              placeholder={cells.single ? "TD" : "—"}
-              inputMode={isText(cells.single) ? "text" : "decimal"}
-              type={isText(cells.single) ? "text" : "number"}
-              onChange={(e) => {
-                if (!cells.single) return;
-                commitValue(cells.single.idx, e.currentTarget.value);
-              }}
-              disabled={!cells.single}
-            />
-            <span className={unitCls()}>{U(cells.single)}</span>
+            <input value={leftCell ? valOf(leftCell) : ""} className={inputCls()} placeholder={leftCell ? "Value" : "—"} inputMode={isText(leftCell) ? "text" : "decimal"} type={isText(leftCell) ? "text" : "number"} onChange={(e) => leftCell && commitValue(leftCell.idx, e.currentTarget.value)} disabled={!leftCell} />
+            <span className={unitCls()}>{U(leftCell)}</span>
           </div>
-        ) : (
-          <>
+        </div>
+        {rightLabel ? (
+          <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{rightLabel}</div>
             <div className="relative">
-              <input
-                value={cells.outer ? valOf(cells.outer) : ""}
-                className={inputCls()}
-                placeholder={cells.outer ? "TD Outer" : "—"}
-                inputMode={isText(cells.outer) ? "text" : "decimal"}
-                type={isText(cells.outer) ? "text" : "number"}
-                onChange={(e) => {
-                  if (!cells.outer) return;
-                  commitValue(cells.outer.idx, e.currentTarget.value);
-                }}
-                disabled={!cells.outer}
-              />
-              <span className={unitCls()}>{U(cells.outer)}</span>
-            </div>
-
-            {shouldShowInner ? (
-              <div className="relative">
-                <input
-                  value={cells.inner ? valOf(cells.inner) : ""}
-                  className={inputCls()}
-                  placeholder="TD Inner"
-                  inputMode={isText(cells.inner) ? "text" : "decimal"}
-                  type={isText(cells.inner) ? "text" : "number"}
-                  onChange={(e) => {
-                    if (!cells.inner) return;
-                    commitValue(cells.inner.idx, e.currentTarget.value);
-                  }}
-                  disabled={!cells.inner}
-                />
-                <span className={unitCls()}>{U(cells.inner)}</span>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    );
-  };
-
-  const TPCenter = (args: {
-    isDual: boolean;
-    left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
-    right: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
-  }) => {
-    const { isDual, left, right } = args;
-
-    const leftOuter = left.pressureOuter ?? left.pressure;
-    const leftInner = left.pressureInner;
-    const rightOuter = right.pressureOuter ?? right.pressure;
-    const rightInner = right.pressureInner;
-
-    const U = (_c?: Cell) => "psi";
-
-    if (!isDual) {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className={tinyLabelCls()}>Tire Pressure</div>
-
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
-            <div className="grid grid-cols-2 gap-px bg-white/10">
-              <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </div>
-                <div className="relative">
-                  <input
-                    value={leftOuter ? valOf(leftOuter) : ""}
-                    className={inputCls()}
-                    placeholder={leftOuter ? "TP" : "—"}
-                    inputMode="decimal"
-                    type="number"
-                    onChange={(e) => {
-                      if (!leftOuter) return;
-                      commitValue(leftOuter.idx, e.currentTarget.value);
-                    }}
-                    disabled={!leftOuter}
-                  />
-                  <span className={unitCls()}>{U(leftOuter)}</span>
-                </div>
-              </div>
-
-              <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </div>
-                <div className="relative">
-                  <input
-                    value={rightOuter ? valOf(rightOuter) : ""}
-                    className={inputCls()}
-                    placeholder={rightOuter ? "TP" : "—"}
-                    inputMode="decimal"
-                    type="number"
-                    onChange={(e) => {
-                      if (!rightOuter) return;
-                      commitValue(rightOuter.idx, e.currentTarget.value);
-                    }}
-                    disabled={!rightOuter}
-                  />
-                  <span className={unitCls()}>{U(rightOuter)}</span>
-                </div>
-              </div>
+              <input value={rightCell ? valOf(rightCell) : ""} className={inputCls()} placeholder={rightCell ? "Value" : "—"} inputMode={isText(rightCell) ? "text" : "decimal"} type={isText(rightCell) ? "text" : "number"} onChange={(e) => rightCell && commitValue(rightCell.idx, e.currentTarget.value)} disabled={!rightCell} />
+              <span className={unitCls()}>{U(rightCell)}</span>
             </div>
           </div>
-        </div>
-      );
-    }
-
-    const renderRow = (label: string, cell?: Cell, placeholder = "TP") => (
-      <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{label}</div>
-        <div className="relative">
-          <input
-            value={cell ? valOf(cell) : ""}
-            className={inputCls()}
-            placeholder={cell ? placeholder : "—"}
-            inputMode="decimal"
-            type="number"
-            onChange={(e) => {
-              if (!cell) return;
-              commitValue(cell.idx, e.currentTarget.value);
-            }}
-            disabled={!cell}
-          />
-          <span className={unitCls()}>{U(cell)}</span>
-        </div>
-      </div>
-    );
-
-    return (
-      <div className="flex flex-col gap-2">
-        <div className={tinyLabelCls()}>Tire Pressure</div>
-
-        <div className="rounded-xl border border-white/10 bg-black/35 p-2.5">
-          <div className="grid gap-2">
-            {renderRow("Left Outer", leftOuter)}
-            {renderRow("Right Outer", rightOuter)}
-            {renderRow("Left Inner", leftInner)}
-            {renderRow("Right Inner", rightInner)}
-          </div>
-        </div>
+        ) : null}
       </div>
     );
   };
@@ -701,10 +555,35 @@ export default function TireGridHydraulic(props: Props) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] md:gap-4">
-                  {TDColumn(leftTD, "Left Tread Depth", isDual)}
-                  {TPCenter({ isDual, left: leftTP, right: rightTP })}
-                  {TDColumn(rightTD, "Right Tread Depth", isDual)}
+                <div className="space-y-4">
+                  <div>
+                    <div className={tinyLabelCls()}>Tread Depth</div>
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                      {isDual
+                        ? (
+                          <>
+                            {renderMeasureRow("Left Outer", leftTD.outer, "Right Outer", rightTD.outer, "mm")}
+                            {renderMeasureRow("Left Inner", leftTD.inner, "Right Inner", rightTD.inner, "mm")}
+                          </>
+                        )
+                        : renderMeasureRow("Left", leftTD.single, "Right", rightTD.single, "mm")}
+                    </div>
+                  </div>
+                  <div>
+                    <div className={tinyLabelCls()}>Pressure</div>
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                      {isDual
+                        ? (
+                          <>
+                            {renderMeasureRow("Left Outer", leftTP.pressureOuter ?? leftTP.pressure, "Right Outer", rightTP.pressureOuter ?? rightTP.pressure, "psi")}
+                            {(leftTP.pressureInner || rightTP.pressureInner)
+                              ? renderMeasureRow("Left Inner", leftTP.pressureInner, "Right Inner", rightTP.pressureInner, "psi")
+                              : null}
+                          </>
+                        )
+                        : renderMeasureRow("Left", leftTP.pressure, "Right", rightTP.pressure, "psi")}
+                    </div>
+                  </div>
                 </div>
 
                 {StatusOrConditions(t)}
