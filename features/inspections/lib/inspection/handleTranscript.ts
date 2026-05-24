@@ -223,6 +223,12 @@ function stripStatusForMatch(text: string): string {
   return stripStatusWords(text);
 }
 
+function hasConditionFindingLanguage(text: string): boolean {
+  const t = norm(text);
+  if (!t) return false;
+  return /\b(fail|failed|recommend|recommended|rec|bulge|rim|crack|cracked|lug|loose)\b/.test(t);
+}
+
 function scoreLabel(args: {
   label: string;
   hintTokens: string[];
@@ -393,6 +399,10 @@ function scoreLabel(args: {
       if (isGridLikeLabel(label)) score += 60;
       if (isPlainPushrodLabel(label)) score -= 25;
     }
+  }
+
+  if ((mode === "measurement" || mode === "update_value") && hasConditionFindingLanguage(rawSpeech)) {
+    if (isGridLikeLabel(label)) score -= 50;
   }
 
   return score;
