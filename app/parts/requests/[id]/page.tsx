@@ -198,6 +198,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
   const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
   const [supplierSuggestionsByItemId, setSupplierSuggestionsByItemId] = useState<Record<string, DeterministicSupplierSuggestion[]>>({});
+  const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -350,6 +351,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSelectedPo("");
       setStockSuggestionsByItemId({});
       setSupplierSuggestionsByItemId({});
+      setSupplierSuggestionAppliedByItemId({});
       setLoading(false);
       return;
     }
@@ -563,6 +565,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       }
       setStockSuggestionsByItemId(suggestions);
       setSupplierSuggestionsByItemId(supplierSuggestions);
+      setSupplierSuggestionAppliedByItemId({});
       if (
         selectedPo &&
         !(poRows ?? []).some((p) => String(p.id) === selectedPo)
@@ -578,6 +581,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSelectedPo("");
       setStockSuggestionsByItemId({});
       setSupplierSuggestionsByItemId({});
+      setSupplierSuggestionAppliedByItemId({});
     }
 
     setLoading(false);
@@ -612,6 +616,18 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         };
       }),
     );
+  }
+
+  function applySupplierSuggestionSelection(
+    reqId: string,
+    itemId: string,
+    suggestion: DeterministicSupplierSuggestion,
+  ): void {
+    const patch: Partial<UiItem> = {};
+    if (suggestion.supplier_id) patch.ui_supplier_id = String(suggestion.supplier_id);
+    if (suggestion.open_po_id) patch.ui_po_id = String(suggestion.open_po_id);
+    updateItem(reqId, itemId, patch);
+    setSupplierSuggestionAppliedByItemId((prev) => ({ ...prev, [itemId]: true }));
   }
 
   async function syncRequestQuotedState(
@@ -1445,6 +1461,7 @@ if (!lineId || !isUuid(lineId)) {
                                 const stockSuggestions = stockSuggestionsByItemId[String(it.id)] ?? [];
                                 const supplierSuggestions = supplierSuggestionsByItemId[String(it.id)] ?? [];
                                 const supplierSuggestion = supplierSuggestions[0] ?? null;
+                                const supplierSuggestionApplied = !!supplierSuggestionAppliedByItemId[String(it.id)];
                                 const topSuggestion = stockSuggestions[0] ?? null;
                                 const hasAttachedPart = isUuid(it.part_id);
                                 const showSuggestion = !!topSuggestion && !hasAttachedPart;
@@ -1583,11 +1600,33 @@ if (!lineId || !isUuid(lineId)) {
                                               <button
                                                 type="button"
                                                 className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
-                                                onClick={() => updateItem(r.req.id, String(it.id), { ui_supplier_id: supplierSuggestion.supplier_id ?? "" })}
-                                                disabled={rowBusy || it.ui_supplier_id === supplierSuggestion.supplier_id}
+                                                onClick={() =>
+                                                  applySupplierSuggestionSelection(
+                                                    r.req.id,
+                                                    String(it.id),
+                                                    supplierSuggestion,
+                                                  )
+                                                }
+                                                disabled={
+                                                  rowBusy ||
+                                                  (it.ui_supplier_id === supplierSuggestion.supplier_id &&
+                                                    (!supplierSuggestion.open_po_id ||
+                                                      it.ui_po_id === supplierSuggestion.open_po_id))
+                                                }
                                               >
-                                                Use suggested supplier (manual PO action still required)
+                                                {supplierSuggestion.recommended_action === "add_to_existing_open_po"
+                                                  ? "Select open PO"
+                                                  : supplierSuggestion.recommended_action === "review_supplier"
+                                                    ? "Review supplier"
+                                                    : supplierSuggestion.recommended_action === "create_new_po"
+                                                      ? "Use supplier"
+                                                      : "Use suggested supplier"}
                                               </button>
+                                            ) : null}
+                                            {supplierSuggestionApplied ? (
+                                              <div className="mt-1 text-neutral-500">
+                                                Suggested supplier selected — confirm with Create/Re-use PO.
+                                              </div>
                                             ) : null}
                                           </div>
                                         ) : null}
