@@ -572,6 +572,7 @@ export default function TireGrid(props: Props) {
 
   const existingAxles = tables.map((t) => t.axle);
 
+  const ConditionPanel = ({ itemIndex }: { itemIndex: number }) => {
 
     const it = items[itemIndex];
     if (!it) return null;
@@ -1004,8 +1005,6 @@ export default function TireGrid(props: Props) {
       </div>
     );
   };
-
-  const ConditionPanel = (_args: { label: string; cell?: Cell }) => null;
 
   const RowCondition = (_t: AxleRow) => {
     // TODO(ai): evaluate condition hints in lower/detail inspection sections only.
