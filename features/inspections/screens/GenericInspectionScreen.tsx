@@ -2414,12 +2414,21 @@ type SmartMatchRow = {
 
     const existingItems = section.items ?? [];
 
-    const metrics: Array<{ label: string; unit: string | null }> = [
-      { label: "Tire Pressure", unit: "psi" },
-      { label: "Tread Depth (Outer)", unit: "mm" },
-      { label: "Tread Depth (Inner)", unit: "mm" },
-      { label: "Wheel Torque", unit: "ft·lb" },
-    ];
+    const dualAxle = /^(drive|rear|tag|trailer)\b/i.test(axleLabel.trim());
+
+    const metrics: Array<{ label: string; unit: string | null }> = dualAxle
+      ? [
+          { label: "Tire Pressure (Outer)", unit: "psi" },
+          { label: "Tire Pressure (Inner)", unit: "psi" },
+          { label: "Tread Depth (Outer)", unit: "mm" },
+          { label: "Tread Depth (Inner)", unit: "mm" },
+          { label: "Wheel Torque", unit: "ft·lb" },
+        ]
+      : [
+          { label: "Tire Pressure", unit: "psi" },
+          { label: "Tread Depth", unit: "mm" },
+          { label: "Wheel Torque", unit: "ft·lb" },
+        ];
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
 
