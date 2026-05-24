@@ -221,9 +221,9 @@ export default function AirCornerGrid({
           </div>
 
           {open ? (
-            <div className="overflow-x-auto">
-              <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full border-separate border-spacing-y-1">
+            <div className="overflow-x-visible">
+              <div className="min-w-0 align-middle">
+                <table className="w-full table-fixed border-separate border-spacing-y-1">
                   <thead>
                     <tr className="text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
@@ -242,7 +242,12 @@ export default function AirCornerGrid({
                     {t.rows.map((row, rowIdx) => (
                       <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
                         <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                          {row.metric}
+                          <span className="line-clamp-2 md:line-clamp-none">
+                            {row.metric
+                              .replace("Brake Pad / Shoe Thickness", "Pad/Shoe")
+                              .replace("Brake Drum / Rotor Thickness", "Drum/Rotor")
+                              .replace("Push Rod Travel", "Push Rod")}
+                          </span>
                         </td>
 
                         {(["Left", "Right"] as const).map((side) => {
@@ -257,10 +262,10 @@ export default function AirCornerGrid({
 
                           return (
                             <td key={side} className="px-3 py-2 text-center">
-                              <div className="relative w-full max-w-[9rem]">
+                              <div className="relative w-full max-w-none">
                                 <input
                                   defaultValue={cell.initial}
-                                  className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                  className="h-12 w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 pr-14 text-base text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
                                   placeholder="Value"
                                   autoComplete="off"
                                   inputMode="decimal"

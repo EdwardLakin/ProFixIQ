@@ -1208,7 +1208,7 @@ export default function TireGrid(props: Props) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] items-start gap-4">
+                <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] md:gap-4">
                   {TDColumn(leftTD, "Left Tread Depth", isDual)}
                   {TPCenter({ isDual, left: leftTP, right: rightTP })}
                   {TDColumn(rightTD, "Right Tread Depth", isDual)}

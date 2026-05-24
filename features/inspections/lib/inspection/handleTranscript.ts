@@ -714,6 +714,11 @@ function mergeNotes(existing: unknown, incoming: string): string {
   return `${ex}; ${inc}`;
 }
 
+function isCorrectionSpeech(text?: string): boolean {
+  const t = norm(text ?? "");
+  return t.includes("change that") || t.includes("actually") || t.includes("undo last");
+}
+
 function inferNoteFromSpeech(params: {
   rawSpeech?: string;
   item?: string;
@@ -1125,6 +1130,17 @@ async function applySingleCommand(args: {
   }
 
   if (!target) {
+    if (isCorrectionSpeech(rawSpeech)) {
+      const sIdx = getSafeCurrentSectionIndex(session);
+      const iIdx = Math.max(
+        0,
+        Math.min(session.currentItemIndex ?? 0, (session.sections[sIdx]?.items?.length ?? 1) - 1),
+      );
+      target = { sectionIndex: sIdx, itemIndex: iIdx };
+    }
+  }
+
+  if (!target) {
     console.warn("[handleTranscript] Could not resolve target:", {
       rawSpeech,
       section,
@@ -1138,6 +1154,22 @@ async function applySingleCommand(args: {
   }
 
   const safeTarget = clampTargetToSession(session, target);
+  const speechNorm = norm(rawSpeech ?? "");
+  if (speechNorm.includes("left side") || speechNorm.includes("right side")) {
+    const wanted = speechNorm.includes("left side") ? "left" : "right";
+    const currentLabel = norm(
+      String(
+        session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex]?.item ??
+          session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex]?.name ??
+          "",
+      ),
+    ).replace(/\bleft\b|\bright\b/g, "").trim();
+    const siblingIdx = session.sections[safeTarget.sectionIndex]?.items?.findIndex((it) => {
+      const l = norm(String(it.item ?? it.name ?? ""));
+      return l.includes(wanted) && l.replace(/\bleft\b|\bright\b/g, "").trim() === currentLabel;
+    });
+    if (typeof siblingIdx === "number" && siblingIdx >= 0) safeTarget.itemIndex = siblingIdx;
+  }
 
   const itemUpdates: Partial<
     InspectionSession["sections"][number]["items"][number]
