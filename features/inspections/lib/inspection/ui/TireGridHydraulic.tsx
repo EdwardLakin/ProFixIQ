@@ -592,129 +592,6 @@ export default function TireGridHydraulic(props: Props) {
   if (tables.length === 0) return null;
 
   const valOf = (c?: Cell) => (c ? getValue(items[c.idx]!) : "");
-  const notesOf = (c?: Cell) => (c ? getNotes(items[c.idx]!) : "");
-
-
-    const it = items[itemIndex];
-    if (!it) return null;
-
-    const status = getStatus(it);
-    const isFail = status === "fail";
-    const isRec = status === "recommend";
-    const isFailOrRec = isFail || isRec;
-
-    if (!isFailOrRec && !requireNoteForAI) return null;
-
-    const note = getNotes(it).trim();
-    const canShowSubmit =
-      !!requireNoteForAI && isFailOrRec && note.length > 0 && typeof onSubmitAI === "function";
-
-    const submitting = typeof isSubmittingAI === "function" ? isSubmittingAI(sectionIndex, itemIndex) : false;
-
-    if (!isFailOrRec && !canShowSubmit) return null;
-
-    const currentParts = readParts(it);
-    const currentLabor = readLaborHours(it);
-
-    const addEmptyPart = () => {
-      commitParts(itemIndex, [...currentParts, { description: "", qty: 1 }]);
-    };
-
-    const updatePart = (idx: number, patch: Partial<PartLine>) => {
-      const next = currentParts.map((p, i) => (i === idx ? { ...p, ...patch } : p));
-      commitParts(itemIndex, next);
-    };
-
-    const removePart = (idx: number) => {
-      const next = currentParts.filter((_, i) => i !== idx);
-      commitParts(itemIndex, next);
-    };
-
-    return (
-      <>
-        {isFailOrRec ? (
-          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold text-neutral-100">Parts &amp; Labor</span>
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                FAIL / REC only
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {currentParts.map((p, pIdx) => (
-                <div
-                  key={pIdx}
-                  className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
-                >
-                  <input
-                    className="min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                    placeholder="Part description"
-                    value={p.description}
-                    onChange={(e) => updatePart(pIdx, { description: e.target.value })}
-                  />
-                  <input
-                    className="w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                    placeholder="Qty"
-                    type="number"
-                    min={1}
-                    value={Number.isFinite(p.qty) ? p.qty : ""}
-                    onChange={(e) => updatePart(pIdx, { qty: Number(e.target.value) || 1 })}
-                  />
-                  <button
-                    type="button"
-                    className="text-[11px] text-red-300 hover:text-red-200"
-                    onClick={() => removePart(pIdx)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addEmptyPart}
-                className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/80 hover:text-orange-200"
-              >
-                + Add Part
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-neutral-400">Labor hours</span>
-              <input
-                className="w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                placeholder="0.0"
-                type="number"
-                min={0}
-                step={0.1}
-                value={currentLabor ?? ""}
-                onChange={(e) =>
-                  commitLabor(itemIndex, e.target.value === "" ? null : Number(e.target.value) || 0)
-                }
-              />
-              <span className="text-[10px] text-neutral-500">(rate + pricing handled later)</span>
-            </div>
-          </div>
-        ) : null}
-
-        {canShowSubmit ? (
-          <div className="mt-2 flex items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="px-3"
-              disabled={submitting}
-              onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
-            >
-              {submitting ? "Submitting…" : "Submit for estimate"}
-            </Button>
-          </div>
-        ) : null}
-      </>
-    );
-  };
 
   const TDColumn = (
     cells: { outer?: Cell; inner?: Cell; single?: Cell },
@@ -857,115 +734,37 @@ export default function TireGridHydraulic(props: Props) {
       );
     }
 
+    const renderRow = (label: string, cell?: Cell, placeholder = "TP") => (
+      <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{label}</div>
+        <div className="relative">
+          <input
+            value={cell ? valOf(cell) : ""}
+            className={inputCls()}
+            placeholder={cell ? placeholder : "—"}
+            inputMode="decimal"
+            type="number"
+            onChange={(e) => {
+              if (!cell) return;
+              commitValue(cell.idx, e.currentTarget.value);
+            }}
+            disabled={!cell}
+          />
+          <span className={unitCls()}>{U(cell)}</span>
+        </div>
+      </div>
+    );
+
     return (
       <div className="flex flex-col gap-2">
         <div className={tinyLabelCls()}>Tire Pressure</div>
 
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
-          <div className="grid grid-cols-2 gap-px bg-white/10">
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Outer
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  value={leftOuter ? valOf(leftOuter) : ""}
-                  className={inputCls()}
-                  placeholder={leftOuter ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onChange={(e) => {
-                    if (!leftOuter) return;
-                    commitValue(leftOuter.idx, e.currentTarget.value);
-                  }}
-                  disabled={!leftOuter}
-                />
-                <span className={unitCls()}>{U(leftOuter)}</span>
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Outer
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  value={rightOuter ? valOf(rightOuter) : ""}
-                  className={inputCls()}
-                  placeholder={rightOuter ? "TP" : "—"}
-                  inputMode="decimal"
-                  type="number"
-                  onChange={(e) => {
-                    if (!rightOuter) return;
-                    commitValue(rightOuter.idx, e.currentTarget.value);
-                  }}
-                  disabled={!rightOuter}
-                />
-                <span className={unitCls()}>{U(rightOuter)}</span>
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Inner
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  value={leftInner ? valOf(leftInner) : ""}
-                  className={inputCls()}
-                  placeholder={leftInner ? "TP" : "TP"}
-                  inputMode="decimal"
-                  type="number"
-                  onChange={(e) => {
-                    if (!leftInner) return;
-                    commitValue(leftInner.idx, e.currentTarget.value);
-                  }}
-                  disabled={!leftInner}
-                />
-                <span className={unitCls()}>{U(leftInner)}</span>
-              </div>
-            </div>
-
-            <div className="bg-black/40 p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                  Inner
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  value={rightInner ? valOf(rightInner) : ""}
-                  className={inputCls()}
-                  placeholder={rightInner ? "TP" : "TP"}
-                  inputMode="decimal"
-                  type="number"
-                  onChange={(e) => {
-                    if (!rightInner) return;
-                    commitValue(rightInner.idx, e.currentTarget.value);
-                  }}
-                  disabled={!rightInner}
-                />
-                <span className={unitCls()}>{U(rightInner)}</span>
-              </div>
-            </div>
+        <div className="rounded-xl border border-white/10 bg-black/35 p-2.5">
+          <div className="grid gap-2">
+            {renderRow("Left Outer", leftOuter)}
+            {renderRow("Right Outer", rightOuter)}
+            {renderRow("Left Inner", leftInner)}
+            {renderRow("Right Inner", rightInner)}
           </div>
         </div>
       </div>
