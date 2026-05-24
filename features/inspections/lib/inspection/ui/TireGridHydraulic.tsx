@@ -5,10 +5,7 @@ import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type {
   InspectionItem,
-  InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
-import StatusButtons
-from "@inspections/lib/inspection/StatusButtons";
 import { Button } from "@shared/components/ui/Button";
 
 type PartLine = { description: string; qty: number };
@@ -387,14 +384,6 @@ function inputCls() {
   ].join(" ");
 }
 
-function textareaCls() {
-  return [
-    "min-h-[74px] w-full rounded-xl border border-white/10 bg-black/45",
-    "px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500",
-    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
-  ].join(" ");
-}
-
 function unitCls() {
   return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
 }
@@ -428,11 +417,6 @@ export default function TireGridHydraulic(props: Props) {
 
   const commitValue = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
-  };
-
-  const commitNotes = (idx: number, notes: string) => {
-    updateItem(sectionIndex, idx, { notes });
-    props.onSmartMatchNoteChange?.(sectionIndex, idx, notes);
   };
 
   const commitParts = (idx: number, parts: PartLine[]) => {
@@ -610,7 +594,7 @@ export default function TireGridHydraulic(props: Props) {
   const valOf = (c?: Cell) => (c ? getValue(items[c.idx]!) : "");
   const notesOf = (c?: Cell) => (c ? getNotes(items[c.idx]!) : "");
 
-  const FailRecBlock = (itemIndex: number) => {
+
     const it = items[itemIndex];
     if (!it) return null;
 
@@ -988,98 +972,14 @@ export default function TireGridHydraulic(props: Props) {
     );
   };
 
-  const ConditionPanel = (args: { label: string; cell?: Cell }) => {
-    const { label, cell } = args;
-    if (!cell) return null;
+  const ConditionPanel = (_args: { label: string; cell?: Cell }) => null;
 
-    const it = items[cell.idx];
-    if (!it) return null;
-
-    return (
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <div className={tinyLabelCls()}>{label}</div>
-
-              {renderSmartMatchCard({
-                match: props.smartMatchByKey?.[`${sectionIndex}:${cell.idx}`] ?? null,
-                loading: props.smartMatchLoadingByKey?.[`${sectionIndex}:${cell.idx}`] ?? false,
-                onAccept: () => props.onAcceptSmartMatch?.(sectionIndex, cell.idx),
-                onDismiss: () => props.onDismissSmartMatch?.(sectionIndex, cell.idx),
-              })}
-        <StatusButtons
-          item={it}
-          sectionIndex={sectionIndex}
-          itemIndex={cell.idx}
-          updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {}}
-          compact
-          wrap
-        />
-
-        <div className="mt-2">
-          <div className={tinyLabelCls()}>Notes</div>
-          <textarea
-            className={textareaCls()}
-            placeholder="Notes…"
-            value={notesOf(cell)}
-            onChange={(e) => commitNotes(cell.idx, e.currentTarget.value)}
-          />
-        </div>
-
-        {FailRecBlock(cell.idx)}
-      </div>
-    );
+  const StatusOrConditions = (_t: AxleRow) => {
+    // TODO(ai): render threshold-based recommendation hints in detail findings sections, not measurement grids.
+    return null;
   };
 
-  const StatusOrConditions = (t: AxleRow) => {
-    const leftCond = t.isDual ? t.dual.left.condition : t.single.left.condition;
-    const rightCond = t.isDual ? t.dual.right.condition : t.single.right.condition;
-
-    const hasPerSide = !!(leftCond || rightCond);
-
-    if (hasPerSide) {
-      return (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {ConditionPanel({ label: "Left Tire Condition", cell: leftCond })}
-          {ConditionPanel({ label: "Right Tire Condition", cell: rightCond })}
-        </div>
-      );
-    }
-
-    if (!t.statusCell) return null;
-
-    const it = items[t.statusCell.idx];
-    if (!it) return null;
-
     return (
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
-        <div className={tinyLabelCls()}>Tire Status</div>
-
-        <StatusButtons
-          item={it}
-          sectionIndex={sectionIndex}
-          itemIndex={t.statusCell.idx}
-          updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {}}
-          compact
-          wrap
-        />
-
-        <div className="mt-2">
-          <div className={tinyLabelCls()}>Notes</div>
-          <textarea
-            className={textareaCls()}
-            placeholder="Notes…"
-            value={notesOf(t.statusCell)}
-            onChange={(e) => commitNotes(t.statusCell!.idx, e.currentTarget.value)}
-          />
-        </div>
-
-        {FailRecBlock(t.statusCell.idx)}
-      </div>
-    );
-  };
-
-  return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
@@ -1134,7 +1034,7 @@ export default function TireGridHydraulic(props: Props) {
                     {t.axle}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    TP center • TD corners{isDual ? " • Dual" : " • Single"}
+                    TP / TD capture only
                   </div>
                 </div>
 
