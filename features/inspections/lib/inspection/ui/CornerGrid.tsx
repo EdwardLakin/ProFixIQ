@@ -200,7 +200,7 @@ export default function CornerGrid(props: CornerGridProps) {
               </div>
 
               {/* LF | spacer(body) | RF */}
-              <div className="grid grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)] items-start gap-3">
+              <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
                 {Stack("LF")}
                 <div className="flex h-full items-center justify-center">
                   <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
@@ -219,7 +219,7 @@ export default function CornerGrid(props: CornerGridProps) {
               </div>
 
               {/* LR | spacer(body) | RR */}
-              <div className="grid grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)] items-start gap-3">
+              <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
                 {Stack("LR")}
                 <div className="flex h-full items-center justify-center">
                   <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />

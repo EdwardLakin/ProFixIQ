@@ -2488,8 +2488,8 @@ type SmartMatchRow = {
   };
 
   const shell = isEmbed
-    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
-    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
+    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))]"
+    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-[calc(9.5rem+env(safe-area-inset-bottom))]";
 
   const headerCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-4 mb-3 md:mb-4`;
   const sectionCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
@@ -3150,9 +3150,9 @@ type SmartMatchRow = {
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
+        <div className="mx-auto flex max-w-[1100px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">{actions}</div>
           <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
             Draft auto-saves locally
           </div>
