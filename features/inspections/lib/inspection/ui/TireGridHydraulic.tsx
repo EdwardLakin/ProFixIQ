@@ -576,9 +576,7 @@ export default function TireGridHydraulic(props: Props) {
                         ? (
                           <>
                             {renderMeasureRow("Left Outer", leftTP.pressureOuter ?? leftTP.pressure, "Right Outer", rightTP.pressureOuter ?? rightTP.pressure, "psi")}
-                            {(leftTP.pressureInner || rightTP.pressureInner)
-                              ? renderMeasureRow("Left Inner", leftTP.pressureInner, "Right Inner", rightTP.pressureInner, "psi")
-                              : null}
+                            {renderMeasureRow("Left Inner", leftTP.pressureInner, "Right Inner", rightTP.pressureInner, "psi")}
                           </>
                         )
                         : renderMeasureRow("Left", leftTP.pressure, "Right", rightTP.pressure, "psi")}
