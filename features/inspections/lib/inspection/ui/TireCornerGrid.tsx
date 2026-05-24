@@ -3,11 +3,8 @@
 
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import StatusButtons
-from "@inspections/lib/inspection/StatusButtons";
 import type {
   InspectionItem,
-  InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
 import { Button } from "@shared/components/ui/Button";
 
@@ -413,14 +410,6 @@ function tinyLabelCls() {
   return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
 }
 
-function notesCls() {
-  return [
-    "mt-2 w-full rounded-lg border border-white/10 bg-black/55",
-    "px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500",
-    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
-  ].join(" ");
-}
-
 function axleFromRowStatusLabel(label: string): string | null {
   const m = label.match(/^(?<axle>.+?)\s+Tire\s+Status$/i);
   const raw = String(m?.groups?.axle ?? "").trim();
@@ -455,11 +444,6 @@ export default function TireGrid(props: Props) {
 
   const commitValue = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
-  };
-
-  const commitNotes = (idx: number, notes: string) => {
-    updateItem(sectionIndex, idx, { notes });
-    props.onSmartMatchNoteChange?.(sectionIndex, idx, notes);
   };
 
   const commitParts = (idx: number, parts: PartLine[]) => {
@@ -588,7 +572,7 @@ export default function TireGrid(props: Props) {
 
   const existingAxles = tables.map((t) => t.axle);
 
-  const FailRecActions = (itemIndex: number) => {
+
     const it = items[itemIndex];
     if (!it) return null;
 
@@ -730,41 +714,8 @@ export default function TireGrid(props: Props) {
 
   const ItemActions = (cell: Cell | undefined) => {
     if (!cell) return null;
-
-    const it = items[cell.idx];
-    if (!it) return null;
-
-    return (
-      <div className="mt-2">
-              {renderSmartMatchCard({
-                match: props.smartMatchByKey?.[`${sectionIndex}:${cell.idx}`] ?? null,
-                loading: props.smartMatchLoadingByKey?.[`${sectionIndex}:${cell.idx}`] ?? false,
-                onAccept: () => props.onAcceptSmartMatch?.(sectionIndex, cell.idx),
-                onDismiss: () => props.onDismissSmartMatch?.(sectionIndex, cell.idx),
-              })}
-        <StatusButtons
-          item={it}
-          sectionIndex={sectionIndex}
-          itemIndex={cell.idx}
-          updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {}}
-          compact
-          wrap
-        />
-
-        <textarea
-          className={notesCls()}
-          placeholder="Notes…"
-          defaultValue={readNotes(it)}
-          onBlur={(e) => {
-            commitNotes(cell.idx, e.currentTarget.value);
-          }}
-          rows={2}
-        />
-
-        {FailRecActions(cell.idx)}
-      </div>
-    );
+    // TODO(ai): surface tread/pressure inference suggestions in detail findings instead of grid rows.
+    return null;
   };
 
   const TDColumn = (
@@ -1054,87 +1005,14 @@ export default function TireGrid(props: Props) {
     );
   };
 
-  const ConditionPanel = (args: { label: string; cell?: Cell }) => {
-    const { label, cell } = args;
-    if (!cell) return null;
+  const ConditionPanel = (_args: { label: string; cell?: Cell }) => null;
 
-    const it = items[cell.idx];
-    if (!it) return null;
-
-    return (
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <div className={tinyLabelCls()}>{label}</div>
-
-        <StatusButtons
-          item={it}
-          sectionIndex={sectionIndex}
-          itemIndex={cell.idx}
-          updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {}}
-          compact
-          wrap
-        />
-
-        <textarea
-          className={notesCls()}
-          placeholder="Notes…"
-          defaultValue={readNotes(it)}
-          onBlur={(e) => commitNotes(cell.idx, e.currentTarget.value)}
-          rows={2}
-        />
-
-        {FailRecActions(cell.idx)}
-      </div>
-    );
+  const RowCondition = (_t: AxleRow) => {
+    // TODO(ai): evaluate condition hints in lower/detail inspection sections only.
+    return null;
   };
 
-  const RowCondition = (t: AxleRow) => {
-    const leftCond = t.isDual ? t.dual.left.condition : t.single.left.condition;
-    const rightCond = t.isDual
-      ? t.dual.right.condition
-      : t.single.right.condition;
-    if (!leftCond && !rightCond && !t.statusCell) return null;
-
-    if (leftCond || rightCond) {
-      return (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {ConditionPanel({ label: "Left Tire Condition", cell: leftCond })}
-          {ConditionPanel({ label: "Right Tire Condition", cell: rightCond })}
-        </div>
-      );
-    }
-
-    if (!t.statusCell) return null;
-
-    const it = items[t.statusCell.idx];
-    if (!it) return null;
-
     return (
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
-        <div className={tinyLabelCls()}>Tire Status</div>
-        <StatusButtons
-          item={it}
-          sectionIndex={sectionIndex}
-          itemIndex={t.statusCell.idx}
-          updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {}}
-          compact
-          wrap
-        />
-        <textarea
-          className={notesCls()}
-          placeholder="Notes…"
-          defaultValue={readNotes(it)}
-          onBlur={(e) => commitNotes(t.statusCell!.idx, e.currentTarget.value)}
-          rows={2}
-        />
-
-        {FailRecActions(t.statusCell.idx)}
-      </div>
-    );
-  };
-
-  return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
@@ -1204,7 +1082,7 @@ export default function TireGrid(props: Props) {
                     {t.axle}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    TP center • TD corners{isDual ? " • Dual" : " • Single"}
+                    TP / TD capture only
                   </div>
                 </div>
 
