@@ -60,92 +60,6 @@ type Props = {
 };
 
 
-function renderSmartMatchCard(args: {
-  match: SmartInspectionMatch | null;
-  loading: boolean;
-  onAccept?: () => void;
-  onDismiss?: () => void;
-}) {
-  const { match, loading, onAccept, onDismiss } = args;
-  if (!loading && !match) return null;
-
-  return (
-    <div className="mt-3 rounded-xl border border-[color:var(--pfq-copper,#C57A4A)]/30 bg-[color:var(--pfq-copper,#C57A4A)]/8 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-semibold text-white">
-              {loading ? "Checking previous repairs…" : match?.label || "Matched repair"}
-            </div>
-            {!loading && match ? (
-              <span className="rounded-full border border-[color:var(--pfq-copper,#C57A4A)]/35 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--pfq-copper,#C57A4A)]">
-                Based on previous repairs
-              </span>
-            ) : null}
-          </div>
-
-          {!loading && match ? (
-            <>
-              {match.correction ? (
-                <div className="mt-1 text-xs text-neutral-300">
-                  {match.correction}
-                </div>
-              ) : null}
-
-              <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-neutral-400">
-                {typeof match.laborHours === "number" ? (
-                  <span>
-                    Labor:{" "}
-                    <span className="text-neutral-200">{match.laborHours} hr</span>
-                  </span>
-                ) : null}
-                {Array.isArray(match.parts) && match.parts.length > 0 ? (
-                  <span>
-                    Parts:{" "}
-                    <span className="text-neutral-200">
-                      {match.parts.map((p) => `${p.qty ?? 1}x ${p.name}`).join(", ")}
-                    </span>
-                  </span>
-                ) : null}
-                {typeof match.confidence === "number" ? (
-                  <span>
-                    Confidence:{" "}
-                    <span className="text-neutral-200">
-                      {Math.round(match.confidence * 100)}%
-                    </span>
-                  </span>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </div>
-
-        {!loading && match ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="px-3"
-              onClick={onAccept}
-            >
-              Accept repair
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="px-3 opacity-80"
-              onClick={onDismiss}
-            >
-              Dismiss
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 type Side = "Left" | "Right";
 type DualPos = "Inner" | "Outer";
@@ -712,6 +626,8 @@ export default function TireGrid(props: Props) {
       </>
     );
   };
+
+  void ConditionPanel;
 
   const ItemActions = (cell: Cell | undefined) => {
     if (!cell) return null;
