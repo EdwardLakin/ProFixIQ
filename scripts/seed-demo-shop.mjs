@@ -330,6 +330,7 @@ async function main() {
   };
 
   const vehicleIds = {};
+  const vehicleCustomerIds = {};
   for (const [unit, year, make, model, vin, plate, customerKey] of assets) {
     const customerName = customerMap[customerKey];
     const vehicle = await upsertByNaturalKey({
@@ -350,6 +351,7 @@ async function main() {
       },
     });
     vehicleIds[unit] = vehicle.id;
+    vehicleCustomerIds[unit] = customerIds[customerName];
   }
 
   const resolvePersonaId = (email, fieldLabel, { allowNull = false } = {}) => {
@@ -388,8 +390,37 @@ async function main() {
     ["DEMO-WO-1007", "TR-101", "completed", "Repeat wheel-seal and brake contamination", "approved"],
   ];
 
+  const preflightWorkOrders = workOrders.map(([custom_id, unit, status, notes, approval_state]) => {
+    const vehicleId = vehicleIds[unit];
+    const vehicleCustomerId = vehicleCustomerIds[unit];
+
+    if (!isValidUuid(vehicleId)) {
+      throw new Error(`work_order_preflight failed: ${custom_id} references missing or invalid seeded vehicle for unit ${unit}`);
+    }
+
+    if (!isValidUuid(vehicleCustomerId)) {
+      throw new Error(`work_order_preflight failed: ${custom_id} unit ${unit} has missing/invalid vehicle.customer_id`);
+    }
+
+    const intendedCustomerId = vehicleCustomerId;
+    if (intendedCustomerId !== vehicleCustomerId) {
+      throw new Error(`work_order_preflight failed: ${custom_id} customer mismatch for unit ${unit} (intended ${intendedCustomerId} vs vehicle ${vehicleCustomerId})`);
+    }
+
+    return {
+      custom_id,
+      unit,
+      status,
+      notes,
+      approval_state,
+      vehicleId,
+      vehicleCustomerId,
+      intendedCustomerId,
+    };
+  });
+
   const workOrderIds = {};
-  for (const [custom_id, unit, status, notes, approval_state] of workOrders) {
+  for (const { custom_id, status, notes, approval_state, vehicleId, intendedCustomerId } of preflightWorkOrders) {
     const wo = await upsertByNaturalKey({
       supabase,
       table: "work_orders",
@@ -398,8 +429,8 @@ async function main() {
         shop_id: shopId,
         user_id: advisorId,
         assigned_tech: leadTechId,
-        vehicle_id: vehicleIds[unit],
-        customer_id: customerIds[unit.startsWith("MU") ? "Foothills Municipal Services" : unit.startsWith("SV") || unit === "TR-103" ? "Summit Construction Services" : "North Ridge Logistics Ltd."],
+        vehicle_id: vehicleId,
+        customer_id: intendedCustomerId,
         custom_id,
         status,
         type: "repair",
@@ -493,6 +524,7 @@ async function main() {
   console.log(`vehicle_count: ${counts.vehicles}`);
   console.log(`work_order_count: ${counts.work_orders}`);
   console.log(`inspection_count: ${counts.inspections}`);
+  console.log("vehicle_customer_consistency: passed");
   console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, completed municipal inspection");
   console.log("portal_seed: skipped (schema/flow ambiguity; follow-up in Phase 2)");
   console.log(`safe_domain_check_non_demo_emails: ${unsafeEmails?.length ?? 0}`);
