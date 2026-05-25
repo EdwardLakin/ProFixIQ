@@ -581,7 +581,7 @@ async function main() {
     },
     {
       woNumber: "DEMO-WO-1004",
-      description: "ABS wheel speed sensor backorder",
+      description: "Parts bottleneck - ABS wheel speed sensor backorder",
       complaint: "ABS warning lamp intermittently active.",
       cause: "Sensor failed; replacement currently backordered.",
       correction: "Parts requested, hold line until sensor arrives.",
@@ -591,6 +591,19 @@ async function main() {
       labor_time: 1.1,
       job_type: "repair",
       parts_required: [{ part: "ABS wheel speed sensor", qty: 1 }],
+    },
+    {
+      woNumber: "DEMO-WO-1006",
+      description: "Municipal inspection findings review",
+      complaint: "Municipal unit requires advisor-ready review of inspection findings before release.",
+      cause: "Digital DVIR flagged minor deficiencies that need advisor confirmation and scheduling guidance.",
+      correction: "Review findings with advisor, document recommendations, and queue follow-up service windows.",
+      approval_state: "pending",
+      techId: null,
+      status: "awaiting",
+      labor_time: 0.6,
+      job_type: "inspection",
+      parts_required: [],
     },
     {
       woNumber: "DEMO-WO-1007",
