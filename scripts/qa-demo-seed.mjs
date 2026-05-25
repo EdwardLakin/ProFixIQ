@@ -162,8 +162,10 @@ async function main() {
     const ownerProfile = (profiles ?? []).find((profile) => (profile.email || "").toLowerCase() === ownerEmail);
     addCheck(checks, failures, "owner_profile_exists", Boolean(ownerProfile), { ownerEmail });
 
-    const personaNames = new Set([
+    const seededPersonaNames = new Set([
+      "Demo Owner",
       "Owner Demo",
+      "Prairie Demo Owner",
       "Admin Demo",
       "Manager Demo",
       "Advisor One",
@@ -174,11 +176,30 @@ async function main() {
       "Parts Coordinator",
       "Payroll Coordinator",
     ]);
-    const personaRoles = new Set(["owner", "admin", "manager", "advisor", "tech", "parts"]);
-    const ownerNotPersona = Boolean(ownerProfile) && !personaNames.has(ownerProfile.full_name || "") && !personaRoles.has(ownerProfile.role || "");
+
+    const overwriteSignals = [];
+    const ownerProfileEmail = (ownerProfile?.email || "").trim().toLowerCase();
+    const ownerFullName = (ownerProfile?.full_name || ownerProfile?.name || "").trim();
+    const ownerRole = (ownerProfile?.role || "").trim().toLowerCase();
+
+    if (ownerProfileEmail && ownerProfileEmail !== ownerEmail && isDemoSafeEmail(ownerProfileEmail)) {
+      overwriteSignals.push(`owner_email_replaced_with_demo_safe:${ownerProfileEmail}`);
+    }
+
+    if (ownerFullName && seededPersonaNames.has(ownerFullName)) {
+      overwriteSignals.push(`owner_name_matches_seeded_persona:${ownerFullName}`);
+    }
+
+    if (/\bdemo\b/i.test(ownerFullName) && ownerFullName.toLowerCase() !== "edward lakin") {
+      overwriteSignals.push(`owner_name_contains_demo_marker:${ownerFullName}`);
+    }
+
+    const ownerNotPersona = Boolean(ownerProfile) && overwriteSignals.length === 0;
     addCheck(checks, failures, "owner_profile_not_overwritten_to_persona", ownerNotPersona, {
-      ownerFullName: ownerProfile?.full_name ?? null,
-      ownerRole: ownerProfile?.role ?? null,
+      ownerEmail: ownerProfileEmail || null,
+      ownerFullName: ownerFullName || null,
+      ownerRole: ownerRole || null,
+      overwriteSignals,
     });
 
     addCheck(checks, failures, "portal_depth_absent_phase_1", true, {
