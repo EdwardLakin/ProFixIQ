@@ -87,7 +87,7 @@ async function main() {
   addCheck(checks, failures, "vehicle_count_is_10", counts.vehicles === 10, { actual: counts.vehicles, expected: 10 });
   addCheck(checks, failures, "work_order_count_is_7", counts.work_orders === 7, { actual: counts.work_orders, expected: 7 });
   addCheck(checks, failures, "inspection_count_is_2", counts.inspections === 2, { actual: counts.inspections, expected: 2 });
-  addCheck(checks, failures, "work_order_line_count_min_6", counts.work_order_lines >= 6, { actual: counts.work_order_lines, expectedMin: 6 });
+  addCheck(checks, failures, "work_order_line_count_min_7", counts.work_order_lines >= 7, { actual: counts.work_order_lines, expectedMin: 7 });
 
   const tablesForShopBoundary = ["customers", "vehicles", "work_orders", "inspections", "work_order_lines", "profiles"];
   for (const table of tablesForShopBoundary) {
@@ -170,7 +170,7 @@ async function main() {
     const demo1003HasDeferred = demo1003Lines.some((ln) => ["declined", "deferred"].includes(String(ln.approval_state ?? ln.status ?? "").toLowerCase()) || String(ln.status ?? "").toLowerCase() === "deferred");
     addCheck(checks, failures, "approval_split_lines_exist", demo1003HasAwaiting && demo1003HasDeferred, {});
 
-    const hasPartsBottleneckLine = (linesByCustomId.get("DEMO-WO-1004") ?? []).some((ln) => String(ln.status ?? "").toLowerCase() === "waiting_parts");
+    const hasPartsBottleneckLine = (linesByCustomId.get("DEMO-WO-1004") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("parts bottleneck"));
     addCheck(checks, failures, "parts_bottleneck_line_exists", hasPartsBottleneckLine, {});
 
     const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
