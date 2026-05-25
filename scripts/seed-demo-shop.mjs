@@ -155,6 +155,10 @@ function opError(operation, details, error) {
 
 const COMPLETED_LINE_STATUSES = new Set(["completed", "done", "closed", "invoiced"]);
 const COMPLETED_INSPECTION_STATUSES = new Set(["completed", "done", "closed", "submitted"]);
+const VALID_LINE_STATUSES = new Set(["awaiting", "awaiting_approval", "active", "on_hold", "completed", "invoiced"]);
+const VALID_LINE_APPROVAL_STATES = new Set(["pending", "approved", "declined"]);
+const VALID_LINE_JOB_TYPES = new Set(["diagnosis", "inspection", "maintenance", "repair", "tech-suggested"]);
+const VALID_LINE_TYPES = new Set(["job", "info"]);
 
 function normalizeLineStatus(status) {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
@@ -169,6 +173,40 @@ function validateWorkOrderLineCompletedConstraint(line) {
   if (missing.length > 0) {
     throw new Error(
       `work_order_line_preflight failed: description=\"${line.description}\" status=${normalizedStatus} missing completed fields: ${missing.join(", ")}`,
+    );
+  }
+}
+
+function validateSeededWorkOrderLineFields(line) {
+  const descriptor = line.description ?? "(no description)";
+
+  if (!VALID_LINE_STATUSES.has(line.status)) {
+    throw new Error(
+      `work_order_line_preflight failed: description="${descriptor}" invalid status="${line.status}" allowed=[${Array.from(VALID_LINE_STATUSES).join(", ")}]`,
+    );
+  }
+
+  if (line.line_status !== null && line.line_status !== undefined && !VALID_LINE_STATUSES.has(line.line_status)) {
+    throw new Error(
+      `work_order_line_preflight failed: description="${descriptor}" invalid line_status="${line.line_status}" allowed=[${Array.from(VALID_LINE_STATUSES).join(", ")}]`,
+    );
+  }
+
+  if (line.approval_state !== null && line.approval_state !== undefined && !VALID_LINE_APPROVAL_STATES.has(line.approval_state)) {
+    throw new Error(
+      `work_order_line_preflight failed: description="${descriptor}" invalid approval_state="${line.approval_state}" allowed=[${Array.from(VALID_LINE_APPROVAL_STATES).join(", ")}]`,
+    );
+  }
+
+  if (line.job_type !== null && line.job_type !== undefined && !VALID_LINE_JOB_TYPES.has(line.job_type)) {
+    throw new Error(
+      `work_order_line_preflight failed: description="${descriptor}" invalid job_type="${line.job_type}" allowed=[${Array.from(VALID_LINE_JOB_TYPES).join(", ")}]`,
+    );
+  }
+
+  if (line.line_type !== null && line.line_type !== undefined && !VALID_LINE_TYPES.has(line.line_type)) {
+    throw new Error(
+      `work_order_line_preflight failed: description="${descriptor}" invalid line_type="${line.line_type}" allowed=[${Array.from(VALID_LINE_TYPES).join(", ")}]`,
     );
   }
 }
@@ -510,7 +548,7 @@ async function main() {
       correction: "Replace clamp and retest cooling system.",
       approval_state: null,
       techId: tech1Id,
-      status: "in_progress",
+      status: "active",
       labor_time: 1.8,
       job_type: "diagnosis",
       parts_required: [{ part: "Stainless hose clamp", qty: 1 }],
@@ -536,7 +574,7 @@ async function main() {
       correction: "Defer shock replacement to next service window.",
       approval_state: "declined",
       techId: null,
-      status: "deferred",
+      status: "on_hold",
       labor_time: 0.8,
       job_type: "repair",
       parts_required: [{ part: "Rear shock pair", qty: 1 }],
@@ -549,7 +587,7 @@ async function main() {
       correction: "Parts requested, hold line until sensor arrives.",
       approval_state: "approved",
       techId: tech1Id,
-      status: "waiting_parts",
+      status: "on_hold",
       labor_time: 1.1,
       job_type: "repair",
       parts_required: [{ part: "ABS wheel speed sensor", qty: 1 }],
@@ -562,7 +600,7 @@ async function main() {
       correction: "Replace seal, clean brake assembly, road-test.",
       approval_state: "approved",
       techId: leadTechId,
-      status: "ready_to_invoice",
+      status: "completed",
       labor_time: 2.4,
       job_type: "repair",
       parts_required: [{ part: "Axle wheel seal", qty: 1 }],
@@ -590,6 +628,7 @@ async function main() {
       parts_required,
     };
 
+    validateSeededWorkOrderLineFields(linePayload);
     validateWorkOrderLineCompletedConstraint(linePayload);
 
     await upsertByNaturalKey({
@@ -655,6 +694,7 @@ async function main() {
   console.log(`work_order_count: ${counts.work_orders}`);
   console.log(`inspection_count: ${counts.inspections}`);
   console.log("vehicle_customer_consistency: passed");
+  console.log("work_order_line_status_validation: passed");
   console.log("work_order_line_constraint_validation: passed");
   console.log("inspection_constraint_validation: passed");
   console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, municipal inspection ready for review");
