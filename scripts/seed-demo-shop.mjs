@@ -153,6 +153,25 @@ function opError(operation, details, error) {
   return new Error(`${operation} failed (${details}): ${message}`);
 }
 
+const COMPLETED_LINE_STATUSES = new Set(["completed", "done", "closed", "invoiced"]);
+
+function normalizeLineStatus(status) {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
+}
+
+function validateWorkOrderLineCompletedConstraint(line) {
+  const normalizedStatus = normalizeLineStatus(line.line_status ?? line.status);
+  if (!COMPLETED_LINE_STATUSES.has(normalizedStatus)) return;
+
+  const requiredCompletedFields = ["assigned_tech_id", "punched_in_at", "punched_out_at", "completed_at"];
+  const missing = requiredCompletedFields.filter((field) => !line[field]);
+  if (missing.length > 0) {
+    throw new Error(
+      `work_order_line_preflight failed: description=\"${line.description}\" status=${normalizedStatus} missing completed fields: ${missing.join(", ")}`,
+    );
+  }
+}
+
 async function upsertByNaturalKey({ supabase, table, match, payload, select = "id" }) {
   const query = supabase.from(table).select(select).limit(1);
   for (const [key, value] of Object.entries(match)) query.eq(key, value);
@@ -442,35 +461,39 @@ async function main() {
   }
 
   const lines = [
-    ["DEMO-WO-1003", "Approved steering link replacement", "approved", leadTechId, "completed"],
+    ["DEMO-WO-1003", "Approved steering link replacement", "approved", leadTechId, "active"],
     ["DEMO-WO-1003", "Recommended shock absorbers (deferred)", "declined", leadTechId, "awaiting"],
     ["DEMO-WO-1004", "ABS wheel speed sensor backorder", "pending", tech1Id, "on_hold"],
-    ["DEMO-WO-1002", "Pressure test and leak trace", null, tech1Id, "in_progress"],
-    ["DEMO-WO-1007", "Wheel seal replacement recurrence", "approved", leadTechId, "completed"],
+    ["DEMO-WO-1002", "Pressure test and leak trace", null, tech1Id, "active"],
+    ["DEMO-WO-1007", "Wheel seal replacement recurrence", "approved", leadTechId, "active"],
   ];
 
   for (const [woNumber, description, approval_state, techId, status] of lines) {
+    const linePayload = {
+      shop_id: shopId,
+      work_order_id: workOrderIds[woNumber],
+      user_id: managerId,
+      assigned_to: techId,
+      assigned_tech_id: techId,
+      description,
+      complaint: description,
+      cause: "Demo seeded narrative cause",
+      correction: "Demo seeded narrative correction",
+      line_status: status,
+      status,
+      job_type: "repair",
+      approval_state,
+      labor_time: 1.5,
+      parts_required: [{ part: "Demo Part", qty: 1 }],
+    };
+
+    validateWorkOrderLineCompletedConstraint(linePayload);
+
     await upsertByNaturalKey({
       supabase,
       table: "work_order_lines",
       match: { shop_id: shopId, work_order_id: workOrderIds[woNumber], description },
-      payload: {
-        shop_id: shopId,
-        work_order_id: workOrderIds[woNumber],
-        user_id: managerId,
-        assigned_to: techId,
-        assigned_tech_id: techId,
-        description,
-        complaint: description,
-        cause: "Demo seeded narrative cause",
-        correction: "Demo seeded narrative correction",
-        line_status: status,
-        status,
-        job_type: "repair",
-        approval_state,
-        labor_time: 1.5,
-        parts_required: [{ part: "Demo Part", qty: 1 }],
-      },
+      payload: linePayload,
     });
   }
 
@@ -525,6 +548,7 @@ async function main() {
   console.log(`work_order_count: ${counts.work_orders}`);
   console.log(`inspection_count: ${counts.inspections}`);
   console.log("vehicle_customer_consistency: passed");
+  console.log("work_order_line_constraint_validation: passed");
   console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, completed municipal inspection");
   console.log("portal_seed: skipped (schema/flow ambiguity; follow-up in Phase 2)");
   console.log(`safe_domain_check_non_demo_emails: ${unsafeEmails?.length ?? 0}`);
