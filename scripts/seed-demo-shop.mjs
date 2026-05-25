@@ -46,57 +46,80 @@ function fakeUserIdForEmail(email) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+async function loadProfileBy({ supabase, column, value, label }) {
+  const { data, error } = await supabase.from("profiles").select("id, user_id, email").eq(column, value).limit(1).maybeSingle();
+  if (error) throw opError("owner_profile_lookup", `profiles.${column}=${value}`, error);
+  if (!data?.id) throw new Error(`${label} did not match a profile.`);
+  return data;
+}
+
 async function resolveDemoOwner({ supabase, ownerEmail }) {
   const configuredOwnerUserId = process.env.DEMO_OWNER_USER_ID?.trim() || null;
   const configuredOwnerProfileId = process.env.DEMO_OWNER_PROFILE_ID?.trim() || null;
+  const configuredOwnerEmail = process.env.DEMO_OWNER_EMAIL?.trim() || null;
 
   if (configuredOwnerUserId) requireValidUuid(configuredOwnerUserId, "DEMO_OWNER_USER_ID");
   if (configuredOwnerProfileId) requireValidUuid(configuredOwnerProfileId, "DEMO_OWNER_PROFILE_ID");
 
-  const fallbackFakeId = fakeUserIdForEmail(ownerEmail);
-
   if (dryRun) {
+    const strategy = configuredOwnerProfileId && configuredOwnerUserId
+      ? "DEMO_OWNER_PROFILE_ID+DEMO_OWNER_USER_ID"
+      : configuredOwnerProfileId
+        ? "DEMO_OWNER_PROFILE_ID"
+        : configuredOwnerUserId
+          ? "DEMO_OWNER_USER_ID"
+          : configuredOwnerEmail
+            ? "DEMO_OWNER_EMAIL"
+            : "fallback owner@demo.profixiq.local";
     return {
-      ownerUserId: configuredOwnerUserId ?? fallbackFakeId,
-      ownerProfileId: configuredOwnerProfileId ?? configuredOwnerUserId ?? fallbackFakeId,
-      strategy: configuredOwnerUserId || configuredOwnerProfileId
-        ? "dry-run: using configured demo owner ids"
-        : "dry-run: fake deterministic owner ids (no database writes)",
+      ownerUserId: configuredOwnerUserId ?? fakeUserIdForEmail(configuredOwnerEmail ?? ownerEmail),
+      ownerProfileId: configuredOwnerProfileId ?? configuredOwnerUserId ?? fakeUserIdForEmail(configuredOwnerEmail ?? ownerEmail),
+      strategy,
+      resolvedOwnerEmail: configuredOwnerEmail ?? ownerEmail,
       authUsersSkipped: true,
-      requiresRealOwnerInWriteMode: !(configuredOwnerUserId || configuredOwnerProfileId),
+      requiresRealOwnerInWriteMode: false,
+      realOwnerProfileModified: false,
     };
   }
 
-  const profileCandidates = [];
-  if (configuredOwnerProfileId) profileCandidates.push({ column: "id", value: configuredOwnerProfileId, label: "DEMO_OWNER_PROFILE_ID" });
-  if (configuredOwnerUserId) profileCandidates.push({ column: "id", value: configuredOwnerUserId, label: "DEMO_OWNER_USER_ID" });
-  profileCandidates.push({ column: "email", value: ownerEmail, label: "owner email" });
-
-  for (const candidate of profileCandidates) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, user_id, email")
-      .eq(candidate.column, candidate.value)
-      .limit(1)
-      .maybeSingle();
-    if (error) throw opError("owner_profile_lookup", `profiles.${candidate.column}=${candidate.value}`, error);
-    if (data?.id) {
-      const ownerUserId = configuredOwnerUserId ?? data.user_id ?? data.id;
-      requireValidUuid(ownerUserId, "resolved owner user id");
-      requireValidUuid(data.id, "resolved owner profile id");
-      return {
-        ownerUserId,
-        ownerProfileId: data.id,
-        strategy: `write-mode: using existing profile resolved by ${candidate.label}`,
-        authUsersSkipped: true,
-        requiresRealOwnerInWriteMode: false,
-      };
+  let profile;
+  let strategy;
+  if (configuredOwnerProfileId && configuredOwnerUserId) {
+    strategy = "DEMO_OWNER_PROFILE_ID+DEMO_OWNER_USER_ID";
+    profile = await loadProfileBy({ supabase, column: "id", value: configuredOwnerProfileId, label: "DEMO_OWNER_PROFILE_ID" });
+    if (profile.user_id !== configuredOwnerUserId) {
+      throw new Error("DEMO_OWNER_PROFILE_ID and DEMO_OWNER_USER_ID did not match the same auth-linked profile.");
     }
+  } else if (configuredOwnerProfileId) {
+    strategy = "DEMO_OWNER_PROFILE_ID";
+    profile = await loadProfileBy({ supabase, column: "id", value: configuredOwnerProfileId, label: "DEMO_OWNER_PROFILE_ID" });
+  } else if (configuredOwnerUserId) {
+    strategy = "DEMO_OWNER_USER_ID";
+    profile = await loadProfileBy({ supabase, column: "user_id", value: configuredOwnerUserId, label: "DEMO_OWNER_USER_ID" });
+  } else if (configuredOwnerEmail) {
+    strategy = "DEMO_OWNER_EMAIL";
+    profile = await loadProfileBy({ supabase, column: "email", value: configuredOwnerEmail, label: "DEMO_OWNER_EMAIL" });
+    if (!isValidUuid(profile.id) || !isValidUuid(profile.user_id)) {
+      throw new Error("DEMO_OWNER_EMAIL matched a profile without a valid user_id. Use DEMO_OWNER_PROFILE_ID and DEMO_OWNER_USER_ID for an auth-linked owner.");
+    }
+  } else {
+    strategy = "fallback owner@demo.profixiq.local";
+    profile = await loadProfileBy({ supabase, column: "email", value: ownerEmail, label: "owner@demo.profixiq.local fallback" });
   }
 
-  throw new Error(
-    "Write mode requires an existing owner profile/auth user. Set DEMO_OWNER_USER_ID (or DEMO_OWNER_PROFILE_ID) to an existing profile id, or create a real owner first. Auth user creation is intentionally skipped by this script.",
-  );
+  if (!isValidUuid(profile.id) || !isValidUuid(profile.user_id)) {
+    throw new Error("Write mode requires an auth-linked owner profile with valid UUID id/user_id.");
+  }
+
+  return {
+    ownerUserId: profile.user_id,
+    ownerProfileId: profile.id,
+    strategy,
+    resolvedOwnerEmail: profile.email ?? configuredOwnerEmail ?? ownerEmail,
+    authUsersSkipped: true,
+    requiresRealOwnerInWriteMode: false,
+    realOwnerProfileModified: false,
+  };
 }
 
 function fakeUuidFromKey(key) {
@@ -162,10 +185,11 @@ async function main() {
   const ownerEmail = "owner@demo.profixiq.local";
   const ownerResolution = await resolveDemoOwner({ supabase, ownerEmail });
 
-  logStep(`Owner FK strategy: ${ownerResolution.strategy}`);
+  logStep(`owner strategy: ${ownerResolution.strategy}`);
+  logStep(`resolved owner email: ${ownerResolution.resolvedOwnerEmail}`);
   logStep(`owner_fk_target: shops.owner_id -> profiles.id`);
   logStep(`auth_user_creation: ${ownerResolution.authUsersSkipped ? "skipped" : "enabled"}`);
-  logStep(`owner_env_hints: DEMO_OWNER_USER_ID=${process.env.DEMO_OWNER_USER_ID ? "set" : "unset"}, DEMO_OWNER_PROFILE_ID=${process.env.DEMO_OWNER_PROFILE_ID ? "set" : "unset"}`);
+  logStep(`owner_env_hints: DEMO_OWNER_USER_ID=${process.env.DEMO_OWNER_USER_ID ? "set" : "unset"}, DEMO_OWNER_PROFILE_ID=${process.env.DEMO_OWNER_PROFILE_ID ? "set" : "unset"}, DEMO_OWNER_EMAIL=${process.env.DEMO_OWNER_EMAIL ? "set" : "unset"}`);
   if (ownerResolution.requiresRealOwnerInWriteMode) {
     logStep("write-mode requirement: existing owner profile/auth user required (set DEMO_OWNER_USER_ID or DEMO_OWNER_PROFILE_ID)");
   }
@@ -192,8 +216,22 @@ async function main() {
   const profileActions = [];
   const profileIds = {};
   for (const [email, full_name, role] of DEMO_USERS) {
-    const userId = email === ownerEmail ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
-    const profileId = email === ownerEmail ? ownerResolution.ownerProfileId : userId;
+    const isResolvedRealOwner = ownerResolution.resolvedOwnerEmail?.toLowerCase() === email.toLowerCase();
+    const userId = isResolvedRealOwner ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
+    const profileId = isResolvedRealOwner ? ownerResolution.ownerProfileId : userId;
+
+    if (isResolvedRealOwner) {
+      const profile = await upsertByNaturalKey({
+        supabase,
+        table: "profiles",
+        match: { id: profileId },
+        payload: { shop_id: shopId },
+      });
+      profileIds[email] = profile.id ?? profileId;
+      profileActions.push(`${profile.action}:real-owner-shop-link-only`);
+      continue;
+    }
+
     const profile = await upsertByNaturalKey({
       supabase,
       table: "profiles",
@@ -408,6 +446,9 @@ async function main() {
   console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, completed municipal inspection");
   console.log("portal_seed: skipped (schema/flow ambiguity; follow-up in Phase 2)");
   console.log(`safe_domain_check_non_demo_emails: ${unsafeEmails?.length ?? 0}`);
+  console.log(`owner_profile_id: ${ownerResolution.ownerProfileId.slice(0, 8)}...`);
+  console.log(`owner_user_id: ${ownerResolution.ownerUserId.slice(0, 8)}...`);
+  console.log(`real_owner_profile_modified: ${ownerResolution.realOwnerProfileModified ? "yes" : "no"}`);
   console.log("auth_user_creation: skipped (profiles-only safe path)");
   console.log("storage_urls: none seeded by script");
 }
