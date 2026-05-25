@@ -497,7 +497,7 @@ async function main() {
       correction: "Recommend front brake service and rotor resurfacing.",
       approval_state: "approved",
       techId: leadTechId,
-      status: "ready",
+      status: "active",
       labor_time: 1.4,
       job_type: "inspection",
       parts_required: [{ part: "Front pad set", qty: 1 }],
