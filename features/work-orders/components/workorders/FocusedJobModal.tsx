@@ -916,6 +916,24 @@ export default function FocusedJobModal(props: {
               </div>
 
               <div className="space-y-3">
+              <SectionCard title="Repair story">
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-left text-xs text-neutral-200 hover:border-[var(--accent-copper-light)]/60"
+                  onClick={() => {
+                    closeAllSubModals();
+                    setPrefillCause(line?.cause ?? "");
+                    setPrefillCorrection(line?.correction ?? "");
+                    setOpenComplete(true);
+                  }}
+                >
+                  <div><span className="text-neutral-500">Complaint:</span> {line?.complaint?.trim() || line?.description?.trim() || "Add complaint"}</div>
+                  <div className="mt-1"><span className="text-neutral-500">Cause:</span> {line?.cause?.trim() || "Add cause"}</div>
+                  <div className="mt-1"><span className="text-neutral-500">Correction:</span> {line?.correction?.trim() || "Add correction"}</div>
+                  <div className="mt-2 text-[11px] text-[var(--accent-copper-light)]">Edit story</div>
+                </button>
+              </SectionCard>
+
               <SectionCard title="Tech notes">
                 <textarea
                   rows={isExpandedPanel ? 5 : 3}

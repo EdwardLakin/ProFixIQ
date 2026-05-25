@@ -942,10 +942,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
 
-  const activeJobLines = useMemo(
-    () => jobLines.filter((l) => (l.approval_state ?? null) !== "pending"),
-    [jobLines],
-  );
+  const activeJobLines = useMemo(() => jobLines, [jobLines]);
 
   const approvalPendingQuotes = useMemo(
     () =>
