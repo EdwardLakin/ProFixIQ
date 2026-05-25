@@ -29,6 +29,7 @@ const DEMO_USERS = [
 ];
 
 const dryRun = String(process.env.DEMO_SEED_DRY_RUN || "false").toLowerCase() === "true";
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -45,22 +46,42 @@ function fakeUserIdForEmail(email) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+function fakeUuidFromKey(key) {
+  const hex = Buffer.from(String(key)).toString("hex").padEnd(32, "0").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function isValidUuid(value) {
+  return typeof value === "string" && UUID_REGEX.test(value);
+}
+
+function requireValidUuid(value, label) {
+  if (!isValidUuid(value)) {
+    throw new Error(`${label} must be a valid UUID, received: ${value === null ? "null" : String(value)}`);
+  }
+}
+
+function opError(operation, details, error) {
+  const message = error?.message || "unknown Supabase error";
+  return new Error(`${operation} failed (${details}): ${message}`);
+}
+
 async function upsertByNaturalKey({ supabase, table, match, payload, select = "id" }) {
   const query = supabase.from(table).select(select).limit(1);
   for (const [key, value] of Object.entries(match)) query.eq(key, value);
   const { data: existing, error: lookupError } = await query.maybeSingle();
-  if (lookupError) throw lookupError;
+  if (lookupError) throw opError("lookup", `table=${table} match=${JSON.stringify(match)}`, lookupError);
 
   if (existing?.id) {
     if (!dryRun) {
       const { error } = await supabase.from(table).update(payload).eq("id", existing.id);
-      if (error) throw error;
+      if (error) throw opError("update", `table=${table} id=${existing.id}`, error);
     }
     return { id: existing.id, action: "updated" };
   }
 
   if (dryRun) {
-    return { id: null, action: "would_insert" };
+    return { id: fakeUuidFromKey(`${table}:${JSON.stringify(match)}`), action: "would_insert" };
   }
 
   const { data: inserted, error: insertError } = await supabase
@@ -69,7 +90,7 @@ async function upsertByNaturalKey({ supabase, table, match, payload, select = "i
     .select(select)
     .limit(1)
     .maybeSingle();
-  if (insertError) throw insertError;
+  if (insertError) throw opError("insert", `table=${table} match=${JSON.stringify(match)}`, insertError);
   return { id: inserted?.id ?? null, action: "inserted" };
 }
 
@@ -103,6 +124,7 @@ async function main() {
   });
 
   const shopId = shopResult.id;
+  requireValidUuid(shopId, "shopId");
   if (!shopId && !dryRun) throw new Error("Failed to resolve demo shop id");
   logStep(`Shop ${shopResult.action}: ${DEMO_SHOP.name}`);
 
@@ -201,6 +223,10 @@ async function main() {
   const advisorId = profileIds["advisor1@demo.profixiq.local"];
   const leadTechId = profileIds["leadtech@demo.profixiq.local"];
   const tech1Id = profileIds["tech1@demo.profixiq.local"];
+  requireValidUuid(managerId, "managerId");
+  requireValidUuid(advisorId, "advisorId");
+  requireValidUuid(leadTechId, "leadTechId");
+  requireValidUuid(tech1Id, "tech1Id");
 
   const workOrders = [
     ["DEMO-WO-1001", "TR-101", "new", "Routine PM and brake noise check", "pending"],
@@ -299,7 +325,7 @@ async function main() {
   const counts = {};
   for (const table of tablesToCount) {
     const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("shop_id", shopId);
-    if (error) throw error;
+    if (error) throw opError("count", `table=${table} shop_id=${shopId}`, error);
     counts[table] = count ?? 0;
   }
 
@@ -308,7 +334,7 @@ async function main() {
     .select("email")
     .eq("shop_id", shopId)
     .not("email", "like", "%@demo.profixiq.local");
-  if (unsafeErr) throw unsafeErr;
+  if (unsafeErr) throw opError("safe_domain_check", `table=profiles shop_id=${shopId}`, unsafeErr);
 
   console.log("\n=== Demo seed summary ===");
   console.log(`shop_id: ${shopId ?? "dry-run"}`);
