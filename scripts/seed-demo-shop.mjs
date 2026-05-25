@@ -46,6 +46,59 @@ function fakeUserIdForEmail(email) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+async function resolveDemoOwner({ supabase, ownerEmail }) {
+  const configuredOwnerUserId = process.env.DEMO_OWNER_USER_ID?.trim() || null;
+  const configuredOwnerProfileId = process.env.DEMO_OWNER_PROFILE_ID?.trim() || null;
+
+  if (configuredOwnerUserId) requireValidUuid(configuredOwnerUserId, "DEMO_OWNER_USER_ID");
+  if (configuredOwnerProfileId) requireValidUuid(configuredOwnerProfileId, "DEMO_OWNER_PROFILE_ID");
+
+  const fallbackFakeId = fakeUserIdForEmail(ownerEmail);
+
+  if (dryRun) {
+    return {
+      ownerUserId: configuredOwnerUserId ?? fallbackFakeId,
+      ownerProfileId: configuredOwnerProfileId ?? configuredOwnerUserId ?? fallbackFakeId,
+      strategy: configuredOwnerUserId || configuredOwnerProfileId
+        ? "dry-run: using configured demo owner ids"
+        : "dry-run: fake deterministic owner ids (no database writes)",
+      authUsersSkipped: true,
+      requiresRealOwnerInWriteMode: !(configuredOwnerUserId || configuredOwnerProfileId),
+    };
+  }
+
+  const profileCandidates = [];
+  if (configuredOwnerProfileId) profileCandidates.push({ column: "id", value: configuredOwnerProfileId, label: "DEMO_OWNER_PROFILE_ID" });
+  if (configuredOwnerUserId) profileCandidates.push({ column: "id", value: configuredOwnerUserId, label: "DEMO_OWNER_USER_ID" });
+  profileCandidates.push({ column: "email", value: ownerEmail, label: "owner email" });
+
+  for (const candidate of profileCandidates) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, user_id, email")
+      .eq(candidate.column, candidate.value)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw opError("owner_profile_lookup", `profiles.${candidate.column}=${candidate.value}`, error);
+    if (data?.id) {
+      const ownerUserId = configuredOwnerUserId ?? data.user_id ?? data.id;
+      requireValidUuid(ownerUserId, "resolved owner user id");
+      requireValidUuid(data.id, "resolved owner profile id");
+      return {
+        ownerUserId,
+        ownerProfileId: data.id,
+        strategy: `write-mode: using existing profile resolved by ${candidate.label}`,
+        authUsersSkipped: true,
+        requiresRealOwnerInWriteMode: false,
+      };
+    }
+  }
+
+  throw new Error(
+    "Write mode requires an existing owner profile/auth user. Set DEMO_OWNER_USER_ID (or DEMO_OWNER_PROFILE_ID) to an existing profile id, or create a real owner first. Auth user creation is intentionally skipped by this script.",
+  );
+}
+
 function fakeUuidFromKey(key) {
   const hex = Buffer.from(String(key)).toString("hex").padEnd(32, "0").slice(0, 32);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
@@ -107,7 +160,15 @@ async function main() {
   logStep(`Starting ${dryRun ? "DRY RUN" : "WRITE MODE"}`);
 
   const ownerEmail = "owner@demo.profixiq.local";
-  const ownerUserId = fakeUserIdForEmail(ownerEmail);
+  const ownerResolution = await resolveDemoOwner({ supabase, ownerEmail });
+
+  logStep(`Owner FK strategy: ${ownerResolution.strategy}`);
+  logStep(`owner_fk_target: shops.owner_id -> profiles.id`);
+  logStep(`auth_user_creation: ${ownerResolution.authUsersSkipped ? "skipped" : "enabled"}`);
+  logStep(`owner_env_hints: DEMO_OWNER_USER_ID=${process.env.DEMO_OWNER_USER_ID ? "set" : "unset"}, DEMO_OWNER_PROFILE_ID=${process.env.DEMO_OWNER_PROFILE_ID ? "set" : "unset"}`);
+  if (ownerResolution.requiresRealOwnerInWriteMode) {
+    logStep("write-mode requirement: existing owner profile/auth user required (set DEMO_OWNER_USER_ID or DEMO_OWNER_PROFILE_ID)");
+  }
 
   const shopResult = await upsertByNaturalKey({
     supabase,
@@ -115,8 +176,8 @@ async function main() {
     match: { slug: DEMO_SHOP.slug },
     payload: {
       ...DEMO_SHOP,
-      owner_id: ownerUserId,
-      created_by: ownerUserId,
+      owner_id: ownerResolution.ownerProfileId,
+      created_by: ownerResolution.ownerUserId,
       shop_name: DEMO_SHOP.name,
       use_ai: true,
       require_authorization: true,
@@ -131,13 +192,14 @@ async function main() {
   const profileActions = [];
   const profileIds = {};
   for (const [email, full_name, role] of DEMO_USERS) {
-    const userId = fakeUserIdForEmail(email);
+    const userId = email === ownerEmail ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
+    const profileId = email === ownerEmail ? ownerResolution.ownerProfileId : userId;
     const profile = await upsertByNaturalKey({
       supabase,
       table: "profiles",
       match: { email },
       payload: {
-        id: userId,
+        id: profileId,
         user_id: userId,
         email,
         full_name,
@@ -147,7 +209,7 @@ async function main() {
         completed_onboarding: true,
       },
     });
-    profileIds[email] = profile.id ?? userId;
+    profileIds[email] = profile.id ?? profileId;
     profileActions.push(profile.action);
   }
 
