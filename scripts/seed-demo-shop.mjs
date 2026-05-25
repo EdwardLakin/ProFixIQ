@@ -600,7 +600,7 @@ async function main() {
       correction: "Replace seal, clean brake assembly, road-test.",
       approval_state: "approved",
       techId: leadTechId,
-      status: "completed",
+      status: "active",
       labor_time: 2.4,
       job_type: "repair",
       parts_required: [{ part: "Axle wheel seal", qty: 1 }],
