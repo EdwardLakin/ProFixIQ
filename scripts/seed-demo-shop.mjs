@@ -154,6 +154,7 @@ function opError(operation, details, error) {
 }
 
 const COMPLETED_LINE_STATUSES = new Set(["completed", "done", "closed", "invoiced"]);
+const COMPLETED_INSPECTION_STATUSES = new Set(["completed", "done", "closed", "submitted"]);
 
 function normalizeLineStatus(status) {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
@@ -168,6 +169,33 @@ function validateWorkOrderLineCompletedConstraint(line) {
   if (missing.length > 0) {
     throw new Error(
       `work_order_line_preflight failed: description=\"${line.description}\" status=${normalizedStatus} missing completed fields: ${missing.join(", ")}`,
+    );
+  }
+}
+
+function normalizeInspectionStatus(status) {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
+}
+
+function isCompletedLikeInspection(inspection) {
+  const normalizedStatus = normalizeInspectionStatus(inspection.status);
+  return Boolean(inspection.completed) || COMPLETED_INSPECTION_STATUSES.has(normalizedStatus);
+}
+
+function validateInspectionCompletedConstraint(inspection) {
+  if (!isCompletedLikeInspection(inspection)) return;
+
+  const normalizedStatus = normalizeInspectionStatus(inspection.status);
+  const missing = [];
+
+  if (normalizedStatus !== "completed") missing.push("status=completed");
+  if (inspection.completed !== true) missing.push("completed=true");
+  if (inspection.is_draft !== false) missing.push("is_draft=false");
+  if (!inspection.summary || typeof inspection.summary !== "object") missing.push("summary(jsonb)");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `inspection_preflight failed: work_order_id=${inspection.work_order_id} inspection_type=${inspection.inspection_type} missing completed-state requirements: ${missing.join(", ")}`,
     );
   }
 }
@@ -499,29 +527,33 @@ async function main() {
 
   const inspections = [
     ["DEMO-WO-1003", "in_progress", "Suspension inspection found urgent steering wear", false],
-    ["DEMO-WO-1006", "completed", "Municipal unit passed, minor recommendations logged", true],
+    ["DEMO-WO-1006", "in_progress", "Municipal inspection ready for advisor review; minor recommendations logged", false],
   ];
 
   for (const [woNumber, status, notes, completed] of inspections) {
+    const inspectionPayload = {
+      shop_id: shopId,
+      user_id: tech1Id,
+      work_order_id: workOrderIds[woNumber],
+      vehicle_id: woNumber === "DEMO-WO-1006" ? vehicleIds["MU-401"] : vehicleIds["TR-103"],
+      inspection_type: "digital_dvir",
+      status,
+      completed,
+      notes,
+      summary: {
+        failed_items: woNumber === "DEMO-WO-1003" ? ["Tie rod end play exceeds spec"] : [],
+        recommended_items: ["Schedule follow-up in 30 days"],
+      },
+      is_draft: !completed,
+    };
+
+    validateInspectionCompletedConstraint(inspectionPayload);
+
     await upsertByNaturalKey({
       supabase,
       table: "inspections",
       match: { shop_id: shopId, work_order_id: workOrderIds[woNumber], inspection_type: "digital_dvir" },
-      payload: {
-        shop_id: shopId,
-        user_id: tech1Id,
-        work_order_id: workOrderIds[woNumber],
-        vehicle_id: woNumber === "DEMO-WO-1006" ? vehicleIds["MU-401"] : vehicleIds["TR-103"],
-        inspection_type: "digital_dvir",
-        status,
-        completed,
-        notes,
-        summary: {
-          failed_items: woNumber === "DEMO-WO-1003" ? ["Tie rod end play exceeds spec"] : [],
-          recommended_items: ["Schedule follow-up in 30 days"],
-        },
-        is_draft: !completed,
-      },
+      payload: inspectionPayload,
     });
   }
 
@@ -549,7 +581,8 @@ async function main() {
   console.log(`inspection_count: ${counts.inspections}`);
   console.log("vehicle_customer_consistency: passed");
   console.log("work_order_line_constraint_validation: passed");
-  console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, completed municipal inspection");
+  console.log("inspection_constraint_validation: passed");
+  console.log("notable_moments: awaiting approval quote split, parts bottleneck, recurring TR-101 repair, municipal inspection ready for review");
   console.log("portal_seed: skipped (schema/flow ambiguity; follow-up in Phase 2)");
   console.log(`safe_domain_check_non_demo_emails: ${unsafeEmails?.length ?? 0}`);
   console.log(`owner_profile_id: ${ownerResolution.ownerProfileId.slice(0, 8)}...`);
