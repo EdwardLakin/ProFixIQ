@@ -87,7 +87,7 @@ async function main() {
   addCheck(checks, failures, "vehicle_count_is_10", counts.vehicles === 10, { actual: counts.vehicles, expected: 10 });
   addCheck(checks, failures, "work_order_count_is_7", counts.work_orders === 7, { actual: counts.work_orders, expected: 7 });
   addCheck(checks, failures, "inspection_count_is_2", counts.inspections === 2, { actual: counts.inspections, expected: 2 });
-  addCheck(checks, failures, "work_order_line_count_gt_0", counts.work_order_lines > 0, { actual: counts.work_order_lines });
+  addCheck(checks, failures, "work_order_line_count_min_6", counts.work_order_lines >= 6, { actual: counts.work_order_lines, expectedMin: 6 });
 
   const tablesForShopBoundary = ["customers", "vehicles", "work_orders", "inspections", "work_order_lines", "profiles"];
   for (const table of tablesForShopBoundary) {
@@ -138,7 +138,7 @@ async function main() {
 
     const { data: lines, error: lineError } = await supabase
       .from("work_order_lines")
-      .select("id, shop_id, description, complaint, cause, correction, parts_required")
+      .select("id, work_order_id, shop_id, description, complaint, cause, correction, parts_required, status, approval_state, labor_time, punched_out_at")
       .eq("shop_id", shopId);
     if (lineError) throw new Error(`work_order_lines readback failed: ${lineError.message}`);
 
@@ -146,6 +146,38 @@ async function main() {
       storageScan.push(line.description, line.complaint, line.cause, line.correction, line.parts_required);
     }
 
+
+
+    const woById = new Map((workOrders ?? []).map((wo) => [wo.id, wo]));
+    const linesByCustomId = new Map();
+    for (const ln of lines ?? []) {
+      const customId = woById.get(ln.work_order_id)?.custom_id ?? null;
+      if (!customId) continue;
+      if (!linesByCustomId.has(customId)) linesByCustomId.set(customId, []);
+      linesByCustomId.get(customId).push(ln);
+    }
+
+    for (const wo of workOrders ?? []) {
+      if (wo.custom_id === "DEMO-WO-1005") continue;
+      addCheck(checks, failures, `visible_lines_${wo.custom_id}`, (linesByCustomId.get(wo.custom_id)?.length ?? 0) > 0, { custom_id: wo.custom_id });
+    }
+
+    const nonZeroLaborOrLine = (lines ?? []).some((ln) => Number(ln.labor_time ?? 0) > 0);
+    addCheck(checks, failures, "line_has_non_zero_labor_or_total", nonZeroLaborOrLine, {});
+
+    const demo1003Lines = linesByCustomId.get("DEMO-WO-1003") ?? [];
+    const demo1003HasAwaiting = demo1003Lines.some((ln) => String(ln.approval_state ?? "").toLowerCase() === "pending" || String(ln.status ?? "").toLowerCase() === "awaiting_approval");
+    const demo1003HasDeferred = demo1003Lines.some((ln) => ["declined", "deferred"].includes(String(ln.approval_state ?? ln.status ?? "").toLowerCase()) || String(ln.status ?? "").toLowerCase() === "deferred");
+    addCheck(checks, failures, "approval_split_lines_exist", demo1003HasAwaiting && demo1003HasDeferred, {});
+
+    const hasPartsBottleneckLine = (linesByCustomId.get("DEMO-WO-1004") ?? []).some((ln) => String(ln.status ?? "").toLowerCase() === "waiting_parts");
+    addCheck(checks, failures, "parts_bottleneck_line_exists", hasPartsBottleneckLine, {});
+
+    const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
+    addCheck(checks, failures, "recurring_tr101_line_exists", hasRecurringTr101Line, {});
+
+    const invalidCompleted = (lines ?? []).filter((ln) => ["completed", "ready_to_invoice", "invoiced"].includes(String(ln.status ?? "").toLowerCase()) && !ln.punched_out_at);
+    addCheck(checks, failures, "completed_like_lines_have_completion_fields", invalidCompleted.length === 0, { invalidCount: invalidCompleted.length });
     addCheck(checks, failures, "no_public_storage_urls_found", !storageScan.some((item) => hasPublicStorageUrl(item)), {});
 
     const { data: profiles, error: profilesError } = await supabase
