@@ -53,6 +53,17 @@ async function loadProfileBy({ supabase, column, value, label }) {
   return data;
 }
 
+async function loadProfileByEmail({ supabase, email }) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, user_id, email, full_name, role, shop_id")
+    .eq("email", email)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw opError("profile_lookup", `profiles.email=${email}`, error);
+  return data ?? null;
+}
+
 async function resolveDemoOwner({ supabase, ownerEmail }) {
   const configuredOwnerUserId = process.env.DEMO_OWNER_USER_ID?.trim() || null;
   const configuredOwnerProfileId = process.env.DEMO_OWNER_PROFILE_ID?.trim() || null;
@@ -215,6 +226,11 @@ async function main() {
 
   const profileActions = [];
   const profileIds = {};
+  const skippedPersonas = [];
+  const assignmentFallbacks = [];
+  const intendedPersonaCount = DEMO_USERS.length;
+  let createdOrUpdatedProfileCount = 0;
+  let realOwnerProfileModified = false;
   for (const [email, full_name, role] of DEMO_USERS) {
     const isResolvedRealOwner = ownerResolution.resolvedOwnerEmail?.toLowerCase() === email.toLowerCase();
     const userId = isResolvedRealOwner ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
@@ -229,6 +245,22 @@ async function main() {
       });
       profileIds[email] = profile.id ?? profileId;
       profileActions.push(`${profile.action}:real-owner-shop-link-only`);
+      createdOrUpdatedProfileCount += 1;
+      if (profile.action === "updated" || profile.action === "inserted") realOwnerProfileModified = true;
+      continue;
+    }
+
+    if (dryRun) {
+      profileIds[email] = profileId;
+      profileActions.push("dry_run_fake_persona_only");
+      continue;
+    }
+
+    const existingProfile = await loadProfileByEmail({ supabase, email });
+    const hasAuthLinkedIds = isValidUuid(existingProfile?.id) && isValidUuid(existingProfile?.user_id);
+    if (!existingProfile || !hasAuthLinkedIds) {
+      skippedPersonas.push({ email, reason: "missing auth-linked profile" });
+      profileActions.push("skipped:missing auth-linked profile");
       continue;
     }
 
@@ -237,8 +269,8 @@ async function main() {
       table: "profiles",
       match: { email },
       payload: {
-        id: profileId,
-        user_id: userId,
+        id: existingProfile.id,
+        user_id: existingProfile.user_id,
         email,
         full_name,
         role,
@@ -247,8 +279,9 @@ async function main() {
         completed_onboarding: true,
       },
     });
-    profileIds[email] = profile.id ?? profileId;
+    profileIds[email] = profile.id ?? existingProfile.id;
     profileActions.push(profile.action);
+    createdOrUpdatedProfileCount += 1;
   }
 
   const customers = [
@@ -319,10 +352,27 @@ async function main() {
     vehicleIds[unit] = vehicle.id;
   }
 
-  const managerId = profileIds["manager@demo.profixiq.local"];
-  const advisorId = profileIds["advisor1@demo.profixiq.local"];
-  const leadTechId = profileIds["leadtech@demo.profixiq.local"];
-  const tech1Id = profileIds["tech1@demo.profixiq.local"];
+  const resolvePersonaId = (email, fieldLabel, { allowNull = false } = {}) => {
+    const personaId = profileIds[email];
+    if (isValidUuid(personaId)) return personaId;
+    if (allowNull) {
+      assignmentFallbacks.push({ field: fieldLabel, requested_email: email, fallback: "null", reason: "missing auth-linked profile" });
+      return null;
+    }
+    assignmentFallbacks.push({
+      field: fieldLabel,
+      requested_email: email,
+      fallback: ownerResolution.resolvedOwnerEmail,
+      fallback_id: ownerResolution.ownerProfileId,
+      reason: "missing auth-linked profile",
+    });
+    return ownerResolution.ownerProfileId;
+  };
+
+  const managerId = resolvePersonaId("manager@demo.profixiq.local", "managerId");
+  const advisorId = resolvePersonaId("advisor1@demo.profixiq.local", "advisorId");
+  const leadTechId = resolvePersonaId("leadtech@demo.profixiq.local", "leadTechId");
+  const tech1Id = resolvePersonaId("tech1@demo.profixiq.local", "tech1Id");
   requireValidUuid(managerId, "managerId");
   requireValidUuid(advisorId, "advisorId");
   requireValidUuid(leadTechId, "leadTechId");
@@ -448,7 +498,15 @@ async function main() {
   console.log(`safe_domain_check_non_demo_emails: ${unsafeEmails?.length ?? 0}`);
   console.log(`owner_profile_id: ${ownerResolution.ownerProfileId.slice(0, 8)}...`);
   console.log(`owner_user_id: ${ownerResolution.ownerUserId.slice(0, 8)}...`);
-  console.log(`real_owner_profile_modified: ${ownerResolution.realOwnerProfileModified ? "yes" : "no"}`);
+  console.log(`real_owner_profile_modified: ${(ownerResolution.realOwnerProfileModified || realOwnerProfileModified) ? "yes" : "no"}`);
+  console.log(`intended_persona_count: ${intendedPersonaCount}`);
+  console.log(`created_or_updated_profile_count: ${createdOrUpdatedProfileCount}`);
+  console.log(`skipped_persona_count: ${skippedPersonas.length}`);
+  console.log(`skipped_personas: ${JSON.stringify(skippedPersonas)}`);
+  console.log(`assignment_fallbacks: ${JSON.stringify(assignmentFallbacks)}`);
+  if (dryRun) {
+    console.log("dry_run_note: fake persona IDs are dry-run only; write mode requires existing auth-linked profiles.");
+  }
   console.log("auth_user_creation: skipped (profiles-only safe path)");
   console.log("storage_urls: none seeded by script");
 }
