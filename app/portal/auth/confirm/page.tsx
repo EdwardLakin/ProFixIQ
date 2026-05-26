@@ -10,6 +10,8 @@ const COPPER = "#C57A4A";
 
 type CustomersRow = Database["public"]["Tables"]["customers"]["Row"];
 type CustomersInsert = Database["public"]["Tables"]["customers"]["Insert"];
+type CustomerPortalInviteRow =
+  Database["public"]["Tables"]["customer_portal_invites"]["Row"];
 
 /**
  * Portal Confirm
@@ -62,31 +64,53 @@ export default function PortalConfirmPage() {
         }
 
         // -------------------------------------------------------------------
-        // Ensure this authed user has a portal customer profile.
-        // Try to attach to an existing customer row by email first (so we
-        // keep the shop_id + history from the work order), otherwise create.
+        // Require invite context evidence before linking customer portal data.
+        // Without this, generic email confirmation can expose customer data.
         // -------------------------------------------------------------------
         try {
           const email = session.user.email ?? null;
           if (email) {
+            const normalizedEmail = email.toLowerCase();
+            const { data: inviteRows, error: inviteErr } = await supabase
+              .from("customer_portal_invites")
+              .select("id, customer_id, email")
+              .eq("email", normalizedEmail)
+              .limit(5);
+
+            const hasInviteContext =
+              !inviteErr && Array.isArray(inviteRows) && inviteRows.length > 0;
+
+            if (!hasInviteContext) {
+              router.replace("/portal");
+              return;
+            }
+
             const { data: existing, error: findErr } = await supabase
               .from("customers")
               .select("id, shop_id, user_id")
-              .eq("email", email.toLowerCase())
+              .eq("email", normalizedEmail)
               .limit(1);
 
             if (!findErr && existing && existing.length > 0) {
               const row = existing[0] as CustomersRow;
-              if (!row.user_id) {
+              const inviteCustomerIds = (inviteRows as Pick<
+                CustomerPortalInviteRow,
+                "customer_id"
+              >[]).map((row) => row.customer_id);
+              const hasMatchingInviteCustomer = inviteCustomerIds.includes(
+                row.id,
+              );
+
+              if (!row.user_id && hasMatchingInviteCustomer) {
                 await supabase
                   .from("customers")
                   .update({ user_id: session.user.id })
                   .eq("id", row.id);
               }
-            } else {
+            } else if (inviteRows.some((r) => !!r.customer_id)) {
               const insertPayload: CustomersInsert = {
                 user_id: session.user.id,
-                email: email.toLowerCase(),
+                email: normalizedEmail,
               };
               await supabase
                 .from("customers")
