@@ -71,7 +71,7 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
         : "https://example.com";
 
   const bookingUrl = `${base}/portal/booking?shop=${encodeURIComponent(slug)}`;
-  const qrSrc = `/api/portal/qr?shop=${encodeURIComponent(slug)}`;
+  const qrSrc = `/api/portal/qr/${encodeURIComponent(slug)}`;
 
   const Card =
     "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
