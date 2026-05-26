@@ -7,10 +7,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import {
-  requireAuthedUser,
-  requirePortalCustomer,
-} from "@/features/portal/server/portalAuth";
+import { requirePortalCustomerActor, } from "@/features/portal/server/requirePortalActor";
 
 type DB = Database;
 
@@ -75,8 +72,8 @@ export default async function HistoryPage() {
   });
 
   try {
-    const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
+    const actor = await requirePortalCustomerActor(supabase);
+    const customer = actor.customer;
 
     const { data: historyRows, error: historyErr } = await supabase
       .from("history")

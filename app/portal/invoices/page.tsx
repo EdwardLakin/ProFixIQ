@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import { requireAuthedUser, requirePortalCustomer } from "@/features/portal/server/portalAuth";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
 export const dynamic = "force-dynamic";
 
@@ -126,8 +126,8 @@ export default async function PortalInvoicesIndexPage() {
   const supabase = createServerComponentClient<DB>({ cookies: () => cookieStore });
 
   try {
-    const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
+    const actor = await requirePortalCustomerActor(supabase);
+    const customer = actor.customer;
 
     const { data: woRows, error: woErr } = await supabase
       .from("work_orders")

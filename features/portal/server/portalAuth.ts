@@ -10,39 +10,34 @@ export type ShopRow = Pick<
   "id" | "slug" | "timezone"
 >;
 
+type CustomerPortalInviteRow =
+  DB["public"]["Tables"]["customer_portal_invites"]["Row"];
+
 export type PortalCustomer = Pick<
   CustomerRow,
   "id" | "user_id" | "shop_id" | "first_name" | "last_name" | "email" | "phone"
 >;
 
-/**
- * Work order fields visible to the customer portal
- */
-export type PortalWorkOrder = Pick<
-  WorkOrderRow,
-  | "id"
-  | "shop_id"
-  | "customer_id"
-  | "vehicle_id"
-  | "status"
-  | "approval_state"
-  | "is_waiter"
-  | "notes"
-  | "created_at"
-  | "updated_at"
-  | "custom_id"
-  | "invoice_sent_at"
-  | "invoice_last_sent_to"
-  | "invoice_pdf_url"
-  | "invoice_url"
-  | "invoice_total"
-  | "labor_total"
-  | "parts_total"
-  | "intake_json"
-  | "intake_status"
-  | "intake_submitted_at"
-  | "intake_submitted_by"
+export type PortalInviteEvidence = Pick<
+  CustomerPortalInviteRow,
+  "id" | "customer_id" | "email"
 >;
+
+export class PortalAccessError extends Error {
+  status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403) {
+    super(message);
+    this.name = "PortalAccessError";
+    this.status = status;
+  }
+}
+
+export type PortalCustomerAccess = {
+  user: { id: string; email: string };
+  customer: PortalCustomer;
+  inviteEvidence: PortalInviteEvidence;
+};
 
 export function nonEmpty(s: unknown): s is string {
   return typeof s === "string" && s.trim().length > 0;
@@ -54,27 +49,64 @@ export function asIsoOrThrow(iso: string, label: string): string {
   return d.toISOString();
 }
 
-/**
- * Ensure the Supabase session has a valid user
- */
 export async function requireAuthedUser(
   supabase: SupabaseClient<DB>,
-): Promise<{ id: string }> {
+): Promise<{ id: string; email: string }> {
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    throw new Error(error?.message || "Not authenticated");
+    throw new PortalAccessError(error?.message || "Not authenticated", 401);
   }
 
-  return { id: user.id };
+  const email = user.email?.trim().toLowerCase() ?? "";
+  if (!email) {
+    throw new PortalAccessError("Not authenticated", 401);
+  }
+
+  return { id: user.id, email };
 }
 
-/**
- * Ensure the logged-in user has a matching customer record
- */
+export async function requirePortalCustomerAccess(
+  supabase: SupabaseClient<DB>,
+  userId: string,
+  userEmail: string,
+): Promise<PortalCustomerAccess> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id,user_id,shop_id,first_name,last_name,email,phone")
+    .eq("user_id", userId)
+    .maybeSingle<PortalCustomer>();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new PortalAccessError("Customer profile not found for this user", 403);
+
+  const { data: invites, error: invitesErr } = await supabase
+    .from("customer_portal_invites")
+    .select("id,customer_id,email")
+    .eq("customer_id", data.id)
+    .limit(20)
+    .returns<PortalInviteEvidence[]>();
+
+  if (invitesErr) throw new Error(invitesErr.message);
+
+  const inviteEvidence = (invites ?? []).find(
+    (row) => row.customer_id === data.id && row.email.trim().toLowerCase() === userEmail,
+  );
+
+  if (!inviteEvidence) {
+    throw new PortalAccessError("Portal invite required", 403);
+  }
+
+  return {
+    user: { id: userId, email: userEmail },
+    customer: data,
+    inviteEvidence,
+  };
+}
+
 export async function requirePortalCustomer(
   supabase: SupabaseClient<DB>,
   userId: string,
@@ -86,14 +118,11 @@ export async function requirePortalCustomer(
     .maybeSingle<PortalCustomer>();
 
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("Customer profile not found for this user");
+  if (!data) throw new PortalAccessError("Customer profile not found for this user", 403);
 
   return data;
 }
 
-/**
- * Verify the work order belongs to the authenticated customer
- */
 export async function requireWorkOrderOwnedByCustomer(
   supabase: SupabaseClient<DB>,
   workOrderId: string,
@@ -137,10 +166,32 @@ export async function requireWorkOrderOwnedByCustomer(
   return data;
 }
 
-/**
- * Optional helper specifically for intake routes
- * (Same validation, but clearer intent)
- */
+export type PortalWorkOrder = Pick<
+  WorkOrderRow,
+  | "id"
+  | "shop_id"
+  | "customer_id"
+  | "vehicle_id"
+  | "status"
+  | "approval_state"
+  | "is_waiter"
+  | "notes"
+  | "created_at"
+  | "updated_at"
+  | "custom_id"
+  | "invoice_sent_at"
+  | "invoice_last_sent_to"
+  | "invoice_pdf_url"
+  | "invoice_url"
+  | "invoice_total"
+  | "labor_total"
+  | "parts_total"
+  | "intake_json"
+  | "intake_status"
+  | "intake_submitted_at"
+  | "intake_submitted_by"
+>;
+
 export async function requireCustomerWorkOrderForIntake(
   supabase: SupabaseClient<DB>,
   workOrderId: string,
@@ -149,9 +200,6 @@ export async function requireCustomerWorkOrderForIntake(
   return requireWorkOrderOwnedByCustomer(supabase, workOrderId, customerId);
 }
 
-/**
- * Load shop by slug (portal routing)
- */
 export async function requireShopBySlug(
   supabase: SupabaseClient<DB>,
   shopSlug: string,

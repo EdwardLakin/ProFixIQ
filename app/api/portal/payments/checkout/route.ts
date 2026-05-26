@@ -5,11 +5,8 @@ import { cookies as nextCookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import {
-  requireAuthedUser,
-  requirePortalCustomer,
-  requireWorkOrderOwnedByCustomer,
-} from "@/features/portal/server/portalAuth";
+import { PortalAccessError, requireWorkOrderOwnedByCustomer } from "@/features/portal/server/portalAuth";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
 type DB = Database;
 
@@ -75,9 +72,9 @@ export async function POST(req: Request) {
 
     const supabase = createRouteHandlerClient<DB>({ cookies: nextCookies });
 
-    // Auth
-    const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
+    const actor = await requirePortalCustomerActor(supabase);
+    const userId = actor.userId;
+    const customer = actor.customer;
 
     // Read email safely (requireAuthedUser may only return id)
     const {
@@ -218,6 +215,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: unknown) {
+    if (err instanceof PortalAccessError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const msg = err instanceof Error ? err.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
