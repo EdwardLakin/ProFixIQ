@@ -170,7 +170,11 @@ async function main() {
     const demo1003HasDeferred = demo1003Lines.some((ln) => ["declined", "deferred"].includes(String(ln.approval_state ?? ln.status ?? "").toLowerCase()) || String(ln.status ?? "").toLowerCase() === "deferred");
     addCheck(checks, failures, "approval_split_lines_exist", demo1003HasAwaiting && demo1003HasDeferred, {});
 
-    const hasPartsBottleneckLine = (linesByCustomId.get("DEMO-WO-1004") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("parts bottleneck"));
+    const hasPartsBottleneckLine = (linesByCustomId.get("DEMO-WO-1004") ?? []).some((ln) => {
+      const description = String(ln.description || "").toLowerCase();
+      const correction = String(ln.correction || "").toLowerCase();
+      return description.includes("parts bottleneck") || correction.includes("demo_moment:parts_bottleneck");
+    });
     addCheck(checks, failures, "parts_bottleneck_line_exists", hasPartsBottleneckLine, {});
 
     const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
