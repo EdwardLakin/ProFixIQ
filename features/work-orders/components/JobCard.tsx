@@ -30,6 +30,7 @@ type ReviewFlags = {
 };
 
 type PricingSummary = {
+  laborHours?: number | null;
   laborTotal?: number | null;
   partsTotal?: number | null;
   lineTotal?: number | null;
@@ -523,7 +524,12 @@ export function JobCard({
                   <MetaTile label="Assigned Tech" value={assignedTech} />
                   <MetaTile
                     label="Labor"
-                    value={formatLaborSummary(line.labor_time, Number(pricing?.laborTotal ?? 0))}
+                    value={formatLaborSummary(
+                      Number.isFinite(Number(pricing?.laborHours))
+                        ? Number(pricing?.laborHours)
+                        : line.labor_time,
+                      Number(pricing?.laborTotal ?? 0),
+                    )}
                   />
                   <MetaTile
                     label="Parts"

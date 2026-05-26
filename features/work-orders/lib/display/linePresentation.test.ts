@@ -5,6 +5,7 @@ import {
   resolvePartsBottleneckDisplay,
   resolvePrimaryTechDisplay,
 } from "./linePresentation";
+import { resolveWorkOrderLinePricing } from "../pricing/resolveWorkOrderLinePricing";
 
 describe("linePresentation", () => {
   it("returns Unassigned when tech is missing or non-tech profile", () => {
@@ -29,6 +30,30 @@ describe("linePresentation", () => {
   it("formats labor summary with non-zero labor dollars", () => {
     expect(formatLaborSummary(2.2, 319)).toContain("2.2h");
     expect(formatLaborSummary(2.2, 319)).toContain("$319.00");
+  });
+
+  it("resolves labor total from line total when parts and labor time are present", () => {
+    const pricing = resolveWorkOrderLinePricing({
+      line: { labor_time: 2.2, price_estimate: 844 },
+      shopLaborRate: null,
+      stagedParts: [{ quantity: 1, unit_price: 525, total_price: 525 }],
+    });
+    expect(pricing.laborHours).toBe(2.2);
+    expect(pricing.partsTotal).toBe(525);
+    expect(pricing.laborTotal).toBe(319);
+    expect(pricing.lineTotal).toBe(844);
+    expect(formatLaborSummary(pricing.laborHours, pricing.laborTotal)).toContain("$319.00");
+  });
+
+  it("does not collapse to zero labor when line total exists without parts", () => {
+    const pricing = resolveWorkOrderLinePricing({
+      line: { labor_time: 0.6, price_estimate: 87 },
+      shopLaborRate: null,
+    });
+    expect(pricing.laborHours).toBe(0.6);
+    expect(pricing.partsTotal).toBe(0);
+    expect(pricing.laborTotal).toBe(87);
+    expect(formatLaborSummary(pricing.laborHours, pricing.laborTotal)).toContain("$87.00");
   });
 
   it("formats parts summary with requested estimate", () => {
