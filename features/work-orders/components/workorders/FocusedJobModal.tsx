@@ -19,6 +19,8 @@ import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
+import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
@@ -181,6 +183,7 @@ export default function FocusedJobModal(props: {
   const [prefillCorrection, setPrefillCorrection] = useState("");
 
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
+  const [assignedTechProfile, setAssignedTechProfile] = useState<{ id: string; full_name: string | null; role: string | null } | null>(null);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
@@ -248,6 +251,16 @@ export default function FocusedJobModal(props: {
 
         setLine(l ?? null);
         setTechNotes(l?.notes ?? "");
+        if (l?.assigned_tech_id) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id, full_name, role")
+            .eq("id", l.assigned_tech_id)
+            .maybeSingle<{ id: string; full_name: string | null; role: string | null }>();
+          if (!cancelled) setAssignedTechProfile(profile ?? null);
+        } else {
+          setAssignedTechProfile(null);
+        }
 
         if (l?.work_order_id) {
           const { data: wo, error: we } = await supabase
@@ -551,13 +564,17 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant && panelExpanded;
   const partsCount = allocs.length;
-  const laborDisplay =
-    typeof line?.labor_time === "number" ? `${line.labor_time.toFixed(1)} h` : "—";
-  const lineTotal = Number(
-    (line as unknown as { line_total?: number | null; total_price?: number | null })?.line_total ??
-      (line as unknown as { total_price?: number | null })?.total_price ??
-      0,
-  );
+  const pricing = line
+    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs })
+    : null;
+  const laborDisplay = pricing && pricing.laborHours > 0
+    ? `Labor ${pricing.laborHours.toFixed(1)}h · ${new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(pricing.laborTotal)}`
+    : "Estimate pending";
+  const lineTotal = Number(pricing?.lineTotal ?? 0);
+  const hasPartsRequestedMarker =
+    String(line?.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck") ||
+    String(line?.hold_reason ?? "").toLowerCase().includes("part") ||
+    String(line?.description ?? "").toLowerCase().includes("backorder");
 
   if (!isOpen) return null;
 
@@ -821,17 +838,17 @@ export default function FocusedJobModal(props: {
                   />
                   <MetaStat
                     label="Primary tech"
-                    value={line.assigned_tech_id ? `${line.assigned_tech_id.slice(0, 8)}…` : "Unassigned"}
+                    value={resolvePrimaryTechDisplay(line, assignedTechProfile)}
                   />
                   <MetaStat label="Parts count" value={String(partsCount)} />
                   <MetaStat label="Labor" value={laborDisplay} />
                   <MetaStat
                     label="Line total"
-                    value={new Intl.NumberFormat("en-CA", {
+                    value={lineTotal > 0 ? new Intl.NumberFormat("en-CA", {
                       style: "currency",
                       currency: "CAD",
                       maximumFractionDigits: 2,
-                    }).format(lineTotal)}
+                    }).format(lineTotal) : "Estimate pending"}
                   />
                 </div>
               </SectionCard>
@@ -949,6 +966,10 @@ export default function FocusedJobModal(props: {
               <SectionCard title="Parts used">
                 {allocsLoading ? (
                   <div className="text-sm text-neutral-300">Loading…</div>
+                ) : hasPartsRequestedMarker && allocs.length === 0 ? (
+                  <div className="text-sm text-neutral-200">
+                    Parts requested/waiting: ABS wheel speed sensor — backordered.
+                  </div>
                 ) : allocs.length === 0 ? (
                   <div className="text-sm text-neutral-300">No parts used yet.</div>
                 ) : (

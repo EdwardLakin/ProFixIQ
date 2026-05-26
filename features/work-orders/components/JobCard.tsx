@@ -9,6 +9,7 @@ import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { formatLaborSummary, resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartAllocation =
@@ -334,7 +335,8 @@ export function JobCard({
   const jobLabel = line.description || line.complaint || "Untitled job";
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
-    return technicians.find((tech) => tech.id === techId)?.full_name || "Unassigned";
+    const profile = technicians.find((tech) => tech.id === techId) ?? null;
+    return resolvePrimaryTechDisplay(line, profile ? { ...profile, role: "tech" } : null);
   }, [line.assigned_tech_id, technicians]);
 
   const linePriority = toLinePriority(line);
@@ -519,9 +521,12 @@ export function JobCard({
               <>
                 <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
                   <MetaTile label="Assigned Tech" value={assignedTech} />
-                  <MetaTile label="Labor" value={formatCurrency(pricing?.laborTotal ?? 0)} />
+                  <MetaTile
+                    label="Labor"
+                    value={formatLaborSummary(line.labor_time, Number(pricing?.laborTotal ?? 0))}
+                  />
                   <MetaTile label="Parts" value={String(parts.length)} />
-                  <MetaTile label="Line Total" value={formatCurrency(lineTotal)} />
+                  <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
                 </div>
 
                 {(line.complaint || line.cause || line.correction || line.hold_reason) ? (

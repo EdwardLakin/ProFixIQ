@@ -159,6 +159,7 @@ const VALID_LINE_STATUSES = new Set(["awaiting", "awaiting_approval", "active", 
 const VALID_LINE_APPROVAL_STATES = new Set(["pending", "approved", "declined"]);
 const VALID_LINE_JOB_TYPES = new Set(["diagnosis", "inspection", "maintenance", "repair", "tech-suggested"]);
 const VALID_LINE_TYPES = new Set(["job", "info"]);
+const DEMO_LABOR_RATE = 145;
 
 function normalizeLineStatus(status) {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
@@ -536,7 +537,7 @@ async function main() {
       approval_state: "approved",
       techId: leadTechId,
       status: "active",
-      labor_time: 1.4,
+      labor_time: 1.2,
       job_type: "inspection",
       parts_required: [{ part: "Front pad set", qty: 1 }],
     },
@@ -549,7 +550,7 @@ async function main() {
       approval_state: null,
       techId: tech1Id,
       status: "active",
-      labor_time: 1.8,
+      labor_time: 1.5,
       job_type: "diagnosis",
       parts_required: [{ part: "Stainless hose clamp", qty: 1 }],
     },
@@ -620,8 +621,21 @@ async function main() {
     },
   ];
 
+  const estimateByDescription = {
+    "Brake pull and noise verification from inspection findings": { partsEstimate: 88 },
+    "Pressure test and leak trace": { partsEstimate: 28 },
+    "Approved steering link replacement": { partsEstimate: 525 },
+    "Recommended shock absorbers (deferred)": { partsEstimate: 410 },
+    "Parts bottleneck - ABS wheel speed sensor backorder": { partsEstimate: 295, hold_reason: "Waiting for backordered ABS wheel speed sensor" },
+    "Municipal inspection findings review": { partsEstimate: 0 },
+    "Wheel seal replacement recurrence": { partsEstimate: 132 },
+  };
+
   for (const line of lines) {
     const { woNumber, description, complaint, cause, correction, approval_state, techId, status, labor_time, job_type, parts_required } = line;
+    const estimate = estimateByDescription[description] ?? { partsEstimate: 0 };
+    const laborTotal = Number((labor_time * DEMO_LABOR_RATE).toFixed(2));
+    const lineEstimateTotal = Number((laborTotal + Number(estimate.partsEstimate ?? 0)).toFixed(2));
     const linePayload = {
       shop_id: shopId,
       work_order_id: workOrderIds[woNumber],
@@ -638,6 +652,8 @@ async function main() {
       job_type,
       approval_state,
       labor_time,
+      price_estimate: lineEstimateTotal,
+      hold_reason: estimate.hold_reason ?? null,
       parts_required,
     };
 
