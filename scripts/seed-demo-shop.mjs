@@ -584,7 +584,7 @@ async function main() {
       description: "Parts bottleneck - ABS wheel speed sensor backorder",
       complaint: "ABS warning lamp intermittently active.",
       cause: "Sensor failed; replacement currently backordered.",
-      correction: "Parts requested, hold line until sensor arrives.",
+      correction: "Parts requested, hold line until sensor arrives. demo_moment:parts_bottleneck",
       approval_state: "approved",
       techId: tech1Id,
       status: "on_hold",
@@ -705,7 +705,14 @@ async function main() {
   console.log(`customer_count: ${counts.customers}`);
   console.log(`vehicle_count: ${counts.vehicles}`);
   console.log(`work_order_count: ${counts.work_orders}`);
+  const { count: workOrderLineCount, error: workOrderLineCountError } = await supabase
+    .from("work_order_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId);
+  if (workOrderLineCountError) throw opError("count", `table=work_order_lines shop_id=${shopId}`, workOrderLineCountError);
+
   console.log(`inspection_count: ${counts.inspections}`);
+  console.log(`work_order_line_count: ${workOrderLineCount ?? 0}`);
   console.log("vehicle_customer_consistency: passed");
   console.log("work_order_line_status_validation: passed");
   console.log("work_order_line_constraint_validation: passed");
