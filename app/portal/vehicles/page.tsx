@@ -415,9 +415,18 @@ export default function PortalVehiclesPage() {
               [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() ||
               "Vehicle";
 
-            if (inviteRequired) {
-    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
-  }
+                    if (inviteRequired) {
+              return (
+                <div key={v.id} className="mx-auto max-w-3xl">
+                  <div className={cardClass() + " text-sm text-neutral-200"}>
+                    <div className="font-semibold">Portal invite required</div>
+                    <div className="mt-1">
+                      Open the invite link sent by the shop, or ask the shop to resend your portal invite.
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
   return (
               <div
