@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Toaster, toast } from "sonner";
@@ -49,6 +49,14 @@ export default function PortalBookingPage() {
   const [tz, setTz] = useState<string>("UTC");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [hours, setHours] = useState<HourRow[]>([]);
+  const [portalEmail, setPortalEmail] = useState("");
+  const [portalName, setPortalName] = useState("");
+  const [portalPhone, setPortalPhone] = useState("");
+  const [portalSubmitting, setPortalSubmitting] = useState(false);
+  const [portalMessage, setPortalMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const urlShop = search.get("shop") || "";
@@ -223,6 +231,54 @@ export default function PortalBookingPage() {
 
   const isSelectedClosed =
     selectedDate && closedWeekdays.has(selectedDate.getDay());
+  const selectedShop = shops.find((s) => (s.slug as string) === shopSlug);
+  const hasExplicitShopSelection = Boolean(shopSlug);
+  const isShopSelectionUnavailable = hasExplicitShopSelection && !selectedShop;
+
+  async function requestPortalAccess(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPortalMessage(null);
+
+    if (!selectedShop) {
+      setPortalMessage({
+        type: "error",
+        text: "This shop is currently unavailable.",
+      });
+      return;
+    }
+
+    setPortalSubmitting(true);
+    try {
+      const res = await fetch("/api/portal/qr/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopSlug: selectedShop.slug,
+          email: portalEmail,
+          ...(portalName.trim() ? { name: portalName.trim() } : {}),
+          ...(portalPhone.trim() ? { phone: portalPhone.trim() } : {}),
+          next: "/portal",
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Could not send portal access link.");
+      }
+
+      setPortalMessage({
+        type: "success",
+        text: "If the email is valid, we sent a portal access link.",
+      });
+    } catch (error) {
+      console.error(error);
+      setPortalMessage({
+        type: "error",
+        text: "We couldn’t send a portal link right now. Please try again.",
+      });
+    } finally {
+      setPortalSubmitting(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
@@ -266,6 +322,53 @@ export default function PortalBookingPage() {
             View history
           </LinkButton>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[linear-gradient(145deg,rgba(197,122,74,0.12),rgba(7,10,20,0.70)_55%)] p-4 backdrop-blur-xl">
+        <h2 className="text-sm font-semibold text-white">Send me my portal link</h2>
+        <p className="mt-1 text-xs text-neutral-400">
+          Need to book or view service? Send yourself a secure portal link first.
+        </p>
+        <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={requestPortalAccess}>
+          <input
+            type="email"
+            required
+            value={portalEmail}
+            onChange={(e) => setPortalEmail(e.target.value)}
+            placeholder="Email *"
+            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+          />
+          <input
+            type="text"
+            value={portalName}
+            onChange={(e) => setPortalName(e.target.value)}
+            placeholder="Name (optional)"
+            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+          />
+          <input
+            type="tel"
+            value={portalPhone}
+            onChange={(e) => setPortalPhone(e.target.value)}
+            placeholder="Phone (optional)"
+            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+          />
+          <button
+            type="submit"
+            disabled={portalSubmitting || isShopSelectionUnavailable}
+            className="rounded-md border border-[rgba(193,102,59,0.38)] bg-black/35 px-3 py-2 text-sm font-medium text-white transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {portalSubmitting ? "Sending..." : "Send portal link"}
+          </button>
+        </form>
+        {portalMessage && (
+          <p
+            className={`mt-2 text-xs ${
+              portalMessage.type === "success" ? "text-emerald-300" : "text-rose-300"
+            }`}
+          >
+            {portalMessage.text}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
