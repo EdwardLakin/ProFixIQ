@@ -25,7 +25,7 @@ export function normalizeLaborHoursInput(
 }
 
 export function resolveWorkOrderLinePricing(args: {
-  line: Pick<WorkOrderLine, "labor_time"> & { id?: string };
+  line: Pick<WorkOrderLine, "labor_time"> & { id?: string; price_estimate?: number | null };
   quote?: Partial<WorkOrderQuoteLine> | null;
   shopLaborRate: number | null;
   stagedParts?: Array<Pick<WorkOrderPart, "quantity" | "unit_price" | "total_price">>;
@@ -82,7 +82,7 @@ export function resolveWorkOrderLinePricing(args: {
   const hasQuotePartsTotal = toNum(quote?.parts_total) != null;
   const partsTotal = hasQuotePartsTotal ? (toNum(quote?.parts_total) ?? 0) : stagedPartsTotal + allocPartsTotal;
   const partsCount = stagedParts.length + allocatedParts.length;
-  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? laborTotal + partsTotal;
+  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? toNum(line.price_estimate) ?? laborTotal + partsTotal;
 
   return { laborHours, laborRate, laborTotal, partsCount, partsTotal, lineTotal };
 }

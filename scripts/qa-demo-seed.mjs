@@ -138,7 +138,7 @@ async function main() {
 
     const { data: lines, error: lineError } = await supabase
       .from("work_order_lines")
-      .select("id, work_order_id, shop_id, description, complaint, cause, correction, parts_required, status, approval_state, labor_time, punched_out_at")
+      .select("id, work_order_id, shop_id, description, complaint, cause, correction, parts_required, hold_reason, status, approval_state, labor_time, price_estimate, punched_in_at, punched_out_at, completed_at")
       .eq("shop_id", shopId);
     if (lineError) throw new Error(`work_order_lines readback failed: ${lineError.message}`);
 
@@ -162,8 +162,12 @@ async function main() {
       addCheck(checks, failures, `visible_lines_${wo.custom_id}`, (linesByCustomId.get(wo.custom_id)?.length ?? 0) > 0, { custom_id: wo.custom_id });
     }
 
-    const nonZeroLaborOrLine = (lines ?? []).some((ln) => Number(ln.labor_time ?? 0) > 0);
-    addCheck(checks, failures, "line_has_non_zero_labor_or_total", nonZeroLaborOrLine, {});
+    const visibleLines = (lines ?? []).filter((ln) => (woById.get(ln.work_order_id)?.custom_id ?? "") !== "DEMO-WO-1005");
+    const invoiceGradeCount = visibleLines.filter((ln) => Number(ln.price_estimate ?? 0) > 0 || Number(ln.labor_time ?? 0) > 0).length;
+    addCheck(checks, failures, "visible_lines_have_invoice_grade_totals_min_5", invoiceGradeCount >= 5, { invoiceGradeCount });
+    addCheck(checks, failures, "visible_lines_have_positive_labor_time", visibleLines.every((ln) => Number(ln.labor_time ?? 0) > 0), {});
+    const hasNegativeMoney = visibleLines.some((ln) => Number(ln.price_estimate ?? 0) < 0);
+    addCheck(checks, failures, "no_negative_money_fields", !hasNegativeMoney, {});
 
     const demo1003Lines = linesByCustomId.get("DEMO-WO-1003") ?? [];
     const demo1003HasAwaiting = demo1003Lines.some((ln) => String(ln.approval_state ?? "").toLowerCase() === "pending" || String(ln.status ?? "").toLowerCase() === "awaiting_approval");
@@ -175,12 +179,20 @@ async function main() {
       const correction = String(ln.correction || "").toLowerCase();
       return description.includes("parts bottleneck") || correction.includes("demo_moment:parts_bottleneck");
     });
+    const demo1004Lines = linesByCustomId.get("DEMO-WO-1004") ?? [];
+    const hasPartsBottleneckMetadata = demo1004Lines.some((ln) =>
+      String(ln.hold_reason ?? "").toLowerCase().includes("backorder") ||
+      String(ln.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck")
+    );
+    const demo1004HasEstimatedValue = demo1004Lines.some((ln) => Number(ln.price_estimate ?? 0) > 0);
     addCheck(checks, failures, "parts_bottleneck_line_exists", hasPartsBottleneckLine, {});
+    addCheck(checks, failures, "parts_bottleneck_has_requested_marker", hasPartsBottleneckMetadata, {});
+    addCheck(checks, failures, "parts_bottleneck_has_estimated_value", demo1004HasEstimatedValue, {});
 
     const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
     addCheck(checks, failures, "recurring_tr101_line_exists", hasRecurringTr101Line, {});
 
-    const invalidCompleted = (lines ?? []).filter((ln) => ["completed", "ready_to_invoice", "invoiced"].includes(String(ln.status ?? "").toLowerCase()) && !ln.punched_out_at);
+    const invalidCompleted = (lines ?? []).filter((ln) => ["completed", "ready_to_invoice", "invoiced"].includes(String(ln.status ?? "").toLowerCase()) && (!ln.punched_in_at || !ln.punched_out_at || !ln.completed_at));
     addCheck(checks, failures, "completed_like_lines_have_completion_fields", invalidCompleted.length === 0, { invalidCount: invalidCompleted.length });
     addCheck(checks, failures, "no_public_storage_urls_found", !storageScan.some((item) => hasPublicStorageUrl(item)), {});
 
