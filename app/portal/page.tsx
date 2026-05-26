@@ -9,6 +9,8 @@ import { PortalActionCard, PortalEmptyState, PortalPageHeader, PortalPrimaryButt
 
 type DB = Database;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
+type CustomerPortalInviteRow =
+  DB["public"]["Tables"]["customer_portal_invites"]["Row"];
 type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 
@@ -22,6 +24,7 @@ export default function PortalHomePage() {
   const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);
   const [nextBookingAt, setNextBookingAt] = useState<string | null>(null);
   const [activeWo, setActiveWo] = useState<Pick<WorkOrderRow, "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"> | null>(null);
+  const [requiresInvite, setRequiresInvite] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -33,6 +36,7 @@ export default function PortalHomePage() {
       if (!mounted) return;
 
       if (userErr || !user) {
+        setRequiresInvite(false);
         setVehiclesCount(null);
         setNextBookingAt(null);
         setActiveWo(null);
@@ -44,12 +48,47 @@ export default function PortalHomePage() {
       if (!mounted) return;
 
       if (custErr || !cust?.id) {
+        setRequiresInvite(true);
         setVehiclesCount(null);
         setNextBookingAt(null);
         setActiveWo(null);
         setLoading(false);
         return;
       }
+
+      const normalizedUserEmail = (user.email ?? "").trim().toLowerCase();
+      const { data: inviteEvidence, error: inviteErr } = await supabase
+        .from("customer_portal_invites")
+        .select("id, customer_id, email")
+        .eq("customer_id", cust.id)
+        .limit(10);
+      if (!mounted) return;
+
+      const hasInviteEvidence =
+        !inviteErr &&
+        Array.isArray(inviteEvidence) &&
+        inviteEvidence.some((row) => {
+          const invite = row as Pick<
+            CustomerPortalInviteRow,
+            "id" | "customer_id" | "email"
+          >;
+          return (
+            invite.customer_id === cust.id &&
+            normalizedUserEmail.length > 0 &&
+            invite.email.trim().toLowerCase() === normalizedUserEmail
+          );
+        });
+
+      if (!hasInviteEvidence) {
+        setRequiresInvite(true);
+        setVehiclesCount(null);
+        setNextBookingAt(null);
+        setActiveWo(null);
+        setLoading(false);
+        return;
+      }
+
+      setRequiresInvite(false);
 
       const { count: vCount } = await supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("customer_id", cust.id);
       const nowIso = new Date().toISOString();
@@ -69,6 +108,18 @@ export default function PortalHomePage() {
 
   if (loading) {
     return <div className="space-y-5 text-white"><PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Loading your latest status and activity." /></div>;
+  }
+
+  if (requiresInvite) {
+    return (
+      <div className="space-y-5 text-white">
+        <PortalPageHeader
+          eyebrow="Customer portal"
+          title="Portal invite required"
+          subtitle="Open the invite link sent by the shop, or ask the shop to resend your portal invite."
+        />
+      </div>
+    );
   }
 
   const hasInvoice = !!activeWo && !!activeWo.invoice_sent_at && (activeWo.status === "ready_to_invoice" || activeWo.status === "invoiced");
