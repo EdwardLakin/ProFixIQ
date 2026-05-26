@@ -65,7 +65,6 @@ export function resolveWorkOrderLinePricing(args: {
 
   const laborRate = toNum(shopLaborRate) ?? 0;
   const quotedLaborTotal = toNum(quote?.labor_total);
-  const laborTotal = quotedLaborTotal ?? laborHours * laborRate;
 
   const stagedPartsTotal = stagedParts.reduce((sum, part) => {
     const total = toNum(part.total_price);
@@ -82,7 +81,10 @@ export function resolveWorkOrderLinePricing(args: {
   const hasQuotePartsTotal = toNum(quote?.parts_total) != null;
   const partsTotal = hasQuotePartsTotal ? (toNum(quote?.parts_total) ?? 0) : stagedPartsTotal + allocPartsTotal;
   const partsCount = stagedParts.length + allocatedParts.length;
-  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? toNum(line.price_estimate) ?? laborTotal + partsTotal;
+  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? toNum(line.price_estimate) ?? (laborHours * laborRate) + partsTotal;
+  const computedLaborTotal = laborHours * laborRate;
+  const inferredLaborFromLineTotal = Math.max(0, lineTotal - partsTotal);
+  const laborTotal = quotedLaborTotal ?? (computedLaborTotal > 0 ? computedLaborTotal : inferredLaborFromLineTotal);
 
   return { laborHours, laborRate, laborTotal, partsCount, partsTotal, lineTotal };
 }

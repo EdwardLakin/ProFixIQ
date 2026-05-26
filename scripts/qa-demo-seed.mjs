@@ -176,6 +176,15 @@ async function main() {
     const invoiceGradeCount = visibleLines.filter((ln) => Number(ln.price_estimate ?? 0) > 0 || Number(ln.labor_time ?? 0) > 0).length;
     addCheck(checks, failures, "visible_lines_have_invoice_grade_totals_min_5", invoiceGradeCount >= 5, { invoiceGradeCount });
     addCheck(checks, failures, "visible_lines_have_positive_labor_time", visibleLines.every((ln) => Number(ln.labor_time ?? 0) > 0), {});
+    const visibleLinesWithPartsEstimate = visibleLines.filter((ln) => Number(ln.price_estimate ?? 0) > Number(ln.labor_time ?? 0) * 145).length;
+    addCheck(checks, failures, "visible_lines_have_nonzero_parts_estimate_min_1", visibleLinesWithPartsEstimate >= 1, { visibleLinesWithPartsEstimate });
+    const hasLaborOnlyZeroDollar = visibleLines.some((ln) => {
+      const hours = Number(ln.labor_time ?? 0);
+      if (hours <= 0) return false;
+      const inferredLabor = Number((hours * 145).toFixed(2));
+      return inferredLabor > 0 && Number(ln.price_estimate ?? 0) <= 0;
+    });
+    addCheck(checks, failures, "visible_lines_labor_hours_have_nonzero_inferred_labor_dollars", !hasLaborOnlyZeroDollar, {});
     const hasNegativeMoney = visibleLines.some((ln) => Number(ln.price_estimate ?? 0) < 0);
     addCheck(checks, failures, "no_negative_money_fields", !hasNegativeMoney, {});
 
@@ -195,9 +204,11 @@ async function main() {
       String(ln.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck")
     );
     const demo1004HasEstimatedValue = demo1004Lines.some((ln) => Number(ln.price_estimate ?? 0) > 0);
+    const demo1004HasPartsEstimate = demo1004Lines.some((ln) => Number(ln.price_estimate ?? 0) > Number(ln.labor_time ?? 0) * 145);
     addCheck(checks, failures, "parts_bottleneck_line_exists", hasPartsBottleneckLine, {});
     addCheck(checks, failures, "parts_bottleneck_has_requested_marker", hasPartsBottleneckMetadata, {});
     addCheck(checks, failures, "parts_bottleneck_has_estimated_value", demo1004HasEstimatedValue, {});
+    addCheck(checks, failures, "parts_bottleneck_has_nonzero_parts_estimate", demo1004HasPartsEstimate, {});
 
     const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
     addCheck(checks, failures, "recurring_tr101_line_exists", hasRecurringTr101Line, {});
