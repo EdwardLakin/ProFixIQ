@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { extractPortalIntakeConcern } from "@/features/portal/lib/request/portalIntake";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
 export const runtime = "nodejs";
 
@@ -51,11 +53,7 @@ export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-    if (authErr || !user) return bad("Not authenticated", 401);
+    const actor = await requirePortalCustomerActor(supabase);
 
     let body: Body;
     try {
@@ -77,7 +75,7 @@ export async function POST(req: Request) {
     const { data: customer, error: custErr } = await supabase
       .from("customers")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("id", actor.customer.id)
       .maybeSingle();
 
     if (custErr) return bad(custErr.message, 500);
@@ -264,6 +262,7 @@ export async function POST(req: Request) {
       { status: 200 },
     );
   } catch (e: unknown) {
+    if (e instanceof PortalAccessError) return bad(e.message, e.status);
     const msg = e instanceof Error ? e.message : String(e);
     console.error("portal request submit error:", msg);
     return bad("Unexpected error", 500);

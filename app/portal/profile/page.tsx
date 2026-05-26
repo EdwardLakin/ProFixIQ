@@ -53,6 +53,7 @@ export default function PortalProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteRequired, setInviteRequired] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -83,6 +84,8 @@ export default function PortalProfilePage() {
 
       const authEmail = user.email ?? "";
 
+      const normalizedEmail = authEmail.trim().toLowerCase();
+
       const { data: customer, error: fetchErr } = await supabase
         .from("customers")
         .select("first_name,last_name,phone,street,city,province,postal_code")
@@ -96,6 +99,32 @@ export default function PortalProfilePage() {
         setLoading(false);
         return;
       }
+
+      const customerId = customer?.id;
+      if (!customerId) {
+        setInviteRequired(true);
+        setLoading(false);
+        return;
+      }
+
+      const { data: inviteRows, error: inviteErr } = await supabase
+        .from("customer_portal_invites")
+        .select("id, customer_id, email")
+        .eq("customer_id", customerId)
+        .limit(20);
+
+      const hasInviteEvidence = !inviteErr && Array.isArray(inviteRows) && inviteRows.some((row) => {
+        const inviteEmail = String((row as { email?: string | null }).email ?? "").trim().toLowerCase();
+        return normalizedEmail.length > 0 && inviteEmail === normalizedEmail;
+      });
+
+      if (!hasInviteEvidence) {
+        setInviteRequired(true);
+        setLoading(false);
+        return;
+      }
+
+      setInviteRequired(false);
 
       setForm({
         first_name: (customer?.first_name as string | null) ?? "",
@@ -122,6 +151,8 @@ export default function PortalProfilePage() {
     setSaving(true);
     setError(null);
     setSaved(false);
+
+    if (inviteRequired) return;
 
     const {
       data: { user },
@@ -166,6 +197,10 @@ export default function PortalProfilePage() {
         </div>
       </div>
     );
+  }
+
+  if (inviteRequired) {
+    return <div className="mx-auto max-w-xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
   }
 
   return (

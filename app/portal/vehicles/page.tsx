@@ -84,6 +84,7 @@ export default function PortalVehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteRequired, setInviteRequired] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<VehicleForm>({
@@ -126,7 +127,29 @@ export default function PortalVehiclesPage() {
 
       if (custErr) setError(custErr.message);
 
+      const normalizedEmail = (user.email ?? "").trim().toLowerCase();
+
       if (cust) {
+        const { data: inviteRows, error: inviteErr } = await supabase
+          .from("customer_portal_invites")
+          .select("id, customer_id, email")
+          .eq("customer_id", cust.id)
+          .limit(20);
+
+        const hasInviteEvidence = !inviteErr && Array.isArray(inviteRows) && inviteRows.some((row) => {
+          const inviteEmail = String((row as { email?: string | null }).email ?? "").trim().toLowerCase();
+          return normalizedEmail.length > 0 && inviteEmail === normalizedEmail;
+        });
+
+        if (!hasInviteEvidence) {
+          setInviteRequired(true);
+          setCustomer(null);
+          setVehicles([]);
+          setLoading(false);
+          return;
+        }
+
+        setInviteRequired(false);
         const typed = cust as unknown as CustomerRow;
         setCustomer(typed);
 
@@ -146,7 +169,8 @@ export default function PortalVehiclesPage() {
       setLoading(false);
     })();
 
-    return () => {
+
+  return () => {
       mounted = false;
     };
   }, [supabase]);
@@ -260,13 +284,18 @@ export default function PortalVehiclesPage() {
   };
 
   if (loading) {
-    return (
+
+  return (
       <div className="mx-auto max-w-3xl">
         <div className={cardClass() + " text-sm text-neutral-200"}>
           Loading your vehicles…
         </div>
       </div>
     );
+  }
+
+  if (inviteRequired) {
+    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
   }
 
   return (
@@ -386,7 +415,11 @@ export default function PortalVehiclesPage() {
               [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() ||
               "Vehicle";
 
-            return (
+            if (inviteRequired) {
+    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
+  }
+
+  return (
               <div
                 key={v.id}
                 className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card sm:flex-row sm:items-center"
