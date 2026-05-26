@@ -19,7 +19,12 @@ import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
-import { resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
+import {
+  formatLaborSummary,
+  formatPartsSummary,
+  resolvePartsBottleneckDisplay,
+  resolvePrimaryTechDisplay,
+} from "@/features/work-orders/lib/display/linePresentation";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
@@ -567,14 +572,21 @@ export default function FocusedJobModal(props: {
   const pricing = line
     ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs })
     : null;
-  const laborDisplay = pricing && pricing.laborHours > 0
-    ? `Labor ${pricing.laborHours.toFixed(1)}h · ${new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(pricing.laborTotal)}`
-    : "Estimate pending";
+  const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
+  const partsDisplay = formatPartsSummary({
+    partsCount: Math.max(partsCount, Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0),
+    partsTotal: Number(pricing?.partsTotal ?? 0),
+  });
   const lineTotal = Number(pricing?.lineTotal ?? 0);
   const hasPartsRequestedMarker =
     String(line?.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck") ||
     String(line?.hold_reason ?? "").toLowerCase().includes("part") ||
     String(line?.description ?? "").toLowerCase().includes("backorder");
+  const partsBottleneckDisplay = resolvePartsBottleneckDisplay({
+    hasRequestedMarker: hasPartsRequestedMarker,
+    holdReason: line?.hold_reason ?? null,
+    partsTotal: Number(pricing?.partsTotal ?? 0),
+  });
 
   if (!isOpen) return null;
 
@@ -840,7 +852,7 @@ export default function FocusedJobModal(props: {
                     label="Primary tech"
                     value={resolvePrimaryTechDisplay(line, assignedTechProfile)}
                   />
-                  <MetaStat label="Parts count" value={String(partsCount)} />
+                  <MetaStat label="Parts" value={partsDisplay} />
                   <MetaStat label="Labor" value={laborDisplay} />
                   <MetaStat
                     label="Line total"
@@ -963,12 +975,12 @@ export default function FocusedJobModal(props: {
                 />
               </SectionCard>
 
-              <SectionCard title="Parts used">
+              <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (
                   <div className="text-sm text-neutral-300">Loading…</div>
-                ) : hasPartsRequestedMarker && allocs.length === 0 ? (
+                ) : partsBottleneckDisplay && allocs.length === 0 ? (
                   <div className="text-sm text-neutral-200">
-                    Parts requested/waiting: ABS wheel speed sensor — backordered.
+                    {partsBottleneckDisplay.detail}
                   </div>
                 ) : allocs.length === 0 ? (
                   <div className="text-sm text-neutral-300">No parts used yet.</div>

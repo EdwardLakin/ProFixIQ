@@ -9,7 +9,7 @@ import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
-import { formatLaborSummary, resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
+import { formatLaborSummary, formatPartsSummary, resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartAllocation =
@@ -525,7 +525,13 @@ export function JobCard({
                     label="Labor"
                     value={formatLaborSummary(line.labor_time, Number(pricing?.laborTotal ?? 0))}
                   />
-                  <MetaTile label="Parts" value={String(parts.length)} />
+                  <MetaTile
+                    label="Parts"
+                    value={formatPartsSummary({
+                      partsCount: Math.max(parts.length, Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0),
+                      partsTotal: Number(pricing?.partsTotal ?? 0),
+                    })}
+                  />
                   <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
                 </div>
 
