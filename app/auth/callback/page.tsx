@@ -50,8 +50,12 @@ export default function AuthCallbackPage() {
 
       if (!session?.user) {
         const passthrough = new URLSearchParams();
+        const redirect = sp.get("redirect")?.trim();
+        const mode = sp.get("mode")?.trim();
         const sessionId = sp.get("session_id")?.trim();
         const flow = sp.get("flow")?.trim();
+        if (redirect) passthrough.set("redirect", redirect);
+        if (mode) passthrough.set("mode", mode);
         if (sessionId) passthrough.set("session_id", sessionId);
         if (flow) passthrough.set("flow", flow);
         const signInHref = `/sign-in${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
@@ -70,9 +74,14 @@ export default function AuthCallbackPage() {
 
       router.refresh();
 
+      const isMobileMode =
+        (sp.get("mode") || "").toLowerCase() === "mobile" ||
+        (sp.get("redirect") || "") === "/mobile";
+
       const destination = await resolvePostAuthDestination({
         supabase,
         searchParams: sp,
+        isMobileMode,
       });
 
       router.replace(destination);
