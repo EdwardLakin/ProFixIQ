@@ -4,6 +4,16 @@ const DEFAULT_SHOP_SLUG = "prairie-fleet-diesel-demo";
 const DEFAULT_OWNER_EMAIL = "edwardlakin35@gmail.com";
 const DEMO_DOMAIN_SUFFIX = ".demo.profixiq.local";
 
+// Keep this in sync with current `work_order_lines` schema: QA intentionally avoids
+// selecting non-existent completion columns (like `completed_at` when absent).
+const WORK_ORDER_LINE_COMPLETION_COLUMNS = {
+  punched_in_at: true,
+  punched_out_at: true,
+  completed_at: false,
+};
+
+const COMPLETED_LIKE_STATUSES = new Set(["completed", "done", "closed", "ready_to_invoice", "invoiced"]);
+
 function requireEnv(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Missing required env var: ${name}`);
@@ -138,7 +148,7 @@ async function main() {
 
     const { data: lines, error: lineError } = await supabase
       .from("work_order_lines")
-      .select("id, work_order_id, shop_id, description, complaint, cause, correction, parts_required, hold_reason, status, approval_state, labor_time, price_estimate, punched_in_at, punched_out_at, completed_at")
+      .select("id, work_order_id, shop_id, description, complaint, cause, correction, parts_required, hold_reason, status, line_status, approval_state, labor_time, price_estimate, punched_in_at, punched_out_at")
       .eq("shop_id", shopId);
     if (lineError) throw new Error(`work_order_lines readback failed: ${lineError.message}`);
 
@@ -192,8 +202,32 @@ async function main() {
     const hasRecurringTr101Line = (linesByCustomId.get("DEMO-WO-1007") ?? []).some((ln) => (ln.description || "").toLowerCase().includes("wheel seal"));
     addCheck(checks, failures, "recurring_tr101_line_exists", hasRecurringTr101Line, {});
 
-    const invalidCompleted = (lines ?? []).filter((ln) => ["completed", "ready_to_invoice", "invoiced"].includes(String(ln.status ?? "").toLowerCase()) && (!ln.punched_in_at || !ln.punched_out_at || !ln.completed_at));
-    addCheck(checks, failures, "completed_like_lines_have_completion_fields", invalidCompleted.length === 0, { invalidCount: invalidCompleted.length });
+    const completedLikeLines = (lines ?? []).filter((ln) => {
+      const normalizedStatus = String(ln.status ?? "").toLowerCase();
+      const normalizedLineStatus = String(ln.line_status ?? "").toLowerCase();
+      return COMPLETED_LIKE_STATUSES.has(normalizedStatus) || COMPLETED_LIKE_STATUSES.has(normalizedLineStatus);
+    });
+
+    const noCompletionColumnsAvailable =
+      !WORK_ORDER_LINE_COMPLETION_COLUMNS.punched_in_at &&
+      !WORK_ORDER_LINE_COMPLETION_COLUMNS.punched_out_at &&
+      !WORK_ORDER_LINE_COMPLETION_COLUMNS.completed_at;
+
+    const invalidCompleted = completedLikeLines.filter((ln) => {
+      if (noCompletionColumnsAvailable) return true;
+      if (WORK_ORDER_LINE_COMPLETION_COLUMNS.punched_out_at && !ln.punched_out_at) return true;
+      if (WORK_ORDER_LINE_COMPLETION_COLUMNS.punched_in_at && !ln.punched_in_at) return true;
+      if (WORK_ORDER_LINE_COMPLETION_COLUMNS.completed_at && !ln.completed_at) return true;
+      return false;
+    });
+
+    addCheck(checks, failures, "completed_like_lines_have_completion_fields", invalidCompleted.length === 0, {
+      completedLikeCount: completedLikeLines.length,
+      invalidCount: invalidCompleted.length,
+      requiredColumns: Object.entries(WORK_ORDER_LINE_COMPLETION_COLUMNS)
+        .filter(([, exists]) => exists)
+        .map(([name]) => name),
+    });
     addCheck(checks, failures, "no_public_storage_urls_found", !storageScan.some((item) => hasPublicStorageUrl(item)), {});
 
     const { data: profiles, error: profilesError } = await supabase
