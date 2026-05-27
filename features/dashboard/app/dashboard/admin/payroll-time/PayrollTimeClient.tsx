@@ -249,7 +249,7 @@ export default function PayrollTimeClient() {
       <AdminPageHeader
         eyebrow="Workforce Payroll-Ready Time"
         title="Payroll Time Tracking"
-        subtitle="Attendance-first payroll-hour review by pay period with exception triage, approval locking, and export snapshots."
+        subtitle="Attendance-first payroll-hour review and export readiness by pay period with exception triage, approval locking, and export snapshots."
       />
       {workforceSeverity ? (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">

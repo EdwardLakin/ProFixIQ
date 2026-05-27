@@ -105,7 +105,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
         key: "complete-100",
         checkoutEnabled: false,
         title: "Complete 100",
-        desc: "Complete platform for high-capacity shops scaling toward 100 active users. Launching for self-serve soon.",
+        desc: "Complete platform for high-capacity shops scaling toward 100 active users. Contact-only rollout with guided implementation.",
         priceLabel: "Talk to us",
         subLabel: "Up to 100 active users",
         features: [
@@ -113,7 +113,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
           "Sized for up to 100 active users",
           "Implementation planning and rollout guidance",
           "Payroll Connect foundation + provider-ready export workflows",
-          "Coming soon for self-serve checkout",
+          "Contact-only rollout: Talk to us for implementation planning",
         ],
         featured: false,
         badge: "Coming soon",
@@ -184,7 +184,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
           </p>
 
           <p className="text-xs text-neutral-400">
-            No feature tax. Repair operations, workforce scheduling + attendance, customer/fleet portals, documents/certifications, required document readiness, and Payroll Connect foundation are included.
+            One complete product. No feature tax. Repair operations, workforce scheduling, attendance, documents, certifications, readiness, customer/fleet portals, and Payroll Connect foundation are included.
           </p>
 
           <button
@@ -211,6 +211,10 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
         className="mt-5 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-neutral-300"
       >
         SMS, payment processing, heavy AI usage, storage overages, and custom integrations may be billed separately.
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-neutral-300">
+        Payroll Connect supports operational payroll review and export readiness. Payroll processing, tax filing/remittance, benefits administration, and legal compliance services remain handled by your payroll/HR providers.
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
