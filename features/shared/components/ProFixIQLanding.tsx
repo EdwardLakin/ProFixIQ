@@ -256,10 +256,10 @@ export default function ProFixIQLanding() {
               className="mt-2 text-3xl text-neutral-100 md:text-5xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              One complete shop operating system. No feature tax.
+              One complete product. No feature tax.
             </h2>
             <p className="mt-3 text-sm text-neutral-300 md:text-base">
-              Every Complete plan includes repair ops, Workforce Command, documents/certifications, required document readiness, and Payroll Connect foundation with payroll review/export readiness.
+              Every Complete plan includes repair ops plus workforce scheduling, attendance, documents, certifications, readiness, and Payroll Connect foundation for payroll review/export readiness.
             </p>
           </div>
 
