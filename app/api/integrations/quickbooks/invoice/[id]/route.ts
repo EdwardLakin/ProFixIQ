@@ -35,6 +35,7 @@ export async function POST(
       connection,
       invoiceId,
       user.id,
+      shop.id,
     );
 
     return NextResponse.json({

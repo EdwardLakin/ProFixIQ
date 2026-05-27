@@ -87,6 +87,7 @@ export async function syncInvoiceToQuickBooks(
   connection: QuickBooksConnectionRow,
   invoiceId: string,
   actorId?: string,
+  expectedShopId?: string,
 ): Promise<{
   qbInvoiceId: string;
   docNumber: string | null;
@@ -100,6 +101,10 @@ export async function syncInvoiceToQuickBooks(
 
   if (invoiceError || !invoice) {
     throw new Error(invoiceError?.message || "Invoice not found.");
+  }
+
+  if (expectedShopId && invoice.shop_id !== expectedShopId) {
+    throw new Error("Invoice does not belong to the active shop.");
   }
 
   if (!invoice.customer_id) {
