@@ -6,6 +6,7 @@ import PageShell from "@/features/shared/components/PageShell";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 type DB = Database;
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
@@ -115,12 +116,38 @@ export default function FleetUnitNewPage(): JSX.Element {
         if (!trimmed) {
           throw new Error("Enter an existing Vehicle ID or switch to New vehicle.");
         }
-        vehicleId = trimmed;
+        const { data: existingVehicle, error: existingVehicleError } = await supabase
+          .from("vehicles")
+          .select("id")
+          .eq("id", trimmed)
+          .eq("shop_id", creatorShopId)
+          .maybeSingle();
+
+        if (existingVehicleError || !existingVehicle) {
+          throw new Error("Existing vehicle was not found in this shop.");
+        }
+
+        vehicleId = existingVehicle.id;
       } else {
         // create new vehicle
         if (!unitNumber.trim() && !vin.trim() && !plate.trim()) {
           throw new Error(
             "Provide at least a unit number, VIN, or plate for the new vehicle.",
+          );
+        }
+
+        const duplicateCheck = await checkVehicleDuplicates({
+          vin,
+          licensePlate: plate,
+          unitNumber,
+        });
+
+        const duplicate = duplicateCheck.matches[0] ?? null;
+        if (duplicate) {
+          setExistingVehicleId(duplicate.id);
+          setMode("existing_vehicle");
+          throw new Error(
+            "Vehicle already exists. Use existing vehicle to link this fleet unit instead of creating a duplicate.",
           );
         }
 

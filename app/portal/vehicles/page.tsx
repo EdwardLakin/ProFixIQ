@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 /** Minimal shapes (keep lint happy, no `any`, no big supabase types) */
 type VehicleRow = {
@@ -22,6 +23,7 @@ type VehicleRow = {
 type CustomerRow = {
   id: string;
   user_id: string;
+  shop_id: string | null;
   first_name?: string | null;
   last_name?: string | null;
 };
@@ -227,8 +229,38 @@ export default function PortalVehiclesPage() {
       return;
     }
 
+    if (!customer.shop_id) {
+      setError("Contact shop/admin to move vehicle.");
+      setSaving(false);
+      return;
+    }
+
+    const duplicateCheck = await checkVehicleDuplicates({
+      vin: form.vin,
+      licensePlate: form.license_plate,
+      customerId: customer.id,
+      vehicleId: editingId,
+    });
+
+    const differentCustomerVin = duplicateCheck.matches.find(
+      (match) => match.match_type === "vin" && match.same_customer === false,
+    );
+    if (differentCustomerVin) {
+      setError("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+      setSaving(false);
+      return;
+    }
+
+    const sameCustomerMatch = duplicateCheck.matches.find((match) => match.same_customer === true);
+    if (sameCustomerMatch) {
+      setError("Vehicle already exists. Use existing vehicle or contact shop to update it.");
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       customer_id: customer.id,
+      shop_id: customer.shop_id,
       year: toYear(form.year),
       make: form.make.trim(),
       model: form.model.trim(),

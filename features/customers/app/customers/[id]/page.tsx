@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
+import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 type DB = Database;
 
@@ -1043,10 +1044,34 @@ export default function CustomerProfilePage(): JSX.Element {
     if (typeof vehDraft["drivetrain"] === "string")
       updateRecord["drivetrain"] = vehDraft["drivetrain"] || null;
 
-       const { error } = await supabase
+    const duplicateCheck = await checkVehicleDuplicates({
+      vin: typeof updateRecord["vin"] === "string" ? updateRecord["vin"] : null,
+      licensePlate:
+        typeof updateRecord["license_plate"] === "string" ? updateRecord["license_plate"] : null,
+      unitNumber: typeof updateRecord["unit_number"] === "string" ? updateRecord["unit_number"] : null,
+      customerId: customer?.id ?? null,
+      vehicleId: selectedVehicle.id,
+    });
+
+    const blockingMatch = duplicateCheck.matches.find(
+      (match) => match.match_type === "vin" && match.same_customer === false,
+    );
+    if (blockingMatch) {
+      setViewError("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+      return;
+    }
+
+    const sameCustomerMatch = duplicateCheck.matches.find((match) => match.same_customer === true);
+    if (sameCustomerMatch) {
+      setViewError("Vehicle already exists for this customer. Open/edit the existing vehicle instead.");
+      return;
+    }
+
+    const { error } = await supabase
       .from("vehicles")
       .update(updateRecord as DB["public"]["Tables"]["vehicles"]["Update"])
-      .eq("id", selectedVehicle.id);
+      .eq("id", selectedVehicle.id)
+      .eq("shop_id", customer?.shop_id ?? "");
 
     if (error) {
       setViewError(error.message);
@@ -1055,7 +1080,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
     setEditVehicleOpen(false);
     if (customer?.id) await fetchCustomerFile(customer.id);
-  }, [customer?.id, fetchCustomerFile, selectedVehicle, supabase, vehDraft]);
+  }, [customer, fetchCustomerFile, selectedVehicle, supabase, vehDraft]);
 
   // ------------------ Add Vehicle ------------------
   const [newVeh, setNewVeh] = useState<Record<string, unknown>>({
@@ -1083,6 +1108,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
     const insertRecord: Record<string, unknown> = {
       customer_id: customer.id,
+      shop_id: customer.shop_id,
       year: typeof newVeh["year"] === "number" ? newVeh["year"] : null,
       make: typeof newVeh["make"] === "string" ? (newVeh["make"] as string) || null : null,
       model: typeof newVeh["model"] === "string" ? (newVeh["model"] as string) || null : null,
@@ -1110,6 +1136,30 @@ export default function CustomerProfilePage(): JSX.Element {
     if (typeof newVeh["fuel_type"] === "string") insertRecord["fuel_type"] = newVeh["fuel_type"] || null;
     if (typeof newVeh["drivetrain"] === "string") insertRecord["drivetrain"] = newVeh["drivetrain"] || null;
 
+    const duplicateCheck = await checkVehicleDuplicates({
+      vin: typeof insertRecord["vin"] === "string" ? insertRecord["vin"] : null,
+      licensePlate:
+        typeof insertRecord["license_plate"] === "string" ? insertRecord["license_plate"] : null,
+      unitNumber: typeof insertRecord["unit_number"] === "string" ? insertRecord["unit_number"] : null,
+      customerId: customer.id,
+    });
+
+    const blockingMatch = duplicateCheck.matches.find(
+      (match) => match.match_type === "vin" && match.same_customer === false,
+    );
+    if (blockingMatch) {
+      setViewError("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+      return;
+    }
+
+    const sameCustomerMatch = duplicateCheck.matches.find((match) => match.same_customer === true);
+    if (sameCustomerMatch) {
+      setViewError("Vehicle already exists for this customer. Open/edit the existing vehicle instead.");
+      setSelectedVehicleId(sameCustomerMatch.id);
+      setAddVehicleOpen(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("vehicles")
       .insert(insertRecord as DB["public"]["Tables"]["vehicles"]["Insert"])
@@ -1126,7 +1176,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
     const newId = (data as Pick<Vehicle, "id"> | null)?.id ?? null;
     if (newId) setSelectedVehicleId(newId);
-  }, [customer?.id, fetchCustomerFile, newVeh, supabase]);
+  }, [customer, fetchCustomerFile, newVeh, supabase]);
 
   // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {

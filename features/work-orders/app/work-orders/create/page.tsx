@@ -28,6 +28,7 @@ import type {
 } from "@/features/inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -1195,8 +1196,65 @@ useEffect(() => {
     cust: CustomerRow,
     shopId: string,
   ): Promise<VehicleRow> {
+    const duplicateCheck = await checkVehicleDuplicates({
+      vin: vehicle.vin,
+      licensePlate: vehicle.license_plate,
+      unitNumber: vehicle.unit_number,
+      customerId: cust.id,
+      vehicleId,
+    });
+
+    const differentCustomerVin = duplicateCheck.matches.find(
+      (match) => match.match_type === "vin" && match.same_customer === false,
+    );
+    if (differentCustomerVin) {
+      throw new Error(
+        "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+      );
+    }
+
+    const sameCustomerMatch = duplicateCheck.matches.find(
+      (match) => match.same_customer === true,
+    );
+    if (!vehicleId && sameCustomerMatch) {
+      const label = [sameCustomerMatch.year, sameCustomerMatch.make, sameCustomerMatch.model]
+        .filter(Boolean)
+        .join(" ") || sameCustomerMatch.vin || sameCustomerMatch.license_plate || "vehicle";
+      const useExisting = window.confirm(
+        `Vehicle already exists: ${label}. Use existing vehicle?`,
+      );
+      if (!useExisting) {
+        throw new Error("Cancel/change VIN before creating another vehicle.");
+      }
+      const { data: existing, error: existingErr } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("id", sameCustomerMatch.id)
+        .eq("shop_id", shopId)
+        .single();
+      if (existingErr || !existing) {
+        throw new Error(existingErr?.message ?? "Failed to load existing vehicle.");
+      }
+      setVehicleId(existing.id);
+      return existing as VehicleRow;
+    }
+
     // If an explicit vehicleId is set, patch update that vehicle (instead of just returning it)
     if (vehicleId) {
+      const { data: currentVehicle, error: currentErr } = await supabase
+        .from("vehicles")
+        .select("id, customer_id")
+        .eq("id", vehicleId)
+        .eq("shop_id", shopId)
+        .single();
+
+      if (currentErr) throw currentErr;
+      if (currentVehicle?.customer_id && currentVehicle.customer_id !== cust.id) {
+        throw new Error(
+          "Use existing vehicle is selected, but it belongs to another customer. Contact shop/admin to move vehicle.",
+        );
+      }
+
       const patch = buildVehiclePatch(vehicle, cust.id);
 
       const { data: updated, error: updErr } = await supabase

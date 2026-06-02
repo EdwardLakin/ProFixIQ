@@ -9,6 +9,7 @@ import type {
 } from "@inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+import { checkVehicleDuplicates, type VehicleDuplicateMatch } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 /** Local, narrow shapes (avoid exporting DB row types in props) */
 type CustomerRow = {
@@ -388,6 +389,7 @@ export default function CustomerVehicleForm({
   workOrderExists = false,
   shopId,
   selectedCustomerId = null,
+  selectedVehicleId = null,
   handlers,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -404,6 +406,8 @@ export default function CustomerVehicleForm({
   const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(
     selectedCustomerId,
   );
+  const [duplicateMatches, setDuplicateMatches] = useState<VehicleDuplicateMatch[]>([]);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentCustomerId(selectedCustomerId);
@@ -423,6 +427,53 @@ export default function CustomerVehicleForm({
     },
     [onVehicleChange],
   );
+
+  useEffect(() => {
+    const vin = vehicle.vin?.trim();
+    const plate = vehicle.license_plate?.trim();
+    const unit = vehicle.unit_number?.trim();
+
+    if (!shopId || (!vin && !plate && !unit)) {
+      setDuplicateMatches([]);
+      setDuplicateWarning(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await checkVehicleDuplicates({
+          vin,
+          licensePlate: plate,
+          unitNumber: unit,
+          customerId: currentCustomerId,
+          vehicleId: selectedVehicleId,
+        });
+        if (cancelled) return;
+        setDuplicateMatches(result.matches);
+        const differentCustomerVin = result.matches.find(
+          (match) => match.match_type === "vin" && match.same_customer === false,
+        );
+        if (differentCustomerVin) {
+          setDuplicateWarning("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+        } else if (result.matches.some((match) => match.same_customer === true)) {
+          setDuplicateWarning("Vehicle already exists. Use existing vehicle instead of creating a duplicate.");
+        } else {
+          setDuplicateWarning(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setDuplicateMatches([]);
+          setDuplicateWarning(null);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [currentCustomerId, selectedVehicleId, shopId, vehicle.license_plate, vehicle.unit_number, vehicle.vin]);
 
   async function handlePickedCustomer(c: CustomerRow) {
     const applyCustomer = (picked: CustomerRow) => {
@@ -498,6 +549,13 @@ export default function CustomerVehicleForm({
 
   const handleSaveClick = async () => {
     try {
+      const differentCustomerVin = duplicateMatches.find(
+        (match) => match.match_type === "vin" && match.same_customer === false,
+      );
+      if (differentCustomerVin) {
+        throw new Error("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+      }
+
       if (onSave) await onSave();
 
       // After save: fire-and-forget rule generation for this YMM (+ engine)
@@ -715,6 +773,28 @@ export default function CustomerVehicleForm({
               Use unit # or plate to pull an existing vehicle for this customer.
             </span>
           </div>
+
+          {duplicateWarning && (
+            <div className="rounded-xl border border-amber-400/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
+              <div className="font-semibold">Vehicle already exists</div>
+              <div className="mt-1">{duplicateWarning}</div>
+              {duplicateMatches.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {duplicateMatches.slice(0, 3).map((match) => (
+                    <button
+                      key={match.id}
+                      type="button"
+                      className="block text-left text-[11px] text-amber-50 underline decoration-amber-300/50 underline-offset-2"
+                      onClick={() => onVehicleSelected?.(match.id)}
+                    >
+                      Use existing vehicle: {[match.year, match.make, match.model].filter(Boolean).join(" ") || match.vin || match.license_plate || match.unit_number || match.id}
+                      {match.customer_display_name ? ` · ${match.customer_display_name}` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Unit # + autocomplete */}
