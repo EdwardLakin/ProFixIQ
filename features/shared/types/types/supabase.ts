@@ -15130,6 +15130,11 @@ export type Database = {
           stripe_subscription_status: string | null
           stripe_trial_end: string | null
           supplies_percent: number | null
+          shop_supplies_enabled: boolean | null
+          shop_supplies_type: string | null
+          shop_supplies_percent: number | null
+          shop_supplies_flat_amount: number | null
+          shop_supplies_cap_amount: number | null
           tax_rate: number | null
           timezone: string | null
           updated_at: string | null
@@ -15192,6 +15197,11 @@ export type Database = {
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
           supplies_percent?: number | null
+          shop_supplies_enabled?: boolean | null
+          shop_supplies_type?: string | null
+          shop_supplies_percent?: number | null
+          shop_supplies_flat_amount?: number | null
+          shop_supplies_cap_amount?: number | null
           tax_rate?: number | null
           timezone?: string | null
           updated_at?: string | null
@@ -15254,6 +15264,11 @@ export type Database = {
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
           supplies_percent?: number | null
+          shop_supplies_enabled?: boolean | null
+          shop_supplies_type?: string | null
+          shop_supplies_percent?: number | null
+          shop_supplies_flat_amount?: number | null
+          shop_supplies_cap_amount?: number | null
           tax_rate?: number | null
           timezone?: string | null
           updated_at?: string | null
@@ -19634,6 +19649,8 @@ export type Database = {
           invoice_pdf_url: string | null
           invoice_sent_at: string | null
           invoice_total: number | null
+          shop_supplies_enabled_override: boolean | null
+          shop_supplies_amount_override: number | null
           invoice_url: string | null
           is_waiter: boolean
           labor_total: number | null
@@ -19702,6 +19719,8 @@ export type Database = {
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
           invoice_total?: number | null
+          shop_supplies_enabled_override?: boolean | null
+          shop_supplies_amount_override?: number | null
           invoice_url?: string | null
           is_waiter?: boolean
           labor_total?: number | null
@@ -19770,6 +19789,8 @@ export type Database = {
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
           invoice_total?: number | null
+          shop_supplies_enabled_override?: boolean | null
+          shop_supplies_amount_override?: number | null
           invoice_url?: string | null
           is_waiter?: boolean
           labor_total?: number | null
@@ -20432,6 +20453,8 @@ export type Database = {
           invoice_pdf_url: string | null
           invoice_sent_at: string | null
           invoice_total: number | null
+          shop_supplies_enabled_override: boolean | null
+          shop_supplies_amount_override: number | null
           invoice_url: string | null
           shop_id: string | null
           status: string | null
@@ -20447,6 +20470,8 @@ export type Database = {
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
           invoice_total?: number | null
+          shop_supplies_enabled_override?: boolean | null
+          shop_supplies_amount_override?: number | null
           invoice_url?: string | null
           shop_id?: string | null
           status?: string | null
@@ -20462,6 +20487,8 @@ export type Database = {
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
           invoice_total?: number | null
+          shop_supplies_enabled_override?: boolean | null
+          shop_supplies_amount_override?: number | null
           invoice_url?: string | null
           shop_id?: string | null
           status?: string | null

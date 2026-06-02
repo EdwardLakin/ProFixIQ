@@ -27,6 +27,11 @@ const ALLOWED_FIELDS = new Set([
   // numeric settings
   "labor_rate",
   "supplies_percent",
+  "shop_supplies_enabled",
+  "shop_supplies_type",
+  "shop_supplies_percent",
+  "shop_supplies_flat_amount",
+  "shop_supplies_cap_amount",
   "diagnostic_fee",
   "tax_rate",
 
@@ -84,11 +89,15 @@ export async function POST(req: Request) {
     const numericKeys = new Set([
       "labor_rate",
       "supplies_percent",
+      "shop_supplies_percent",
+      "shop_supplies_flat_amount",
+      "shop_supplies_cap_amount",
       "diagnostic_fee",
       "tax_rate",
     ]);
 
     const booleanKeys = new Set([
+      "shop_supplies_enabled",
       "use_ai",
       "require_cause_correction",
       "require_authorization",
@@ -110,6 +119,13 @@ export async function POST(req: Request) {
         const tz = String(v ?? "").trim();
         if (!tz) continue;
         safeUpdate.timezone = tz;
+        continue;
+      }
+
+      if (k === "shop_supplies_type") {
+        const type = String(v ?? "").trim().toLowerCase();
+        if (type !== "percentage" && type !== "flat") continue;
+        safeUpdate.shop_supplies_type = type;
         continue;
       }
 

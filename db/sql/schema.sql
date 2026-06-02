@@ -2565,6 +2565,11 @@ CREATE TABLE IF NOT EXISTS "public"."shops" (
     "logo_url" "text",
     "labor_rate" numeric,
     "supplies_percent" numeric,
+    "shop_supplies_enabled" boolean DEFAULT false,
+    "shop_supplies_type" "text" DEFAULT 'percentage'::"text",
+    "shop_supplies_percent" numeric,
+    "shop_supplies_flat_amount" numeric,
+    "shop_supplies_cap_amount" numeric,
     "diagnostic_fee" numeric,
     "tax_rate" numeric,
     "use_ai" boolean DEFAULT false,
@@ -3189,6 +3194,8 @@ CREATE TABLE IF NOT EXISTS "public"."work_orders" (
     "labor_total" numeric,
     "parts_total" numeric,
     "invoice_total" numeric,
+    "shop_supplies_enabled_override" boolean,
+    "shop_supplies_amount_override" numeric,
     "quote" "jsonb",
     "customer_name" "text",
     "vehicle_info" "text",
@@ -3607,6 +3614,10 @@ ALTER TABLE ONLY "public"."shop_time_slots"
 ALTER TABLE ONLY "public"."shops"
     ADD CONSTRAINT "shops_name_key" UNIQUE ("name");
 
+
+
+ALTER TABLE ONLY "public"."shops"
+    ADD CONSTRAINT "shops_shop_supplies_type_check" CHECK ((("shop_supplies_type" IS NULL) OR ("shop_supplies_type" = ANY (ARRAY['percentage'::"text", 'flat'::"text"]))));
 
 
 ALTER TABLE ONLY "public"."shops"

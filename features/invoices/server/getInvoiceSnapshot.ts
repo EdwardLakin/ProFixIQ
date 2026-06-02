@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+} from "@/features/work-orders/lib/shopSupplies";
 
 type DB = Database;
 
@@ -48,6 +53,8 @@ export type InvoiceSnapshot = {
     | "labor_total"
     | "parts_total"
     | "invoice_total"
+    | "shop_supplies_enabled_override"
+    | "shop_supplies_amount_override"
     | "created_at"
   >;
   invoice: Pick<
@@ -79,6 +86,12 @@ export type InvoiceSnapshot = {
     | "province"
     | "postal_code"
     | "labor_rate"
+    | "supplies_percent"
+    | "shop_supplies_enabled"
+    | "shop_supplies_type"
+    | "shop_supplies_percent"
+    | "shop_supplies_flat_amount"
+    | "shop_supplies_cap_amount"
   > | null;
   customer: Pick<
     CustomerRow,
@@ -111,6 +124,7 @@ export type InvoiceSnapshot = {
   currency: "CAD" | "USD";
   laborCost: number | null;
   partsCost: number | null;
+  shopSuppliesTotal: number | null;
   subtotal: number | null;
   discountTotal: number | null;
   taxTotal: number | null;
@@ -260,6 +274,8 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         | "labor_total"
         | "parts_total"
         | "invoice_total"
+        | "shop_supplies_enabled_override"
+        | "shop_supplies_amount_override"
         | "created_at"
       >
     >();
@@ -299,7 +315,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: shop } = await supabase
     .from("shops")
     .select(
-      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate",
+      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount",
     )
     .eq("id", workOrder.shop_id)
     .maybeSingle<
@@ -316,6 +332,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         | "province"
         | "postal_code"
         | "labor_rate"
+    | "supplies_percent"
+    | "shop_supplies_enabled"
+    | "shop_supplies_type"
+    | "shop_supplies_percent"
+    | "shop_supplies_flat_amount"
+    | "shop_supplies_cap_amount"
       >
     >();
 
@@ -728,14 +750,31 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const laborCost = invLabor ?? (resolvedLabor > 0 ? resolvedLabor : woLabor) ?? null;
   const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : partsTotalFromSnapshotParts ?? woParts) ?? null;
 
+  const baseSubtotal = (laborCost ?? 0) + (partsCost ?? 0);
+  const shopSupplies = calculateShopSupplies({
+    baseAmount: baseSubtotal,
+    settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
+    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
+  });
+  const shopSuppliesTotal = shopSupplies.amount > 0 ? shopSupplies.amount : null;
+
   const subtotal =
-    invSubtotal ??
-    ((laborCost ?? 0) + (partsCost ?? 0) > 0 ? (laborCost ?? 0) + (partsCost ?? 0) : null);
+    invSubtotal != null
+      ? invSubtotal <= baseSubtotal + 0.005
+        ? invSubtotal + shopSupplies.amount
+        : invSubtotal
+      : baseSubtotal + shopSupplies.amount > 0
+        ? baseSubtotal + shopSupplies.amount
+        : null;
 
   const derivedTotal =
     subtotal != null ? Math.max(0, subtotal + invTax - invDiscount) : null;
+  const adjustedInvoiceTotal =
+    invTotal != null && invSubtotal != null && invSubtotal <= baseSubtotal + 0.005
+      ? invTotal + shopSupplies.amount
+      : invTotal;
 
-  const total = invTotal ?? woInvoiceTotal ?? derivedTotal ?? null;
+  const total = adjustedInvoiceTotal ?? woInvoiceTotal ?? derivedTotal ?? null;
 
   return {
     workOrder,
@@ -748,6 +787,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     currency,
     laborCost,
     partsCost,
+    shopSuppliesTotal,
     subtotal,
     discountTotal: invDiscount > 0 ? invDiscount : null,
     taxTotal: invTax > 0 ? invTax : null,

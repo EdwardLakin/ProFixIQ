@@ -4,6 +4,11 @@ import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+} from "@/features/work-orders/lib/shopSupplies";
 
 type DB = Database;
 
@@ -177,13 +182,13 @@ export async function POST(req: Request) {
 
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
-      .select("id, customer_id, shop_id, vehicle_id, quote_url")
+      .select("id, customer_id, shop_id, vehicle_id, quote_url, shop_supplies_enabled_override, shop_supplies_amount_override")
       .eq("id", workOrderId)
       .eq("shop_id", access.profile.shop_id)
       .maybeSingle<
         Pick<
           WorkOrderRow,
-          "id" | "customer_id" | "shop_id" | "vehicle_id" | "quote_url"
+          "id" | "customer_id" | "shop_id" | "vehicle_id" | "quote_url" | "shop_supplies_enabled_override" | "shop_supplies_amount_override"
         >
       >();
 
@@ -257,14 +262,15 @@ export async function POST(req: Request) {
     let shopName = safeStr(body?.shopName).trim() || "";
     let laborRate = 0;
     let brand: Awaited<ReturnType<typeof getActiveBrandForRender>> | null = null;
+    let shopForSupplies: Pick<ShopRow, "supplies_percent" | "shop_supplies_enabled" | "shop_supplies_type" | "shop_supplies_percent" | "shop_supplies_flat_amount" | "shop_supplies_cap_amount"> | null = null;
 
     if (wo.shop_id) {
       const { data: shop, error: shopErr } = await supabaseAdmin
         .from("shops")
-        .select("name, shop_name, labor_rate")
+        .select("name, shop_name, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount")
         .eq("id", wo.shop_id)
         .maybeSingle<
-          Pick<ShopRow, "name" | "shop_name" | "labor_rate">
+          Pick<ShopRow, "name" | "shop_name" | "labor_rate" | "supplies_percent" | "shop_supplies_enabled" | "shop_supplies_type" | "shop_supplies_percent" | "shop_supplies_flat_amount" | "shop_supplies_cap_amount">
         >();
 
       if (!shopErr && shop) {
@@ -273,6 +279,7 @@ export async function POST(req: Request) {
           safeStr(shop.shop_name).trim() ||
           safeStr(shop.name).trim();
         laborRate = asNumber(shop.labor_rate) ?? 0;
+        shopForSupplies = shop;
       }
 
       brand = await getActiveBrandForRender(wo.shop_id);
@@ -367,10 +374,24 @@ export async function POST(req: Request) {
       return { description, amount } satisfies QuoteLine;
     });
 
-    const computedTotal = computed.reduce((sum, line) => sum + line.amount, 0);
+    const computedLineTotal = computed.reduce((sum, line) => sum + line.amount, 0);
+    const computedLaborPartsBase = sendableQuoteLines.reduce((sum, line) => {
+      const labor = quoteLaborTotal(line, laborRate);
+      const parts = quotePartsTotal(line);
+      return sum + labor + parts;
+    }, 0);
+    const shopSupplies = calculateShopSupplies({
+      baseAmount: computedLaborPartsBase,
+      settings: resolveShopSuppliesSettings(shopForSupplies as Parameters<typeof resolveShopSuppliesSettings>[0]),
+      override: resolveShopSuppliesOverride(wo as Parameters<typeof resolveShopSuppliesOverride>[0]),
+    });
+    const computedTotal = computedLineTotal + shopSupplies.amount;
+    const computedWithSupplies = shopSupplies.amount > 0
+      ? [...computed, { description: "Shop supplies", amount: shopSupplies.amount } satisfies QuoteLine]
+      : computed;
     sendableQuoteLineIds = sendableQuoteLines.map((line) => line.id);
 
-    if (!lines || lines.length === 0) lines = computed;
+    if (!lines || lines.length === 0) lines = computedWithSupplies;
     if (typeof quoteTotal !== "number") quoteTotal = computedTotal;
     const pdfUrl = body?.pdfUrl ?? null;
 

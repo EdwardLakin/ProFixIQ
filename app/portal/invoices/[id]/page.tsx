@@ -12,6 +12,11 @@ import {
 } from "@/features/portal/server/portalAuth";
 
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+} from "@/features/work-orders/lib/shopSupplies";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +46,8 @@ type WorkOrderForPortalInvoice = Pick<
   | "invoice_total"
   | "labor_total"
   | "parts_total"
+  | "shop_supplies_enabled_override"
+  | "shop_supplies_amount_override"
 >;
 
 type InvoiceLite = Pick<
@@ -155,6 +162,16 @@ export default async function PortalInvoicePage({
 
   let lines: PortalLine[] = [];
   let parts: PartDisplayRow[] = [];
+  let shopForSupplies: Pick<
+    ShopRow,
+    | "country"
+    | "supplies_percent"
+    | "shop_supplies_enabled"
+    | "shop_supplies_type"
+    | "shop_supplies_percent"
+    | "shop_supplies_flat_amount"
+    | "shop_supplies_cap_amount"
+  > | null = null;
 
   // ✅ declare outside try so it’s usable later
   let partsTotalFromAlloc = 0;
@@ -167,7 +184,7 @@ export default async function PortalInvoicePage({
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select(
-        "id, shop_id, customer_id, status, approval_state, created_at, custom_id, invoice_sent_at, invoice_last_sent_to, invoice_pdf_url, invoice_total, labor_total, parts_total",
+        "id, shop_id, customer_id, status, approval_state, created_at, custom_id, invoice_sent_at, invoice_last_sent_to, invoice_pdf_url, invoice_total, labor_total, parts_total, shop_supplies_enabled_override, shop_supplies_amount_override",
       )
       .eq("id", workOrderId)
       .eq("customer_id", customer.id)
@@ -182,15 +199,16 @@ export default async function PortalInvoicePage({
     if (workOrder.shop_id) {
       const { data: shop, error: shopErr } = await supabase
         .from("shops")
-        .select("country")
+        .select("country, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount")
         .eq("id", workOrder.shop_id)
-        .maybeSingle<Pick<ShopRow, "country">>();
+        .maybeSingle<Pick<ShopRow, "country" | "supplies_percent" | "shop_supplies_enabled" | "shop_supplies_type" | "shop_supplies_percent" | "shop_supplies_flat_amount" | "shop_supplies_cap_amount">>();
 
       if (shopErr) {
         // eslint-disable-next-line no-console
         console.warn("[portal invoice] shops query failed:", shopErr.message);
       }
 
+      shopForSupplies = shop ?? null;
       shopCountry = (shop?.country ?? null) as string | null;
     }
 
@@ -338,9 +356,27 @@ export default async function PortalInvoicePage({
   const invTax = safeNumberOrNull(invoice?.tax_total) ?? 0;
   const invDiscount = safeNumberOrNull(invoice?.discount_total) ?? 0;
 
+  // ✅ allocations parts fallback (your priced allocations)
+  const partsCostFromAlloc =
+    Number.isFinite(partsTotalFromAlloc) && partsTotalFromAlloc > 0 ? partsTotalFromAlloc : null;
+
+  // ✅ PDF-like fallback: allocations parts + WO labor (if present)
+  const computedBaseSubtotal = (woLabor ?? 0) + (partsCostFromAlloc ?? (woParts ?? 0));
+  const shopSupplies = calculateShopSupplies({
+    baseAmount: computedBaseSubtotal,
+    settings: resolveShopSuppliesSettings(shopForSupplies as Parameters<typeof resolveShopSuppliesSettings>[0]),
+    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
+  });
+  const shopSuppliesTotal = shopSupplies.amount > 0 ? shopSupplies.amount : null;
+
   // ✅ derive subtotal/total from invoice components only if they’re actually present (>0)
+  const invoiceBaseSubtotal = (invLabor ?? 0) + (invParts ?? 0);
   const derivedInvoiceSubtotal =
-    invSubtotal != null ? invSubtotal : (invLabor ?? 0) + (invParts ?? 0);
+    invSubtotal != null
+      ? invSubtotal <= invoiceBaseSubtotal + 0.005
+        ? invSubtotal + shopSupplies.amount
+        : invSubtotal
+      : invoiceBaseSubtotal + shopSupplies.amount;
 
   const derivedInvoiceTotalCandidate = derivedInvoiceSubtotal + invTax - invDiscount;
 
@@ -350,22 +386,22 @@ export default async function PortalInvoicePage({
     derivedInvoiceTotalCandidate > 0;
 
   const invoiceTotalFromInvoiceRow =
-    invTotalRaw != null ? invTotalRaw : shouldUseDerivedInvoiceTotal ? derivedInvoiceTotalCandidate : null;
+    invTotalRaw != null
+      ? invSubtotal != null && invSubtotal <= invoiceBaseSubtotal + 0.005
+        ? invTotalRaw + shopSupplies.amount
+        : invTotalRaw
+      : shouldUseDerivedInvoiceTotal
+        ? derivedInvoiceTotalCandidate
+        : null;
 
-  // ✅ allocations parts fallback (your priced allocations)
-  const partsCostFromAlloc =
-    Number.isFinite(partsTotalFromAlloc) && partsTotalFromAlloc > 0 ? partsTotalFromAlloc : null;
-
-  // ✅ PDF-like fallback: allocations parts + WO labor (if present)
-  const computedFallbackTotal =
-    (woLabor ?? 0) + (partsCostFromAlloc ?? (woParts ?? 0));
+  const computedFallbackTotal = computedBaseSubtotal + shopSupplies.amount;
 
   // ✅ last-resort fallback: WO invoice_total OR WO labor+parts
   const invoiceTotalFallback =
     woInvoiceTotal != null
       ? woInvoiceTotal
       : woLabor != null || woParts != null
-        ? (woLabor ?? 0) + (woParts ?? 0)
+        ? (woLabor ?? 0) + (woParts ?? 0) + shopSupplies.amount
         : null;
 
   // ✅ total selection: invoice-first (if real), then WO invoice_total, then computed, then fallback
@@ -391,9 +427,15 @@ export default async function PortalInvoicePage({
   // 2) (labor+parts) if either present
   // 3) derive from total (subtract tax, add discount)
   const subtotal =
-    invSubtotal ??
-    ((laborCost ?? 0) + (partsCost ?? 0) > 0 ? (laborCost ?? 0) + (partsCost ?? 0) : null) ??
-    (total != null ? Math.max(0, total - invTax + invDiscount) : null);
+    invSubtotal != null
+      ? invSubtotal <= (laborCost ?? 0) + (partsCost ?? 0) + 0.005
+        ? invSubtotal + shopSupplies.amount
+        : invSubtotal
+      : (laborCost ?? 0) + (partsCost ?? 0) + shopSupplies.amount > 0
+        ? (laborCost ?? 0) + (partsCost ?? 0) + shopSupplies.amount
+        : total != null
+          ? Math.max(0, total - invTax + invDiscount)
+          : null;
 
   const discountTotal = invDiscount > 0 ? invDiscount : null;
   const taxTotal = invTax > 0 ? invTax : null;
@@ -532,6 +574,11 @@ export default async function PortalInvoicePage({
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Parts</div>
                 <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(partsCost ?? null, currency)}</div>
+              </div>
+
+              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Shop supplies</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(shopSuppliesTotal ?? 0, currency)}</div>
               </div>
 
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">

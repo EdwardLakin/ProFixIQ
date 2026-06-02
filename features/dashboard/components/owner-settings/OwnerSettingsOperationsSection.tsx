@@ -9,7 +9,11 @@ type Props = {
   currency: string;
   taxLabel: string;
   laborRate: string;
+  suppliesEnabled: boolean;
+  suppliesType: "percentage" | "flat";
   suppliesPercent: string;
+  suppliesFlatAmount: string;
+  suppliesCapAmount: string;
   diagnosticFee: string;
   taxRate: string;
   pricingValidDays: number;
@@ -23,7 +27,11 @@ type Props = {
   appearanceMode: "dark" | "light" | "system";
   appearanceSaving: boolean;
   onLaborRateChange: (value: string) => void;
+  onSuppliesEnabledChange: (value: boolean) => void;
+  onSuppliesTypeChange: (value: "percentage" | "flat") => void;
   onSuppliesPercentChange: (value: string) => void;
+  onSuppliesFlatAmountChange: (value: string) => void;
+  onSuppliesCapAmountChange: (value: string) => void;
   onDiagnosticFeeChange: (value: string) => void;
   onTaxRateChange: (value: string) => void;
   onPricingValidDaysChange: (value: number) => void;
@@ -41,7 +49,11 @@ export default function OwnerSettingsOperationsSection({
   currency,
   taxLabel,
   laborRate,
+  suppliesEnabled,
+  suppliesType,
   suppliesPercent,
+  suppliesFlatAmount,
+  suppliesCapAmount,
   diagnosticFee,
   taxRate,
   pricingValidDays,
@@ -55,7 +67,11 @@ export default function OwnerSettingsOperationsSection({
   appearanceMode,
   appearanceSaving,
   onLaborRateChange,
+  onSuppliesEnabledChange,
+  onSuppliesTypeChange,
   onSuppliesPercentChange,
+  onSuppliesFlatAmountChange,
+  onSuppliesCapAmountChange,
   onDiagnosticFeeChange,
   onTaxRateChange,
   onPricingValidDaysChange,
@@ -82,11 +98,42 @@ export default function OwnerSettingsOperationsSection({
             placeholder={`Labor rate (${currency}/hr)`}
             disabled={!isUnlocked}
           />
+          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-xs text-neutral-300 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={suppliesEnabled}
+              onChange={(e) => onSuppliesEnabledChange(e.target.checked)}
+              disabled={!isUnlocked}
+              className="h-4 w-4 accent-[color:var(--brand-accent,#E39A6E)]"
+            />
+            Auto-apply shop supplies to quotes and invoices
+          </label>
+          <select
+            value={suppliesType}
+            onChange={(e) => onSuppliesTypeChange(e.target.value === "flat" ? "flat" : "percentage")}
+            disabled={!isUnlocked || !suppliesEnabled}
+            className="h-10 rounded-md border border-white/10 bg-black/40 px-3 text-sm text-white disabled:opacity-60"
+          >
+            <option value="percentage">Percentage</option>
+            <option value="flat">Flat amount</option>
+          </select>
           <Input
             value={suppliesPercent}
             onChange={(e) => onSuppliesPercentChange(e.target.value)}
             placeholder="Shop supplies (%)"
-            disabled={!isUnlocked}
+            disabled={!isUnlocked || !suppliesEnabled || suppliesType !== "percentage"}
+          />
+          <Input
+            value={suppliesFlatAmount}
+            onChange={(e) => onSuppliesFlatAmountChange(e.target.value)}
+            placeholder={`Shop supplies flat (${currency})`}
+            disabled={!isUnlocked || !suppliesEnabled || suppliesType !== "flat"}
+          />
+          <Input
+            value={suppliesCapAmount}
+            onChange={(e) => onSuppliesCapAmountChange(e.target.value)}
+            placeholder={`Optional supplies cap (${currency})`}
+            disabled={!isUnlocked || !suppliesEnabled}
           />
           <Input
             value={diagnosticFee}
