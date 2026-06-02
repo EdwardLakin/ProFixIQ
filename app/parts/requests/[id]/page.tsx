@@ -1042,6 +1042,122 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
   }
 
+
+  async function savePreApprovalQuote(reqId: string, itemId: string): Promise<void> {
+    const target = requests.find((r) => r.req.id === reqId);
+    const it = target?.items.find((x) => String(x.id) === String(itemId));
+    if (!target || !it) return;
+
+    const quoteLineId = it.quote_line_id ?? target.req.quote_line_id ?? null;
+    if (!quoteLineId) {
+      toast.error("This item is not linked to a quote line.");
+      return;
+    }
+    if (isUuid(it.work_order_line_id)) {
+      toast.error("This item is already linked to a work order line. Use the normal allocation flow.");
+      return;
+    }
+
+    const normalizedStatus = String(it.status ?? "").toLowerCase();
+    if (["cancelled", "rejected", "declined"].includes(normalizedStatus)) {
+      toast.error("Cancelled or rejected items cannot be quoted.");
+      return;
+    }
+
+    const qty = Math.max(1, Math.floor(toNum(it.ui_qty, 1)));
+    const price = it.ui_price;
+    if (price == null || !Number.isFinite(price) || price < 0) {
+      toast.error("Enter a quoted unit price of 0 or greater.");
+      return;
+    }
+
+    const partId = it.ui_part_id || it.part_id || null;
+    if (partId && !isUuid(partId)) {
+      toast.error("Invalid part id (must be a UUID).");
+      return;
+    }
+
+    const vendorId = String(it.ui_supplier_id ?? "").trim();
+    const validVendorId = vendorId && !vendorId.startsWith("__new__:") ? vendorId : null;
+    if (validVendorId && !isUuid(validVendorId)) {
+      toast.error("Invalid supplier id (must be a UUID).");
+      return;
+    }
+
+    setSavingItemId(itemId);
+    try {
+      const res = await fetch(`/api/parts/requests/items/${itemId}/quote-save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quoteLineId,
+          description: String(it.description ?? "").trim(),
+          qty,
+          quotedPrice: price,
+          partId,
+          vendorId: validVendorId,
+        }),
+      });
+
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; notice?: string; item?: ItemRow }
+        | null;
+
+      if (!res.ok || !body?.ok || !body.item) {
+        toast.error(body?.error || "Could not save quote.");
+        return;
+      }
+
+      const updated = body.item;
+      const nextItems = target.items.map((x) =>
+        String(x.id) === String(itemId)
+          ? ({
+              ...x,
+              ...updated,
+              ui_part_id: updated.part_id ?? partId ?? null,
+              ui_qty: toNum(updated.qty, qty),
+              ui_price:
+                updated.quoted_price == null
+                  ? price
+                  : toNum(updated.quoted_price, price),
+              ui_supplier_id: updated.vendor_id ?? validVendorId ?? x.ui_supplier_id,
+            } as UiItem)
+          : x,
+      );
+
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.req.id === reqId
+            ? {
+                ...r,
+                items: r.items.map((x) =>
+                  String(x.id) === String(itemId)
+                    ? ({
+                        ...x,
+                        ...updated,
+                        ui_part_id: updated.part_id ?? partId ?? null,
+                        ui_qty: toNum(updated.qty, qty),
+                        ui_price:
+                          updated.quoted_price == null
+                            ? price
+                            : toNum(updated.quoted_price, price),
+                        ui_supplier_id: updated.vendor_id ?? validVendorId ?? x.ui_supplier_id,
+                      } as UiItem)
+                    : x,
+                ),
+              }
+            : r,
+        ),
+      );
+
+      await syncRequestQuotedState(reqId, nextItems, target.req.status);
+      window.dispatchEvent(new Event("parts-request:submitted"));
+      toast.success(body.notice || "Quote saved. Allocation will unlock after customer approval.");
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
   async function addAndAttach(reqId: string, itemId: string): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
     const it = target?.items.find((x) => x.id === itemId);
@@ -1522,6 +1638,14 @@ if (!lineId || !isUuid(lineId)) {
                                   qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
                                   qtyReceived: (it as { qty_received?: unknown }).qty_received,
                                 });
+                                const itemHasQuoteLineOrigin = !!it.quote_line_id || hasQuoteLineOrigin;
+                                const isQuoteOnlyPreApprovalItem =
+                                  itemHasQuoteLineOrigin && !isUuid(it.work_order_line_id);
+                                const quoteSaveDisabled =
+                                  rowBusy ||
+                                  it.ui_price == null ||
+                                  !Number.isFinite(it.ui_price) ||
+                                  it.ui_price < 0;
 
                                 return (
                                   <tr
@@ -1603,7 +1727,7 @@ if (!lineId || !isUuid(lineId)) {
                                                 : "Use this stock part"}
                                             </button>
                                             {topSuggestion.part_id === it.ui_part_id ? (
-                                              <div className="mt-1 text-neutral-500">Selected for review. Click <span className="text-neutral-300">Add</span> to run the normal attach flow.</div>
+                                              <div className="mt-1 text-neutral-500">Selected for review. Click <span className="text-neutral-300">{isQuoteOnlyPreApprovalItem ? "Save Quote" : "Add"}</span> to run the normal {isQuoteOnlyPreApprovalItem ? "pre-approval quote" : "attach"} flow.</div>
                                             ) : null}
                                           </div>
                                         ) : hasAttachedPart && topSuggestion ? (
@@ -1671,27 +1795,40 @@ if (!lineId || !isUuid(lineId)) {
                                             ) : null}
                                           </div>
                                         ) : null}
-                                        {approved > 0 ? (
+                                        {approved > 0 || isQuoteOnlyPreApprovalItem ? (
                                           <div className="text-[11px] text-neutral-500">
                                             State{" "}
                                             <span className="text-neutral-200">
-                                              {itemFlowLabel(itemState)}
-                                            </span>{" "}
-                                            <span className="text-neutral-600">·</span>{" "}
-                                            Approved{" "}
-                                            <span className="text-neutral-200">
-                                              {approved}
-                                            </span>{" "}
-                                            <span className="text-neutral-600">·</span>{" "}
-                                            Received{" "}
-                                            <span className="text-neutral-200">
-                                              {received}
-                                            </span>{" "}
-                                            <span className="text-neutral-600">·</span>{" "}
-                                            Remaining{" "}
-                                            <span className="text-neutral-200">
-                                              {remaining}
+                                              {isQuoteOnlyPreApprovalItem && String(it.status ?? "").toLowerCase() === "quoted"
+                                                ? "Quoted"
+                                                : itemFlowLabel(itemState)}
                                             </span>
+                                            {isQuoteOnlyPreApprovalItem ? (
+                                              <>
+                                                <span className="text-neutral-600"> · </span>
+                                                <span className="text-[rgba(242,210,187,0.94)]">
+                                                  Waiting for customer approval before allocation
+                                                </span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <span className="text-neutral-600"> · </span>
+                                                Approved{" "}
+                                                <span className="text-neutral-200">
+                                                  {approved}
+                                                </span>{" "}
+                                                <span className="text-neutral-600">·</span>{" "}
+                                                Received{" "}
+                                                <span className="text-neutral-200">
+                                                  {received}
+                                                </span>{" "}
+                                                <span className="text-neutral-600">·</span>{" "}
+                                                Remaining{" "}
+                                                <span className="text-neutral-200">
+                                                  {remaining}
+                                                </span>
+                                              </>
+                                            )}
                                             {trustMeta ? (
                                               <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 ${trustBadgeTone(trustMeta.level)}`}>
                                                 {trustLevelLabel(trustMeta.level)}
@@ -1897,20 +2034,40 @@ if (!lineId || !isUuid(lineId)) {
                                         <button
                                           className={`${btnCopper} py-1.5 text-xs`}
                                           onClick={() =>
-                                            void addAndAttach(r.req.id, String(it.id))
+                                            isQuoteOnlyPreApprovalItem
+                                              ? void savePreApprovalQuote(r.req.id, String(it.id))
+                                              : void addAndAttach(r.req.id, String(it.id))
                                           }
-                                          disabled={rowBusy || !it.ui_part_id || !canMaterializeToLine}
+                                          disabled={
+                                            isQuoteOnlyPreApprovalItem
+                                              ? quoteSaveDisabled
+                                              : rowBusy || !it.ui_part_id || !canMaterializeToLine
+                                          }
                                           title={
-                                            !canMaterializeToLine
-                                              ? hasQuoteLineOrigin
-                                                ? "Quote-originated parts are not allocated until approval creates a work order line link"
-                                                : "Missing work order line link"
-                                              : undefined
+                                            isQuoteOnlyPreApprovalItem
+                                              ? "Save quote pricing now. Allocation unlocks after customer approval."
+                                              : !canMaterializeToLine
+                                                ? hasQuoteLineOrigin
+                                                  ? "Quote-originated parts are not allocated until approval creates a work order line link"
+                                                  : "Missing work order line link"
+                                                : undefined
                                           }
                                           type="button"
                                         >
-                                          {rowBusy ? "Saving…" : "Add"}
+                                          {rowBusy
+                                            ? "Saving…"
+                                            : isQuoteOnlyPreApprovalItem
+                                              ? "Save Quote"
+                                              : "Add"}
                                         </button>
+
+                                        {isQuoteOnlyPreApprovalItem ? (
+                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-[rgba(242,210,187,0.94)]">
+                                            {String(it.status ?? "").toLowerCase() === "quoted"
+                                              ? "Quote saved. Allocation will unlock after customer approval."
+                                              : "Waiting for customer approval before allocation"}
+                                          </div>
+                                        ) : null}
 
                                         <button
                                           className={btnGhost}
