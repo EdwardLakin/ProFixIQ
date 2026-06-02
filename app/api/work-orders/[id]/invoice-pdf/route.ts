@@ -19,10 +19,6 @@ type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
-type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
-type PartRow = DB["public"]["Tables"]["parts"]["Row"];
-type WorkOrderPartAllocRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 type PdfRgb = ReturnType<typeof rgb>;
@@ -137,21 +133,6 @@ type PdfCtx = {
   doc: PDFDocument;
   page: ReturnType<PDFDocument["addPage"]>;
   y: number;
-};
-
-// Optional line linkage if your schema has work_order_line_id
-type BilledPartRow = Pick<
-  WorkOrderPartRow,
-  "part_id" | "quantity" | "unit_price" | "total_price"
-> & {
-  work_order_line_id?: string | null;
-};
-
-type AllocPartRow = Pick<
-  WorkOrderPartAllocRow,
-  "part_id" | "qty" | "unit_cost"
-> & {
-  work_order_line_id?: string | null;
 };
 
 export async function GET(
@@ -401,123 +382,18 @@ export async function GET(
     >
   >;
 
-  // Parts: Prefer billed parts, fallback to allocations
-  const { data: wop } = await supabase
-    .from("work_order_parts")
-    .select("part_id,quantity,unit_price,total_price,work_order_line_id")
-    .eq("work_order_id", workOrderId);
-
-  const billedParts = (Array.isArray(wop) ? wop : []) as BilledPartRow[];
-
-  let allocParts: Array<{
-    part_id: string;
-    qty: number;
-    unit_cost: number;
-    work_order_line_id?: string | null;
-  }> = [];
-
-  if (billedParts.length === 0) {
-    const { data: alloc } = await supabase
-      .from("work_order_part_allocations")
-      .select("part_id,qty,unit_cost,work_order_line_id")
-      .eq("work_order_id", workOrderId);
-
-    const allocRows = (Array.isArray(alloc) ? alloc : []) as AllocPartRow[];
-
-    allocParts = allocRows
-      .filter((r) => typeof r.part_id === "string" && r.part_id.length > 0)
-      .map((r) => ({
-        part_id: r.part_id as string,
-        qty: safeMoney(r.qty),
-        unit_cost: safeMoney(r.unit_cost),
-        work_order_line_id:
-          typeof r.work_order_line_id === "string" ? r.work_order_line_id : null,
-      }));
-  }
-
-  const partIds = Array.from(
-    new Set(
-      [
-        ...billedParts
-          .map((r) => r.part_id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
-        ...allocParts.map((r) => r.part_id),
-      ].filter(Boolean),
-    ),
-  );
-
-  let partsMap = new Map<
-    string,
-    Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">
-  >();
-
-  if (partIds.length > 0) {
-    const { data: parts } = await supabase
-      .from("parts")
-      .select("id,name,part_number,sku,unit")
-      .in("id", partIds);
-
-    const arr = (Array.isArray(parts) ? parts : []) as Array<
-      Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">
-    >;
-
-    partsMap = new Map(arr.map((p) => [p.id, p]));
-  }
-
-  const partRowsFromBilled: PartDisplayRow[] = billedParts.map((r) => {
-    const p = r.part_id ? partsMap.get(r.part_id) : undefined;
-
-    const qty =
-      typeof r.quantity === "number" ? r.quantity : Number(r.quantity);
-    const unitPrice = safeMoney(r.unit_price);
-    const totalPrice = safeMoney(r.total_price);
-
-    const lineId =
-      typeof r.work_order_line_id === "string" && r.work_order_line_id.length > 0
-        ? r.work_order_line_id
-        : undefined;
-
-    return {
-      name: (p?.name ?? "Part").trim() || "Part",
-      partNumber: (p?.part_number ?? "").trim() || undefined,
-      sku: (p?.sku ?? "").trim() || undefined,
-      unit: (p?.unit ?? "").trim() || undefined,
-      qty: Number.isFinite(qty) ? qty : 0,
-      unitPrice,
-      totalPrice:
-        totalPrice > 0
-          ? totalPrice
-          : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unitPrice),
-      lineId,
-    };
-  });
-
-  const partRowsFromAlloc: PartDisplayRow[] = allocParts.map((r) => {
-    const p = partsMap.get(r.part_id);
-
-    const qty = safeMoney(r.qty);
-    const unitCost = safeMoney(r.unit_cost);
-    const total = Math.max(0, qty * unitCost);
-
-    const lineId =
-      typeof r.work_order_line_id === "string" && r.work_order_line_id.length > 0
-        ? r.work_order_line_id
-        : undefined;
-
-    return {
-      name: (p?.name ?? "Part").trim() || "Part",
-      partNumber: (p?.part_number ?? "").trim() || undefined,
-      sku: (p?.sku ?? "").trim() || undefined,
-      unit: (p?.unit ?? "").trim() || undefined,
-      qty,
-      unitPrice: unitCost,
-      totalPrice: total,
-      lineId,
-    };
-  });
-
-  const allPartRows: PartDisplayRow[] =
-    partRowsFromBilled.length > 0 ? partRowsFromBilled : partRowsFromAlloc;
+  // Parts: the shared invoice snapshot applies allocation → staged work_order_parts →
+  // approved quote-line part_request_items priority and exposes the exact visible rows.
+  const allPartRows: PartDisplayRow[] = snapshot.parts.map((part) => ({
+    name: part.name,
+    partNumber: part.partNumber,
+    sku: part.sku,
+    unit: part.unit,
+    qty: part.qty,
+    unitPrice: part.unitPrice,
+    totalPrice: part.totalPrice,
+    lineId: part.lineId,
+  }));
 
   const partsByLineId = new Map<string, PartDisplayRow[]>();
   const unassignedParts: PartDisplayRow[] = [];

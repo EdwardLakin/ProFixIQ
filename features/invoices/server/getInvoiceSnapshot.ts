@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 type DB = Database;
 
@@ -13,7 +14,8 @@ type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type WorkOrderQuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
-import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+type PartRequestItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
+type PartRequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 
 export type InvoiceSnapshotPart = {
   id: string;
@@ -25,6 +27,8 @@ export type InvoiceSnapshotPart = {
   sku?: string;
   partNumber?: string;
   unit?: string;
+  vendor?: string;
+  source?: "work_order_part_allocation" | "work_order_part" | "quote_line_part_request";
 };
 
 export type InvoiceSnapshotLine = Pick<
@@ -143,6 +147,93 @@ function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+const BILLABLE_PART_REQUEST_ITEM_STATUSES = new Set([
+  "quoted",
+  "approved",
+  "reserved",
+  "picking",
+  "picked",
+  "ordered",
+  "partially_received",
+  "received",
+  "fulfilled",
+  "consumed",
+]);
+
+const NON_BILLABLE_QUOTE_LINE_STATUSES = new Set([
+  "declined",
+  "deferred",
+  "rejected",
+  "cancelled",
+  "canceled",
+]);
+
+function itemUnitPrice(item: Pick<PartRequestItemRow, "quoted_price" | "unit_price" | "unit_cost">): number {
+  // Phase 5D quote sync treats quoted_price as the unit sell price, then falls back
+  // to unit_price and unit_cost. Preserve that unit-price interpretation here.
+  return safeNumberOrNull(item.quoted_price) ?? safeNumberOrNull(item.unit_price) ?? safeNumberOrNull(item.unit_cost) ?? 0;
+}
+
+function itemQuantity(item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "qty_approved">): number {
+  const qty = safeNumber(item.qty);
+  const requested = safeNumber(item.qty_requested);
+  const approved = safeNumber(item.qty_approved);
+  const resolved = qty > 0 ? qty : requested > 0 ? requested : approved;
+  return resolved > 0 ? resolved : 1;
+}
+
+function quoteLineIsInvoiceFallbackEligible(
+  quote: Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id"> | undefined,
+  lineId: string,
+): boolean {
+  if (!quote?.work_order_line_id || quote.work_order_line_id !== lineId) return false;
+  const status = String(quote.status ?? "").trim().toLowerCase();
+  return !NON_BILLABLE_QUOTE_LINE_STATUSES.has(status);
+}
+
+function partRequestItemIsInvoiceFallbackEligible(
+  item: Pick<
+    PartRequestItemRow,
+    | "shop_id"
+    | "work_order_id"
+    | "work_order_line_id"
+    | "quote_line_id"
+    | "request_id"
+    | "status"
+    | "approved"
+    | "qty"
+    | "qty_requested"
+    | "qty_approved"
+  >,
+  args: {
+    shopId: string;
+    workOrderId: string;
+    workOrderLineId: string;
+    requestQuoteLineIdByRequestId: Map<string, string>;
+    quoteLineById: Map<string, Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">>;
+  },
+): boolean {
+  if (item.shop_id !== args.shopId) return false;
+  if (item.work_order_id !== args.workOrderId) return false;
+  if (item.work_order_line_id !== args.workOrderLineId) return false;
+
+  const status = String(item.status ?? "").trim().toLowerCase();
+  const statusIsBillable = BILLABLE_PART_REQUEST_ITEM_STATUSES.has(status);
+  if (!statusIsBillable && item.approved !== true) return false;
+  if (itemQuantity(item) <= 0) return false;
+
+  const quoteLineId =
+    (isNonEmptyString(item.quote_line_id) ? item.quote_line_id.trim() : "") ||
+    args.requestQuoteLineIdByRequestId.get(item.request_id) ||
+    "";
+  if (!quoteLineId) return false;
+
+  return quoteLineIsInvoiceFallbackEligible(
+    args.quoteLineById.get(quoteLineId),
+    args.workOrderLineId,
+  );
 }
 
 export async function getInvoiceSnapshotForWorkOrder(args: {
@@ -279,6 +370,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: linesRaw } = await supabase
     .from("work_order_lines")
     .select("id, line_no, description, complaint, cause, correction, labor_time")
+    .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("line_no", { ascending: true })
     .returns<InvoiceSnapshotLine[]>();
@@ -287,14 +379,15 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: allocRaw } = await supabase
     .from("work_order_part_allocations")
-    .select("id, work_order_line_id, part_id, qty, unit_cost, created_at")
+    .select("id, shop_id, work_order_id, work_order_line_id, part_id, qty, unit_cost, source_request_item_id, created_at")
+    .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("created_at", { ascending: true })
     .returns<
       Array<
         Pick<
           AllocationRow,
-          "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost" | "created_at"
+          "id" | "shop_id" | "work_order_id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost" | "source_request_item_id" | "created_at"
         >
       >
     >();
@@ -302,11 +395,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
   const { data: stagedPartsRaw } = await supabase
     .from("work_order_parts")
-    .select("id, work_order_line_id, quantity, unit_price, total_price")
+    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price")
+    .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<
       Array<
-        Pick<WorkOrderPartRow, "id" | "work_order_line_id" | "quantity" | "unit_price" | "total_price">
+        Pick<WorkOrderPartRow, "id" | "shop_id" | "work_order_line_id" | "part_id" | "quantity" | "unit_price" | "total_price">
       >
     >();
   const stagedParts = Array.isArray(stagedPartsRaw) ? stagedPartsRaw : [];
@@ -314,17 +408,139 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: quoteRaw } = await supabase
     .from("work_order_quote_lines")
     .select("id, work_order_line_id, status, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total")
+    .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<Array<Pick<WorkOrderQuoteLineRow, "id" | "work_order_line_id" | "status" | "labor_hours" | "est_labor_hours" | "labor_total" | "parts_total" | "subtotal" | "grand_total">>>();
   const activeQuotes = (Array.isArray(quoteRaw) ? quoteRaw : []).filter((q) => {
     const s = String(q.status ?? "").toLowerCase();
-    return s !== "converted" && s !== "declined";
+    return s !== "converted" && !NON_BILLABLE_QUOTE_LINE_STATUSES.has(s);
   });
+
+  const quoteLines = Array.isArray(quoteRaw) ? quoteRaw : [];
+  const quoteLineById = new Map<
+    string,
+    Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">
+  >();
+  for (const q of quoteLines) {
+    if (isNonEmptyString(q.id)) {
+      quoteLineById.set(q.id, {
+        status: q.status,
+        work_order_line_id: q.work_order_line_id,
+      });
+    }
+  }
+
+  const { data: requestItemsRaw } = await supabase
+    .from("part_request_items")
+    .select("id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id, description, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost, status, approved, part_id, vendor")
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .not("work_order_line_id", "is", null)
+    .returns<
+      Array<
+        Pick<
+          PartRequestItemRow,
+          | "id"
+          | "request_id"
+          | "shop_id"
+          | "work_order_id"
+          | "work_order_line_id"
+          | "quote_line_id"
+          | "description"
+          | "qty"
+          | "qty_requested"
+          | "qty_approved"
+          | "quoted_price"
+          | "unit_price"
+          | "unit_cost"
+          | "status"
+          | "approved"
+          | "part_id"
+          | "vendor"
+        >
+      >
+    >();
+
+  const requestItems = Array.isArray(requestItemsRaw) ? requestItemsRaw : [];
+  const requestIdsNeedingQuoteLink = Array.from(
+    new Set(
+      requestItems
+        .filter((item) => !isNonEmptyString(item.quote_line_id))
+        .map((item) => item.request_id)
+        .filter(isNonEmptyString),
+    ),
+  );
+
+  const requestQuoteLineIdByRequestId = new Map<string, string>();
+  if (requestIdsNeedingQuoteLink.length > 0) {
+    const { data: requestRows } = await supabase
+      .from("part_requests")
+      .select("id, shop_id, work_order_id, quote_line_id")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrderId)
+      .in("id", requestIdsNeedingQuoteLink)
+      .returns<
+        Array<Pick<PartRequestRow, "id" | "shop_id" | "work_order_id" | "quote_line_id">>
+      >();
+
+    for (const request of Array.isArray(requestRows) ? requestRows : []) {
+      if (
+        request.shop_id === workOrder.shop_id &&
+        request.work_order_id === workOrderId &&
+        isNonEmptyString(request.id) &&
+        isNonEmptyString(request.quote_line_id)
+      ) {
+        requestQuoteLineIdByRequestId.set(request.id, request.quote_line_id.trim());
+      }
+    }
+  }
+
+  const byLineStaged = new Map<string, typeof stagedParts>();
+  for (const part of stagedParts) {
+    if (!part.work_order_line_id) continue;
+    byLineStaged.set(part.work_order_line_id, [
+      ...(byLineStaged.get(part.work_order_line_id) ?? []),
+      part,
+    ]);
+  }
+  const byLineAlloc = new Map<string, typeof allocs>();
+  for (const alloc of allocs) {
+    if (!alloc.work_order_line_id) continue;
+    byLineAlloc.set(alloc.work_order_line_id, [
+      ...(byLineAlloc.get(alloc.work_order_line_id) ?? []),
+      alloc,
+    ]);
+  }
+
+  const fallbackRequestItems = requestItems.filter((item) => {
+    const lineId = isNonEmptyString(item.work_order_line_id) ? item.work_order_line_id.trim() : "";
+    if (!lineId) return false;
+
+    return partRequestItemIsInvoiceFallbackEligible(item, {
+      shopId: workOrder.shop_id,
+      workOrderId,
+      workOrderLineId: lineId,
+      requestQuoteLineIdByRequestId,
+      quoteLineById,
+    });
+  });
+
+  const byLineFallbackRequestItems = new Map<string, typeof fallbackRequestItems>();
+  for (const item of fallbackRequestItems) {
+    if (!item.work_order_line_id) continue;
+    byLineFallbackRequestItems.set(item.work_order_line_id, [
+      ...(byLineFallbackRequestItems.get(item.work_order_line_id) ?? []),
+      item,
+    ]);
+  }
 
   const partIds = Array.from(
     new Set(
-      allocs
-        .map((a) => a.part_id)
+      [
+        ...allocs.map((a) => a.part_id),
+        ...stagedParts.map((part) => part.part_id),
+        ...fallbackRequestItems.map((item) => item.part_id),
+      ]
         .filter(isNonEmptyString)
         .map((id) => id.trim()),
     ),
@@ -339,6 +555,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     const { data: partRows } = await supabase
       .from("parts")
       .select("id, name, sku, part_number, unit")
+      .eq("shop_id", workOrder.shop_id)
       .in("id", partIds)
       .returns<Array<Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">>>();
 
@@ -347,7 +564,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     }
   }
 
-  const parts: InvoiceSnapshotPart[] = allocs.map((a) => {
+  const allocationParts: InvoiceSnapshotPart[] = allocs.map((a) => {
     const p = isNonEmptyString(a.part_id) ? partsMap.get(a.part_id) : undefined;
     const qtyRaw = safeNumber(a.qty);
     const qty = qtyRaw > 0 ? qtyRaw : 1;
@@ -366,8 +583,93 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       sku: (p?.sku ?? "").trim() || undefined,
       partNumber: (p?.part_number ?? "").trim() || undefined,
       unit: (p?.unit ?? "").trim() || undefined,
+      source: "work_order_part_allocation",
     };
   });
+
+  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.map((part) => {
+    const p = isNonEmptyString(part.part_id) ? partsMap.get(part.part_id) : undefined;
+    const qtyRaw = safeNumber(part.quantity);
+    const qty = qtyRaw > 0 ? qtyRaw : 1;
+    const totalRaw = safeNumber(part.total_price);
+    const unitPrice = safeNumber(part.unit_price);
+    const totalPrice = totalRaw > 0 ? totalRaw : Math.max(0, qty * unitPrice);
+    const lineId = isNonEmptyString(part.work_order_line_id)
+      ? part.work_order_line_id.trim()
+      : undefined;
+
+    return {
+      id: String(part.id),
+      lineId,
+      name: (p?.name ?? "Part").trim() || "Part",
+      qty,
+      unitPrice,
+      totalPrice,
+      sku: (p?.sku ?? "").trim() || undefined,
+      partNumber: (p?.part_number ?? "").trim() || undefined,
+      unit: (p?.unit ?? "").trim() || undefined,
+      source: "work_order_part",
+    };
+  });
+
+  const requestItemInvoiceParts: InvoiceSnapshotPart[] = fallbackRequestItems.map((item) => {
+    const p = isNonEmptyString(item.part_id) ? partsMap.get(item.part_id) : undefined;
+    const qty = itemQuantity(item);
+    const unitPrice = itemUnitPrice(item);
+    const lineId = isNonEmptyString(item.work_order_line_id)
+      ? item.work_order_line_id.trim()
+      : undefined;
+    const name =
+      (item.description ?? "").trim() ||
+      (p?.name ?? "").trim() ||
+      "Part";
+
+    return {
+      id: String(item.id),
+      lineId,
+      name,
+      qty,
+      unitPrice,
+      totalPrice: Math.max(0, qty * unitPrice),
+      sku: (p?.sku ?? "").trim() || undefined,
+      partNumber: (p?.part_number ?? "").trim() || undefined,
+      unit: (p?.unit ?? "").trim() || undefined,
+      vendor: (item.vendor ?? "").trim() || undefined,
+      source: "quote_line_part_request",
+    };
+  });
+
+  const stagedPartsByLineForDisplay = new Map<string, InvoiceSnapshotPart[]>();
+  for (const part of stagedInvoiceParts) {
+    if (!part.lineId) continue;
+    stagedPartsByLineForDisplay.set(part.lineId, [
+      ...(stagedPartsByLineForDisplay.get(part.lineId) ?? []),
+      part,
+    ]);
+  }
+
+  const fallbackPartsByLineForDisplay = new Map<string, InvoiceSnapshotPart[]>();
+  for (const part of requestItemInvoiceParts) {
+    if (!part.lineId) continue;
+    fallbackPartsByLineForDisplay.set(part.lineId, [
+      ...(fallbackPartsByLineForDisplay.get(part.lineId) ?? []),
+      part,
+    ]);
+  }
+
+  const parts: InvoiceSnapshotPart[] = [...allocationParts];
+  for (const line of lines) {
+    const lineAllocations = byLineAlloc.get(line.id) ?? [];
+    if (lineAllocations.length > 0) continue;
+
+    const lineStaged = stagedPartsByLineForDisplay.get(line.id) ?? [];
+    if (lineStaged.length > 0) {
+      parts.push(...lineStaged);
+      continue;
+    }
+
+    parts.push(...(fallbackPartsByLineForDisplay.get(line.id) ?? []));
+  }
 
   const currency =
     normalizeInvoiceCurrency(invoice?.currency) ??
@@ -384,21 +686,11 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const woParts = positiveOrNull(workOrder.parts_total);
   const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
 
-  const partsTotalFromAlloc =
+  const partsTotalFromSnapshotParts =
     parts.length > 0
       ? parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0)
       : null;
 
-  const byLineStaged = new Map<string, typeof stagedParts>();
-  for (const part of stagedParts) {
-    if (!part.work_order_line_id) continue;
-    byLineStaged.set(part.work_order_line_id, [...(byLineStaged.get(part.work_order_line_id) ?? []), part]);
-  }
-  const byLineAlloc = new Map<string, typeof allocs>();
-  for (const alloc of allocs) {
-    if (!alloc.work_order_line_id) continue;
-    byLineAlloc.set(alloc.work_order_line_id, [...(byLineAlloc.get(alloc.work_order_line_id) ?? []), alloc]);
-  }
   const byLineQuote = new Map<string, typeof activeQuotes[number]>();
   for (const q of activeQuotes) {
     if (!q.work_order_line_id) continue;
@@ -408,19 +700,33 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   let resolvedLabor = 0;
   let resolvedParts = 0;
   for (const line of lines) {
+    const lineAllocations = byLineAlloc.get(line.id) ?? [];
+    const lineStaged = byLineStaged.get(line.id) ?? [];
+    const lineFallbackParts = fallbackPartsByLineForDisplay.get(line.id) ?? [];
+    const stagedPricingParts =
+      lineAllocations.length > 0
+        ? []
+        : lineStaged.length > 0
+          ? lineStaged
+          : lineFallbackParts.map((part) => ({
+              quantity: part.qty,
+              unit_price: part.unitPrice,
+              total_price: part.totalPrice,
+            }));
+
     const resolved = resolveWorkOrderLinePricing({
       line,
       quote: byLineQuote.get(line.id) ?? null,
       shopLaborRate: safeNumberOrNull(shop?.labor_rate),
-      stagedParts: byLineStaged.get(line.id) ?? [],
-      allocatedParts: byLineAlloc.get(line.id) ?? [],
+      stagedParts: stagedPricingParts,
+      allocatedParts: lineAllocations,
     });
     resolvedLabor += resolved.laborTotal;
     resolvedParts += resolved.partsTotal;
   }
 
   const laborCost = invLabor ?? (resolvedLabor > 0 ? resolvedLabor : woLabor) ?? null;
-  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : partsTotalFromAlloc ?? woParts) ?? null;
+  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : partsTotalFromSnapshotParts ?? woParts) ?? null;
 
   const subtotal =
     invSubtotal ??
