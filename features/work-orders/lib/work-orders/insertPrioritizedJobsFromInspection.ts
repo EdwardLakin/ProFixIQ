@@ -2,38 +2,58 @@ import "server-only";
 
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
 import { estimateLabor } from "@ai/lib/ai/estimateLabor";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import {
+  createCanonicalQuoteLines,
+  type CanonicalQuoteItem,
+  type CanonicalQuotePart,
+} from "@/features/work-orders/lib/work-orders/canonicalQuoteLines";
 
 type DB = Database;
 
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
-type WorkOrderLineInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
-type PartsRequestInsert = DB["public"]["Tables"]["parts_requests"]["Insert"];
 
-type WorkOrderLineSourceInsert = WorkOrderLineInsert & {
-  source_inspection_id: string;
-  source_inspection_item_key: string;
-};
-
-type PartsRequestSourceInsert = PartsRequestInsert & {
-  source_inspection_id: string;
-  source_inspection_item_key: string;
+type InspectionItem = {
+  item?: string;
+  name?: string;
+  label?: string;
+  title?: string;
+  description?: string;
+  value?: string | number | null;
+  unit?: string | null;
+  notes?: string | null;
+  note?: string | null;
+  status?: "ok" | "fail" | "na" | "recommend" | string | null;
+  recommend?: boolean | string[] | null;
+  parts?: Array<{
+    description?: string;
+    name?: string;
+    qty?: number;
+    quantity?: number;
+    cost?: number | null;
+    unitCost?: number | null;
+    unitPrice?: number | null;
+    notes?: string | null;
+  }>;
+  laborHours?: number | null;
+  labor_hours?: number | null;
+  photoUrls?: string[];
+  photo_urls?: string[];
+  severity?: string | null;
+  recommendation?: string | null;
+  recommendationType?: string | null;
+  priority?: string | number | null;
 };
 
 type InspectionResult = {
   sections: Array<{
-    title: string;
-    items: Array<{
-      name: string;
-      label?: string;
-      value?: string;
-      unit?: string;
-      notes?: string;
-      status?: "ok" | "fail" | "na" | "recommend";
-      recommend?: boolean;
-    }>;
+    key?: string;
+    id?: string;
+    title?: string;
+    name?: string;
+    items: InspectionItem[];
   }>;
 };
 
@@ -41,7 +61,7 @@ export type ImportFromInspectionArgs = {
   supabase: SupabaseClient<DB>;
   inspectionId: string;
   workOrderId: string;
-  vehicleId: string;
+  vehicleId?: string | null;
   userId: string;
   autoGenerateParts?: boolean;
 };
@@ -50,14 +70,35 @@ export type ImportFromInspectionResult =
   | {
       ok: true;
       insertedCount: number;
-      partsRequestsCount: number;
+      quoteLineIds: string[];
+      createdQuoteLines: Array<{ id: string; findingIdentity: string | null }>;
+      skippedDuplicates: number;
       skippedCount: number;
+      partsRequestsCount: number;
+      createdPartRequestIds: string[];
       skippedPartsRequestsCount: number;
+      message: string;
+      /** @deprecated Legacy work_order_lines are no longer created by inspection import. */
+      insertedJobIds: null;
+      /** @deprecated Legacy work_order_lines are no longer created by inspection import. */
+      workOrderLineIds: null;
     }
   | { ok: false; error: string };
 
-function normalizeSourceComponent(value: string | null | undefined): string {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+function normalizeSourceComponent(value: string | number | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function safeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeTitle(value: unknown): string {
+  return safeString(value).toLowerCase().replace(/\s+/g, " ");
 }
 
 function buildInspectionSourceKey(args: {
@@ -65,19 +106,71 @@ function buildInspectionSourceKey(args: {
   sectionIndex: number;
   itemIndex: number;
   sectionTitle?: string;
+  sectionKey?: string;
   itemName?: string;
   itemLabel?: string;
-  unit?: string;
+  unit?: string | null;
 }): string {
   const normalizedSectionTitle = normalizeSourceComponent(args.sectionTitle);
+  const normalizedSectionKey = normalizeSourceComponent(args.sectionKey);
   const normalizedItemName = normalizeSourceComponent(args.itemName || args.itemLabel);
   const normalizedUnit = normalizeSourceComponent(args.unit);
-  const raw = `${args.inspectionId}|${args.sectionIndex}|${args.itemIndex}|${normalizedSectionTitle}|${normalizedItemName}|${normalizedUnit}`;
+  const raw = `${args.inspectionId}|${args.sectionIndex}|${args.itemIndex}|${normalizedSectionKey}|${normalizedSectionTitle}|${normalizedItemName}|${normalizedUnit}`;
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
-function normalizePartName(value: string | null | undefined): string {
-  return normalizeSourceComponent(value);
+function buildFindingIdentity(args: {
+  inspectionId: string;
+  sourceKey: string;
+  sectionKey: string;
+  normalizedTitle: string;
+  normalizedDescription: string;
+}): string {
+  return [
+    args.inspectionId,
+    args.sectionKey,
+    args.sourceKey,
+    args.normalizedTitle || args.normalizedDescription,
+    args.normalizedDescription,
+  ]
+    .filter(Boolean)
+    .join(":");
+}
+
+function itemTitle(item: InspectionItem): string {
+  return (
+    safeString(item.item) ||
+    safeString(item.name) ||
+    safeString(item.label) ||
+    safeString(item.title) ||
+    safeString(item.description)
+  );
+}
+
+function itemNotes(item: InspectionItem): string {
+  return safeString(item.notes) || safeString(item.note);
+}
+
+function itemPhotoUrls(item: InspectionItem): string[] {
+  const raw = Array.isArray(item.photoUrls) ? item.photoUrls : item.photo_urls;
+  return Array.isArray(raw) ? raw.filter((url): url is string => typeof url === "string" && url.trim().length > 0) : [];
+}
+
+function itemParts(item: InspectionItem): CanonicalQuotePart[] {
+  return (Array.isArray(item.parts) ? item.parts : [])
+    .map((part) => ({
+      description: safeString(part.description) || safeString(part.name),
+      qty: Math.max(1, Number(part.qty ?? part.quantity) || 1),
+      cost: finiteNumber(part.cost),
+      unitCost: finiteNumber(part.unitCost),
+      unitPrice: finiteNumber(part.unitPrice),
+      notes: safeString(part.notes) || null,
+    }))
+    .filter((part) => part.description.length > 0);
+}
+
+function shouldIncludeInspectionItem(item: InspectionItem, jobType: CanonicalQuoteItem["jobType"]): boolean {
+  return item.status === "fail" || item.status === "recommend" || item.recommend === true || jobType !== "repair";
 }
 
 export async function insertPrioritizedJobsFromInspection(
@@ -104,16 +197,33 @@ export async function insertPrioritizedJobsFromInspection(
   if (!inspection) {
     return { ok: false, error: "Inspection not found." };
   }
-
   if (!inspection.shop_id) {
     return { ok: false, error: "Inspection is missing shop_id." };
   }
 
-  const shopId = inspection.shop_id;
+  const { data: workOrder, error: woErr } = await supabase
+    .from("work_orders")
+    .select("id, shop_id, vehicle_id, status")
+    .eq("id", workOrderId)
+    .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null; status: string | null }>();
 
-  const result = (inspection as unknown as { result?: unknown })?.result as
-    | InspectionResult
-    | undefined;
+  if (woErr) {
+    return { ok: false, error: `Failed to fetch work order: ${woErr.message}` };
+  }
+  if (!workOrder) {
+    return { ok: false, error: "Work order not found." };
+  }
+  if (!workOrder.shop_id || workOrder.shop_id !== inspection.shop_id) {
+    return { ok: false, error: "Inspection and work order must belong to the same shop." };
+  }
+
+  const blockedStatuses = new Set(["cancelled", "canceled", "invoiced", "closed"]);
+  if (blockedStatuses.has((workOrder.status ?? "").toLowerCase())) {
+    return { ok: false, error: "Cannot import inspection findings into a cancelled, closed, or invoiced work order." };
+  }
+
+  const shopId = inspection.shop_id;
+  const result = (inspection as unknown as { result?: unknown })?.result as InspectionResult | undefined;
 
   if (!result?.sections || !Array.isArray(result.sections)) {
     return { ok: false, error: "Invalid inspection format: missing sections." };
@@ -121,224 +231,165 @@ export async function insertPrioritizedJobsFromInspection(
 
   const diagnosisKeywords = ["check engine", "diagnose", "misfire", "no start"];
   const maintenanceKeywords = ["oil", "fluid", "filter", "belt", "coolant"];
-  const autoPartsKeywords = [
-    "brake",
-    "pads",
-    "rotor",
-    "fluid",
-    "coolant",
-    "filter",
-    "belt",
-  ];
+  const autoPartsKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
 
-  const allJobs: WorkOrderLineSourceInsert[] = [];
-  const jobItemMap: Array<{
-    originalItem: InspectionResult["sections"][number]["items"][number];
-    sourceKey: string;
-  }> = [];
+  const quoteItems: CanonicalQuoteItem[] = [];
 
   for (const [sectionIndex, section] of result.sections.entries()) {
-    for (const [itemIndex, item] of section.items.entries()) {
-      const itemName = item.name || item.label || "";
-      const nameLower = itemName.toLowerCase();
-      let jobType: WorkOrderLineInsert["job_type"] = "repair";
+    const sectionTitle = safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
+    const sectionKey = safeString(section.key) || safeString(section.id) || normalizeTitle(sectionTitle) || `section-${sectionIndex}`;
 
-      if (diagnosisKeywords.some((k) => nameLower.includes(k))) jobType = "diagnosis";
+    for (const [itemIndex, item] of (section.items ?? []).entries()) {
+      const title = itemTitle(item);
+      if (!title) continue;
+
+      const titleLower = title.toLowerCase();
+      let jobType: CanonicalQuoteItem["jobType"] = "repair";
+
+      if (diagnosisKeywords.some((keyword) => titleLower.includes(keyword))) jobType = "diagnosis";
       else if (item.status === "fail") jobType = "inspection-fail";
-      else if (maintenanceKeywords.some((k) => nameLower.includes(k))) jobType = "maintenance";
+      else if (maintenanceKeywords.some((keyword) => titleLower.includes(keyword))) jobType = "maintenance";
 
-      const shouldInclude =
-        item.status === "fail" || item.recommend === true || jobType !== "repair";
-
-      if (!shouldInclude) continue;
+      if (!shouldIncludeInspectionItem(item, jobType)) continue;
 
       const sourceKey = buildInspectionSourceKey({
         inspectionId,
         sectionIndex,
         itemIndex,
-        sectionTitle: section.title,
-        itemName: item.name,
+        sectionTitle,
+        sectionKey,
+        itemName: title,
         itemLabel: item.label,
         unit: item.unit,
       });
-
-      const laborTime = normalizeLaborHoursInput(await estimateLabor(itemName, jobType), true);
-
-      const complaintParts: string[] = [];
-      if (itemName) complaintParts.push(itemName);
-      if (item.value) complaintParts.push(`(${item.value}${item.unit || ""})`);
-      if (item.notes) complaintParts.push(`- ${item.notes}`);
-
-      const job: WorkOrderLineSourceInsert = {
-        shop_id: shopId,
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        complaint: complaintParts.join(" "),
-        status: "in_progress",
-        job_type: jobType,
-        punched_in_at: null,
-        punched_out_at: null,
-        hold_reason: null,
-        assigned_tech_id: null,
-        labor_time: laborTime,
-        source_inspection_id: inspectionId,
-        source_inspection_item_key: sourceKey,
-      };
-
-      allJobs.push(job);
-      jobItemMap.push({ originalItem: item, sourceKey });
-    }
-  }
-
-  if (allJobs.length === 0) {
-    return { ok: true, insertedCount: 0, partsRequestsCount: 0, skippedCount: 0, skippedPartsRequestsCount: 0 };
-  }
-
-  const sourceKeys = allJobs.map((job) => job.source_inspection_item_key);
-
-  const { data: existingActiveLines, error: existingLinesErr } = await supabase
-    .from("work_order_lines")
-    .select("id, source_inspection_item_key")
-    .eq("work_order_id", workOrderId)
-    .eq("source_inspection_id", inspectionId)
-    .in("source_inspection_item_key", sourceKeys)
-    .is("voided_at", null)
-    .returns<Array<{ id: string; source_inspection_item_key: string | null }>>();
-
-  if (existingLinesErr) {
-    return {
-      ok: false,
-      error: `Error checking existing inspection lines: ${existingLinesErr.message}`,
-    };
-  }
-
-  const existingKeySet = new Set(
-    (existingActiveLines ?? [])
-      .map((row) => row.source_inspection_item_key)
-      .filter((key): key is string => Boolean(key)),
-  );
-
-  const jobsToInsert: WorkOrderLineSourceInsert[] = [];
-  const jobItemMapToInsert: Array<{
-    originalItem: InspectionResult["sections"][number]["items"][number];
-    sourceKey: string;
-  }> = [];
-
-  for (let i = 0; i < allJobs.length; i++) {
-    const sourceKey = allJobs[i].source_inspection_item_key;
-    if (existingKeySet.has(sourceKey)) continue;
-    jobsToInsert.push(allJobs[i]);
-    jobItemMapToInsert.push(jobItemMap[i]);
-  }
-
-  const skippedCount = allJobs.length - jobsToInsert.length;
-
-  if (jobsToInsert.length === 0) {
-    return { ok: true, insertedCount: 0, partsRequestsCount: 0, skippedCount, skippedPartsRequestsCount: 0 };
-  }
-
-  const insertedJobsRes = await supabase
-    .from("work_order_lines")
-    .insert(jobsToInsert)
-    .select("id, complaint, source_inspection_item_key");
-
-  if (insertedJobsRes.error) {
-    return {
-      ok: false,
-      error: `Error inserting job lines: ${insertedJobsRes.error.message}`,
-    };
-  }
-
-  const insertedJobs = insertedJobsRes.data ?? [];
-  let partsRequestsCount = 0;
-  let skippedPartsRequestsCount = 0;
-
-  if (autoGenerateParts && insertedJobs.length > 0) {
-    const partsCandidates: PartsRequestSourceInsert[] = [];
-
-    for (let i = 0; i < insertedJobs.length; i++) {
-      const { complaint, id: jobId } = insertedJobs[i];
-      const originalItem = jobItemMapToInsert[i]?.originalItem;
-      const sourceKey = jobItemMapToInsert[i]?.sourceKey;
-
-      const lower = (complaint ?? "").toLowerCase();
-      const partName = originalItem?.name || originalItem?.label;
-      if (!partName || !sourceKey) continue;
-
-      if (autoPartsKeywords.some((k) => lower.includes(k))) {
-        partsCandidates.push({
-          id: crypto.randomUUID(),
-          job_id: jobId,
-          work_order_id: workOrderId,
-          part_name: partName,
-          quantity: 1,
-          urgency: "medium",
-          notes: "Auto-generated from inspection",
-          photo_urls: [],
-          requested_by: userId,
-          created_at: new Date().toISOString(),
-          viewed_at: null,
-          fulfilled_at: null,
-          archived: false,
-          source_inspection_id: inspectionId,
-          source_inspection_item_key: sourceKey,
-        });
-      }
-    }
-
-    if (partsCandidates.length > 0) {
-      const sourceKeysForParts = [...new Set(partsCandidates.map((row) => row.source_inspection_item_key))];
-
-      const { data: existingParts, error: existingPartsErr } = await supabase
-        .from("parts_requests")
-        .select("source_inspection_item_key, part_name")
-        .eq("work_order_id", workOrderId)
-        .eq("source_inspection_id", inspectionId)
-        .in("source_inspection_item_key", sourceKeysForParts)
-        .returns<Array<{ source_inspection_item_key: string | null; part_name: string | null }>>();
-
-      if (existingPartsErr) {
-        return {
-          ok: false,
-          error: `Error checking existing parts requests: ${existingPartsErr.message}`,
-        };
-      }
-
-      const existingPartSet = new Set(
-        (existingParts ?? [])
-          .filter((row) => row.source_inspection_item_key)
-          .map(
-            (row) =>
-              `${row.source_inspection_item_key}|${normalizePartName(row.part_name)}`,
-          ),
-      );
-
-      const partsToInsert = partsCandidates.filter((row) => {
-        const dedupeKey = `${row.source_inspection_item_key}|${normalizePartName(row.part_name)}`;
-        if (existingPartSet.has(dedupeKey)) return false;
-        existingPartSet.add(dedupeKey);
-        return true;
+      const notes = itemNotes(item);
+      const value = item.value != null ? String(item.value) : "";
+      const measurement = value ? `${value}${item.unit ?? ""}` : "";
+      const descriptionParts = [title, measurement ? `(${measurement})` : "", notes ? `- ${notes}` : ""];
+      const description = descriptionParts.filter(Boolean).join(" ");
+      const normalizedFindingTitle = normalizeTitle(title);
+      const normalizedDescription = normalizeTitle(description);
+      const findingIdentity = buildFindingIdentity({
+        inspectionId,
+        sourceKey,
+        sectionKey,
+        normalizedTitle: normalizedFindingTitle,
+        normalizedDescription,
       });
 
-      skippedPartsRequestsCount = partsCandidates.length - partsToInsert.length;
+      const explicitLaborHours = finiteNumber(item.laborHours) ?? finiteNumber(item.labor_hours);
+      const laborHours = explicitLaborHours ?? normalizeLaborHoursInput(await estimateLabor(title, jobType ?? "repair"), true);
+      const parts = itemParts(item);
 
-      if (partsToInsert.length > 0) {
-        const { error: partsErr } = await supabase
-          .from("parts_requests")
-          .insert(partsToInsert);
-
-        if (!partsErr) {
-          partsRequestsCount = partsToInsert.length;
-        }
+      if (autoGenerateParts && parts.length === 0 && autoPartsKeywords.some((keyword) => description.toLowerCase().includes(keyword))) {
+        parts.push({ description: title, qty: 1, cost: null, unitCost: null, unitPrice: null, notes: "Auto-generated from inspection" });
       }
+
+      const partsTotal = parts.reduce((sum, part) => sum + (finiteNumber(part.unitCost) ?? finiteNumber(part.cost) ?? 0) * (part.qty ?? 1), 0);
+      const hasUnpricedParts = parts.some((part) => finiteNumber(part.unitPrice) == null && finiteNumber(part.unitCost) == null && finiteNumber(part.cost) == null);
+
+      const metadata: Record<string, Json | undefined> = {
+        legacy_import_route: "/api/work-orders/import-from-inspection",
+        canonicalized_phase: "5E-1",
+        shop_id: shopId,
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId || workOrder.vehicle_id || undefined,
+        inspection_id: inspectionId,
+        source_inspection_item_key: sourceKey,
+        source_section_key: sectionKey,
+        source_section_title: sectionTitle,
+        source_item_title: title,
+        source_item_description: safeString(item.description) || undefined,
+        technician_notes: notes || undefined,
+        measurement: measurement || undefined,
+        inspection_status: safeString(item.status) || undefined,
+        recommend: typeof item.recommend === "boolean" ? item.recommend : undefined,
+        recommendation_metadata: {
+          severity: item.severity ?? null,
+          recommendation: item.recommendation ?? null,
+          recommendationType: item.recommendationType ?? null,
+          priority: item.priority ?? null,
+        },
+        labor_estimate_hours: laborHours,
+        parts_estimate: parts,
+        photo_urls: itemPhotoUrls(item),
+      };
+
+      quoteItems.push({
+        description,
+        title,
+        source: "inspection",
+        sourceInspectionId: inspectionId,
+        sourceSectionKey: sectionKey,
+        sourceSectionTitle: sectionTitle,
+        sourceItemKey: sourceKey,
+        sourceFindingTitle: title,
+        normalizedFindingTitle,
+        findingIdentity,
+        photoUrls: itemPhotoUrls(item),
+        jobType,
+        estLaborHours: laborHours,
+        laborHours,
+        partsTotal,
+        subtotal: partsTotal,
+        grandTotal: partsTotal,
+        notes: notes || null,
+        complaint: notes || description,
+        aiComplaint: notes || description,
+        status: parts.length > 0 && hasUnpricedParts ? "pending_parts" : "advisor_pending",
+        stage: "advisor_pending",
+        parts,
+        metadata,
+      });
     }
   }
+
+  if (quoteItems.length === 0) {
+    return {
+      ok: true,
+      insertedCount: 0,
+      quoteLineIds: [],
+      createdQuoteLines: [],
+      skippedDuplicates: 0,
+      skippedCount: 0,
+      partsRequestsCount: 0,
+      createdPartRequestIds: [],
+      skippedPartsRequestsCount: 0,
+      message: "No failed or recommended inspection findings were eligible for Quote Review.",
+      insertedJobIds: null,
+      workOrderLineIds: null,
+    };
+  }
+
+  const resultFromQuoteLines = await createCanonicalQuoteLines({
+    supabase,
+    shopId,
+    workOrderId,
+    vehicleId: vehicleId || workOrder.vehicle_id || null,
+    suggestedBy: userId,
+    items: quoteItems,
+  });
+
+  if (!resultFromQuoteLines.ok) {
+    return { ok: false, error: resultFromQuoteLines.error };
+  }
+
+  const createdQuoteLines = resultFromQuoteLines.items
+    .filter((item) => item.created)
+    .map((item) => ({ id: item.id, findingIdentity: item.findingIdentity }));
 
   return {
     ok: true,
-    insertedCount: insertedJobs.length,
-    partsRequestsCount,
-    skippedCount,
-    skippedPartsRequestsCount,
+    insertedCount: resultFromQuoteLines.createdCount,
+    quoteLineIds: resultFromQuoteLines.ids,
+    createdQuoteLines,
+    skippedDuplicates: resultFromQuoteLines.skippedDuplicateCount,
+    skippedCount: resultFromQuoteLines.skippedDuplicateCount,
+    partsRequestsCount: resultFromQuoteLines.createdPartRequestIds.length,
+    createdPartRequestIds: resultFromQuoteLines.createdPartRequestIds,
+    skippedPartsRequestsCount: resultFromQuoteLines.skippedPartRequestItemCount,
+    message: "Imported findings to Quote Review. No work order lines were created before customer approval.",
+    insertedJobIds: null,
+    workOrderLineIds: null,
   };
 }

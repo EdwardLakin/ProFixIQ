@@ -15,7 +15,7 @@ type DB = Database;
 type ImportBody = {
   workOrderId: string;
   inspectionId: string;
-  vehicleId: string;
+  vehicleId?: string | null;
   autoGenerateParts?: boolean;
 };
 
@@ -26,8 +26,8 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Partial<ImportBody>;
     const { workOrderId, inspectionId, vehicleId, autoGenerateParts } = body;
 
-    if (!workOrderId || !inspectionId || !vehicleId) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    if (!workOrderId || !inspectionId) {
+      return NextResponse.json({ error: "Missing workOrderId or inspectionId" }, { status: 400 });
     }
 
     const {
@@ -39,12 +39,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Ensure requester can see the WO (RLS enforced).
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    if (profileErr || !profile?.shop_id) {
+      return NextResponse.json({ error: "Profile for current user not found." }, { status: 403 });
+    }
+
+    // Ensure requester can see the WO (RLS enforced) and the WO is scoped to the current shop.
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, vehicle_id")
+      .select("id, shop_id, vehicle_id, status")
       .eq("id", workOrderId)
-      .maybeSingle<{ id: string; shop_id: string | null }>();
+      .eq("shop_id", profile.shop_id)
+      .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null; status: string | null }>();
 
     if (woErr) {
       return NextResponse.json(
@@ -73,6 +84,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Inspection not found." }, { status: 404 });
     }
 
+    if (wo.shop_id !== profile.shop_id) {
+      return NextResponse.json(
+        { error: "Work order does not belong to the current user's shop." },
+        { status: 403 },
+      );
+    }
+
+    const blockedStatuses = new Set(["cancelled", "canceled", "invoiced", "closed"]);
+    if (blockedStatuses.has((wo.status ?? "").toLowerCase())) {
+      return NextResponse.json(
+        { error: "Cannot import inspection findings into a cancelled, closed, or invoiced work order." },
+        { status: 409 },
+      );
+    }
+
     if (!inspection.shop_id || inspection.shop_id !== wo.shop_id) {
       return NextResponse.json(
         { error: "Inspection does not belong to this work order's shop." },
@@ -84,7 +110,7 @@ export async function POST(req: Request) {
       supabase,
       inspectionId,
       workOrderId,
-      vehicleId,
+      vehicleId: vehicleId || wo.vehicle_id || null,
       userId: user.id,
       autoGenerateParts: autoGenerateParts ?? true,
     });
@@ -95,10 +121,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      message: res.message,
+      quoteLineIds: res.quoteLineIds,
+      createdQuoteLines: res.createdQuoteLines,
+      skippedDuplicates: res.skippedDuplicates,
+      createdPartRequestIds: res.createdPartRequestIds,
       insertedCount: res.insertedCount,
       partsRequestsCount: res.partsRequestsCount,
       skippedCount: res.skippedCount,
       skippedPartsRequestsCount: res.skippedPartsRequestsCount,
+      insertedJobIds: res.insertedJobIds,
+      workOrderLineIds: res.workOrderLineIds,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
