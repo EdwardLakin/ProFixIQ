@@ -1,3 +1,5 @@
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+
 export type DecodedVin = {
   year?: string | null;
   make?: string | null;
@@ -19,10 +21,15 @@ export async function decodeVin(
   vin: string,
   userId: string,
 ): Promise<DecodedVin> {
+  const normalizedVin = normalizeVinInput(vin);
+  if (!normalizedVin.isValid) {
+    return { error: normalizedVin.message };
+  }
+
   const res = await fetch("/api/vin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vin, user_id: userId }),
+    body: JSON.stringify({ vin: normalizedVin.vin, user_id: userId }),
   });
 
   if (!res.ok) {

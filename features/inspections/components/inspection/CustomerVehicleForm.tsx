@@ -8,6 +8,7 @@ import type {
   SessionVehicle as VehicleInfo,
 } from "@inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@inspections/lib/customerNormalization";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 
 /** Local, narrow shapes (avoid exporting DB row types in props) */
 type CustomerRow = {
@@ -417,7 +418,8 @@ export default function CustomerVehicleForm({
 
   const safeSetVehicle = useCallback(
     (field: keyof VehicleInfo, value: string | null | undefined) => {
-      onVehicleChange(field, value ?? null);
+      const nextValue = field === "vin" ? normalizeVinInput(value).vin || null : value ?? null;
+      onVehicleChange(field, nextValue);
     },
     [onVehicleChange],
   );

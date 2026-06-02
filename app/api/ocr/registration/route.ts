@@ -1,5 +1,7 @@
 // app/api/ocr/registration/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
@@ -8,12 +10,16 @@ export const runtime = "nodejs";
 
 const client = getOpenAIClient();
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
 /* ----------------------------- helpers ----------------------------- */
-function normalizeVin(raw?: string | null): string | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().replace(/[IOQ]/g, "");
-  return cleaned.length === 17 ? cleaned : cleaned || null;
-}
 function clean(v: unknown): string | null {
   if (typeof v === "string") {
     const t = v.trim();
@@ -53,7 +59,7 @@ function coerceFields(obj: unknown): Partial<Fields> {
     obj && typeof obj === "object" && k in obj ? clean((obj as Record<string, unknown>)[k]) : null;
 
   return {
-    vin: normalizeVin(get("vin")),
+    vin: normalizeVinInput(get("vin")).vin || null,
     plate: get("plate"),
     year: get("year"),
     make: get("make"),
@@ -74,6 +80,24 @@ function coerceFields(obj: unknown): Partial<Fields> {
 /* ------------------------------ handler ---------------------------- */
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createServerSupabaseRSC();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData.user?.id ?? null;
+
+    if (userError || !userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError || !profile?.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const ctype = req.headers.get("content-type") || "";
 
     let imageUrl: string | undefined;
@@ -84,6 +108,12 @@ export async function POST(req: NextRequest) {
       const file = form.get("file") as File | null;
       if (!file) {
         return NextResponse.json({ error: "Missing 'file' in form-data." }, { status: 400 });
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        return NextResponse.json({ error: "Unsupported image type" }, { status: 415 });
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        return NextResponse.json({ error: "Image must be 8 MB or smaller" }, { status: 413 });
       }
       const buf = Buffer.from(await file.arrayBuffer());
       const base64 = buf.toString("base64");

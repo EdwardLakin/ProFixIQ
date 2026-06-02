@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import type { Database } from "@shared/types/types/supabase";
 
 type Body = {
@@ -20,10 +21,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const rawVin = (body.vin || "").trim().toUpperCase();
-  if (rawVin.length !== 17) {
-    return NextResponse.json({ error: "VIN must be 17 characters" }, { status: 400 });
+  const vinCheck = normalizeVinInput(body.vin);
+  if (!vinCheck.isValid) {
+    return NextResponse.json(
+      { error: vinCheck.message, reason: vinCheck.reason },
+      { status: 400 },
+    );
   }
+  const rawVin = vinCheck.vin;
 
   // get the signed-in user + shop_id
   const { data: u } = await supabase.auth.getUser();
@@ -37,6 +42,9 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   const shopId = profile?.shop_id ?? null;
+  if (!shopId) {
+    return NextResponse.json({ error: "Your profile isn’t linked to a shop yet." }, { status: 403 });
+  }
 
   // ensure placeholder customer in this shop (re-uses your "Walk-in Customer" pattern)
   async function ensureWalkInCustomer(): Promise<Database["public"]["Tables"]["customers"]["Row"]> {
@@ -59,11 +67,12 @@ export async function POST(req: Request) {
     return created;
   }
 
-  // Try to find vehicle by VIN within this shop (or globally if shop not present).
+  // Try to find vehicle by VIN within this shop.
   const vehQ = supabase
     .from("vehicles")
     .select("*")
     .eq("vin", rawVin)
+    .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
     .limit(1);
   const { data: foundVeh } = await vehQ;
