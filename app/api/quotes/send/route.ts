@@ -11,10 +11,22 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type AllocRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 type QuoteLine = { description: string; amount: number };
+
+const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
+const SEND_READY_STATUSES = new Set(["advisor_pending", "ready_to_send", "quoted"]);
+const NON_SENDABLE_STATUSES = new Set([
+  "pending_parts",
+  "sent",
+  "approved",
+  "declined",
+  "deferred",
+  "converted",
+  "rejected",
+  "cancelled",
+]);
 
 type VehicleInfo = {
   year?: string | number | null;
@@ -75,6 +87,54 @@ function buildVehicleLabel(vehicleInfo?: VehicleInfo): string {
   const make = safeStr(vehicleInfo.make).trim();
   const model = safeStr(vehicleInfo.model).trim();
   return [year, make, model].filter(Boolean).join(" ");
+}
+
+function quoteMetadata(line: Pick<QuoteLineRow, "metadata">): Record<string, unknown> {
+  if (!line.metadata || typeof line.metadata !== "object" || Array.isArray(line.metadata)) {
+    return {};
+  }
+  return line.metadata as Record<string, unknown>;
+}
+
+function quoteLaborHours(line: Pick<QuoteLineRow, "labor_hours" | "est_labor_hours">): number {
+  return asNumber(line.labor_hours) ?? asNumber(line.est_labor_hours) ?? 0;
+}
+
+function quoteLaborRate(line: Pick<QuoteLineRow, "metadata">, shopLaborRate: number): number {
+  return asNumber(quoteMetadata(line).labor_rate) ?? shopLaborRate;
+}
+
+function quoteLaborTotal(
+  line: Pick<QuoteLineRow, "labor_total" | "labor_hours" | "est_labor_hours" | "metadata">,
+  shopLaborRate: number,
+): number {
+  return asNumber(line.labor_total) ?? quoteLaborHours(line) * quoteLaborRate(line, shopLaborRate);
+}
+
+function quotePartsTotal(line: Pick<QuoteLineRow, "parts_total">): number {
+  return asNumber(line.parts_total) ?? 0;
+}
+
+function quoteGrandTotal(
+  line: Pick<
+    QuoteLineRow,
+    "grand_total" | "subtotal" | "labor_total" | "labor_hours" | "est_labor_hours" | "metadata" | "parts_total"
+  >,
+  shopLaborRate: number,
+): number {
+  return (
+    asNumber(line.grand_total) ??
+    asNumber(line.subtotal) ??
+    quoteLaborTotal(line, shopLaborRate) + quotePartsTotal(line)
+  );
+}
+
+function isSendableQuoteLine(line: Pick<QuoteLineRow, "status" | "stage" | "sent_to_customer_at" | "approved_at" | "declined_at" | "work_order_line_id">): boolean {
+  const status = safeStr(line.status).trim().toLowerCase();
+  const stage = safeStr(line.stage).trim().toLowerCase();
+  if (line.sent_to_customer_at || line.approved_at || line.declined_at || line.work_order_line_id) return false;
+  if (NON_SENDABLE_STATUSES.has(status)) return false;
+  return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
 }
 
 export async function POST(req: Request) {
@@ -237,111 +297,81 @@ export async function POST(req: Request) {
 
     let lines: QuoteLine[] | undefined = body?.lines;
     let quoteTotal: number | undefined = body?.quoteTotal;
+    let sendableQuoteLineIds: string[] = [];
 
-    if (!lines || lines.length === 0 || typeof quoteTotal !== "number") {
-      const { data: lineRowsRaw, error: linesErr } = await supabaseAdmin
-        .from("work_order_lines")
-        .select("id, description, complaint, labor_time, price_estimate, line_no")
-        .eq("work_order_id", workOrderId)
-        .order("line_no", { ascending: true });
+    const { data: quoteLineRowsRaw, error: quoteLinesErr } = await supabaseAdmin
+      .from("work_order_quote_lines")
+      .select(
+        "id, description, ai_complaint, notes, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata",
+      )
+      .eq("shop_id", wo.shop_id)
+      .eq("work_order_id", workOrderId)
+      .order("created_at", { ascending: true });
 
-      if (linesErr) {
-        return NextResponse.json(
-          {
-            ok: false,
-            trace,
-            error: "Failed to load work order lines",
-            detail: linesErr.message,
-          },
-          { status: 500 },
-        );
-      }
-
-      const lineRows = (lineRowsRaw ?? []) as Array<
-        Pick<
-          LineRow,
-          "id" | "description" | "complaint" | "labor_time" | "price_estimate" | "line_no"
-        >
-      >;
-
-      const lineIds = lineRows
-        .map((l) => l.id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-      let allocRows: Array<
-        Pick<AllocRow, "work_order_line_id" | "qty" | "unit_cost">
-      > = [];
-
-      if (lineIds.length > 0) {
-        const { data: allocsRes, error: allocErr } = await supabaseAdmin
-          .from("work_order_part_allocations")
-          .select("work_order_line_id, qty, unit_cost")
-          .in("work_order_line_id", lineIds);
-
-        if (allocErr) {
-          return NextResponse.json(
-            {
-              ok: false,
-              trace,
-              error: "Failed to load part allocations",
-              detail: allocErr.message,
-            },
-            { status: 500 },
-          );
-        }
-
-        allocRows = (allocsRes ?? []) as Array<
-          Pick<AllocRow, "work_order_line_id" | "qty" | "unit_cost">
-        >;
-      }
-
-      const partsByLine = new Map<string, number>();
-      for (const a of allocRows) {
-        const lineId = a.work_order_line_id;
-        if (!lineId) continue;
-
-        const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-        const unit = typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
-
-        const q = Number.isFinite(qty) ? qty : 0;
-        const u = Number.isFinite(unit) ? unit : 0;
-
-        const prev = partsByLine.get(lineId) ?? 0;
-        partsByLine.set(lineId, prev + q * u);
-      }
-
-      const computed: QuoteLine[] = [];
-      let computedTotal = 0;
-
-      for (const line of lineRows) {
-        const hrs =
-          typeof line.labor_time === "number" && Number.isFinite(line.labor_time)
-            ? line.labor_time
-            : 0;
-
-        const laborAmt = hrs * laborRate;
-        const partsAmt = partsByLine.get(line.id) ?? 0;
-
-        const priceEstimate =
-          typeof line.price_estimate === "number" && Number.isFinite(line.price_estimate)
-            ? line.price_estimate
-            : null;
-
-        const amount = priceEstimate != null ? priceEstimate : laborAmt + partsAmt;
-        computedTotal += amount;
-
-        const desc =
-          safeStr(line.description).trim() ||
-          safeStr(line.complaint).trim() ||
-          "Job";
-
-        computed.push({ description: desc, amount });
-      }
-
-      if (!lines || lines.length === 0) lines = computed;
-      if (typeof quoteTotal !== "number") quoteTotal = computedTotal;
+    if (quoteLinesErr) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error: "Failed to load canonical quote lines",
+          detail: quoteLinesErr.message,
+        },
+        { status: 500 },
+      );
     }
 
+    const quoteLineRows = (quoteLineRowsRaw ?? []) as Array<
+      Pick<
+        QuoteLineRow,
+        | "id"
+        | "description"
+        | "ai_complaint"
+        | "notes"
+        | "labor_hours"
+        | "est_labor_hours"
+        | "labor_total"
+        | "parts_total"
+        | "subtotal"
+        | "grand_total"
+        | "status"
+        | "stage"
+        | "sent_to_customer_at"
+        | "approved_at"
+        | "declined_at"
+        | "work_order_line_id"
+        | "metadata"
+      >
+    >;
+
+    const sendableQuoteLines = quoteLineRows.filter(isSendableQuoteLine);
+
+    if (sendableQuoteLines.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error:
+            "No canonical quote lines are ready to send. Mark advisor-reviewed lines ready_to_send/quoted after parts pricing is complete.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const computed = sendableQuoteLines.map((line) => {
+      const amount = quoteGrandTotal(line, laborRate);
+      const description =
+        safeStr(line.description).trim() ||
+        safeStr(line.ai_complaint).trim() ||
+        safeStr(line.notes).trim() ||
+        "Quote line";
+      return { description, amount } satisfies QuoteLine;
+    });
+
+    const computedTotal = computed.reduce((sum, line) => sum + line.amount, 0);
+    sendableQuoteLineIds = sendableQuoteLines.map((line) => line.id);
+
+    if (!lines || lines.length === 0) lines = computed;
+    if (typeof quoteTotal !== "number") quoteTotal = computedTotal;
     const pdfUrl = body?.pdfUrl ?? null;
 
     const appUrlEnv =
@@ -380,7 +410,30 @@ export async function POST(req: Request) {
                 const { error } = await supabaseAdmin
                   .from("work_orders")
                   .update({ quote_url: newQuoteUrl })
-                  .eq("id", workOrderId);
+                  .eq("id", workOrderId)
+                  .eq("shop_id", wo.shop_id);
+                if (error) throw new Error(error.message);
+              },
+            },
+          ]
+        : []),
+      ...(sendableQuoteLineIds.length > 0
+        ? [
+            {
+              step: "work_order_quote_lines_mark_sent",
+              run: async () => {
+                const sentAt = new Date().toISOString();
+                const { error } = await supabaseAdmin
+                  .from("work_order_quote_lines")
+                  .update({
+                    status: "sent",
+                    stage: "sent",
+                    sent_to_customer_at: sentAt,
+                    updated_at: sentAt,
+                  })
+                  .eq("shop_id", wo.shop_id)
+                  .eq("work_order_id", workOrderId)
+                  .in("id", sendableQuoteLineIds);
                 if (error) throw new Error(error.message);
               },
             },

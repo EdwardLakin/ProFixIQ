@@ -1,292 +1,57 @@
-// features/work-orders/quote-review/QuoteReviewView.tsx (FULL FILE REPLACEMENT)
+// features/work-orders/quote-review/QuoteReviewView.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
 
 import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
-import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
-
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
-import { QuoteLineCard } from "@/features/shared/quote/QuoteLineCard";
-import LearnedSuggestionCard from "@/features/work-orders/quote-review/LearnedSuggestionCard";
-import {
-  calculateTax,
-  getTaxAmount,
-  isProvinceCode,
-  type ProvinceCode,
-} from "@/features/integrations/tax";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
-type DB = Database;
+const COPPER = "#C57A4A";
+const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
+const SEND_READY_STATUSES = new Set(["advisor_pending", "ready_to_send", "quoted"]);
+const NON_SENDABLE_STATUSES = new Set([
+  "pending_parts",
+  "sent",
+  "approved",
+  "declined",
+  "deferred",
+  "converted",
+  "rejected",
+  "cancelled",
+]);
 
+type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type QuoteLineUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
 
-type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type LineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
-
-type Allocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
-type AllocationUpdate =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Update"];
-
-type Part = DB["public"]["Tables"]["parts"]["Row"];
-type InspectionPhoto = DB["public"]["Tables"]["inspection_photos"]["Row"];
-
-type AllocationWithPart = Allocation & {
-  parts?: Pick<Part, "name" | "sku"> | null;
+type EditableQuoteLine = QuoteLine & {
+  _dirty?: boolean;
+  _laborRateDraft?: number | null;
 };
 
-const COPPER = "#C57A4A";
-
-function safeTrim(x: unknown): string {
-  return typeof x === "string" ? x.trim() : "";
-}
-
-function statusLabel(s: string | null | undefined): string {
-  return (s ?? "").replaceAll("_", " ").trim() || "—";
-}
-
-function asNumber(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function fmt(n: number): string {
-  try {
-    return formatCurrency(n);
-  } catch {
-    return `$${n.toFixed(2)}`;
-  }
-}
-
-function customerDisplayName(c: Customer | null): string {
-  if (!c) return "—";
-  const full = safeTrim((c as unknown as { full_name?: unknown }).full_name);
-  const first = safeTrim(c.first_name);
-  const last = safeTrim(c.last_name);
-  return full || [first, last].filter(Boolean).join(" ") || "—";
-}
-
-function normalizePhoneForTel(raw: string): string | null {
-  const s = safeTrim(raw);
-  if (!s) return null;
-  const cleaned = s.replace(/[^\d+]/g, "");
-  if (!/\d/.test(cleaned)) return null;
-  return cleaned;
-}
-
-function deriveComplaintFromNotes(notes: unknown): string | null {
-  const s = safeTrim(notes);
-  if (!s) return null;
-
-  // Common patterns you have in UI notes:
-  // "AI: For governor leaking."
-  // "AI - governor leaking"
-  // "AI: governor leaking"
-  const m =
-    s.match(/(?:^|\s)AI\s*[:\-]\s*(.+)$/i) ||
-    s.match(/(?:^|\s)AI\s*for\s+(.+)$/i);
-
-  const derived = safeTrim(m?.[1] ?? "");
-  if (!derived) return null;
-
-  // Strip trailing punctuation that makes it look weird in an input
-  return derived.replace(/[.\s]+$/, "");
-}
-
-function isValidEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
-}
-
-function toSearchable(value: unknown): string {
-  return safeTrim(value).toLowerCase();
-}
-
-function collectLinePhotoUrls(
-  line: Pick<Line, "description" | "complaint" | "cause" | "correction">,
-  photos: Array<Pick<InspectionPhoto, "image_url" | "item_name">>,
-): string[] {
-  if (photos.length === 0) return [];
-  const haystack = [
-    toSearchable(line.description),
-    toSearchable(line.complaint),
-    toSearchable(line.cause),
-    toSearchable(line.correction),
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (!haystack) return [];
-
-  return photos
-    .filter((photo) => {
-      const label = toSearchable(photo.item_name);
-      return label && (haystack.includes(label) || label.includes(haystack.slice(0, 24)));
-    })
-    .map((photo) => safeTrim(photo.image_url))
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-type EditableLine = Line & { _dirty?: boolean };
-type EditableAlloc = AllocationWithPart & { _dirty?: boolean };
-
-type LearnedSuggestion = {
-  id: string;
-  lineId: string;
-  title: string;
-  summary: string;
-  laborHours: number | null;
-  parts: Array<{ name: string; qty: number }>;
-  sourceCount: number;
-  confidence: number | null;
+type QuoteMetadata = {
+  source?: Json;
+  source_inspection_id?: Json;
+  source_section_title?: Json;
+  source_section_key?: Json;
+  source_item_key?: Json;
+  source_finding_title?: Json;
+  photo_urls?: Json;
+  evidence_urls?: Json;
+  parts?: Json;
+  labor_rate?: Json;
+  technician_notes?: Json;
+  tech_notes?: Json;
 };
-
-function toFiniteNumber(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function normalizeSuggestedParts(
-  raw: unknown,
-): Array<{ name: string; qty: number }> {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((part) => {
-      const obj = (part ?? {}) as {
-        name?: unknown;
-        description?: unknown;
-        item?: unknown;
-        qty?: unknown;
-        quantity?: unknown;
-      };
-
-      const name =
-        safeTrim(obj.name) ||
-        safeTrim(obj.description) ||
-        safeTrim(obj.item);
-
-      const qty =
-        toFiniteNumber(obj.qty) ??
-        toFiniteNumber(obj.quantity) ??
-        1;
-
-      if (!name) return null;
-
-      return {
-        name,
-        qty: qty && qty > 0 ? qty : 1,
-      };
-    })
-    .filter((x): x is { name: string; qty: number } => Boolean(x));
-}
-
-function coerceSuggestionsFromResponse(
-  raw: unknown,
-  lineId: string,
-): LearnedSuggestion[] {
-  const root = (raw ?? {}) as {
-    suggestions?: unknown;
-    items?: unknown;
-    templates?: unknown;
-    data?: {
-      suggestions?: unknown;
-      items?: unknown;
-      templates?: unknown;
-    } | null;
-  };
-
-  const pool =
-    root.suggestions ??
-    root.items ??
-    root.templates ??
-    root.data?.suggestions ??
-    root.data?.items ??
-    root.data?.templates ??
-    [];
-
-  if (!Array.isArray(pool)) return [];
-
-  return pool
-    .map((entry, index) => {
-      const obj = (entry ?? {}) as {
-        id?: unknown;
-        title?: unknown;
-        description?: unknown;
-        item?: unknown;
-        label?: unknown;
-        summary?: unknown;
-        notes?: unknown;
-        reason?: unknown;
-        laborHours?: unknown;
-        labor_hours?: unknown;
-        avgLaborHours?: unknown;
-        confidence?: unknown;
-        matchConfidence?: unknown;
-        sourceCount?: unknown;
-        usageCount?: unknown;
-        timesSeen?: unknown;
-        parts?: unknown;
-      };
-
-      const title =
-        safeTrim(obj.title) ||
-        safeTrim(obj.description) ||
-        safeTrim(obj.item) ||
-        safeTrim(obj.label);
-
-      if (!title) return null;
-
-      const summary =
-        safeTrim(obj.summary) ||
-        safeTrim(obj.notes) ||
-        safeTrim(obj.reason);
-
-      const laborHours =
-        toFiniteNumber(obj.laborHours) ??
-        toFiniteNumber(obj.labor_hours) ??
-        toFiniteNumber(obj.avgLaborHours);
-
-      const confidence =
-        toFiniteNumber(obj.confidence) ??
-        toFiniteNumber(obj.matchConfidence);
-
-      const sourceCount =
-        toFiniteNumber(obj.sourceCount) ??
-        toFiniteNumber(obj.usageCount) ??
-        toFiniteNumber(obj.timesSeen) ??
-        0;
-
-      return {
-        id: safeTrim(obj.id) || `${lineId}-${index}`,
-        lineId,
-        title,
-        summary,
-        laborHours,
-        parts: normalizeSuggestedParts(obj.parts),
-        sourceCount: sourceCount && sourceCount > 0 ? sourceCount : 0,
-        confidence,
-      } satisfies LearnedSuggestion;
-    })
-    .filter((x): x is LearnedSuggestion => Boolean(x));
-}
-
-function partsToPaste(parts: Array<{ name: string; qty: number }>): string {
-  return parts.map((p) => `${p.qty}x ${p.name}`).join("\n");
-}
 
 const card = ui.panel;
 const divider = "border-[color:var(--desktop-border)]";
@@ -296,14 +61,213 @@ const inputFocus =
   "focus:border-[color:var(--brand-accent,#E39A6E)]/60 focus:ring-2 focus:ring-[color:var(--brand-accent,#E39A6E)]/15";
 const inputCls = `${inputBase} ${inputFocus}`;
 
+function safeTrim(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function fmt(value: number | null | undefined): string {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  try {
+    return formatCurrency(n);
+  } catch {
+    return `$${n.toFixed(2)}`;
+  }
+}
+
+function statusLabel(value: string | null | undefined): string {
+  return safeTrim(value).replaceAll("_", " ") || "—";
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function customerDisplayName(customer: Customer | null): string {
+  if (!customer) return "—";
+  const full = safeTrim((customer as unknown as { full_name?: unknown }).full_name);
+  const first = safeTrim(customer.first_name);
+  const last = safeTrim(customer.last_name);
+  return full || safeTrim(customer.business_name) || [first, last].filter(Boolean).join(" ") || "—";
+}
+
+function normalizePhoneForTel(raw: string): string | null {
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  return /\d/.test(cleaned) ? cleaned : null;
+}
+
+function quoteMetadata(line: Pick<QuoteLine, "metadata">): QuoteMetadata {
+  if (!line.metadata || typeof line.metadata !== "object" || Array.isArray(line.metadata)) {
+    return {};
+  }
+  return line.metadata as QuoteMetadata;
+}
+
+function jsonString(value: Json | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+function jsonNumber(value: Json | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function jsonStringArray(value: Json | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => safeTrim(item)).filter(Boolean).slice(0, 6);
+}
+
+function quoteLineLaborRate(line: EditableQuoteLine, shopLaborRate: number): number {
+  return line._laborRateDraft ?? jsonNumber(quoteMetadata(line).labor_rate) ?? shopLaborRate;
+}
+
+function quoteLineLaborHours(line: Pick<QuoteLine, "labor_hours" | "est_labor_hours">): number {
+  return asNumber(line.labor_hours) ?? asNumber(line.est_labor_hours) ?? 0;
+}
+
+function quoteLineLaborTotal(line: EditableQuoteLine, shopLaborRate: number): number {
+  const explicit = asNumber(line.labor_total);
+  if (explicit != null) return explicit;
+  return quoteLineLaborHours(line) * quoteLineLaborRate(line, shopLaborRate);
+}
+
+function quoteLinePartsTotal(line: Pick<QuoteLine, "parts_total" | "metadata">): number {
+  const explicit = asNumber(line.parts_total);
+  if (explicit != null) return explicit;
+
+  const parts = quoteMetadata(line).parts;
+  if (!Array.isArray(parts)) return 0;
+
+  return parts.reduce<number>((sum, part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) return sum;
+    const p = part as Record<string, Json>;
+    const qty = jsonNumber(p.qty) ?? 1;
+    const unit = jsonNumber(p.unitPrice) ?? jsonNumber(p.unit_price) ?? jsonNumber(p.unitCost) ?? jsonNumber(p.unit_cost) ?? 0;
+    return sum + qty * unit;
+  }, 0);
+}
+
+function quoteLineTotal(line: EditableQuoteLine, shopLaborRate: number): number {
+  return (
+    asNumber(line.grand_total) ??
+    asNumber(line.subtotal) ??
+    quoteLineLaborTotal(line, shopLaborRate) + quoteLinePartsTotal(line)
+  );
+}
+
+function hasPartsPrice(line: Pick<QuoteLine, "parts_total" | "metadata">): boolean {
+  if (asNumber(line.parts_total) != null) return true;
+  const parts = quoteMetadata(line).parts;
+  if (!Array.isArray(parts) || parts.length === 0) return true;
+  return parts.every((part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) return false;
+    const p = part as Record<string, Json>;
+    return (
+      jsonNumber(p.unitPrice) != null ||
+      jsonNumber(p.unit_price) != null ||
+      jsonNumber(p.unitCost) != null ||
+      jsonNumber(p.unit_cost) != null
+    );
+  });
+}
+
+function recommendedWorkflow(line: EditableQuoteLine, shopLaborRate: number): Pick<QuoteLineUpdate, "status" | "stage"> {
+  if (!hasPartsPrice(line)) return { status: "pending_parts", stage: "advisor_pending" };
+  const total = quoteLineTotal(line, shopLaborRate);
+  const hours = quoteLineLaborHours(line);
+  const hasLaborOrAmount = total > 0 || hours > 0 || asNumber(line.labor_total) != null;
+  return hasLaborOrAmount
+    ? { status: "quoted", stage: "ready_to_send" }
+    : { status: "quoted", stage: "advisor_pending" };
+}
+
+function workflowDisplay(line: EditableQuoteLine): {
+  label: string;
+  detail: string;
+  tone: "bad" | "warn" | "ok" | "info" | "neutral";
+} {
+  const status = safeTrim(line.status).toLowerCase();
+  const stage = safeTrim(line.stage).toLowerCase();
+
+  if (status === "converted" || line.work_order_line_id) {
+    return { label: "Converted / punchable", detail: "Approved quote line is linked to active work.", tone: "ok" };
+  }
+  if (status === "approved" || line.approved_at) {
+    return { label: "Approved", detail: "Customer approval is recorded; materialization is Phase 5C.", tone: "ok" };
+  }
+  if (status === "declined" || line.declined_at) {
+    return { label: "Declined", detail: "Customer/advisor declined this quote line.", tone: "bad" };
+  }
+  if (status === "deferred") {
+    return { label: "Deferred", detail: "Deferred for later follow-up.", tone: "neutral" };
+  }
+  if (status === "sent" || line.sent_to_customer_at) {
+    return { label: "Sent to customer", detail: "Waiting for customer portal decision.", tone: "info" };
+  }
+  if (status === "pending_parts") {
+    return { label: "Pending parts quote", detail: "Parts pricing is not ready; blocked from sending.", tone: "warn" };
+  }
+  if (stage === "ready_to_send" || status === "ready_to_send" || status === "quoted") {
+    return { label: "Ready to send", detail: "Advisor-reviewed pricing can be sent to the customer.", tone: "ok" };
+  }
+  return { label: "Advisor review", detail: "Advisor can review pricing, notes, and customer-facing text.", tone: "info" };
+}
+
+function badgeClass(tone: ReturnType<typeof workflowDisplay>["tone"]): string {
+  switch (tone) {
+    case "ok":
+      return "border-emerald-400/40 bg-emerald-500/10 text-emerald-100";
+    case "bad":
+      return "border-red-400/40 bg-red-500/10 text-red-100";
+    case "warn":
+      return "border-amber-300/45 bg-amber-400/10 text-amber-100";
+    case "info":
+      return "border-sky-300/40 bg-sky-400/10 text-sky-100";
+    default:
+      return "border-neutral-500/40 bg-white/5 text-neutral-200";
+  }
+}
+
+function canSendLine(line: EditableQuoteLine): boolean {
+  const status = safeTrim(line.status).toLowerCase();
+  const stage = safeTrim(line.stage).toLowerCase();
+  if (NON_SENDABLE_STATUSES.has(status)) return false;
+  if (status === "sent" || Boolean(line.sent_to_customer_at)) return false;
+  return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
+}
+
+function activeWorkLine(line: WorkOrderLine): boolean {
+  const approval = safeTrim(line.approval_state).toLowerCase();
+  const status = safeTrim(line.status).toLowerCase();
+  return Boolean(line.punchable) || approval === "approved" || status === "approved";
+}
+
+function sourceSummary(line: Pick<QuoteLine, "metadata" | "suggested_by">): string[] {
+  const meta = quoteMetadata(line);
+  const values = [
+    jsonString(meta.source) || "inspection",
+    jsonString(meta.source_section_title) || jsonString(meta.source_section_key),
+    jsonString(meta.source_item_key),
+    jsonString(meta.source_finding_title),
+  ].filter(Boolean);
+  if (line.suggested_by) values.push(`suggested by ${line.suggested_by.slice(0, 8)}`);
+  return values;
+}
+
 export default function QuoteReviewView(props: {
-  workOrderId: string; // MUST be UUID
-  embedded?: boolean; // true when used in split view panel
+  workOrderId: string;
+  embedded?: boolean;
 }): JSX.Element {
   const router = useRouter();
   const woId = String(props.workOrderId ?? "").trim();
   const embedded = Boolean(props.embedded);
-
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
@@ -311,136 +275,21 @@ export default function QuoteReviewView(props: {
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-
-  const [lines, setLines] = useState<EditableLine[]>([]);
-  const [allocs, setAllocs] = useState<EditableAlloc[]>([]);
-
+  const [quoteLines, setQuoteLines] = useState<EditableQuoteLine[]>([]);
+  const [workLines, setWorkLines] = useState<WorkOrderLine[]>([]);
+  const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [savingCustomerEmail, setSavingCustomerEmail] = useState(false);
   const [pendingCustomerEmail, setPendingCustomerEmail] = useState("");
   const [sendBlocker, setSendBlocker] = useState<string | null>(null);
-  const [linePhotos, setLinePhotos] = useState<Record<string, string[]>>({});
-
-  const [delOpen, setDelOpen] = useState(false);
-  const [delLineId, setDelLineId] = useState<string | null>(null);
-
   const [addJobOpen, setAddJobOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("system");
 
-  // ✅ Restores original "editor" usage without killing the card UI
-  const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
-  const [learnedByLine, setLearnedByLine] = useState<
-    Record<string, LearnedSuggestion[]>
-  >({});
-  const [learnedLoading, setLearnedLoading] = useState(false);
-
-  function openAddJobWithPrefill(prefill: {
-    jobName?: string | null;
-    notes?: string | null;
-    laborHours?: number | null;
-    partsPaste?: string | null;
-    parts?: Array<{ name: string; qty?: number | null }> | null;
-  }) {
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("addJobModal:prefill", JSON.stringify(prefill));
-    }
-    setAddJobOpen(true);
-  }
-
-  function openDeleteForLine(lineId: string) {
-    setDelLineId(lineId);
-    setDelOpen(true);
-  }
-
-  function onDeleteDone() {
-    setDelOpen(false);
-    setDelLineId(null);
-    void reload();
-  }
-
-  const trackSuggestionFeedback = useCallback(
-    async (suggestion: LearnedSuggestion, accepted: boolean) => {
-      try {
-        await fetch("/api/ai/suggestions/feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: woId,
-            workOrderLineId: suggestion.lineId,
-            suggestionId: suggestion.id,
-            title: suggestion.title,
-            laborHours: suggestion.laborHours,
-            parts: suggestion.parts,
-            accepted,
-          }),
-        });
-      } catch {
-        // endpoint can be added next; UI should not fail without it
-      }
-    },
-    [woId],
-  );
-
-  const loadLearnedSuggestions = useCallback(async () => {
-    if (!woId || lines.length === 0) {
-      setLearnedByLine({});
-      return;
-    }
-
-    setLearnedLoading(true);
-    try {
-      const next: Record<string, LearnedSuggestion[]> = {};
-
-      await Promise.all(
-        lines.map(async (line) => {
-          const item =
-            safeTrim(line.description) ||
-            safeTrim(line.complaint) ||
-            safeTrim(line.correction) ||
-            safeTrim(line.notes);
-
-          if (!item) {
-            next[line.id] = [];
-            return;
-          }
-
-          try {
-            const res = await fetch("/api/ai/suggestions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                item,
-                notes:
-                  safeTrim(line.notes) ||
-                  safeTrim(line.cause) ||
-                  safeTrim(line.complaint),
-                section: safeTrim(line.job_type),
-              }),
-            });
-
-            const json = await res.json().catch(() => null);
-            if (!res.ok) {
-              next[line.id] = [];
-              return;
-            }
-
-            next[line.id] = coerceSuggestionsFromResponse(json, line.id);
-          } catch {
-            next[line.id] = [];
-          }
-        }),
-      );
-
-      setLearnedByLine(next);
-    } finally {
-      setLearnedLoading(false);
-    }
-  }, [lines, woId]);
+  const laborRate = useMemo(() => asNumber((shop as unknown as { labor_rate?: unknown } | null)?.labor_rate) ?? 120, [shop]);
 
   const reload = useCallback(async () => {
     if (!woId) return;
-
     setLoading(true);
 
     const { data: woRow, error: woErr } = await supabase
@@ -455,29 +304,45 @@ export default function QuoteReviewView(props: {
         setWo(null);
         setShop(null);
         setCustomer(null);
-        setLines([]);
-        setAllocs([]);
+        setQuoteLines([]);
+        setWorkLines([]);
       }
       setLoading(false);
       return;
     }
 
     setWo(woRow ?? null);
+    const shopId = woRow?.shop_id ?? null;
 
-    // shop
-    if (woRow?.shop_id) {
-      const { data: shopRow, error: shopErr } = await supabase
-        .from("shops")
-        .select("*")
-        .eq("id", woRow.shop_id)
-        .maybeSingle();
+    if (shopId) {
+      const [{ data: shopRow, error: shopErr }, { data: qRows, error: qErr }, { data: wlRows, error: wlErr }] = await Promise.all([
+        supabase.from("shops").select("*").eq("id", shopId).maybeSingle(),
+        supabase
+          .from("work_order_quote_lines")
+          .select("*")
+          .eq("shop_id", shopId)
+          .eq("work_order_id", woId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("work_order_lines")
+          .select("*")
+          .eq("shop_id", shopId)
+          .eq("work_order_id", woId)
+          .order("line_no", { ascending: true }),
+      ]);
+
       if (shopErr) toast.error(shopErr.message);
+      if (qErr) toast.error(qErr.message);
+      if (wlErr) toast.error(wlErr.message);
       setShop(shopRow ?? null);
+      setQuoteLines(((qRows ?? []) as QuoteLine[]).map((line) => ({ ...line, _dirty: false, _laborRateDraft: jsonNumber(quoteMetadata(line).labor_rate) })));
+      setWorkLines(((wlRows ?? []) as WorkOrderLine[]).filter(activeWorkLine));
     } else {
       setShop(null);
+      setQuoteLines([]);
+      setWorkLines([]);
     }
 
-    // customer (for header contact block)
     if (woRow?.customer_id) {
       const { data: custRow, error: custErr } = await supabase
         .from("customers")
@@ -497,71 +362,6 @@ export default function QuoteReviewView(props: {
       setPendingCustomerEmail("");
     }
 
-    // lines
-    const { data: lineRows, error: lineErr } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("work_order_id", woId)
-      .order("created_at", { ascending: true });
-
-    if (lineErr) {
-      toast.error(lineErr.message);
-      setLines([]);
-      setLinePhotos({});
-    } else {
-      const mapped = (lineRows ?? []).map((l) => {
-        const existingComplaint = safeTrim(l.complaint);
-        if (existingComplaint) return { ...l, _dirty: false } as EditableLine;
-
-        const derived = deriveComplaintFromNotes(l.notes);
-        if (!derived) return { ...l, _dirty: false } as EditableLine;
-
-        // Auto-prefill complaint so Quote Review matches what the WO card implies.
-        // Mark dirty so clicking "Save" will persist it.
-        return { ...l, complaint: derived, _dirty: true } as EditableLine;
-      });
-
-      setLines(mapped);
-
-      const inspectionId = safeTrim((woRow as { inspection_id?: unknown } | null)?.inspection_id);
-      if (inspectionId) {
-        const { data: photosRaw } = await supabase
-          .from("inspection_photos")
-          .select("image_url,item_name")
-          .eq("inspection_id", inspectionId)
-          .order("created_at", { ascending: false })
-          .limit(120);
-
-        const photos =
-          ((photosRaw ?? []) as Array<Pick<InspectionPhoto, "image_url" | "item_name">>)
-            .filter((photo) => safeTrim(photo.image_url).length > 0);
-
-        const nextPhotoMap: Record<string, string[]> = {};
-        for (const line of mapped) {
-          const matched = collectLinePhotoUrls(line, photos);
-          if (matched.length > 0) nextPhotoMap[line.id] = matched;
-        }
-        setLinePhotos(nextPhotoMap);
-      } else {
-        setLinePhotos({});
-      }
-    }
-
-    // allocations
-    const { data: aRows, error: aErr } = await supabase
-      .from("work_order_part_allocations")
-      .select("*, parts(name, sku)")
-      .eq("work_order_id", woId)
-      .order("created_at", { ascending: true });
-
-    if (aErr) {
-      toast.error(aErr.message);
-      setAllocs([]);
-    } else {
-      const cast = (aRows ?? []) as unknown as AllocationWithPart[];
-      setAllocs(cast.map((a) => ({ ...a, _dirty: false })));
-    }
-
     setLoading(false);
     setLoadedOnce(true);
   }, [loadedOnce, supabase, woId]);
@@ -572,200 +372,124 @@ export default function QuoteReviewView(props: {
 
   useEffect(() => {
     let alive = true;
-
     async function loadUser() {
-      const { data, error } = await supabase.auth.getUser();
-      if (!alive) return;
-
-      if (error) {
-        setCurrentUserId("system");
-        return;
-      }
-
-      setCurrentUserId(data.user?.id ?? "system");
+      const { data } = await supabase.auth.getUser();
+      if (alive) setCurrentUserId(data.user?.id ?? "system");
     }
-
     void loadUser();
-
     return () => {
       alive = false;
     };
   }, [supabase]);
 
-  useEffect(() => {
-    void loadLearnedSuggestions();
-  }, [loadLearnedSuggestions]);
+  const quoteTotals = useMemo(() => {
+    const labor = quoteLines.reduce((sum, line) => sum + quoteLineLaborTotal(line, laborRate), 0);
+    const parts = quoteLines.reduce((sum, line) => sum + quoteLinePartsTotal(line), 0);
+    const total = quoteLines.reduce((sum, line) => sum + quoteLineTotal(line, laborRate), 0);
+    const sendable = quoteLines.filter(canSendLine).length;
+    const pendingParts = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "pending_parts").length;
+    const sent = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "sent" || Boolean(line.sent_to_customer_at)).length;
+    return { labor, parts, total, sendable, pendingParts, sent };
+  }, [laborRate, quoteLines]);
 
-  const laborRate = useMemo(() => {
-    const candidate = (shop as unknown as { labor_rate?: unknown } | null)
-      ?.labor_rate;
-    const n = asNumber(candidate);
-    return n ?? 120;
-  }, [shop]);
+  const customerEmail = safeTrim(customer?.email ?? "");
+  const customerPhone = safeTrim(customer?.phone ?? "");
+  const tel = normalizePhoneForTel(customerPhone);
+  const missingCustomerEmail = !customerEmail;
 
-  const provinceCode = useMemo<ProvinceCode | null>(() => {
-    const s = shop as unknown as {
-      province_code?: unknown;
-      province?: unknown;
-    } | null;
-    const raw = safeTrim(s?.province_code ?? s?.province ?? "").toUpperCase();
-    if (!raw) return null;
-    return isProvinceCode(raw) ? raw : null;
-  }, [shop]);
-
-  const lineAllocs = useMemo(() => {
-    const map = new Map<string, EditableAlloc[]>();
-    for (const a of allocs) {
-      const k = String(a.work_order_line_id ?? "");
-      if (!k) continue;
-      const arr = map.get(k) ?? [];
-      arr.push(a);
-      map.set(k, arr);
-    }
-    return map;
-  }, [allocs]);
-
-  const delLine = useMemo(() => {
-    if (!delLineId) return null;
-    return lines.find((l) => l.id === delLineId) ?? null;
-  }, [delLineId, lines]);
-
-  const delAllocs = useMemo<Allocation[]>(() => {
-    if (!delLineId) return [];
-    return allocs
-      .filter((a) => String(a.work_order_line_id ?? "") === delLineId)
-      .map(({ parts: _parts, ...rest }) => rest as Allocation);
-  }, [allocs, delLineId]);
-
-  const totals = useMemo(() => {
-    const laborTotal = lines.reduce((sum, l) => {
-      const hrs = typeof l.labor_time === "number" ? l.labor_time : 0;
-      return sum + hrs * laborRate;
-    }, 0);
-
-    const partsTotal = allocs.reduce((sum, a) => {
-      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-      const unit =
-        typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
-      const q = Number.isFinite(qty) ? qty : 0;
-      const u = Number.isFinite(unit) ? unit : 0;
-      return sum + q * u;
-    }, 0);
-
-    const subtotal = laborTotal + partsTotal;
-    const taxResult = provinceCode ? calculateTax(subtotal, provinceCode) : null;
-    const tax = taxResult ? getTaxAmount(taxResult) : 0;
-    const total = subtotal + tax;
-
-    return { laborTotal, partsTotal, subtotal, tax, total };
-  }, [allocs, laborRate, lines, provinceCode]);
-
-  const setLineField = useCallback((lineId: string, patch: Partial<Line>) => {
-    setLines((prev) =>
-      prev.map((l) =>
-        l.id === lineId ? ({ ...l, ...patch, _dirty: true } as EditableLine) : l,
-      ),
+  function patchQuoteLine(lineId: string, patch: Partial<EditableQuoteLine>) {
+    setQuoteLines((prev) =>
+      prev.map((line) => (line.id === lineId ? { ...line, ...patch, _dirty: true } : line)),
     );
-  }, []);
+  }
 
-  const setAllocField = useCallback(
-    (allocId: string, patch: Partial<EditableAlloc>) => {
-      setAllocs((prev) =>
-        prev.map((a) =>
-          a.id === allocId
-            ? ({ ...a, ...patch, _dirty: true } as EditableAlloc)
-            : a,
-        ),
-      );
-    },
-    [],
-  );
+  function patchQuoteLineMetadata(line: EditableQuoteLine, patch: Record<string, Json | undefined>) {
+    const current = quoteMetadata(line) as Record<string, Json | undefined>;
+    patchQuoteLine(line.id, { metadata: { ...current, ...patch } as Json });
+  }
 
-  async function saveAllDirty() {
-    if (!woId) return;
-    if (saving) return;
+  function markRecommendedReady(line: EditableQuoteLine) {
+    const next = recommendedWorkflow(line, laborRate);
+    patchQuoteLine(line.id, next);
+  }
 
-    const dirtyLines = lines.filter((l) => l._dirty);
-    const dirtyAllocs = allocs.filter((a) => a._dirty);
-
-    if (dirtyLines.length === 0 && dirtyAllocs.length === 0) {
+  async function saveAllDirty(): Promise<boolean> {
+    if (!wo?.shop_id || saving) return false;
+    const dirty = quoteLines.filter((line) => line._dirty);
+    if (dirty.length === 0) {
       toast.message("No changes to save.");
-      return;
+      return true;
     }
 
     setSaving(true);
     try {
-      for (const l of dirtyLines) {
-        const patch: LineUpdate = {
-          description: l.description,
-          complaint: l.complaint,
-          cause: l.cause,
-          correction: l.correction,
-          tools: l.tools,
-          notes: l.notes,
-          labor_time: l.labor_time,
+      for (const line of dirty) {
+        const laborHours = quoteLineLaborHours(line);
+        const laborTotal = quoteLineLaborTotal(line, laborRate);
+        const partsTotal = quoteLinePartsTotal(line);
+        const subtotal = laborTotal + partsTotal;
+        const metadata = {
+          ...quoteMetadata(line),
+          labor_rate: quoteLineLaborRate(line, laborRate),
+        } as Json;
+
+        const patch: QuoteLineUpdate = {
+          description: line.description,
+          ai_complaint: line.ai_complaint,
+          ai_cause: line.ai_cause,
+          ai_correction: line.ai_correction,
+          notes: line.notes,
+          est_labor_hours: line.est_labor_hours,
+          labor_hours: laborHours,
+          labor_total: laborTotal,
+          parts_total: partsTotal,
+          subtotal,
+          grand_total: asNumber(line.grand_total) ?? subtotal,
+          status: line.status,
+          stage: line.stage,
+          metadata,
+          updated_at: new Date().toISOString(),
         };
 
         const { error } = await supabase
-          .from("work_order_lines")
+          .from("work_order_quote_lines")
           .update(patch)
-          .eq("id", l.id);
+          .eq("id", line.id)
+          .eq("shop_id", wo.shop_id)
+          .eq("work_order_id", woId);
         if (error) throw error;
       }
 
-      for (const a of dirtyAllocs) {
-        const patch: AllocationUpdate = {
-          qty: a.qty,
-          unit_cost: a.unit_cost,
-          location_id: a.location_id,
-        };
-
-        const { error } = await supabase
-          .from("work_order_part_allocations")
-          .update(patch)
-          .eq("id", a.id);
-        if (error) throw error;
-      }
-
-      toast.success("Saved.");
+      toast.success("Quote lines saved.");
       await reload();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to save changes.";
-      toast.error(msg);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save quote lines.");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  async function setDecision(
-    lineId: string,
-    decision: "approve" | "decline" | "defer",
-  ) {
-    const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        decision,
-        workOrderId: woId,
-      }),
-    });
-
-    const json = (await res.json().catch(() => null)) as
-      | { ok?: boolean; error?: string }
-      | null;
-
-    if (!res.ok || !json?.ok) {
-      toast.error(json?.error ?? "Failed to update line decision");
+  async function updateQuoteLineState(line: EditableQuoteLine, status: string, stage?: string | null) {
+    if (!wo?.shop_id) return;
+    const patch: QuoteLineUpdate = {
+      status,
+      stage: stage ?? line.stage,
+      declined_at: status === "declined" ? new Date().toISOString() : line.declined_at,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from("work_order_quote_lines")
+      .update(patch)
+      .eq("id", line.id)
+      .eq("shop_id", wo.shop_id)
+      .eq("work_order_id", woId);
+    if (error) {
+      toast.error(error.message);
       return;
     }
-
-    toast.success(
-      decision === "approve"
-        ? "Line approved"
-        : decision === "decline"
-          ? "Line declined"
-          : "Line deferred",
-    );
+    toast.success(`Quote line marked ${statusLabel(status)}.`);
     await reload();
   }
 
@@ -782,568 +506,282 @@ export default function QuoteReviewView(props: {
 
     setSavingCustomerEmail(true);
     try {
-      const { error } = await supabase
-        .from("customers")
-        .update({ email: nextEmail })
-        .eq("id", wo.customer_id);
+      const { error } = await supabase.from("customers").update({ email: nextEmail }).eq("id", wo.customer_id);
       if (error) throw error;
       setSendBlocker(null);
       toast.success("Customer email saved.");
       await reload();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to save customer email.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save customer email.");
     } finally {
       setSavingCustomerEmail(false);
     }
   }
 
   async function sendQuoteToCustomer() {
-    if (!woId) return;
-    if (sending) return;
-
+    if (!woId || sending) return;
     setSending(true);
     try {
-      await saveAllDirty();
+      const saved = await saveAllDirty();
+      if (!saved) return;
 
       const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; detail?: string } | null;
 
-      const json: { ok?: boolean; error?: string } = await res.json();
-
-      if (!res.ok || !json.ok) {
-        const message = safeTrim(json.error ?? "Failed to send quote.");
-        if (message.toLowerCase().includes("missing customer email")) {
-          setSendBlocker("Customer email required to send quote");
-        }
+      if (!res.ok || !json?.ok) {
+        const message = safeTrim(json?.error ?? json?.detail ?? "Failed to send quote.");
+        if (message.toLowerCase().includes("email")) setSendBlocker("Customer email required to send quote");
         toast.error(message);
         return;
       }
 
       setSendBlocker(null);
-      toast.success("Quote sent to customer (email + portal notification).");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to send quote.");
+      toast.success("Quote sent to customer using canonical quote lines.");
+      await reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send quote.");
     } finally {
       setSending(false);
     }
   }
 
-  if (!woId)
-    return <div className="p-6 text-red-300">Missing work order id.</div>;
+  function openAddJobWithPrefill() {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(
+        "addJobModal:prefill",
+        JSON.stringify({ jobName: "", notes: "", laborHours: null, partsPaste: "", parts: null }),
+      );
+    }
+    setAddJobOpen(true);
+  }
+
+  if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading && !loadedOnce) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
-  const phoneRaw = safeTrim(customer?.phone ?? "");
-  const emailRaw = safeTrim(customer?.email ?? "");
-  const missingCustomerEmail = !emailRaw;
-  const tel = normalizePhoneForTel(phoneRaw);
-
-  // ✅ Embedded mode sizing + padding
-  const outerCls = embedded
-    ? "min-h-full w-full px-0 py-0 text-foreground"
-    : "min-h-screen px-4 py-6 text-foreground";
-
+  const outerCls = embedded ? "min-h-full w-full px-0 py-0 text-foreground" : "min-h-screen px-4 py-6 text-foreground";
   const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-7xl";
   const padX = embedded ? "px-3" : "px-5";
   const padY = embedded ? "py-3" : "py-4";
-
-  // ✅ Force panel-friendly layout (NOT viewport-based lg columns)
   const mainGridCls = embedded ? "mt-3 grid gap-3" : "mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_380px]";
-  const linesColCls = "";
-  const sideColCls = embedded ? "" : "space-y-4";
-
-  // ✅ Smaller action buttons when embedded
-  const actionBtnCls = embedded
-    ? `${ui.buttonSecondary} px-3 py-1.5 text-xs disabled:opacity-60`
-    : `${ui.buttonSecondary} px-4 py-2 text-sm disabled:opacity-60`;
-
-  const saveBtnCls = embedded
-    ? `${ui.buttonPrimary} px-3 py-1.5 text-xs disabled:opacity-60`
-    : `${ui.buttonPrimary} px-4 py-2 text-sm disabled:opacity-60`;
+  const actionBtnCls = embedded ? `${ui.buttonSecondary} px-3 py-1.5 text-xs disabled:opacity-60` : `${ui.buttonSecondary} px-4 py-2 text-sm disabled:opacity-60`;
+  const saveBtnCls = embedded ? `${ui.buttonPrimary} px-3 py-1.5 text-xs disabled:opacity-60` : `${ui.buttonPrimary} px-4 py-2 text-sm disabled:opacity-60`;
 
   return (
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
         {loading ? (
           <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-neutral-300">
-            Refreshing quote review data…
+            Refreshing canonical quote lines…
           </div>
         ) : null}
-        {/* top row */}
-        <div
-          className={
-            embedded
-              ? "mb-2 flex flex-wrap items-center justify-between gap-2"
-              : "mb-4 flex flex-wrap items-center justify-between gap-3"
-          }
-        >
+
+        <div className={embedded ? "mb-2 flex flex-wrap items-center justify-between gap-2" : "mb-4 flex flex-wrap items-center justify-between gap-3"}>
           {!embedded && (
-            <button
-              onClick={() => router.back()}
-              className="text-sm text-[color:var(--copper)] hover:underline"
-            >
+            <button onClick={() => router.back()} className="text-sm text-[color:var(--copper)] hover:underline">
               ← Back
             </button>
           )}
-
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => void sendQuoteToCustomer()}
-              disabled={sending}
-              className={actionBtnCls}
-              title="Email the quote to the customer and notify their portal"
-            >
+            <button onClick={() => void sendQuoteToCustomer()} disabled={sending || quoteTotals.sendable === 0} className={actionBtnCls} title="Email the ready canonical quote lines to the customer">
               {sending ? "Sending…" : "Send Quote"}
             </button>
-
-            <button
-              onClick={() => void saveAllDirty()}
-              disabled={saving}
-              className={saveBtnCls}
-              title="Save all changes"
-            >
+            <button onClick={() => void saveAllDirty()} disabled={saving} className={saveBtnCls} title="Save canonical quote line changes">
               {saving ? "Saving…" : "Save"}
             </button>
-
             {!embedded && (
-              <a
-                href={`/work-orders/${woId}`}
-                className="
-                  desktop-btn-secondary rounded-full
-                  px-4 py-2 text-sm font-semibold text-neutral-200
-                "
-                title="Open the work order"
-              >
+              <a href={`/work-orders/${woId}`} className="desktop-btn-secondary rounded-full px-4 py-2 text-sm font-semibold text-neutral-200" title="Open the work order">
                 Open WO
               </a>
             )}
           </div>
         </div>
 
-        {/* header card */}
         <div className={`${card} ${padX} ${padY}`}>
-          {/* ✅ Embedded: ALWAYS stack header blocks (no lg:flex-row inside narrow panel) */}
-          <div
-            className={
-              embedded
-                ? "grid gap-3"
-                : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"
-            }
-          >
-            {/* left */}
+          <div className={embedded ? "grid gap-3" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"}>
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
-                Quote Review
-              </div>
-              <div
-                className={
-                  embedded
-                    ? "mt-1 text-xl font-semibold text-white"
-                    : "mt-1 text-2xl font-semibold text-white"
-                }
-              >
+              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">Advisor quote review</div>
+              <div className={embedded ? "mt-1 text-xl font-semibold text-white" : "mt-1 text-2xl font-semibold text-white"}>
                 <span className="text-white">#</span>
-                <span style={{ color: COPPER }}>
-                  {wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}
-                </span>
+                <span style={{ color: COPPER }}>{wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}</span>
               </div>
-              <div className="mt-1 text-sm text-neutral-400">
-                Status: {statusLabel(wo.status)} {shop?.name ? `• ${shop.name}` : ""}
-              </div>
+              <div className="mt-1 text-sm text-neutral-400">Canonical quote lines: {quoteLines.length} • Active work lines: {workLines.length}</div>
             </div>
 
-            {/* middle */}
-            <div
-              className="desktop-panel-soft w-full px-4 py-3"
-            >
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                Customer contact
-              </div>
-
-              {/* ✅ Embedded: keep 1 column so it doesn’t squish */}
+            <div className="desktop-panel-soft w-full px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">Customer contact</div>
               <div className={embedded ? "mt-2 grid gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
                 <div className="min-w-0">
                   <div className="text-[11px] text-neutral-500">Name</div>
-                  <div className="truncate text-sm font-semibold text-white">
-                    {customerDisplayName(customer)}
-                  </div>
+                  <div className="truncate text-sm font-semibold text-white">{customerDisplayName(customer)}</div>
                 </div>
-
                 <div className="min-w-0">
                   <div className="text-[11px] text-neutral-500">Phone</div>
-                  {tel ? (
-                    <a
-                      href={`tel:${tel}`}
-                      className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline"
-                      title="Call customer"
-                    >
-                      {phoneRaw}
-                    </a>
-                  ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">—</div>
-                  )}
+                  {tel ? <a href={`tel:${tel}`} className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline">{customerPhone}</a> : <div className="truncate text-sm font-semibold text-white/70">—</div>}
                 </div>
-
                 <div className="min-w-0">
                   <div className="text-[11px] text-neutral-500">Email</div>
-                  {emailRaw ? (
-                    <a
-                      href={`mailto:${emailRaw}`}
-                      className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline"
-                      title="Email customer"
-                    >
-                      {emailRaw}
-                    </a>
-                  ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">—</div>
-                  )}
+                  {customerEmail ? <a href={`mailto:${customerEmail}`} className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline">{customerEmail}</a> : <div className="truncate text-sm font-semibold text-white/70">—</div>}
                 </div>
               </div>
             </div>
 
-            {/* right */}
             <div className={embedded ? "text-left" : "text-right self-start"}>
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-                Labor rate
-              </div>
-              <div className="mt-1 text-lg font-semibold text-white">
-                {fmt(laborRate)}/hr
-              </div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Shop labor rate</div>
+              <div className="mt-1 text-lg font-semibold text-white">{fmt(laborRate)}/hr</div>
             </div>
           </div>
         </div>
 
         <div className={mainGridCls}>
-          {/* lines */}
-          <div className={linesColCls}>
+          <div>
             <div className={card}>
-              <div
-                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
-              >
-                Findings
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+                Canonical quote lines
               </div>
-
-              {lines.length === 0 ? (
+              {quoteLines.length === 0 ? (
                 <div className={`${padX} py-4 text-sm text-neutral-400`}>
-                  No lines yet.
+                  No canonical quote lines exist for this work order yet. Phase 5B does not create temporary work_order_lines for portal visibility; customer portal rendering remains Phase 5C.
                 </div>
               ) : (
                 <div className="divide-y divide-[color:var(--desktop-border)]">
-                  {lines.map((l) => {
-                    const la = lineAllocs.get(l.id) ?? [];
-                    const laborHours = typeof l.labor_time === "number" ? l.labor_time : 0;
-                    const laborAmt = laborHours * laborRate;
-
-                    const partsAmt = la.reduce((sum, a) => {
-                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-                      const unit =
-                        typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
-                      const q = Number.isFinite(qty) ? qty : 0;
-                      const u = Number.isFinite(unit) ? unit : 0;
-                      return sum + q * u;
-                    }, 0);
-
-                    const ap = safeTrim(l.approval_state).toLowerCase();
-                    const tone =
-                      ap === "approved"
-                        ? ("ok" as const)
-                        : ap === "declined"
-                          ? ("bad" as const)
-                          : ("warn" as const);
-
-                    const title =
-                      safeTrim(l.description) ||
-                      (l.line_no != null ? `Line #${l.line_no}` : "Line");
-
-                    const issueText =
-                      safeTrim(l.cause) ||
-                      safeTrim(l.notes) ||
-                      safeTrim(l.complaint) ||
-                      "—";
-
-                    const recText =
-                      safeTrim(l.correction) ||
-                      safeTrim(l.description) ||
-                      "—";
-
-                    const whyRecommended = [
-                      safeTrim(l.correction) || "Recommended repair linked to this finding.",
-                    ];
-
-                    const supportingEvidence = [
-                      safeTrim(l.cause) || safeTrim(l.notes) || safeTrim(l.complaint),
-                    ].filter((item): item is string => Boolean(item));
-
-                    const deferredConsequence =
-                      ap === "approved"
-                        ? null
-                        : "Deferring may keep the original issue active and can delay full work-order completion.";
+                  {quoteLines.map((line, index) => {
+                    const workflow = workflowDisplay(line);
+                    const meta = quoteMetadata(line);
+                    const photos = [...jsonStringArray(meta.photo_urls), ...jsonStringArray(meta.evidence_urls)];
+                    const techNotes = jsonString(meta.technician_notes) || jsonString(meta.tech_notes) || safeTrim(line.ai_cause);
+                    const laborHours = quoteLineLaborHours(line);
+                    const lineLaborRate = quoteLineLaborRate(line, laborRate);
+                    const laborTotal = quoteLineLaborTotal(line, laborRate);
+                    const partsTotal = quoteLinePartsTotal(line);
+                    const total = quoteLineTotal(line, laborRate);
+                    const sources = sourceSummary(line);
 
                     return (
-                      <div key={l.id} className={`${padX} py-4`}>
-                        <div className="desktop-panel-soft p-2.5">
-                          <QuoteLineCard
-                            title={title}
-                            statusLabel="Issue Found"
-                            statusTone={tone}
-                            issueText={issueText}
-                            photoUrl={(linePhotos[l.id] ?? [])[0] ?? null}
-                            photoUrls={linePhotos[l.id] ?? []}
-                            recommendedText={recText}
-                            partsTotal={partsAmt}
-                            laborTotal={laborAmt}
-                            showActions
-                            onApprove={() => void setDecision(l.id, "approve")}
-                            onDecline={() => void setDecision(l.id, "decline")}
-                            onDefer={() => void setDecision(l.id, "defer")}
-                            footerNote={null}
-                            whyRecommended={whyRecommended}
-                            supportingEvidence={supportingEvidence}
-                            deferredConsequence={deferredConsequence}
-                          />
-                        </div>
+                      <div key={line.id} className={`${padX} py-4`}>
+                        <div className="desktop-panel-soft p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Quote line {index + 1}</div>
+                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(workflow.tone)}`}>{workflow.label}</span>
+                                {line._dirty ? <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100">Unsaved</span> : null}
+                              </div>
+                              <h3 className="mt-2 text-base font-semibold text-white">{safeTrim(line.description) || "Untitled quote line"}</h3>
+                              {safeTrim(line.ai_complaint) ? <p className="mt-1 text-sm text-neutral-300">Complaint: {line.ai_complaint}</p> : null}
+                              {safeTrim(line.notes) ? <p className="mt-1 text-sm text-neutral-300">Notes: {line.notes}</p> : null}
+                              {techNotes ? <p className="mt-1 text-sm text-neutral-400">Technician notes: {techNotes}</p> : null}
+                              <p className="mt-2 text-xs text-neutral-500">{workflow.detail}</p>
+                            </div>
+                            <div className="min-w-[180px] rounded-2xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-sm">
+                              <div className="flex justify-between gap-4"><span className="text-neutral-400">Labor</span><span className="font-semibold text-white">{fmt(laborTotal)}</span></div>
+                              <div className="mt-1 flex justify-between gap-4"><span className="text-neutral-400">Parts</span><span className="font-semibold text-white">{fmt(partsTotal)}</span></div>
+                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-neutral-300">Total</span><span className="font-bold" style={{ color: COPPER }}>{fmt(total)}</span></div>
+                            </div>
+                          </div>
 
-                        {/* ✅ Restored editor usage under the card (fixes “unused” lint + keeps ops tools) */}
-                        {(() => {
-                          const learned = learnedByLine[l.id] ?? [];
-                          if (learned.length === 0) return null;
+                          <div className="mt-3 grid gap-2 text-xs text-neutral-400 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>Stage: <span className="text-neutral-200">{statusLabel(line.stage)}</span></div>
+                            <div>Status: <span className="text-neutral-200">{statusLabel(line.status)}</span></div>
+                            <div>Labor hours: <span className="text-neutral-200">{laborHours}</span></div>
+                            <div>Labor rate: <span className="text-neutral-200">{fmt(lineLaborRate)}/hr</span></div>
+                          </div>
 
-                          return (
-                            <div className="mt-3 space-y-2">
-                              {learned.slice(0, 2).map((suggestion) => (
-                                <LearnedSuggestionCard
-                                  key={suggestion.id}
-                                  suggestion={suggestion}
-                                  onApplyLabor={
-                                    suggestion.laborHours != null
-                                      ? () => {
-                                          setLineField(l.id, {
-                                            labor_time:
-                                              suggestion.laborHours ?? l.labor_time,
-                                            description:
-                                              l.description || suggestion.title,
-                                          });
-                                          toast.success(
-                                            "Applied learned labor suggestion.",
-                                          );
-                                          void trackSuggestionFeedback(
-                                            suggestion,
-                                            true,
-                                          );
-                                        }
-                                      : undefined
-                                  }
-                                  onAddAsJob={() => {
-                                    openAddJobWithPrefill({
-                                      jobName: suggestion.title,
-                                      notes: suggestion.summary || l.notes || "",
-                                      laborHours: suggestion.laborHours,
-                                      parts: suggestion.parts,
-                                      partsPaste: partsToPaste(suggestion.parts),
-                                    });
-                                    void trackSuggestionFeedback(
-                                      suggestion,
-                                      true,
-                                    );
-                                  }}
-                                  onDismiss={() => {
-                                    setLearnedByLine((prev) => ({
-                                      ...prev,
-                                      [l.id]: (prev[l.id] ?? []).filter(
-                                        (x) => x.id !== suggestion.id,
-                                      ),
-                                    }));
-                                    void trackSuggestionFeedback(
-                                      suggestion,
-                                      false,
-                                    );
-                                  }}
-                                />
+                          {sources.length > 0 ? (
+                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">
+                              Source inspection metadata: <span className="text-neutral-200">{sources.join(" • ")}</span>
+                            </div>
+                          ) : null}
+
+                          {photos.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {photos.map((url) => (
+                                <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-sky-300/35 bg-sky-400/10 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-400/15">
+                                  Evidence photo
+                                </a>
                               ))}
                             </div>
-                          );
-                        })()}
+                          ) : null}
 
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setOpenDetails((p) => ({ ...p, [l.id]: !p[l.id] }))
-                            }
-                            className="
-                              desktop-btn-secondary w-full rounded-2xl
-                              px-4 py-2.5 text-sm font-semibold text-neutral-200
-                            "
-                          >
-                            {openDetails[l.id] ? "Hide details" : "Show details"}
-                          </button>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-neutral-200">
+                              {openDetails[line.id] ? "Hide editor" : "Edit quote line"}
+                            </button>
+                            <button type="button" onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-neutral-200">
+                              Recompute ready state
+                            </button>
+                            {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
+                            {safeTrim(line.status).toLowerCase() !== "declined" ? (
+                              <button type="button" onClick={() => void updateQuoteLineState(line, "declined", line.stage)} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">
+                                Decline
+                              </button>
+                            ) : null}
+                            {safeTrim(line.status).toLowerCase() !== "deferred" ? (
+                              <button type="button" onClick={() => void updateQuoteLineState(line, "deferred", line.stage)} className="rounded-xl border border-neutral-500/45 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200">
+                                Defer
+                              </button>
+                            ) : null}
+                          </div>
 
-                          {openDetails[l.id] ? (
+                          {openDetails[line.id] ? (
                             <div className="desktop-panel-soft mt-3 p-4">
-                              {/* line editor */}
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
                                 <label className="text-xs text-neutral-400">
-                                  Description
-                                  <input
-                                    value={l.description ?? ""}
-                                    onChange={(e) =>
-                                      setLineField(l.id, { description: e.target.value })
-                                    }
-                                    className={inputCls}
-                                  />
+                                  Title / description
+                                  <input value={line.description ?? ""} onChange={(e) => patchQuoteLine(line.id, { description: e.target.value })} className={inputCls} />
                                 </label>
-
                                 <label className="text-xs text-neutral-400">
                                   Complaint
-                                  <input
-                                    value={l.complaint ?? ""}
-                                    onChange={(e) =>
-                                      setLineField(l.id, { complaint: e.target.value })
-                                    }
-                                    className={inputCls}
-                                  />
+                                  <input value={line.ai_complaint ?? ""} onChange={(e) => patchQuoteLine(line.id, { ai_complaint: e.target.value })} className={inputCls} />
                                 </label>
-
                                 <label className="text-xs text-neutral-400">
-                                  Cause
-                                  <input
-                                    value={l.cause ?? ""}
-                                    onChange={(e) => setLineField(l.id, { cause: e.target.value })}
-                                    className={inputCls}
-                                  />
+                                  Technician notes
+                                  <input value={techNotes} onChange={(e) => patchQuoteLineMetadata(line, { technician_notes: e.target.value })} className={inputCls} />
                                 </label>
-
                                 <label className="text-xs text-neutral-400">
-                                  Correction
-                                  <input
-                                    value={l.correction ?? ""}
-                                    onChange={(e) =>
-                                      setLineField(l.id, { correction: e.target.value })
-                                    }
-                                    className={inputCls}
-                                  />
+                                  Advisor notes
+                                  <input value={line.notes ?? ""} onChange={(e) => patchQuoteLine(line.id, { notes: e.target.value })} className={inputCls} />
                                 </label>
-
                                 <label className="text-xs text-neutral-400">
                                   Labor hours
-                                  <input
-                                    inputMode="decimal"
-                                    value={typeof l.labor_time === "number" ? String(l.labor_time) : ""}
-                                    onChange={(e) => {
-                                      const n = asNumber(e.target.value);
-                                      setLineField(l.id, { labor_time: n ?? 0 });
-                                    }}
-                                    className={inputCls}
-                                    placeholder="0.0"
-                                  />
+                                  <input inputMode="decimal" value={String(laborHours)} onChange={(e) => patchQuoteLine(line.id, { labor_hours: asNumber(e.target.value) ?? 0, est_labor_hours: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
-
-                                <div className="text-xs text-neutral-400">
-                                  Line total
-                                  <div className="mt-2 text-lg font-semibold text-white">
-                                    {fmt(laborAmt + partsAmt)}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* parts editor */}
-                              <div className="desktop-panel-soft mt-4 p-4">
-                                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                                  Parts
-                                </div>
-
-                                {la.length === 0 ? (
-                                  <div className="text-sm text-neutral-400">
-                                    No parts allocated to this line.
-                                  </div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {la.map((a) => {
-                                      const partName =
-                                        safeTrim(a.parts?.name) ||
-                                        safeTrim(a.parts?.sku) ||
-                                        (a.part_id ? `Part ${a.part_id.slice(0, 8)}` : "Part");
-
-                                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-                                      const unit =
-                                        typeof a.unit_cost === "number"
-                                          ? a.unit_cost
-                                          : Number(a.unit_cost);
-                                      const q = Number.isFinite(qty) ? qty : 0;
-                                      const u = Number.isFinite(unit) ? unit : 0;
-                                      const rowTotal = q * u;
-
-                                      return (
-                                        <div
-                                          key={a.id}
-                                          className="
-                                            flex flex-wrap items-center justify-between gap-3
-                                            desktop-panel-soft rounded-2xl px-3 py-3
-                                          "
-                                        >
-                                          <div className="min-w-0">
-                                            <div className="truncate text-sm font-medium text-white">
-                                              {partName}
-                                            </div>
-                                            <div className="text-xs text-neutral-500">
-                                              {a.location_id ? `Location: ${a.location_id}` : "No location"}
-                                              {a._dirty ? " • Unsaved" : ""}
-                                            </div>
-                                          </div>
-
-                                          <div className="flex items-center gap-2">
-                                            <label className="text-xs text-neutral-400">
-                                              Qty
-                                              <input
-                                                inputMode="decimal"
-                                                value={String(q)}
-                                                onChange={(e) => {
-                                                  const n = asNumber(e.target.value);
-                                                  setAllocField(a.id, { qty: n ?? 0 });
-                                                }}
-                                                className={`${inputBase} ${inputFocus} ml-2 w-20`}
-                                              />
-                                            </label>
-
-                                            <label className="text-xs text-neutral-400">
-                                              Unit
-                                              <input
-                                                inputMode="decimal"
-                                                value={String(u)}
-                                                onChange={(e) => {
-                                                  const n = asNumber(e.target.value);
-                                                  setAllocField(a.id, { unit_cost: n ?? 0 });
-                                                }}
-                                                className={`${inputBase} ${inputFocus} ml-2 w-28`}
-                                              />
-                                            </label>
-
-                                            <div className="w-24 text-right text-sm font-semibold text-white">
-                                              {fmt(rowTotal)}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* delete/void */}
-                              <div className="mt-4 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => openDeleteForLine(l.id)}
-                                  className="
-                                    desktop-btn-secondary rounded-xl
-                                    px-4 py-2 text-sm font-semibold text-neutral-200
-                                  "
-                                >
-                                  Delete / Void
-                                </button>
+                                <label className="text-xs text-neutral-400">
+                                  Labor rate
+                                  <input inputMode="decimal" value={String(lineLaborRate)} onChange={(e) => patchQuoteLine(line.id, { _laborRateDraft: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                </label>
+                                <label className="text-xs text-neutral-400">
+                                  Labor amount
+                                  <input inputMode="decimal" value={String(laborTotal)} onChange={(e) => patchQuoteLine(line.id, { labor_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                </label>
+                                <label className="text-xs text-neutral-400">
+                                  Parts quoted amount
+                                  <input inputMode="decimal" value={String(partsTotal)} onChange={(e) => patchQuoteLine(line.id, { parts_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                </label>
+                                <label className="text-xs text-neutral-400">
+                                  Status
+                                  <select value={line.status ?? ""} onChange={(e) => patchQuoteLine(line.id, { status: e.target.value })} className={inputCls}>
+                                    <option value="pending_parts">pending parts</option>
+                                    <option value="quoted">ready / quoted</option>
+                                    <option value="sent">sent</option>
+                                    <option value="approved">approved</option>
+                                    <option value="declined">declined</option>
+                                    <option value="deferred">deferred</option>
+                                    <option value="converted">converted</option>
+                                  </select>
+                                </label>
+                                <label className="text-xs text-neutral-400">
+                                  Stage
+                                  <select value={line.stage ?? ""} onChange={(e) => patchQuoteLine(line.id, { stage: e.target.value })} className={inputCls}>
+                                    <option value="advisor_pending">advisor pending</option>
+                                    <option value="ready_to_send">ready to send</option>
+                                    <option value="sent">sent</option>
+                                  </select>
+                                </label>
                               </div>
                             </div>
                           ) : null}
@@ -1354,187 +792,91 @@ export default function QuoteReviewView(props: {
                 </div>
               )}
             </div>
+
+            {workLines.length > 0 ? (
+              <div className={`${card} mt-4`}>
+                <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+                  Active approved / punchable work
+                </div>
+                <div className="divide-y divide-[color:var(--desktop-border)]">
+                  {workLines.map((line) => (
+                    <div key={line.id} className={`${padX} py-3 text-sm`}>
+                      <div className="font-semibold text-white">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
+                      <div className="mt-1 text-xs text-neutral-400">Status: {statusLabel(line.status)} • Approval: {statusLabel(line.approval_state)} • Punchable: {line.punchable ? "yes" : "no"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          {/* right column */}
-          <div className={sideColCls}>
+          <div className={embedded ? "" : "space-y-4"}>
             <div className={card}>
-              <div
-                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
-              >
-                Quick add job {learnedLoading ? "• loading learned suggestions…" : ""}
-              </div>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Quote readiness</div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
-                Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openAddJobWithPrefill({
-                        jobName: "",
-                        notes: "",
-                        laborHours: null,
-                        partsPaste: "",
-                        parts: null,
-                      })
-                    }
-                    className="
-                      desktop-btn-primary w-full rounded-xl
-                      px-4 py-2 text-sm font-semibold
-                    "
-                  >
-                    + Add job line
-                  </button>
-                </div>
+                <div className="flex items-center justify-between"><span>Ready to send</span><span className="font-semibold text-white">{quoteTotals.sendable}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Pending parts</span><span className="font-semibold text-white">{quoteTotals.pendingParts}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-white">{quoteTotals.sent}</span></div>
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-white">{fmt(quoteTotals.labor)}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Parts</span><span className="font-medium text-white">{fmt(quoteTotals.parts)}</span></div>
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-white">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{fmt(quoteTotals.total)}</span></div>
+                <button onClick={() => void saveAllDirty()} disabled={saving} className="desktop-btn-primary mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60">
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
               </div>
             </div>
 
             <div className={card}>
-              <div
-                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
-              >
-                Totals
-              </div>
-
-              <div className={`${padX} py-4 text-sm`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-400">Labor</span>
-                  <span className="font-medium text-white">{fmt(totals.laborTotal)}</span>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-neutral-400">Parts</span>
-                  <span className="font-medium text-white">{fmt(totals.partsTotal)}</span>
-                </div>
-
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
-                  <span className="text-neutral-300">Subtotal</span>
-                  <span className="font-semibold text-white">{fmt(totals.subtotal)}</span>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-neutral-400">
-                    Tax {provinceCode ? `(${provinceCode})` : "(not set)"}
-                  </span>
-                  <span className="font-medium text-white">{fmt(totals.tax)}</span>
-                </div>
-
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
-                  <span className="font-semibold text-white">Grand total</span>
-                  <span className="text-lg font-bold" style={{ color: COPPER }}>
-                    {fmt(totals.total)}
-                  </span>
-                </div>
-
-                <div className="mt-4 text-xs text-neutral-500">
-                  Tip: set shop province to enable CA tax, and shop labor rate to match pricing.
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => void saveAllDirty()}
-                    disabled={saving}
-                    className="
-                      desktop-btn-primary w-full rounded-xl
-                      px-4 py-2 text-sm font-semibold disabled:opacity-60
-                    "
-                  >
-                    {saving ? "Saving…" : "Save changes"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className={card}>
-              <div
-                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
-              >
-                Send to customer
-              </div>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Send to customer</div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
-                Send quote email + portal notification.
-                {(missingCustomerEmail || sendBlocker) ? (
+                Sends only canonical work_order_quote_lines that are ready to send. Pending parts, declined, deferred, approved, and converted lines are not sent.
+                {quoteTotals.sendable === 0 ? (
+                  <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-amber-100">No ready canonical quote lines are available to send.</div>
+                ) : null}
+                {missingCustomerEmail || sendBlocker ? (
                   <div className="mt-3 rounded-xl border border-sky-400/35 bg-sky-500/10 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100">
-                      Blocked
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-sky-100">
-                      {sendBlocker ?? "Customer email required to send quote"}
-                    </div>
-                    <p className="mt-1 text-xs text-sky-100/80">
-                      Add the missing email here, save it, then retry send.
-                    </p>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100">Blocked</div>
+                    <div className="mt-1 text-sm font-semibold text-sky-100">{sendBlocker ?? "Customer email required to send quote"}</div>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        value={pendingCustomerEmail}
-                        onChange={(e) => setPendingCustomerEmail(e.target.value)}
-                        placeholder="customer@email.com"
-                        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/70"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void saveCustomerEmailInline()}
-                        disabled={savingCustomerEmail}
-                        className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-amber-400/20 disabled:opacity-60"
-                      >
+                      <input type="email" value={pendingCustomerEmail} onChange={(e) => setPendingCustomerEmail(e.target.value)} placeholder="customer@email.com" className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/70" />
+                      <button type="button" onClick={() => void saveCustomerEmailInline()} disabled={savingCustomerEmail} className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-amber-400/20 disabled:opacity-60">
                         {savingCustomerEmail ? "Saving…" : "Save email"}
                       </button>
                     </div>
                   </div>
                 ) : null}
-                <div className="mt-3">
-                  <button
-                    onClick={() => void sendQuoteToCustomer()}
-                    disabled={sending || savingCustomerEmail}
-                    className="
-                      desktop-btn-secondary w-full rounded-xl
-                      px-4 py-2 text-sm font-semibold text-white
-                      disabled:opacity-60
-                    "
-                  >
-                    {sending ? "Sending…" : "Send Quote"}
-                  </button>
-                </div>
-                <div className="mt-3 text-xs text-neutral-500">
-                  Portal link will be:{" "}
-                  <span className="text-neutral-300">/portal/quotes/{woId}</span>
-                </div>
+                <button onClick={() => void sendQuoteToCustomer()} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                  {sending ? "Sending…" : "Send ready quote lines"}
+                </button>
+                <div className="mt-3 text-xs text-neutral-500">Portal link will be: <span className="text-neutral-300">/portal/quotes/{woId}</span></div>
+                <div className="mt-2 text-xs text-neutral-500">Phase 5C still needs customer portal rendering, approval, and materialization of approved quote lines into punchable work_order_lines.</div>
+              </div>
+            </div>
+
+            <div className={card}>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Quick add job</div>
+              <div className={`${padX} py-4 text-sm text-neutral-400`}>
+                Add active work only when intentionally needed. Inspection recommendations should stay in canonical quote lines until customer approval/materialization.
+                <button type="button" onClick={openAddJobWithPrefill} className="desktop-btn-primary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold">+ Add job line</button>
               </div>
             </div>
           </div>
         </div>
 
-        {!embedded && (
-          <div className="mt-6 text-xs text-neutral-500">
-            Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}
-          </div>
-        )}
+        {!embedded && <div className="mt-6 text-xs text-neutral-500">Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}</div>}
 
         <AddJobModal
           isOpen={addJobOpen}
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
-          vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
+          vehicleId={wo.vehicle_id}
+          shopId={wo.shop_id}
           techId={currentUserId}
-          shopId={wo.shop_id ?? null}
-          onJobAdded={async () => {
-            await reload();
+          onJobAdded={() => {
+            setAddJobOpen(false);
+            void reload();
           }}
         />
-
-        {delLine && (
-          <DeleteOrVoidLineModal
-            open={delOpen}
-            onClose={() => {
-              setDelOpen(false);
-              setDelLineId(null);
-            }}
-            line={delLine}
-            allocations={delAllocs}
-            onDone={onDeleteDone}
-          />
-        )}
       </div>
     </div>
   );
