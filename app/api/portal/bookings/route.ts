@@ -25,6 +25,8 @@ type BookingPayload = {
   customer_phone: string | null;
   notes: string | null;
   status: string | null;
+  vehicle_id: string | null;
+  work_order_id: string | null;
 };
 
 type BookingRow = Db["public"]["Tables"]["bookings"]["Row"] & {
@@ -100,6 +102,8 @@ export async function GET(req: Request): Promise<Response> {
         id,
         shop_id,
         customer_id,
+        vehicle_id,
+        work_order_id,
         starts_at,
         ends_at,
         status,
@@ -149,6 +153,8 @@ export async function GET(req: Request): Promise<Response> {
       customer_phone: phoneFromCustomer,
       notes: row.notes ?? null,
       status: row.status ?? null,
+      vehicle_id: row.vehicle_id ?? null,
+      work_order_id: row.work_order_id ?? null,
     };
   });
 
