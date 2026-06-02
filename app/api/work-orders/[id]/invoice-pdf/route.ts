@@ -436,6 +436,10 @@ export async function GET(
     snapshot.partsCost != null && Number.isFinite(snapshot.partsCost)
       ? snapshot.partsCost
       : derivedPartsCost;
+  const shopSuppliesTotal =
+    snapshot.shopSuppliesTotal != null && Number.isFinite(snapshot.shopSuppliesTotal)
+      ? Math.max(0, snapshot.shopSuppliesTotal)
+      : 0;
   const discountTotal =
     snapshot.discountTotal != null && Number.isFinite(snapshot.discountTotal)
       ? Math.max(0, snapshot.discountTotal)
@@ -818,6 +822,7 @@ export async function GET(
   ctxPdf = drawText(ctxPdf, `Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
   ctxPdf = drawText(ctxPdf, `Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
   ctxPdf = drawText(ctxPdf, `Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
+  ctxPdf = drawText(ctxPdf, `Shop supplies: ${moneyLabel(shopSuppliesTotal, currency)}`, { size: 11, color: C_MUTED });
 
   if (discountTotal > 0) {
     ctxPdf = drawText(ctxPdf, `Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });

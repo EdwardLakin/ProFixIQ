@@ -10,6 +10,12 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+  shopSuppliesSummaryText,
+} from "@/features/work-orders/lib/shopSupplies";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -324,6 +330,9 @@ export default function QuoteReviewView(props: {
   const [sendBlocker, setSendBlocker] = useState<string | null>(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("system");
+  const [suppliesEnabledDraft, setSuppliesEnabledDraft] = useState<boolean | null>(null);
+  const [suppliesAmountDraft, setSuppliesAmountDraft] = useState("");
+  const [savingSuppliesOverride, setSavingSuppliesOverride] = useState(false);
 
   const laborRate = useMemo(() => asNumber((shop as unknown as { labor_rate?: unknown } | null)?.labor_rate) ?? 120, [shop]);
 
@@ -351,6 +360,10 @@ export default function QuoteReviewView(props: {
     }
 
     setWo(woRow ?? null);
+    const loadedSuppliesEnabled = (woRow as { shop_supplies_enabled_override?: unknown } | null)?.shop_supplies_enabled_override;
+    setSuppliesEnabledDraft(typeof loadedSuppliesEnabled === "boolean" ? loadedSuppliesEnabled : null);
+    const loadedSuppliesAmount = (woRow as { shop_supplies_amount_override?: unknown } | null)?.shop_supplies_amount_override;
+    setSuppliesAmountDraft(typeof loadedSuppliesAmount === "number" ? String(loadedSuppliesAmount) : "");
     const shopId = woRow?.shop_id ?? null;
 
     if (shopId) {
@@ -424,12 +437,24 @@ export default function QuoteReviewView(props: {
   const quoteTotals = useMemo(() => {
     const labor = quoteLines.reduce((sum, line) => sum + quoteLineLaborTotal(line, laborRate), 0);
     const parts = quoteLines.reduce((sum, line) => sum + quoteLinePartsTotal(line), 0);
-    const total = quoteLines.reduce((sum, line) => sum + quoteLineTotal(line, laborRate), 0);
+    const linesTotal = quoteLines.reduce((sum, line) => sum + quoteLineTotal(line, laborRate), 0);
+    const baseSubtotal = labor + parts;
+    const persistedOverride = resolveShopSuppliesOverride(wo as Parameters<typeof resolveShopSuppliesOverride>[0]);
+    const draftOverride = {
+      enabled: suppliesEnabledDraft,
+      amount: suppliesAmountDraft.trim() ? asNumber(suppliesAmountDraft) : persistedOverride.amount,
+    };
+    const shopSupplies = calculateShopSupplies({
+      baseAmount: baseSubtotal,
+      settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
+      override: draftOverride,
+    });
+    const total = linesTotal + shopSupplies.amount;
     const sendable = quoteLines.filter(canSendLine).length;
     const pendingParts = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "pending_parts").length;
     const sent = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "sent" || Boolean(line.sent_to_customer_at)).length;
-    return { labor, parts, total, sendable, pendingParts, sent };
-  }, [laborRate, quoteLines]);
+    return { labor, parts, linesTotal, shopSupplies, total, sendable, pendingParts, sent };
+  }, [laborRate, quoteLines, shop, suppliesAmountDraft, suppliesEnabledDraft, wo]);
 
   const customerEmail = safeTrim(customer?.email ?? "");
   const customerPhone = safeTrim(customer?.phone ?? "");
@@ -483,7 +508,7 @@ export default function QuoteReviewView(props: {
           labor_total: laborTotal,
           parts_total: partsTotal,
           subtotal,
-          grand_total: asNumber(line.grand_total) ?? subtotal,
+          grand_total: subtotal,
           status: line.status,
           stage: line.stage,
           metadata,
@@ -530,6 +555,40 @@ export default function QuoteReviewView(props: {
     }
     toast.success(`Quote line marked ${statusLabel(status)}.`);
     await reload();
+  }
+
+  async function saveSuppliesOverride() {
+    if (!wo?.shop_id || savingSuppliesOverride) return;
+    const amountOverride = suppliesAmountDraft.trim() ? asNumber(suppliesAmountDraft) : null;
+    if (suppliesAmountDraft.trim() && amountOverride == null) {
+      toast.error("Enter a valid shop supplies override amount.");
+      return;
+    }
+
+    setSavingSuppliesOverride(true);
+    try {
+      const { error } = await supabase
+        .from("work_orders")
+        .update({
+          shop_supplies_enabled_override: suppliesEnabledDraft,
+          shop_supplies_amount_override: amountOverride,
+          updated_at: new Date().toISOString(),
+        } as DB["public"]["Tables"]["work_orders"]["Update"])
+        .eq("id", wo.id)
+        .eq("shop_id", wo.shop_id);
+      if (error) throw error;
+      toast.success("Shop supplies override saved.");
+      await reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save shop supplies override.");
+    } finally {
+      setSavingSuppliesOverride(false);
+    }
+  }
+
+  function resetSuppliesOverride() {
+    setSuppliesEnabledDraft(null);
+    setSuppliesAmountDraft("");
   }
 
   async function saveCustomerEmailInline() {
@@ -867,7 +926,33 @@ export default function QuoteReviewView(props: {
                 <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-white">{quoteTotals.sent}</span></div>
                 <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-white">{fmt(quoteTotals.labor)}</span></div>
                 <div className="mt-2 flex items-center justify-between"><span>Parts</span><span className="font-medium text-white">{fmt(quoteTotals.parts)}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Shop supplies</span><span className="font-medium text-white">{fmt(quoteTotals.shopSupplies.amount)}</span></div>
+                <div className="mt-1 text-xs text-neutral-500">{shopSuppliesSummaryText(quoteTotals.shopSupplies)}</div>
                 <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-white">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{fmt(quoteTotals.total)}</span></div>
+                <div className={`mt-4 border-t ${divider} pt-3`}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Shop supplies override</div>
+                  <select
+                    value={suppliesEnabledDraft == null ? "default" : suppliesEnabledDraft ? "on" : "off"}
+                    onChange={(e) => setSuppliesEnabledDraft(e.target.value === "default" ? null : e.target.value === "on")}
+                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none"
+                  >
+                    <option value="default">Use shop default</option>
+                    <option value="on">Include shop supplies</option>
+                    <option value="off">Remove shop supplies</option>
+                  </select>
+                  <input
+                    value={suppliesAmountDraft}
+                    onChange={(e) => setSuppliesAmountDraft(e.target.value)}
+                    placeholder="Optional fixed override amount"
+                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
+                  />
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => void saveSuppliesOverride()} disabled={savingSuppliesOverride} className="desktop-btn-secondary rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-60">
+                      {savingSuppliesOverride ? "Saving…" : "Save override"}
+                    </button>
+                    <button type="button" onClick={resetSuppliesOverride} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-white/10">Reset draft</button>
+                  </div>
+                </div>
                 <button onClick={() => void saveAllDirty()} disabled={saving} className="desktop-btn-primary mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60">
                   {saving ? "Saving…" : "Save changes"}
                 </button>

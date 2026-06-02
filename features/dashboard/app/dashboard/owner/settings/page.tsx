@@ -247,7 +247,11 @@ export default function OwnerSettingsPage() {
 
   // Money / defaults
   const [laborRate, setLaborRate] = useState("");
+  const [suppliesEnabled, setSuppliesEnabled] = useState(false);
+  const [suppliesType, setSuppliesType] = useState<"percentage" | "flat">("percentage");
   const [suppliesPercent, setSuppliesPercent] = useState("");
+  const [suppliesFlatAmount, setSuppliesFlatAmount] = useState("");
+  const [suppliesCapAmount, setSuppliesCapAmount] = useState("");
   const [diagnosticFee, setDiagnosticFee] = useState("");
   const [taxRate, setTaxRate] = useState("");
 
@@ -542,9 +546,17 @@ try {
       setTimezone((shop.timezone as string | null) || "America/New_York");
 
       setLaborRate(typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "");
+      setSuppliesEnabled(Boolean((shop as { shop_supplies_enabled?: boolean | null }).shop_supplies_enabled ?? (typeof shop.supplies_percent === "number" && shop.supplies_percent > 0)));
+      setSuppliesType((shop as { shop_supplies_type?: string | null }).shop_supplies_type === "flat" ? "flat" : "percentage");
       setSuppliesPercent(
-        typeof shop.supplies_percent === "number" ? String(shop.supplies_percent) : "",
+        typeof (shop as { shop_supplies_percent?: number | null }).shop_supplies_percent === "number"
+          ? String((shop as { shop_supplies_percent?: number }).shop_supplies_percent)
+          : typeof shop.supplies_percent === "number"
+            ? String(shop.supplies_percent)
+            : "",
       );
+      setSuppliesFlatAmount(typeof (shop as { shop_supplies_flat_amount?: number | null }).shop_supplies_flat_amount === "number" ? String((shop as { shop_supplies_flat_amount?: number }).shop_supplies_flat_amount) : "");
+      setSuppliesCapAmount(typeof (shop as { shop_supplies_cap_amount?: number | null }).shop_supplies_cap_amount === "number" ? String((shop as { shop_supplies_cap_amount?: number }).shop_supplies_cap_amount) : "");
       setDiagnosticFee(
         typeof shop.diagnostic_fee === "number" ? String(shop.diagnostic_fee) : "",
       );
@@ -693,7 +705,12 @@ try {
         logo_url: logoUrl,
 
         labor_rate: laborRate ? parseFloat(laborRate) : null,
-        supplies_percent: suppliesPercent ? parseFloat(suppliesPercent) : null,
+        supplies_percent: suppliesType === "percentage" && suppliesPercent ? parseFloat(suppliesPercent) : null,
+        shop_supplies_enabled: suppliesEnabled,
+        shop_supplies_type: suppliesType,
+        shop_supplies_percent: suppliesPercent ? parseFloat(suppliesPercent) : null,
+        shop_supplies_flat_amount: suppliesFlatAmount ? parseFloat(suppliesFlatAmount) : null,
+        shop_supplies_cap_amount: suppliesCapAmount ? parseFloat(suppliesCapAmount) : null,
         diagnostic_fee: diagnosticFee ? parseFloat(diagnosticFee) : null,
         tax_rate: taxRate ? parseFloat(taxRate) : null,
 
@@ -1351,7 +1368,11 @@ try {
             currency={currency}
             taxLabel={taxLabel}
             laborRate={laborRate}
+            suppliesEnabled={suppliesEnabled}
+            suppliesType={suppliesType}
             suppliesPercent={suppliesPercent}
+            suppliesFlatAmount={suppliesFlatAmount}
+            suppliesCapAmount={suppliesCapAmount}
             diagnosticFee={diagnosticFee}
             taxRate={taxRate}
             pricingValidDays={pricingValidDays}
@@ -1365,7 +1386,11 @@ try {
             appearanceMode={appearanceMode}
             appearanceSaving={appearanceSaving}
             onLaborRateChange={setLaborRate}
+            onSuppliesEnabledChange={setSuppliesEnabled}
+            onSuppliesTypeChange={setSuppliesType}
             onSuppliesPercentChange={setSuppliesPercent}
+            onSuppliesFlatAmountChange={setSuppliesFlatAmount}
+            onSuppliesCapAmountChange={setSuppliesCapAmount}
             onDiagnosticFeeChange={setDiagnosticFee}
             onTaxRateChange={setTaxRate}
             onPricingValidDaysChange={setPricingValidDays}

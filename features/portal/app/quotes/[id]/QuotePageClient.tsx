@@ -14,6 +14,13 @@ import {
   isProvinceCode,
   type ProvinceCode,
 } from "@/features/integrations/tax";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+  shopSuppliesSummaryText,
+  shopSuppliesTaxableSubtotal,
+} from "@/features/work-orders/lib/shopSupplies";
 
 const COPPER = "#C57A4A";
 const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set(["sent", "approved", "converted", "declined", "deferred"]);
@@ -374,12 +381,18 @@ export default function QuotePageClient(): JSX.Element {
   const pendingSubtotal = pendingLines.reduce((sum, line) => sum + line.totalAmount, 0);
   const approvedSubtotal = approvedLines.reduce((sum, line) => sum + line.totalAmount, 0);
   const declinedDeferredSubtotal = declinedDeferredLines.reduce((sum, line) => sum + line.totalAmount, 0);
-  const subtotal = lines.reduce((sum, line) => sum + line.totalAmount, 0);
+  const lineSubtotal = lines.reduce((sum, line) => sum + line.totalAmount, 0);
   const laborSubtotal = lines.reduce((sum, line) => sum + line.laborAmount, 0);
   const partsSubtotal = lines.reduce((sum, line) => sum + line.partsAmount, 0);
+  const shopSupplies = calculateShopSupplies({
+    baseAmount: laborSubtotal + partsSubtotal,
+    settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
+    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
+  });
+  const subtotal = lineSubtotal + shopSupplies.amount;
 
   const provinceCode = getShopProvinceCode(shop);
-  const taxRes = provinceCode ? calculateTax(subtotal, provinceCode) : null;
+  const taxRes = provinceCode ? calculateTax(lineSubtotal + shopSuppliesTaxableSubtotal(shopSupplies), provinceCode) : null;
   const taxAmount = lines.some((line) => line.taxAmount > 0) ? lines.reduce((sum, line) => sum + line.taxAmount, 0) : taxRes ? getTaxAmount(taxRes) : 0;
   const grandTotal = subtotal + (lines.some((line) => line.taxAmount > 0) ? 0 : taxAmount);
   return (
@@ -457,7 +470,7 @@ export default function QuotePageClient(): JSX.Element {
             </div>
           </div>
 
-          <div className="mb-6 grid gap-4 sm:grid-cols-2">
+          <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Labor total</div>
               <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(laborSubtotal)}</div>
@@ -465,6 +478,11 @@ export default function QuotePageClient(): JSX.Element {
             <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Parts total</div>
               <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(partsSubtotal)}</div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Shop supplies</div>
+              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(shopSupplies.amount)}</div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">{shopSuppliesSummaryText(shopSupplies)}</div>
             </div>
           </div>
 
