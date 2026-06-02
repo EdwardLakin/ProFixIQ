@@ -27,6 +27,34 @@ type CustomerSearchRow = Pick<
   | "created_at"
 >;
 
+type NewCustomerType = "individual" | "business" | "fleet";
+
+type NewCustomerDraft = {
+  customerType: NewCustomerType;
+  customerName: string;
+  businessName: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  notes: string;
+};
+
+const EMPTY_NEW_CUSTOMER: NewCustomerDraft = {
+  customerType: "individual",
+  customerName: "",
+  businessName: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+  province: "",
+  postalCode: "",
+  notes: "",
+};
+
 type ParamsShape = Record<string, string | string[]>;
 
 function paramToString(v: string | string[] | undefined): string | null {
@@ -157,6 +185,31 @@ function asText(v: unknown): string {
   if (typeof v === "string") return v.trim().length ? v : "—";
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return "—";
+}
+
+function strOrNull(v: string | null | undefined): string | null {
+  const t = (v ?? "").trim();
+  return t ? t : null;
+}
+
+function normalizeEmail(v: string | null | undefined): string | null {
+  const email = strOrNull(v);
+  return email ? email.toLowerCase() : null;
+}
+
+function normalizePhone(v: string | null | undefined): string | null {
+  const raw = strOrNull(v);
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits || raw;
+}
+
+function splitCustomerName(name: string): { firstName: string | null; lastName: string | null } {
+  const clean = strOrNull(name);
+  if (!clean) return { firstName: null, lastName: null };
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { firstName: parts[0], lastName: null };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) ?? null };
 }
 
 /** Storage buckets (from your screenshot set). We don't store bucket in DB, so we "probe" candidates. */
@@ -302,7 +355,8 @@ export default function CustomerProfilePage(): JSX.Element {
   }, [params]);
 
   const isDirectoryMode = useMemo(() => {
-    const v = (rawId ?? "").toLowerCase();
+    if (!rawId) return true;
+    const v = rawId.toLowerCase();
     return v === "search" || v === "all" || v === "directory";
   }, [rawId]);
 
@@ -349,6 +403,12 @@ export default function CustomerProfilePage(): JSX.Element {
   const [searching, setSearching] = useState<boolean>(false);
   const [results, setResults] = useState<CustomerSearchRow[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Create customer from directory mode
+  const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [createCustomerError, setCreateCustomerError] = useState<string | null>(null);
+  const [newCustomer, setNewCustomer] = useState<NewCustomerDraft>(EMPTY_NEW_CUSTOMER);
 
   const selectedVehicle = useMemo(() => {
     if (!selectedVehicleId) return null;
@@ -601,6 +661,118 @@ export default function CustomerProfilePage(): JSX.Element {
       cancelled = true;
     };
   }, [rawVehicleMedia, buildDisplayUrl]);
+
+  const getOrLinkShopId = useCallback(async (userId: string): Promise<string | null> => {
+    const byUserId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (byUserId.error) throw byUserId.error;
+    if (byUserId.data?.shop_id) return byUserId.data.shop_id;
+
+    const byId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (byId.error) throw byId.error;
+    if (byId.data?.shop_id) return byId.data.shop_id;
+
+    const ownedShop = await supabase
+      .from("shops")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+
+    if (ownedShop.error) throw ownedShop.error;
+    if (!ownedShop.data?.id) return null;
+
+    const updByUserId = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.data.id })
+      .eq("user_id", userId);
+
+    if (updByUserId.error) {
+      const updById = await supabase
+        .from("profiles")
+        .update({ shop_id: ownedShop.data.id })
+        .eq("id", userId);
+
+      if (updById.error) throw updById.error;
+    }
+
+    return ownedShop.data.id;
+  }, [supabase]);
+
+  const createCustomer = useCallback(async () => {
+    setCreateCustomerError(null);
+
+    const customerName = strOrNull(newCustomer.customerName);
+    const businessName = strOrNull(newCustomer.businessName);
+    const isBusinessLike = newCustomer.customerType === "business" || newCustomer.customerType === "fleet";
+    const displayName = isBusinessLike ? businessName : customerName;
+
+    if (!displayName) {
+      setCreateCustomerError(
+        isBusinessLike ? "Business name is required." : "Customer name is required.",
+      );
+      return;
+    }
+
+    setCreatingCustomer(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user?.id) throw new Error("You must be signed in to create a customer.");
+
+      const shopId = await getOrLinkShopId(user.id);
+      if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+
+      const splitName = splitCustomerName(customerName ?? "");
+      const normalizedPhone = normalizePhone(newCustomer.phone);
+
+      const insertRecord: DB["public"]["Tables"]["customers"]["Insert"] = {
+        shop_id: shopId,
+        user_id: user.id,
+        is_fleet: newCustomer.customerType === "fleet",
+        name: displayName,
+        business_name: isBusinessLike ? businessName : null,
+        first_name: isBusinessLike ? splitName.firstName : splitName.firstName,
+        last_name: isBusinessLike ? splitName.lastName : splitName.lastName,
+        phone: normalizedPhone,
+        phone_number: normalizedPhone,
+        email: normalizeEmail(newCustomer.email),
+        address: strOrNull(newCustomer.address),
+        city: strOrNull(newCustomer.city),
+        province: strOrNull(newCustomer.province),
+        postal_code: strOrNull(newCustomer.postalCode),
+        notes: strOrNull(newCustomer.notes),
+      };
+
+      const { data, error } = await supabase
+        .from("customers")
+        .insert(insertRecord)
+        .select("id")
+        .single();
+
+      if (error || !data?.id) {
+        throw new Error(error?.message ?? "Failed to create customer.");
+      }
+
+      setCreateCustomerOpen(false);
+      setNewCustomer(EMPTY_NEW_CUSTOMER);
+      router.push(`/customers/${data.id}`);
+    } catch (e: unknown) {
+      setCreateCustomerError(e instanceof Error ? e.message : "Failed to create customer.");
+    } finally {
+      setCreatingCustomer(false);
+    }
+  }, [getOrLinkShopId, newCustomer, router, supabase]);
 
   // ------------------ Directory search ------------------
   const runSearch = useCallback(async () => {
@@ -976,7 +1148,17 @@ export default function CustomerProfilePage(): JSX.Element {
               </p>
             </div>
 
-            <div className="flex w-full gap-2 sm:w-[560px]">
+            <div className="flex flex-col gap-2 sm:w-[680px] sm:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateCustomerError(null);
+                  setCreateCustomerOpen(true);
+                }}
+                className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper)] hover:bg-black/55"
+              >
+                + Create Customer
+              </button>
               <input
                 ref={searchInputRef}
                 value={query}
@@ -1045,6 +1227,165 @@ export default function CustomerProfilePage(): JSX.Element {
             )}
           </div>
         </div>
+
+        <Modal
+          title="Create customer"
+          open={createCustomerOpen}
+          onClose={() => {
+            if (creatingCustomer) return;
+            setCreateCustomerOpen(false);
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setCreateCustomerOpen(false)}
+                disabled={creatingCustomer}
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/55 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void createCustomer()}
+                disabled={creatingCustomer}
+                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
+              >
+                {creatingCustomer ? "Creating…" : "Create customer"}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs leading-5 text-neutral-300">
+              Use this as a secondary management path. The primary launch flow remains Work Order → Customer → Vehicle.
+            </div>
+
+            {createCustomerError ? (
+              <div className="whitespace-pre-wrap rounded-xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200">
+                {createCustomerError}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                Customer type
+                <select
+                  value={newCustomer.customerType}
+                  onChange={(e) =>
+                    setNewCustomer((draft) => ({
+                      ...draft,
+                      customerType: e.target.value as NewCustomerType,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                >
+                  <option value="individual">Individual</option>
+                  <option value="business">Business</option>
+                  <option value="fleet">Fleet</option>
+                </select>
+              </label>
+
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                {newCustomer.customerType === "individual" ? "Customer name" : "Business name"}
+                <input
+                  value={newCustomer.customerType === "individual" ? newCustomer.customerName : newCustomer.businessName}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewCustomer((draft) =>
+                      draft.customerType === "individual"
+                        ? { ...draft, customerName: value }
+                        : { ...draft, businessName: value },
+                    );
+                  }}
+                  placeholder={newCustomer.customerType === "individual" ? "Jane Doe" : "Acme Fleet Services"}
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+            </div>
+
+            {newCustomer.customerType !== "individual" ? (
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                Contact name
+                <input
+                  value={newCustomer.customerName}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, customerName: e.target.value }))}
+                  placeholder="Primary contact"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                Phone
+                <input
+                  value={newCustomer.phone}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, phone: e.target.value }))}
+                  placeholder="(555) 555-1234"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                Email
+                <input
+                  value={newCustomer.email}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, email: e.target.value }))}
+                  placeholder="customer@example.com"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+            </div>
+
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              Address
+              <input
+                value={newCustomer.address}
+                onChange={(e) => setNewCustomer((draft) => ({ ...draft, address: e.target.value }))}
+                placeholder="Street address"
+                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                City
+                <input
+                  value={newCustomer.city}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, city: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                State / Province
+                <input
+                  value={newCustomer.province}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, province: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                Postal code
+                <input
+                  value={newCustomer.postalCode}
+                  onChange={(e) => setNewCustomer((draft) => ({ ...draft, postalCode: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </label>
+            </div>
+
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              Notes
+              <textarea
+                value={newCustomer.notes}
+                onChange={(e) => setNewCustomer((draft) => ({ ...draft, notes: e.target.value }))}
+                rows={3}
+                placeholder="Launch-essential customer notes"
+                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+              />
+            </label>
+          </div>
+        </Modal>
       </PageShell>
     );
   }
@@ -1105,6 +1446,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   {(() => {
                     const biz = customer.business_name?.trim() ?? "";
                     const title = bestCustomerDisplayName(customer);
+                    const customerRecord = customer as unknown as Record<string, unknown>;
 
                     return (
                       <>
@@ -1127,8 +1469,8 @@ export default function CustomerProfilePage(): JSX.Element {
                             email: customer.email,
                             phone: customer.phone,
                             phoneNumber: customer.phone_number,
-                            city: typeof (customer as any)["city"] === "string" ? (customer as any)["city"] : null,
-                            province: typeof (customer as any)["province"] === "string" ? (customer as any)["province"] : null,
+                            city: typeof customerRecord["city"] === "string" ? customerRecord["city"] : null,
+                            province: typeof customerRecord["province"] === "string" ? customerRecord["province"] : null,
                           }) ?? "No contact details imported"}
                         </div>
                       </>
