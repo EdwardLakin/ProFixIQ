@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (profileErr || !profile?.shop_id) {
-      return NextResponse.json({ error: "Unable to resolve actor profile" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Unable to resolve actor profile" },
+        { status: 403 },
+      );
     }
 
     const actor = getActorCapabilities({ role: profile.role });
@@ -43,7 +46,10 @@ export async function POST(req: NextRequest) {
     const id = segments[segments.length - 2];
 
     if (!id) {
-      return NextResponse.json({ error: "Missing quote line id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing quote line id" },
+        { status: 400 },
+      );
     }
 
     const { data: q, error: qErr } = await supabase
@@ -53,11 +59,17 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (qErr || !q) {
-      return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Quote line not found" },
+        { status: 404 },
+      );
     }
 
     if (!q.shop_id) {
-      return NextResponse.json({ error: "Quote line is missing shop_id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Quote line is missing shop_id" },
+        { status: 400 },
+      );
     }
     if (q.shop_id !== profile.shop_id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -74,14 +86,19 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.ok) {
-      return NextResponse.json({ error: result.error ?? "Failed to authorize quote line" }, { status: 400 });
+      return NextResponse.json(
+        { error: result.error ?? "Failed to authorize quote line" },
+        { status: 400 },
+      );
     }
 
     return NextResponse.json({
       ok: true,
-      workOrderLineId: result.workOrderLineIds[0] ?? q.work_order_line_id ?? null,
+      workOrderLineId:
+        result.workOrderLineIds[0] ?? q.work_order_line_id ?? null,
       workOrderLineIds: result.workOrderLineIds,
       approvalState: result.approvalState,
+      partRelink: result.partRelink,
     });
   } catch {
     return NextResponse.json({ error: "Failed to authorize" }, { status: 500 });
