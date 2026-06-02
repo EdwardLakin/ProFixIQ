@@ -1,5 +1,7 @@
 // app/api/vin/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 
 type VpicRow = {
   ModelYear?: string;
@@ -24,6 +26,24 @@ type VpicResponse = {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createServerSupabaseRSC();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData.user?.id ?? null;
+
+    if (userError || !userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError || !profile?.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const contentType = req.headers.get("content-type") || "";
 
     let vin: string | null = null;
@@ -41,12 +61,15 @@ export async function POST(req: NextRequest) {
       // const u = form.get("user_id"); // not used currently
     }
 
-    if (!vin || vin.length !== 17) {
+    const vinCheck = normalizeVinInput(vin);
+    if (!vinCheck.isValid) {
       return NextResponse.json(
-        { error: "Invalid VIN: must be a 17-character VIN." },
+        { error: vinCheck.message, reason: vinCheck.reason },
         { status: 400 },
       );
     }
+
+    vin = vinCheck.vin;
 
     const url =
       "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/" +

@@ -27,6 +27,7 @@ import type {
   SessionVehicle,
 } from "@/features/inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerNormalization";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -209,6 +210,19 @@ const INTAKE_DISMISS_KEY = "pfq.create.intake.dismiss.v1";
 const strOrNull = (v: string | null | undefined) => {
   const t = (v ?? "").trim();
   return t ? t : null;
+};
+
+const normalizedVinOrNull = (v: string | null | undefined) => {
+  const raw = strOrNull(v);
+  if (!raw) return null;
+  return normalizeVinInput(raw).vin || null;
+};
+
+const validVinOrNull = (v: string | null | undefined) => {
+  const raw = strOrNull(v);
+  if (!raw) return null;
+  const normalized = normalizeVinInput(raw);
+  return normalized.isValid ? normalized.vin : null;
 };
 
 const normalizeEmail = (v: string | null | undefined): string | null => {
@@ -492,8 +506,9 @@ export default function CreateWorkOrderPage() {
   // ✅ allow extra vehicle fields to flow through from the form
   const onVehicleChange = useCallback(
     (field: keyof VehicleWithExtra, value: string | null) => {
-      setVehicle((v) => ({ ...v, [field]: value }));
-      cvDraft.setVehicleField(field, value);
+      const nextValue = field === "vin" ? normalizedVinOrNull(value) : value;
+      setVehicle((v) => ({ ...v, [field]: nextValue }));
+      cvDraft.setVehicleField(field, nextValue);
     },
     [cvDraft, setVehicle],
   );
@@ -763,7 +778,7 @@ useEffect(() => {
     shopId: string,
   ) => ({
     customer_id: customerIdIn,
-    vin: strOrNull(v.vin),
+    vin: validVinOrNull(v.vin),
     year: numOrNull(v.year),
     make: strOrNull(v.make),
     model: strOrNull(v.model),
@@ -791,7 +806,7 @@ useEffect(() => {
       customer_id: customerIdIn,
     };
 
-    const vin = strOrNull(v.vin);
+    const vin = validVinOrNull(v.vin);
     if (vin !== null) patch.vin = vin;
 
     const yr = numOrNull(v.year);
@@ -1205,7 +1220,7 @@ useEffect(() => {
     }
 
     const orParts = [
-      vehicle.vin ? `vin.eq.${vehicle.vin}` : "",
+      validVinOrNull(vehicle.vin) ? `vin.eq.${validVinOrNull(vehicle.vin)}` : "",
       vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
     ].filter(Boolean);
 

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import ModalShell from "@/features/shared/components/ModalShell";
 import VinCaptureModalContent from "@/features/vehicles/components/VinCaptureModal";
 import { decodeVin } from "@/features/shared/lib/vin/decodeVin";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 
 // Optional: tame TS around experimental BarcodeDetector
@@ -61,8 +62,7 @@ type DecodeVinResponseExtended = DecodeVinResponse & {
 };
 
 function isLikelyVin(s: string) {
-  const vin = s.replace(/[^A-Z0-9]/gi, "").toUpperCase();
-  return vin.length === 17 && !/[IOQ]/.test(vin);
+  return normalizeVinInput(s).isValid;
 }
 
 /** Scanner pane used in scanSlot */
@@ -111,10 +111,10 @@ function ScannerPane({
               if (codes?.length) {
                 for (const c of codes) {
                   const raw = String(c.rawValue ?? "");
-                  const cleaned = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase();
-                  if (isLikelyVin(cleaned)) {
+                  const cleaned = normalizeVinInput(raw);
+                  if (cleaned.isValid) {
                     lockedRef.current = true;
-                    onFoundVin(cleaned);
+                    onFoundVin(cleaned.vin);
                     return;
                   }
                 }
@@ -214,8 +214,9 @@ function ScannerPane({
               }
 
               const data = (await res.json()) as { vin?: string | null };
-              const vin = data?.vin?.toString().toUpperCase() ?? "";
-              if (!vin || !isLikelyVin(vin)) {
+              const extractedVin = normalizeVinInput(data?.vin);
+              const vin = extractedVin.vin;
+              if (!extractedVin.isValid || !isLikelyVin(vin)) {
                 alert(
                   "No clear VIN found in the photo. Please retake or type it manually.",
                 );
@@ -305,10 +306,15 @@ export default function VinCaptureModal({
 
   const handleFoundVin = useCallback(
     async (vin: string) => {
+      const normalizedVin = normalizeVinInput(vin);
+      if (!normalizedVin.isValid) {
+        alert(normalizedVin.message);
+        return;
+      }
       if (isDecoding) return; // prevent double fires
       setIsDecoding(true);
       try {
-        const resp = await decodeVin(vin, userId);
+        const resp = await decodeVin(normalizedVin.vin, userId);
         if (resp?.error) {
           alert(resp.error);
           return;
@@ -318,7 +324,7 @@ export default function VinCaptureModal({
 
         // hydrate shared draft
         setVehicleDraft({
-          vin,
+          vin: normalizedVin.vin,
           year: resp.year ?? null,
           make: resp.make ?? null,
           model: resp.model ?? null,
@@ -327,7 +333,7 @@ export default function VinCaptureModal({
         });
 
         const detail: VinDecodedDetail = {
-          vin,
+          vin: normalizedVin.vin,
           year: resp.year ?? null,
           make: resp.make ?? null,
           model: resp.model ?? null,
@@ -349,7 +355,7 @@ export default function VinCaptureModal({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              vin,
+              vin: normalizedVin.vin,
               year: resp.year ?? undefined,
               make: resp.make ?? undefined,
               model: resp.model ?? undefined,
