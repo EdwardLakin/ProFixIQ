@@ -352,13 +352,6 @@ export default function QueuePage() {
               Ask Assistant
             </Link>
 
-            <Link
-              href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className={ui.buttonSecondary}
-            >
-              Open Planner
-            </Link>
-
             <button
               type="button"
               onClick={() => setShowDebug((v) => !v)}

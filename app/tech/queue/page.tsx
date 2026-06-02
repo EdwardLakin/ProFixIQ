@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -404,15 +403,6 @@ export default function TechQueuePage() {
 
   return (
     <div className="p-6 text-white">
-      <SuggestedActionsPanel
-        context={{
-          pageType: "tech_queue",
-          pageTitle: "Tech Queue",
-        }}
-        title="Suggested Actions for Your Queue"
-        description="Recommended next actions for assigned jobs, holds, and parts blockers"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
-
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-blackops text-[color:var(--accent-copper,#f97316)]">
           Your Assigned Jobs
@@ -426,12 +416,6 @@ export default function TechQueuePage() {
             Ask Assistant
           </Link>
 
-          <Link
-            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20my%20assigned%20jobs%20and%20suggest%20the%20best%20next%20actions"
-            className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-xs font-semibold text-white/90 hover:border-[color:var(--accent-copper-soft,#fdba74)]/70 hover:bg-white/5"
-          >
-            Open Planner
-          </Link>
           {prefs.autoRefresh ? (
             <span className="rounded-full border border-emerald-400/40 bg-emerald-900/20 px-2 py-0.5 text-emerald-100">
               Auto-refresh ON

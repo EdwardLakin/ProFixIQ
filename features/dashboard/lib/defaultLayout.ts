@@ -18,8 +18,6 @@ type StructuredSlot = {
 const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
   { id: "daily_summary", x: 0, y: 0, w: 4, h: 3 },
   { id: "shop_pulse", x: 4, y: 0, w: 4, h: 3 },
-  { id: "suggested_actions", x: 8, y: 0, w: 4, h: 3 },
-
   { id: "work_order_board", x: 0, y: 3, w: 8, h: 6 },
   { id: "approval_risk", x: 8, y: 3, w: 4, h: 3 },
   { id: "waiting_parts", x: 8, y: 6, w: 4, h: 3 },
@@ -37,7 +35,6 @@ const STRUCTURED_LAYOUT_SLOTS: StructuredSlot[] = [
 
   { id: "live_shop_load", x: 4, y: 15, w: 4, h: 3, hidden: true },
   { id: "tech_performance", x: 8, y: 15, w: 4, h: 3, hidden: true },
-  { id: "optimization_opportunities", x: 4, y: 18, w: 6, h: 3, hidden: true },
 ];
 
 export function buildDefaultDashboardLayout(

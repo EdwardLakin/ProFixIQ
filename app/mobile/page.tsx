@@ -521,23 +521,6 @@ export default function MobileHome() {
               </div>
             </div>
           </Link>
-
-          <Link
-            href="/mobile/planner"
-            className="col-span-2 flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
-          >
-            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
-              Planner
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-white">
-                Tech &amp; Job Planner
-              </div>
-              <div className="mt-1 text-[0.75rem] text-neutral-400">
-                See what’s coming up and who’s on it.
-              </div>
-            </div>
-          </Link>
         </section>
 
         <footer className="mt-2 text-center text-[0.65rem] text-neutral-500">

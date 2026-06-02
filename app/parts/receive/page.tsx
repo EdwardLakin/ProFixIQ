@@ -290,12 +290,6 @@ export default function ReceivePage(): JSX.Element {
           >
             Ask Assistant
           </Link>
-          <Link
-            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20scan-to-receive%20workflow%20and%20suggest%20the%20best%20next%20actions"
-            className={ui.buttonSecondary}
-          >
-            Open Planner
-          </Link>
         </div>
       </div>
 

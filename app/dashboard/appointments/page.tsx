@@ -36,7 +36,6 @@ import { toast, Toaster } from "sonner";
 import WeeklyCalendar from "./WeeklyCalendar";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
@@ -624,15 +623,6 @@ export default function PortalAppointmentsPage(): JSX.Element {
           </div>
         </div>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "appointments",
-          pageTitle: "Appointments",
-        }}
-        title="Suggested Actions for Appointments"
-        description="Recommended next actions for pending requests, confirmations, reschedules, and booking follow-up"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* Main 2-column layout */}
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">

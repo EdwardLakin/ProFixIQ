@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
@@ -205,17 +204,6 @@ export default function PartsDashboardPage(): JSX.Element {
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
-        <SuggestedActionsPanel
-          context={{ pageType: "parts_dashboard", pageTitle: "Parts Dashboard" }}
-          title="Urgent suggested actions"
-          description="Compact triage queue for procurement and receiving"
-          compact
-          collapsible
-          defaultExpanded
-          maxItems={5}
-          hideDescription
-        />
-
         <div className="desktop-panel-soft px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>

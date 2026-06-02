@@ -161,14 +161,6 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
     section: "Tools",
   },
-  {
-    href: "/dashboard/onboarding-v2",
-    title: "Onboarding Agent",
-    subtitle: "Guided onboarding workspace",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
 
   /* ---------------------------------------------------------------------- */
   /* APPOINTMENTS                                                            */
