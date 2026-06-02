@@ -11,6 +11,9 @@ type PartRequestItemInsert = DB["public"]["Tables"]["part_request_items"]["Inser
 type QuotePart = {
   description?: string;
   name?: string;
+  partNumber?: string | null;
+  part_number?: string | null;
+  sku?: string | null;
   qty?: number;
   cost?: number | null;
   unitCost?: number | null;
@@ -72,6 +75,7 @@ function normalizeTitle(value: unknown): string {
 
 function cleanParts(parts: QuotePart[] | undefined): Array<{
   description: string;
+  partNumber: string | null;
   qty: number;
   unitCost: number | null;
   unitPrice: number | null;
@@ -83,6 +87,8 @@ function cleanParts(parts: QuotePart[] | undefined): Array<{
       const qty = Math.max(1, Number(part.qty) || 1);
       return {
         description,
+        partNumber:
+          safeTrim(part.partNumber) || safeTrim(part.part_number) || safeTrim(part.sku) || null,
         qty,
         unitCost: finiteNumber(part.unitCost) ?? finiteNumber(part.cost),
         unitPrice: finiteNumber(part.unitPrice),
@@ -109,6 +115,70 @@ function identityFor(item: QuoteItem): string | null {
   const parts = [inspectionId, sourceLineId, sectionKey, itemKey, normalizedTitle].filter(Boolean);
   return parts.length > 0 ? parts.join(":") : null;
 }
+
+function normalizePartRequestItemIdentity(input: {
+  description?: string | null;
+  partNumber?: string | null;
+}): string {
+  const normalizedDescription = normalizeTitle(input.description);
+  const normalizedPartNumber = safeTrim(input.partNumber).toUpperCase().replace(/\s+/g, "");
+  return [normalizedPartNumber, normalizedDescription].filter(Boolean).join("|");
+}
+
+async function getOrCreatePartRequestForQuoteLine(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  input: {
+    shopId: string;
+    workOrderId: string;
+    quoteLineId: string;
+    requestedBy: string;
+    notes: string | null;
+  },
+): Promise<{ id: string; created: boolean; error?: string }> {
+  const { data: existing, error: existingError } = await supabase
+    .from("part_requests")
+    .select("id")
+    .eq("shop_id", input.shopId)
+    .eq("work_order_id", input.workOrderId)
+    .eq("quote_line_id", input.quoteLineId)
+    .limit(1);
+
+  if (existingError) {
+    return { id: "", created: false, error: existingError.message };
+  }
+
+  const reusable = existing?.[0];
+  if (reusable?.id) {
+    return { id: reusable.id, created: false };
+  }
+
+  const requestPayload: PartRequestInsert = {
+    shop_id: input.shopId,
+    work_order_id: input.workOrderId,
+    quote_line_id: input.quoteLineId,
+    job_id: null,
+    requested_by: input.requestedBy,
+    notes: input.notes,
+    status: "requested",
+  };
+
+  const { data: partRequest, error: requestError } = await supabase
+    .from("part_requests")
+    .insert(requestPayload)
+    .select("id")
+    .single();
+
+  if (requestError || !partRequest) {
+    return {
+      id: "",
+      created: false,
+      error: requestError?.message ?? "Failed to create part request",
+    };
+  }
+
+  return { id: partRequest.id, created: true };
+}
+
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -218,6 +288,7 @@ export async function POST(req: Request) {
         (findingIdentity ? existingByIdentity.get(findingIdentity) : undefined);
 
       if (existing) {
+        sourceItemsById.set(existing.id, item);
         itemResults.push({
           requestedId,
           id: existing.id,
@@ -314,54 +385,75 @@ export async function POST(req: Request) {
       });
     }
 
-    for (const insertedRow of inserted) {
-      const source = sourceItemsById.get(insertedRow.id);
+    for (const quoteLineId of itemResults.map((item) => item.id)) {
+      const source = sourceItemsById.get(quoteLineId);
       const parts = cleanParts(source?.parts);
       if (!source || parts.length === 0) continue;
 
       const sourceNote = safeTrim(source.notes) || safeTrim(source.complaint);
       const requestNotes = [
         sourceNote,
-        `Quote line: ${insertedRow.id}`,
+        `Quote line: ${quoteLineId}`,
         source.sourceInspectionId ? `Inspection: ${source.sourceInspectionId}` : "",
       ]
         .filter(Boolean)
         .join("\n");
 
-      const requestPayload: PartRequestInsert = {
-        shop_id: wo.shop_id,
-        work_order_id: workOrderId,
-        job_id: null,
-        requested_by: suggestedBy,
+      const partRequest = await getOrCreatePartRequestForQuoteLine(supabase, {
+        shopId: wo.shop_id,
+        workOrderId,
+        quoteLineId,
+        requestedBy: suggestedBy,
         notes: requestNotes || null,
-        status: "requested",
-      };
+      });
 
-      const { data: partRequest, error: requestError } = await supabase
-        .from("part_requests")
-        .insert(requestPayload)
-        .select("id")
-        .single();
-
-      if (requestError || !partRequest) {
+      if (partRequest.error || !partRequest.id) {
         return NextResponse.json(
-          { error: requestError?.message ?? "Failed to create part request" },
+          { error: partRequest.error ?? "Failed to create part request" },
           { status: 500 },
         );
       }
 
-      const partRows: PartRequestItemInsert[] = parts.map((part) => ({
-        request_id: partRequest.id,
-        shop_id: wo.shop_id,
-        work_order_id: workOrderId,
-        work_order_line_id: null,
-        description: part.description,
-        qty: part.qty,
-        qty_requested: part.qty,
-        unit_cost: part.unitCost,
-        unit_price: part.unitPrice,
-        status: "requested",
-      }));
+      const { data: existingItems, error: existingItemsError } = await supabase
+        .from("part_request_items")
+        .select("id, description")
+        .eq("request_id", partRequest.id)
+        .eq("quote_line_id", quoteLineId);
+
+      if (existingItemsError) {
+        return NextResponse.json({ error: existingItemsError.message }, { status: 500 });
+      }
+
+      const existingItemIdentities = new Set(
+        (existingItems ?? []).map((item) =>
+          normalizePartRequestItemIdentity({ description: item.description }),
+        ),
+      );
+
+      const partRows: PartRequestItemInsert[] = [];
+      for (const part of parts) {
+        const itemIdentity = normalizePartRequestItemIdentity({
+          description: part.description,
+        });
+        if (itemIdentity && existingItemIdentities.has(itemIdentity)) continue;
+        if (itemIdentity) existingItemIdentities.add(itemIdentity);
+
+        partRows.push({
+          request_id: partRequest.id,
+          shop_id: wo.shop_id,
+          work_order_id: workOrderId,
+          quote_line_id: quoteLineId,
+          work_order_line_id: null,
+          description: part.description,
+          qty: part.qty,
+          qty_requested: part.qty,
+          unit_cost: part.unitCost,
+          unit_price: part.unitPrice,
+          status: "requested",
+        });
+      }
+
+      if (partRows.length === 0) continue;
 
       const { error: itemError } = await supabase
         .from("part_request_items")
@@ -380,7 +472,7 @@ export async function POST(req: Request) {
       skippedDuplicateCount: itemResults.filter((item) => !item.created).length,
       followUps: [
         "Add a database unique constraint for inspection finding identity when production data can be backfilled safely.",
-        "Add quote_line_id linkage to part_request_items or part_requests so parts can relate to pre-approval quote lines without notes metadata.",
+        "Phase 5D-2 should relink quote-originated part_request_items to approved/materialized work_order_lines and invoice materialization.",
       ],
     });
   } catch (err) {

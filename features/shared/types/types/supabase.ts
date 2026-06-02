@@ -8575,6 +8575,7 @@ export type Database = {
           qty_requested: number
           qty_reserved: number
           quoted_price: number | null
+          quote_line_id: string | null
           request_id: string
           shop_id: string | null
           status: Database["public"]["Enums"]["part_request_item_status"]
@@ -8604,6 +8605,7 @@ export type Database = {
           qty_requested?: number
           qty_reserved?: number
           quoted_price?: number | null
+          quote_line_id?: string | null
           request_id: string
           shop_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
@@ -8633,6 +8635,7 @@ export type Database = {
           qty_requested?: number
           qty_reserved?: number
           quoted_price?: number | null
+          quote_line_id?: string | null
           request_id?: string
           shop_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
@@ -8657,6 +8660,13 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_items_quote_line_id_fkey"
+            columns: ["quote_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_quote_lines"
             referencedColumns: ["id"]
           },
           {
@@ -8746,6 +8756,7 @@ export type Database = {
           id: string
           job_id: string | null
           notes: string | null
+          quote_line_id: string | null
           requested_by: string | null
           shop_id: string
           status: Database["public"]["Enums"]["part_request_status"]
@@ -8757,6 +8768,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
+          quote_line_id?: string | null
           requested_by?: string | null
           shop_id: string
           status?: Database["public"]["Enums"]["part_request_status"]
@@ -8768,12 +8780,20 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
+          quote_line_id?: string | null
           requested_by?: string | null
           shop_id?: string
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_requests_quote_line_id_fkey"
+            columns: ["quote_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_quote_lines"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "part_requests_job_id_fkey"
             columns: ["job_id"]
