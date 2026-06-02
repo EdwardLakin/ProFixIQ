@@ -992,7 +992,7 @@ export default function WorkOrdersView(): JSX.Element {
                       </span>
 
                       {r.is_waiter ? (
-                        <span className="rounded-full border border-sky-400/50 bg-sky-500/15 px-2 py-0.5 text-[11px] font-bold text-sky-100">
+                        <span className="rounded-full border border-red-500/60 bg-red-500/15 px-2 py-0.5 text-[11px] font-bold text-red-200">
                           Waiting
                         </span>
                       ) : null}
