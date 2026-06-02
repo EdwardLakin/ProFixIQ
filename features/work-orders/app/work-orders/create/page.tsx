@@ -26,6 +26,7 @@ import type {
   SessionCustomer,
   SessionVehicle,
 } from "@/features/inspections/lib/inspection/types";
+import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerNormalization";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -268,20 +269,6 @@ function buildBookingNotesBlock(booking: BookingConversionRow): string {
   if (windowLabel) lines.push(`Scheduled: ${windowLabel}`);
   if (booking.notes?.trim()) lines.push(`Appointment notes: ${booking.notes.trim()}`);
   return lines.join("\n");
-}
-
-function splitPersonNameFallback(name: string | null | undefined): {
-  first_name: string | null;
-  last_name: string | null;
-} {
-  const clean = strOrNull(name);
-  if (!clean) return { first_name: null, last_name: null };
-  const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { first_name: parts[0], last_name: null };
-  return {
-    first_name: parts.slice(0, -1).join(" "),
-    last_name: parts.at(-1) ?? null,
-  };
 }
 
 function hydrateVehicleFromRow(row: VehicleRow): VehicleWithExtra {
@@ -848,25 +835,25 @@ useEffect(() => {
   };
 
   const hydrateCustomerFromRow = useCallback(
-    (row: CustomerRowWithBusiness): CustomerWithBusiness => {
-      const businessName = strOrNull(row.business_name ?? null);
-      const personFallback = businessName
-        ? { first_name: null, last_name: null }
-        : splitPersonNameFallback(getStrField(row, "name"));
-
-      return {
-        name: businessName ? getStrField(row, "name") : getStrField(row, "name"),
-        first_name: row.first_name ?? personFallback.first_name,
-        last_name: row.last_name ?? personFallback.last_name,
-        phone: getStrField(row, "phone") ?? getStrField(row, "phone_number"),
-        email: row.email ?? null,
-        address: getStrField(row, "address") ?? getStrField(row, "street"),
+    (row: CustomerRowWithBusiness): CustomerWithBusiness =>
+      normalizeCustomerForIntake({
+        business_name: row.business_name ?? null,
+        name: getStrField(row, "name"),
+        display_name: getStrField(row, "display_name"),
+        full_name: getStrField(row, "full_name"),
+        first_name: getStrField(row, "first_name"),
+        last_name: getStrField(row, "last_name"),
+        contact_first_name: getStrField(row, "contact_first_name"),
+        contact_last_name: getStrField(row, "contact_last_name"),
+        phone: getStrField(row, "phone"),
+        phone_number: getStrField(row, "phone_number"),
+        email: getStrField(row, "email"),
+        address: getStrField(row, "address"),
+        street: getStrField(row, "street"),
         city: getStrField(row, "city"),
         province: getStrField(row, "province"),
         postal_code: getStrField(row, "postal_code"),
-        business_name: businessName,
-      };
-    },
+      }),
     [],
   );
 

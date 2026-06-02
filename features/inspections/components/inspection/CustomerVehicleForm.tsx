@@ -7,6 +7,7 @@ import type {
   SessionCustomer as CustomerInfo,
   SessionVehicle as VehicleInfo,
 } from "@inspections/lib/inspection/types";
+import { normalizeCustomerForIntake } from "@inspections/lib/customerNormalization";
 
 /** Local, narrow shapes (avoid exporting DB row types in props) */
 type CustomerRow = {
@@ -79,33 +80,8 @@ type Handlers = {
   onVehicleSelected?: (vehicleId: string) => void;
 };
 
-/* Small helper to split a single "name" into first/last */
-function splitNamefallback(
-  n?: string | null,
-): { first: string | null; last: string | null } {
-  const s = (n ?? "").trim();
-  if (!s) return { first: null, last: null };
-  const parts = s.split(/\s+/);
-  if (parts.length === 1) return { first: parts[0], last: null };
-  return { first: parts.slice(0, -1).join(" "), last: parts.at(-1) ?? null };
-}
-
 function hydrateCustomerFields(c: CustomerRow): CustomerInfo {
-  const hasBusiness = Boolean(c.business_name?.trim());
-  const fallback = hasBusiness ? { first: null, last: null } : splitNamefallback(c.name);
-
-  return {
-    business_name: c.business_name ?? null,
-    name: c.name ?? null,
-    first_name: c.first_name ?? fallback.first,
-    last_name: c.last_name ?? fallback.last,
-    phone: c.phone ?? c.phone_number ?? null,
-    email: c.email ?? null,
-    address: c.address ?? null,
-    city: c.city ?? null,
-    province: c.province ?? null,
-    postal_code: c.postal_code ?? null,
-  };
+  return normalizeCustomerForIntake(c);
 }
 
 function hydrateVehicleFields(v: VehicleRow): VehicleInfo {
@@ -184,8 +160,13 @@ function CustomerAutocomplete({
           .limit(12);
 
         if (error) throw error;
-        if (thisReq === reqCounter.current)
-          setRows((data ?? []) as CustomerRow[]);
+        if (thisReq === reqCounter.current) {
+          const deduped = new Map<string, CustomerRow>();
+          for (const row of (data ?? []) as CustomerRow[]) {
+            if (!deduped.has(row.id)) deduped.set(row.id, row);
+          }
+          setRows(Array.from(deduped.values()));
+        }
       } catch {
         if (thisReq === reqCounter.current) setRows([]);
       } finally {
@@ -222,12 +203,16 @@ function CustomerAutocomplete({
             <div className="px-3 py-2 text-xs text-white/60">Searching…</div>
           )}
           {rows.map((c) => {
-            const contact = [c.first_name, c.last_name].filter(Boolean).join(" ");
-            const top = c.business_name || contact || c.name || "Unnamed";
+            const normalized = hydrateCustomerFields(c);
+            const contact = [normalized.first_name, normalized.last_name]
+              .filter(Boolean)
+              .join(" ");
+            const top =
+              normalized.business_name || contact || normalized.name || "Unnamed";
             const sub =
-              c.business_name && contact
+              normalized.business_name && contact
                 ? contact
-                : [c.phone, c.email].filter(Boolean).join(" · ");
+                : [normalized.phone, normalized.email].filter(Boolean).join(" · ");
             return (
               <button
                 key={c.id}
