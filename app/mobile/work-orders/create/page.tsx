@@ -1233,7 +1233,8 @@ export default function MobileCreateWorkOrderPage() {
                 <option value="diesel">Diesel</option>
                 <option value="hybrid">Hybrid</option>
                 <option value="phev">Plug-in hybrid</option>
-                <option value="ev">Electric (BEV)</option>
+                <option value="electric">Electric (BEV)</option>
+                <option value="ev">Electric (legacy)</option>
                 <option value="other">Other</option>
               </select>
 

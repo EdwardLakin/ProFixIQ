@@ -17,6 +17,10 @@ type VpicRow = {
   TransmissionStyle?: string;
   DriveType?: string;
   BodyClass?: string;
+  Manufacturer?: string;
+  GVWR?: string;
+  GrossVehicleWeightRatingFrom?: string;
+  GrossVehicleWeightRatingTo?: string;
   [key: string]: unknown;
 };
 
@@ -92,7 +96,8 @@ export async function POST(req: NextRequest) {
       year: row.ModelYear || null,
       make: row.Make || null,
       model: row.Model || null,
-      trim: row.Series || row.Trim || null,
+      trim: row.Trim || row.Series || null,
+      submodel: row.Series || row.Trim || null,
       engine:
         row.EngineModel ||
         row.EngineConfiguration ||
@@ -102,10 +107,20 @@ export async function POST(req: NextRequest) {
       // 🔽 extra structured fields you can use in the UI / DB
       engineDisplacementL: row.DisplacementL || null,
       engineCylinders: row.EngineCylinders || null,
+      engineFamily: row.EngineModel || null,
+      engineType: row.EngineConfiguration || null,
       fuelType: row.FuelTypePrimary || null,
       transmission: row.TransmissionStyle || null,
+      transmissionType: row.TransmissionStyle || null,
       driveType: row.DriveType || null,
       bodyClass: row.BodyClass || null,
+      manufacturer: row.Manufacturer || null,
+      gvwr:
+        row.GVWR ||
+        [row.GrossVehicleWeightRatingFrom, row.GrossVehicleWeightRatingTo]
+          .filter(Boolean)
+          .join(" - ") ||
+        null,
     };
 
     return NextResponse.json(result);

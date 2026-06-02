@@ -8,7 +8,14 @@ type VehicleDraft = {
   make: string | null;
   model: string | null;
   trim: string | null;
+  submodel: string | null;
   engine: string | null;
+  engine_family: string | null;
+  engine_type: string | null;
+  transmission: string | null;
+  transmission_type: string | null;
+  fuel_type: string | null;
+  drivetrain: string | null;
   plate: string | null;
 };
 
@@ -33,7 +40,14 @@ const emptyVehicle: VehicleDraft = {
   make: null,
   model: null,
   trim: null,
+  submodel: null,
   engine: null,
+  engine_family: null,
+  engine_type: null,
+  transmission: null,
+  transmission_type: null,
+  fuel_type: null,
+  drivetrain: null,
   plate: null,
 };
 
