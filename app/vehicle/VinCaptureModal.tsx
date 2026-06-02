@@ -6,11 +6,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
-
 import ModalShell from "@/features/shared/components/ModalShell";
 import VinCaptureModalContent from "@/features/vehicles/components/VinCaptureModal";
-import { decodeVin } from "@/features/shared/lib/vin/decodeVin";
+import { decodeVin, mapDecodedVinToVehicleSelectValues } from "@/features/shared/lib/vin/decodeVin";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 
@@ -29,15 +27,21 @@ export type VinDecodedDetail = {
   make: string | null;
   model: string | null;
   trim: string | null;
+  submodel?: string | null;
   engine?: string | null;
+  engineFamily?: string | null;
+  engineType?: string | null;
 
   // extra fields from /api/vin
   engineDisplacementL?: string | null;
   engineCylinders?: string | null;
   fuelType?: string | null;
   transmission?: string | null;
+  transmissionType?: string | null;
   driveType?: string | null;
   bodyClass?: string | null;
+  manufacturer?: string | null;
+  gvwr?: string | null;
 };
 
 type Props = {
@@ -57,21 +61,34 @@ type DecodeVinResponseExtended = DecodeVinResponse & {
   engineCylinders?: string | null;
   fuelType?: string | null;
   transmission?: string | null;
+  transmissionType?: string | null;
   driveType?: string | null;
   bodyClass?: string | null;
+  manufacturer?: string | null;
+  gvwr?: string | null;
 };
 
 function isLikelyVin(s: string) {
   return normalizeVinInput(s).isValid;
 }
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function describeOcrError(status: number, fallback?: string | null) {
+  if (status === 413) return "Image is too large. Upload an image 8 MB or smaller, or enter the VIN manually.";
+  if (status === 415) return "Unsupported image type. Upload a JPEG, PNG, WebP, HEIC, or enter the VIN manually.";
+  return fallback || "Could not read a VIN from this image. Retake the photo, upload another, or enter it manually.";
+}
+
 /** Scanner pane used in scanSlot */
 function ScannerPane({
   onFoundVin,
+  onError,
   isBusy,
 }: {
   userId: string;
   onFoundVin: (vin: string) => void;
+  onError: (message: string) => void;
   isBusy: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -126,12 +143,16 @@ function ScannerPane({
           };
           raf = requestAnimationFrame(scan);
         } else {
-          setError(
-            "Live barcode detection not supported in this browser. Use photo upload below.",
-          );
+          const message =
+            "Live barcode detection is not supported in this browser. Upload a photo or enter the VIN manually.";
+          setError(message);
+          onError(message);
         }
       } catch {
-        setError("Camera unavailable. Use photo upload below.");
+        const message =
+          "Camera unavailable. Upload a photo or enter the VIN manually.";
+        setError(message);
+        onError(message);
       }
     };
 
@@ -146,7 +167,7 @@ function ScannerPane({
         /* no-op */
       }
     };
-  }, [onFoundVin]);
+  }, [onError, onFoundVin]);
 
   return (
     <div
@@ -191,12 +212,25 @@ function ScannerPane({
         <input
           type="file"
           accept="image/*"
+          capture="environment"
           disabled={isBusy}
           className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-[linear-gradient(135deg,rgba(197,122,74,0.9),rgba(197,122,74,0.75))] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-[linear-gradient(135deg,rgba(197,122,74,1),rgba(197,122,74,0.85))] disabled:opacity-60"
           onChange={async (e) => {
             if (isBusy) return;
             const file = e.target.files?.[0];
             if (!file) return;
+
+            if (!file.type.startsWith("image/")) {
+              onError("Unsupported file type. Upload an image or enter the VIN manually.");
+              e.target.value = "";
+              return;
+            }
+
+            if (file.size > MAX_IMAGE_BYTES) {
+              onError("Image is too large. Upload an image 8 MB or smaller, or enter the VIN manually.");
+              e.target.value = "";
+              return;
+            }
 
             try {
               const formData = new FormData();
@@ -208,7 +242,10 @@ function ScannerPane({
               });
 
               if (!res.ok) {
-                alert("Could not read VIN from image. Please try again.");
+                const body = (await res.json().catch(() => ({}))) as {
+                  error?: string | null;
+                };
+                onError(describeOcrError(res.status, body.error));
                 e.target.value = "";
                 return;
               }
@@ -217,8 +254,8 @@ function ScannerPane({
               const extractedVin = normalizeVinInput(data?.vin);
               const vin = extractedVin.vin;
               if (!extractedVin.isValid || !isLikelyVin(vin)) {
-                alert(
-                  "No clear VIN found in the photo. Please retake or type it manually.",
+                onError(
+                  "No clear VIN found in the photo. Retake it, upload another photo, or type the VIN manually.",
                 );
                 e.target.value = "";
                 return;
@@ -227,8 +264,8 @@ function ScannerPane({
               onFoundVin(vin);
             } catch (err) {
               console.error(err);
-              alert(
-                "Error reading VIN from image. Please try again or enter it manually.",
+              onError(
+                "OCR failed while reading the photo. Try again, upload another photo, or enter the VIN manually.",
               );
             } finally {
               e.target.value = "";
@@ -242,7 +279,8 @@ function ScannerPane({
       </div>
 
       <div className="text-[11px] text-neutral-500">
-        We will decode with NHTSA and store it to your account.
+        We will decode with NHTSA and fill the vehicle form; you stay in control
+        of saving.
       </div>
     </div>
   );
@@ -258,6 +296,7 @@ export default function VinCaptureModal({
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isDecoding, setIsDecoding] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   const isControlled = typeof open === "boolean";
   const isOpen = isControlled ? (open as boolean) : internalOpen;
@@ -270,7 +309,6 @@ export default function VinCaptureModal({
     [isControlled, onOpenChange],
   );
 
-  const router = useRouter();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
 
   // Lock body scroll when modal is open
@@ -308,7 +346,7 @@ export default function VinCaptureModal({
     async (vin: string) => {
       const normalizedVin = normalizeVinInput(vin);
       if (!normalizedVin.isValid) {
-        alert(normalizedVin.message);
+        setCaptureError(normalizedVin.message);
         return;
       }
       if (isDecoding) return; // prevent double fires
@@ -316,11 +354,12 @@ export default function VinCaptureModal({
       try {
         const resp = await decodeVin(normalizedVin.vin, userId);
         if (resp?.error) {
-          alert(resp.error);
+          setCaptureError(resp.error);
           return;
         }
 
         const extended = resp as DecodeVinResponseExtended;
+        const mapped = mapDecodedVinToVehicleSelectValues(extended);
 
         // hydrate shared draft
         setVehicleDraft({
@@ -329,7 +368,14 @@ export default function VinCaptureModal({
           make: resp.make ?? null,
           model: resp.model ?? null,
           trim: resp.trim ?? null,
+          submodel: resp.submodel ?? resp.trim ?? null,
           engine: resp.engine ?? null,
+          engine_family: resp.engineFamily ?? null,
+          engine_type: resp.engineType ?? null,
+          transmission_type: resp.transmissionType ?? extended.transmission ?? null,
+          fuel_type: mapped.fuel_type ?? null,
+          drivetrain: mapped.drivetrain ?? null,
+          transmission: mapped.transmission ?? null,
         });
 
         const detail: VinDecodedDetail = {
@@ -338,13 +384,19 @@ export default function VinCaptureModal({
           make: resp.make ?? null,
           model: resp.model ?? null,
           trim: resp.trim ?? null,
+          submodel: resp.submodel ?? resp.trim ?? null,
           engine: resp.engine ?? null,
+          engineFamily: resp.engineFamily ?? null,
+          engineType: resp.engineType ?? null,
           engineDisplacementL: extended.engineDisplacementL ?? null,
           engineCylinders: extended.engineCylinders ?? null,
-          fuelType: extended.fuelType ?? null,
-          transmission: extended.transmission ?? null,
-          driveType: extended.driveType ?? null,
+          fuelType: mapped.fuel_type ?? null,
+          transmission: mapped.transmission ?? null,
+          transmissionType: resp.transmissionType ?? extended.transmission ?? null,
+          driveType: mapped.drivetrain ?? null,
           bodyClass: extended.bodyClass ?? null,
+          manufacturer: extended.manufacturer ?? null,
+          gvwr: extended.gvwr ?? null,
         };
 
         onDecodedRef.current?.(detail);
@@ -367,13 +419,13 @@ export default function VinCaptureModal({
           /* non-blocking */
         }
 
+        setCaptureError(null);
         setOpen(false);
-        router.push("/work-orders/create?source=vin");
       } finally {
         setIsDecoding(false);
       }
     },
-    [userId, setVehicleDraft, router, setOpen, isDecoding],
+    [userId, setVehicleDraft, setOpen, isDecoding],
   );
 
 
@@ -399,10 +451,19 @@ export default function VinCaptureModal({
         <VinCaptureModalContent
           action={action}
           userId={userId}
+          onManualSubmit={handleFoundVin}
+          isDecoding={isDecoding}
+          error={captureError}
+          onClearError={() => setCaptureError(null)}
+          onContinueManual={() => {
+            setCaptureError(null);
+            setOpen(false);
+          }}
           scanSlot={
             <ScannerPane
               userId={userId}
               onFoundVin={handleFoundVin}
+              onError={setCaptureError}
               isBusy={isDecoding}
             />
           }

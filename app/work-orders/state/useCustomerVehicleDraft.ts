@@ -24,6 +24,14 @@ export type SessionVehicle = {
   color: string | null;
   unit_number: string | null;
   engine_hours: string | null;
+  engine?: string | null;
+  submodel?: string | null;
+  engine_family?: string | null;
+  engine_type?: string | null;
+  transmission?: string | null;
+  transmission_type?: string | null;
+  fuel_type?: string | null;
+  drivetrain?: string | null;
 };
 
 type DraftState = {
@@ -56,6 +64,14 @@ const emptyVehicle: SessionVehicle = {
   color: null,
   unit_number: null,
   engine_hours: null,
+  engine: null,
+  submodel: null,
+  engine_family: null,
+  engine_type: null,
+  transmission: null,
+  transmission_type: null,
+  fuel_type: null,
+  drivetrain: null,
 };
 
 export const useCustomerVehicleDraft = create<DraftState>()(

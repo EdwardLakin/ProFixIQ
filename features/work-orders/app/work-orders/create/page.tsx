@@ -71,9 +71,13 @@ type UploadSummary = { uploaded: number; failed: number };
 type CustomerWithBusiness = SessionCustomer & { business_name?: string | null };
 type VehicleWithExtra = SessionVehicle & {
   engine?: string | null;
+  submodel?: string | null;
+  engine_family?: string | null;
+  engine_type?: string | null;
   fuel_type?: string | null;
   drivetrain?: string | null;
   transmission?: string | null;
+  transmission_type?: string | null;
 };
 
 type WorkOrderWaiterRow = WorkOrderRow & { is_waiter?: boolean | null };
@@ -84,10 +88,18 @@ type VinDecoded = {
   year?: string | number | null;
   make?: string | null;
   model?: string | null;
+  trim?: string | null;
+  submodel?: string | null;
   engine?: string | null;
+  engineFamily?: string | null;
+  engineType?: string | null;
   fuelType?: string | null;
   driveType?: string | null;
   transmission?: string | null;
+  transmissionType?: string | null;
+  bodyClass?: string | null;
+  manufacturer?: string | null;
+  gvwr?: string | null;
 };
 
 type CustomerRowWithBusiness = CustomerRow & { business_name?: string | null };
@@ -298,7 +310,11 @@ function hydrateVehicleFromRow(row: VehicleRow): VehicleWithExtra {
     color: getStrField(row, "color"),
     engine_hours: row.engine_hours != null ? String(row.engine_hours) : null,
     engine: getStrField(row, "engine"),
+    submodel: getStrField(row, "submodel"),
+    engine_family: getStrField(row, "engine_family"),
+    engine_type: getStrField(row, "engine_type"),
     transmission: getStrField(row, "transmission"),
+    transmission_type: getStrField(row, "transmission_type"),
     fuel_type: getStrField(row, "fuel_type"),
     drivetrain: getStrField(row, "drivetrain"),
   };
@@ -487,7 +503,11 @@ export default function CreateWorkOrderPage() {
 
         // ✅ persist extra fields from draft too
         engine: dv.engine ?? prev.engine ?? null,
+        submodel: dv.submodel ?? prev.submodel ?? null,
+        engine_family: dv.engine_family ?? prev.engine_family ?? null,
+        engine_type: dv.engine_type ?? prev.engine_type ?? null,
         transmission: dv.transmission ?? prev.transmission ?? null,
+        transmission_type: dv.transmission_type ?? prev.transmission_type ?? null,
         fuel_type: dv.fuel_type ?? prev.fuel_type ?? null,
         drivetrain: dv.drivetrain ?? prev.drivetrain ?? null,
       }));
@@ -631,9 +651,14 @@ export default function CreateWorkOrderPage() {
 
         // ✅ extra fields from VIN draft
         engine: draft.vehicle?.engine ?? prev.engine ?? null,
+        submodel: draft.vehicle?.submodel ?? prev.submodel ?? null,
+        engine_family: draft.vehicle?.engine_family ?? prev.engine_family ?? null,
+        engine_type: draft.vehicle?.engine_type ?? prev.engine_type ?? null,
         fuel_type: draft.vehicle?.fuel_type ?? prev.fuel_type ?? null,
         drivetrain: draft.vehicle?.drivetrain ?? prev.drivetrain ?? null,
         transmission: draft.vehicle?.transmission ?? prev.transmission ?? null,
+        transmission_type:
+          draft.vehicle?.transmission_type ?? prev.transmission_type ?? null,
       }));
     }
     if (hasCust) {
@@ -791,7 +816,11 @@ useEffect(() => {
 
     // ✅ NEW
     engine: strOrNull(v.engine ?? null),
+    submodel: strOrNull(v.submodel ?? null),
+    engine_family: strOrNull(v.engine_family ?? null),
+    engine_type: strOrNull(v.engine_type ?? null),
     transmission: strOrNull(v.transmission ?? null),
+    transmission_type: strOrNull(v.transmission_type ?? null),
     fuel_type: strOrNull(v.fuel_type ?? null),
     drivetrain: strOrNull(v.drivetrain ?? null),
 
@@ -838,8 +867,20 @@ useEffect(() => {
     const engine = strOrNull(v.engine ?? null);
     if (engine !== null) patch.engine = engine;
 
+    const submodel = strOrNull(v.submodel ?? null);
+    if (submodel !== null) patch.submodel = submodel;
+
+    const engineFamily = strOrNull(v.engine_family ?? null);
+    if (engineFamily !== null) patch.engine_family = engineFamily;
+
+    const engineType = strOrNull(v.engine_type ?? null);
+    if (engineType !== null) patch.engine_type = engineType;
+
     const trans = strOrNull(v.transmission ?? null);
     if (trans !== null) patch.transmission = trans;
+
+    const transmissionType = strOrNull(v.transmission_type ?? null);
+    if (transmissionType !== null) patch.transmission_type = transmissionType;
 
     const fuel = strOrNull(v.fuel_type ?? null);
     if (fuel !== null) patch.fuel_type = fuel;
@@ -1009,7 +1050,7 @@ useEffect(() => {
           const query = supabase
             .from("vehicles")
             .select(
-              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id",
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id",
             )
             .eq("id", prefillVehicleId)
             .eq("shop_id", shopId);
@@ -1042,7 +1083,7 @@ useEffect(() => {
           const { data: vehicles } = await supabase
             .from("vehicles")
             .select(
-              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id, created_at",
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
             )
             .eq("shop_id", shopId)
             .eq("customer_id", effectiveCustomerId)
@@ -1399,8 +1440,17 @@ useEffect(() => {
 
           // ✅ NEW
           engine: (veh.engine as string | null) ?? vehicle.engine ?? null,
+          submodel: (veh.submodel as string | null) ?? vehicle.submodel ?? null,
+          engine_family:
+            (veh.engine_family as string | null) ?? vehicle.engine_family ?? null,
+          engine_type:
+            (veh.engine_type as string | null) ?? vehicle.engine_type ?? null,
           transmission:
             (veh.transmission as string | null) ?? vehicle.transmission ?? null,
+          transmission_type:
+            (veh.transmission_type as string | null) ??
+            vehicle.transmission_type ??
+            null,
           fuel_type:
             (veh.fuel_type as string | null) ?? vehicle.fuel_type ?? null,
           drivetrain:
@@ -2252,41 +2302,58 @@ useEffect(() => {
                   action="/api/vin"
                   onDecoded={(d: VinDecoded) => {
                     const y = yearToStrOrNull(d.year);
-
-                    draft.setVehicle({
+                    const decodedVehicle: Partial<VehicleWithExtra> = {
                       vin: d.vin,
-                      year: y,
-                      make: d.make ?? null,
-                      model: d.model ?? null,
-                      engine: d.engine ?? null,
-                      fuel_type: d.fuelType ?? null,
-                      drivetrain: d.driveType ?? null,
-                      transmission: d.transmission ?? null,
-                    });
+                    };
+
+                    if (y) decodedVehicle.year = y;
+                    if (strOrNull(d.make)) decodedVehicle.make = strOrNull(d.make);
+                    if (strOrNull(d.model)) decodedVehicle.model = strOrNull(d.model);
+                    if (strOrNull(d.engine)) decodedVehicle.engine = strOrNull(d.engine);
+                    if (strOrNull(d.submodel ?? d.trim)) {
+                      decodedVehicle.submodel = strOrNull(d.submodel ?? d.trim);
+                    }
+                    if (strOrNull(d.engineFamily)) {
+                      decodedVehicle.engine_family = strOrNull(d.engineFamily);
+                    }
+                    if (strOrNull(d.engineType)) {
+                      decodedVehicle.engine_type = strOrNull(d.engineType);
+                    }
+                    if (strOrNull(d.fuelType)) decodedVehicle.fuel_type = strOrNull(d.fuelType);
+                    if (strOrNull(d.driveType)) decodedVehicle.drivetrain = strOrNull(d.driveType);
+                    if (strOrNull(d.transmission)) {
+                      decodedVehicle.transmission = strOrNull(d.transmission);
+                    }
+                    if (strOrNull(d.transmissionType)) {
+                      decodedVehicle.transmission_type = strOrNull(d.transmissionType);
+                    }
+
+                    draft.setVehicle(decodedVehicle);
 
                     setVehicle((prev) => ({
                       ...prev,
-                      vin: d.vin || prev.vin,
-                      year: y ?? prev.year,
-                      make: d.make ?? prev.make,
-                      model: d.model ?? prev.model,
-                      engine: d.engine ?? prev.engine ?? null,
-                      fuel_type: d.fuelType ?? prev.fuel_type ?? null,
-                      drivetrain: d.driveType ?? prev.drivetrain ?? null,
-                      transmission: d.transmission ?? prev.transmission ?? null,
+                      vin: decodedVehicle.vin ?? prev.vin,
+                      year: decodedVehicle.year ?? prev.year,
+                      make: decodedVehicle.make ?? prev.make,
+                      model: decodedVehicle.model ?? prev.model,
+                      engine: decodedVehicle.engine ?? prev.engine ?? null,
+                      submodel: decodedVehicle.submodel ?? prev.submodel ?? null,
+                      engine_family:
+                        decodedVehicle.engine_family ?? prev.engine_family ?? null,
+                      engine_type:
+                        decodedVehicle.engine_type ?? prev.engine_type ?? null,
+                      fuel_type: decodedVehicle.fuel_type ?? prev.fuel_type ?? null,
+                      drivetrain: decodedVehicle.drivetrain ?? prev.drivetrain ?? null,
+                      transmission:
+                        decodedVehicle.transmission ?? prev.transmission ?? null,
+                      transmission_type:
+                        decodedVehicle.transmission_type ??
+                        prev.transmission_type ??
+                        null,
                     }));
 
                     cvDraft.bulkSet({
-                      vehicle: {
-                        vin: d.vin ?? null,
-                        year: y,
-                        make: d.make ?? null,
-                        model: d.model ?? null,
-                        engine: d.engine ?? null,
-                        fuel_type: d.fuelType ?? null,
-                        drivetrain: d.driveType ?? null,
-                        transmission: d.transmission ?? null,
-                      },
+                      vehicle: decodedVehicle,
                     });
                   }}
                 >

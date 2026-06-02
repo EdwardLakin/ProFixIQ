@@ -5,11 +5,18 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   SessionCustomer as CustomerInfo,
-  SessionVehicle as VehicleInfo,
+  SessionVehicle,
 } from "@inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { checkVehicleDuplicates, type VehicleDuplicateMatch } from "@/features/shared/lib/vehicles/duplicateCheck";
+
+type VehicleInfo = SessionVehicle & {
+  submodel?: string | null;
+  engine_family?: string | null;
+  engine_type?: string | null;
+  transmission_type?: string | null;
+};
 
 /** Local, narrow shapes (avoid exporting DB row types in props) */
 type CustomerRow = {
@@ -41,7 +48,11 @@ type VehicleRow = {
   engine_hours?: number | null;
 
   engine?: string | null;
+  submodel?: string | null;
+  engine_family?: string | null;
+  engine_type?: string | null;
   transmission?: string | null;
+  transmission_type?: string | null;
   fuel_type?: string | null;
   drivetrain?: string | null;
 
@@ -98,7 +109,11 @@ function hydrateVehicleFields(v: VehicleRow): VehicleInfo {
     color: v.color ?? null,
     engine_hours: v.engine_hours != null ? String(v.engine_hours) : null,
     engine: v.engine ?? null,
+    submodel: v.submodel ?? null,
+    engine_family: v.engine_family ?? null,
+    engine_type: v.engine_type ?? null,
     transmission: v.transmission ?? null,
+    transmission_type: v.transmission_type ?? null,
     fuel_type: v.fuel_type ?? null,
     drivetrain: v.drivetrain ?? null,
   };
@@ -286,7 +301,7 @@ function UnitNumberAutocomplete({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id, created_at",
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
           )
           .eq("shop_id", shopId)
           .eq("customer_id", customerId)
@@ -515,7 +530,7 @@ export default function CustomerVehicleForm({
       const { data: vehs } = await supabase
         .from("vehicles")
         .select(
-          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at",
+          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, created_at",
         )
         .eq("customer_id", c.id)
         .eq("shop_id", shopId)
@@ -536,7 +551,11 @@ export default function CustomerVehicleForm({
         safeSetVehicle("color", fields.color);
         safeSetVehicle("engine_hours", fields.engine_hours ?? null);
         safeSetVehicle("engine", fields.engine ?? null);
+        safeSetVehicle("submodel", fields.submodel ?? null);
+        safeSetVehicle("engine_family", fields.engine_family ?? null);
+        safeSetVehicle("engine_type", fields.engine_type ?? null);
         safeSetVehicle("transmission", fields.transmission ?? null);
+        safeSetVehicle("transmission_type", fields.transmission_type ?? null);
         safeSetVehicle("fuel_type", fields.fuel_type ?? null);
         safeSetVehicle("drivetrain", fields.drivetrain ?? null);
 
@@ -827,7 +846,11 @@ export default function CustomerVehicleForm({
                   );
 
                   safeSetVehicle("engine", v.engine ?? null);
+                  safeSetVehicle("submodel", v.submodel ?? null);
+                  safeSetVehicle("engine_family", v.engine_family ?? null);
+                  safeSetVehicle("engine_type", v.engine_type ?? null);
                   safeSetVehicle("transmission", v.transmission ?? null);
+                  safeSetVehicle("transmission_type", v.transmission_type ?? null);
                   safeSetVehicle("fuel_type", v.fuel_type ?? null);
                   safeSetVehicle("drivetrain", v.drivetrain ?? null);
 
@@ -976,7 +999,8 @@ export default function CustomerVehicleForm({
                 <option value="diesel">Diesel</option>
                 <option value="hybrid">Hybrid</option>
                 <option value="phev">Plug-in hybrid</option>
-                <option value="ev">Electric (BEV)</option>
+                <option value="electric">Electric (BEV)</option>
+                <option value="ev">Electric (legacy)</option>
                 <option value="other">Other</option>
               </select>
             </div>
