@@ -75,8 +75,6 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
-type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 type InvoiceLinePayload = {
@@ -187,14 +185,13 @@ type PdfLinePart = {
   total: number;
 };
 
-// ✅ Your DB types for work_order_parts do NOT have qty/line_total/description.
-// Use quantity/total_price and pull names from parts table.
-// work_order_line_id is treated as optional (in case your DB has it but types are stale).
-type AllocationWithLine = Pick<
-  AllocationRow,
-  "id" | "part_id" | "qty" | "unit_cost"
-> & {
-  work_order_line_id?: string | null;
+type SnapshotPart = {
+  lineId?: string;
+  name?: string;
+  qty?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  partNumber?: string;
 };
 
 type InspectionPdfInfo = {
@@ -405,12 +402,32 @@ export default function InvoicePreviewPageClient({
 
       if (cancelled) return;
       setInvoiceId(invoiceRow?.id ?? null);
+      const snapshotPartsByLine = new Map<string, PdfLinePart[]>();
       try {
         const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
         const snapshotJson = (await snapshotRes.json().catch(() => null)) as
-          | { snapshot?: { total?: number | null } }
+          | { snapshot?: { total?: number | null; parts?: SnapshotPart[] } }
           | null;
         const snapshotTotal = snapshotJson?.snapshot?.total;
+        for (const part of snapshotJson?.snapshot?.parts ?? []) {
+          const lineId = typeof part.lineId === "string" ? part.lineId.trim() : "";
+          if (!lineId) continue;
+          const qty = numOrUndef(part.qty) ?? 1;
+          const unitPrice = safeMoney(part.unitPrice);
+          const total = safeMoney(part.totalPrice);
+          const baseName = trimOrUndef(part.name) ?? "Part";
+          const partNumber = trimOrUndef(part.partNumber);
+          const pretty = partNumber ? `${baseName} (${partNumber})` : baseName;
+          snapshotPartsByLine.set(lineId, [
+            ...(snapshotPartsByLine.get(lineId) ?? []),
+            {
+              qty: qty > 0 ? qty : 1,
+              name: pretty,
+              unit_price: unitPrice,
+              total: total > 0 ? total : Math.max(0, (qty > 0 ? qty : 1) * unitPrice),
+            },
+          ]);
+        }
         if (!snapshotRes.ok) {
           setSnapshotWarning("Using locally derived totals; canonical invoice snapshot is unavailable.");
           setCanonicalInvoiceTotal(0);
@@ -572,75 +589,7 @@ export default function InvoicePreviewPageClient({
         if (wolErr || !Array.isArray(wol) || wol.length === 0) {
           setFLines([]);
         } else {
-          // 2) load allocated parts for this work order
-          const { data: allocRaw } = await supabase
-            .from("work_order_part_allocations")
-            .select("id, work_order_line_id, part_id, qty, unit_cost")
-            .eq("work_order_id", workOrderId);
-
-          const wop = (Array.isArray(allocRaw) ? allocRaw : []) as AllocationWithLine[];
-
-          // 3) join to parts table for names + part_number
-          const partIds = Array.from(
-            new Set(
-              wop
-                .map((p) => p.part_id)
-                .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
-            ),
-          );
-
-          let partsById = new Map<string, Pick<PartRow, "id" | "name" | "part_number">>();
-
-          if (partIds.length > 0) {
-            const { data: parts } = await supabase
-              .from("parts")
-              .select("id, name, part_number")
-              .in("id", partIds);
-
-            const arr = (Array.isArray(parts) ? parts : []) as Array<
-              Pick<PartRow, "id" | "name" | "part_number">
-            >;
-
-            partsById = new Map(
-              arr
-                .filter(
-                  (p) =>
-                    typeof p.id === "string" &&
-                    p.id.length > 0 &&
-                    typeof p.name === "string",
-                )
-                .map((p) => [p.id, p]),
-            );
-          }
-
-          const perLine = new Map<string, PdfLinePart[]>();
-
-          for (const p of wop) {
-            const lidRaw = p.work_order_line_id;
-            const lid = typeof lidRaw === "string" && lidRaw.trim().length > 0 ? lidRaw.trim() : "";
-            if (!lid) continue;
-
-            const qty = Number(p.qty ?? 1);
-            const unit = safeMoney(p.unit_cost);
-            const total = Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
-
-            const partMeta = typeof p.part_id === "string" ? partsById.get(p.part_id) : undefined;
-
-            const baseName = (partMeta?.name ?? "").trim() || "Part";
-            const pretty =
-              partMeta?.part_number && partMeta.part_number.trim().length > 0
-                ? `${baseName} (${partMeta.part_number.trim()})`
-                : baseName;
-
-            const arr = perLine.get(lid) ?? [];
-            arr.push({
-              qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
-              name: pretty,
-              unit_price: Number.isFinite(unit) ? unit : 0,
-              total: Number.isFinite(total) ? total : 0,
-            });
-            perLine.set(lid, arr);
-          }
+          const perLine = snapshotPartsByLine;
 
           const mapped: Array<RepairLine & { lineId?: string; parts?: PdfLinePart[] }> = wol.map(
             (
@@ -831,8 +780,6 @@ export default function InvoicePreviewPageClient({
     effectiveVehicleInfo,
     effectiveLines,
     workOrderId,
-    derivedLaborTotal,
-    derivedPartsTotal,
     derivedInvoiceTotal,
     canonicalInvoiceTotal,
     onSent,

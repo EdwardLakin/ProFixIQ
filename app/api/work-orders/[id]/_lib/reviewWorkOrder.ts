@@ -16,6 +16,45 @@ type Args = {
   kind: ReviewKind;
 };
 
+const BILLABLE_PART_REQUEST_ITEM_STATUSES = new Set([
+  "quoted",
+  "approved",
+  "reserved",
+  "picking",
+  "picked",
+  "ordered",
+  "partially_received",
+  "received",
+  "fulfilled",
+  "consumed",
+]);
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
+  const quotedPrice = numericValue(row.quoted_price);
+  const unitPrice = numericValue(row.unit_price);
+  const unitCost = numericValue(row.unit_cost);
+  const price = quotedPrice ?? unitPrice ?? unitCost;
+  return price != null && price > 0;
+}
+
+function partRequestItemQuantity(row: Record<string, unknown>): number {
+  return (
+    numericValue(row.qty) ??
+    numericValue(row.qty_requested) ??
+    numericValue(row.qty_approved) ??
+    0
+  );
+}
+
 export async function reviewWorkOrder({
   supabase,
   workOrderId,
@@ -44,6 +83,32 @@ export async function reviewWorkOrder({
       qty > 0 && unitCost !== null && Number.isFinite(unitCost) && unitCost > 0;
     const billableByQtyFallback = qty > 0 && unitCost === null;
     if (lineId && (billableByQtyAndUnitCost || billableByQtyFallback)) {
+      hasBillablePartsByLine.set(lineId, true);
+    }
+  }
+
+  const { data: linkedPartRequestRows } = await supabase
+    .from("part_request_items")
+    .select("work_order_line_id, quote_line_id, status, approved, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost")
+    .eq("shop_id", shopId)
+    .eq("work_order_id", workOrderId)
+    .not("work_order_line_id", "is", null);
+
+  for (const row of linkedPartRequestRows ?? []) {
+    const record = row as Record<string, unknown>;
+    const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
+    const quoteLineId = typeof row.quote_line_id === "string" ? row.quote_line_id : "";
+    const status = String(row.status ?? "").trim().toLowerCase();
+    const statusIsBillable = BILLABLE_PART_REQUEST_ITEM_STATUSES.has(status);
+    const approved = row.approved === true;
+
+    if (
+      lineId &&
+      quoteLineId &&
+      (statusIsBillable || approved) &&
+      partRequestItemQuantity(record) > 0 &&
+      partRequestItemHasBillablePrice(record)
+    ) {
       hasBillablePartsByLine.set(lineId, true);
     }
   }
