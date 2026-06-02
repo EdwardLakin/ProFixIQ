@@ -7105,6 +7105,8 @@ export type Database = {
           quote_source: string
           quoted_at: string
           shop_id: string
+          source_quote_line_id: string | null
+          source_work_order_line_id: string | null
           status: string
           supplier_id: string | null
           supplier_name: string | null
@@ -7125,6 +7127,8 @@ export type Database = {
           quote_source?: string
           quoted_at?: string
           shop_id: string
+          source_quote_line_id?: string | null
+          source_work_order_line_id?: string | null
           status?: string
           supplier_id?: string | null
           supplier_name?: string | null
@@ -7145,6 +7149,8 @@ export type Database = {
           quote_source?: string
           quoted_at?: string
           shop_id?: string
+          source_quote_line_id?: string | null
+          source_work_order_line_id?: string | null
           status?: string
           supplier_id?: string | null
           supplier_name?: string | null
@@ -7208,6 +7214,7 @@ export type Database = {
           pricing_status: string | null
           pricing_valid_days: number | null
           shop_id: string
+          source_quote_line_id: string | null
           source_work_order_id: string | null
           source_work_order_line_id: string | null
           tags: string[]
@@ -7241,6 +7248,7 @@ export type Database = {
           pricing_status?: string | null
           pricing_valid_days?: number | null
           shop_id: string
+          source_quote_line_id?: string | null
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
           tags?: string[]
@@ -7274,6 +7282,7 @@ export type Database = {
           pricing_status?: string | null
           pricing_valid_days?: number | null
           shop_id?: string
+          source_quote_line_id?: string | null
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
           tags?: string[]
