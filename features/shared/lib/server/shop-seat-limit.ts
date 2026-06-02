@@ -49,14 +49,16 @@ export async function getShopSeatLimitSnapshot(
     stripeStatus: shop?.stripe_subscription_status ?? null,
   });
 
+  // `profiles` is the app's provisioned-user table for shop access.
+  // It does not currently have an `is_active` flag; deleted users are removed
+  // from this table and pending invite candidates are not inserted here yet.
   const { count: activeUsers, error: countErr } = await admin
     .from("profiles")
     .select("id", { count: "exact", head: true })
-    .eq("shop_id", shopId)
-    .eq("is_active", true);
+    .eq("shop_id", shopId);
 
   if (countErr) {
-    throw new Error(`Failed to count active shop users: ${countErr.message}`);
+    throw new Error(`Failed to count shop users: ${countErr.message}`);
   }
 
   return {
