@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
 type DB = Database;
 
@@ -77,8 +78,21 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
     const { data, error } = await supabase.rpc("receive_part_request_item", args);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    const { data: linkedItem } = await supabase
+      .from("part_request_items")
+      .select("shop_id, quote_line_id")
+      .eq("id", payload.itemId)
+      .maybeSingle();
+
+    const quoteLineSync = linkedItem?.shop_id && linkedItem.quote_line_id
+      ? await syncQuoteLinePartsStatus(supabase, {
+          shopId: linkedItem.shop_id,
+          quoteLineId: linkedItem.quote_line_id,
+        })
+      : null;
+
     const row = Array.isArray(data) ? data[0] : data;
-    return NextResponse.json({ ok: true, result: row });
+    return NextResponse.json({ ok: true, result: row, quoteLineSync });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : typeof e === "string" ? e : "Server error";
     return NextResponse.json({ error: message }, { status: 500 });
