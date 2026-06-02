@@ -1026,6 +1026,22 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     toast.success(`Assigned PO ${poId.slice(0, 8)}.`);
   }
 
+
+  async function syncQuoteLineForItem(itemId: string): Promise<void> {
+    if (!isUuid(itemId)) return;
+    try {
+      const res = await fetch(`/api/parts/requests/items/${itemId}/quote-line-sync`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.warning(body?.error || "Quote line parts status sync skipped.");
+      }
+    } catch {
+      toast.warning("Quote line parts status sync skipped.");
+    }
+  }
+
   async function addAndAttach(reqId: string, itemId: string): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
     const it = target?.items.find((x) => x.id === itemId);
@@ -1190,6 +1206,10 @@ if (!lineId || !isUuid(lineId)) {
           },
         );
         if (statusErr) toast.warning(statusErr.message);
+      }
+
+      if (it.quote_line_id) {
+        await syncQuoteLineForItem(String(it.id));
       }
 
       window.dispatchEvent(new Event("parts-request:submitted"));

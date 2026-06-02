@@ -48,6 +48,7 @@ type QuoteMetadata = {
   photo_urls?: Json;
   evidence_urls?: Json;
   parts?: Json;
+  parts_quote?: Json;
   labor_rate?: Json;
   technician_notes?: Json;
   tech_notes?: Json;
@@ -176,6 +177,44 @@ function hasPartsPrice(line: Pick<QuoteLine, "parts_total" | "metadata">): boole
       jsonNumber(p.unit_cost) != null
     );
   });
+}
+
+
+function partsQuoteSummary(line: Pick<QuoteLine, "metadata">): {
+  requiredCount: number;
+  quotedCount: number;
+  pendingCount: number;
+  partsTotal: number | null;
+} | null {
+  const partsQuote = quoteMetadata(line).parts_quote;
+  if (!partsQuote || typeof partsQuote !== "object" || Array.isArray(partsQuote)) return null;
+  const record = partsQuote as Record<string, Json>;
+  return {
+    requiredCount: jsonNumber(record.required_count) ?? 0,
+    quotedCount: jsonNumber(record.quoted_count) ?? 0,
+    pendingCount: jsonNumber(record.pending_count) ?? 0,
+    partsTotal: jsonNumber(record.parts_total),
+  };
+}
+
+function partsWorkflowLabel(line: EditableQuoteLine): { label: string; tone: "warn" | "ok" | "info" } | null {
+  const summary = partsQuoteSummary(line);
+  const status = safeTrim(line.status).toLowerCase();
+  const stage = safeTrim(line.stage).toLowerCase();
+
+  if (summary) {
+    if (summary.pendingCount > 0 || status === "pending_parts") {
+      return { label: `Parts pending (${summary.quotedCount}/${summary.requiredCount})`, tone: "warn" };
+    }
+    if (summary.requiredCount > 0 && (status === "quoted" || status === "ready_to_send" || stage === "ready_to_send")) {
+      return { label: `Parts quoted (${summary.quotedCount}/${summary.requiredCount})`, tone: "ok" };
+    }
+    return { label: `Parts tracked (${summary.quotedCount}/${summary.requiredCount})`, tone: "info" };
+  }
+
+  if (status === "pending_parts") return { label: "Parts pending", tone: "warn" };
+  if (status === "quoted" || status === "ready_to_send" || stage === "ready_to_send") return { label: "Ready to send", tone: "ok" };
+  return null;
 }
 
 function recommendedWorkflow(line: EditableQuoteLine, shopLaborRate: number): Pick<QuoteLineUpdate, "status" | "stage"> {
@@ -651,6 +690,8 @@ export default function QuoteReviewView(props: {
                 <div className="divide-y divide-[color:var(--desktop-border)]">
                   {quoteLines.map((line, index) => {
                     const workflow = workflowDisplay(line);
+                    const partsWorkflow = partsWorkflowLabel(line);
+                    const partsSummary = partsQuoteSummary(line);
                     const meta = quoteMetadata(line);
                     const photos = [...jsonStringArray(meta.photo_urls), ...jsonStringArray(meta.evidence_urls)];
                     const techNotes = jsonString(meta.technician_notes) || jsonString(meta.tech_notes) || safeTrim(line.ai_cause);
@@ -669,6 +710,7 @@ export default function QuoteReviewView(props: {
                               <div className="flex flex-wrap items-center gap-2">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Quote line {index + 1}</div>
                                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(workflow.tone)}`}>{workflow.label}</span>
+                                {partsWorkflow ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(partsWorkflow.tone)}`}>{partsWorkflow.label}</span> : null}
                                 {line._dirty ? <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100">Unsaved</span> : null}
                               </div>
                               <h3 className="mt-2 text-base font-semibold text-white">{safeTrim(line.description) || "Untitled quote line"}</h3>
@@ -690,6 +732,12 @@ export default function QuoteReviewView(props: {
                             <div>Labor hours: <span className="text-neutral-200">{laborHours}</span></div>
                             <div>Labor rate: <span className="text-neutral-200">{fmt(lineLaborRate)}/hr</span></div>
                           </div>
+
+                          {partsSummary ? (
+                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">
+                              Parts quote sync: <span className="text-neutral-200">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
+                            </div>
+                          ) : null}
 
                           {sources.length > 0 ? (
                             <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">

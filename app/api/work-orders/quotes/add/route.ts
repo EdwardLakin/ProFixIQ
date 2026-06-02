@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
 type DB = Database;
 type QuoteInsert = DB["public"]["Tables"]["work_order_quote_lines"]["Insert"];
@@ -461,6 +462,17 @@ export async function POST(req: Request) {
 
       if (itemError) {
         return NextResponse.json({ error: itemError.message }, { status: 500 });
+      }
+
+      const syncResult = await syncQuoteLinePartsStatus(supabase, {
+        shopId: wo.shop_id,
+        quoteLineId,
+      });
+      if (!syncResult.ok) {
+        return NextResponse.json(
+          { error: syncResult.error ?? "Failed to sync quote line parts status" },
+          { status: 500 },
+        );
       }
     }
 
