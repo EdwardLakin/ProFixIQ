@@ -6,12 +6,23 @@ import {
   relinkQuoteLinePartsToWorkOrderLine,
   type RelinkQuoteLinePartsResult,
 } from "@/features/parts/server/relinkQuoteLinePartsToWorkOrderLine";
+import {
+  upsertMenuRepairItemFromQuoteLine,
+  type UpsertMenuRepairItemFromQuoteLineResult,
+} from "@/features/menu-repair-items/server/upsertMenuRepairItemFromQuoteLine";
 
 type DB = Database;
 type Json = DB["public"]["Tables"]["work_order_quote_lines"]["Row"]["metadata"];
 type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 type WorkOrderUpdate = DB["public"]["Tables"]["work_orders"]["Update"];
+
+export type QuoteLineLearningResult = {
+  quoteLineId: string;
+  workOrderLineId: string;
+  result: UpsertMenuRepairItemFromQuoteLineResult | null;
+  error: string | null;
+};
 
 export type QuoteApprovalDecision = "approve" | "decline" | "defer";
 
@@ -367,6 +378,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   workOrderLineIds: string[];
   approvalState: string | null;
   partRelink: RelinkQuoteLinePartsResult;
+  menuRepairLearning: QuoteLineLearningResult[];
   error?: string;
 }> {
   const {
@@ -385,6 +397,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       workOrderLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
+      menuRepairLearning: [],
       error: "No quote line ids supplied",
     };
   }
@@ -402,6 +415,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       workOrderLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
+      menuRepairLearning: [],
       error: loadErr.message,
     };
   if ((rows?.length ?? 0) !== ids.length) {
@@ -410,6 +424,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       workOrderLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
+      menuRepairLearning: [],
       error: "One or more quote lines were not found for this work order",
     };
   }
@@ -417,6 +432,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   const now = new Date().toISOString();
   const workOrderLineIds: string[] = [];
   const partRelink = emptyPartRelinkResult();
+  const menuRepairLearning: QuoteLineLearningResult[] = [];
 
   for (const line of (rows ?? []) as QuoteLineRow[]) {
     const status = safeTrim(line.status).toLowerCase();
@@ -426,6 +442,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
         workOrderLineIds,
         approvalState: null,
         partRelink,
+        menuRepairLearning,
         error: `Quote line cannot be approved from status '${line.status}'`,
       };
     }
@@ -441,6 +458,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
         workOrderLineIds,
         approvalState: null,
         partRelink,
+        menuRepairLearning,
         error: "Quote line has not been sent to the customer",
       };
     }
@@ -459,6 +477,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
           workOrderLineIds,
           approvalState: null,
           partRelink,
+          menuRepairLearning,
           error: materialized.error.message,
         };
       materializedLineId = materialized.id;
@@ -487,6 +506,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
         workOrderLineIds,
         approvalState: null,
         partRelink,
+        menuRepairLearning,
         error: updateErr.message,
       };
 
@@ -505,6 +525,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
           workOrderLineIds,
           approvalState: null,
           partRelink,
+          menuRepairLearning,
           error: relink.error.message,
         };
       mergePartRelinkResult(partRelink, relink.result);
@@ -520,6 +541,38 @@ export async function applyWorkOrderQuoteLineDecision(params: {
             conflicts: relink.result.conflicts,
           },
         );
+      }
+
+      try {
+        const learningResult = await upsertMenuRepairItemFromQuoteLine({
+          supabase,
+          shopId,
+          workOrderId,
+          quoteLineId: line.id,
+          workOrderLineId: materializedLineId,
+          actorUserId,
+        });
+        menuRepairLearning.push({
+          quoteLineId: line.id,
+          workOrderLineId: materializedLineId,
+          result: learningResult,
+          error: null,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown menu repair learning error";
+        menuRepairLearning.push({
+          quoteLineId: line.id,
+          workOrderLineId: materializedLineId,
+          result: null,
+          error: message,
+        });
+        console.warn("[quote-line-approval] menu repair learning skipped after approved quote line", {
+          shopId,
+          workOrderId,
+          quoteLineId: line.id,
+          workOrderLineId: materializedLineId,
+          error: message,
+        });
       }
     }
   }
@@ -537,6 +590,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       workOrderLineIds,
       approvalState: null,
       partRelink,
+      menuRepairLearning,
       error: rollup.error.message,
     };
 
@@ -545,5 +599,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     workOrderLineIds,
     approvalState: rollup.state,
     partRelink,
+    menuRepairLearning,
   };
 }
