@@ -183,14 +183,14 @@ export default function SummaryPage() {
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to add jobs to work order.");
+      if (!response.ok) throw new Error("Failed to send findings to Quote Review.");
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-      toast.success("Jobs added to work order.");
+      toast.success("Imported findings to Quote Review.");
     } catch (e) {
       console.error(e);
       toast.error(
-        e instanceof Error ? e.message : "Failed to add jobs to work order.",
+        e instanceof Error ? e.message : "Failed to send findings to Quote Review.",
       );
     } finally {
       setIsAddingToWorkOrder(false);
@@ -535,8 +535,8 @@ export default function SummaryPage() {
               disabled={!hasFailedItems || isAddingToWorkOrder}
             >
               {isAddingToWorkOrder
-                ? "Adding to work order…"
-                : "Add failed items to work order"}
+                ? "Sending to Quote Review…"
+                : "Send to Quote Review"}
             </Button>
           )}
 
