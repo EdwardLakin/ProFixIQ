@@ -13,7 +13,6 @@ export const DASHBOARD_VIEW_WIDGETS: Record<DashboardView, DashboardWidgetId[]> 
   operations: [
     "daily_summary",
     "shop_pulse",
-    "suggested_actions",
     "work_order_board",
     "advisor_queue",
     "tech_load",
@@ -29,7 +28,6 @@ export const DASHBOARD_VIEW_WIDGETS: Record<DashboardView, DashboardWidgetId[]> 
     "tech_performance",
     "stats_overview",
     "bookings",
-    "optimization_opportunities",
     "comeback_risk",
   ],
 };

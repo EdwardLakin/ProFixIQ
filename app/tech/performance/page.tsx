@@ -14,7 +14,6 @@ import {
 } from "@shared/lib/stats/getTechLeaderboard";
 import { formatCurrency } from "@shared/lib/formatters";
 import { Button } from "@shared/components/ui/Button";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type Range = TimeRange;
@@ -391,17 +390,6 @@ export default function TechPerformancePage() {
           <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-6 text-sm text-neutral-400">
             No technician data found for this range.
           </div>
-        )}
-
-        {!loading && !error && (
-          <SuggestedActionsPanel
-            context={{
-              pageType: "tech_performance",
-              pageTitle: "My Performance",
-            }}
-            title="Suggested Actions for Performance"
-            description="Get coaching ideas, spot efficiency issues, and turn performance trends into concrete next steps"
-           compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         )}
 
         {/* My stats */}

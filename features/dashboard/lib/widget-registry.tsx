@@ -2,7 +2,6 @@
 
 import {
   advisorQueueWidgetModule,
-  optimizationOpportunitiesWidgetModule,
   approvalRiskWidgetModule,
   bookingsWidgetModule,
   comebackRiskWidgetModule,
@@ -12,7 +11,6 @@ import {
   revenueWatchWidgetModule,
   shopPulseWidgetModule,
   statsOverviewWidgetModule,
-  suggestedActionsWidgetModule,
   techLoadWidgetModule,
   technicianPerformanceWidgetModule,
   waitingPartsWidgetModule,
@@ -28,7 +26,6 @@ export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   liveShopLoadWidgetModule,
   dailySummaryWidgetModule,
   workOrderBoardWidgetModule,
-  suggestedActionsWidgetModule,
   advisorQueueWidgetModule,
   bookingsWidgetModule,
   shopPulseWidgetModule,
@@ -41,7 +38,6 @@ export const DASHBOARD_WIDGET_REGISTRY: DashboardWidgetModule[] = [
   revenueWatchWidgetModule,
   comebackRiskWidgetModule,
   reportsPerformanceWidgetModule,
-  optimizationOpportunitiesWidgetModule,
 ];
 
 export function getDashboardWidgetRegistry(role: string | null): DashboardWidgetModule[] {

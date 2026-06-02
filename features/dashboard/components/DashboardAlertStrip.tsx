@@ -160,13 +160,6 @@ export default function DashboardAlertStrip() {
             </span>
           </div>
         </div>
-
-        <Link
-          href="/agent/planner"
-          className="shrink-0 self-start rounded-full border border-white/15 bg-black/35 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-black/50"
-        >
-          Open full AI planner
-        </Link>
       </div>
 
       <div className="mt-3 grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert } from "lucide-react";
 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
-import { ActionRow, CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
+import { CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
 import ShopBoostActivationPanel from "@/features/dashboard/components/ShopBoostActivationPanel";
 
@@ -349,12 +349,6 @@ export default async function OperationsDashboardView() {
                   })()
                 ))}
               </div>
-            </DashboardPanel>
-
-            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-
-            <DashboardPanel title="Suggested Actions" className="border-white/10 bg-[linear-gradient(150deg,rgba(2,6,23,0.7),rgba(7,10,18,0.6))]">
-              <ActionRow actions={payload.suggestedActions} emphasis="subtle" />
             </DashboardPanel>
           </aside>
         ) : null}

@@ -33,6 +33,8 @@ type UndoAction = {
 
 const ACTIONS_SESSION_CACHE_KEY = "optimization-actions-cache-v1";
 const OPPORTUNITIES_SESSION_CACHE_KEY = "optimization-opportunities-cache-v1";
+const OPTIMIZATION_WIDGETS_ENABLED =
+  (process.env.NEXT_PUBLIC_AI_EXPERIMENTS_ENABLED ?? "").trim().toLowerCase() === "true";
 
 function badgeTone(type: OptimizationOpportunity["type"]): string {
   if (type === "pricing_normalization") return "text-[color:var(--brand-primary)]";
@@ -238,13 +240,23 @@ function getApplyPayload(opportunity: OptimizationOpportunity): OptimizationAppl
   };
 }
 
-export default function OptimizationOpportunitiesWidget({
-  shopId,
-  compact = false,
-}: {
+type OptimizationOpportunitiesWidgetProps = {
   shopId: string | null;
   compact?: boolean;
-}) {
+};
+
+export default function OptimizationOpportunitiesWidget(props: OptimizationOpportunitiesWidgetProps) {
+  if (!OPTIMIZATION_WIDGETS_ENABLED) {
+    return null;
+  }
+
+  return <OptimizationOpportunitiesWidgetInner {...props} />;
+}
+
+function OptimizationOpportunitiesWidgetInner({
+  shopId,
+  compact = false,
+}: OptimizationOpportunitiesWidgetProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -761,13 +761,6 @@ export default function WorkOrdersView(): JSX.Element {
             </Link>
 
             <Link
-              href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
-            >
-              Open Planner
-            </Link>
-
-            <Link
               href="/work-orders/create"
               className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3.5 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
             >
