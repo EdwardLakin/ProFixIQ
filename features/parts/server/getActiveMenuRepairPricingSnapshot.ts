@@ -47,26 +47,38 @@ function computePricingStatus(validUntil: string | null): "fresh" | "stale" | "e
 export async function getActiveMenuRepairPricingSnapshot(args: {
   supabase: SupabaseClient<DB>;
   menuRepairItemId: string;
+  shopId?: string | null;
 }): Promise<ActiveMenuRepairPricingSnapshot> {
-  const { supabase, menuRepairItemId } = args;
+  const { supabase, menuRepairItemId, shopId } = args;
 
-  const { data: repairItem, error: repairErr } = await supabase
+  let repairItemQuery = supabase
     .from("menu_repair_items")
     .select("id, active_pricing_snapshot_id")
-    .eq("id", menuRepairItemId)
-    .maybeSingle();
+    .eq("id", menuRepairItemId);
+
+  if (shopId) {
+    repairItemQuery = repairItemQuery.eq("shop_id", shopId);
+  }
+
+  const { data: repairItem, error: repairErr } = await repairItemQuery.maybeSingle();
 
   if (repairErr || !repairItem?.active_pricing_snapshot_id) {
     return null;
   }
 
-  const { data: snapshot, error: snapshotErr } = await supabase
+  let snapshotQuery = supabase
     .from("menu_repair_item_pricing_snapshots")
     .select(
       "id, pricing_valid_days, quoted_at, valid_until, total_cost, total_sell, supplier_id, supplier_name, currency",
     )
     .eq("id", repairItem.active_pricing_snapshot_id)
-    .maybeSingle();
+    .eq("menu_repair_item_id", menuRepairItemId);
+
+  if (shopId) {
+    snapshotQuery = snapshotQuery.eq("shop_id", shopId);
+  }
+
+  const { data: snapshot, error: snapshotErr } = await snapshotQuery.maybeSingle();
 
   if (snapshotErr || !snapshot?.id) {
     return null;

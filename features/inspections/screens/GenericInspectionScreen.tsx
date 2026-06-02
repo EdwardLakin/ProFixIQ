@@ -1073,15 +1073,11 @@ type SmartMatchRow = {
 
     if (!match || !workOrderId || !item) return;
 
-    if (match.pricingStatus === "expired") {
-      toast.error(
-        "Pricing is expired. Review or refresh pricing before adding this repair.",
-      );
-      return;
-    }
-
-    if (item.estimateSubmitted && item.estimateWorkOrderLineId) {
-      toast.message("Repair already added for this inspection item.");
+    if (
+      item.estimateSubmitted &&
+      (item.estimateWorkOrderLineId || item.estimateQuoteLineId)
+    ) {
+      toast.message("Repair already added to Quote Review for this inspection item.");
       dismissSmartMatch(sectionIndex, itemIndex);
       return;
     }
@@ -1094,9 +1090,10 @@ type SmartMatchRow = {
 
     try {
       let createdWorkOrderLineId: string | null = null;
+      let createdQuoteLineId: string | null = null;
 
       if (match.menuRepairItemId) {
-        const res = await fetch("/api/work-orders/lines/add-from-menu-repair", {
+        const res = await fetch("/api/work-orders/quotes/add-from-menu-repair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1109,17 +1106,19 @@ type SmartMatchRow = {
         });
 
         const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; error?: string; workOrderLineId?: string | null }
+          | { ok?: boolean; error?: string; workOrderQuoteLineId?: string | null; quoteLineId?: string | null }
           | null;
 
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || "Failed to add matched repair");
         }
 
-        createdWorkOrderLineId =
-          typeof json?.workOrderLineId === "string" && json.workOrderLineId
-            ? json.workOrderLineId
-            : null;
+        createdQuoteLineId =
+          typeof json?.workOrderQuoteLineId === "string" && json.workOrderQuoteLineId
+            ? json.workOrderQuoteLineId
+            : typeof json?.quoteLineId === "string" && json.quoteLineId
+              ? json.quoteLineId
+              : null;
       } else {
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
@@ -1170,6 +1169,7 @@ type SmartMatchRow = {
             : nowIso,
         estimateLastUpdatedAt: nowIso,
         estimateWorkOrderLineId: createdWorkOrderLineId,
+        estimateQuoteLineId: createdQuoteLineId,
       } as ItemPatch);
 
       updateInspection({
@@ -1195,17 +1195,6 @@ type SmartMatchRow = {
       });
 
 
-      if (createdWorkOrderLineId) {
-        await fetch("/api/menu-repair-items/upsert-from-line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderLineId: createdWorkOrderLineId,
-          }),
-        });
-      }
-
-
       await fetch("/api/inspections/smart-match/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1229,8 +1218,8 @@ type SmartMatchRow = {
 
       toast.success(
         autoAcceptReady
-          ? "High-confidence matched repair added to work order."
-          : "Matched repair added to work order.",
+          ? "High-confidence matched repair added to Quote Review."
+          : "Matched repair added to Quote Review.",
       );
       dismissSmartMatch(sectionIndex, itemIndex);
     } catch (error) {
