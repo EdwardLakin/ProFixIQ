@@ -670,7 +670,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     if (!target) return;
 
     const resolvedLineId = getEffectiveWorkOrderLineId(target.req, target.items);
-    if (!resolvedLineId || !isUuid(resolvedLineId)) {
+    const quoteLineId = target.req.quote_line_id ?? null;
+    if ((!resolvedLineId || !isUuid(resolvedLineId)) && !quoteLineId) {
       toast.error("This parts request is not attached to a valid work order line yet.");
       return;
     }
@@ -685,6 +686,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
         {
           request_id: target.req.id,
+          shop_id: target.req.shop_id ?? undefined,
+          work_order_id: target.req.work_order_id ?? undefined,
+          quote_line_id: target.req.quote_line_id ?? undefined,
           work_order_line_id: safeLineId,
           description: lineText ? `(${lineText})` : "",
           qty: 1,
@@ -1049,6 +1053,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
 
     let lineId = getEffectiveWorkOrderLineId(target.req, target.items);
+    const durableLineId = resolveWorkOrderLineId(target.req, target.items);
+    const isPreApprovalQuoteItem = !!it.quote_line_id && !durableLineId;
+    if (isPreApprovalQuoteItem) {
+      toast.error("Quote-originated parts can be priced or assigned to POs before approval, but stock allocation waits for approval.");
+      return;
+    }
 
 // 🔥 Fallback: auto-pick first available line
 if ((!lineId || !isUuid(lineId)) && lineById.size > 0) {
@@ -1318,8 +1328,11 @@ if (!lineId || !isUuid(lineId)) {
                 });
 
                 const linkedLineId = resolveWorkOrderLineId(r.req, r.items);
+                const quoteLineId = r.req.quote_line_id ?? null;
+                const hasQuoteLineOrigin = !!quoteLineId;
                 const lineId = getEffectiveWorkOrderLineId(r.req, r.items);
                 const hasValidLineId = !!lineId && isUuid(lineId);
+                const canMaterializeToLine = hasValidLineId && (!hasQuoteLineOrigin || !!linkedLineId);
                 const isFallbackLinked =
                   !linkedLineId && !!lineId && isUuid(lineId);
                 const jobText =
@@ -1346,6 +1359,12 @@ if (!lineId || !isUuid(lineId)) {
                               : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
                             Line: {hasValidLineId ? lineId.slice(0, 8) : "Not linked"}
+                            {hasQuoteLineOrigin ? (
+                              <>
+                                <span className="mx-2 text-neutral-600">·</span>
+                                Quote line: {quoteLineId.slice(0, 8)}
+                              </>
+                            ) : null}
                           </div>
 
                           {jobText ? (
@@ -1360,7 +1379,9 @@ if (!lineId || !isUuid(lineId)) {
                             </div>
                           ) : !hasValidLineId ? (
                             <div className="mt-1 text-xs text-[rgba(242,210,187,0.94)]">
-                              This request is not linked to a valid work order line yet.
+                              {hasQuoteLineOrigin
+                                ? "Quote-originated request: work order line linkage is deferred until approval."
+                                : "This request is not linked to a valid work order line yet."}
                             </div>
                           ) : null}
                         </div>
@@ -1384,7 +1405,7 @@ if (!lineId || !isUuid(lineId)) {
                             className={btnGhost}
                             onClick={() => void addRow(r.req.id)}
                             disabled={busy}
-                            title={!hasValidLineId ? "Missing work order line link" : undefined}
+                            title={!hasValidLineId && !hasQuoteLineOrigin ? "Missing work order line link" : undefined}
                             type="button"
                           >
                             {busy ? "Working…" : "＋ Add part row"}
@@ -1858,8 +1879,14 @@ if (!lineId || !isUuid(lineId)) {
                                           onClick={() =>
                                             void addAndAttach(r.req.id, String(it.id))
                                           }
-                                          disabled={rowBusy || !it.ui_part_id}
-                                          title={!hasValidLineId ? "Missing work order line link" : undefined}
+                                          disabled={rowBusy || !it.ui_part_id || !canMaterializeToLine}
+                                          title={
+                                            !canMaterializeToLine
+                                              ? hasQuoteLineOrigin
+                                                ? "Quote-originated parts are not allocated until approval creates a work order line link"
+                                                : "Missing work order line link"
+                                              : undefined
+                                          }
                                           type="button"
                                         >
                                           {rowBusy ? "Saving…" : "Add"}

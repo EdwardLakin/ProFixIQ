@@ -22,6 +22,7 @@ type WoBucket = {
   status: BucketStatus;
   requests: PartRequest[];
   itemsCount: number;
+  quoteOriginCount: number;
   completeCount: number;
   completionPct: number;
   latestAt: string | null;
@@ -278,6 +279,7 @@ export default function PartsRequestsPage(): JSX.Element {
           status: "pending",
           requests: [],
           itemsCount: 0,
+          quoteOriginCount: 0,
           completeCount: 0,
           completionPct: 0,
           latestAt: null,
@@ -286,6 +288,7 @@ export default function PartsRequestsPage(): JSX.Element {
       }
 
       byWo[workOrderId].requests.push(r);
+      if (r.quote_line_id) byWo[workOrderId].quoteOriginCount += 1;
 
       const itemsCount = itemsCountByRequest[r.id] ?? 0;
       const completeCount = completeCountByRequest[r.id] ?? 0;
@@ -549,6 +552,12 @@ export default function PartsRequestsPage(): JSX.Element {
                       {b.requests.length} request
                       {b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item
                       {b.itemsCount === 1 ? "" : "s"}
+                      {b.quoteOriginCount > 0 ? (
+                        <>
+                          <span className="mx-2 text-neutral-600">·</span>
+                          {b.quoteOriginCount} quote-originated
+                        </>
+                      ) : null}
                       {b.itemsCount > 0 ? (
                         <>
                           <span className="mx-2 text-neutral-600">·</span>
