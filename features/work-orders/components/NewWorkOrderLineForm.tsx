@@ -296,7 +296,7 @@ export function NewWorkOrderLineForm(props: {
     try {
       // Prefer exact vehicle-specific repair if available (job lines only)
       if (lineType === "job" && smartMatch?.menuRepairItemId) {
-        const repairRes = await fetch("/api/work-orders/lines/add-from-menu-repair", {
+        const repairRes = await fetch("/api/work-orders/quotes/add-from-menu-repair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -312,7 +312,7 @@ export function NewWorkOrderLineForm(props: {
           | null;
 
         if (!repairRes.ok || !repairJson?.ok) {
-          setErr(repairJson?.error || "Failed to add matched repair line.");
+          setErr(repairJson?.error || "Failed to add matched repair to Quote Review.");
           return;
         }
 
@@ -325,7 +325,7 @@ export function NewWorkOrderLineForm(props: {
         setSmartMatch(null);
 
         onCreated?.();
-        window.dispatchEvent(new CustomEvent("wo:line-added"));
+        window.dispatchEvent(new CustomEvent("wo:quote-line-added"));
         return;
       }
 
