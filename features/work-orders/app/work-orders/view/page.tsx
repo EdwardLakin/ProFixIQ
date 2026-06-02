@@ -35,11 +35,16 @@ type ReviewIssue = { kind: string; lineId?: string; message: string };
 type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
 
 type StatusKey =
-  | "awaiting_approval"
+  | "new"
   | "awaiting"
-  | "queued"
+  | "awaiting_inspection"
+  | "recommended"
+  | "awaiting_approval"
+  | "waiting_parts"
+  | "approved"
   | "in_progress"
   | "on_hold"
+  | "queued"
   | "planned"
   | "completed"
   | "ready_to_invoice"
@@ -47,15 +52,29 @@ type StatusKey =
 
 type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
-const ACTIVE_FLOW_STATUSES: StatusKey[] = [
-  "awaiting_approval",
+const ACTIVE_FLOW_STATUSES = [
+  "new",
   "awaiting",
-  "queued",
+  "awaiting_inspection",
+  "recommended",
+  "awaiting_approval",
+  "waiting_parts",
+  "approved",
   "in_progress",
   "on_hold",
-  "planned",
-];
-const SEEDED_DEFAULT_STATUSES: StatusKey[] = [...ACTIVE_FLOW_STATUSES, "completed"];
+  "ready_to_invoice",
+] as const satisfies readonly StatusKey[];
+
+const LEGACY_ACTIVE_FLOW_STATUSES = ["queued", "planned"] as const satisfies readonly StatusKey[];
+
+const ACTIVE_STATUS_FILTER = [
+  ...ACTIVE_FLOW_STATUSES,
+  ...LEGACY_ACTIVE_FLOW_STATUSES,
+] as const satisfies readonly StatusKey[];
+
+const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUS_FILTER);
+
+const SEEDED_DEFAULT_STATUSES = [...ACTIVE_STATUS_FILTER, "completed"] as const satisfies readonly StatusKey[];
 const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
 
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
@@ -68,6 +87,35 @@ const SELECT_DARK =
   "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 function isStatusKey(x: string): x is StatusKey {
+  return (
+    x === "new" ||
+    x === "awaiting" ||
+    x === "awaiting_inspection" ||
+    x === "recommended" ||
+    x === "awaiting_approval" ||
+    x === "waiting_parts" ||
+    x === "approved" ||
+    x === "in_progress" ||
+    x === "on_hold" ||
+    x === "queued" ||
+    x === "planned" ||
+    x === "completed" ||
+    x === "ready_to_invoice" ||
+    x === "invoiced"
+  );
+}
+
+function normalizeStatusKey(value: unknown): string {
+  const key = String(value ?? "new").trim().toLowerCase().replaceAll(" ", "_");
+  return isStatusKey(key) ? key : normalizeWorkOrderStatus(key);
+}
+
+function workOrderDisplayId(workOrder: Pick<WorkOrder, "id" | "custom_id">): string {
+  const customId = String(workOrder.custom_id ?? "").trim();
+  return customId || `#${workOrder.id.slice(0, 8)}`;
+}
+
+function isStatusPickerStatus(x: string): x is WorkOrderStatus {
   return (
     x === "awaiting_approval" ||
     x === "awaiting" ||
@@ -113,6 +161,14 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
+  if (key === "new" || key === "awaiting" || key === "awaiting_inspection" || key === "recommended") {
+    return {
+      badge: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+      border: "border-sky-500/25",
+      progress: "bg-sky-400",
+    };
+  }
+
   if (key === "awaiting_approval") {
     return {
       badge: "border-blue-400/60 bg-blue-500/10 text-blue-100",
@@ -129,7 +185,15 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "on_hold") {
+  if (key === "approved") {
+    return {
+      badge: "border-emerald-400/60 bg-emerald-500/10 text-emerald-100",
+      border: "border-emerald-500/25",
+      progress: "bg-emerald-400",
+    };
+  }
+
+  if (key === "on_hold" || key === "waiting_parts") {
     return {
       badge: "border-sky-400/45 bg-sky-500/10 text-sky-100",
       border: "border-sky-500/25",
@@ -248,7 +312,7 @@ export default function WorkOrdersView(): JSX.Element {
       .toLowerCase()
       .replaceAll(" ", "_");
 
-    const current = (isStatusKey(raw) ? raw : "awaiting") as WorkOrderStatus;
+    const current = isStatusPickerStatus(raw) ? raw : "awaiting";
 
     setStatusPickerWoId(wo.id);
     setStatusPickerCurrent(current);
@@ -287,8 +351,8 @@ export default function WorkOrdersView(): JSX.Element {
       .limit(100);
 
     if (status === "") {
-      const defaultStatuses = isSeededShop ? SEEDED_DEFAULT_STATUSES : ACTIVE_FLOW_STATUSES;
-      query = query.in("status", defaultStatuses as unknown as string[]);
+      const defaultStatuses = isSeededShop ? SEEDED_DEFAULT_STATUSES : ACTIVE_STATUS_FILTER;
+      query = query.in("status", [...defaultStatuses]);
     } else {
       query = query.eq("status", status);
     }
@@ -682,11 +746,7 @@ export default function WorkOrdersView(): JSX.Element {
   const activeCount = useMemo(
     () =>
       rows.filter((r) =>
-        ACTIVE_FLOW_STATUSES.includes(
-          String(r.status ?? "awaiting")
-            .toLowerCase()
-            .replaceAll(" ", "_") as StatusKey,
-        ),
+        ACTIVE_STATUS_SET.has(normalizeStatusKey(r.status)),
       ).length,
     [rows],
   );
@@ -797,12 +857,17 @@ export default function WorkOrdersView(): JSX.Element {
             aria-label="Filter by status"
           >
             <option value="">Active</option>
-            <option value="awaiting_approval">Awaiting approval</option>
+            <option value="new">New</option>
             <option value="awaiting">Awaiting</option>
-            <option value="queued">Queued</option>
+            <option value="awaiting_inspection">Awaiting inspection</option>
+            <option value="recommended">Recommended</option>
+            <option value="awaiting_approval">Awaiting approval</option>
+            <option value="waiting_parts">Waiting parts</option>
+            <option value="approved">Approved</option>
+            <option value="queued">Queued (legacy)</option>
             <option value="in_progress">In progress</option>
             <option value="on_hold">On hold</option>
-            <option value="planned">Planned</option>
+            <option value="planned">Planned (legacy)</option>
             <option value="completed">Completed (review)</option>
             <option value="ready_to_invoice">Ready to invoice</option>
             <option value="invoiced">Invoiced</option>
@@ -842,6 +907,7 @@ export default function WorkOrdersView(): JSX.Element {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((r) => {
+            const displayId = workOrderDisplayId(r);
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
             const isAssigning = assigningFor === r.id;
 
@@ -908,7 +974,7 @@ export default function WorkOrdersView(): JSX.Element {
                         href={href}
                         className="text-sm font-extrabold text-white hover:text-[rgba(242,210,187,0.94)]"
                       >
-                        {r.custom_id ?? `#${r.id.slice(0, 8)}`}
+                        {displayId}
                       </Link>
 
                       <span
