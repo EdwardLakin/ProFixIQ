@@ -96,6 +96,19 @@ type CreateWoRpcRow = Pick<
   is_waiter?: boolean | null;
 };
 
+type BookingConversionRow = Pick<
+  DB["public"]["Tables"]["bookings"]["Row"],
+  | "id"
+  | "shop_id"
+  | "customer_id"
+  | "vehicle_id"
+  | "work_order_id"
+  | "status"
+  | "notes"
+  | "starts_at"
+  | "ends_at"
+>;
+
 // Type the draft hooks once so we don't need `any` where the hook typing is loose
 type CustomerVehicleDraftHook = {
   customer?: Partial<CustomerWithBusiness>;
@@ -242,6 +255,21 @@ function fromDatetimeLocalInput(value: string): string | null {
   return d.toISOString();
 }
 
+function formatBookingWindow(startIso: string, endIso: string): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  return `${start.toLocaleString()} – ${end.toLocaleTimeString()}`;
+}
+
+function buildBookingNotesBlock(booking: BookingConversionRow): string {
+  const lines = ["APPOINTMENT HANDOFF"];
+  const windowLabel = formatBookingWindow(booking.starts_at, booking.ends_at);
+  if (windowLabel) lines.push(`Scheduled: ${windowLabel}`);
+  if (booking.notes?.trim()) lines.push(`Appointment notes: ${booking.notes.trim()}`);
+  return lines.join("\n");
+}
+
 /** Normalize “where is the inspection template id stored for this line?” */
 function extractInspectionTemplateId(
   ln: WorkOrderLineWithInspectionMeta,
@@ -262,6 +290,8 @@ export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const bookingId = searchParams.get("bookingId")?.trim() || null;
+  const returnTo = searchParams.get("returnTo")?.trim() || null;
 
   useEffect(() => {
     (window as unknown as Record<string, unknown>)._sb = supabase;
@@ -492,6 +522,7 @@ export default function CreateWorkOrderPage() {
   const [error, setError] = useTabState("error", "");
   const [inviteNotice, setInviteNotice] =
     useTabState<string>("inviteNotice", "");
+  const [bookingPrefill, setBookingPrefill] = useState<BookingConversionRow | null>(null);
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
   const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<string[]>([]);
 
@@ -635,7 +666,7 @@ useEffect(() => {
     })();
   }, [supabase, getCurrentProfileId]);
 
-  async function getOrLinkShopId(userId: string): Promise<string | null> {
+  const getOrLinkShopId = useCallback(async (userId: string): Promise<string | null> => {
     const byUserId = await supabase
       .from("profiles")
       .select("shop_id")
@@ -678,7 +709,7 @@ useEffect(() => {
     }
 
     return ownedShop.data.id;
-  }
+  }, [supabase]);
 
   // ✅ advisor ownership helper
 
@@ -789,8 +820,10 @@ useEffect(() => {
     [],
   );
 
-  // Read query params (prefill)
+  // Read query params (prefill). bookingId handoffs load customer/vehicle only from the scoped booking row.
   useEffect(() => {
+    if (bookingId) return;
+
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
     if (v) {
@@ -801,7 +834,91 @@ useEffect(() => {
       setPrefillCustomerId(c);
       setSourceFlags((s) => ({ ...s, queryCustomer: true }));
     }
-  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
+  }, [bookingId, searchParams, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
+
+  // Load appointment handoff context from bookingId and scope it to the user's shop.
+  useEffect(() => {
+    if (!bookingId) {
+      setBookingPrefill(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setError("");
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user?.id) throw new Error("Not signed in.");
+
+        const shopId = await getOrLinkShopId(user.id);
+        if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+
+        const { data: booking, error: bookingErr } = await supabase
+          .from("bookings")
+          .select(
+            "id, shop_id, customer_id, vehicle_id, work_order_id, status, notes, starts_at, ends_at",
+          )
+          .eq("id", bookingId)
+          .maybeSingle<BookingConversionRow>();
+
+        if (bookingErr) throw bookingErr;
+        if (!booking) throw new Error("Appointment not found.");
+        if (booking.shop_id !== shopId) {
+          throw new Error("This appointment belongs to a different shop.");
+        }
+        if ((booking.status ?? "").toLowerCase() === "cancelled") {
+          throw new Error("Cancelled appointments cannot be converted to work orders.");
+        }
+
+        if (cancelled) return;
+        setBookingPrefill(booking);
+
+        if (booking.customer_id) {
+          setPrefillCustomerId(booking.customer_id);
+          setSourceFlags((flags) => ({ ...flags, queryCustomer: true }));
+        }
+        if (booking.vehicle_id) {
+          setPrefillVehicleId(booking.vehicle_id);
+          setSourceFlags((flags) => ({ ...flags, queryVehicle: true }));
+        }
+
+        if (booking.work_order_id) {
+          setInviteNotice("This appointment is already linked to a work order.");
+          return;
+        }
+
+        setNotes((existing) => {
+          if (existing?.includes("APPOINTMENT HANDOFF")) return existing;
+          const block = buildBookingNotesBlock(booking);
+          return existing?.trim() ? `${existing.trim()}\n\n${block}` : block;
+        });
+        setInviteNotice("Appointment loaded. Review the customer and vehicle, then create the work order.");
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Failed to load appointment.";
+        setBookingPrefill(null);
+        setError(message);
+        toast.error(message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bookingId,
+    supabase,
+    setError,
+    setInviteNotice,
+    setNotes,
+    setPrefillCustomerId,
+    setPrefillVehicleId,
+    setSourceFlags,
+    getOrLinkShopId,
+  ]);
 
   // Prefill from DB → session shapes
   useEffect(() => {
@@ -1556,6 +1673,35 @@ useEffect(() => {
     [wo?.id],
   );
 
+  async function linkBookingToWorkOrder(bookingIdToLink: string, workOrder: Pick<WorkOrderRow, "id" | "shop_id">) {
+    const { data: booking, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("id, shop_id, work_order_id, status")
+      .eq("id", bookingIdToLink)
+      .maybeSingle<Pick<BookingConversionRow, "id" | "shop_id" | "work_order_id" | "status">>();
+
+    if (bookingErr) throw bookingErr;
+    if (!booking) throw new Error("Appointment not found for work order link.");
+    if (booking.shop_id !== workOrder.shop_id) {
+      throw new Error("Cannot link a work order to an appointment from another shop.");
+    }
+    if ((booking.status ?? "").toLowerCase() === "cancelled") {
+      throw new Error("Cancelled appointments cannot be linked to work orders.");
+    }
+    if (booking.work_order_id && booking.work_order_id !== workOrder.id) {
+      throw new Error("This appointment is already linked to another work order.");
+    }
+    if (booking.work_order_id === workOrder.id) return;
+
+    const { error: updateErr } = await supabase
+      .from("bookings")
+      .update({ work_order_id: workOrder.id })
+      .eq("id", booking.id)
+      .eq("shop_id", workOrder.shop_id);
+
+    if (updateErr) throw updateErr;
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
@@ -1577,6 +1723,10 @@ useEffect(() => {
       if (latestErr) throw latestErr;
       if (!latest?.customer_id || !latest?.vehicle_id) {
         throw new Error("Please link a customer and vehicle first.");
+      }
+
+      if (bookingId) {
+        await linkBookingToWorkOrder(bookingId, latest);
       }
 
       if (selectedMaintenanceCodes.length > 0) {
@@ -1742,10 +1892,16 @@ useEffect(() => {
 
             <button
               type="button"
-              onClick={() => router.back()}
+              onClick={() => {
+                if (returnTo?.startsWith("/")) {
+                  router.push(returnTo);
+                } else {
+                  router.back();
+                }
+              }}
               className={cx("shrink-0 px-4 py-2 text-sm font-semibold", softButton)}
             >
-              Back to list
+              {returnTo ? "Back to appointments" : "Back to list"}
             </button>
           </div>
         </div>
@@ -1767,7 +1923,13 @@ useEffect(() => {
 
           {inviteNotice && (
             <div className={cx("mb-4 px-4 py-3 text-sm text-neutral-200", subtlePanel)}>
-              {inviteNotice}
+              <div>{inviteNotice}</div>
+              {bookingPrefill ? (
+                <div className="mt-1 text-xs text-neutral-400">
+                  Appointment: {formatBookingWindow(bookingPrefill.starts_at, bookingPrefill.ends_at)}
+                  {bookingPrefill.vehicle_id ? " · vehicle preselected" : " · vehicle can be selected or created below"}
+                </div>
+              ) : null}
             </div>
           )}
 

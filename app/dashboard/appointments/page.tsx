@@ -51,6 +51,8 @@ export type Booking = {
   customer_phone?: string | null;
   notes?: string | null;
   status?: string | null; // pending, confirmed, cancelled...
+  vehicle_id?: string | null;
+  work_order_id?: string | null;
 };
 
 /* ----------------------------- date helpers ----------------------------- */
@@ -173,6 +175,17 @@ function statusOf(b: Booking): "pending" | "confirmed" | "cancelled" | "other" {
   if (s === "confirmed") return "confirmed";
   if (s === "cancelled") return "cancelled";
   return "other";
+}
+
+function canCreateWorkOrderFromBooking(b: Booking): boolean {
+  if (statusOf(b) === "cancelled") return false;
+  if (b.work_order_id) return false;
+  return Boolean(
+    b.customer_id ||
+      b.customer_name?.trim() ||
+      b.customer_email?.trim() ||
+      b.customer_phone?.trim(),
+  );
 }
 
 /* ----------------------------- page ----------------------------- */
@@ -483,6 +496,27 @@ export default function PortalAppointmentsPage(): JSX.Element {
     await handleUpdate(b.id, { status: "cancelled" });
   }
 
+  function buildWorkOrderCreateHref(b: Booking): string {
+    const params = new URLSearchParams({
+      bookingId: b.id,
+      returnTo: b.shop_slug
+        ? `/dashboard/appointments?shop=${encodeURIComponent(b.shop_slug)}`
+        : "/dashboard/appointments",
+    });
+    if (b.customer_id) params.set("customerId", b.customer_id);
+    if (b.vehicle_id) params.set("vehicleId", b.vehicle_id);
+    return `/work-orders/create?${params.toString()}`;
+  }
+
+  function openWorkOrderCreate(b: Booking) {
+    router.push(buildWorkOrderCreateHref(b));
+  }
+
+  function openLinkedWorkOrder(b: Booking) {
+    if (!b.work_order_id) return;
+    router.push(`/work-orders/${b.work_order_id}`);
+  }
+
   const weekLabel = useMemo(() => {
     const s = new Date(weekStart);
     const e = new Date(weekEnd);
@@ -733,6 +767,26 @@ export default function PortalAppointmentsPage(): JSX.Element {
                             Decline
                           </Button>
 
+                          {b.work_order_id ? (
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              onClick={() => openLinkedWorkOrder(b)}
+                            >
+                              Open Work Order
+                            </Button>
+                          ) : canCreateWorkOrderFromBooking(b) ? (
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              onClick={() => openWorkOrderCreate(b)}
+                            >
+                              Create Work Order
+                            </Button>
+                          ) : null}
+
                           {/* "..." menu */}
                           <div className="relative" ref={menuOpenFor === b.id ? menuRef : undefined}>
                             <button
@@ -891,6 +945,26 @@ export default function PortalAppointmentsPage(): JSX.Element {
                         Decline
                       </Button>
                     </>
+                  ) : null}
+
+                  {b.work_order_id ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => openLinkedWorkOrder(b)}
+                    >
+                      Open Work Order
+                    </Button>
+                  ) : canCreateWorkOrderFromBooking(b) ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => openWorkOrderCreate(b)}
+                    >
+                      Create Work Order
+                    </Button>
                   ) : null}
 
                   <Button type="button" size="xs" variant="outline" onClick={() => openEdit(b)}>
