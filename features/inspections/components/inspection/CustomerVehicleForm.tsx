@@ -58,6 +58,10 @@ interface Props {
   /** 🔒 REQUIRED: scope search to this shop only */
   shopId: string | null;
 
+  /** Existing rows selected by a handoff or picker; prevents duplicate creates. */
+  selectedCustomerId?: string | null;
+  selectedVehicleId?: string | null;
+
   /** One object for callbacks; typed as unknown to keep props serializable */
   handlers?: unknown;
 }
@@ -83,7 +87,43 @@ function splitNamefallback(
   if (!s) return { first: null, last: null };
   const parts = s.split(/\s+/);
   if (parts.length === 1) return { first: parts[0], last: null };
-  return { first: parts[0], last: parts.slice(1).join(" ") || null };
+  return { first: parts.slice(0, -1).join(" "), last: parts.at(-1) ?? null };
+}
+
+function hydrateCustomerFields(c: CustomerRow): CustomerInfo {
+  const hasBusiness = Boolean(c.business_name?.trim());
+  const fallback = hasBusiness ? { first: null, last: null } : splitNamefallback(c.name);
+
+  return {
+    business_name: c.business_name ?? null,
+    name: c.name ?? null,
+    first_name: c.first_name ?? fallback.first,
+    last_name: c.last_name ?? fallback.last,
+    phone: c.phone ?? c.phone_number ?? null,
+    email: c.email ?? null,
+    address: c.address ?? null,
+    city: c.city ?? null,
+    province: c.province ?? null,
+    postal_code: c.postal_code ?? null,
+  };
+}
+
+function hydrateVehicleFields(v: VehicleRow): VehicleInfo {
+  return {
+    vin: v.vin ?? null,
+    year: v.year != null ? String(v.year) : null,
+    make: v.make ?? null,
+    model: v.model ?? null,
+    license_plate: v.license_plate ?? null,
+    mileage: v.mileage ?? null,
+    unit_number: v.unit_number ?? null,
+    color: v.color ?? null,
+    engine_hours: v.engine_hours != null ? String(v.engine_hours) : null,
+    engine: v.engine ?? null,
+    transmission: v.transmission ?? null,
+    fuel_type: v.fuel_type ?? null,
+    drivetrain: v.drivetrain ?? null,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -361,6 +401,7 @@ export default function CustomerVehicleForm({
   saving = false,
   workOrderExists = false,
   shopId,
+  selectedCustomerId = null,
   handlers,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -374,7 +415,13 @@ export default function CustomerVehicleForm({
     onVehicleSelected,
   } = (handlers as Handlers) ?? {};
 
-  const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(null);
+  const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(
+    selectedCustomerId,
+  );
+
+  useEffect(() => {
+    setCurrentCustomerId(selectedCustomerId);
+  }, [selectedCustomerId]);
 
   const safeSetCustomer = useCallback(
     (field: keyof CustomerInfo, value: string | null | undefined) => {
@@ -391,37 +438,33 @@ export default function CustomerVehicleForm({
   );
 
   async function handlePickedCustomer(c: CustomerRow) {
-    const fallback = splitNamefallback(c.name);
+    const applyCustomer = (picked: CustomerRow) => {
+      const fields = hydrateCustomerFields(picked);
+      safeSetCustomer("business_name", fields.business_name ?? null);
+      safeSetCustomer("name", fields.name ?? null);
+      safeSetCustomer("first_name", fields.first_name ?? null);
+      safeSetCustomer("last_name", fields.last_name ?? null);
+      safeSetCustomer("phone", fields.phone ?? null);
+      safeSetCustomer("email", fields.email ?? null);
+      safeSetCustomer("address", fields.address ?? null);
+      safeSetCustomer("city", fields.city ?? null);
+      safeSetCustomer("province", fields.province ?? null);
+      safeSetCustomer("postal_code", fields.postal_code ?? null);
+    };
 
-    // Fill immediate customer fields
-    safeSetCustomer("business_name", c.business_name ?? null);
-    safeSetCustomer("name", c.name ?? null);
-    safeSetCustomer("first_name", c.first_name ?? fallback.first ?? null);
-    safeSetCustomer("last_name", c.last_name ?? fallback.last ?? null);
-    safeSetCustomer("phone", c.phone ?? null);
-    safeSetCustomer("email", c.email ?? null);
+    applyCustomer(c);
 
-    // Fill remaining fields
+    // Fill remaining fields from the scoped full row.
     try {
-      const { data } = await supabase
+      const query = supabase
         .from("customers")
         .select("*")
-        .eq("id", c.id)
-        .maybeSingle();
+        .eq("id", c.id);
+      const { data } = shopId
+        ? await query.eq("shop_id", shopId).maybeSingle()
+        : await query.maybeSingle();
 
-      if (data) {
-        const d = data as CustomerRow;
-        const fb = splitNamefallback(d.name);
-
-        safeSetCustomer("business_name", d.business_name ?? null);
-        safeSetCustomer("name", d.name ?? null);
-        safeSetCustomer("first_name", d.first_name ?? fb.first ?? null);
-        safeSetCustomer("last_name", d.last_name ?? fb.last ?? null);
-        safeSetCustomer("address", d.address ?? null);
-        safeSetCustomer("city", d.city ?? null);
-        safeSetCustomer("province", d.province ?? null);
-        safeSetCustomer("postal_code", d.postal_code ?? null);
-      }
+      if (data) applyCustomer(data as CustomerRow);
     } catch {
       /* ignore */
     }
@@ -444,23 +487,20 @@ export default function CustomerVehicleForm({
       const arr = (vehs ?? []) as VehicleRow[];
       if (arr.length === 1) {
         const v = arr[0];
-        safeSetVehicle("vin", v.vin ?? null);
-        safeSetVehicle("year", v.year != null ? String(v.year) : null);
-        safeSetVehicle("make", v.make ?? null);
-        safeSetVehicle("model", v.model ?? null);
-        safeSetVehicle("license_plate", v.license_plate ?? null);
-        safeSetVehicle("mileage", v.mileage ?? null);
-        safeSetVehicle("unit_number", v.unit_number ?? null);
-        safeSetVehicle("color", v.color ?? null);
-        safeSetVehicle(
-          "engine_hours",
-          v.engine_hours != null ? String(v.engine_hours) : null,
-        );
-
-        safeSetVehicle("engine", v.engine ?? null);
-        safeSetVehicle("transmission", v.transmission ?? null);
-        safeSetVehicle("fuel_type", v.fuel_type ?? null);
-        safeSetVehicle("drivetrain", v.drivetrain ?? null);
+        const fields = hydrateVehicleFields(v);
+        safeSetVehicle("vin", fields.vin);
+        safeSetVehicle("year", fields.year);
+        safeSetVehicle("make", fields.make);
+        safeSetVehicle("model", fields.model);
+        safeSetVehicle("license_plate", fields.license_plate);
+        safeSetVehicle("mileage", fields.mileage);
+        safeSetVehicle("unit_number", fields.unit_number ?? null);
+        safeSetVehicle("color", fields.color);
+        safeSetVehicle("engine_hours", fields.engine_hours ?? null);
+        safeSetVehicle("engine", fields.engine ?? null);
+        safeSetVehicle("transmission", fields.transmission ?? null);
+        safeSetVehicle("fuel_type", fields.fuel_type ?? null);
+        safeSetVehicle("drivetrain", fields.drivetrain ?? null);
 
         onVehicleSelected?.(v.id);
       }

@@ -270,6 +270,38 @@ function buildBookingNotesBlock(booking: BookingConversionRow): string {
   return lines.join("\n");
 }
 
+function splitPersonNameFallback(name: string | null | undefined): {
+  first_name: string | null;
+  last_name: string | null;
+} {
+  const clean = strOrNull(name);
+  if (!clean) return { first_name: null, last_name: null };
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { first_name: parts[0], last_name: null };
+  return {
+    first_name: parts.slice(0, -1).join(" "),
+    last_name: parts.at(-1) ?? null,
+  };
+}
+
+function hydrateVehicleFromRow(row: VehicleRow): VehicleWithExtra {
+  return {
+    vin: row.vin ?? null,
+    year: row.year != null ? String(row.year) : null,
+    make: row.make ?? null,
+    model: row.model ?? null,
+    license_plate: row.license_plate ?? null,
+    mileage: getStrField(row, "mileage"),
+    unit_number: getStrField(row, "unit_number"),
+    color: getStrField(row, "color"),
+    engine_hours: row.engine_hours != null ? String(row.engine_hours) : null,
+    engine: getStrField(row, "engine"),
+    transmission: getStrField(row, "transmission"),
+    fuel_type: getStrField(row, "fuel_type"),
+    drivetrain: getStrField(row, "drivetrain"),
+  };
+}
+
 /** Normalize “where is the inspection template id stored for this line?” */
 function extractInspectionTemplateId(
   ln: WorkOrderLineWithInspectionMeta,
@@ -290,6 +322,16 @@ export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const queryCustomerId =
+    searchParams.get("customerId")?.trim() ||
+    searchParams.get("customer_id")?.trim() ||
+    searchParams.get("customer")?.trim() ||
+    null;
+  const queryVehicleId =
+    searchParams.get("vehicleId")?.trim() ||
+    searchParams.get("vehicle_id")?.trim() ||
+    searchParams.get("vehicle")?.trim() ||
+    null;
   const bookingId = searchParams.get("bookingId")?.trim() || null;
   const returnTo = searchParams.get("returnTo")?.trim() || null;
 
@@ -806,35 +848,39 @@ useEffect(() => {
   };
 
   const hydrateCustomerFromRow = useCallback(
-    (row: CustomerRowWithBusiness): CustomerWithBusiness => ({
-      first_name: row.first_name ?? null,
-      last_name: row.last_name ?? null,
-      phone: getStrField(row, "phone"),
-      email: row.email ?? null,
-      address: getStrField(row, "address"),
-      city: getStrField(row, "city"),
-      province: getStrField(row, "province"),
-      postal_code: getStrField(row, "postal_code"),
-      business_name: row.business_name ?? null,
-    }),
+    (row: CustomerRowWithBusiness): CustomerWithBusiness => {
+      const businessName = strOrNull(row.business_name ?? null);
+      const personFallback = businessName
+        ? { first_name: null, last_name: null }
+        : splitPersonNameFallback(getStrField(row, "name"));
+
+      return {
+        name: businessName ? getStrField(row, "name") : getStrField(row, "name"),
+        first_name: row.first_name ?? personFallback.first_name,
+        last_name: row.last_name ?? personFallback.last_name,
+        phone: getStrField(row, "phone") ?? getStrField(row, "phone_number"),
+        email: row.email ?? null,
+        address: getStrField(row, "address") ?? getStrField(row, "street"),
+        city: getStrField(row, "city"),
+        province: getStrField(row, "province"),
+        postal_code: getStrField(row, "postal_code"),
+        business_name: businessName,
+      };
+    },
     [],
   );
 
-  // Read query params (prefill). bookingId handoffs load customer/vehicle only from the scoped booking row.
+  // Read canonical query params, with legacy aliases for existing handoff links.
   useEffect(() => {
-    if (bookingId) return;
-
-    const v = searchParams.get("vehicleId");
-    const c = searchParams.get("customerId");
-    if (v) {
-      setPrefillVehicleId(v);
+    if (queryVehicleId) {
+      setPrefillVehicleId(queryVehicleId);
       setSourceFlags((s) => ({ ...s, queryVehicle: true }));
     }
-    if (c) {
-      setPrefillCustomerId(c);
+    if (queryCustomerId) {
+      setPrefillCustomerId(queryCustomerId);
       setSourceFlags((s) => ({ ...s, queryCustomer: true }));
     }
-  }, [bookingId, searchParams, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
+  }, [queryCustomerId, queryVehicleId, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
 
   // Load appointment handoff context from bookingId and scope it to the user's shop.
   useEffect(() => {
@@ -876,12 +922,15 @@ useEffect(() => {
         if (cancelled) return;
         setBookingPrefill(booking);
 
-        if (booking.customer_id) {
-          setPrefillCustomerId(booking.customer_id);
+        const bookingCustomerId = booking.customer_id ?? queryCustomerId;
+        const bookingVehicleId = booking.vehicle_id ?? queryVehicleId;
+
+        if (bookingCustomerId) {
+          setPrefillCustomerId(bookingCustomerId);
           setSourceFlags((flags) => ({ ...flags, queryCustomer: true }));
         }
-        if (booking.vehicle_id) {
-          setPrefillVehicleId(booking.vehicle_id);
+        if (bookingVehicleId) {
+          setPrefillVehicleId(bookingVehicleId);
           setSourceFlags((flags) => ({ ...flags, queryVehicle: true }));
         }
 
@@ -910,6 +959,8 @@ useEffect(() => {
     };
   }, [
     bookingId,
+    queryCustomerId,
+    queryVehicleId,
     supabase,
     setError,
     setInviteNotice,
@@ -920,66 +971,89 @@ useEffect(() => {
     getOrLinkShopId,
   ]);
 
-  // Prefill from DB → session shapes
+  // Prefill from DB → session shapes, always scoped to the current user's shop.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        if (!prefillCustomerId && !prefillVehicleId) return;
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user?.id) return;
+
+        const shopId = await getOrLinkShopId(user.id);
+        if (!shopId || cancelled) return;
+
+        let effectiveCustomerId = prefillCustomerId;
+
         if (prefillCustomerId) {
           const { data } = await supabase
             .from("customers")
             .select("*")
             .eq("id", prefillCustomerId)
-            .single();
+            .eq("shop_id", shopId)
+            .maybeSingle();
           if (!cancelled && data) {
             setCustomer(hydrateCustomerFromRow(data as CustomerRowWithBusiness));
             setCustomerId(data.id);
+            effectiveCustomerId = data.id;
           }
         }
+
         if (prefillVehicleId) {
-          const { data } = await supabase
+          const query = supabase
             .from("vehicles")
             .select(
               "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id",
             )
             .eq("id", prefillVehicleId)
-            .single();
-          if (!cancelled && data) {
-            setVehicle({
-              vin: data.vin ?? null,
-              year: data.year != null ? String(data.year) : null,
-              make: data.make ?? null,
-              model: data.model ?? null,
-              license_plate: data.license_plate ?? null,
-              mileage: getStrField(data, "mileage"),
-              unit_number: getStrField(data, "unit_number"),
-              color: getStrField(data, "color"),
-              engine_hours:
-                data.engine_hours != null ? String(data.engine_hours) : null,
+            .eq("shop_id", shopId);
 
-              // ✅ NEW
-              engine: getStrField(data, "engine"),
-              transmission: getStrField(data, "transmission"),
-              fuel_type: getStrField(data, "fuel_type"),
-              drivetrain: getStrField(data, "drivetrain"),
-            });
+          const { data } = effectiveCustomerId
+            ? await query.eq("customer_id", effectiveCustomerId).maybeSingle()
+            : await query.maybeSingle();
+
+          if (!cancelled && data) {
+            setVehicle(hydrateVehicleFromRow(data as VehicleRow));
             setVehicleId(data.id);
 
-            if (!customerId && data.customer_id) {
+            if (!effectiveCustomerId && data.customer_id) {
               const { data: cust } = await supabase
                 .from("customers")
                 .select("*")
                 .eq("id", data.customer_id)
+                .eq("shop_id", shopId)
                 .maybeSingle();
               if (cust) {
                 setCustomer(hydrateCustomerFromRow(cust as CustomerRowWithBusiness));
                 setCustomerId(cust.id);
+                effectiveCustomerId = cust.id;
               }
             }
           }
         }
+
+        if (effectiveCustomerId && !prefillVehicleId) {
+          const { data: vehicles } = await supabase
+            .from("vehicles")
+            .select(
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id, created_at",
+            )
+            .eq("shop_id", shopId)
+            .eq("customer_id", effectiveCustomerId)
+            .order("created_at", { ascending: false })
+            .limit(2);
+
+          const rows = (vehicles ?? []) as VehicleRow[];
+          if (!cancelled && rows.length === 1) {
+            setVehicle(hydrateVehicleFromRow(rows[0]));
+            setVehicleId(rows[0].id);
+          }
+        }
       } catch {
-        /* noop */
+        /* Keep create flow usable if a stale handoff id cannot hydrate. */
       }
     })();
     return () => {
@@ -993,9 +1067,10 @@ useEffect(() => {
     setVehicle,
     setCustomerId,
     setVehicleId,
-    customerId,
     hydrateCustomerFromRow,
+    getOrLinkShopId,
   ]);
+
 
   async function ensureCustomer(shopId: string): Promise<CustomerRowWithBusiness> {
     const normalizedEmail = normalizeEmail(customer.email);
@@ -1211,9 +1286,15 @@ useEffect(() => {
     setError("");
 
     try {
-      if (!customer.first_name && !customer.phone && !customer.email) {
+      if (
+        !customer.business_name &&
+        !customer.first_name &&
+        !customer.last_name &&
+        !customer.phone &&
+        !customer.email
+      ) {
         throw new Error(
-          "Please enter at least a name, phone, or email for the customer.",
+          "Please enter at least a customer name, business name, phone, or email.",
         );
       }
 
@@ -2068,6 +2149,8 @@ useEffect(() => {
                 saving={savingCv}
                 workOrderExists={!!wo?.id}
                 shopId={wo?.shop_id ?? currentShopId}
+                selectedCustomerId={customerId}
+                selectedVehicleId={vehicleIdProp}
                 handlers={{
                   onCustomerChange,
                   onVehicleChange: onVehicleChange as unknown as (
