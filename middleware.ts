@@ -253,6 +253,7 @@ export const config = {
     "/mobile/sign-in",
     "/onboarding/:path*",
     "/dashboard/:path*",
+    "/fleet/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
     "/mobile/:path*",
