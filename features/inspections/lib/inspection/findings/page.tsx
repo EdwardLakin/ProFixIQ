@@ -12,7 +12,6 @@ import type {
   InspectionItemStatus,
   InspectionSession,
   QuoteLineItem,
-  VoiceMeta,
 } from "@inspections/lib/inspection/types";
 
 import PageShell from "@/features/shared/components/PageShell";
@@ -24,7 +23,6 @@ import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
-import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { cn } from "@shared/lib/utils";
 
 type FindingRow = {
@@ -571,7 +569,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     const actionable = findings.filter((row) => {
       const item = row.item as InspectionItem & {
         estimateSubmitted?: boolean;
-        estimateWorkOrderLineId?: string | null;
+        estimateQuoteLineId?: string | null;
       };
 
       const status = String(item.status ?? "").toLowerCase();
@@ -582,8 +580,8 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       if (
         item.estimateSubmitted === true &&
-        typeof item.estimateWorkOrderLineId === "string" &&
-        item.estimateWorkOrderLineId.trim().length > 0
+        typeof item.estimateQuoteLineId === "string" &&
+        item.estimateQuoteLineId.trim().length > 0
       ) {
         return true;
       }
@@ -600,6 +598,45 @@ export default function InspectionFindingsPage(): JSX.Element {
 
     try {
       let nextSession: InspectionSession = { ...session };
+      const nowIso = new Date().toISOString();
+      const quotePayloadItems: Array<{
+        id: string;
+        description: string;
+        title: string;
+        jobType: "repair";
+        status: "pending_parts";
+        stage: "advisor_pending";
+        source: "inspection";
+        sourceInspectionId: string | null;
+        sourceWorkOrderLineId: string | null;
+        sourceSectionKey: string;
+        sourceSectionTitle: string;
+        sourceItemKey: string;
+        sourceFindingTitle: string;
+        normalizedFindingTitle: string;
+        findingIdentity: string;
+        notes: string | null;
+        complaint: string | null;
+        aiComplaint: string | null;
+        aiCause: string | null;
+        aiCorrection: string | null;
+        estLaborHours: number | null;
+        laborHours: number | null;
+        laborRate: number | null;
+        partsTotal: number;
+        laborTotal: number | null;
+        subtotal: number;
+        grandTotal: number;
+        photoUrls: string[];
+        parts: Array<{
+          description: string;
+          name: string;
+          qty: number;
+          cost?: number | null;
+        }>;
+        metadata: Record<string, unknown>;
+      }> = [];
+      const quoteIdByFindingKey = new Map<string, string>();
 
       for (const row of findings) {
         const item = row.item;
@@ -627,26 +664,27 @@ export default function InspectionFindingsPage(): JSX.Element {
         const manualLaborHours =
           typeof itemExt.laborHours === "number" ? itemExt.laborHours : null;
 
-        const existingLineId =
-          typeof itemExt.estimateWorkOrderLineId === "string" &&
-          itemExt.estimateWorkOrderLineId.trim().length > 0
-            ? itemExt.estimateWorkOrderLineId.trim()
-            : null;
-
         const existingQuoteId =
           typeof itemExt.estimateQuoteLineId === "string" &&
           itemExt.estimateQuoteLineId.trim().length > 0
             ? itemExt.estimateQuoteLineId.trim()
             : null;
 
-        const alreadySubmitted = itemExt.estimateSubmitted === true;
-
-        if (alreadySubmitted && !existingLineId) {
+        if (itemExt.estimateSubmitted === true && existingQuoteId) {
           continue;
         }
 
         const quoteId = existingQuoteId ?? uuidv4();
-        const nowIso = new Date().toISOString();
+        const sourceSectionKey = String(row.sectionIndex);
+        const sourceItemKey = String(row.itemIndex);
+        const normalizedFindingTitle = norm(desc).replace(/\s+/g, " ");
+        const findingIdentity = [
+          resolvedInspectionId || "inspection-draft",
+          resolvedWorkOrderLineId || "inspection-line",
+          sourceSectionKey,
+          sourceItemKey,
+          normalizedFindingTitle,
+        ].join(":");
 
         const quoteAlreadyExists = (nextSession.quote ?? []).some(
           (line) => line.id === quoteId,
@@ -713,11 +751,11 @@ export default function InspectionFindingsPage(): JSX.Element {
 
         const partsTotal =
           mergedParts.reduce(
-            (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
+            (sum, p) => sum + (typeof p.cost === "number" ? p.cost * p.qty : 0),
             0,
           ) ?? 0;
-
-        const price = Math.max(0, partsTotal + laborRate * laborTime);
+        const laborTotal = laborRate * laborTime;
+        const price = Math.max(0, partsTotal + laborTotal);
 
         nextSession = updateQuoteLineInSession(nextSession, quoteId, {
           price,
@@ -731,148 +769,106 @@ export default function InspectionFindingsPage(): JSX.Element {
           aiState: "done",
         });
 
-        const cleanParts = manualParts
-          .map((p) => ({
-            description: String(p.description ?? "").trim(),
-            qty: Number(p.qty ?? 0),
-          }))
-          .filter((p) => p.description.length > 0 && p.qty > 0);
-
-        if (existingLineId) {
-          const updateRes = await fetch(
-            "/api/work-orders/lines/update-from-inspection",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workOrderId: resolvedWorkOrderId,
-                workOrderLineId: existingLineId,
-                laborHours: laborTime,
-                complaint: note || null,
-                notes: note || null,
-                aiSummary: suggestion.summary ?? null,
-              }),
-            },
-          );
-
-          if (!updateRes.ok) {
-            const body = (await updateRes.json().catch(() => null)) as unknown;
-            console.error("Update WO line error", body);
-            throw new Error("Could not update existing estimate line");
-          }
-
-          if (cleanParts.length > 0) {
-            const res = await fetch("/api/parts/requests/create", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workOrderId: resolvedWorkOrderId,
-                jobId: existingLineId,
-                notes: note || null,
-                items: cleanParts,
-              }),
-            });
-
-            if (!res.ok) {
-              const body = (await res.json().catch(() => null)) as unknown;
-              console.error("Parts request error", body);
-              throw new Error("Estimate updated, but parts request failed");
-            }
-          }
-
-          nextSession = {
-            ...nextSession,
-            sections: nextSession.sections.map((sec, sIdx) => {
-              if (sIdx !== row.sectionIndex) return sec;
-              return {
-                ...sec,
-                items: (sec.items ?? []).map((it, iIdx) =>
-                  iIdx === row.itemIndex
-                    ? {
-                        ...it,
-                        estimateSubmitted: true,
-                        estimateSubmittedAt:
-                          itemExt.estimateSubmittedAt ?? nowIso,
-                        estimateLastUpdatedAt: nowIso,
-                        estimateWorkOrderLineId: existingLineId,
-                        estimateQuoteLineId: quoteId,
-                      }
-                    : it,
-                ),
-              };
-            }),
-          };
-
-          continue;
-        }
-
-        const created = await addWorkOrderLineFromSuggestion({
-          workOrderId: resolvedWorkOrderId,
+        quotePayloadItems.push({
+          id: quoteId,
           description: desc,
-          section: row.sectionTitle,
-          status: "awaiting",
-          complaint: note || null,
-          suggestion: {
-            ...suggestion,
-            parts: mergedParts,
-            laborHours: laborTime,
-            notes: note || undefined,
-          },
-          source: "inspection",
+          title: desc,
           jobType: "repair",
+          status: "pending_parts",
+          stage: "advisor_pending",
+          source: "inspection",
+          sourceInspectionId: resolvedInspectionId || null,
+          sourceWorkOrderLineId: resolvedWorkOrderLineId || null,
+          sourceSectionKey,
+          sourceSectionTitle: row.sectionTitle,
+          sourceItemKey,
+          sourceFindingTitle: desc,
+          normalizedFindingTitle,
+          findingIdentity,
+          notes: note || null,
+          complaint: note || null,
+          aiComplaint: note || null,
+          aiCause: suggestion.summary ?? null,
+          aiCorrection: suggestion.summary ?? null,
+          estLaborHours: laborTime,
+          laborHours: laborTime,
+          laborRate,
+          partsTotal,
+          laborTotal,
+          subtotal: price,
+          grandTotal: price,
+          photoUrls: item.photoUrls ?? [],
+          parts: mergedParts.map((part) => ({
+            description: part.name,
+            name: part.name,
+            qty: part.qty,
+            cost: part.cost ?? null,
+          })),
+          metadata: {
+            inspection_status: status,
+            technician_notes: note,
+            manual_parts: manualParts,
+            source_value: itemExt.value ?? null,
+          },
+        });
+        quoteIdByFindingKey.set(findingKey(row.sectionIndex, row.itemIndex), quoteId);
+      }
+
+      if (quotePayloadItems.length > 0) {
+        const quoteRes = await fetch("/api/work-orders/quotes/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: resolvedWorkOrderId,
+            vehicleId:
+              typeof (nextSession.vehicle as unknown as { id?: unknown } | null | undefined)
+                ?.id === "string"
+                ? (nextSession.vehicle as unknown as { id: string }).id
+                : null,
+            items: quotePayloadItems,
+          }),
         });
 
-        const createdId = (created as unknown as { id?: unknown })?.id;
-        const createdJobId =
-          createdId && String(createdId).trim().length > 0
-            ? String(createdId).trim()
-            : null;
+        const quoteJson = (await quoteRes.json().catch(() => null)) as
+          | {
+              error?: string;
+              items?: Array<{
+                requestedId?: string | null;
+                id: string;
+                created: boolean;
+              }>;
+            }
+          | null;
 
-        if (cleanParts.length > 0 && createdJobId) {
-          const res = await fetch("/api/parts/requests/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              workOrderId: resolvedWorkOrderId,
-              jobId: createdJobId,
-              notes: note || null,
-              items: cleanParts,
-            }),
-          });
+        if (!quoteRes.ok) {
+          throw new Error(quoteJson?.error || "Failed to send findings to quote review");
+        }
 
-          if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as unknown;
-            console.error("Parts request error", body);
-            throw new Error("Line added, but parts request failed");
-          }
+        const canonicalQuoteIds = new Map<string, string>();
+        for (const result of quoteJson?.items ?? []) {
+          if (result.requestedId) canonicalQuoteIds.set(result.requestedId, result.id);
         }
 
         nextSession = {
           ...nextSession,
-          voiceMeta: {
-            ...(nextSession.voiceMeta ??
-              ({ linesAddedToWorkOrder: 0 } as VoiceMeta)),
-            linesAddedToWorkOrder:
-              (nextSession.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
-          },
-          sections: nextSession.sections.map((sec, sIdx) => {
-            if (sIdx !== row.sectionIndex) return sec;
-            return {
-              ...sec,
-              items: (sec.items ?? []).map((it, iIdx) =>
-                iIdx === row.itemIndex
-                  ? {
-                      ...it,
-                      estimateSubmitted: true,
-                      estimateSubmittedAt: nowIso,
-                      estimateLastUpdatedAt: nowIso,
-                      estimateWorkOrderLineId: createdJobId,
-                      estimateQuoteLineId: quoteId,
-                    }
-                  : it,
-              ),
-            };
-          }),
+          sections: nextSession.sections.map((sec, sIdx) => ({
+            ...sec,
+            items: (sec.items ?? []).map((it, iIdx) => {
+              const localQuoteId = quoteIdByFindingKey.get(findingKey(sIdx, iIdx));
+              if (!localQuoteId) return it;
+              return {
+                ...it,
+                estimateSubmitted: true,
+                estimateSubmittedAt:
+                  (it as InspectionItem & { estimateSubmittedAt?: string | null })
+                    .estimateSubmittedAt ?? nowIso,
+                estimateLastUpdatedAt: nowIso,
+                estimateWorkOrderLineId: null,
+                estimateQuoteLineId:
+                  canonicalQuoteIds.get(localQuoteId) ?? localQuoteId,
+              };
+            }),
+          })),
         };
       }
 
@@ -962,8 +958,8 @@ export default function InspectionFindingsPage(): JSX.Element {
       );
 
       window.dispatchEvent(new CustomEvent("inspection:close"));
-      toast.success("Inspection findings submitted.");
-      router.back();
+      toast.success("Findings sent to quote review.");
+      router.push(`/work-orders/${resolvedWorkOrderId}/quote-review`);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Unable to submit findings";
@@ -989,7 +985,7 @@ export default function InspectionFindingsPage(): JSX.Element {
   return (
     <PageShell
       title="Inspection findings"
-      description="Review failed and recommended findings before final submission."
+      description="Review failed and recommended findings before sending them to advisor quote review."
     >
       <div className="mx-auto max-w-5xl space-y-4">
         <DecisionEventFeed events={decisionEvents} compact maxVisible={5} />
@@ -1209,7 +1205,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   </button>
                 </div>
                 <div className="mt-2 text-[11px] text-neutral-500">
-                  Action needed: mark reviewed so this recommendation can move to approval.
+                  Action needed: mark reviewed so this recommendation can move to quote review.
                 </div>
               </div>
             );
@@ -1234,7 +1230,7 @@ export default function InspectionFindingsPage(): JSX.Element {
               Back
             </Button>
             <Button type="button" onClick={handleSubmitReviewed} isLoading={busy}>
-              {busy ? "Submitting…" : "Submit reviewed findings"}
+              {busy ? "Sending…" : "Send to Quote Review"}
             </Button>
           </div>
         </div>
