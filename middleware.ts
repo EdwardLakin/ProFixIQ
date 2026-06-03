@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
@@ -12,13 +13,6 @@ function isAssetPath(p: string) {
     p.endsWith(".svg") ||
     /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
   );
-}
-
-function withSupabaseCookies(from: NextResponse, to: NextResponse) {
-  for (const cookie of from.cookies.getAll()) {
-    to.cookies.set(cookie);
-  }
-  return to;
 }
 
 function safeRedirectPath(v: string | null): string | null {
@@ -35,8 +29,50 @@ function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
   return normalized === "owner" || normalized === "admin";
 }
 
+function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
+  if (!anonKey) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+  return createServerClient<Database>(url, anonKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          req.cookies.set(name, value);
+          res.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
+}
+
+function logMiddlewareAuthDiagnostics(args: {
+  pathname: string;
+  userId: string | null;
+  profile?: {
+    shop_id?: string | null;
+    role?: string | null;
+    completed_onboarding?: boolean | null;
+  } | null;
+  profileError?: string | null;
+}) {
+  console.info("[auth/middleware-post-login]", {
+    pathname: args.pathname,
+    userId: args.userId,
+    profileExists: Boolean(args.profile),
+    profileShopId: args.profile?.shop_id ?? null,
+    profileRole: args.profile?.role ?? null,
+    completedOnboarding: args.profile?.completed_onboarding ?? null,
+    profileError: args.profileError ?? null,
+  });
+}
+
 async function resolvePortalModeServer(
-  supabase: ReturnType<typeof createMiddlewareClient<Database>>,
+  supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<PortalMode> {
   try {
@@ -73,12 +109,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req, res });
+  const res = NextResponse.next({ request: req });
+  const supabase = createMiddlewareSupabase(req, res);
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError && userError.message !== "Auth session missing!") {
+    console.info("[auth/middleware-get-user]", {
+      pathname,
+      userId: null,
+      error: userError.message,
+    });
+  }
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
@@ -104,14 +149,21 @@ export async function middleware(req: NextRequest) {
 
   let completed = false;
   let needsShopBoostIntake = false;
-  if (session?.user && !isPortal) {
+  if (user && !isPortal) {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("completed_onboarding, shop_id, role")
-        .eq("id", session.user.id)
+        .eq("id", user.id)
         .limit(1)
         .maybeSingle();
+
+      logMiddlewareAuthDiagnostics({
+        pathname,
+        userId: user.id,
+        profile,
+        profileError: profileError?.message ?? null,
+      });
 
       completed = !!profile?.completed_onboarding || !!profile?.shop_id;
 
@@ -126,13 +178,19 @@ export async function middleware(req: NextRequest) {
 
         needsShopBoostIntake = !intake?.id;
       }
-    } catch {
+    } catch (err) {
+      logMiddlewareAuthDiagnostics({
+        pathname,
+        userId: user.id,
+        profile: null,
+        profileError: err instanceof Error ? err.message : "profile lookup failed",
+      });
       completed = false;
       needsShopBoostIntake = false;
     }
   }
 
-  if (pathname === "/" && session?.user) {
+  if (pathname === "/" && user) {
     const target = new URL(
       !completed
         ? "/onboarding"
@@ -141,7 +199,7 @@ export async function middleware(req: NextRequest) {
           : "/dashboard",
       req.url,
     );
-    return withSupabaseCookies(res, NextResponse.redirect(target));
+    return NextResponse.redirect(target, { headers: res.headers });
   }
 
   if (isPublic) {
@@ -153,7 +211,7 @@ export async function middleware(req: NextRequest) {
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
-    if (session?.user && (isMainSignIn || isMobileSignIn)) {
+    if (user && (isMainSignIn || isMobileSignIn)) {
       const to =
         redirectParam ??
         (isMobileSignIn
@@ -167,15 +225,15 @@ export async function middleware(req: NextRequest) {
               : "/dashboard");
 
       const target = new URL(to, req.url);
-      return withSupabaseCookies(res, NextResponse.redirect(target));
+      return NextResponse.redirect(target, { headers: res.headers });
     }
 
     if (
       isPortal &&
-      session?.user &&
+      user &&
       (isPortalAuthPage || isLegacyPortalConfirm)
     ) {
-      const mode = await resolvePortalModeServer(supabase, session.user.id);
+      const mode = await resolvePortalModeServer(supabase, user.id);
 
       let to = redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
 
@@ -191,17 +249,17 @@ export async function middleware(req: NextRequest) {
       }
 
       const target = new URL(to, req.url);
-      return withSupabaseCookies(res, NextResponse.redirect(target));
+      return NextResponse.redirect(target, { headers: res.headers });
     }
 
     return res;
   }
 
-  if (!session?.user) {
+  if (!user) {
     if (isPortal) {
       const login = new URL("/portal/auth/sign-in", req.url);
       login.searchParams.set("redirect", pathname + search);
-      return withSupabaseCookies(res, NextResponse.redirect(login));
+      return NextResponse.redirect(login, { headers: res.headers });
     }
 
     const isMobileRoute = pathname.startsWith("/mobile");
@@ -209,29 +267,29 @@ export async function middleware(req: NextRequest) {
     const login = new URL(loginPath, req.url);
     login.searchParams.set("redirect", pathname + search);
 
-    return withSupabaseCookies(res, NextResponse.redirect(login));
+    return NextResponse.redirect(login, { headers: res.headers });
   }
 
   if (isPortal) {
-    const mode = await resolvePortalModeServer(supabase, session.user.id);
+    const mode = await resolvePortalModeServer(supabase, user.id);
 
     const isFleetPortalPath =
       pathname === "/portal/fleet" || pathname.startsWith("/portal/fleet/");
 
     if (mode === "fleet" && !isFleetPortalPath) {
       const target = new URL("/portal/fleet", req.url);
-      return withSupabaseCookies(res, NextResponse.redirect(target));
+      return NextResponse.redirect(target, { headers: res.headers });
     }
 
     if (mode === "customer" && isFleetPortalPath) {
       const target = new URL("/portal", req.url);
-      return withSupabaseCookies(res, NextResponse.redirect(target));
+      return NextResponse.redirect(target, { headers: res.headers });
     }
   }
 
   if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
     const target = new URL("/onboarding", req.url);
-    return withSupabaseCookies(res, NextResponse.redirect(target));
+    return NextResponse.redirect(target, { headers: res.headers });
   }
 
   return res;
@@ -244,7 +302,6 @@ export const config = {
     "/subscribe",
     "/confirm",
     "/signup",
-    "/sign-in",
     "/forgot-password",
     "/auth/reset",
     "/auth/set-password",

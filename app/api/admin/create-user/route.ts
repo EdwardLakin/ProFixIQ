@@ -36,7 +36,9 @@ function logCreateUserStep(
     profileId?: string | null;
     normalizedUsername?: string | null;
     syntheticAuthEmail?: string | null;
+    contactEmail?: string | null;
     hasContactEmail?: boolean;
+    emailConfirmed?: boolean | null;
   } = {},
 ): void {
   console.info("[admin/create-user]", { step, ...details });
@@ -52,7 +54,9 @@ function logCreateUserError(
     profileId?: string | null;
     normalizedUsername?: string | null;
     syntheticAuthEmail?: string | null;
+    contactEmail?: string | null;
     hasContactEmail?: boolean;
+    emailConfirmed?: boolean | null;
     error?: string | null;
   } = {},
 ): void {
@@ -168,6 +172,7 @@ export async function POST(req: Request) {
       role: canonicalRole,
       normalizedUsername: username,
       syntheticAuthEmail: syntheticEmail,
+      contactEmail,
       hasContactEmail: Boolean(contactEmail),
     });
 
@@ -208,7 +213,9 @@ export async function POST(req: Request) {
       authUserId: newUserId,
       normalizedUsername: username,
       syntheticAuthEmail: syntheticEmail,
+      contactEmail,
       hasContactEmail: Boolean(contactEmail),
+      emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
 
     // upsert profile for the new user
@@ -288,7 +295,9 @@ export async function POST(req: Request) {
       profileId: newUserId,
       normalizedUsername: username,
       syntheticAuthEmail: syntheticEmail,
+      contactEmail,
       hasContactEmail: Boolean(contactEmail),
+      emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
 
     return NextResponse.json({

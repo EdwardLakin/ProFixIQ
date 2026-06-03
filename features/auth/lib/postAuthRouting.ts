@@ -74,11 +74,20 @@ export async function resolvePostAuthDestination(args: {
 
   if (!user) return "/sign-in";
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("completed_onboarding, must_change_password, role, shop_id")
     .eq("id", user.id)
     .maybeSingle();
+
+  console.info("[auth/post-login-routing]", {
+    userId: user.id,
+    profileExists: Boolean(profile),
+    profileShopId: profile?.shop_id ?? null,
+    profileRole: profile?.role ?? null,
+    completedOnboarding: profile?.completed_onboarding ?? null,
+    profileError: profileError?.message ?? null,
+  });
 
   if (profile?.must_change_password) {
     return "/auth/set-password";

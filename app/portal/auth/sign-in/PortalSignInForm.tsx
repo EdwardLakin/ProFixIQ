@@ -4,8 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import AuthShell from "@/features/auth/components/AuthShell";
 import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
 
@@ -27,7 +26,7 @@ function isAllowedRedirectForMode(path: string) {
 export default function PortalSignInPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [portalType, setPortalType] = useState<PortalType>("customer");
   const [identifier, setIdentifier] = useState<string>(""); // ✅ email OR username
@@ -60,15 +59,40 @@ export default function PortalSignInPage() {
     setLoading(true);
     setError("");
 
-    const authIdentifier = getAuthIdentifierStrategy(identifier);
+    const initialAuthIdentifier = getAuthIdentifierStrategy(identifier);
+    let authEmail = initialAuthIdentifier.authEmail;
+
+    try {
+      const resolveRes = await fetch("/api/auth/resolve-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+      const resolvePayload = (await resolveRes.json().catch(() => null)) as
+        | { authEmail?: string }
+        | null;
+      if (resolveRes.ok && resolvePayload?.authEmail) authEmail = resolvePayload.authEmail;
+    } catch {
+      // Fall back to local username/email normalization.
+    }
+
     console.info("[auth/sign-in]", {
-      inputKind: authIdentifier.inputKind,
-      normalizedAuthEmail: authIdentifier.authEmail,
+      inputKind: initialAuthIdentifier.inputKind,
+      normalizedAuthEmail: authEmail,
     });
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: authIdentifier.authEmail,
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: authEmail,
       password,
+    });
+
+    console.info("[auth/sign-in-result]", {
+      inputKind: initialAuthIdentifier.inputKind,
+      normalizedAuthEmail: authEmail,
+      userId: signInData.user?.id ?? null,
+      hasAccessToken: Boolean(signInData.session?.access_token),
+      errorCode: signInError?.status ?? null,
+      errorMessage: signInError?.message ?? null,
     });
 
     if (signInError) {

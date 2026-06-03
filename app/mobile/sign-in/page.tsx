@@ -6,17 +6,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
-
-type DB = Database;
-
 
 export default function MobileSignInPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -59,15 +55,40 @@ export default function MobileSignInPage() {
     setLoading(true);
     setError("");
 
-    const authIdentifier = getAuthIdentifierStrategy(identifier);
+    const initialAuthIdentifier = getAuthIdentifierStrategy(identifier);
+    let authEmail = initialAuthIdentifier.authEmail;
+
+    try {
+      const resolveRes = await fetch("/api/auth/resolve-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+      const resolvePayload = (await resolveRes.json().catch(() => null)) as
+        | { authEmail?: string }
+        | null;
+      if (resolveRes.ok && resolvePayload?.authEmail) authEmail = resolvePayload.authEmail;
+    } catch {
+      // Fall back to local username/email normalization.
+    }
+
     console.info("[auth/sign-in]", {
-      inputKind: authIdentifier.inputKind,
-      normalizedAuthEmail: authIdentifier.authEmail,
+      inputKind: initialAuthIdentifier.inputKind,
+      normalizedAuthEmail: authEmail,
     });
 
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email: authIdentifier.authEmail,
+    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+      email: authEmail,
       password,
+    });
+
+    console.info("[auth/sign-in-result]", {
+      inputKind: initialAuthIdentifier.inputKind,
+      normalizedAuthEmail: authEmail,
+      userId: signInData.user?.id ?? null,
+      hasAccessToken: Boolean(signInData.session?.access_token),
+      errorCode: signInErr?.status ?? null,
+      errorMessage: signInErr?.message ?? null,
     });
 
     if (signInErr) {
@@ -75,8 +96,6 @@ export default function MobileSignInPage() {
       setLoading(false);
       return;
     }
-
-    await supabase.auth.refreshSession();
 
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
