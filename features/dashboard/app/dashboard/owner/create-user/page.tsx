@@ -19,6 +19,7 @@ type UserRole = Database["public"]["Enums"]["user_role_enum"];
 type CreatePayload = {
   username: string;
   password: string;
+  email?: string | null;
   full_name?: string | null;
   role?: UserRole | null;
   shop_id?: string | null;
@@ -36,6 +37,7 @@ export default function CreateUserPage(): JSX.Element {
   const [form, setForm] = useState<CreatePayload>({
     username: "",
     password: "",
+    email: "",
     full_name: "",
     role: "mechanic",
     shop_id: null,
@@ -133,7 +135,8 @@ export default function CreateUserPage(): JSX.Element {
           form.username.trim(),
           buildShopUsernameNamespace(creatorShopName),
         ),
-        password: form.password.trim(),
+        password: form.password,
+        email: (form.email ?? "").trim().toLowerCase() || null,
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
         shop_id: (form.shop_id ?? "")?.trim() || creatorShopId || null,
@@ -154,7 +157,7 @@ export default function CreateUserPage(): JSX.Element {
       });
 
       const payload = (await res.json().catch(() => null)) as
-        | { error?: string; user_id?: string; username?: string; email?: string; people_record_href?: string }
+        | { error?: string; user_id?: string; username?: string; email?: string | null; auth_email?: string; people_record_href?: string }
         | null;
 
       if (!res.ok) throw new Error(payload?.error || "Failed to create user.");
@@ -164,9 +167,9 @@ export default function CreateUserPage(): JSX.Element {
 
       // local feedback
       setSuccess(
-        `User "${createdUsername}" created. They can sign in with username "${createdUsername}"${
-          createdEmail ? ` or email ${createdEmail}` : ""
-        } and the password entered here.`,
+        `User "${createdUsername}" created. They can sign in with the exact username "${createdUsername}" and the password entered here.${
+          createdEmail ? ` Contact email saved: ${createdEmail}.` : ""
+        }`,
       );
       setCreatedUserId(payload?.user_id ?? null);
       setCreatedPersonHref(payload?.people_record_href ?? null);
@@ -186,6 +189,7 @@ export default function CreateUserPage(): JSX.Element {
         ...f,
         username: "",
         password: "",
+        email: "",
         full_name: "",
         phone: "",
         shop_id: body.shop_id ?? creatorShopId ?? null,
@@ -211,7 +215,7 @@ export default function CreateUserPage(): JSX.Element {
 
     try {
       const uname = resetUsername.trim().toLowerCase();
-      const tmp = resetPass.trim();
+      const tmp = resetPass;
 
       if (!uname || !tmp) {
         throw new Error("Username and new temporary password are required.");
@@ -312,6 +316,22 @@ export default function CreateUserPage(): JSX.Element {
                 value={form.phone ?? ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                Contact email
+              </label>
+              <input
+                className={INPUT_CLASS}
+                placeholder="technician@example.com"
+                type="email"
+                value={form.email ?? ""}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+              <p className="text-[11px] text-neutral-500">
+                Stored on the profile for contact only. Username remains the staff sign-in identity.
+              </p>
             </div>
 
             <div className="space-y-1">

@@ -13,10 +13,21 @@ export function buildShopUserAuthEmail(username: string): string {
   return `${normalizeLoginUsername(username)}@${SHOP_USER_AUTH_DOMAIN}`;
 }
 
-export function normalizeAuthIdentifier(input: string): string {
+export function getAuthIdentifierStrategy(input: string): {
+  inputKind: "email" | "username";
+  authEmail: string;
+} {
   const raw = input.trim();
-  if (raw.includes("@")) return raw.toLowerCase();
-  return buildShopUserAuthEmail(raw);
+  const isEmail = raw.includes("@");
+
+  return {
+    inputKind: isEmail ? "email" : "username",
+    authEmail: isEmail ? raw.toLowerCase() : buildShopUserAuthEmail(raw),
+  };
+}
+
+export function normalizeAuthIdentifier(input: string): string {
+  return getAuthIdentifierStrategy(input).authEmail;
 }
 
 export function buildShopUsernameNamespace(shopName: string | null | undefined): string {
