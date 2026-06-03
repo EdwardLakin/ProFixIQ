@@ -1,8 +1,6 @@
 // app/api/onboarding/bootstrap-owner/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 import { OWNER_PIN_PURPOSES, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
@@ -11,8 +9,8 @@ import {
   reconcileShopBillingFromUser,
 } from "@/features/stripe/lib/server/canonical-shop-billing";
 
-type DB = Database;
 
+const OWNER_SETUP_ROLES = new Set(["owner", "admin"]);
 const NA_COUNTRIES = new Set(["US", "CA"]);
 
 function cleanStr(v: unknown): string {
@@ -28,7 +26,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const {
@@ -38,6 +36,37 @@ export async function POST(req: Request) {
 
     if (userErr || !user) {
       return NextResponse.json({ msg: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("role, shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ role: string | null; shop_id: string | null }>();
+
+    if (profileErr || !profile) {
+      return NextResponse.json(
+        { msg: "Profile setup required before owner onboarding." },
+        { status: 403 },
+      );
+    }
+
+    const normalizedRole = String(profile.role ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!OWNER_SETUP_ROLES.has(normalizedRole)) {
+      return NextResponse.json(
+        { msg: "Only owner or admin accounts can create the first shop." },
+        { status: 403 },
+      );
+    }
+
+    if (profile.shop_id) {
+      return NextResponse.json(
+        { msg: "This account already has a shop assigned." },
+        { status: 409 },
+      );
     }
 
     const rawUnknown = (await req.json().catch(() => null)) as unknown;

@@ -15,7 +15,7 @@ export default async function ShopAssignmentRequiredPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("completed_onboarding, must_change_password, role, shop_id, full_name, email")
+    .select("must_change_password, role, shop_id, full_name, email")
     .eq("id", user.id)
     .maybeSingle();
 
