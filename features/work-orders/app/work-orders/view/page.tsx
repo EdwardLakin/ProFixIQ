@@ -295,6 +295,7 @@ export default function WorkOrdersView(): JSX.Element {
     Record<string, TechRollup>
   >({});
   const [assignedByWo, setAssignedByWo] = useState<Record<string, boolean>>({});
+  const [hasLinesByWo, setHasLinesByWo] = useState<Record<string, boolean>>({});
 
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
@@ -371,6 +372,7 @@ export default function WorkOrdersView(): JSX.Element {
         setRows([]);
         setTechRollupByWo({});
         setAssignedByWo({});
+        setHasLinesByWo({});
         setLoading(false);
         return;
       }
@@ -391,6 +393,7 @@ export default function WorkOrdersView(): JSX.Element {
         setRows([]);
         setTechRollupByWo({});
         setAssignedByWo({});
+        setHasLinesByWo({});
         setLoading(false);
         return;
       }
@@ -423,6 +426,7 @@ export default function WorkOrdersView(): JSX.Element {
       setRows([]);
       setTechRollupByWo({});
       setAssignedByWo({});
+      setHasLinesByWo({});
       setLoading(false);
       return;
     }
@@ -466,6 +470,7 @@ export default function WorkOrdersView(): JSX.Element {
     if (ids.length === 0) {
       setTechRollupByWo({});
       setAssignedByWo({});
+      setHasLinesByWo({});
       setLoading(false);
       return;
     }
@@ -479,6 +484,7 @@ export default function WorkOrdersView(): JSX.Element {
       console.warn("[WorkOrdersView] failed to load lines for rollup:", lnErr.message);
       setTechRollupByWo({});
       setAssignedByWo({});
+      setHasLinesByWo({});
       setLoading(false);
       return;
     }
@@ -502,9 +508,11 @@ export default function WorkOrdersView(): JSX.Element {
 
     const map: Record<string, Array<Pick<Line, "status">>> = {};
     const assignedMap: Record<string, boolean> = {};
+    const hasLinesMap: Record<string, boolean> = {};
     lineRows.forEach((l) => {
       const woId = l.work_order_id;
       if (!woId) return;
+      hasLinesMap[woId] = true;
       if (!map[woId]) map[woId] = [];
       map[woId].push(l);
 
@@ -517,10 +525,12 @@ export default function WorkOrdersView(): JSX.Element {
     ids.forEach((woId) => {
       rollups[woId] = rollupTechStatus(map[woId] ?? []);
       assignedMap[woId] = Boolean(assignedMap[woId]);
+      hasLinesMap[woId] = Boolean(hasLinesMap[woId]);
     });
 
     setTechRollupByWo(rollups);
     setAssignedByWo(assignedMap);
+    setHasLinesByWo(hasLinesMap);
     setLoading(false);
   }, [isSeededShop, q, status, supabase, workforceDrilldownActive]);
 
@@ -966,6 +976,11 @@ export default function WorkOrdersView(): JSX.Element {
             const techRollup = techRollupByWo[r.id] ?? "awaiting";
             const canonicalStatus = normalizeWorkOrderStatus(r.status);
             const hasAssignedTech = Boolean(assignedByWo[r.id]);
+            const hasWorkLines = Boolean(hasLinesByWo[r.id]);
+            const shouldShowInspectionPending =
+              !r.inspection_id &&
+              !hasWorkLines &&
+              ["new", "awaiting", "awaiting_inspection"].includes(canonicalStatus);
             const nextAction =
               canonicalStatus === "new" ? (hasAssignedTech ? "Start inspection" : "Assign technician") :
               canonicalStatus === "awaiting_inspection" ? "Open inspection" :
@@ -1092,7 +1107,7 @@ export default function WorkOrdersView(): JSX.Element {
                   {canonicalStatus === "awaiting_approval" ? <span className="rounded-full border border-blue-400/50 bg-blue-500/10 px-2 py-0.5 text-blue-100">Needs approval</span> : null}
                   {canonicalStatus === "waiting_parts" || techRollup === "on_hold" ? <span className="rounded-full border border-sky-400/45 bg-sky-500/10 px-2 py-0.5 text-sky-100">Waiting parts</span> : null}
                   {!hasAssignedTech ? <span className="rounded-full border border-amber-400/50 bg-amber-500/10 px-2 py-0.5 text-amber-100">No technician assigned</span> : null}
-                  {!r.inspection_id ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
+                  {shouldShowInspectionPending ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
                   {canonicalStatus === "ready_to_invoice" ? <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">Ready to invoice</span> : null}
                   {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
                 </div>
