@@ -147,6 +147,6 @@ export function MaterializationAuditPanel({ counts, verifyOnly }: { counts: { dr
 
 export function LegacyFlowNotice() {
   return <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-4 text-sm">
-    Historical work remains historical. Live writes are gated off. Legacy onboarding remains available during transition.
+    Historical work remains historical. Live writes stay gated until an owner or admin confirms activation.
   </div>;
 }

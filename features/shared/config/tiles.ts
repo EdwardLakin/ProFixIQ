@@ -154,8 +154,8 @@ export const TILES: Tile[] = [
     section: "Tools",
   },
   {
-    href: "/dashboard/onboarding",
-    title: "Legacy Onboarding",
+    href: "/dashboard/onboarding-v2",
+    title: "Onboarding Agent",
     subtitle: "Stage files and prepare activation safely",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],

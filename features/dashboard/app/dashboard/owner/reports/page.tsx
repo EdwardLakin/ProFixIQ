@@ -381,7 +381,7 @@ export default function ReportsPage() {
               {/* Upload + Run Snapshot buttons */}
               <div className="flex items-center gap-2">
                 <Link
-                  href="/dashboard/onboarding"
+                  href="/dashboard/onboarding-v2"
                   className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:bg-black/35 hover:text-white"
                 >
                   🧭 Onboarding Agent

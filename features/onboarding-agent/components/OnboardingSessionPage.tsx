@@ -296,7 +296,7 @@ export function OnboardingSessionPage({ sessionId }: { sessionId: string }) {
         return;
       }
 
-      router.push("/dashboard/onboarding");
+      router.push("/dashboard/onboarding-v2");
       router.refresh();
     } catch {
       setError("Failed to delete staged session.");

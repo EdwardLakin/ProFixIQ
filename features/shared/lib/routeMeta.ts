@@ -39,7 +39,7 @@ const ALL_ROLES: UserRole[] | undefined = undefined;
 
 export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard": { title: () => "Dashboard", icon: "🏠", roles: ALL_ROLES },
-  "/dashboard/onboarding": {
+  "/dashboard/onboarding-v2": {
     title: () => "Onboarding Agent",
     icon: "🧭",
     roles: ["owner", "admin"],

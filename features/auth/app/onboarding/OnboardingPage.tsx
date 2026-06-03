@@ -101,7 +101,7 @@ export default function OnboardingPage() {
         await supabase.auth.exchangeCodeForSession(code);
       } finally {
         const cleanParams = collectPassthroughParams(searchParams);
-        const clean = `/onboarding${cleanParams.toString() ? `?${cleanParams.toString()}` : ""}`;
+        const clean = `/onboarding/v2${cleanParams.toString() ? `?${cleanParams.toString()}` : ""}`;
         router.replace(clean);
         setTimeout(() => router.refresh(), 0);
       }
@@ -287,7 +287,7 @@ export default function OnboardingPage() {
       }
 
       const next = collectPassthroughParams(searchParams);
-      const baseHref = `/onboarding/shop-boost${next.toString() ? `?${next.toString()}` : ""}`;
+      const baseHref = `/dashboard/onboarding-v2${next.toString() ? `?${next.toString()}` : ""}`;
       router.replace(activationContext ? appendActivationContextToHref(baseHref, activationContext) : baseHref);
       setLoading(false);
       return;
@@ -639,7 +639,7 @@ export default function OnboardingPage() {
                 {loading
                   ? "Saving…"
                   : asOwner
-                    ? "Continue to Shop Boost"
+                    ? "Complete onboarding"
                     : "Complete onboarding"}
               </button>
               {error && <p className="text-xs text-red-400">{error}</p>}
