@@ -7,7 +7,26 @@ import { createClient } from "@supabase/supabase-js";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Database } from "@shared/types/types/supabase";
 
-function mustEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY" | "SUPABASE_SERVICE_ROLE_KEY") {
+function mustSupabaseUrl() {
+  const value =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!value)
+    throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL");
+  return value;
+}
+
+function mustSupabaseAnonKey() {
+  const value =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+  if (!value) {
+    throw new Error(
+      "Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY",
+    );
+  }
+  return value;
+}
+
+function mustEnv(name: "SUPABASE_SERVICE_ROLE_KEY") {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env: ${name}`);
   return value;
@@ -16,12 +35,16 @@ function mustEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_K
 function createCookieBackedServerClient() {
   const cookieStore = cookies() as unknown as {
     getAll: () => { name: string; value: string }[];
-    set: (name: string, value: string, options?: Record<string, unknown>) => void;
+    set: (
+      name: string,
+      value: string,
+      options?: Record<string, unknown>,
+    ) => void;
   };
 
   return createServerClient<Database>(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    mustSupabaseUrl(),
+    mustSupabaseAnonKey(),
     {
       cookies: {
         getAll() {
@@ -64,8 +87,8 @@ export function createServerSupabaseApi(
   res: NextApiResponse,
 ) {
   return createServerClient<Database>(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    mustSupabaseUrl(),
+    mustSupabaseAnonKey(),
     {
       cookies: {
         getAll() {
@@ -84,7 +107,11 @@ export function createServerSupabaseApi(
             if (options?.httpOnly) parts.push("HttpOnly");
             return parts.join("; ");
           });
-          const previous = Array.isArray(existing) ? existing : existing ? [String(existing)] : [];
+          const previous = Array.isArray(existing)
+            ? existing
+            : existing
+              ? [String(existing)]
+              : [];
           res.setHeader("Set-Cookie", [...previous, ...nextCookies]);
         },
       },
@@ -98,7 +125,7 @@ export function createServerSupabaseApi(
  */
 export function createAdminSupabase() {
   return createClient<Database>(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    mustSupabaseUrl(),
     mustEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
       auth: { persistSession: false, autoRefreshToken: false },
