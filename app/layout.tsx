@@ -33,11 +33,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerSupabaseRSC();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
 
@@ -45,6 +40,7 @@ export default async function RootLayout({
     pathname === "/" ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/mobile/sign-in") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
@@ -52,9 +48,22 @@ export default async function RootLayout({
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/demo") ||
-    pathname.startsWith("/onboarding");
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/portal/auth/") ||
+    pathname.startsWith("/portal/confirm");
 
   const useAppShell = !isPublicRoute;
+
+  const session = useAppShell
+    ? (await createServerSupabaseRSC().auth.getSession()).data.session
+    : null;
+
+  const appContent = (
+    <VoiceProvider>
+      <BrandThemeBoot />
+      {useAppShell ? <AppShell>{children}</AppShell> : children}
+    </VoiceProvider>
+  );
 
   return (
     <html
@@ -74,26 +83,26 @@ export default async function RootLayout({
             "var(--app-shell-bg, radial-gradient(circle at top, rgba(59,130,246,0.12), transparent 56%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",
         }}
       >
-        <Providers initialSession={session ?? null}>
-          <VoiceProvider>
-            <BrandThemeBoot />
-            {useAppShell ? <AppShell>{children}</AppShell> : children}
-          </VoiceProvider>
+        {useAppShell ? (
+          <Providers initialSession={session}>{appContent}</Providers>
+        ) : (
+          appContent
+        )}
 
-          <Toaster
-            position="bottom-center"
-            theme="dark"
-            richColors
-            toastOptions={{
-              style: {
-                background:
-                  "var(--theme-header-bg, radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%))",
-                border: "1px solid var(--theme-card-border, rgba(148, 163, 184, 0.5))",
-                color: "var(--theme-text-primary, #e5e7eb)",
-              },
-            }}
-          />
-        </Providers>
+        <Toaster
+          position="bottom-center"
+          theme="dark"
+          richColors
+          toastOptions={{
+            style: {
+              background:
+                "var(--theme-header-bg, radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%))",
+              border:
+                "1px solid var(--theme-card-border, rgba(148, 163, 184, 0.5))",
+              color: "var(--theme-text-primary, #e5e7eb)",
+            },
+          }}
+        />
       </body>
     </html>
   );
