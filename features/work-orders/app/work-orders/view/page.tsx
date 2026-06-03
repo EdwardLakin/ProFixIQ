@@ -981,17 +981,6 @@ export default function WorkOrdersView(): JSX.Element {
               !r.inspection_id &&
               !hasWorkLines &&
               ["new", "awaiting", "awaiting_inspection"].includes(canonicalStatus);
-            const nextAction =
-              canonicalStatus === "awaiting_approval" ? "Review approval" :
-              canonicalStatus === "waiting_parts" ? "Check parts" :
-              canonicalStatus === "ready_to_invoice" ? "Create invoice" :
-              canonicalStatus === "invoiced" ? "Review invoice" :
-              canonicalStatus === "completed" ? "View record" :
-              canonicalStatus === "in_progress" ? "Continue work" :
-              hasWorkLines ? (hasAssignedTech ? "Start work" : "Assign technician") :
-              r.inspection_id ? "Open inspection" :
-              hasAssignedTech ? "Awaiting inspection" :
-              "Assign technician";
             const staleDays = Math.max(0, Math.floor((Date.now() - new Date(r.updated_at ?? r.created_at ?? Date.now()).getTime()) / 86400000));
 
             const accent = stageAccent(r.status);
@@ -1117,10 +1106,6 @@ export default function WorkOrdersView(): JSX.Element {
                   {shouldShowInspectionPending ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
                   {canonicalStatus === "ready_to_invoice" ? <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">Ready to invoice</span> : null}
                   {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
-                </div>
-
-                <div className="mt-3 rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-xs text-neutral-300">
-                  Action cue: <span className="font-semibold text-white">{nextAction}</span>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
