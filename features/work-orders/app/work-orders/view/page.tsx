@@ -294,6 +294,7 @@ export default function WorkOrdersView(): JSX.Element {
   const [techRollupByWo, setTechRollupByWo] = useState<
     Record<string, TechRollup>
   >({});
+  const [assignedByWo, setAssignedByWo] = useState<Record<string, boolean>>({});
 
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
@@ -369,6 +370,7 @@ export default function WorkOrdersView(): JSX.Element {
         setErr(activeLinesErr.message);
         setRows([]);
         setTechRollupByWo({});
+        setAssignedByWo({});
         setLoading(false);
         return;
       }
@@ -388,6 +390,7 @@ export default function WorkOrdersView(): JSX.Element {
         setErr(bridgeErr.message);
         setRows([]);
         setTechRollupByWo({});
+        setAssignedByWo({});
         setLoading(false);
         return;
       }
@@ -419,6 +422,7 @@ export default function WorkOrdersView(): JSX.Element {
       setErr(error.message);
       setRows([]);
       setTechRollupByWo({});
+      setAssignedByWo({});
       setLoading(false);
       return;
     }
@@ -461,36 +465,62 @@ export default function WorkOrdersView(): JSX.Element {
     const ids = filtered.map((r) => r.id).filter(Boolean);
     if (ids.length === 0) {
       setTechRollupByWo({});
+      setAssignedByWo({});
       setLoading(false);
       return;
     }
 
     const { data: lines, error: lnErr } = await supabase
       .from("work_order_lines")
-      .select("work_order_id,status")
+      .select("id,work_order_id,status,assigned_tech_id")
       .in("work_order_id", ids);
 
     if (lnErr) {
       console.warn("[WorkOrdersView] failed to load lines for rollup:", lnErr.message);
       setTechRollupByWo({});
+      setAssignedByWo({});
       setLoading(false);
       return;
     }
 
+    const lineRows = (lines ?? []) as Array<Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">>;
+    const lineIds = lineRows.map((line) => line.id).filter(Boolean);
+    const { data: bridgeAssignments, error: bridgeAssignErr } = lineIds.length
+      ? await supabase
+          .from("work_order_line_technicians")
+          .select("work_order_line_id")
+          .in("work_order_line_id", lineIds)
+      : { data: [], error: null };
+
+    if (bridgeAssignErr) {
+      console.warn("[WorkOrdersView] failed to load assignment bridge rows:", bridgeAssignErr.message);
+    }
+
+    const bridgeAssignedLineIds = new Set(
+      (bridgeAssignments ?? []).map((row) => row.work_order_line_id).filter(Boolean),
+    );
+
     const map: Record<string, Array<Pick<Line, "status">>> = {};
-    (lines ?? []).forEach((l) => {
-      const woId = (l as Pick<Line, "work_order_id">).work_order_id;
+    const assignedMap: Record<string, boolean> = {};
+    lineRows.forEach((l) => {
+      const woId = l.work_order_id;
       if (!woId) return;
       if (!map[woId]) map[woId] = [];
-      map[woId].push(l as Pick<Line, "status">);
+      map[woId].push(l);
+
+      if (l.assigned_tech_id || bridgeAssignedLineIds.has(l.id)) {
+        assignedMap[woId] = true;
+      }
     });
 
     const rollups: Record<string, TechRollup> = {};
     ids.forEach((woId) => {
       rollups[woId] = rollupTechStatus(map[woId] ?? []);
+      assignedMap[woId] = Boolean(assignedMap[woId]);
     });
 
     setTechRollupByWo(rollups);
+    setAssignedByWo(assignedMap);
     setLoading(false);
   }, [isSeededShop, q, status, supabase, workforceDrilldownActive]);
 
@@ -935,11 +965,12 @@ export default function WorkOrdersView(): JSX.Element {
             const issueCount = review?.issues?.length ?? 0;
             const techRollup = techRollupByWo[r.id] ?? "awaiting";
             const canonicalStatus = normalizeWorkOrderStatus(r.status);
+            const hasAssignedTech = Boolean(assignedByWo[r.id]);
             const nextAction =
-              canonicalStatus === "new" ? (r.assigned_tech ? "Start inspection" : "Assign technician") :
+              canonicalStatus === "new" ? (hasAssignedTech ? "Start inspection" : "Assign technician") :
               canonicalStatus === "awaiting_inspection" ? "Open inspection" :
               canonicalStatus === "awaiting_approval" ? "Review approval" :
-              canonicalStatus === "approved" ? (r.assigned_tech ? "Start work" : "Schedule work") :
+              canonicalStatus === "approved" ? (hasAssignedTech ? "Start work" : "Schedule work") :
               canonicalStatus === "in_progress" ? "Continue work" :
               canonicalStatus === "waiting_parts" ? "Check parts" :
               canonicalStatus === "ready_to_invoice" ? "Create invoice" :
@@ -1060,7 +1091,7 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                   {canonicalStatus === "awaiting_approval" ? <span className="rounded-full border border-blue-400/50 bg-blue-500/10 px-2 py-0.5 text-blue-100">Needs approval</span> : null}
                   {canonicalStatus === "waiting_parts" || techRollup === "on_hold" ? <span className="rounded-full border border-sky-400/45 bg-sky-500/10 px-2 py-0.5 text-sky-100">Waiting parts</span> : null}
-                  {!r.assigned_tech ? <span className="rounded-full border border-amber-400/50 bg-amber-500/10 px-2 py-0.5 text-amber-100">No technician assigned</span> : null}
+                  {!hasAssignedTech ? <span className="rounded-full border border-amber-400/50 bg-amber-500/10 px-2 py-0.5 text-amber-100">No technician assigned</span> : null}
                   {!r.inspection_id ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
                   {canonicalStatus === "ready_to_invoice" ? <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">Ready to invoice</span> : null}
                   {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
