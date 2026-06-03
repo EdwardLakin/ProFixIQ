@@ -1007,7 +1007,16 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div
                 key={r.id}
-                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] ${accent.border}`}
+                role="link"
+                tabIndex={0}
+                onClick={() => router.push(href)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    router.push(href);
+                  }
+                }}
+                className={`cursor-pointer rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 ${accent.border}`}
                 style={{
                   boxShadow:
                     "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
@@ -1016,12 +1025,9 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={href}
-                        className="text-sm font-extrabold text-white hover:text-[rgba(242,210,187,0.94)]"
-                      >
+                      <span className="text-sm font-extrabold text-white">
                         {displayId}
-                      </Link>
+                      </span>
 
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${accent.badge}`}
@@ -1112,31 +1118,30 @@ export default function WorkOrdersView(): JSX.Element {
                   {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
                 </div>
 
-                <div className="mt-3 text-xs text-neutral-300">
-                  Next action: <span className="font-semibold text-white">{nextAction}</span>
+                <div className="mt-3 rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-xs text-neutral-300">
+                  Action cue: <span className="font-semibold text-white">{nextAction}</span>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link
-                    href={href}
-                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
-                  >
-                    Open
-                  </Link>
-
                   {canPickStatus ? (
                     <button
-                      onClick={() => openStatusPicker(r)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStatusPicker(r);
+                      }}
                       className="rounded-full border border-purple-500/60 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-100 transition hover:bg-purple-500/20"
-                      title="Change work order status"
+                      title="Change work order workflow stage"
                     >
-                      Status
+                      Change stage
                     </button>
                   ) : null}
 
                   {isInvoiceStage ? (
                     <button
-                      onClick={() => void runInvoiceReview(r.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void runInvoiceReview(r.id);
+                      }}
                       disabled={reviewLoadingId === r.id || reviewedOk}
                       className={
                         reviewedOk
@@ -1154,7 +1159,10 @@ export default function WorkOrdersView(): JSX.Element {
 
                   {statusLower === "ready_to_invoice" ? (
                     <button
-                      onClick={() => openInvoicePage(r.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openInvoicePage(r.id);
+                      }}
                       disabled={!reviewedOk}
                       className={
                         reviewedOk
@@ -1167,7 +1175,10 @@ export default function WorkOrdersView(): JSX.Element {
                   ) : null}
 
                   <button
-                    onClick={() => void handleDelete(r.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDelete(r.id);
+                    }}
                     className="rounded-full border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
                   >
                     Delete
@@ -1178,7 +1189,8 @@ export default function WorkOrdersView(): JSX.Element {
                   <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3">
                     {!isAssigning ? (
                       <button
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           setAssigningFor(r.id);
                           setSelectedTechId("");
                         }}
