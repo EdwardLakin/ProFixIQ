@@ -684,13 +684,26 @@ export default function FocusedJobModal(props: {
             <div className="text-sm text-neutral-300">No job found.</div>
           ) : (
             <div
-              className={
-                isPanelVariant
-                  ? "grid gap-3 xl:grid-cols-[1.05fr_1fr]"
-                  : "space-y-4"
-              }
+              className="space-y-3"
             >
               <div className="space-y-3">
+              <SectionCard title="Line description">
+                <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-100">
+                  <div className="font-semibold text-white">
+                    {line?.description?.trim() || line?.complaint?.trim() || "Focused job"}
+                  </div>
+                  {line?.complaint?.trim() && line?.complaint?.trim() !== line?.description?.trim() ? (
+                    <div className="mt-2 text-xs text-neutral-300">
+                      <span className="text-neutral-500">Complaint:</span> {line.complaint.trim()}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 text-[11px] text-neutral-500">
+                    {workOrder ? `WO #${workOrder.custom_id || workOrder.id?.slice(0, 8)}` : "Work order unavailable"}
+                    {line.job_type ? ` • ${String(line.job_type).replaceAll("_", " ")}` : ""}
+                  </div>
+                </div>
+              </SectionCard>
+
               {mode === "tech" ? (
                 <SectionCard title="Operational actions">
                   {line.status !== "completed" ? (
@@ -815,40 +828,6 @@ export default function FocusedJobModal(props: {
                   ) : null}
                 </SectionCard>
               ) : null}
-
-              <SectionCard title="Quick status">
-                <div className={cn("grid gap-2.5 sm:grid-cols-2", isExpandedPanel && "xl:grid-cols-3")}>
-                  <MetaStat
-                    label="Start"
-                    value={createdStart}
-                  />
-                  <MetaStat
-                    label="Finish"
-                    value={createdFinish}
-                  />
-                  <MetaStat
-                    label="Hold reason"
-                    value={line.hold_reason ?? "—"}
-                  />
-                  <MetaStat
-                    label="Job type"
-                    value={String(line.job_type ?? "—").replaceAll("_", " ")}
-                  />
-                  <MetaStat
-                    label="Primary tech"
-                    value={primaryTechDisplay}
-                  />
-                  <MetaStat label="Labor" value={laborDisplay} />
-                  <MetaStat
-                    label="Line total"
-                    value={lineTotal > 0 ? new Intl.NumberFormat("en-CA", {
-                      style: "currency",
-                      currency: "CAD",
-                      maximumFractionDigits: 2,
-                    }).format(lineTotal) : "Estimate pending"}
-                  />
-                </div>
-              </SectionCard>
 
               {!isPanelVariant ? (
                 <SectionCard title="Vehicle & customer">
@@ -1002,6 +981,40 @@ export default function FocusedJobModal(props: {
                     </ul>
                   </div>
                 )}
+              </SectionCard>
+
+              <SectionCard title="Quick status">
+                <div className={cn("grid gap-2.5 sm:grid-cols-2", isExpandedPanel && "xl:grid-cols-3")}>
+                  <MetaStat
+                    label="Start"
+                    value={createdStart}
+                  />
+                  <MetaStat
+                    label="Finish"
+                    value={createdFinish}
+                  />
+                  <MetaStat
+                    label="Hold reason"
+                    value={line.hold_reason ?? "—"}
+                  />
+                  <MetaStat
+                    label="Job type"
+                    value={String(line.job_type ?? "—").replaceAll("_", " ")}
+                  />
+                  <MetaStat
+                    label="Primary tech"
+                    value={primaryTechDisplay}
+                  />
+                  <MetaStat label="Labor" value={laborDisplay} />
+                  <MetaStat
+                    label="Line total"
+                    value={lineTotal > 0 ? new Intl.NumberFormat("en-CA", {
+                      style: "currency",
+                      currency: "CAD",
+                      maximumFractionDigits: 2,
+                    }).format(lineTotal) : "Estimate pending"}
+                  />
+                </div>
               </SectionCard>
 
               <SectionCard title="AI suggested repairs">
