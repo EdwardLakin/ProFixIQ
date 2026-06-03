@@ -57,7 +57,6 @@ function logMiddlewareAuthDiagnostics(args: {
   profile?: {
     shop_id?: string | null;
     role?: string | null;
-    completed_onboarding?: boolean | null;
   } | null;
   profileError?: string | null;
 }) {
@@ -67,7 +66,6 @@ function logMiddlewareAuthDiagnostics(args: {
     profileExists: Boolean(args.profile),
     profileShopId: args.profile?.shop_id ?? null,
     profileRole: args.profile?.role ?? null,
-    completedOnboarding: args.profile?.completed_onboarding ?? null,
     profileError: args.profileError ?? null,
   });
 }
@@ -165,7 +163,6 @@ export async function middleware(req: NextRequest) {
 
   let postAuthDestination = ONBOARDING_V2_PATH;
   let profileForRouting: {
-    completed_onboarding?: boolean | null;
     must_change_password?: boolean | null;
     role?: string | null;
     shop_id?: string | null;
@@ -174,7 +171,7 @@ export async function middleware(req: NextRequest) {
     try {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("completed_onboarding, must_change_password, shop_id, role")
+        .select("must_change_password, shop_id, role")
         .eq("id", user.id)
         .limit(1)
         .maybeSingle();
@@ -301,6 +298,7 @@ export const config = {
     "/subscribe",
     "/confirm",
     "/signup",
+    "/sign-in",
     "/forgot-password",
     "/auth/reset",
     "/auth/set-password",

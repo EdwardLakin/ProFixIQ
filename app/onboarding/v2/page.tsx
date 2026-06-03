@@ -16,7 +16,7 @@ export default async function OnboardingV2Page() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("completed_onboarding, must_change_password, role, shop_id, full_name, phone, email")
+    .select("must_change_password, role, shop_id, full_name, phone, email")
     .eq("id", user.id)
     .maybeSingle();
 

@@ -19,7 +19,6 @@ export const SHOP_ASSIGNMENT_REQUIRED_PATH = "/account/shop-assignment-required"
 export const PROFILE_RECOVERY_PATH = "/account/profile-recovery";
 
 export type PostAuthProfile = {
-  completed_onboarding?: boolean | null;
   must_change_password?: boolean | null;
   role?: string | null;
   shop_id?: string | null;
@@ -106,7 +105,7 @@ export async function resolvePostAuthDestination(args: {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("completed_onboarding, must_change_password, role, shop_id")
+    .select("must_change_password, role, shop_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -115,7 +114,6 @@ export async function resolvePostAuthDestination(args: {
     profileExists: Boolean(profile),
     profileShopId: profile?.shop_id ?? null,
     profileRole: profile?.role ?? null,
-    completedOnboarding: profile?.completed_onboarding ?? null,
     profileError: profileError?.message ?? null,
   });
 
