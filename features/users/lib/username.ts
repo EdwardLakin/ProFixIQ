@@ -1,7 +1,22 @@
 const MAX_USERNAME_LENGTH = 32;
+export const SHOP_USER_AUTH_DOMAIN = "local.profix-internal";
 
 function toAlphaNumericLower(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+export function normalizeLoginUsername(input: string): string {
+  return toAlphaNumericLower(input.trim());
+}
+
+export function buildShopUserAuthEmail(username: string): string {
+  return `${normalizeLoginUsername(username)}@${SHOP_USER_AUTH_DOMAIN}`;
+}
+
+export function normalizeAuthIdentifier(input: string): string {
+  const raw = input.trim();
+  if (raw.includes("@")) return raw.toLowerCase();
+  return buildShopUserAuthEmail(raw);
 }
 
 export function buildShopUsernameNamespace(shopName: string | null | undefined): string {

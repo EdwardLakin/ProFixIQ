@@ -154,19 +154,26 @@ export default function CreateUserPage(): JSX.Element {
       });
 
       const payload = (await res.json().catch(() => null)) as
-        | { error?: string; user_id?: string; people_record_href?: string }
+        | { error?: string; user_id?: string; username?: string; email?: string; people_record_href?: string }
         | null;
 
       if (!res.ok) throw new Error(payload?.error || "Failed to create user.");
 
+      const createdUsername = payload?.username ?? body.username;
+      const createdEmail = payload?.email ?? null;
+
       // local feedback
-      setSuccess(`User "${body.username}" created.`);
+      setSuccess(
+        `User "${createdUsername}" created. They can sign in with username "${createdUsername}"${
+          createdEmail ? ` or email ${createdEmail}` : ""
+        } and the password entered here.`,
+      );
       setCreatedUserId(payload?.user_id ?? null);
       setCreatedPersonHref(payload?.people_record_href ?? null);
       setRecentUsers((prev) =>
         [
           {
-            username: body.username,
+            username: createdUsername,
             full_name: body.full_name,
             role: body.role ?? "mechanic",
           },

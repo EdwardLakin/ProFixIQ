@@ -7,9 +7,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import AuthShell from "@/features/auth/components/AuthShell";
+import { normalizeAuthIdentifier } from "@/features/users/lib/username";
 
 const COPPER = "#C57A4A";
-const SHOP_USER_DOMAIN = "local.profix-internal";
 
 type PortalType = "customer" | "fleet";
 
@@ -60,13 +60,7 @@ export default function PortalSignInPage() {
     setLoading(true);
     setError("");
 
-    const raw = identifier.trim();
-    let emailToUse = raw;
-
-    // ✅ Allow username-only for shop/fleet-created accounts
-    if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
-    }
+    const emailToUse = normalizeAuthIdentifier(identifier);
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: emailToUse,

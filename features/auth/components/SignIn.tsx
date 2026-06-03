@@ -6,10 +6,10 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import AuthShell from "@/features/auth/components/AuthShell";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import { normalizeAuthIdentifier } from "@/features/users/lib/username";
 
 type Mode = "sign-in" | "sign-up";
 
-const SHOP_USER_DOMAIN = "local.profix-internal";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -97,13 +97,7 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const raw = identifier.trim();
-    let emailToUse = raw;
-
-    // Allow username-only for shop staff: username@SHOP_USER_DOMAIN
-    if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
-    }
+    const emailToUse = normalizeAuthIdentifier(identifier);
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: emailToUse,

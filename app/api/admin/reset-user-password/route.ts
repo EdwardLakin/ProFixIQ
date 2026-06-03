@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { normalizeLoginUsername } from "@/features/users/lib/username";
 
 function mustEnv(name: string) {
   const v = process.env[name];
@@ -21,7 +22,9 @@ export async function POST(req: Request) {
     username?: string;
     password?: string;
   };
-  if (!username || !password) {
+  const normalizedUsername = normalizeLoginUsername(username ?? "");
+
+  if (!normalizedUsername || !password) {
     return NextResponse.json({ error: "username and password required" }, { status: 400 });
   }
 
@@ -35,7 +38,7 @@ export async function POST(req: Request) {
     .from("profiles")
     .select("id, shop_id")
     .eq("shop_id", access.profile.shop_id)
-    .ilike("username", username.toLowerCase())
+    .ilike("username", normalizedUsername)
     .maybeSingle();
 
   if (profileErr || !profile) {
