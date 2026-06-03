@@ -997,16 +997,7 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div
                 key={r.id}
-                role="link"
-                tabIndex={0}
-                onClick={() => router.push(href)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    router.push(href);
-                  }
-                }}
-                className={`cursor-pointer rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 ${accent.border}`}
+                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] ${accent.border}`}
                 style={{
                   boxShadow:
                     "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
@@ -1109,6 +1100,13 @@ export default function WorkOrdersView(): JSX.Element {
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={href}
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+                  >
+                    Open
+                  </Link>
+
                   {canPickStatus ? (
                     <button
                       onClick={(event) => {
