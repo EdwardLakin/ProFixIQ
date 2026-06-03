@@ -21,7 +21,6 @@ import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransi
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import {
   formatLaborSummary,
-  formatPartsSummary,
   resolvePartsBottleneckDisplay,
   resolvePrimaryTechDisplay,
 } from "@/features/work-orders/lib/display/linePresentation";
@@ -182,7 +181,6 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(false);
 
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -233,9 +231,6 @@ export default function FocusedJobModal(props: {
       return;
     }
     closeAllSubModals();
-    if (variant !== "panel") {
-      setPanelExpanded(false);
-    }
   }, [isOpen, workOrderLineId, closeAllSubModals, variant]);
 
   useEffect(() => {
@@ -567,16 +562,11 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
   const isPanelVariant = variant === "panel";
-  const isExpandedPanel = isPanelVariant && panelExpanded;
-  const partsCount = allocs.length;
+  const isExpandedPanel = isPanelVariant;
   const pricing = line
     ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
-  const partsDisplay = formatPartsSummary({
-    partsCount: Math.max(partsCount, Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0),
-    partsTotal: Number(pricing?.partsTotal ?? 0),
-  });
   const lineTotal = Number(pricing?.lineTotal ?? 0);
   const hasPartsRequestedMarker =
     String(line?.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck") ||
@@ -587,6 +577,14 @@ export default function FocusedJobModal(props: {
     holdReason: line?.hold_reason ?? null,
     partsTotal: Number(pricing?.partsTotal ?? 0),
   });
+  const primaryTechDisplay =
+    line
+      ? (
+          assignedTechProfile?.full_name ??
+          (line as unknown as { assigned_tech_name?: string | null })?.assigned_tech_name ??
+          ""
+        ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
+      : "Unassigned";
 
   if (!isOpen) return null;
 
@@ -623,16 +621,6 @@ export default function FocusedJobModal(props: {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              {isPanelVariant ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-xl border border-white/12 bg-black/35 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-200 transition hover:border-[var(--accent-copper-soft)] hover:text-white"
-                  onClick={() => setPanelExpanded((prev) => !prev)}
-                  title={isExpandedPanel ? "Use compact panel layout" : "Use expanded panel layout"}
-                >
-                  {isExpandedPanel ? "Compact" : "Expand"}
-                </button>
-              ) : null}
               {workOrder?.id ? (
                 <button
                   type="button"
@@ -686,7 +674,7 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
 
-        <div className={`${isPanelVariant ? "px-3 py-3 sm:px-4" : "min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"}`}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4">
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
@@ -698,9 +686,7 @@ export default function FocusedJobModal(props: {
             <div
               className={
                 isPanelVariant
-                  ? isExpandedPanel
-                    ? "grid gap-3"
-                    : "grid gap-3 xl:grid-cols-[1.05fr_1fr]"
+                  ? "grid gap-3 xl:grid-cols-[1.05fr_1fr]"
                   : "space-y-4"
               }
             >
@@ -850,9 +836,8 @@ export default function FocusedJobModal(props: {
                   />
                   <MetaStat
                     label="Primary tech"
-                    value={resolvePrimaryTechDisplay(line, assignedTechProfile)}
+                    value={primaryTechDisplay}
                   />
-                  <MetaStat label="Parts" value={partsDisplay} />
                   <MetaStat label="Labor" value={laborDisplay} />
                   <MetaStat
                     label="Line total"
@@ -944,7 +929,7 @@ export default function FocusedJobModal(props: {
               ) : null}
               </div>
 
-              <div className="space-y-3">
+              <div className={cn("space-y-3", isPanelVariant && "xl:sticky xl:top-0 xl:self-start")}>
               <SectionCard title="Repair story">
                 <button
                   type="button"
