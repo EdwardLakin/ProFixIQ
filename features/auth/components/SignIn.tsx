@@ -6,7 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import AuthShell from "@/features/auth/components/AuthShell";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
-import { normalizeAuthIdentifier } from "@/features/users/lib/username";
+import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -97,10 +97,14 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const emailToUse = normalizeAuthIdentifier(identifier);
+    const authIdentifier = getAuthIdentifierStrategy(identifier);
+    console.info("[auth/sign-in]", {
+      inputKind: authIdentifier.inputKind,
+      normalizedAuthEmail: authIdentifier.authEmail,
+    });
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email: emailToUse,
+      email: authIdentifier.authEmail,
       password,
     });
 

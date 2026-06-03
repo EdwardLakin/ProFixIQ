@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import AuthShell from "@/features/auth/components/AuthShell";
-import { normalizeAuthIdentifier } from "@/features/users/lib/username";
+import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
 
 const COPPER = "#C57A4A";
 
@@ -60,10 +60,14 @@ export default function PortalSignInPage() {
     setLoading(true);
     setError("");
 
-    const emailToUse = normalizeAuthIdentifier(identifier);
+    const authIdentifier = getAuthIdentifierStrategy(identifier);
+    console.info("[auth/sign-in]", {
+      inputKind: authIdentifier.inputKind,
+      normalizedAuthEmail: authIdentifier.authEmail,
+    });
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: emailToUse,
+      email: authIdentifier.authEmail,
       password,
     });
 

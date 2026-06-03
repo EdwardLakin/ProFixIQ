@@ -33,6 +33,10 @@ function logCreateUserStep(
     targetShopId?: string | null;
     role?: string | null;
     authUserId?: string | null;
+    profileId?: string | null;
+    normalizedUsername?: string | null;
+    syntheticAuthEmail?: string | null;
+    hasContactEmail?: boolean;
   } = {},
 ): void {
   console.info("[admin/create-user]", { step, ...details });
@@ -45,6 +49,10 @@ function logCreateUserError(
     targetShopId?: string | null;
     role?: string | null;
     authUserId?: string | null;
+    profileId?: string | null;
+    normalizedUsername?: string | null;
+    syntheticAuthEmail?: string | null;
+    hasContactEmail?: boolean;
     error?: string | null;
   } = {},
 ): void {
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
   try {
     const raw = (await req.json()) as Partial<Body>;
 
-    const password = (raw.password ?? "").trim();
+    const password = raw.password ?? "";
     const full_name = (raw.full_name ?? null) || null;
     const requestedRole = (raw.role ?? null) || null;
     const canonicalRole = canonicalizeRole(requestedRole);
@@ -148,20 +156,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    // Username-only auth still signs in as username@local.profix-internal.
-    // We enforce a shop namespace in username normalization so this backing identity remains collision-safe.
+    // Staff username auth is primary: Supabase Auth uses the same synthetic email
+    // that username sign-in derives from the normalized username. Real email remains
+    // a profile/contact field only.
     const syntheticEmail = buildShopUserAuthEmail(username);
-    const email = inputEmail || syntheticEmail;
+    const contactEmail = inputEmail || null;
 
     logCreateUserStep("creating_auth_user", {
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
       role: canonicalRole,
+      normalizedUsername: username,
+      syntheticAuthEmail: syntheticEmail,
+      hasContactEmail: Boolean(contactEmail),
     });
 
     // create auth user with service client
     const { data: created, error: createErr } = await serviceSupabase.auth.admin.createUser({
-      email,
+      email: syntheticEmail,
       password,
       email_confirm: true,
       user_metadata: {
@@ -170,6 +182,7 @@ export async function POST(req: Request) {
         shop_id: effectiveShopId, // force caller's shop
         phone,
         username,
+        contact_email: contactEmail,
       },
     });
 
@@ -193,6 +206,9 @@ export async function POST(req: Request) {
       targetShopId: effectiveShopId,
       role: canonicalRole,
       authUserId: newUserId,
+      normalizedUsername: username,
+      syntheticAuthEmail: syntheticEmail,
+      hasContactEmail: Boolean(contactEmail),
     });
 
     // upsert profile for the new user
@@ -201,7 +217,7 @@ export async function POST(req: Request) {
       .upsert(
         {
           id: newUserId,
-          email,
+          email: contactEmail,
           full_name,
           phone,
           role: canonicalRole,
@@ -269,6 +285,10 @@ export async function POST(req: Request) {
       targetShopId: effectiveShopId,
       role: canonicalRole,
       authUserId: newUserId,
+      profileId: newUserId,
+      normalizedUsername: username,
+      syntheticAuthEmail: syntheticEmail,
+      hasContactEmail: Boolean(contactEmail),
     });
 
     return NextResponse.json({
@@ -276,7 +296,8 @@ export async function POST(req: Request) {
       user_id: newUserId,
       username,
       suggested_alternate_username: withShopUsernameSuffix(username, 1),
-      email,
+      email: contactEmail,
+      auth_email: syntheticEmail,
       must_change_password: true,
       shop_id: effectiveShopId,
       people_record_href: `/dashboard/admin/people/${newUserId}?from=create-user`,
