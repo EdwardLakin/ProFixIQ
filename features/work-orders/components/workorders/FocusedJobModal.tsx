@@ -687,23 +687,6 @@ export default function FocusedJobModal(props: {
               className="space-y-3"
             >
               <div className="space-y-3">
-              <SectionCard title="Line description">
-                <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-100">
-                  <div className="font-semibold text-white">
-                    {line?.description?.trim() || line?.complaint?.trim() || "Focused job"}
-                  </div>
-                  {line?.complaint?.trim() && line?.complaint?.trim() !== line?.description?.trim() ? (
-                    <div className="mt-2 text-xs text-neutral-300">
-                      <span className="text-neutral-500">Complaint:</span> {line.complaint.trim()}
-                    </div>
-                  ) : null}
-                  <div className="mt-2 text-[11px] text-neutral-500">
-                    {workOrder ? `WO #${workOrder.custom_id || workOrder.id?.slice(0, 8)}` : "Work order unavailable"}
-                    {line.job_type ? ` • ${String(line.job_type).replaceAll("_", " ")}` : ""}
-                  </div>
-                </div>
-              </SectionCard>
-
               {mode === "tech" ? (
                 <SectionCard title="Operational actions">
                   {line.status !== "completed" ? (
