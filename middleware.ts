@@ -4,6 +4,10 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  hasSupabasePublicEnv,
+  readSupabasePublicEnv,
+} from "@/features/shared/lib/supabase/public-env";
 
 function isAssetPath(p: string) {
   return (
@@ -31,26 +35,10 @@ function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
   return normalized === "owner" || normalized === "admin";
 }
 
-function readSupabaseServerEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
-
-  if (!url)
-    throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL");
-  if (!anonKey) {
-    throw new Error(
-      "Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY",
-    );
-  }
-
-  return { url, anonKey };
-}
-
 function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
-  const { url, anonKey } = readSupabaseServerEnv();
+  const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("middleware");
 
-  return createServerClient<Database>(url, anonKey, {
+  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return req.cookies.getAll();
@@ -115,6 +103,8 @@ async function resolvePortalModeServer(
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-next-pathname", pathname);
 
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return NextResponse.next();
@@ -124,21 +114,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const res = NextResponse.next({ request: req });
-  const supabase = createMiddlewareSupabase(req, res);
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError && userError.message !== "Auth session missing!") {
-    console.info("[auth/middleware-get-user]", {
-      pathname,
-      userId: null,
-      error: userError.message,
-    });
-  }
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
@@ -161,6 +137,32 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/demo") ||
     isPortalAuthPage ||
     isLegacyPortalConfirm;
+
+  if (isPublic && !hasSupabasePublicEnv()) {
+    console.info("[auth/middleware-public-skip]", {
+      pathname,
+      hasNextPublicSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+      hasNextPublicSupabaseAnonKey: Boolean(
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      ),
+    });
+    return res;
+  }
+
+  const supabase = createMiddlewareSupabase(req, res);
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError && userError.message !== "Auth session missing!") {
+    console.info("[auth/middleware-get-user]", {
+      pathname,
+      userId: null,
+      error: userError.message,
+    });
+  }
 
   let completed = false;
   let needsShopBoostIntake = false;

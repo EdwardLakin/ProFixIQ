@@ -2,23 +2,27 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { readSupabasePublicEnv } from "./public-env";
 
-let _client: ReturnType<typeof createBrowserClient<Database>> | null = null;
+type BrowserSupabaseClient = SupabaseClient<Database>;
 
-function mustBrowserEnv(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY") {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing env: ${name}`);
-  return value;
-}
+let _client: BrowserSupabaseClient | null = null;
 
-export function createBrowserSupabase() {
+export function createBrowserSupabase(): BrowserSupabaseClient {
   if (_client) return _client;
-  _client = createBrowserClient<Database>(
-    mustBrowserEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustBrowserEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  );
+
+  const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("browser");
+  _client = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
   return _client;
 }
 
-export const supabaseBrowser = createBrowserSupabase();
+export const supabaseBrowser = new Proxy({} as BrowserSupabaseClient, {
+  get(_target, property, receiver) {
+    return Reflect.get(createBrowserSupabase(), property, receiver);
+  },
+  set(_target, property, value, receiver) {
+    return Reflect.set(createBrowserSupabase(), property, value, receiver);
+  },
+});
