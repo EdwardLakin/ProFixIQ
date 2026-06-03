@@ -180,6 +180,19 @@ export default function WorkforceOverviewClient() {
     void load();
   }, [load]);
 
+  const panelEntries = useMemo(() => {
+    if (!data) return [];
+    const ordered = Object.entries(data.sections).sort((a, b) => {
+      const indexA = sectionOrder.findIndex((entry) => a[0].toLowerCase().includes(entry));
+      const indexB = sectionOrder.findIndex((entry) => b[0].toLowerCase().includes(entry));
+      const normalizedA = indexA === -1 ? 99 : indexA;
+      const normalizedB = indexB === -1 ? 99 : indexB;
+      if (normalizedA !== normalizedB) return normalizedA - normalizedB;
+      return a[0].localeCompare(b[0]);
+    });
+    return ordered;
+  }, [data]);
+
   if (loading) {
     return (
       <div className="space-y-4" aria-busy="true" aria-live="polite">
@@ -248,17 +261,6 @@ export default function WorkforceOverviewClient() {
     watchlist: data.inbox.filter((item) => item.severity === "info"),
   };
 
-  const panelEntries = useMemo(() => {
-    const ordered = Object.entries(data.sections).sort((a, b) => {
-      const indexA = sectionOrder.findIndex((entry) => a[0].toLowerCase().includes(entry));
-      const indexB = sectionOrder.findIndex((entry) => b[0].toLowerCase().includes(entry));
-      const normalizedA = indexA === -1 ? 99 : indexA;
-      const normalizedB = indexB === -1 ? 99 : indexB;
-      if (normalizedA !== normalizedB) return normalizedA - normalizedB;
-      return a[0].localeCompare(b[0]);
-    });
-    return ordered;
-  }, [data.sections]);
   return (
     <div className="space-y-6">
       <header className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#171515] via-[#131418] to-[#191412] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.25)] md:p-6">
