@@ -25,15 +25,30 @@ function safeRedirectPath(v: string | null): string | null {
 type PortalMode = "customer" | "fleet";
 
 function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
-  const normalized = String(role ?? "").trim().toLowerCase();
+  const normalized = String(role ?? "")
+    .trim()
+    .toLowerCase();
   return normalized === "owner" || normalized === "admin";
 }
 
+function readSupabaseServerEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+
+  if (!url)
+    throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL");
+  if (!anonKey) {
+    throw new Error(
+      "Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY",
+    );
+  }
+
+  return { url, anonKey };
+}
+
 function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
-  if (!anonKey) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const { url, anonKey } = readSupabaseServerEnv();
 
   return createServerClient<Database>(url, anonKey, {
     cookies: {
@@ -167,7 +182,11 @@ export async function middleware(req: NextRequest) {
 
       completed = !!profile?.completed_onboarding || !!profile?.shop_id;
 
-      if (profile?.completed_onboarding && profile?.shop_id && isShopBoostOrchestratedRole(profile.role)) {
+      if (
+        profile?.completed_onboarding &&
+        profile?.shop_id &&
+        isShopBoostOrchestratedRole(profile.role)
+      ) {
         const { data: intake } = await supabase
           .from("shop_boost_intakes")
           .select("id")
@@ -183,7 +202,8 @@ export async function middleware(req: NextRequest) {
         pathname,
         userId: user.id,
         profile: null,
-        profileError: err instanceof Error ? err.message : "profile lookup failed",
+        profileError:
+          err instanceof Error ? err.message : "profile lookup failed",
       });
       completed = false;
       needsShopBoostIntake = false;
@@ -228,14 +248,11 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(target, { headers: res.headers });
     }
 
-    if (
-      isPortal &&
-      user &&
-      (isPortalAuthPage || isLegacyPortalConfirm)
-    ) {
+    if (isPortal && user && (isPortalAuthPage || isLegacyPortalConfirm)) {
       const mode = await resolvePortalModeServer(supabase, user.id);
 
-      let to = redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
+      let to =
+        redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
 
       if (
         mode === "fleet" &&
