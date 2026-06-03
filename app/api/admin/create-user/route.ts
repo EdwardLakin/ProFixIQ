@@ -3,11 +3,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { assertShopHasAvailableSeat } from "@/features/shared/lib/server/shop-seat-limit";
 import {
+  buildShopUserAuthEmail,
   buildShopUsernameNamespace,
   normalizeProvisioningUsername,
   withShopUsernameSuffix,
@@ -25,10 +26,29 @@ type Body = {
   phone?: string | null;
 };
 
-function mustEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.trim() === "") throw new Error(`Missing required env: ${name}`);
-  return v;
+function logCreateUserStep(
+  step: string,
+  details: {
+    adminId?: string | null;
+    targetShopId?: string | null;
+    role?: string | null;
+    authUserId?: string | null;
+  } = {},
+): void {
+  console.info("[admin/create-user]", { step, ...details });
+}
+
+function logCreateUserError(
+  step: string,
+  details: {
+    adminId?: string | null;
+    targetShopId?: string | null;
+    role?: string | null;
+    authUserId?: string | null;
+    error?: string | null;
+  } = {},
+): void {
+  console.warn("[admin/create-user]", { step, ...details });
 }
 
 export async function POST(req: Request) {
@@ -68,10 +88,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Profile for current user not found." }, { status: 403 });
     }
 
-    // build service client to actually create auth user
-    const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
-    const service = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
-    const serviceSupabase = createClient<Database>(url, service);
+    logCreateUserStep("access_authorized", {
+      adminId: access.profile.id,
+      targetShopId: effectiveShopId,
+      role: canonicalRole,
+    });
+
+    // Service-role client is created server-side only and is never exposed to the browser.
+    const serviceSupabase = createAdminSupabase();
 
     const { data: shop } = await serviceSupabase
       .from("shops")
@@ -98,8 +122,14 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (existingErr) {
+      logCreateUserError("username_lookup_failed", {
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        role: canonicalRole,
+        error: existingErr.message,
+      });
       return NextResponse.json(
-        { error: `Failed to check existing usernames: ${existingErr.message}` },
+        { error: "Failed to check existing usernames.", code: "username_lookup_failed" },
         { status: 500 }
       );
     }
@@ -120,8 +150,14 @@ export async function POST(req: Request) {
 
     // Username-only auth still signs in as username@local.profix-internal.
     // We enforce a shop namespace in username normalization so this backing identity remains collision-safe.
-    const syntheticEmail = `${username}@local.profix-internal`;
+    const syntheticEmail = buildShopUserAuthEmail(username);
     const email = inputEmail || syntheticEmail;
+
+    logCreateUserStep("creating_auth_user", {
+      adminId: access.profile.id,
+      targetShopId: effectiveShopId,
+      role: canonicalRole,
+    });
 
     // create auth user with service client
     const { data: created, error: createErr } = await serviceSupabase.auth.admin.createUser({
@@ -138,14 +174,26 @@ export async function POST(req: Request) {
     });
 
     if (createErr || !created?.user) {
+      logCreateUserError("auth_user_create_failed", {
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        role: canonicalRole,
+        error: createErr?.message ?? "No auth user returned",
+      });
       const safeMessage = createErr?.message?.toLowerCase().includes("already been registered")
         ? "Unable to provision this username. Try the suggested shop-prefixed username."
         : (createErr?.message ?? "Failed to create user.");
 
-      return NextResponse.json({ error: safeMessage }, { status: 400 });
+      return NextResponse.json({ error: safeMessage, code: "auth_user_create_failed" }, { status: 400 });
     }
 
     const newUserId = created.user.id;
+    logCreateUserStep("auth_user_created", {
+      adminId: access.profile.id,
+      targetShopId: effectiveShopId,
+      role: canonicalRole,
+      authUserId: newUserId,
+    });
 
     // upsert profile for the new user
     const { error: profileErr } = await serviceSupabase
@@ -175,8 +223,15 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+      logCreateUserError("profile_upsert_failed", {
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        role: canonicalRole,
+        authUserId: newUserId,
+        error: profileErr.message,
+      });
       return NextResponse.json(
-        { error: `Profile upsert failed: ${profileErr.message}` },
+        { error: "Profile upsert failed.", code: "profile_upsert_failed" },
         { status: 400 }
       );
     }
@@ -196,11 +251,25 @@ export async function POST(req: Request) {
       );
 
     if (workforceErr) {
+      logCreateUserError("workforce_profile_seed_failed", {
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        role: canonicalRole,
+        authUserId: newUserId,
+        error: workforceErr.message,
+      });
       return NextResponse.json(
-        { error: `Workforce profile seed failed: ${workforceErr.message}` },
+        { error: "Workforce profile seed failed.", code: "workforce_profile_seed_failed" },
         { status: 400 }
       );
     }
+
+    logCreateUserStep("completed", {
+      adminId: access.profile.id,
+      targetShopId: effectiveShopId,
+      role: canonicalRole,
+      authUserId: newUserId,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -214,6 +283,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    logCreateUserError("unexpected_error", { error: msg });
+    return NextResponse.json({ error: msg, code: "unexpected_error" }, { status: 500 });
   }
 }

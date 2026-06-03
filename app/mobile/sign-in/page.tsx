@@ -8,11 +8,10 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { normalizeAuthIdentifier } from "@/features/users/lib/username";
 
 type DB = Database;
 
-// same synthetic-username domain as portal sign-in
-const SHOP_USER_DOMAIN = "local.profix-internal";
 
 export default function MobileSignInPage() {
   const router = useRouter();
@@ -60,13 +59,7 @@ export default function MobileSignInPage() {
     setLoading(true);
     setError("");
 
-    const raw = identifier.trim();
-    let emailToUse = raw;
-
-    // username → synthetic email (same behavior as main sign-in)
-    if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
-    }
+    const emailToUse = normalizeAuthIdentifier(identifier);
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: emailToUse,
