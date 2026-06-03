@@ -982,15 +982,16 @@ export default function WorkOrdersView(): JSX.Element {
               !hasWorkLines &&
               ["new", "awaiting", "awaiting_inspection"].includes(canonicalStatus);
             const nextAction =
-              canonicalStatus === "new" ? (hasAssignedTech ? "Start inspection" : "Assign technician") :
-              canonicalStatus === "awaiting_inspection" ? "Open inspection" :
               canonicalStatus === "awaiting_approval" ? "Review approval" :
-              canonicalStatus === "approved" ? (hasAssignedTech ? "Start work" : "Schedule work") :
-              canonicalStatus === "in_progress" ? "Continue work" :
               canonicalStatus === "waiting_parts" ? "Check parts" :
               canonicalStatus === "ready_to_invoice" ? "Create invoice" :
               canonicalStatus === "invoiced" ? "Review invoice" :
-              canonicalStatus === "completed" ? "View record" : "View cancelled";
+              canonicalStatus === "completed" ? "View record" :
+              canonicalStatus === "in_progress" ? "Continue work" :
+              hasWorkLines ? (hasAssignedTech ? "Start work" : "Assign technician") :
+              r.inspection_id ? "Open inspection" :
+              hasAssignedTech ? "Awaiting inspection" :
+              "Assign technician";
             const staleDays = Math.max(0, Math.floor((Date.now() - new Date(r.updated_at ?? r.created_at ?? Date.now()).getTime()) / 86400000));
 
             const accent = stageAccent(r.status);
@@ -1186,7 +1187,11 @@ export default function WorkOrdersView(): JSX.Element {
                 </div>
 
                 {canAssign ? (
-                  <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3">
+                  <div
+                    className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
                     {!isAssigning ? (
                       <button
                         onClick={(event) => {
@@ -1207,6 +1212,8 @@ export default function WorkOrdersView(): JSX.Element {
                         <div className="flex flex-wrap items-center gap-2">
                           <select
                             value={selectedTechId}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
                             onChange={(e) => setSelectedTechId(e.target.value)}
                             className={`${SELECT_DARK} min-w-[180px] px-3 py-2 text-xs`}
                           >
@@ -1220,14 +1227,18 @@ export default function WorkOrdersView(): JSX.Element {
                           </select>
 
                           <button
-                            onClick={() => void handleAssignAll(r.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleAssignAll(r.id);
+                            }}
                             className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
                           >
                             Apply
                           </button>
 
                           <button
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setAssigningFor(null);
                               setSelectedTechId("");
                             }}
