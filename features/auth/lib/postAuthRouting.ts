@@ -14,35 +14,45 @@ export const PASSTHROUGH_KEYS = [
   "activationContext",
 ] as const;
 
-const SHOP_BOOST_ACTIVE_OR_ACTIONABLE_STATUSES = new Set([
-  "queued",
-  "pending",
-  "processing",
-  "failed",
-  "blocked",
-  "requires_review",
-  "review_needed",
-]);
+export const ONBOARDING_V2_PATH = "/onboarding/v2";
+export const SHOP_ASSIGNMENT_REQUIRED_PATH = "/account/shop-assignment-required";
+export const PROFILE_RECOVERY_PATH = "/account/profile-recovery";
 
-const SHOP_BOOST_RECENT_COMPLETED_STATUSES = new Set([
-  "completed",
-  "completed_clean",
-  "completed_with_review",
-  "completed_with_warnings",
-  "ready_for_go_live",
-]);
+export type PostAuthProfile = {
+  completed_onboarding?: boolean | null;
+  must_change_password?: boolean | null;
+  role?: string | null;
+  shop_id?: string | null;
+} | null;
 
-function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
-  const normalized = String(role ?? "").trim().toLowerCase();
+export type PostAuthDecisionInput = {
+  isAuthenticated: boolean;
+  profile: PostAuthProfile;
+  isMobileMode?: boolean;
+  redirect?: string | null;
+  defaultDashboardHref?: string;
+};
+
+function normalizeRole(role: string | null | undefined): string {
+  return String(role ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+export function isOwnerOrAdminRole(role: string | null | undefined): boolean {
+  const normalized = normalizeRole(role);
   return normalized === "owner" || normalized === "admin";
 }
 
-function shouldRouteOwnerToShopBoost(status: string | null | undefined): boolean {
-  const normalized = String(status ?? "").trim().toLowerCase();
-  if (!normalized) return true;
-  if (SHOP_BOOST_ACTIVE_OR_ACTIONABLE_STATUSES.has(normalized)) return false;
-  if (SHOP_BOOST_RECENT_COMPLETED_STATUSES.has(normalized)) return false;
-  return false;
+export function hasAssignedShop(profile: PostAuthProfile): boolean {
+  return Boolean(profile?.shop_id && String(profile.shop_id).trim());
+}
+
+function safeRedirectPath(v: string | null | undefined): string | null {
+  if (!v) return null;
+  if (!v.startsWith("/")) return null;
+  if (v.startsWith("//")) return null;
+  return v;
 }
 
 export function collectPassthroughParams(sp: URLSearchParams | ReadonlyURLSearchParams) {
@@ -52,6 +62,26 @@ export function collectPassthroughParams(sp: URLSearchParams | ReadonlyURLSearch
     if (value) params.set(key, value);
   }
   return params;
+}
+
+export function resolvePostAuthDecision(input: PostAuthDecisionInput): string {
+  const {
+    isAuthenticated,
+    profile,
+    isMobileMode = false,
+    redirect = null,
+    defaultDashboardHref = "/dashboard",
+  } = input;
+
+  if (!isAuthenticated) return "/sign-in";
+  if (!profile) return PROFILE_RECOVERY_PATH;
+  if (profile.must_change_password) return "/auth/set-password";
+  if (hasAssignedShop(profile)) {
+    if (isMobileMode) return "/mobile";
+    return safeRedirectPath(redirect) ?? defaultDashboardHref;
+  }
+  if (isOwnerOrAdminRole(profile.role)) return ONBOARDING_V2_PATH;
+  return SHOP_ASSIGNMENT_REQUIRED_PATH;
 }
 
 export async function resolvePostAuthDestination(args: {
@@ -80,7 +110,7 @@ export async function resolvePostAuthDestination(args: {
     .eq("id", user.id)
     .maybeSingle();
 
-  console.info("[auth/post-login-routing]", {
+  console.info("[auth/post-auth-routing]", {
     userId: user.id,
     profileExists: Boolean(profile),
     profileShopId: profile?.shop_id ?? null,
@@ -89,44 +119,13 @@ export async function resolvePostAuthDestination(args: {
     profileError: profileError?.message ?? null,
   });
 
-  if (profile?.must_change_password) {
-    return "/auth/set-password";
-  }
-
-  const isOnboarded = profile?.completed_onboarding === true;
-
-  if (!isOnboarded) {
-    const passthrough = collectPassthroughParams(searchParams);
-    const onboardingHref = `/onboarding${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
-
-    return activationContext
-      ? appendActivationContextToHref(onboardingHref, activationContext)
-      : onboardingHref;
-  }
-
-  if (isShopBoostOrchestratedRole(profile?.role) && profile?.shop_id) {
-    const { data: latestIntake } = await supabase
-      .from("shop_boost_intakes")
-      .select("status")
-      .eq("shop_id", profile.shop_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ status: string | null }>();
-
-    if (shouldRouteOwnerToShopBoost(latestIntake?.status)) {
-      const passthrough = collectPassthroughParams(searchParams);
-      const shopBoostHref = `/onboarding/shop-boost${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
-
-      return activationContext
-        ? appendActivationContextToHref(shopBoostHref, activationContext)
-        : shopBoostHref;
-    }
-  }
-
-  if (isMobileMode) return "/mobile";
-
-  const redirect = searchParams.get("redirect")?.trim();
-  const destination = redirect || defaultDashboardHref;
+  const destination = resolvePostAuthDecision({
+    isAuthenticated: true,
+    profile,
+    isMobileMode,
+    redirect: searchParams.get("redirect"),
+    defaultDashboardHref,
+  });
 
   return activationContext
     ? appendActivationContextToHref(destination, activationContext)

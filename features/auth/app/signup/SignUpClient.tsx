@@ -153,7 +153,7 @@ export default function SignUpClient() {
     if (sessionIdParam) params.set("session_id", sessionIdParam);
     if (flowParam) params.set("flow", flowParam);
 
-    const onboardingTarget = `/onboarding${
+    const onboardingTarget = `/onboarding/v2${
       params.toString() ? `?${params.toString()}` : ""
     }`;
 

@@ -49,6 +49,7 @@ export default async function RootLayout({
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/demo") ||
     pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/account") ||
     pathname.startsWith("/portal/auth/") ||
     pathname.startsWith("/portal/confirm");
 

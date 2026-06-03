@@ -559,7 +559,7 @@ export default function ShopBoostReviewPage() {
         ) : null}
         {feedback ? <div className="mt-3 rounded-lg border border-sky-400/30 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">{feedback}</div> : null}
         <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-          Legacy Shop Boost import tools are being replaced by the staging-first Onboarding Agent. Existing snapshots remain available for diagnostics. <Link href="/dashboard/onboarding" className="underline underline-offset-2">Open Onboarding Agent workspace</Link>.
+          Legacy Shop Boost import tools are being replaced by the staging-first Onboarding Agent. Existing snapshots remain available for diagnostics. <Link href="/dashboard/onboarding-v2" className="underline underline-offset-2">Open Onboarding Agent workspace</Link>.
         </div>
       </div>
 

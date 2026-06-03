@@ -527,7 +527,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const openMenu = useCallback(() => router.push("/menu"), [router]);
   const openInspections = useCallback(() => router.push("/inspections/templates"), [router]);
   const openTeam = useCallback(() => router.push("/dashboard/owner/create-user"), [router]);
-  const openOnboardingAgent = useCallback(() => router.push("/dashboard/onboarding"), [router]);
+  const openOnboardingAgent = useCallback(() => router.push("/dashboard/onboarding-v2"), [router]);
   const openGuidedReview = useCallback(() => router.push("/dashboard/setup/review"), [router]);
 
   /** ✅ WIRED: calls /api/shop-health/accept-suggestion and handles per-createdType */

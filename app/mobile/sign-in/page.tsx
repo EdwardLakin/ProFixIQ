@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
 export default function MobileSignInPage() {
   const router = useRouter();
@@ -32,21 +33,12 @@ export default function MobileSignInPage() {
       const session = data.session;
       if (!session?.user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      const hasShop = !!profile?.shop_id;
-      const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-      if (!isOnboarded) {
-        router.replace("/onboarding");
-        return;
-      }
-
-      router.replace("/mobile/dashboard");
+      const destination = await resolvePostAuthDestination({
+        supabase,
+        searchParams: sp,
+        isMobileMode: true,
+      });
+      router.replace(destination);
     })();
   }, [router, supabase]);
 
@@ -104,22 +96,12 @@ export default function MobileSignInPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("completed_onboarding, shop_id")
-      .eq("id", u.user.id)
-      .maybeSingle();
-
-    const hasShop = !!profile?.shop_id;
-    const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-    if (!isOnboarded) {
-      // must finish setup in the full portal first
-      router.replace("/onboarding");
-    } else {
-      // ✅ fully onboarded → go straight to mobile companion
-      router.replace("/mobile/dashboard");
-    }
+    const destination = await resolvePostAuthDestination({
+      supabase,
+      searchParams: sp,
+      isMobileMode: true,
+    });
+    router.replace(destination);
 
     setLoading(false);
   };

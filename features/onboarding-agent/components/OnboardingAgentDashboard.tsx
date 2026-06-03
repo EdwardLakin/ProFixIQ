@@ -90,7 +90,7 @@ export function OnboardingAgentDashboard() {
     });
     const json = await res.json();
     setBusy(false);
-    if (json?.sessionId) window.location.href = `/dashboard/onboarding/${json.sessionId}`;
+    if (json?.sessionId) window.location.href = `/dashboard/onboarding-v2/${json.sessionId}`;
   };
 
   return (
@@ -125,7 +125,7 @@ export function OnboardingAgentDashboard() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
-                      href={`/dashboard/onboarding/${session.id}`}
+                      href={`/dashboard/onboarding-v2/${session.id}`}
                       className="rounded-md border border-cyan-400/40 px-3 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/10"
                     >
                       Open

@@ -5,6 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
+  ONBOARDING_V2_PATH,
+  resolvePostAuthDecision,
+} from "@/features/auth/lib/postAuthRouting";
+import {
   hasSupabasePublicEnv,
   readSupabasePublicEnv,
 } from "@/features/shared/lib/supabase/public-env";
@@ -28,12 +32,6 @@ function safeRedirectPath(v: string | null): string | null {
 
 type PortalMode = "customer" | "fleet";
 
-function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
-  const normalized = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  return normalized === "owner" || normalized === "admin";
-}
 
 function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
   const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("middleware");
@@ -135,6 +133,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
     pathname.startsWith("/demo") ||
+    pathname.startsWith("/onboarding") ||
     isPortalAuthPage ||
     isLegacyPortalConfirm;
 
@@ -164,16 +163,29 @@ export async function middleware(req: NextRequest) {
     });
   }
 
-  let completed = false;
-  let needsShopBoostIntake = false;
+  let postAuthDestination = ONBOARDING_V2_PATH;
+  let profileForRouting: {
+    completed_onboarding?: boolean | null;
+    must_change_password?: boolean | null;
+    role?: string | null;
+    shop_id?: string | null;
+  } | null = null;
   if (user && !isPortal) {
     try {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("completed_onboarding, shop_id, role")
+        .select("completed_onboarding, must_change_password, shop_id, role")
         .eq("id", user.id)
         .limit(1)
         .maybeSingle();
+
+      profileForRouting = profile;
+      postAuthDestination = resolvePostAuthDecision({
+        isAuthenticated: true,
+        profile,
+        isMobileMode: pathname.startsWith("/mobile"),
+        redirect: req.nextUrl.searchParams.get("redirect"),
+      });
 
       logMiddlewareAuthDiagnostics({
         pathname,
@@ -181,24 +193,6 @@ export async function middleware(req: NextRequest) {
         profile,
         profileError: profileError?.message ?? null,
       });
-
-      completed = !!profile?.completed_onboarding || !!profile?.shop_id;
-
-      if (
-        profile?.completed_onboarding &&
-        profile?.shop_id &&
-        isShopBoostOrchestratedRole(profile.role)
-      ) {
-        const { data: intake } = await supabase
-          .from("shop_boost_intakes")
-          .select("id")
-          .eq("shop_id", profile.shop_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        needsShopBoostIntake = !intake?.id;
-      }
     } catch (err) {
       logMiddlewareAuthDiagnostics({
         pathname,
@@ -207,20 +201,13 @@ export async function middleware(req: NextRequest) {
         profileError:
           err instanceof Error ? err.message : "profile lookup failed",
       });
-      completed = false;
-      needsShopBoostIntake = false;
+      postAuthDestination = ONBOARDING_V2_PATH;
+      profileForRouting = null;
     }
   }
 
   if (pathname === "/" && user) {
-    const target = new URL(
-      !completed
-        ? "/onboarding"
-        : needsShopBoostIntake
-          ? "/onboarding/shop-boost"
-          : "/dashboard",
-      req.url,
-    );
+    const target = new URL(postAuthDestination, req.url);
     return NextResponse.redirect(target, { headers: res.headers });
   }
 
@@ -234,17 +221,7 @@ export async function middleware(req: NextRequest) {
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
     if (user && (isMainSignIn || isMobileSignIn)) {
-      const to =
-        redirectParam ??
-        (isMobileSignIn
-          ? completed
-            ? "/mobile"
-            : "/onboarding"
-          : !completed
-            ? "/onboarding"
-            : needsShopBoostIntake
-              ? "/onboarding/shop-boost"
-              : "/dashboard");
+      const to = redirectParam ?? postAuthDestination;
 
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
@@ -306,8 +283,11 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
-    const target = new URL("/onboarding", req.url);
+  const isRoutingReadinessPage =
+    pathname.startsWith("/onboarding") || pathname.startsWith("/account/");
+
+  if (!isPortal && !profileForRouting?.shop_id && !isRoutingReadinessPage) {
+    const target = new URL(postAuthDestination, req.url);
     return NextResponse.redirect(target, { headers: res.headers });
   }
 
@@ -328,6 +308,7 @@ export const config = {
     "/portal/:path*",
     "/mobile/sign-in",
     "/onboarding/:path*",
+    "/account/:path*",
     "/dashboard/:path*",
     "/fleet/:path*",
     "/work-orders/:path*",

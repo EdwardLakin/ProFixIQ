@@ -247,7 +247,7 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <Link href="/dashboard/onboarding" className="rounded-md border border-cyan-300/40 bg-cyan-500/10 px-2.5 py-1 text-cyan-100 hover:bg-cyan-500/20">
+        <Link href="/dashboard/onboarding-v2" className="rounded-md border border-cyan-300/40 bg-cyan-500/10 px-2.5 py-1 text-cyan-100 hover:bg-cyan-500/20">
           Open Onboarding Agent
         </Link>
         <Link href="/dashboard/owner/reports" className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">

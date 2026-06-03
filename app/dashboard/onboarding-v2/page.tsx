@@ -15,7 +15,6 @@ export default async function OnboardingV2Page() {
       <AgentReadinessBanner readiness={readiness} />
       <StartOnboardingSessionCard />
       <div className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-300">Session listing coming next.</div>
-      <div className="text-xs text-slate-400">Legacy onboarding remains available at /dashboard/onboarding during transition.</div>
     </OnboardingV2Shell>
   );
 }
