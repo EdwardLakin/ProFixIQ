@@ -2,8 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
@@ -19,7 +18,7 @@ const OTP_TYPES = new Set<EmailOtpType>([
 export default function AuthCallbackPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const ran = useRef(false);
 
   useEffect(() => {

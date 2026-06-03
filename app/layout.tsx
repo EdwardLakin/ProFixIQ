@@ -4,9 +4,7 @@ import Script from "next/script";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
 import { headers } from "next/headers";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
 
@@ -35,7 +33,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const {
     data: { session },
   } = await supabase.auth.getSession();
