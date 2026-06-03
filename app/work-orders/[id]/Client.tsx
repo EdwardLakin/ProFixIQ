@@ -1991,7 +1991,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Right: focused job workspace pane */}
-            <div className="lg:sticky lg:top-20">
+            <div className="min-w-0 lg:sticky lg:top-20 xl:min-w-[620px] 2xl:min-w-[720px]">
               {panelLineId ? (
                 <FocusedJobModal
                   key={panelLineId}

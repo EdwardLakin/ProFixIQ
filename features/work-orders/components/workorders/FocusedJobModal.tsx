@@ -929,7 +929,7 @@ export default function FocusedJobModal(props: {
               ) : null}
               </div>
 
-              <div className={cn("space-y-3", isPanelVariant && "xl:sticky xl:top-0 xl:self-start")}>
+              <div className="space-y-3">
               <SectionCard title="Repair story">
                 <button
                   type="button"
