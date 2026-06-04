@@ -14,7 +14,13 @@ const { router, mockSupabaseState } = vi.hoisted(() => ({
     profile: { shop_id: "shop-real" } as { shop_id: string | null } | null,
     customers: [] as Array<Record<string, unknown>>,
     inserts: [] as Array<Record<string, unknown>>,
-    updates: [] as Array<{ payload: Record<string, unknown>; filters: Record<string, unknown> }>,
+    updates: [] as Array<{
+      payload: Record<string, unknown>;
+      filters: Record<string, unknown>;
+    }>,
+    insertError: null as
+      | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
+      | null,
   },
 }));
 
@@ -28,9 +34,24 @@ type MockQuery = {
   eq: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
+  then: ReturnType<typeof vi.fn>;
 };
+
+function selectCustomers(filters: Record<string, unknown>) {
+  return mockSupabaseState.customers.filter((customer) => {
+    if (filters.shop_id && customer.shop_id !== filters.shop_id) return false;
+    if (filters.email && customer.email !== filters.email) return false;
+    if (filters.name && customer.name !== filters.name) return false;
+    if (filters.or) {
+      const phone = String(filters.or).match(/phone\.eq\.([^,]+)/)?.[1];
+      return customer.phone === phone || customer.phone_number === phone;
+    }
+    return true;
+  });
+}
 
 function makeQuery(table: string): MockQuery {
   const query: MockQuery = {
@@ -44,29 +65,45 @@ function makeQuery(table: string): MockQuery {
       query.filters.or = value;
       return query;
     }),
+    limit: vi.fn(() => query),
     maybeSingle: vi.fn(async () => {
-      if (table === "profiles") return { data: mockSupabaseState.profile, error: null };
-      const match: Record<string, unknown> | undefined = mockSupabaseState.customers.find((customer) => {
-        if (query.filters.email) return customer.email === query.filters.email && customer.shop_id === query.filters.shop_id;
-        if (query.filters.name) return customer.name === query.filters.name && customer.shop_id === query.filters.shop_id;
-        if (query.filters.or) return (customer.phone === "5551112222" || customer.phone_number === "5551112222") && customer.shop_id === query.filters.shop_id;
-        return false;
-      });
-      return { data: match ? { id: match.id } : null, error: null };
+      if (table === "profiles")
+        return { data: mockSupabaseState.profile, error: null };
+      const match: Record<string, unknown> | undefined = selectCustomers(
+        query.filters,
+      )[0];
+      return { data: match ? { ...match } : null, error: null };
     }),
     insert: vi.fn(async (payload: Record<string, unknown>) => {
+      const error = mockSupabaseState.insertError?.(payload) ?? null;
+      if (error) return { data: null, error };
       mockSupabaseState.inserts.push(payload);
+      mockSupabaseState.customers.push({
+        id: `inserted-${mockSupabaseState.inserts.length}`,
+        ...payload,
+      });
       return { data: null, error: null };
     }),
     update: vi.fn((payload: Record<string, unknown>) => {
       const updateQuery: { eq: ReturnType<typeof vi.fn> } = {
         eq: vi.fn((column: string, value: unknown) => {
           query.filters[column] = value;
-          if (column === "id") mockSupabaseState.updates.push({ payload, filters: { ...query.filters } });
+          if (column === "id")
+            mockSupabaseState.updates.push({
+              payload,
+              filters: { ...query.filters },
+            });
           return updateQuery;
         }),
       };
       return updateQuery;
+    }),
+    then: vi.fn((resolve: (value: unknown) => unknown) => {
+      if (table === "customers")
+        return Promise.resolve(
+          resolve({ data: selectCustomers(query.filters), error: null }),
+        );
+      return Promise.resolve(resolve({ data: null, error: null }));
     }),
   };
   return query;
@@ -75,7 +112,10 @@ function makeQuery(table: string): MockQuery {
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createServerSupabaseRoute: vi.fn(() => ({
     auth: {
-      getUser: vi.fn(async () => ({ data: { user: mockSupabaseState.user }, error: null })),
+      getUser: vi.fn(async () => ({
+        data: { user: mockSupabaseState.user },
+        error: null,
+      })),
     },
     from: vi.fn((table: string) => makeQuery(table)),
   })),
@@ -100,7 +140,9 @@ function okJson() {
 }
 
 async function uploadCsv(csv: string) {
-  const input = screen.getByTestId("customer-csv-file-input") as HTMLInputElement;
+  const input = screen.getByTestId(
+    "customer-csv-file-input",
+  ) as HTMLInputElement;
   const file = new File([csv], "customers.csv", { type: "text/csv" });
   await userEvent.upload(input, file);
 }
@@ -113,29 +155,47 @@ describe("CustomerCsvImportCard", () => {
     mockSupabaseState.customers = [];
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
+    mockSupabaseState.insertError = null;
   });
 
   it("renders the Customers-owned import card in normal mode", () => {
     render(<CustomerCsvImportCard onCreateCustomer={vi.fn()} />);
 
     expect(screen.getByTestId("customer-csv-import-card")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Import customers" })).toBeInTheDocument();
-    expect(screen.queryByText("Return to Data Onboarding")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Import customers" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Return to Data Onboarding"),
+    ).not.toBeInTheDocument();
   });
 
   it("highlights the Customers-owned import card in onboarding mode", () => {
-    render(<CustomerCsvImportCard guidedQuery={guidedQuery} onCreateCustomer={vi.fn()} />);
+    render(
+      <CustomerCsvImportCard
+        guidedQuery={guidedQuery}
+        onCreateCustomer={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText("Customer setup/import")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Upload your customer CSV here" })).toBeInTheDocument();
-    expect(screen.getByText("This import lives on the Customers page so you can find it later.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Upload your customer CSV here" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This import lives on the Customers page so you can find it later.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Return to Data Onboarding")).toBeInTheDocument();
   });
 
   it("shows a CSV preview after selecting a valid CSV", async () => {
     render(<CustomerCsvImportCard />);
 
-    await uploadCsv("first_name,last_name,email,phone\nAda,Lovelace,ada@example.com,(555) 111-2222\n");
+    await uploadCsv(
+      "first_name,last_name,email,phone\nAda,Lovelace,ada@example.com,(555) 111-2222\n",
+    );
 
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
@@ -144,31 +204,90 @@ describe("CustomerCsvImportCard", () => {
 
   it("calls onboarding completion only after a successful onboarding import", async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      if (url === "/api/customers/import") return { ok: true, json: async () => ({ ok: true, counts: { created: 1, updated: 0, skipped: 0, failed: 0 } }) };
+      if (url === "/api/customers/import")
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            counts: { created: 1, updated: 0, skipped: 0, failed: 0 },
+          }),
+        };
       return okJson();
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<CustomerCsvImportCard guidedQuery={guidedQuery} />);
 
-    await uploadCsv("first_name,last_name,email\nAda,Lovelace,ada@example.com\n");
-    await userEvent.click(await screen.findByRole("button", { name: /confirm import/i }));
+    await uploadCsv(
+      "first_name,last_name,email\nAda,Lovelace,ada@example.com\n",
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /confirm import/i }),
+    );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/onboarding-v2/guided/sessions/session-123/steps/customers/complete",
-      expect.objectContaining({ method: "POST" }),
-    ));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/onboarding-v2/guided/sessions/session-123/steps/customers/complete",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
   });
 
   it("does not call onboarding completion in normal mode", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, counts: { created: 1, updated: 0, skipped: 0, failed: 0 } }) }));
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        counts: { created: 1, updated: 0, skipped: 0, failed: 0 },
+      }),
+    }));
     vi.stubGlobal("fetch", fetchMock);
     render(<CustomerCsvImportCard />);
 
-    await uploadCsv("first_name,last_name,email\nAda,Lovelace,ada@example.com\n");
-    await userEvent.click(await screen.findByRole("button", { name: /confirm import/i }));
+    await uploadCsv(
+      "first_name,last_name,email\nAda,Lovelace,ada@example.com\n",
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /confirm import/i }),
+    );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/onboarding-v2/"), expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/onboarding-v2/"),
+      expect.anything(),
+    );
+  });
+
+  it("does not call onboarding completion when the import has hard failures", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/customers/import")
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            counts: { created: 1, updated: 0, skipped: 0, failed: 1 },
+            errors: [{ row: 2, reason: "Constraint violation", code: "23514" }],
+          }),
+        };
+      return okJson();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CustomerCsvImportCard guidedQuery={guidedQuery} />);
+
+    await uploadCsv(
+      "first_name,last_name,email\nAda,Lovelace,ada@example.com\nGrace,Hopper,grace@example.com\n",
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /confirm import/i }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/steps/customers/complete"),
+      expect.anything(),
+    );
+    expect(
+      await screen.findByText(/Import errors sample/i),
+    ).toBeInTheDocument();
   });
 
   it("keeps skip customers available during onboarding", async () => {
@@ -176,9 +295,15 @@ describe("CustomerCsvImportCard", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<CustomerCsvImportCard guidedQuery={guidedQuery} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /skip for now/i }),
+    );
 
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith(
+        "/dashboard/onboarding-v2/session-123",
+      ),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/onboarding-v2/guided/sessions/session-123/steps/customers/skip",
       expect.objectContaining({ method: "POST" }),
@@ -193,29 +318,47 @@ describe("POST /api/customers/import", () => {
     mockSupabaseState.customers = [];
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
+    mockSupabaseState.insertError = null;
   });
 
   it("uses the shared cookie-backed Supabase route client for authenticated imports", async () => {
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", {
-      method: "POST",
-      body: JSON.stringify({ rows: [{ name: "Ada Lovelace", email: "ada@example.com" }] }),
-    }));
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(vi.mocked(createServerSupabaseRoute)).toHaveBeenCalled();
-    expect(mockSupabaseState.inserts[0]).toMatchObject({ shop_id: "shop-real", user_id: "user-1" });
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      user_id: "user-1",
+    });
   });
 
   it("rejects unauthenticated imports", async () => {
     mockSupabaseState.user = null;
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", { method: "POST", body: JSON.stringify({ rows: [] }) }));
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({ rows: [] }),
+      }),
+    );
 
     expect(response.status).toBe(401);
   });
 
   it("rejects imports when the authenticated user profile is missing", async () => {
     mockSupabaseState.profile = null;
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", { method: "POST", body: JSON.stringify({ rows: [] }) }));
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({ rows: [] }),
+      }),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(403);
@@ -224,38 +367,295 @@ describe("POST /api/customers/import", () => {
 
   it("rejects imports when the user has no shop", async () => {
     mockSupabaseState.profile = { shop_id: null };
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", { method: "POST", body: JSON.stringify({ rows: [] }) }));
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({ rows: [] }),
+      }),
+    );
 
     expect(response.status).toBe(403);
   });
 
   it("does not accept client shop_id and imports into the authenticated profile shop", async () => {
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", {
-      method: "POST",
-      body: JSON.stringify({ rows: [{ first_name: "Ada", last_name: "Lovelace", email: "Ada@Example.com", shop_id: "evil-shop" }] }),
-    }));
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            {
+              first_name: "Ada",
+              last_name: "Lovelace",
+              email: "Ada@Example.com",
+              shop_id: "evil-shop",
+            },
+          ],
+        }),
+      }),
+    );
     const payload = await response.json();
 
-    expect(payload.counts).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: 0 });
-    expect(mockSupabaseState.inserts[0]).toMatchObject({ shop_id: "shop-real", user_id: "user-1", email: "ada@example.com" });
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      user_id: "user-1",
+      email: "ada@example.com",
+    });
     expect(mockSupabaseState.inserts[0].shop_id).not.toBe("evil-shop");
   });
 
-  it("returns successful created and updated counts", async () => {
-    mockSupabaseState.customers = [{ id: "customer-1", shop_id: "shop-real", email: "existing@example.com" }];
-    const response = await importCustomers(new Request("http://localhost/api/customers/import", {
-      method: "POST",
-      body: JSON.stringify({ rows: [
-        { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com" },
-        { name: "Existing Customer", email: "existing@example.com", phone: "555-111-2222" },
-        { notes: "blank row" },
-      ] }),
-    }));
+  it("updates or skips a duplicate email in the same shop instead of failing", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "customer-email",
+        shop_id: "shop-real",
+        email: "ada@example.com",
+        name: "Ada Old",
+      },
+    ];
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
     const payload = await response.json();
 
-    expect(payload).toMatchObject({ ok: true, counts: { created: 1, updated: 1, skipped: 1, failed: 0 } });
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({
+      shop_id: "shop-real",
+      id: "customer-email",
+    });
+  });
+
+  it("updates or skips a duplicate phone in the same shop instead of failing", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "customer-phone",
+        shop_id: "shop-real",
+        phone: "5551112222",
+        phone_number: "5551112222",
+        name: "Phone Existing",
+      },
+    ];
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Phone Updated", phone: "(555) 111-2222" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({
+      shop_id: "shop-real",
+      id: "customer-phone",
+    });
+  });
+
+  it("does not update a duplicate customer from another shop", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "other-shop-customer",
+        shop_id: "shop-other",
+        email: "ada@example.com",
+        name: "Other Shop Ada",
+      },
+    ];
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.updates).toHaveLength(0);
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      email: "ada@example.com",
+    });
+  });
+
+  it("handles a duplicate constraint 409 gracefully without failing the batch", async () => {
+    mockSupabaseState.insertError = () => ({
+      code: "23505",
+      status: 409,
+      message:
+        'duplicate key value violates unique constraint "customers_shop_email_uq"',
+    });
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(payload.warnings[0]).toMatchObject({
+      row: 1,
+      code: "23505",
+      constraint: "customers_shop_email_uq",
+    });
+  });
+
+  it("returns useful counts for a mixed file with created rows and duplicates", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "existing-email",
+        shop_id: "shop-real",
+        email: "existing@example.com",
+        name: "Existing",
+      },
+      {
+        id: "existing-phone",
+        shop_id: "shop-real",
+        phone: "5551112222",
+        phone_number: "5551112222",
+        name: "Phone",
+      },
+    ];
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { name: "New Customer", email: "new@example.com" },
+            { name: "Existing Updated", email: "existing@example.com" },
+            { name: "Phone Updated", phone: "555-111-2222" },
+            { notes: "missing identity" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 2,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(payload.warnings[0]).toMatchObject({
+      row: 4,
+      reason: "Missing customer identity fields.",
+    });
+  });
+
+  it("recovers from a race-condition duplicate insert by re-querying and updating the same-shop match", async () => {
+    mockSupabaseState.insertError = (payload) => {
+      mockSupabaseState.customers.push({
+        id: "raced-customer",
+        ...payload,
+        name: "Race Existing",
+      });
+      return {
+        code: "23505",
+        status: 409,
+        message:
+          'duplicate key value violates unique constraint "customers_shop_email_uq"',
+      };
+    };
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Race Updated", email: "race@example.com" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({
+      shop_id: "shop-real",
+      id: "raced-customer",
+    });
+  });
+
+  it("returns successful created and updated counts", async () => {
+    mockSupabaseState.customers = [
+      { id: "customer-1", shop_id: "shop-real", email: "existing@example.com" },
+    ];
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            {
+              first_name: "Ada",
+              last_name: "Lovelace",
+              email: "ada@example.com",
+            },
+            {
+              name: "Existing Customer",
+              email: "existing@example.com",
+              phone: "555-111-2222",
+            },
+            { notes: "blank row" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      ok: true,
+      counts: { created: 1, updated: 1, skipped: 1, failed: 0 },
+    });
     expect(mockSupabaseState.inserts).toHaveLength(1);
     expect(mockSupabaseState.updates).toHaveLength(1);
-    expect(mockSupabaseState.updates[0].filters).toMatchObject({ shop_id: "shop-real", id: "customer-1" });
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({
+      shop_id: "shop-real",
+      id: "customer-1",
+    });
   });
 });
