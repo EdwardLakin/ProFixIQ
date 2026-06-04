@@ -115,7 +115,7 @@ describe("CustomerCsvImportCard", () => {
 
     expect(screen.getByTestId("customer-csv-import-card")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Import customers" })).toBeInTheDocument();
-    expect(screen.queryByText("Back to Data Onboarding")).not.toBeInTheDocument();
+    expect(screen.queryByText("Return to Data Onboarding")).not.toBeInTheDocument();
   });
 
   it("highlights the Customers-owned import card in onboarding mode", () => {
@@ -124,7 +124,7 @@ describe("CustomerCsvImportCard", () => {
     expect(screen.getByText("Customer setup/import")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Upload your customer CSV here" })).toBeInTheDocument();
     expect(screen.getByText("This import lives on the Customers page so you can find it later.")).toBeInTheDocument();
-    expect(screen.getByText("Back to Data Onboarding")).toBeInTheDocument();
+    expect(screen.getByText("Return to Data Onboarding")).toBeInTheDocument();
   });
 
   it("shows a CSV preview after selecting a valid CSV", async () => {
@@ -171,7 +171,7 @@ describe("CustomerCsvImportCard", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<CustomerCsvImportCard guidedQuery={guidedQuery} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /skip customers/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

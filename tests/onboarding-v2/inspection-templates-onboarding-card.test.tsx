@@ -75,7 +75,7 @@ describe("InspectionTemplatesOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<InspectionTemplatesOnboardingSetupCard guidedQuery={guidedQuery} onFocusTemplateArea={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /mark templates reviewed/i }));
+    await userEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -98,7 +98,7 @@ describe("InspectionTemplatesOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<InspectionTemplatesOnboardingSetupCard guidedQuery={guidedQuery} onFocusTemplateArea={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /skip inspection templates for now/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

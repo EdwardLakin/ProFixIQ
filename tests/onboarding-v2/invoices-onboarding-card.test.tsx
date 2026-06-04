@@ -67,7 +67,7 @@ describe("InvoicesOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<InvoicesOnboardingSetupCard guidedQuery={guidedQuery} />);
-    await userEvent.click(screen.getByRole("button", { name: /mark invoices reviewed/i }));
+    await userEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -90,7 +90,7 @@ describe("InvoicesOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<InvoicesOnboardingSetupCard guidedQuery={guidedQuery} />);
-    await userEvent.click(screen.getByRole("button", { name: /skip invoices for now/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

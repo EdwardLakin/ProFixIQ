@@ -122,7 +122,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
   const [counts, setCounts] = useState<ImportCounts | null>(null);
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
-  const [busyAction, setBusyAction] = useState<"skip" | "manual-complete" | null>(null);
+  const [busyAction, setBusyAction] = useState<"skip" | null>(null);
 
   const isOnboarding = Boolean(guidedQuery?.onboardingSession && guidedQuery.onboardingStep === "customers");
   const importableRows = useMemo(() => rows.filter(hasImportableIdentity), [rows]);
@@ -218,31 +218,26 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     }
   }
 
-  async function postSecondaryOnboardingAction(action: "skip" | "manual-complete") {
+  async function skipOnboardingStep() {
     if (!guidedQuery) return;
-    const endpointAction = action === "skip" ? "skip" : "complete";
-    setBusyAction(action);
+    setBusyAction("skip");
     setImportError(null);
     try {
       const response = await fetch(
-        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/customers/${endpointAction}`,
+        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/customers/skip`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            action === "skip"
-              ? { skippedReason: "Customer import skipped during onboarding." }
-              : { summary: { manualSetup: true, importedCount: 0, note: "Customer setup step completed manually after reviewing import option." } },
-          ),
+          body: JSON.stringify({ skippedReason: "Customer import skipped during onboarding." }),
         },
       );
       const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || payload.ok === false) {
-        throw new Error(payload.error ?? "Unable to update the customers onboarding step.");
+        throw new Error(payload.error ?? "Unable to skip customer onboarding step.");
       }
-      router.push(guidedQuery!.returnTo);
+      router.push(guidedQuery.returnTo);
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : "Unable to update the customers onboarding step.");
+      setImportError(error instanceof Error ? error.message : "Unable to skip customer onboarding step.");
     } finally {
       setBusyAction(null);
     }
@@ -355,30 +350,22 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
             onClick={() => router.push(guidedQuery!.returnTo)}
             className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
           >
-            {importSucceeded ? "Continue onboarding" : "Back to Data Onboarding"}
+            {importSucceeded ? "Continue onboarding" : "Return to Data Onboarding"}
           </button>
         ) : null}
         {isOnboarding ? (
           <>
             <button
               type="button"
-              onClick={() => void postSecondaryOnboardingAction("skip")}
+              onClick={() => void skipOnboardingStep()}
               disabled={busyAction !== null || importing || completingOnboarding}
               className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
             >
-              {busyAction === "skip" ? "Skipping…" : "Skip customers"}
+              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
             <Link href={guidedQuery!.returnTo} className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30">
-              Back to Data Onboarding
+              Return to Data Onboarding
             </Link>
-            <button
-              type="button"
-              onClick={() => void postSecondaryOnboardingAction("manual-complete")}
-              disabled={busyAction !== null || importing || completingOnboarding}
-              className="rounded-xl border border-white/10 bg-transparent px-4 py-2 text-sm font-semibold text-neutral-300 hover:bg-white/[0.04] disabled:opacity-55"
-            >
-              {busyAction === "manual-complete" ? "Marking complete…" : "Mark complete manually"}
-            </button>
           </>
         ) : null}
       </div>

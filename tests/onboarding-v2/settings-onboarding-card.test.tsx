@@ -73,7 +73,7 @@ describe("SettingsOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<SettingsOnboardingSetupCard guidedQuery={guidedQuery} onFocusSettingsArea={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /mark settings reviewed/i }));
+    await userEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -96,7 +96,7 @@ describe("SettingsOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<SettingsOnboardingSetupCard guidedQuery={guidedQuery} onFocusSettingsArea={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /skip settings for now/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

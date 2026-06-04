@@ -69,12 +69,12 @@ describe("StaffOnboardingSetupCard", () => {
     expect(onUseCreateUserForm).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the staff guided step complete and returns to onboarding", async () => {
+  it("marks the staff guided step reviewed and returns to onboarding", async () => {
     const fetchMock = vi.fn(async () => okJson());
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StaffOnboardingSetupCard guidedQuery={guidedQuery} onUseCreateUserForm={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /mark staff step complete/i }));
+    await userEvent.click(screen.getByRole("button", { name: /mark reviewed/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -97,7 +97,7 @@ describe("StaffOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StaffOnboardingSetupCard guidedQuery={guidedQuery} onUseCreateUserForm={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /skip staff/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

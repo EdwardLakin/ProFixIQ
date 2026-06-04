@@ -162,6 +162,14 @@ export const TILES: Tile[] = [
     section: "Tools",
   },
   {
+    href: "/dashboard/onboarding",
+    title: "Data Onboarding",
+    subtitle: "Legacy import workspace",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Tools",
+  },
+  {
     href: "/dashboard/onboarding-v2",
     title: "Onboarding Agent",
     subtitle: "Stage files and prepare activation safely",

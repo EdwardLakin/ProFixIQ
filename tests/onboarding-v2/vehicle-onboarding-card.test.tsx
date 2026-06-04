@@ -37,7 +37,7 @@ describe("VehicleOnboardingSetupCard", () => {
       screen.getByText("Vehicles are tied to customer files, so this step helps you prepare vehicle records in the real workflow."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("For now, you can create vehicles manually from customer files or mark this onboarding step complete."),
+      screen.getByText("For now, you can create vehicles manually from customer files."),
     ).toBeInTheDocument();
     expect(screen.getByText("CSV import will be added here next.")).toBeInTheDocument();
 
@@ -45,27 +45,10 @@ describe("VehicleOnboardingSetupCard", () => {
     expect(onOpenVehicleWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the vehicles guided step complete and returns to onboarding", async () => {
-    const fetchMock = vi.fn(async () => okJson());
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("does not offer manual completion for the import-backed vehicles step", () => {
     render(<VehicleOnboardingSetupCard guidedQuery={guidedQuery} onOpenVehicleWorkflow={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /mark vehicles step complete/i }));
 
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/onboarding-v2/guided/sessions/session-123/steps/vehicles/complete",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          summary: {
-            manualSetup: true,
-            importedCount: 0,
-            note: "Vehicle setup step completed manually.",
-          },
-        }),
-      }),
-    );
+    expect(screen.queryByRole("button", { name: /mark vehicles step complete/i })).not.toBeInTheDocument();
   });
 
   it("skips the vehicles guided step and returns to onboarding", async () => {
@@ -73,7 +56,7 @@ describe("VehicleOnboardingSetupCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<VehicleOnboardingSetupCard guidedQuery={guidedQuery} onOpenVehicleWorkflow={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: /skip vehicles/i }));
+    await userEvent.click(screen.getByRole("button", { name: /skip for now/i }));
 
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/onboarding-v2/session-123"));
     expect(fetchMock).toHaveBeenCalledWith(

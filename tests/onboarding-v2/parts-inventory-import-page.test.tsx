@@ -129,7 +129,7 @@ describe("Parts inventory CSV import page", () => {
 
     expect(await screen.findByText("Import inventory parts")).toBeInTheDocument();
     expect(screen.getByText(/mark this guided step complete only after you explicitly import/i)).toBeInTheDocument();
-    expect(screen.getByText("Return to guided onboarding")).toBeInTheDocument();
+    expect(screen.getAllByText("Return to Data Onboarding").length).toBeGreaterThan(0);
   });
 
   it("calls guided completion only after a successful explicit import", async () => {
@@ -151,7 +151,7 @@ describe("Parts inventory CSV import page", () => {
       "/api/onboarding-v2/guided/sessions/session-123/steps/inventory_parts/complete",
       expect.objectContaining({ method: "POST" }),
     ));
-    expect(screen.getByText("Return to Data Onboarding")).toBeInTheDocument();
+    expect(screen.getAllByText("Return to Data Onboarding").length).toBeGreaterThan(0);
   });
 
   it("does not call guided completion when import fails", async () => {

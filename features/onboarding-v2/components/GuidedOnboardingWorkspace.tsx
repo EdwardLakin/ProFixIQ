@@ -19,6 +19,7 @@ type Props = {
 };
 
 const terminalStatuses = new Set<GuidedOnboardingStatus>(["completed", "skipped"]);
+const importBackedStepKeys = new Set<GuidedOnboardingStepKey>(["customers", "vehicles", "inventory_parts"]);
 
 function statusLabel(status: GuidedOnboardingStatus) {
   return status.replaceAll("_", " ");
@@ -154,6 +155,7 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
   const currentDefinition = getGuidedOnboardingStep(currentStep.step_key);
   const currentDestination = buildGuidedOnboardingDestinationUrl({ sessionId: payload.session.id, stepKey: currentStep.step_key });
   const currentImplementationLabel = implementationLabel(currentDefinition.implementationStatus);
+  const canCompleteFromControlRoom = !importBackedStepKeys.has(currentStep.step_key);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -214,15 +216,17 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
                   onClick={() => void postStep(currentStep.step_key, "skip", { skippedReason: "User answered no" })}
                   disabled={Boolean(busyStep)}
                 >
-                  No, skip this
+                  Skip for now
                 </button>
-                <button
-                  className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-50"
-                  onClick={() => void postStep(currentStep.step_key, "complete", { summary: { completedFrom: "guided-control-room" } })}
-                  disabled={Boolean(busyStep) || currentStep.status === "completed"}
-                >
-                  Mark done
-                </button>
+                {canCompleteFromControlRoom ? (
+                  <button
+                    className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-50"
+                    onClick={() => void postStep(currentStep.step_key, "complete", { summary: { completedFrom: "guided-control-room" } })}
+                    disabled={Boolean(busyStep) || currentStep.status === "completed"}
+                  >
+                    Mark reviewed
+                  </button>
+                ) : null}
                 {currentStep.status === "routing" ? (
                   <Link className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-900/30" href={currentDestination}>
                     Continue to {currentDefinition.label}
