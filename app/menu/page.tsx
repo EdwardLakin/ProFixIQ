@@ -7,8 +7,8 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
+import { ServiceMenuOnboardingSetupCard, getServiceMenuGuidedOnboardingQuery } from "@/features/menu/components/ServiceMenuOnboardingSetupCard";
 
 type DB = Database;
 
@@ -93,6 +94,8 @@ type PartsRequestBody = {
 export default function MenuItemsPage() {
   const supabase = createClientComponentClient<DB>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const createSectionRef = useRef<HTMLElement | null>(null);
   const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
@@ -126,6 +129,16 @@ export default function MenuItemsPage() {
     useState<boolean>(true);
 
   const shopId = useMemo(() => getShopIdFromUser(user), [user]);
+
+  const guidedServiceMenuOnboarding = useMemo(
+    () => getServiceMenuGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+
+  const focusCreateMenuItemArea = useCallback(() => {
+    createSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    createSectionRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const currency: "CAD" | "USD" = useMemo(
     () => (shopDefaults?.country === "CA" ? "CAD" : "USD"),
@@ -621,8 +634,18 @@ export default function MenuItemsPage() {
         </div>
       </section>
 
+      <ServiceMenuOnboardingSetupCard
+        guidedQuery={guidedServiceMenuOnboarding}
+        onFocusCreateArea={focusCreateMenuItemArea}
+      />
+
       {/* Create */}
-      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
+      <section
+        ref={createSectionRef}
+        id="service-menu-create-item"
+        tabIndex={-1}
+        className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl outline-none md:p-6"
+      >
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
             Create menu item
