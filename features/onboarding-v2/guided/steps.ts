@@ -81,9 +81,9 @@ export const GUIDED_ONBOARDING_STEPS = [
   {
     stepKey: "inspection_templates",
     label: "Inspection templates",
-    question: "Do you want to configure inspection templates now?",
+    question: "Do you want to set up or import inspection templates now?",
     destinationPath: "/inspections/templates",
-    highlightKey: "inspection-templates-setup",
+    highlightKey: "inspection-template-import",
     description: "Use the real inspection template management page.",
     implementationStatus: "placeholder",
   },
