@@ -1,14 +1,10 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-import { getRouteHandlerCookies } from "@/features/shared/lib/server/owner-pin";
-
-type DB = Database;
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 const WRITE_ROLES = new Set(["owner", "admin", "manager"]);
 
 export type BrandReadAuth =
   | {
       ok: true;
-      supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+      supabase: ReturnType<typeof createServerSupabaseRoute>;
       userId: string;
       shopId: string;
       role: string;
@@ -24,7 +20,7 @@ export type BrandWriteAuth = BrandReadAuth;
 export async function requireBrandShopReadAccess(
   requestedShopId?: string | null
 ): Promise<BrandReadAuth> {
-  const supabase = createRouteHandlerClient<DB>({ cookies: getRouteHandlerCookies() });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

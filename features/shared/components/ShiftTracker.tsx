@@ -1,12 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { formatDistanceToNow } from "date-fns";
-import type { Database } from "@shared/types/types/supabase";
-
-type DB = Database;
-
 type ShiftType = "shift" | "break" | "lunch";
 type Mode = "none" | "shift" | "break" | "lunch" | "ended";
 
@@ -45,7 +41,7 @@ export default function ShiftTracker({
   userId: string;
   defaultShiftType?: ShiftType;
 }): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
