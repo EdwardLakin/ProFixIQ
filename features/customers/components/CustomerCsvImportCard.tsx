@@ -33,10 +33,24 @@ type ImportCounts = {
   failed: number;
 };
 
+type ImportDiagnostic = {
+  row: number;
+  reason: string;
+  code?: string;
+  constraint?: string;
+  identity?: {
+    email?: string | null;
+    phone?: string | null;
+    name?: string | null;
+  };
+};
+
 type ImportResponse = {
   ok?: boolean;
   error?: string;
   counts?: ImportCounts;
+  warnings?: ImportDiagnostic[];
+  errors?: ImportDiagnostic[];
 };
 
 type Props = {
@@ -63,10 +77,15 @@ const SUPPORTED_COLUMNS = [
   "notes",
 ] as const;
 
-const RECOMMENDED_COLUMNS = "first_name, last_name, email, phone, address, city, province/state, postal_code/zip";
+const RECOMMENDED_COLUMNS =
+  "first_name, last_name, email, phone, address, city, province/state, postal_code/zip";
 
 function cleanHeader(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 }
 
 function cleanCell(value: unknown): string | null {
@@ -88,13 +107,13 @@ function normalizeParsedRow(row: Record<string, unknown>): CustomerImportRow {
 function hasImportableIdentity(row: CustomerImportRow): boolean {
   return Boolean(
     row.email ||
-      row.phone ||
-      row.phone_number ||
-      row.name ||
-      row.company_name ||
-      row.business_name ||
-      row.first_name ||
-      row.last_name,
+    row.phone ||
+    row.phone_number ||
+    row.name ||
+    row.company_name ||
+    row.business_name ||
+    row.first_name ||
+    row.last_name,
   );
 }
 
@@ -111,7 +130,10 @@ function displayName(row: CustomerImportRow): string {
   );
 }
 
-export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) {
+export function CustomerCsvImportCard({
+  guidedQuery,
+  onCreateCustomer,
+}: Props) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -120,20 +142,32 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [counts, setCounts] = useState<ImportCounts | null>(null);
+  const [diagnostics, setDiagnostics] = useState<
+    Pick<ImportResponse, "warnings" | "errors">
+  >({});
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const [busyAction, setBusyAction] = useState<"skip" | null>(null);
 
-  const isOnboarding = Boolean(guidedQuery?.onboardingSession && guidedQuery.onboardingStep === "customers");
-  const importableRows = useMemo(() => rows.filter(hasImportableIdentity), [rows]);
+  const isOnboarding = Boolean(
+    guidedQuery?.onboardingSession &&
+    guidedQuery.onboardingStep === "customers",
+  );
+  const importableRows = useMemo(
+    () => rows.filter(hasImportableIdentity),
+    [rows],
+  );
   const skippedPreviewCount = rows.length - importableRows.length;
   const previewRows = importableRows.slice(0, 5);
-  const importSucceeded = Boolean(counts && counts.created + counts.updated > 0 && counts.failed === 0);
+  const importSucceeded = Boolean(
+    counts && counts.created + counts.updated > 0 && counts.failed === 0,
+  );
 
   function resetImportState() {
     setRows([]);
     setHeaders([]);
     setCounts(null);
+    setDiagnostics({});
     setParseError(null);
     setImportError(null);
   }
@@ -155,8 +189,12 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const parsedRows = (results.data ?? []).map(normalizeParsedRow).filter((row) => Object.keys(row).length > 0);
-        setHeaders((results.meta.fields ?? []).map(cleanHeader).filter(Boolean));
+        const parsedRows = (results.data ?? [])
+          .map(normalizeParsedRow)
+          .filter((row) => Object.keys(row).length > 0);
+        setHeaders(
+          (results.meta.fields ?? []).map(cleanHeader).filter(Boolean),
+        );
         setRows(parsedRows);
         if (!parsedRows.length) {
           setParseError("No customer rows were found in that CSV.");
@@ -177,12 +215,20 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ summary: { importType: "customer_csv", ...nextCounts } }),
+          body: JSON.stringify({
+            summary: { importType: "customer_csv", ...nextCounts },
+          }),
         },
       );
-      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
       if (!response.ok || payload.ok === false) {
-        throw new Error(payload.error ?? "Customer import succeeded, but onboarding completion failed.");
+        throw new Error(
+          payload.error ??
+            "Customer import succeeded, but onboarding completion failed.",
+        );
       }
     } finally {
       setCompletingOnboarding(false);
@@ -191,28 +237,43 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
 
   async function confirmImport() {
     if (!importableRows.length) {
-      setImportError("Upload a CSV with at least one customer name, company, email, or phone before importing.");
+      setImportError(
+        "Upload a CSV with at least one customer name, company, email, or phone before importing.",
+      );
       return;
     }
     setImporting(true);
     setImportError(null);
     setCounts(null);
+    setDiagnostics({});
     try {
       const response = await fetch("/api/customers/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: importableRows }),
       });
-      const payload = (await response.json().catch(() => ({}))) as ImportResponse;
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as ImportResponse;
       if (!response.ok || payload.ok === false || !payload.counts) {
         throw new Error(payload.error ?? "Unable to import customers.");
       }
       setCounts(payload.counts);
-      if (isOnboarding && payload.counts.created + payload.counts.updated > 0 && payload.counts.failed === 0) {
+      setDiagnostics({
+        warnings: payload.warnings ?? [],
+        errors: payload.errors ?? [],
+      });
+      if (
+        isOnboarding &&
+        payload.counts.created + payload.counts.updated > 0 &&
+        payload.counts.failed === 0
+      ) {
         await completeOnboardingAfterImport(payload.counts);
       }
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : "Unable to import customers.");
+      setImportError(
+        error instanceof Error ? error.message : "Unable to import customers.",
+      );
     } finally {
       setImporting(false);
     }
@@ -228,16 +289,27 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ skippedReason: "Customer import skipped during onboarding." }),
+          body: JSON.stringify({
+            skippedReason: "Customer import skipped during onboarding.",
+          }),
         },
       );
-      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
       if (!response.ok || payload.ok === false) {
-        throw new Error(payload.error ?? "Unable to skip customer onboarding step.");
+        throw new Error(
+          payload.error ?? "Unable to skip customer onboarding step.",
+        );
       }
       router.push(guidedQuery.returnTo);
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : "Unable to skip customer onboarding step.");
+      setImportError(
+        error instanceof Error
+          ? error.message
+          : "Unable to skip customer onboarding step.",
+      );
     } finally {
       setBusyAction(null);
     }
@@ -254,19 +326,38 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
             {isOnboarding ? "Guided onboarding · Customers" : "Customer files"}
           </div>
           <h2 className="mt-2 text-xl font-semibold text-white">
-            {isOnboarding ? "Upload your customer CSV here" : "Import customers"}
+            {isOnboarding
+              ? "Upload your customer CSV here"
+              : "Import customers"}
           </h2>
           <div className="mt-3 space-y-2 text-sm text-neutral-300">
-            {isOnboarding ? <p>This import lives on the Customers page so you can find it later.</p> : null}
-            <p>Upload a CSV, review the parsed customer preview, then explicitly confirm the import.</p>
+            {isOnboarding ? (
+              <p>
+                This import lives on the Customers page so you can find it
+                later.
+              </p>
+            ) : null}
             <p>
-              Supported columns include <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>. Optional fields can be omitted.
+              Upload a CSV, review the parsed customer preview, then explicitly
+              confirm the import.
+            </p>
+            <p>
+              Supported columns include{" "}
+              <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>.
+              Optional fields can be omitted.
             </p>
           </div>
         </div>
 
         <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-72">
-          <input ref={fileInputRef} data-testid="customer-csv-file-input" type="file" accept=".csv,text/csv" onChange={handleFileChange} className="sr-only" />
+          <input
+            ref={fileInputRef}
+            data-testid="customer-csv-file-input"
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleFileChange}
+            className="sr-only"
+          />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -289,37 +380,76 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
       <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <span className="font-semibold text-neutral-100">Selected file:</span> {fileName ?? "No CSV selected"}
+            <span className="font-semibold text-neutral-100">
+              Selected file:
+            </span>{" "}
+            {fileName ?? "No CSV selected"}
           </div>
-          {headers.length ? <div className="text-xs text-neutral-400">Detected {headers.length} columns</div> : null}
+          {headers.length ? (
+            <div className="text-xs text-neutral-400">
+              Detected {headers.length} columns
+            </div>
+          ) : null}
         </div>
-        {parseError ? <div className="mt-3 rounded-lg border border-red-500/25 bg-red-950/30 p-2 text-red-100">{parseError}</div> : null}
+        {parseError ? (
+          <div className="mt-3 rounded-lg border border-red-500/25 bg-red-950/30 p-2 text-red-100">
+            {parseError}
+          </div>
+        ) : null}
         {rows.length ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2"><div className="text-lg font-semibold text-white">{rows.length}</div><div className="text-xs text-neutral-400">Rows parsed</div></div>
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2"><div className="text-lg font-semibold text-emerald-100">{importableRows.length}</div><div className="text-xs text-neutral-400">Ready to import</div></div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2"><div className="text-lg font-semibold text-amber-100">{skippedPreviewCount}</div><div className="text-xs text-neutral-400">Missing identity</div></div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+              <div className="text-lg font-semibold text-white">
+                {rows.length}
+              </div>
+              <div className="text-xs text-neutral-400">Rows parsed</div>
+            </div>
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2">
+              <div className="text-lg font-semibold text-emerald-100">
+                {importableRows.length}
+              </div>
+              <div className="text-xs text-neutral-400">Ready to import</div>
+            </div>
+            <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2">
+              <div className="text-lg font-semibold text-amber-100">
+                {skippedPreviewCount}
+              </div>
+              <div className="text-xs text-neutral-400">Missing identity</div>
+            </div>
           </div>
         ) : null}
       </div>
 
       {previewRows.length ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
-          <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Preview</div>
+          <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+            Preview
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.12em] text-neutral-500">
                 <tr>
-                  <th className="px-3 py-2">Customer</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Location</th>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Phone</th>
+                  <th className="px-3 py-2">Location</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10 text-neutral-200">
                 {previewRows.map((row, index) => (
                   <tr key={`${displayName(row)}-${index}`}>
-                    <td className="px-3 py-2 font-medium text-white">{displayName(row)}</td>
+                    <td className="px-3 py-2 font-medium text-white">
+                      {displayName(row)}
+                    </td>
                     <td className="px-3 py-2">{row.email ?? "—"}</td>
-                    <td className="px-3 py-2">{row.phone ?? row.phone_number ?? "—"}</td>
-                    <td className="px-3 py-2">{[row.city, row.province ?? row.state].filter(Boolean).join(", ") || "—"}</td>
+                    <td className="px-3 py-2">
+                      {row.phone ?? row.phone_number ?? "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {[row.city, row.province ?? row.state]
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -330,10 +460,50 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
 
       {counts ? (
         <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
-          Import results: created {counts.created}, updated {counts.updated}, skipped {counts.skipped}, failed {counts.failed}.
+          Import results: created {counts.created}, updated {counts.updated},
+          skipped {counts.skipped}, failed {counts.failed}.
         </div>
       ) : null}
-      {importError ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">{importError}</div> : null}
+
+      {diagnostics.errors?.length || diagnostics.warnings?.length ? (
+        <div className="mt-3 space-y-2 rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-50">
+          {diagnostics.errors?.length ? (
+            <div>
+              <div className="font-semibold text-red-100">
+                Import errors sample
+              </div>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {diagnostics.errors.slice(0, 3).map((item) => (
+                  <li key={`error-${item.row}-${item.reason}`}>
+                    Row {item.row}: {item.reason}
+                    {item.code ? ` (${item.code})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {diagnostics.warnings?.length ? (
+            <div>
+              <div className="font-semibold text-amber-100">
+                Import warnings sample
+              </div>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {diagnostics.warnings.slice(0, 3).map((item) => (
+                  <li key={`warning-${item.row}-${item.reason}`}>
+                    Row {item.row}: {item.reason}
+                    {item.code ? ` (${item.code})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {importError ? (
+        <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">
+          {importError}
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <button
@@ -342,7 +512,11 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
           disabled={importing || completingOnboarding || !importableRows.length}
           className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
         >
-          {importing ? "Importing…" : completingOnboarding ? "Completing onboarding…" : "Confirm import"}
+          {importing
+            ? "Importing…"
+            : completingOnboarding
+              ? "Completing onboarding…"
+              : "Confirm import"}
         </button>
         {isOnboarding && counts ? (
           <button
@@ -350,7 +524,9 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
             onClick={() => router.push(guidedQuery!.returnTo)}
             className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
           >
-            {importSucceeded ? "Continue onboarding" : "Return to Data Onboarding"}
+            {importSucceeded
+              ? "Continue onboarding"
+              : "Return to Data Onboarding"}
           </button>
         ) : null}
         {isOnboarding ? (
@@ -358,12 +534,17 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
             <button
               type="button"
               onClick={() => void skipOnboardingStep()}
-              disabled={busyAction !== null || importing || completingOnboarding}
+              disabled={
+                busyAction !== null || importing || completingOnboarding
+              }
               className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
             >
               {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
-            <Link href={guidedQuery!.returnTo} className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30">
+            <Link
+              href={guidedQuery!.returnTo}
+              className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
+            >
               Return to Data Onboarding
             </Link>
           </>
