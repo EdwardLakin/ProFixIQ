@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
@@ -24,6 +24,11 @@ import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
+import {
+  SettingsOnboardingSetupCard,
+  getSettingsGuidedOnboardingQuery,
+} from "@/features/dashboard/components/owner-settings/SettingsOnboardingSetupCard";
+import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/OnboardingHighlightFrame";
 import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
@@ -187,7 +192,12 @@ function locationName(s: { shop_name?: string | null; name?: string | null }) {
 
 export default function OwnerSettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const settingsGuidedOnboarding = useMemo(
+    () => getSettingsGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
 
   const [loading, setLoading] = useState(true);
 
@@ -1269,7 +1279,17 @@ try {
 
   const seatLimitLabel = seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
 
-    return (
+  const focusOperationsDefaults = () => {
+    const target = document.getElementById("operations-defaults");
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!target.hasAttribute("tabindex")) {
+      target.setAttribute("tabindex", "-1");
+    }
+    target.focus({ preventScroll: true });
+  };
+
+  return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 text-foreground lg:p-6">
       <OwnerSettingsHeader
         isUnlocked={isUnlocked}
@@ -1278,6 +1298,13 @@ try {
         onLock={() => void lockOwnerSettings()}
         onSave={handleSave}
       />
+
+      {settingsGuidedOnboarding ? (
+        <SettingsOnboardingSetupCard
+          guidedQuery={settingsGuidedOnboarding}
+          onFocusSettingsArea={focusOperationsDefaults}
+        />
+      ) : null}
 
       <OwnerSettingsPanel
         tone="passive"
@@ -1363,45 +1390,94 @@ try {
             onLogoUpload={handleLogoUpload}
             onGenerateLogo={handleGenerateLogo}
           />
-          <OwnerSettingsOperationsSection
-            isUnlocked={isUnlocked}
-            currency={currency}
-            taxLabel={taxLabel}
-            laborRate={laborRate}
-            suppliesEnabled={suppliesEnabled}
-            suppliesType={suppliesType}
-            suppliesPercent={suppliesPercent}
-            suppliesFlatAmount={suppliesFlatAmount}
-            suppliesCapAmount={suppliesCapAmount}
-            diagnosticFee={diagnosticFee}
-            taxRate={taxRate}
-            pricingValidDays={pricingValidDays}
-            pricingValidDaysLoading={pricingValidDaysLoading}
-            pricingValidDaysSaving={pricingValidDaysSaving}
-            useAi={useAi}
-            requireCauseCorrection={requireCauseCorrection}
-            requireAuthorization={requireAuthorization}
-            autoGeneratePdf={autoGeneratePdf}
-            autoSendQuoteEmail={autoSendQuoteEmail}
-            appearanceMode={appearanceMode}
-            appearanceSaving={appearanceSaving}
-            onLaborRateChange={setLaborRate}
-            onSuppliesEnabledChange={setSuppliesEnabled}
-            onSuppliesTypeChange={setSuppliesType}
-            onSuppliesPercentChange={setSuppliesPercent}
-            onSuppliesFlatAmountChange={setSuppliesFlatAmount}
-            onSuppliesCapAmountChange={setSuppliesCapAmount}
-            onDiagnosticFeeChange={setDiagnosticFee}
-            onTaxRateChange={setTaxRate}
-            onPricingValidDaysChange={setPricingValidDays}
-            onSavePricingValidDays={savePricingValidDays}
-            onUseAiChange={setUseAi}
-            onRequireCauseCorrectionChange={setRequireCauseCorrection}
-            onRequireAuthorizationChange={setRequireAuthorization}
-            onAutoGeneratePdfChange={setAutoGeneratePdf}
-            onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
-            onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
-          />
+          {settingsGuidedOnboarding ? (
+            <OnboardingHighlightFrame
+              active
+              highlightKey="shop-settings"
+              title="Operations and pricing defaults"
+              description="Review these existing settings before marking the guided setup step complete."
+            >
+              <OwnerSettingsOperationsSection
+                isUnlocked={isUnlocked}
+                currency={currency}
+                taxLabel={taxLabel}
+                laborRate={laborRate}
+                suppliesEnabled={suppliesEnabled}
+                suppliesType={suppliesType}
+                suppliesPercent={suppliesPercent}
+                suppliesFlatAmount={suppliesFlatAmount}
+                suppliesCapAmount={suppliesCapAmount}
+                diagnosticFee={diagnosticFee}
+                taxRate={taxRate}
+                pricingValidDays={pricingValidDays}
+                pricingValidDaysLoading={pricingValidDaysLoading}
+                pricingValidDaysSaving={pricingValidDaysSaving}
+                useAi={useAi}
+                requireCauseCorrection={requireCauseCorrection}
+                requireAuthorization={requireAuthorization}
+                autoGeneratePdf={autoGeneratePdf}
+                autoSendQuoteEmail={autoSendQuoteEmail}
+                appearanceMode={appearanceMode}
+                appearanceSaving={appearanceSaving}
+                onLaborRateChange={setLaborRate}
+                onSuppliesEnabledChange={setSuppliesEnabled}
+                onSuppliesTypeChange={setSuppliesType}
+                onSuppliesPercentChange={setSuppliesPercent}
+                onSuppliesFlatAmountChange={setSuppliesFlatAmount}
+                onSuppliesCapAmountChange={setSuppliesCapAmount}
+                onDiagnosticFeeChange={setDiagnosticFee}
+                onTaxRateChange={setTaxRate}
+                onPricingValidDaysChange={setPricingValidDays}
+                onSavePricingValidDays={savePricingValidDays}
+                onUseAiChange={setUseAi}
+                onRequireCauseCorrectionChange={setRequireCauseCorrection}
+                onRequireAuthorizationChange={setRequireAuthorization}
+                onAutoGeneratePdfChange={setAutoGeneratePdf}
+                onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
+                onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
+              />
+            </OnboardingHighlightFrame>
+          ) : (
+            <OwnerSettingsOperationsSection
+              isUnlocked={isUnlocked}
+              currency={currency}
+              taxLabel={taxLabel}
+              laborRate={laborRate}
+              suppliesEnabled={suppliesEnabled}
+              suppliesType={suppliesType}
+              suppliesPercent={suppliesPercent}
+              suppliesFlatAmount={suppliesFlatAmount}
+              suppliesCapAmount={suppliesCapAmount}
+              diagnosticFee={diagnosticFee}
+              taxRate={taxRate}
+              pricingValidDays={pricingValidDays}
+              pricingValidDaysLoading={pricingValidDaysLoading}
+              pricingValidDaysSaving={pricingValidDaysSaving}
+              useAi={useAi}
+              requireCauseCorrection={requireCauseCorrection}
+              requireAuthorization={requireAuthorization}
+              autoGeneratePdf={autoGeneratePdf}
+              autoSendQuoteEmail={autoSendQuoteEmail}
+              appearanceMode={appearanceMode}
+              appearanceSaving={appearanceSaving}
+              onLaborRateChange={setLaborRate}
+              onSuppliesEnabledChange={setSuppliesEnabled}
+              onSuppliesTypeChange={setSuppliesType}
+              onSuppliesPercentChange={setSuppliesPercent}
+              onSuppliesFlatAmountChange={setSuppliesFlatAmount}
+              onSuppliesCapAmountChange={setSuppliesCapAmount}
+              onDiagnosticFeeChange={setDiagnosticFee}
+              onTaxRateChange={setTaxRate}
+              onPricingValidDaysChange={setPricingValidDays}
+              onSavePricingValidDays={savePricingValidDays}
+              onUseAiChange={setUseAi}
+              onRequireCauseCorrectionChange={setRequireCauseCorrection}
+              onRequireAuthorizationChange={setRequireAuthorization}
+              onAutoGeneratePdfChange={setAutoGeneratePdf}
+              onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
+              onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
+            />
+          )}
           <BrandStudioSummaryCard />
 
           <OwnerSettingsSectionIntro

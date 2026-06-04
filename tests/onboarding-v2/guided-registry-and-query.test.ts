@@ -19,7 +19,7 @@ describe("guided onboarding step registry", () => {
     expect(getGuidedOnboardingStep("customers")).toMatchObject({ destinationPath: "/customers", highlightKey: "customer-import" });
     expect(getGuidedOnboardingStep("vehicles")).toMatchObject({ destinationPath: "/customers", highlightKey: "vehicle-import" });
     expect(getGuidedOnboardingStep("staff")).toMatchObject({ destinationPath: "/dashboard/owner/create-user", highlightKey: "staff-import" });
-    expect(getGuidedOnboardingStep("labor_tax_shop_settings")).toMatchObject({ destinationPath: "/dashboard/owner/settings", highlightKey: "shop-settings-labor-tax" });
+    expect(getGuidedOnboardingStep("labor_tax_shop_settings")).toMatchObject({ destinationPath: "/dashboard/owner/settings", highlightKey: "shop-settings" });
     expect(getGuidedOnboardingStep("inspection_templates")).toMatchObject({ destinationPath: "/inspections/templates", highlightKey: "inspection-templates-setup" });
     expect(getGuidedOnboardingStep("service_menu")).toMatchObject({ destinationPath: "/menu", highlightKey: "service-menu-setup" });
     expect(getGuidedOnboardingStep("inventory_parts")).toMatchObject({ destinationPath: "/parts/inventory", highlightKey: "parts-csv-import", implementationStatus: "available" });
@@ -76,6 +76,27 @@ describe("guided onboarding query helpers", () => {
       onboardingSession: "session-123",
       onboardingStep: "staff",
       highlight: "staff-import",
+      returnTo: "/dashboard/onboarding-v2/session-123",
+      source: "guided-onboarding",
+    });
+  });
+
+
+  it("builds the exact Labor/tax/shop settings destination query params", () => {
+    const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "labor_tax_shop_settings" });
+    const parsedUrl = new URL(url, "https://app.profixiq.test");
+
+    expect(parsedUrl.pathname).toBe("/dashboard/owner/settings");
+    expect(parsedUrl.searchParams.get("onboardingSession")).toBe("session-123");
+    expect(parsedUrl.searchParams.get("onboardingStep")).toBe("labor_tax_shop_settings");
+    expect(parsedUrl.searchParams.get("highlight")).toBe("shop-settings");
+    expect(parsedUrl.searchParams.get("returnTo")).toBe("/dashboard/onboarding-v2/session-123");
+    expect(parsedUrl.searchParams.get("source")).toBe("guided-onboarding");
+
+    expect(parseGuidedOnboardingQuery(parsedUrl.searchParams)).toMatchObject({
+      onboardingSession: "session-123",
+      onboardingStep: "labor_tax_shop_settings",
+      highlight: "shop-settings",
       returnTo: "/dashboard/onboarding-v2/session-123",
       source: "guided-onboarding",
     });
