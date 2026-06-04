@@ -81,6 +81,13 @@ export const TILES: Tile[] = [
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["work_orders", "all"],
   },
+  {
+    href: "/vehicles",
+    title: "Vehicles",
+    subtitle: "Units, VINs & plates",
+    roles: ["advisor", "manager", "owner", "admin", "lead_hand", "foreman"],
+    scopes: ["work_orders", "all"],
+  },
 
   // --- Inspections ---
   {
