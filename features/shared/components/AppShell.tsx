@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { Toaster } from "sonner";
 
@@ -80,7 +80,7 @@ function daysUntil(iso: string | null): number | null {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const { data: activeBrand } = useActiveBrand();
 
   const [userId, setUserId] = useState<string | null>(null);

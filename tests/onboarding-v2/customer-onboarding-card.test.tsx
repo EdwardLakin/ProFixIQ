@@ -18,8 +18,10 @@ const { router, mockSupabaseState } = vi.hoisted(() => ({
       payload: Record<string, unknown>;
       filters: Record<string, unknown>;
     }>,
+    customerSelects: 0,
+    profileSelects: 0,
     insertError: null as
-      | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
+      | ((payload: Record<string, unknown> | Record<string, unknown>[]) => Record<string, unknown> | null)
       | null,
     updateError: null as
       | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
@@ -70,21 +72,26 @@ function makeQuery(table: string): MockQuery {
     }),
     limit: vi.fn(() => query),
     maybeSingle: vi.fn(async () => {
-      if (table === "profiles")
+      if (table === "profiles") {
+        mockSupabaseState.profileSelects += 1;
         return { data: mockSupabaseState.profile, error: null };
+      }
       const match: Record<string, unknown> | undefined = selectCustomers(
         query.filters,
       )[0];
       return { data: match ? { ...match } : null, error: null };
     }),
-    insert: vi.fn(async (payload: Record<string, unknown>) => {
+    insert: vi.fn(async (payload: Record<string, unknown> | Record<string, unknown>[]) => {
       const error = mockSupabaseState.insertError?.(payload) ?? null;
       if (error) return { data: null, error };
-      mockSupabaseState.inserts.push(payload);
-      mockSupabaseState.customers.push({
-        id: `inserted-${mockSupabaseState.inserts.length}`,
-        ...payload,
-      });
+      const rows = Array.isArray(payload) ? payload : [payload];
+      for (const row of rows) {
+        mockSupabaseState.inserts.push(row);
+        mockSupabaseState.customers.push({
+          id: `inserted-${mockSupabaseState.inserts.length}`,
+          ...row,
+        });
+      }
       return { data: null, error: null };
     }),
     update: vi.fn((payload: Record<string, unknown>) => {
@@ -109,10 +116,12 @@ function makeQuery(table: string): MockQuery {
       return updateQuery;
     }),
     then: vi.fn((resolve: (value: unknown) => unknown) => {
-      if (table === "customers")
+      if (table === "customers") {
+        mockSupabaseState.customerSelects += 1;
         return Promise.resolve(
           resolve({ data: selectCustomers(query.filters), error: null }),
         );
+      }
       return Promise.resolve(resolve({ data: null, error: null }));
     }),
   };
@@ -167,6 +176,8 @@ describe("CustomerCsvImportCard", () => {
     mockSupabaseState.updates = [];
     mockSupabaseState.insertError = null;
     mockSupabaseState.updateError = null;
+    mockSupabaseState.customerSelects = 0;
+    mockSupabaseState.profileSelects = 0;
   });
 
   it("renders the Customers-owned import card in normal mode", () => {
@@ -331,6 +342,8 @@ describe("POST /api/customers/import", () => {
     mockSupabaseState.updates = [];
     mockSupabaseState.insertError = null;
     mockSupabaseState.updateError = null;
+    mockSupabaseState.customerSelects = 0;
+    mockSupabaseState.profileSelects = 0;
   });
 
   it("uses the shared cookie-backed Supabase route client for authenticated imports", async () => {
@@ -347,8 +360,8 @@ describe("POST /api/customers/import", () => {
     expect(vi.mocked(createServerSupabaseRoute)).toHaveBeenCalled();
     expect(mockSupabaseState.inserts[0]).toMatchObject({
       shop_id: "shop-real",
-      user_id: "user-1",
     });
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
   });
 
   it("rejects unauthenticated imports", async () => {
@@ -415,9 +428,9 @@ describe("POST /api/customers/import", () => {
     });
     expect(mockSupabaseState.inserts[0]).toMatchObject({
       shop_id: "shop-real",
-      user_id: "user-1",
       email: "ada@example.com",
     });
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
     expect(mockSupabaseState.inserts[0].shop_id).not.toBe("evil-shop");
   });
 
@@ -550,6 +563,106 @@ describe("POST /api/customers/import", () => {
       code: "23505",
       constraint: "customers_shop_email_uq",
     });
+  });
+
+  it("does not trigger customers_user_id_uq during normal imports because user_id is omitted", async () => {
+    mockSupabaseState.insertError = (payload) => {
+      const rows = Array.isArray(payload) ? payload : [payload];
+      if (rows.some((row) => Object.hasOwn(row, "user_id"))) {
+        return {
+          code: "23505",
+          status: 409,
+          message:
+            'duplicate key value violates unique constraint "customers_user_id_uq"',
+        };
+      }
+      return null;
+    };
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { name: "Ada Lovelace", email: "ada@example.com" },
+            { name: "Grace Hopper", email: "grace@example.com" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 2,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(2);
+    expect(mockSupabaseState.inserts.every((row) => !("user_id" in row))).toBe(
+      true,
+    );
+  });
+
+  it("recovers safely if customers_user_id_uq is unexpectedly returned", async () => {
+    mockSupabaseState.insertError = () => ({
+      code: "23505",
+      status: 409,
+      message:
+        'duplicate key value violates unique constraint "customers_user_id_uq"',
+    });
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(payload.warnings[0]).toMatchObject({
+      row: 1,
+      code: "23505",
+      constraint: "customers_user_id_uq",
+      reason:
+        "CSV import unexpectedly hit customers_user_id_uq even though customer user_id is not set; row skipped for safe recovery.",
+    });
+  });
+
+  it("prefetches same-shop customers once for a large import instead of per row", async () => {
+    const rows = Array.from({ length: 600 }, (_, index) => ({
+      name: `Customer ${index}`,
+      email: `customer-${index}@example.com`,
+    }));
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({ rows }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 600,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.profileSelects).toBe(1);
+    expect(mockSupabaseState.customerSelects).toBe(1);
+    expect(mockSupabaseState.inserts).toHaveLength(600);
+    expect(mockSupabaseState.inserts.every((row) => !("user_id" in row))).toBe(
+      true,
+    );
   });
 
   it("skips an unsafe duplicate constraint during update instead of failing the batch", async () => {

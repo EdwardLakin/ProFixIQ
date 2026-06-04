@@ -27,11 +27,6 @@ type CustomerMatch = Pick<
   | "import_notes"
 >;
 type SupabaseRouteClient = ReturnType<typeof createServerSupabaseRoute>;
-type SupabaseQuery = {
-  eq: (column: string, value: unknown) => SupabaseQuery;
-  or: (filters: string) => SupabaseQuery;
-};
-
 type ImportRow = {
   first_name?: unknown;
   last_name?: unknown;
@@ -85,6 +80,7 @@ const CUSTOMER_SELECT =
   "id,shop_id,business_name,name,first_name,last_name,email,phone,phone_number,address,street,city,province,postal_code,notes,import_notes";
 const MAX_IMPORT_ROWS = 5000;
 const MAX_DIAGNOSTICS = 25;
+const INSERT_BATCH_SIZE = 250;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -138,19 +134,7 @@ function splitName(name: string | null): {
   };
 }
 
-function escapeOrValue(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll(",", "\\,")
-    .replaceAll("%", "\\%")
-    .replaceAll("_", "\\_");
-}
-
-function normalizeRow(
-  row: ImportRow,
-  userId: string,
-  shopId: string,
-): CustomerInsert | null {
+function normalizeRow(row: ImportRow, shopId: string): CustomerInsert | null {
   const businessName =
     cleanString(row.business_name) ?? cleanString(row.company_name);
   const explicitName = cleanString(row.name);
@@ -166,7 +150,6 @@ function normalizeRow(
 
   return {
     shop_id: shopId,
-    user_id: userId,
     is_fleet: Boolean(businessName),
     business_name: businessName,
     name: displayName,
@@ -185,20 +168,11 @@ function normalizeRow(
   };
 }
 
-async function findSingleCustomer(
-  supabase: SupabaseRouteClient,
-  buildQuery: (query: SupabaseQuery) => unknown,
-): Promise<CustomerMatch | null> {
-  const query = buildQuery(
-    supabase.from("customers").select(CUSTOMER_SELECT).limit(1),
-  );
-  const { data, error } = (await query) as {
-    data: CustomerMatch[] | null;
-    error: SupabaseErrorLike | null;
-  };
-  if (error) return null;
-  return data?.[0] ?? null;
-}
+type CustomerMatchIndex = {
+  byEmail: Map<string, CustomerMatch>;
+  byPhone: Map<string, CustomerMatch>;
+  byNameLocation: Map<string, CustomerMatch>;
+};
 
 function locationKey(customer: CustomerInsert | CustomerMatch): string {
   return [
@@ -220,6 +194,83 @@ function nameKey(customer: CustomerInsert | CustomerMatch): string {
   return normalizeComparable(displayName);
 }
 
+function nameLocationKey(customer: CustomerInsert | CustomerMatch): string {
+  const targetName = nameKey(customer);
+  if (!targetName) return "";
+
+  const targetLocation = locationKey(customer);
+  if (targetLocation) return `${targetName}|${targetLocation}`;
+
+  const city = normalizeComparable(customer.city);
+  const postalCode = normalizeComparable(customer.postal_code);
+  if (!city && !postalCode) return "";
+  return `${targetName}|${city}|${postalCode}`;
+}
+
+function createCustomerMatchIndex(customers: CustomerMatch[]): CustomerMatchIndex {
+  const index: CustomerMatchIndex = {
+    byEmail: new Map(),
+    byPhone: new Map(),
+    byNameLocation: new Map(),
+  };
+
+  for (const customer of customers) {
+    const email = normalizeEmailComparable(customer.email);
+    if (email && !index.byEmail.has(email)) index.byEmail.set(email, customer);
+
+    for (const phoneValue of [customer.phone, customer.phone_number]) {
+      const phone = normalizePhoneComparable(phoneValue);
+      if (phone && !index.byPhone.has(phone)) index.byPhone.set(phone, customer);
+    }
+
+    const combinedNameLocation = nameLocationKey(customer);
+    if (combinedNameLocation && !index.byNameLocation.has(combinedNameLocation))
+      index.byNameLocation.set(combinedNameLocation, customer);
+  }
+
+  return index;
+}
+
+function addCustomerToMatchIndex(
+  index: CustomerMatchIndex,
+  customer: CustomerMatch,
+) {
+  const scopedIndex = createCustomerMatchIndex([customer]);
+  for (const [key, value] of scopedIndex.byEmail) {
+    if (!index.byEmail.has(key)) index.byEmail.set(key, value);
+  }
+  for (const [key, value] of scopedIndex.byPhone) {
+    if (!index.byPhone.has(key)) index.byPhone.set(key, value);
+  }
+  for (const [key, value] of scopedIndex.byNameLocation) {
+    if (!index.byNameLocation.has(key)) index.byNameLocation.set(key, value);
+  }
+}
+
+function customerInsertToMatch(
+  customer: CustomerInsert,
+  id = customer.id ?? `pending-${Math.random().toString(36).slice(2)}`,
+): CustomerMatch {
+  return {
+    id,
+    shop_id: customer.shop_id ?? null,
+    business_name: customer.business_name ?? null,
+    name: customer.name ?? null,
+    first_name: customer.first_name ?? null,
+    last_name: customer.last_name ?? null,
+    email: customer.email ?? null,
+    phone: customer.phone ?? null,
+    phone_number: customer.phone_number ?? null,
+    address: customer.address ?? null,
+    street: customer.street ?? null,
+    city: customer.city ?? null,
+    province: customer.province ?? null,
+    postal_code: customer.postal_code ?? null,
+    notes: customer.notes ?? null,
+    import_notes: customer.import_notes ?? null,
+  };
+}
+
 async function getShopCustomerCandidates(
   supabase: SupabaseRouteClient,
   shopId: string,
@@ -228,7 +279,7 @@ async function getShopCustomerCandidates(
     .from("customers")
     .select(CUSTOMER_SELECT)
     .eq("shop_id", shopId)
-    .limit(5000)) as {
+    .limit(10000)) as {
     data: CustomerMatch[] | null;
     error: SupabaseErrorLike | null;
   };
@@ -237,108 +288,26 @@ async function getShopCustomerCandidates(
   return data.filter((candidate) => candidate.shop_id === shopId);
 }
 
-async function findByNormalizedEmailFallback(
-  supabase: SupabaseRouteClient,
-  shopId: string,
-  email: string | null | undefined,
-): Promise<CustomerMatch | null> {
-  const targetEmail = normalizeEmailComparable(email);
-  if (!targetEmail) return null;
-  const candidates = await getShopCustomerCandidates(supabase, shopId);
-  return (
-    candidates.find(
-      (candidate) => normalizeEmailComparable(candidate.email) === targetEmail,
-    ) ?? null
-  );
-}
-
-async function findByNormalizedPhoneFallback(
-  supabase: SupabaseRouteClient,
-  shopId: string,
-  phone: string | null | undefined,
-): Promise<CustomerMatch | null> {
-  const targetPhone = normalizePhoneComparable(phone);
-  if (!targetPhone) return null;
-  const candidates = await getShopCustomerCandidates(supabase, shopId);
-  return (
-    candidates.find(
-      (candidate) =>
-        normalizePhoneComparable(candidate.phone) === targetPhone ||
-        normalizePhoneComparable(candidate.phone_number) === targetPhone,
-    ) ?? null
-  );
-}
-
-async function findByNameAndLocationFallback(
-  supabase: SupabaseRouteClient,
+function findExistingCustomer(
+  index: CustomerMatchIndex,
   shopId: string,
   customer: CustomerInsert,
-): Promise<CustomerMatch | null> {
-  const targetName = nameKey(customer);
-  if (!targetName) return null;
+): CustomerMatch | null {
+  const email = normalizeEmailComparable(customer.email);
+  const emailMatch = email ? index.byEmail.get(email) : null;
+  if (emailMatch?.shop_id === shopId) return emailMatch;
 
-  const targetLocation = locationKey(customer);
-  if (!targetLocation && !customer.city && !customer.postal_code) return null;
+  const phone = normalizePhoneComparable(customer.phone ?? customer.phone_number);
+  const phoneMatch = phone ? index.byPhone.get(phone) : null;
+  if (phoneMatch?.shop_id === shopId) return phoneMatch;
 
-  const candidates = await getShopCustomerCandidates(supabase, shopId);
-  if (!candidates.length) return null;
+  const namedLocation = nameLocationKey(customer);
+  const namedLocationMatch = namedLocation
+    ? index.byNameLocation.get(namedLocation)
+    : null;
+  if (namedLocationMatch?.shop_id === shopId) return namedLocationMatch;
 
-  return (
-    candidates.find((candidate) => {
-      if (candidate.shop_id !== shopId) return false;
-      if (nameKey(candidate) !== targetName) return false;
-      const candidateLocation = locationKey(candidate);
-      if (targetLocation && candidateLocation)
-        return candidateLocation === targetLocation;
-      return (
-        normalizeComparable(candidate.city) ===
-          normalizeComparable(customer.city) &&
-        normalizeComparable(candidate.postal_code) ===
-          normalizeComparable(customer.postal_code)
-      );
-    }) ?? null
-  );
-}
-
-async function findExistingCustomer(
-  supabase: SupabaseRouteClient,
-  shopId: string,
-  customer: CustomerInsert,
-): Promise<CustomerMatch | null> {
-  if (customer.email) {
-    const match = await findSingleCustomer(supabase, (query) =>
-      query.eq("shop_id", shopId).eq("email", customer.email),
-    );
-    if (match?.id) return match;
-
-    const normalizedMatch = await findByNormalizedEmailFallback(
-      supabase,
-      shopId,
-      customer.email,
-    );
-    if (normalizedMatch?.id) return normalizedMatch;
-  }
-
-  const phone = customer.phone ?? customer.phone_number;
-  if (phone) {
-    const match = await findSingleCustomer(supabase, (query) =>
-      query
-        .eq("shop_id", shopId)
-        .or(
-          `phone.eq.${escapeOrValue(phone)},phone_number.eq.${escapeOrValue(phone)}`,
-        ),
-    );
-    if (match?.id) return match;
-
-    const normalizedMatch = await findByNormalizedPhoneFallback(
-      supabase,
-      shopId,
-      phone,
-    );
-    if (normalizedMatch?.id) return normalizedMatch;
-  }
-
-  return findByNameAndLocationFallback(supabase, shopId, customer);
+  return null;
 }
 
 function getCustomerImportCookieDiagnostics() {
@@ -469,6 +438,144 @@ function logRowImportIssue(
   });
 }
 
+
+function isPendingImportMatch(customer: CustomerMatch): boolean {
+  return customer.id.startsWith("pending-");
+}
+
+type PendingCustomerInsert = {
+  rowNumber: number;
+  customer: CustomerInsert;
+};
+
+function duplicateUserIdConstraintReason(constraint?: string): string {
+  if (constraint === "customers_user_id_uq")
+    return "CSV import unexpectedly hit customers_user_id_uq even though customer user_id is not set; row skipped for safe recovery.";
+  return "Duplicate customer constraint hit, but no safe same-shop match was found to update.";
+}
+
+async function insertCustomerBatch(
+  supabase: SupabaseRouteClient,
+  shopId: string,
+  rows: PendingCustomerInsert[],
+  matchIndex: CustomerMatchIndex,
+  counts: Counts,
+  warnings: ImportDiagnostic[],
+  errors: ImportDiagnostic[],
+) {
+  if (!rows.length) return;
+
+  const payload = rows.map(({ customer }) => customer);
+  const { error } = (await supabase.from("customers").insert(payload)) as {
+    error: SupabaseErrorLike | null;
+  };
+
+  if (!error) {
+    counts.created += rows.length;
+    for (const { customer } of rows) {
+      addCustomerToMatchIndex(matchIndex, customerInsertToMatch(customer));
+    }
+    return;
+  }
+
+  if (!isDuplicateError(error)) {
+    for (const { rowNumber, customer } of rows) {
+      logRowImportIssue(rowNumber, customer, error, "batch-insert");
+      counts.failed += 1;
+      addDiagnostic(errors, {
+        row: rowNumber,
+        identity: getSafeIdentity(customer),
+        reason: error.message ?? "Unable to import customer.",
+        code: error.code,
+        constraint: getConstraint(error),
+      });
+    }
+    return;
+  }
+
+  for (const { rowNumber, customer } of rows) {
+    const { error: rowError } = (await supabase
+      .from("customers")
+      .insert(customer)) as { error: SupabaseErrorLike | null };
+
+    if (!rowError) {
+      counts.created += 1;
+      addCustomerToMatchIndex(matchIndex, customerInsertToMatch(customer));
+      continue;
+    }
+
+    logRowImportIssue(rowNumber, customer, rowError, "insert");
+
+    if (!isDuplicateError(rowError)) {
+      counts.failed += 1;
+      addDiagnostic(errors, {
+        row: rowNumber,
+        identity: getSafeIdentity(customer),
+        reason: rowError.message ?? "Unable to import customer.",
+        code: rowError.code,
+        constraint: getConstraint(rowError),
+      });
+      continue;
+    }
+
+    const refreshedCustomers = await getShopCustomerCandidates(supabase, shopId);
+    const refreshedIndex = createCustomerMatchIndex(refreshedCustomers);
+    const duplicateMatch = findExistingCustomer(refreshedIndex, shopId, customer);
+
+    if (duplicateMatch?.id) {
+      const result = await updateExistingCustomer(
+        supabase,
+        shopId,
+        duplicateMatch,
+        customer,
+      );
+      if (result.status === "updated") {
+        counts.updated += 1;
+        addCustomerToMatchIndex(
+          matchIndex,
+          customerInsertToMatch(customer, duplicateMatch.id),
+        );
+      } else if (result.status === "skipped") {
+        counts.skipped += 1;
+        addDiagnostic(warnings, {
+          row: rowNumber,
+          identity: getSafeIdentity(customer),
+          reason: result.reason ?? "Duplicate customer already exists.",
+        });
+      } else {
+        counts.failed += 1;
+        if (result.error)
+          logRowImportIssue(
+            rowNumber,
+            customer,
+            result.error,
+            "duplicate-update",
+          );
+        addDiagnostic(errors, {
+          row: rowNumber,
+          identity: getSafeIdentity(customer),
+          reason:
+            result.error?.message ??
+            result.reason ??
+            "Duplicate customer could not be updated.",
+          code: result.error?.code,
+          constraint: getConstraint(result.error),
+        });
+      }
+      continue;
+    }
+
+    counts.skipped += 1;
+    addDiagnostic(warnings, {
+      row: rowNumber,
+      identity: getSafeIdentity(customer),
+      reason: duplicateUserIdConstraintReason(getConstraint(rowError)),
+      code: rowError.code,
+      constraint: getConstraint(rowError),
+    });
+  }
+}
+
 async function updateExistingCustomer(
   supabase: SupabaseRouteClient,
   shopId: string,
@@ -582,6 +689,10 @@ export async function POST(req: Request) {
     });
   }
 
+  const existingCustomers = await getShopCustomerCandidates(supabase, shopId);
+  const matchIndex = createCustomerMatchIndex(existingCustomers);
+  const pendingInserts: PendingCustomerInsert[] = [];
+
   for (const [index, rawRow] of inputRows.entries()) {
     const rowNumber = index + 1;
     if (!isRecord(rawRow)) {
@@ -594,7 +705,7 @@ export async function POST(req: Request) {
       continue;
     }
 
-    const customer = normalizeRow(rawRow as ImportRow, user.id, shopId);
+    const customer = normalizeRow(rawRow as ImportRow, shopId);
     if (!customer) {
       counts.skipped += 1;
       addDiagnostic(warnings, {
@@ -606,16 +717,32 @@ export async function POST(req: Request) {
     }
 
     try {
-      const existing = await findExistingCustomer(supabase, shopId, customer);
+      const existing = findExistingCustomer(matchIndex, shopId, customer);
       if (existing?.id) {
+        if (isPendingImportMatch(existing)) {
+          counts.skipped += 1;
+          addDiagnostic(warnings, {
+            row: rowNumber,
+            identity: getSafeIdentity(customer),
+            reason:
+              "Duplicate customer already exists earlier in this import batch.",
+          });
+          continue;
+        }
+
         const result = await updateExistingCustomer(
           supabase,
           shopId,
           existing,
           customer,
         );
-        if (result.status === "updated") counts.updated += 1;
-        else if (result.status === "skipped") {
+        if (result.status === "updated") {
+          counts.updated += 1;
+          addCustomerToMatchIndex(
+            matchIndex,
+            customerInsertToMatch(customer, existing.id),
+          );
+        } else if (result.status === "skipped") {
           counts.skipped += 1;
           addDiagnostic(warnings, {
             row: rowNumber,
@@ -640,80 +767,11 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const { error } = (await supabase.from("customers").insert(customer)) as {
-        error: SupabaseErrorLike | null;
-      };
-      if (!error) {
-        counts.created += 1;
-        continue;
-      }
-
-      logRowImportIssue(rowNumber, customer, error, "insert");
-
-      if (isDuplicateError(error)) {
-        const duplicateMatch = await findExistingCustomer(
-          supabase,
-          shopId,
-          customer,
-        );
-        if (duplicateMatch?.id) {
-          const result = await updateExistingCustomer(
-            supabase,
-            shopId,
-            duplicateMatch,
-            customer,
-          );
-          if (result.status === "updated") counts.updated += 1;
-          else if (result.status === "skipped") {
-            counts.skipped += 1;
-            addDiagnostic(warnings, {
-              row: rowNumber,
-              identity: getSafeIdentity(customer),
-              reason: result.reason ?? "Duplicate customer already exists.",
-            });
-          } else {
-            counts.failed += 1;
-            if (result.error)
-              logRowImportIssue(
-                rowNumber,
-                customer,
-                result.error,
-                "duplicate-update",
-              );
-            addDiagnostic(errors, {
-              row: rowNumber,
-              identity: getSafeIdentity(customer),
-              reason:
-                result.error?.message ??
-                result.reason ??
-                "Duplicate customer could not be updated.",
-              code: result.error?.code,
-              constraint: getConstraint(result.error),
-            });
-          }
-          continue;
-        }
-
-        counts.skipped += 1;
-        addDiagnostic(warnings, {
-          row: rowNumber,
-          identity: getSafeIdentity(customer),
-          reason:
-            "Duplicate customer constraint hit, but no safe same-shop match was found to update.",
-          code: error.code,
-          constraint: getConstraint(error),
-        });
-        continue;
-      }
-
-      counts.failed += 1;
-      addDiagnostic(errors, {
-        row: rowNumber,
-        identity: getSafeIdentity(customer),
-        reason: error.message ?? "Unable to import customer.",
-        code: error.code,
-        constraint: getConstraint(error),
-      });
+      pendingInserts.push({ rowNumber, customer });
+      addCustomerToMatchIndex(
+        matchIndex,
+        customerInsertToMatch(customer, `pending-${rowNumber}`),
+      );
     } catch (error) {
       counts.failed += 1;
       const message =
@@ -730,6 +788,18 @@ export async function POST(req: Request) {
         reason: message,
       });
     }
+  }
+
+  for (let index = 0; index < pendingInserts.length; index += INSERT_BATCH_SIZE) {
+    await insertCustomerBatch(
+      supabase,
+      shopId,
+      pendingInserts.slice(index, index + INSERT_BATCH_SIZE),
+      matchIndex,
+      counts,
+      warnings,
+      errors,
+    );
   }
 
   return NextResponse.json({ ok: true, counts, warnings, errors });
