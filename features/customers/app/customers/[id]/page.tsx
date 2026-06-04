@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
-import { CustomerOnboardingSetupCard } from "@/features/customers/components/CustomerOnboardingSetupCard";
+import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { VehicleOnboardingSetupCard } from "@/features/customers/components/VehicleOnboardingSetupCard";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
@@ -1192,17 +1192,15 @@ export default function CustomerProfilePage(): JSX.Element {
       <PageShell>
         <TopBar rightLabel="Customers" onBack={() => router.back()} />
 
-        {guidedCustomerOnboarding ? (
-          <div className="mb-4">
-            <CustomerOnboardingSetupCard
-              guidedQuery={guidedCustomerOnboarding}
-              onCreateCustomer={() => {
-                setCreateCustomerError(null);
-                setCreateCustomerOpen(true);
-              }}
-            />
-          </div>
-        ) : null}
+        <div className="mb-4">
+          <CustomerCsvImportCard
+            guidedQuery={guidedCustomerOnboarding}
+            onCreateCustomer={() => {
+              setCreateCustomerError(null);
+              setCreateCustomerOpen(true);
+            }}
+          />
+        </div>
 
         {guidedVehicleOnboarding ? (
           <div className="mb-4">
