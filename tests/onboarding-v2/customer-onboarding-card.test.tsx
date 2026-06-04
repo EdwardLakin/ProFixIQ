@@ -21,6 +21,9 @@ const { router, mockSupabaseState } = vi.hoisted(() => ({
     insertError: null as
       | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
       | null,
+    updateError: null as
+      | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
+      | null,
   },
 }));
 
@@ -85,7 +88,10 @@ function makeQuery(table: string): MockQuery {
       return { data: null, error: null };
     }),
     update: vi.fn((payload: Record<string, unknown>) => {
-      const updateQuery: { eq: ReturnType<typeof vi.fn> } = {
+      const updateQuery: {
+        eq: ReturnType<typeof vi.fn>;
+        then: ReturnType<typeof vi.fn>;
+      } = {
         eq: vi.fn((column: string, value: unknown) => {
           query.filters[column] = value;
           if (column === "id")
@@ -94,6 +100,10 @@ function makeQuery(table: string): MockQuery {
               filters: { ...query.filters },
             });
           return updateQuery;
+        }),
+        then: vi.fn((resolve: (value: unknown) => unknown) => {
+          const error = mockSupabaseState.updateError?.(payload) ?? null;
+          return Promise.resolve(resolve({ data: null, error }));
         }),
       };
       return updateQuery;
@@ -156,6 +166,7 @@ describe("CustomerCsvImportCard", () => {
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
     mockSupabaseState.insertError = null;
+    mockSupabaseState.updateError = null;
   });
 
   it("renders the Customers-owned import card in normal mode", () => {
@@ -319,6 +330,7 @@ describe("POST /api/customers/import", () => {
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
     mockSupabaseState.insertError = null;
+    mockSupabaseState.updateError = null;
   });
 
   it("uses the shared cookie-backed Supabase route client for authenticated imports", async () => {
@@ -447,8 +459,8 @@ describe("POST /api/customers/import", () => {
       {
         id: "customer-phone",
         shop_id: "shop-real",
-        phone: "5551112222",
-        phone_number: "5551112222",
+        phone: "(555) 111-2222",
+        phone_number: "+1 555 111 2222",
         name: "Phone Existing",
       },
     ];
@@ -537,6 +549,45 @@ describe("POST /api/customers/import", () => {
       row: 1,
       code: "23505",
       constraint: "customers_shop_email_uq",
+    });
+  });
+
+  it("skips an unsafe duplicate constraint during update instead of failing the batch", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "customer-email",
+        shop_id: "shop-real",
+        email: "ada@example.com",
+        name: "Ada Old",
+      },
+    ];
+    mockSupabaseState.updateError = () => ({
+      code: "23505",
+      status: 409,
+      message:
+        'duplicate key value violates unique constraint "customers_shop_email_uq"',
+    });
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [{ name: "Ada Lovelace", email: "ada@example.com" }],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(payload.warnings[0]).toMatchObject({
+      row: 1,
+      reason:
+        "Existing customer update hit a duplicate constraint; the row was skipped to avoid merging unsafe data.",
     });
   });
 
