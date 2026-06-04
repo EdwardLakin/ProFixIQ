@@ -25,7 +25,11 @@ describe("guided onboarding step registry", () => {
       highlightKey: "inspection-template-import",
       question: "Do you want to set up or import inspection templates now?",
     });
-    expect(getGuidedOnboardingStep("service_menu")).toMatchObject({ destinationPath: "/menu", highlightKey: "service-menu-setup" });
+    expect(getGuidedOnboardingStep("service_menu")).toMatchObject({
+      destinationPath: "/menu",
+      highlightKey: "service-menu-setup",
+      question: "Do you want to set up service menu items, canned jobs, or common repairs now?",
+    });
     expect(getGuidedOnboardingStep("inventory_parts")).toMatchObject({ destinationPath: "/parts/inventory", highlightKey: "parts-csv-import", implementationStatus: "available" });
     expect(getGuidedOnboardingStep("invoices")).toMatchObject({ implementationStatus: "future" });
     expect(getGuidedOnboardingStep("service_history")).toMatchObject({ destinationPath: "/work-orders/history", highlightKey: "service-history-setup" });
@@ -121,6 +125,26 @@ describe("guided onboarding query helpers", () => {
       onboardingSession: "session-123",
       onboardingStep: "inspection_templates",
       highlight: "inspection-template-import",
+      returnTo: "/dashboard/onboarding-v2/session-123",
+      source: "guided-onboarding",
+    });
+  });
+
+  it("builds the exact Service menu destination query params", () => {
+    const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "service_menu" });
+    const parsedUrl = new URL(url, "https://app.profixiq.test");
+
+    expect(parsedUrl.pathname).toBe("/menu");
+    expect(parsedUrl.searchParams.get("onboardingSession")).toBe("session-123");
+    expect(parsedUrl.searchParams.get("onboardingStep")).toBe("service_menu");
+    expect(parsedUrl.searchParams.get("highlight")).toBe("service-menu-setup");
+    expect(parsedUrl.searchParams.get("returnTo")).toBe("/dashboard/onboarding-v2/session-123");
+    expect(parsedUrl.searchParams.get("source")).toBe("guided-onboarding");
+
+    expect(parseGuidedOnboardingQuery(parsedUrl.searchParams)).toMatchObject({
+      onboardingSession: "session-123",
+      onboardingStep: "service_menu",
+      highlight: "service-menu-setup",
       returnTo: "/dashboard/onboarding-v2/session-123",
       source: "guided-onboarding",
     });

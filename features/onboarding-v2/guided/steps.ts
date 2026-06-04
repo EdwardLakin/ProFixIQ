@@ -90,7 +90,7 @@ export const GUIDED_ONBOARDING_STEPS = [
   {
     stepKey: "service_menu",
     label: "Service menu",
-    question: "Do you want to set up your canned services or menu now?",
+    question: "Do you want to set up service menu items, canned jobs, or common repairs now?",
     destinationPath: "/menu",
     highlightKey: "service-menu-setup",
     description: "Route to the service menu page where menu items are owned.",
