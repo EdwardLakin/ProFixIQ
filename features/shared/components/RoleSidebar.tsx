@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   TILES,
   canShowTileForEmail,
@@ -57,10 +56,7 @@ function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
 }
 
 export default function RoleSidebar() {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const pathname = usePathname();
 
@@ -72,17 +68,50 @@ export default function RoleSidebar() {
   useEffect(() => {
     (async () => {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      setUserEmail(session?.user?.email ?? null);
-      if (!uid) return;
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      const uid = user?.id;
+      setUserEmail(user?.email ?? null);
+      if (!uid) {
+        console.info("[RoleSidebar] no authenticated user", {
+          authError: authError?.message ?? null,
+        });
+        return;
+      }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("id,email,role,shop_id")
         .eq("id", uid)
-        .single();
+        .maybeSingle();
+
+      console.info("[RoleSidebar] profile resolved", {
+        authUserId: uid,
+        authEmail: user?.email ?? null,
+        profileId: profile?.id ?? null,
+        profileEmail: profile?.email ?? null,
+        role: profile?.role ?? null,
+        shopIdPresent: Boolean(profile?.shop_id),
+        profileError: profileError
+          ? { message: profileError.message, code: profileError.code }
+          : null,
+      });
+
+      if (profile?.shop_id) {
+        const { error: contextError } = await supabase.rpc("set_current_shop_id", {
+          p_shop_id: profile.shop_id,
+        });
+        console.info("[RoleSidebar] set_current_shop_id", {
+          authUserId: uid,
+          profileId: profile?.id ?? null,
+          shopIdPresent: true,
+          setCurrentShopIdCalled: true,
+          setCurrentShopIdError: contextError
+            ? { message: contextError.message, code: contextError.code }
+            : null,
+        });
+      }
 
       setRole(normalizeRole(profile?.role ?? null));
     })();

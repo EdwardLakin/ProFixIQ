@@ -2,8 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import {
   DASHBOARD_LAST_VIEW_KEY,
@@ -19,22 +18,36 @@ export default function DashboardEntryPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const supabase = createClientComponentClient<Database>();
+    const supabase = createBrowserSupabase();
 
     (async () => {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-      const uid = session?.user?.id;
+      const uid = user?.id;
       let role = "unknown";
 
       if (uid) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("id,email,role,shop_id")
           .eq("id", uid)
           .maybeSingle();
+
+        console.info("[DashboardEntry] profile resolved", {
+          authUserId: uid,
+          authEmail: user?.email ?? null,
+          profileId: profile?.id ?? null,
+          profileEmail: profile?.email ?? null,
+          role: profile?.role ?? null,
+          shopIdPresent: Boolean(profile?.shop_id),
+          authError: authError?.message ?? null,
+          profileError: profileError
+            ? { message: profileError.message, code: profileError.code }
+            : null,
+        });
 
         role = canonicalizeRole(profile?.role);
       }

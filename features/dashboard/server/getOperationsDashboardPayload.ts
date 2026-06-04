@@ -1,6 +1,11 @@
 import { endOfDay, startOfDay, startOfMonth } from "date-fns";
 
-import { createDashboardServerClient, getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
+import {
+  createDashboardServerClient,
+  ensureDashboardShopContext,
+  getDashboardIdentity,
+  getMissingShopContextWarning,
+} from "@/features/dashboard/server/dashboard-shell-data";
 
 const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
@@ -119,11 +124,17 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   };
 
   if (!identity.shopId) {
-    payload.sectionErrors.push("No shop context found for this user.");
+    payload.sectionErrors.push(getMissingShopContextWarning(identity));
     return payload;
   }
 
   const supabase = createDashboardServerClient();
+  const contextError = await ensureDashboardShopContext(supabase, identity, "Operations");
+  if (contextError) {
+    payload.sectionErrors.push(
+      `Shop context RPC failed (${contextError.code ?? "no-code"}: ${contextError.message}); dashboard data may be limited by RLS.`,
+    );
+  }
   const todayStart = startOfDay(new Date()).toISOString();
   const todayEnd = endOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
@@ -228,8 +239,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         shopId: identity.shopId,
         userId: identity.userId,
         partsByJobError: partsByJobResult.error?.message,
+        partsByJobCode: partsByJobResult.error?.code,
         partsByWorkOrderError: partsByWorkOrderResult.error?.message,
+        partsByWorkOrderCode: partsByWorkOrderResult.error?.code,
         partsByOwnerError: partsByOwnerResult.error?.message,
+        partsByOwnerCode: partsByOwnerResult.error?.code,
       });
     }
 
@@ -248,6 +262,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         shopId: identity.shopId,
         userId: identity.userId,
         error: shopPartsResult.error.message,
+        code: shopPartsResult.error.code,
       });
     } else {
       partsRows = shopPartsResult.data ?? [];
@@ -286,6 +301,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       shopId: identity.shopId,
       userId: identity.userId,
       error: boardResult.error.message,
+      code: boardResult.error.code,
     });
     payload.sectionErrors.push("Live work signal is temporarily unavailable.");
   } else {
@@ -339,6 +355,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       shopId: identity.shopId,
       userId: identity.userId,
       error: approvalsResult.error.message,
+      code: approvalsResult.error.code,
     });
     payload.sectionErrors.push("Approvals signal is temporarily unavailable.");
   } else {
@@ -417,6 +434,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       shopId: identity.shopId,
       userId: identity.userId,
       error: bookingsTodayResult.error.message,
+      code: bookingsTodayResult.error.code,
     });
     payload.sectionErrors.push("Daily summary signal is temporarily unavailable.");
   }
@@ -629,6 +647,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       shopId: identity.shopId,
       userId: identity.userId,
       error: invoicesMonthResult.error.message,
+      code: invoicesMonthResult.error.code,
     });
     payload.sectionErrors.push("Revenue snapshot is temporarily unavailable.");
   } else {
