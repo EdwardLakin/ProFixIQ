@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,6 +24,12 @@ function statusLabel(status: GuidedOnboardingStatus) {
   return status.replaceAll("_", " ");
 }
 
+function implementationLabel(status: "available" | "placeholder" | "future") {
+  if (status === "available") return "normal";
+  if (status === "placeholder") return "planned";
+  return "coming later";
+}
+
 function statusTone(status: GuidedOnboardingStatus) {
   if (status === "completed") return "border-emerald-500/40 bg-emerald-950/30 text-emerald-200";
   if (status === "skipped") return "border-slate-500/40 bg-slate-900/50 text-slate-300";
@@ -39,6 +46,8 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
   const [error, setError] = useState("");
 
   const sessionId = payload?.session.id ?? initialSessionId ?? "";
+  const existingSystemAnswer = payload?.session.summary?.existingSystemImport;
+  const showExistingSystemGate = payload ? existingSystemAnswer !== "yes" && existingSystemAnswer !== "no" : false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +115,27 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
     if (next?.destinationUrl) router.push(next.destinationUrl);
   };
 
+  async function answerExistingSystem(answer: "yes" | "no") {
+    if (!sessionId) return;
+    setBusyStep(`existing-system:${answer}`);
+    setError("");
+    try {
+      const response = await fetch(`/api/onboarding-v2/guided/sessions/${encodeURIComponent(sessionId)}/existing-system`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer }),
+      });
+      const next = await response.json() as GuidedPayload & { error?: string; redirectTo?: string | null };
+      if (!response.ok || !next.ok) throw new Error(next.error ?? "Guided onboarding entry update failed");
+      setPayload(next);
+      if (next.redirectTo) router.push(next.redirectTo);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Guided onboarding entry update failed");
+    } finally {
+      setBusyStep(null);
+    }
+  }
+
   if (loading) {
     return <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm text-slate-300">Loading guided onboarding…</div>;
   }
@@ -123,6 +153,7 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
 
   const currentDefinition = getGuidedOnboardingStep(currentStep.step_key);
   const currentDestination = buildGuidedOnboardingDestinationUrl({ sessionId: payload.session.id, stepKey: currentStep.step_key });
+  const currentImplementationLabel = implementationLabel(currentDefinition.implementationStatus);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -137,43 +168,69 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
 
         <div className="rounded-2xl border border-white/10 bg-[rgba(15,23,42,0.72)] p-5">
           <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Current question</div>
-          <h3 className="mt-2 text-xl font-semibold text-white">{currentDefinition.question}</h3>
-          <p className="mt-2 text-sm text-slate-300">{currentDefinition.description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(currentStep.status)}`}>{statusLabel(currentStep.status)}</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">{currentDefinition.implementationStatus}</span>
-          </div>
+          {showExistingSystemGate ? (
+            <>
+              <h3 className="mt-2 text-xl font-semibold text-white">Do you currently have an existing shop/system to import?</h3>
+              <p className="mt-2 text-sm text-slate-300">Choose whether ProFixIQ should guide you through existing shop data setup or let you start with an empty workspace.</p>
+              {error ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/25 p-3 text-sm text-red-100">{error}</div> : null}
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  className="rounded-xl border border-[rgba(197,122,74,0.55)] bg-[linear-gradient(135deg,rgba(197,122,74,0.30),rgba(197,122,74,0.16))] px-4 py-2 text-sm font-semibold text-orange-50 hover:bg-orange-400/20 disabled:opacity-50"
+                  onClick={() => void answerExistingSystem("yes")}
+                  disabled={Boolean(busyStep)}
+                >
+                  Yes, guide me through import
+                </button>
+                <button
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-50"
+                  onClick={() => void answerExistingSystem("no")}
+                  disabled={Boolean(busyStep)}
+                >
+                  No, start from empty
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="mt-2 text-xl font-semibold text-white">{currentDefinition.question}</h3>
+              <p className="mt-2 text-sm text-slate-300">{currentDefinition.description}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(currentStep.status)}`}>{statusLabel(currentStep.status)}</span>
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">{currentImplementationLabel}</span>
+              </div>
 
-          {error ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/25 p-3 text-sm text-red-100">{error}</div> : null}
+              {error ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/25 p-3 text-sm text-red-100">{error}</div> : null}
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              className="rounded-xl border border-[rgba(197,122,74,0.55)] bg-[linear-gradient(135deg,rgba(197,122,74,0.30),rgba(197,122,74,0.16))] px-4 py-2 text-sm font-semibold text-orange-50 hover:bg-orange-400/20 disabled:opacity-50"
-              onClick={() => void routeStep(currentStep.step_key)}
-              disabled={Boolean(busyStep) || currentDefinition.implementationStatus === "future"}
-            >
-              Yes, route me there
-            </button>
-            <button
-              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-50"
-              onClick={() => void postStep(currentStep.step_key, "skip", { skippedReason: "User answered no" })}
-              disabled={Boolean(busyStep)}
-            >
-              No, skip this
-            </button>
-            <button
-              className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-50"
-              onClick={() => void postStep(currentStep.step_key, "complete", { summary: { completedFrom: "guided-control-room" } })}
-              disabled={Boolean(busyStep) || currentStep.status === "completed"}
-            >
-              Mark done
-            </button>
-            {currentStep.status === "routing" ? (
-              <Link className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-900/30" href={currentDestination}>
-                Resume step
-              </Link>
-            ) : null}
-          </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  className="rounded-xl border border-[rgba(197,122,74,0.55)] bg-[linear-gradient(135deg,rgba(197,122,74,0.30),rgba(197,122,74,0.16))] px-4 py-2 text-sm font-semibold text-orange-50 hover:bg-orange-400/20 disabled:opacity-50"
+                  onClick={() => void routeStep(currentStep.step_key)}
+                  disabled={Boolean(busyStep) || currentDefinition.implementationStatus === "future"}
+                >
+                  Yes, route me there
+                </button>
+                <button
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-50"
+                  onClick={() => void postStep(currentStep.step_key, "skip", { skippedReason: "User answered no" })}
+                  disabled={Boolean(busyStep)}
+                >
+                  No, skip this
+                </button>
+                <button
+                  className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-50"
+                  onClick={() => void postStep(currentStep.step_key, "complete", { summary: { completedFrom: "guided-control-room" } })}
+                  disabled={Boolean(busyStep) || currentStep.status === "completed"}
+                >
+                  Mark done
+                </button>
+                {currentStep.status === "routing" ? (
+                  <Link className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-900/30" href={currentDestination}>
+                    Continue to {currentDefinition.label}
+                  </Link>
+                ) : null}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
@@ -194,19 +251,16 @@ export function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
             const definition = getGuidedOnboardingStep(step.step_key);
             const active = step.step_key === currentStep.step_key;
             return (
-              <button
-                type="button"
+              <div
                 key={step.step_key}
-                className={`w-full rounded-xl border p-3 text-left transition ${active ? "border-[rgba(197,122,74,0.65)] bg-[rgba(197,122,74,0.14)]" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"}`}
-                onClick={() => void routeStep(step.step_key)}
-                disabled={Boolean(busyStep) || definition.implementationStatus === "future"}
+                className={`w-full rounded-xl border p-3 text-left transition ${active ? "border-[rgba(197,122,74,0.65)] bg-[rgba(197,122,74,0.14)]" : "border-white/10 bg-white/[0.03]"} ${definition.implementationStatus === "future" ? "opacity-75" : ""}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-white">{index + 1}. {definition.label}</span>
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(step.status)}`}>{statusLabel(step.status)}</span>
                 </div>
-                <div className="mt-1 text-xs text-slate-400">{definition.implementationStatus}</div>
-              </button>
+                <div className="mt-1 text-xs text-slate-400">{implementationLabel(definition.implementationStatus)}</div>
+              </div>
             );
           })}
         </div>

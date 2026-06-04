@@ -36,6 +36,10 @@ function nextActionableStep(steps: GuidedStepRow[]): GuidedOnboardingStepKey | n
   return steps.find((step) => !["completed", "skipped"].includes(step.status))?.step_key ?? null;
 }
 
+function mergeSummary(summary: JsonObject | null | undefined, patch: JsonObject): JsonObject {
+  return { ...(summary ?? {}), ...patch };
+}
+
 async function insertGuidedEvent(db: UntypedSupabase, args: {
   shopId: string;
   sessionId: string;
@@ -91,7 +95,7 @@ export async function createOrResumeGuidedSession(args: {
     const id = randomUUID();
     const { data: inserted, error } = await db
       .from("guided_onboarding_sessions")
-      .insert({ id, shop_id: args.shopId, created_by: args.userId, status: "active", current_step_key: "customers", summary: {} })
+      .insert({ id, shop_id: args.shopId, created_by: args.userId, status: "active", current_step_key: null, summary: {} })
       .select("*")
       .single();
     if (error) throw new Error(error.message ?? "Unable to create guided onboarding session");
@@ -135,6 +139,92 @@ export async function fetchGuidedSession(args: {
   ).filter((step): step is GuidedStepRow => Boolean(step));
 
   return { session: session as GuidedSessionRow, steps: ordered };
+}
+
+export async function answerExistingSystemGate(args: {
+  supabase: unknown;
+  shopId: string;
+  sessionId: string;
+  answer: "yes" | "no";
+}) {
+  const db = asGuidedDb(args.supabase);
+  const current = await fetchGuidedSession({ supabase: args.supabase, shopId: args.shopId, sessionId: args.sessionId });
+  const now = new Date().toISOString();
+
+  if (args.answer === "no") {
+    const { error: stepsError } = await db
+      .from("guided_onboarding_steps")
+      .update({
+        status: "skipped",
+        skipped_reason: "starting empty",
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("session_id", args.sessionId)
+      .eq("shop_id", args.shopId);
+    if (stepsError) throw new Error(stepsError.message ?? "Unable to skip guided onboarding steps");
+
+    const { error: sessionError } = await db
+      .from("guided_onboarding_sessions")
+      .update({
+        current_step_key: null,
+        status: "completed",
+        summary: mergeSummary(current.session.summary, { existingSystemImport: "no", skippedReason: "starting empty" }),
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("id", args.sessionId)
+      .eq("shop_id", args.shopId);
+    if (sessionError) throw new Error(sessionError.message ?? "Unable to complete guided onboarding session");
+
+    await insertGuidedEvent(db, {
+      shopId: args.shopId,
+      sessionId: args.sessionId,
+      eventType: "existing_system_gate_no",
+      payload: { skippedReason: "starting empty" },
+    });
+
+    return fetchGuidedSession({ supabase: args.supabase, shopId: args.shopId, sessionId: args.sessionId });
+  }
+
+  const firstStepKey = GUIDED_ONBOARDING_STEPS[0]?.stepKey ?? null;
+  if (!firstStepKey) throw new Error("No guided onboarding steps configured");
+  const firstStep = getGuidedOnboardingStep(firstStepKey);
+
+  const { error: stepError } = await db
+    .from("guided_onboarding_steps")
+    .update({
+      status: "asked",
+      destination_path: firstStep.destinationPath,
+      highlight_key: firstStep.highlightKey,
+      updated_at: now,
+    })
+    .eq("session_id", args.sessionId)
+    .eq("shop_id", args.shopId)
+    .eq("step_key", firstStepKey);
+  if (stepError) throw new Error(stepError.message ?? "Unable to activate guided onboarding first step");
+
+  const { error: sessionError } = await db
+    .from("guided_onboarding_sessions")
+    .update({
+      current_step_key: firstStepKey,
+      status: "active",
+      summary: mergeSummary(current.session.summary, { existingSystemImport: "yes" }),
+      completed_at: null,
+      updated_at: now,
+    })
+    .eq("id", args.sessionId)
+    .eq("shop_id", args.shopId);
+  if (sessionError) throw new Error(sessionError.message ?? "Unable to start guided onboarding steps");
+
+  await insertGuidedEvent(db, {
+    shopId: args.shopId,
+    sessionId: args.sessionId,
+    eventType: "existing_system_gate_yes",
+    payload: {},
+  });
+
+  return fetchGuidedSession({ supabase: args.supabase, shopId: args.shopId, sessionId: args.sessionId });
 }
 
 export async function updateGuidedStepStatus(args: {

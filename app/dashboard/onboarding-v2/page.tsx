@@ -6,7 +6,7 @@ export default async function OnboardingV2Page() {
   await requireAdminPageAccess({ allow: ["owner", "admin"], redirectTo: "/dashboard" });
 
   return (
-    <OnboardingV2Shell title="Guided Onboarding V2">
+    <OnboardingV2Shell title="Data Onboarding">
       <GuidedOnboardingWorkspace />
     </OnboardingV2Shell>
   );
