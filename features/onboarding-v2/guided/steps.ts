@@ -47,7 +47,7 @@ export const GUIDED_ONBOARDING_STEPS = [
     label: "Customers",
     question: "Do you want to bring in your customer list now?",
     destinationPath: "/customers",
-    highlightKey: "customers-import",
+    highlightKey: "customer-import",
     description: "Route to Customers so existing customer import/setup tools stay the source of truth.",
     implementationStatus: "placeholder",
   },

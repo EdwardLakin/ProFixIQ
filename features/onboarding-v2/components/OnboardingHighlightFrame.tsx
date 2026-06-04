@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import React, { useEffect, useRef, type ReactNode } from "react";
 
 type Props = {
   active: boolean;
@@ -16,7 +16,9 @@ export function OnboardingHighlightFrame({ active, highlightKey, title, descript
   useEffect(() => {
     if (!active) return;
     const timer = window.setTimeout(() => {
-      ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof ref.current?.scrollIntoView === "function") {
+        ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }, 150);
     return () => window.clearTimeout(timer);
   }, [active, highlightKey]);

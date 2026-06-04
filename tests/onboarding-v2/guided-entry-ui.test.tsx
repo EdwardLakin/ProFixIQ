@@ -115,7 +115,7 @@ describe("guided onboarding entry UI", () => {
       if (url.endsWith("/steps/customers/answer")) {
         return jsonResponse({
           ...payload({ existingSystemImport: "yes", currentStepKey: "customers", statusByStep: { customers: "routing" } }),
-          destinationUrl: "/customers?onboardingSession=session-1&onboardingStep=customers&highlight=customers-import&source=guided-onboarding",
+          destinationUrl: "/customers?onboardingSession=session-1&onboardingStep=customers&highlight=customer-import&source=guided-onboarding",
         });
       }
       return jsonResponse(payload());
