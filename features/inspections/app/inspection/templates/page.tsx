@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import FleetFormImportCard from "@/features/inspections/components/FleetFormImportCard";
+import {
+  InspectionTemplatesOnboardingSetupCard,
+  getInspectionTemplatesGuidedOnboardingQuery,
+} from "@/features/inspections/components/InspectionTemplatesOnboardingSetupCard";
 
 type DB = Database;
 type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
@@ -13,6 +18,14 @@ type Scope = "mine" | "shared" | "all";
 
 export default function InspectionTemplatesPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const searchParams = useSearchParams();
+  const guidedQuery = useMemo(
+    () =>
+      getInspectionTemplatesGuidedOnboardingQuery(
+        new URLSearchParams(searchParams.toString()),
+      ),
+    [searchParams],
+  );
   const [scope, setScope] = useState<Scope>("mine");
   const [search, setSearch] = useState("");
   const [mine, setMine] = useState<Template[]>([]);
@@ -132,6 +145,15 @@ export default function InspectionTemplatesPage() {
   }, [scope, mine, shared, search]);
 
   const canEditOrDelete = (t: Template) => !!userId && t.user_id === userId;
+
+  const focusTemplateImportArea = useCallback(() => {
+    const importArea = document.getElementById("inspection-template-import-area");
+    if (!importArea) return;
+    importArea.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof importArea.focus === "function") {
+      importArea.focus({ preventScroll: true });
+    }
+  }, []);
 
   async function handleDelete(id: string) {
     if (!userId) return;
@@ -286,8 +308,25 @@ export default function InspectionTemplatesPage() {
           </div>
         </div>
 
+        {guidedQuery ? (
+          <InspectionTemplatesOnboardingSetupCard
+            guidedQuery={guidedQuery}
+            onFocusTemplateArea={focusTemplateImportArea}
+          />
+        ) : null}
+
         {/* Fleet import card */}
-        <FleetFormImportCard />
+        <div
+          id="inspection-template-import-area"
+          tabIndex={-1}
+          className={
+            guidedQuery
+              ? "scroll-mt-24 rounded-2xl outline-none ring-1 ring-[rgba(197,122,74,0.38)] ring-offset-2 ring-offset-black"
+              : "scroll-mt-24 outline-none"
+          }
+        >
+          <FleetFormImportCard />
+        </div>
 
         {/* Templates list */}
         <div className={listCard + " px-4 py-4 md:px-6 md:py-5"}>
