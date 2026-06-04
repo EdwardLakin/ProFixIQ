@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { format } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
+import { ServiceHistoryOnboardingSetupCard, getServiceHistoryGuidedOnboardingQuery } from "@/features/work-orders/components/history/ServiceHistoryOnboardingSetupCard";
 import { fmtCustomerName, fmtVehicle, formatMoneyLike, historyTitle, parseHistoryNotes } from "./historyDisplay";
 
 type DB = Database;
@@ -30,6 +32,11 @@ function fmtDate(iso: string | null | undefined, pattern = "PPpp"): string {
 
 export default function WorkOrdersHistoryClient(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const searchParams = useSearchParams();
+  const guidedOnboardingQuery = useMemo(
+    () => getServiceHistoryGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
   const [shopId, setShopId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +88,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   }
 
   return <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.06),transparent_32%),#050914] px-4 py-6 text-white"><div className="mx-auto max-w-6xl space-y-4">{/* existing controls kept */}
+    <ServiceHistoryOnboardingSetupCard guidedQuery={guidedOnboardingQuery} />
     <section className="rounded-[26px] border border-slate-700/60 bg-slate-950/70 px-4 py-5 shadow-[0_18px_48px_rgba(2,6,23,0.58)] sm:px-6 sm:py-6">
       <div className="mb-3 flex flex-wrap items-end gap-3"><input value={q} onChange={(e)=>setQ(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&load()} placeholder="Customer, VIN, WO, invoice, total, notes…" className="min-w-[220px] flex-1 rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"/><input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"/><input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"/><button onClick={load} className="rounded-full border border-slate-700/70 px-3 py-1.5 text-xs">Apply</button><button onClick={exportCSV} className="rounded-full border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-xs">Export CSV</button></div>
       {err ? <div className="mb-4 rounded-xl border border-red-500/60 bg-red-950/80 px-4 py-2 text-sm text-red-100">{err}</div> : null}
