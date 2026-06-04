@@ -1,6 +1,11 @@
 import { endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 
-import { createDashboardServerClient, getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
+import {
+  createDashboardServerClient,
+  ensureDashboardShopContext,
+  getDashboardIdentity,
+  getMissingShopContextWarning,
+} from "@/features/dashboard/server/dashboard-shell-data";
 
 type TrendPoint = {
   label: string;
@@ -56,11 +61,17 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   };
 
   if (!identity.shopId) {
-    payload.sectionErrors.push("No shop context found for this user.");
+    payload.sectionErrors.push(getMissingShopContextWarning(identity));
     return payload;
   }
 
   const supabase = createDashboardServerClient();
+  const contextError = await ensureDashboardShopContext(supabase, identity, "Performance");
+  if (contextError) {
+    payload.sectionErrors.push(
+      `Shop context RPC failed (${contextError.code ?? "no-code"}: ${contextError.message}); dashboard data may be limited by RLS.`,
+    );
+  }
   const rangeStart = startOfMonth(subMonths(new Date(), 5)).toISOString();
   const rangeEnd = endOfMonth(new Date()).toISOString();
 
@@ -98,6 +109,16 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   ]);
 
   if (invoiceResult.error || expenseResult.error) {
+    console.error("[Dashboard][Performance] finance trend queries failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      invoiceError: invoiceResult.error
+        ? { message: invoiceResult.error.message, code: invoiceResult.error.code }
+        : null,
+      expenseError: expenseResult.error
+        ? { message: expenseResult.error.message, code: expenseResult.error.code }
+        : null,
+    });
     payload.sectionErrors.push("Finance trend section is degraded due to invoice/expense query failures.");
   } else {
     const invoices = invoiceResult.data ?? [];
@@ -169,6 +190,16 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   }
 
   if (techProfilesResult.error || completedLinesResult.error) {
+    console.error("[Dashboard][Performance] technician performance queries failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      techProfilesError: techProfilesResult.error
+        ? { message: techProfilesResult.error.message, code: techProfilesResult.error.code }
+        : null,
+      completedLinesError: completedLinesResult.error
+        ? { message: completedLinesResult.error.message, code: completedLinesResult.error.code }
+        : null,
+    });
     payload.sectionErrors.push("Technician performance section is degraded due to work-order line query failures.");
   } else {
     const techs = techProfilesResult.data ?? [];
@@ -196,6 +227,12 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   }
 
   if (comebackRiskResult.error) {
+    console.error("[Dashboard][Performance] business signals query failed", {
+      shopId: identity.shopId,
+      userId: identity.userId,
+      error: comebackRiskResult.error.message,
+      code: comebackRiskResult.error.code,
+    });
     payload.sectionErrors.push("Business signals section is degraded due to board risk query failures.");
   } else {
     const riskRows = comebackRiskResult.data ?? [];
