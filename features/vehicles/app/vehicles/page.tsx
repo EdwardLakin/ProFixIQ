@@ -4,7 +4,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
-import { VehicleOnboardingSetupCard } from "@/features/vehicles/components/VehicleOnboardingSetupCard";
+import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvImportCard";
 import { VehicleCreateForm } from "@/features/vehicles/components/VehicleCreateForm";
 import { shouldShowVehicleOnboardingCard } from "@/features/vehicles/lib/guided";
 import { formatVehicleDisplayLabel, formatVehicleIdentifier, formatVehicleYearMakeModel, normalizeVehicleIdentifier, normalizeVehicleText } from "@/features/vehicles/lib/display";
@@ -103,7 +103,7 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
         </div>
       </header>
 
-      {vehiclesHighlightActive && guidedQuery ? <VehicleOnboardingSetupCard guidedQuery={guidedQuery} /> : null}
+      <VehicleCsvImportCard customers={customers} guidedQuery={guidedQuery} highlighted={vehiclesHighlightActive} />
 
       <VehicleCreateForm customers={customers} />
 
