@@ -10,7 +10,7 @@ export default async function OnboardingV2SessionPage({ params }: Props) {
   const { sessionId } = await params;
 
   return (
-    <OnboardingV2Shell title="Guided Onboarding V2">
+    <OnboardingV2Shell title="Data Onboarding">
       <GuidedOnboardingWorkspace initialSessionId={sessionId} />
       <details className="rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-4 text-slate-300">
         <summary className="cursor-pointer text-sm font-semibold text-slate-200">Legacy/dev upload workspace</summary>
