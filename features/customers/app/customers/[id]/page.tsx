@@ -6,6 +6,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
+import { CustomerOnboardingSetupCard } from "@/features/customers/components/CustomerOnboardingSetupCard";
+import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 type DB = Database;
@@ -371,6 +373,11 @@ export default function CustomerProfilePage(): JSX.Element {
     if (forcedCustomerId) return forcedCustomerId;
     return looksLikeUuid(rawId) ? rawId : null;
   }, [forcedCustomerId, rawId]);
+
+  const guidedCustomerOnboarding = useMemo(() => {
+    const parsed = parseGuidedOnboardingQuery(new URLSearchParams(sp.toString()));
+    return parsed?.onboardingStep === "customers" ? parsed : null;
+  }, [sp]);
 
   // ------------------ State ------------------
   const [loading, setLoading] = useState<boolean>(true);
@@ -1183,6 +1190,18 @@ export default function CustomerProfilePage(): JSX.Element {
     return (
       <PageShell>
         <TopBar rightLabel="Customers" onBack={() => router.back()} />
+
+        {guidedCustomerOnboarding ? (
+          <div className="mb-4">
+            <CustomerOnboardingSetupCard
+              guidedQuery={guidedCustomerOnboarding}
+              onCreateCustomer={() => {
+                setCreateCustomerError(null);
+                setCreateCustomerOpen(true);
+              }}
+            />
+          </div>
+        ) : null}
 
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

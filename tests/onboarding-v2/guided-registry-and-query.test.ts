@@ -16,7 +16,7 @@ describe("guided onboarding step registry", () => {
       "service_history",
     ]);
 
-    expect(getGuidedOnboardingStep("customers")).toMatchObject({ destinationPath: "/customers", highlightKey: "customers-import" });
+    expect(getGuidedOnboardingStep("customers")).toMatchObject({ destinationPath: "/customers", highlightKey: "customer-import" });
     expect(getGuidedOnboardingStep("vehicles")).toMatchObject({ destinationPath: "/customers", highlightKey: "vehicles-setup" });
     expect(getGuidedOnboardingStep("staff")).toMatchObject({ destinationPath: "/dashboard/owner/create-user", highlightKey: "staff-create-user" });
     expect(getGuidedOnboardingStep("labor_tax_shop_settings")).toMatchObject({ destinationPath: "/dashboard/owner/settings", highlightKey: "shop-settings-labor-tax" });
@@ -29,6 +29,18 @@ describe("guided onboarding step registry", () => {
 });
 
 describe("guided onboarding query helpers", () => {
+  it("builds the exact Customers destination query params", () => {
+    const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "customers" });
+    const parsedUrl = new URL(url, "https://app.profixiq.test");
+
+    expect(parsedUrl.pathname).toBe("/customers");
+    expect(parsedUrl.searchParams.get("onboardingSession")).toBe("session-123");
+    expect(parsedUrl.searchParams.get("onboardingStep")).toBe("customers");
+    expect(parsedUrl.searchParams.get("highlight")).toBe("customer-import");
+    expect(parsedUrl.searchParams.get("returnTo")).toBe("/dashboard/onboarding-v2/session-123");
+    expect(parsedUrl.searchParams.get("source")).toBe("guided-onboarding");
+  });
+
   it("builds and parses inventory parts destination query params", () => {
     const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "inventory_parts" });
     const parsedUrl = new URL(url, "https://app.profixiq.test");
