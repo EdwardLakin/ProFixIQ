@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { CustomerOnboardingSetupCard } from "@/features/customers/components/CustomerOnboardingSetupCard";
+import { VehicleOnboardingSetupCard } from "@/features/customers/components/VehicleOnboardingSetupCard";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
@@ -374,10 +375,10 @@ export default function CustomerProfilePage(): JSX.Element {
     return looksLikeUuid(rawId) ? rawId : null;
   }, [forcedCustomerId, rawId]);
 
-  const guidedCustomerOnboarding = useMemo(() => {
-    const parsed = parseGuidedOnboardingQuery(new URLSearchParams(sp.toString()));
-    return parsed?.onboardingStep === "customers" ? parsed : null;
-  }, [sp]);
+  const guidedOnboardingQuery = useMemo(() => parseGuidedOnboardingQuery(new URLSearchParams(sp.toString())), [sp]);
+
+  const guidedCustomerOnboarding = guidedOnboardingQuery?.onboardingStep === "customers" ? guidedOnboardingQuery : null;
+  const guidedVehicleOnboarding = guidedOnboardingQuery?.onboardingStep === "vehicles" ? guidedOnboardingQuery : null;
 
   // ------------------ State ------------------
   const [loading, setLoading] = useState<boolean>(true);
@@ -1203,6 +1204,18 @@ export default function CustomerProfilePage(): JSX.Element {
           </div>
         ) : null}
 
+        {guidedVehicleOnboarding ? (
+          <div className="mb-4">
+            <VehicleOnboardingSetupCard
+              guidedQuery={guidedVehicleOnboarding}
+              onOpenVehicleWorkflow={() => {
+                setCreateCustomerError(null);
+                setCreateCustomerOpen(true);
+              }}
+            />
+          </div>
+        ) : null}
+
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -1588,6 +1601,16 @@ export default function CustomerProfilePage(): JSX.Element {
             </div>
 
             {/* Vehicles */}
+            {guidedVehicleOnboarding ? (
+              <div className="mb-4">
+                <VehicleOnboardingSetupCard
+                  guidedQuery={guidedVehicleOnboarding}
+                  workflowCtaLabel="+ Add vehicle"
+                  onOpenVehicleWorkflow={() => setAddVehicleOpen(true)}
+                />
+              </div>
+            ) : null}
+
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

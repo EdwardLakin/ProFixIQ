@@ -54,10 +54,10 @@ export const GUIDED_ONBOARDING_STEPS = [
   {
     stepKey: "vehicles",
     label: "Vehicles",
-    question: "Do you want to set up customer vehicles now?",
+    question: "Do you want to bring in your vehicle list now?",
     destinationPath: "/customers",
-    highlightKey: "vehicles-setup",
-    description: "Use Customers for now so vehicles remain connected to customer records.",
+    highlightKey: "vehicle-import",
+    description: "Use Customers for now because vehicles are managed from customer files today.",
     implementationStatus: "placeholder",
   },
   {
