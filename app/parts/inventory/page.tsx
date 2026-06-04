@@ -6,6 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   buildPartTrustMeta,
   trustBadgeTone,
@@ -13,6 +14,8 @@ import {
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
 import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/OnboardingHighlightFrame";
+import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -275,6 +278,9 @@ async function applyStockMoveRPC(
 
 export default function InventoryPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const searchParams = useSearchParams();
+  const guidedOnboarding = useMemo(() => parseGuidedOnboardingQuery(searchParams), [searchParams]);
+  const partsImportHighlightActive = guidedOnboarding?.onboardingStep === "inventory_parts" && guidedOnboarding.highlight === "parts-csv-import";
   const [shopId, setShopId] = useState<string>("");
 
   const [search, setSearch] = useState<string>("");
@@ -715,6 +721,9 @@ export default function InventoryPage(): JSX.Element {
   const runCsvImport = async () => {
     if (!shopId || !csvRows.length) return;
 
+    let importedCount = 0;
+    let stockReceiveCount = 0;
+
     // NOTE: intentionally sequential to keep it safe and predictable for now.
     for (const row of csvRows) {
       let partId: string | null = null;
@@ -746,6 +755,7 @@ export default function InventoryPage(): JSX.Element {
           console.warn("Insert failed:", row, error.message);
           continue;
         }
+        importedCount += 1;
         partId = id;
       } else {
         const patch: PartUpdate = {
@@ -755,6 +765,7 @@ export default function InventoryPage(): JSX.Element {
           price: typeof row.price === "number" ? row.price : undefined,
         };
         await supabase.from("parts").update(patch).eq("id", partId);
+        importedCount += 1;
       }
 
       if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
@@ -767,6 +778,7 @@ export default function InventoryPage(): JSX.Element {
             p_ref_kind: "csv_import",
             p_ref_id: null,
           });
+          stockReceiveCount += 1;
         } catch (err: unknown) {
           // eslint-disable-next-line no-console
           console.warn("Stock receive failed for row:", row, errMsg(err));
@@ -779,6 +791,20 @@ export default function InventoryPage(): JSX.Element {
     setCsvText("");
     setCsvRows([]);
     await load(shopId);
+
+    if (guidedOnboarding?.onboardingStep === "inventory_parts") {
+      await fetch(
+        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedOnboarding.onboardingSession)}/steps/inventory_parts/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ summary: { importedCount, stockReceiveCount, source: "parts-csv-import" } }),
+        },
+      ).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.warn("Guided onboarding completion callback failed:", errMsg(err));
+      });
+    }
   };
 
   /* ----------------------------- UI ----------------------------- */
@@ -809,6 +835,14 @@ export default function InventoryPage(): JSX.Element {
               <div className="mt-1 text-sm text-neutral-400">
                 Create parts, quick receive, and import stock from CSV.
               </div>
+              {guidedOnboarding ? (
+                <Link
+                  href={guidedOnboarding.returnTo}
+                  className="mt-3 inline-flex rounded-lg border border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.12)] px-3 py-2 text-xs font-semibold text-orange-100 hover:bg-[rgba(197,122,74,0.2)]"
+                >
+                  Return to guided onboarding
+                </Link>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -827,9 +861,16 @@ export default function InventoryPage(): JSX.Element {
                 Add Part
               </button>
 
-              <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
-                CSV Import
-              </button>
+              <OnboardingHighlightFrame
+                active={Boolean(partsImportHighlightActive)}
+                highlightKey="parts-csv-import"
+                title="Import inventory parts"
+                description="Open CSV Import, review the preview, then import. ProFixIQ will mark this guided step complete only after you explicitly import."
+              >
+                <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
+                  CSV Import
+                </button>
+              </OnboardingHighlightFrame>
               <select
                 className={inputBase}
                 value={trustFilter}
