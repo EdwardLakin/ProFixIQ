@@ -31,8 +31,18 @@ describe("guided onboarding step registry", () => {
       question: "Do you want to set up service menu items, canned jobs, or common repairs now?",
     });
     expect(getGuidedOnboardingStep("inventory_parts")).toMatchObject({ destinationPath: "/parts/inventory", highlightKey: "parts-csv-import", implementationStatus: "available" });
-    expect(getGuidedOnboardingStep("invoices")).toMatchObject({ implementationStatus: "future" });
-    expect(getGuidedOnboardingStep("service_history")).toMatchObject({ destinationPath: "/work-orders/history", highlightKey: "service-history-setup" });
+    expect(getGuidedOnboardingStep("invoices")).toMatchObject({
+      destinationPath: "/billing",
+      highlightKey: "invoice-import",
+      question: "Do you want to import historical invoices now?",
+      implementationStatus: "future",
+    });
+    expect(getGuidedOnboardingStep("service_history")).toMatchObject({
+      destinationPath: "/work-orders/history",
+      highlightKey: "service-history-import",
+      question: "Do you want to import service history or repair records now?",
+      implementationStatus: "future",
+    });
   });
 });
 
@@ -164,6 +174,48 @@ describe("guided onboarding query helpers", () => {
       onboardingSession: "session-123",
       onboardingStep: "inventory_parts",
       highlight: "parts-csv-import",
+      source: "guided-onboarding",
+    });
+  });
+
+
+
+  it("builds and parses Invoices destination query params", () => {
+    const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "invoices" });
+    const parsedUrl = new URL(url, "https://app.profixiq.test");
+
+    expect(parsedUrl.pathname).toBe("/billing");
+    expect(parsedUrl.searchParams.get("onboardingSession")).toBe("session-123");
+    expect(parsedUrl.searchParams.get("onboardingStep")).toBe("invoices");
+    expect(parsedUrl.searchParams.get("highlight")).toBe("invoice-import");
+    expect(parsedUrl.searchParams.get("returnTo")).toBe("/dashboard/onboarding-v2/session-123");
+    expect(parsedUrl.searchParams.get("source")).toBe("guided-onboarding");
+
+    expect(parseGuidedOnboardingQuery(parsedUrl.searchParams)).toMatchObject({
+      onboardingSession: "session-123",
+      onboardingStep: "invoices",
+      highlight: "invoice-import",
+      returnTo: "/dashboard/onboarding-v2/session-123",
+      source: "guided-onboarding",
+    });
+  });
+
+  it("builds and parses Service history destination query params", () => {
+    const url = buildGuidedOnboardingDestinationUrl({ sessionId: "session-123", stepKey: "service_history" });
+    const parsedUrl = new URL(url, "https://app.profixiq.test");
+
+    expect(parsedUrl.pathname).toBe("/work-orders/history");
+    expect(parsedUrl.searchParams.get("onboardingSession")).toBe("session-123");
+    expect(parsedUrl.searchParams.get("onboardingStep")).toBe("service_history");
+    expect(parsedUrl.searchParams.get("highlight")).toBe("service-history-import");
+    expect(parsedUrl.searchParams.get("returnTo")).toBe("/dashboard/onboarding-v2/session-123");
+    expect(parsedUrl.searchParams.get("source")).toBe("guided-onboarding");
+
+    expect(parseGuidedOnboardingQuery(parsedUrl.searchParams)).toMatchObject({
+      onboardingSession: "session-123",
+      onboardingStep: "service_history",
+      highlight: "service-history-import",
+      returnTo: "/dashboard/onboarding-v2/session-123",
       source: "guided-onboarding",
     });
   });
