@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import UsersList from "@/features/admin/components/UsersList";
 import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
+import { StaffOnboardingSetupCard, getStaffGuidedOnboardingQuery } from "./StaffOnboardingSetupCard";
 import type { Database } from "@shared/types/types/supabase";
 import {
   buildShopUsernameNamespace,
@@ -34,6 +35,8 @@ const INPUT_CLASS =
 
 export default function CreateUserPage(): JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const guidedStaffOnboarding = getStaffGuidedOnboardingQuery(new URLSearchParams(searchParams.toString()));
   const [form, setForm] = useState<CreatePayload>({
     username: "",
     password: "",
@@ -246,10 +249,21 @@ export default function CreateUserPage(): JSX.Element {
       title="Create User (Access Provisioning)"
       description="Provision account access, assign the initial role, and link the person to your shop. Complete workforce/profile setup in People."
     >
+      {guidedStaffOnboarding ? (
+        <div className="mb-4">
+          <StaffOnboardingSetupCard
+            guidedQuery={guidedStaffOnboarding}
+            onUseCreateUserForm={() => {
+              document.getElementById("staff-create-user-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        </div>
+      ) : null}
+
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
-        <div className={`space-y-4 ${PANEL_CLASS}`}>
+        <div id="staff-create-user-form" className={`space-y-4 ${PANEL_CLASS}`}>
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-white">New team member</h2>
             <p className="text-sm text-neutral-400">
