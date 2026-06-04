@@ -55,9 +55,9 @@ export const GUIDED_ONBOARDING_STEPS = [
     stepKey: "vehicles",
     label: "Vehicles",
     question: "Do you want to bring in your vehicle list now?",
-    destinationPath: "/customers",
+    destinationPath: "/vehicles",
     highlightKey: "vehicle-import",
-    description: "Use Customers for now because vehicles are managed from customer files today.",
+    description: "Route to the dedicated Vehicles directory for unit, VIN, plate, and asset setup.",
     implementationStatus: "placeholder",
   },
   {
