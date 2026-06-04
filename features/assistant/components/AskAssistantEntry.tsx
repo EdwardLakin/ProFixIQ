@@ -190,14 +190,6 @@ export default function AskAssistantEntry({
           <span>Assistant</span>
         </button>
 
-        <Link
-          href={plannerHref}
-          title={plannerLabel}
-          className="inline-flex h-8 items-center justify-center rounded-md border border-slate-400/20 bg-slate-950/70 px-2.5 text-xs font-medium text-slate-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-slate-900/80 hover:text-white"
-        >
-          <span>Planner</span>
-        </Link>
-
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950/95 text-white shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
             <DialogHeader>

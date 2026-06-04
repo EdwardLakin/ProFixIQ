@@ -61,7 +61,7 @@ const ActionButton = ({
 
 type ProfileScope = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
-  "role" | "must_change_password" | "shop_id"
+  "must_change_password" | "shop_id"
 >;
 
 type ShopBillingScope = Pick<
@@ -84,7 +84,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { data: activeBrand } = useActiveBrand();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [, setShopId] = useState<string | null>(null);
   const [subStatus, setSubStatus] = useState<string | null>(null);
@@ -107,9 +106,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     !isPortalRoute &&
     !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
-  const canSeeAgentConsole =
-    !!userRole &&
-    ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
   const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(pathname);
 
   const showBillingBadge = isBillingAttentionStatus(subStatus);
@@ -134,11 +130,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, must_change_password, shop_id")
+          .select("must_change_password, shop_id")
           .eq("id", uid)
           .single<ProfileScope>();
 
-        if (profile?.role) setUserRole(profile.role as string);
         setMustChangePassword(!!profile?.must_change_password);
 
         const sid = (profile?.shop_id as string | null) ?? null;
@@ -395,42 +390,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
 
-            <div className="flex items-center gap-1.5 lg:gap-2">
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 lg:gap-2">
               <BillingBadge />
 
-              {userId ? (
-                <ActionButton
-                  onClick={() => setPunchOpen((p) => !p)}
-                  title="Punch / shift tracker"
-                >
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                  Shift
-                </ActionButton>
-              ) : null}
+              <ActionButton
+                onClick={() => setPunchOpen((p) => !p)}
+                title="Punch / shift tracker"
+              >
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
+                Shift
+              </ActionButton>
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
               </ActionButton>
 
-              {userId ? (
-                <ActionButton
-                  onClick={() => setAgentDialogOpen(true)}
-                  title="Submit a request to ProFixIQ Agent"
-                >
-                  <span>Agent Request</span>
-                </ActionButton>
-              ) : null}
+              <ActionButton
+                onClick={() => setAgentDialogOpen(true)}
+                title="Submit a request to ProFixIQ Agent"
+              >
+                <span>Agent Request</span>
+              </ActionButton>
 
               <AskAssistantEntry placement="header" />
 
-              {userId && canSeeAgentConsole ? (
-                <ActionButton
-                  onClick={() => router.push("/agent")}
-                  title="ProFixIQ Agent Console"
-                >
-                  <span>Agent Console</span>
-                </ActionButton>
-              ) : null}
+              <ActionButton
+                onClick={() => router.push("/agent")}
+                title="ProFixIQ Agent Console"
+              >
+                <span>Agent Console</span>
+              </ActionButton>
 
               <ActionButton
                 onClick={async () => {
@@ -513,12 +502,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         seedConversationId={incomingConvoId}
       />
 
-      {userId ? (
-        <AgentRequestModal
-          open={agentDialogOpen}
-          onOpenChange={setAgentDialogOpen}
-        />
-      ) : null}
+      <AgentRequestModal
+        open={agentDialogOpen}
+        onOpenChange={setAgentDialogOpen}
+      />
 
       <Toaster closeButton richColors position="top-right" theme="dark" />
       {!isMobileWorkOrderDetail ? (
