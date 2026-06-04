@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { POST as importCustomers } from "../../app/api/customers/import/route";
 
@@ -10,7 +11,7 @@ const { router, mockSupabaseState } = vi.hoisted(() => ({
   router: { push: vi.fn(), back: vi.fn() },
   mockSupabaseState: {
     user: { id: "user-1" } as { id: string } | null,
-    profileShopId: "shop-real" as string | null,
+    profile: { shop_id: "shop-real" } as { shop_id: string | null } | null,
     customers: [] as Array<Record<string, unknown>>,
     inserts: [] as Array<Record<string, unknown>>,
     updates: [] as Array<{ payload: Record<string, unknown>; filters: Record<string, unknown> }>,
@@ -44,7 +45,7 @@ function makeQuery(table: string): MockQuery {
       return query;
     }),
     maybeSingle: vi.fn(async () => {
-      if (table === "profiles") return { data: { shop_id: mockSupabaseState.profileShopId }, error: null };
+      if (table === "profiles") return { data: mockSupabaseState.profile, error: null };
       const match: Record<string, unknown> | undefined = mockSupabaseState.customers.find((customer) => {
         if (query.filters.email) return customer.email === query.filters.email && customer.shop_id === query.filters.shop_id;
         if (query.filters.name) return customer.name === query.filters.name && customer.shop_id === query.filters.shop_id;
@@ -71,8 +72,8 @@ function makeQuery(table: string): MockQuery {
   return query;
 }
 
-vi.mock("@supabase/auth-helpers-nextjs", () => ({
-  createRouteHandlerClient: vi.fn(() => ({
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createServerSupabaseRoute: vi.fn(() => ({
     auth: {
       getUser: vi.fn(async () => ({ data: { user: mockSupabaseState.user }, error: null })),
     },
@@ -80,7 +81,11 @@ vi.mock("@supabase/auth-helpers-nextjs", () => ({
   })),
 }));
 
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(() => ({
+    getAll: () => [{ name: "sb-test-auth-token", value: "redacted" }],
+  })),
+}));
 
 const guidedQuery: GuidedOnboardingQuery = {
   onboardingSession: "session-123",
@@ -104,7 +109,7 @@ describe("CustomerCsvImportCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSupabaseState.user = { id: "user-1" };
-    mockSupabaseState.profileShopId = "shop-real";
+    mockSupabaseState.profile = { shop_id: "shop-real" };
     mockSupabaseState.customers = [];
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
@@ -184,10 +189,21 @@ describe("CustomerCsvImportCard", () => {
 describe("POST /api/customers/import", () => {
   beforeEach(() => {
     mockSupabaseState.user = { id: "user-1" };
-    mockSupabaseState.profileShopId = "shop-real";
+    mockSupabaseState.profile = { shop_id: "shop-real" };
     mockSupabaseState.customers = [];
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
+  });
+
+  it("uses the shared cookie-backed Supabase route client for authenticated imports", async () => {
+    const response = await importCustomers(new Request("http://localhost/api/customers/import", {
+      method: "POST",
+      body: JSON.stringify({ rows: [{ name: "Ada Lovelace", email: "ada@example.com" }] }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(createServerSupabaseRoute)).toHaveBeenCalled();
+    expect(mockSupabaseState.inserts[0]).toMatchObject({ shop_id: "shop-real", user_id: "user-1" });
   });
 
   it("rejects unauthenticated imports", async () => {
@@ -197,8 +213,17 @@ describe("POST /api/customers/import", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects imports when the authenticated user profile is missing", async () => {
+    mockSupabaseState.profile = null;
+    const response = await importCustomers(new Request("http://localhost/api/customers/import", { method: "POST", body: JSON.stringify({ rows: [] }) }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe("Profile for current user not found");
+  });
+
   it("rejects imports when the user has no shop", async () => {
-    mockSupabaseState.profileShopId = null;
+    mockSupabaseState.profile = { shop_id: null };
     const response = await importCustomers(new Request("http://localhost/api/customers/import", { method: "POST", body: JSON.stringify({ rows: [] }) }));
 
     expect(response.status).toBe(403);

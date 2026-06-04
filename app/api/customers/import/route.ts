@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
 type CustomerInsert = DB["public"]["Tables"]["customers"]["Insert"];
@@ -101,7 +101,7 @@ function normalizeRow(row: ImportRow, userId: string, shopId: string): CustomerI
 }
 
 async function findExistingCustomer(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   shopId: string,
   customer: CustomerInsert,
 ): Promise<CustomerMatch | null> {
@@ -139,6 +139,38 @@ async function findExistingCustomer(
   return null;
 }
 
+function getCustomerImportCookieDiagnostics() {
+  try {
+    const cookieStore = cookies() as unknown as {
+      getAll?: () => { name: string; value?: string }[];
+    };
+    const cookieNames = cookieStore.getAll?.().map((cookie) => cookie.name) ?? [];
+    const supabaseAuthCookieCount = cookieNames.filter((name) => name.startsWith("sb-")).length;
+
+    return {
+      hasSupabaseAuthCookies: supabaseAuthCookieCount > 0,
+      supabaseAuthCookieCount,
+    };
+  } catch {
+    return {
+      hasSupabaseAuthCookies: false,
+      supabaseAuthCookieCount: 0,
+    };
+  }
+}
+
+function logCustomerImportAuthDiagnostic(
+  stage: "auth" | "profile",
+  details: {
+    hasSupabaseAuthCookies: boolean;
+    supabaseAuthCookieCount: number;
+    hasUserId?: boolean;
+    hasProfileShopId?: boolean;
+  },
+) {
+  console.info("[customers-import] auth diagnostic", { stage, ...details });
+}
+
 function updatePayload(customer: CustomerInsert): CustomerUpdate {
   const update: CustomerUpdate = { updated_at: new Date().toISOString() };
   for (const key of [
@@ -164,11 +196,17 @@ function updatePayload(customer: CustomerInsert): CustomerUpdate {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
+  const cookieDiagnostics = getCustomerImportCookieDiagnostics();
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
+
+  logCustomerImportAuthDiagnostic("auth", {
+    ...cookieDiagnostics,
+    hasUserId: Boolean(user?.id),
+  });
 
   if (userError || !user?.id) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -180,7 +218,17 @@ export async function POST(req: Request) {
     .eq("id", user.id)
     .maybeSingle<{ shop_id: string | null }>();
 
-  if (profileError || !profile?.shop_id) {
+  logCustomerImportAuthDiagnostic("profile", {
+    ...cookieDiagnostics,
+    hasUserId: true,
+    hasProfileShopId: Boolean(profile?.shop_id),
+  });
+
+  if (profileError || !profile) {
+    return NextResponse.json({ ok: false, error: "Profile for current user not found" }, { status: 403 });
+  }
+
+  if (!profile.shop_id) {
     return NextResponse.json({ ok: false, error: "Missing shop" }, { status: 403 });
   }
 
