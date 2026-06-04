@@ -1,7 +1,7 @@
 // app/parts/inventory/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
@@ -71,6 +71,7 @@ function Modal(props: {
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={title}
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -330,10 +331,13 @@ export default function InventoryPage(): JSX.Element {
   const [csvOpen, setCsvOpen] = useState<boolean>(false);
   const [csvText, setCsvText] = useState<string>("");
   const [csvRows, setCsvRows] = useState<
-    { name: string; sku?: string; category?: string; price?: number; qty?: number }[]
+    { name: string; sku?: string; partNumber?: string; category?: string; price?: number; qty?: number }[]
   >([]);
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
+  const [csvError, setCsvError] = useState<string>("");
+  const [csvImporting, setCsvImporting] = useState<boolean>(false);
+  const [csvImportResult, setCsvImportResult] = useState<{ importedCount: number; stockReceiveCount: number } | null>(null);
 
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
@@ -679,11 +683,12 @@ export default function InventoryPage(): JSX.Element {
       name: header.indexOf("name"),
       sku: header.indexOf("sku"),
       category: header.indexOf("category"),
+      partNumber: header.indexOf("part_number") >= 0 ? header.indexOf("part_number") : header.indexOf("part number"),
       price: header.indexOf("price"),
       qty: header.indexOf("qty"),
     };
 
-    const out: { name: string; sku?: string; category?: string; price?: number; qty?: number }[] = [];
+    const out: { name: string; sku?: string; partNumber?: string; category?: string; price?: number; qty?: number }[] = [];
 
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r];
@@ -693,6 +698,7 @@ export default function InventoryPage(): JSX.Element {
 
       const sku = idx.sku >= 0 ? (row[idx.sku] ?? "").trim() : "";
       const category = idx.category >= 0 ? (row[idx.category] ?? "").trim() : "";
+      const partNumber = idx.partNumber >= 0 ? (row[idx.partNumber] ?? "").trim() : "";
       const priceStr = idx.price >= 0 ? (row[idx.price] ?? "").trim() : "";
       const qtyStr = idx.qty >= 0 ? (row[idx.qty] ?? "").trim() : "";
 
@@ -702,6 +708,7 @@ export default function InventoryPage(): JSX.Element {
       out.push({
         name,
         sku: sku || undefined,
+        partNumber: partNumber || undefined,
         category: category || undefined,
         price: Number.isFinite(priceNum) ? priceNum : undefined,
         qty: Number.isFinite(qtyNum) ? qtyNum : undefined,
@@ -710,100 +717,76 @@ export default function InventoryPage(): JSX.Element {
 
     setCsvRows(out);
     setCsvPreview(true);
+    setCsvImportResult(null);
+    setCsvError(out.length ? "" : "No importable rows found. Include a name column with at least one value.");
   };
 
   const handleCsvFile = async (file: File) => {
+    setCsvError("");
+    setCsvImportResult(null);
     const text = await file.text();
     setCsvText(text);
     parseAndPreviewCSV(text);
   };
 
-  const runCsvImport = async () => {
-    if (!shopId || !csvRows.length) return;
-
-    let importedCount = 0;
-    let stockReceiveCount = 0;
-
-    // NOTE: intentionally sequential to keep it safe and predictable for now.
-    for (const row of csvRows) {
-      let partId: string | null = null;
-
-      if (row.sku) {
-        const { data: found } = await supabase
-          .from("parts")
-          .select("id")
-          .eq("shop_id", shopId)
-          .eq("sku", row.sku)
-          .maybeSingle();
-
-        if (found?.id) partId = String(found.id);
-      }
-
-      if (!partId) {
-        const id = uuidv4();
-        const insert: PartInsert = {
-          id,
-          shop_id: shopId,
-          name: row.name,
-          sku: row.sku || undefined,
-          category: row.category || undefined,
-          price: typeof row.price === "number" ? row.price : undefined,
-        };
-        const { error } = await supabase.from("parts").insert(insert);
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.warn("Insert failed:", row, error.message);
-          continue;
-        }
-        importedCount += 1;
-        partId = id;
-      } else {
-        const patch: PartUpdate = {
-          name: row.name || undefined,
-          sku: row.sku || undefined,
-          category: row.category || undefined,
-          price: typeof row.price === "number" ? row.price : undefined,
-        };
-        await supabase.from("parts").update(patch).eq("id", partId);
-        importedCount += 1;
-      }
-
-      if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
-        try {
-          await applyStockMoveRPC(supabase, {
-            p_part: partId,
-            p_loc: csvDefaultLoc,
-            p_qty: row.qty,
-            p_reason: "receive",
-            p_ref_kind: "csv_import",
-            p_ref_id: null,
-          });
-          stockReceiveCount += 1;
-        } catch (err: unknown) {
-          // eslint-disable-next-line no-console
-          console.warn("Stock receive failed for row:", row, errMsg(err));
-        }
-      }
-    }
-
-    setCsvOpen(false);
+  const resetCsvImportState = () => {
     setCsvPreview(false);
     setCsvText("");
     setCsvRows([]);
-    await load(shopId);
+    setCsvError("");
+    setCsvImportResult(null);
+  };
 
-    if (guidedOnboarding?.onboardingStep === "inventory_parts") {
-      await fetch(
-        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedOnboarding.onboardingSession)}/steps/inventory_parts/complete`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ summary: { importedCount, stockReceiveCount, source: "parts-csv-import" } }),
-        },
-      ).catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.warn("Guided onboarding completion callback failed:", errMsg(err));
+  const runCsvImport = async () => {
+    if (!csvRows.length || csvImporting) return;
+
+    setCsvError("");
+    setCsvImportResult(null);
+    setCsvImporting(true);
+
+    try {
+      const response = await fetch("/api/parts/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: csvRows, defaultLocationId: csvDefaultLoc || undefined }),
       });
+      const payload = (await response.json().catch(() => null)) as {
+        counts?: { importedCount?: number; stockReceiveCount?: number };
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "CSV import failed");
+      }
+
+      const importedCount = Number(payload?.counts?.importedCount ?? 0);
+      const stockReceiveCount = Number(payload?.counts?.stockReceiveCount ?? 0);
+
+      setCsvImportResult({ importedCount, stockReceiveCount });
+      setCsvPreview(false);
+      setCsvText("");
+      setCsvRows([]);
+
+      if (shopId) await load(shopId);
+
+      if (guidedOnboarding?.onboardingStep === "inventory_parts") {
+        const completeResponse = await fetch(
+          `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedOnboarding.onboardingSession)}/steps/inventory_parts/complete`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ summary: { importedCount, stockReceiveCount, source: "parts-csv-import" } }),
+          },
+        );
+
+        if (!completeResponse.ok) {
+          setCsvError("Import succeeded, but guided onboarding was not marked complete. Use Return to Data Onboarding to continue.");
+        }
+      }
+    } catch (err: unknown) {
+      setCsvError(errMsg(err));
+    } finally {
+      setCsvImporting(false);
     }
   };
 
@@ -867,7 +850,15 @@ export default function InventoryPage(): JSX.Element {
                 title="Import inventory parts"
                 description="Open CSV Import, review the preview, then import. ProFixIQ will mark this guided step complete only after you explicitly import."
               >
-                <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
+                <button
+                  className={btnBlue}
+                  onClick={() => {
+                    setCsvError("");
+                    setCsvImportResult(null);
+                    setCsvOpen(true);
+                  }}
+                  disabled={!shopId}
+                >
                   CSV Import
                 </button>
               </OnboardingHighlightFrame>
@@ -1131,7 +1122,7 @@ export default function InventoryPage(): JSX.Element {
       {/* CSV Import */}
       <Modal
         open={csvOpen}
-        title="CSV Import"
+        title="Import inventory parts from CSV"
         onClose={() => setCsvOpen(false)}
         widthClass="max-w-3xl"
         footer={
@@ -1155,20 +1146,18 @@ export default function InventoryPage(): JSX.Element {
               <button
                 className={btnGhost}
                 onClick={() => {
-                  setCsvPreview(false);
-                  setCsvText("");
-                  setCsvRows([]);
+                  resetCsvImportState();
                   setCsvOpen(false);
                 }}
               >
-                Close
+                Cancel
               </button>
               <button
                 className={btnBlue}
                 onClick={runCsvImport}
-                disabled={!csvPreview || csvRows.length === 0}
+                disabled={!csvPreview || csvRows.length === 0 || csvImporting}
               >
-                Import
+                {csvImporting ? "Importing…" : "Confirm import"}
               </button>
             </div>
           </div>
@@ -1176,27 +1165,33 @@ export default function InventoryPage(): JSX.Element {
       >
         <div className="grid gap-3">
           <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
-            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>name, sku, category, price, qty</code>.
-            Extra columns are ignored.
+            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>name, sku, part_number, category, price, qty</code>.
+            Choose a CSV file or paste CSV text, preview rows, then explicitly confirm import. Extra columns are ignored.
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleCsvFile(f);
-              }}
-              className="text-sm text-neutral-200"
-            />
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="grid gap-1 text-xs font-semibold text-neutral-300">
+              Upload CSV file
+              <input
+                data-testid="parts-csv-file-input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleCsvFile(f);
+                }}
+                className="text-sm text-neutral-200 file:mr-3 file:rounded-lg file:border file:border-[color:var(--desktop-border)] file:bg-[color:var(--desktop-item-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-white/5"
+              />
+            </label>
             <button
               className={btnGhost}
               onClick={() => {
+                setCsvError("");
                 if (csvText.trim().length) parseAndPreviewCSV(csvText);
+                else setCsvError("Paste CSV text or choose a CSV file before previewing.");
               }}
             >
-              Parse text
+              Preview CSV
             </button>
           </div>
 
@@ -1204,21 +1199,42 @@ export default function InventoryPage(): JSX.Element {
             rows={8}
             className={`${inputBase} font-mono text-xs`}
             placeholder={`Paste CSV here… e.g.:
-name,sku,category,price,qty
-Oil Filter – Ford,OF-FORD-01,Filters,9.95,10
-Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
+name,sku,part_number,category,price,qty
+Oil Filter – Ford,OF-FORD-01,FL-400S,Filters,9.95,10
+Spark Plug – Iridium,SP-IR-01,SP-IR,Ignition,9.95,24
 `}
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
           />
 
+          {csvError ? (
+            <div role="alert" className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-100">
+              {csvError}
+            </div>
+          ) : null}
+
+          {csvImportResult ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 p-3 text-sm text-emerald-100">
+              Imported {csvImportResult.importedCount} part row(s) successfully
+              {csvImportResult.stockReceiveCount ? ` and received stock for ${csvImportResult.stockReceiveCount} row(s)` : ""}.
+              {guidedOnboarding?.onboardingStep === "inventory_parts" ? (
+                <div className="mt-3">
+                  <Link className={btnCopper} href={guidedOnboarding.returnTo}>
+                    Return to Data Onboarding
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {csvPreview && (
-            <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
+            <div aria-label="CSV import preview" className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
               <table className="w-full text-sm">
                 <thead className="bg-white/5 text-left text-neutral-400">
                   <tr>
                     <th className="p-3">Name</th>
                     <th className="p-3">SKU</th>
+                    <th className="p-3">Part #</th>
                     <th className="p-3">Category</th>
                     <th className="p-3">Price</th>
                     <th className="p-3">Qty</th>
@@ -1229,6 +1245,7 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
                     <tr key={i} className="border-t border-[color:var(--desktop-border)]">
                       <td className="p-3">{r.name}</td>
                       <td className="p-3">{r.sku ?? "—"}</td>
+                      <td className="p-3">{r.partNumber ?? "—"}</td>
                       <td className="p-3">{r.category ?? "—"}</td>
                       <td className="p-3 tabular-nums">
                         {typeof r.price === "number" ? r.price.toFixed(2) : "—"}
