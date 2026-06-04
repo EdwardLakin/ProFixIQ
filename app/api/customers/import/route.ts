@@ -99,11 +99,20 @@ function cleanEmail(value: unknown): string | null {
   return cleanString(value)?.toLowerCase() ?? null;
 }
 
+function normalizeEmailComparable(value: unknown): string {
+  return cleanEmail(value) ?? "";
+}
+
 function cleanPhone(value: unknown): string | null {
   const raw = cleanString(value);
   if (!raw) return null;
   const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
   return digits || raw;
+}
+
+function normalizePhoneComparable(value: unknown): string {
+  return cleanPhone(value) ?? "";
 }
 
 function normalizeComparable(value: unknown): string {
@@ -211,6 +220,55 @@ function nameKey(customer: CustomerInsert | CustomerMatch): string {
   return normalizeComparable(displayName);
 }
 
+async function getShopCustomerCandidates(
+  supabase: SupabaseRouteClient,
+  shopId: string,
+): Promise<CustomerMatch[]> {
+  const { data, error } = (await supabase
+    .from("customers")
+    .select(CUSTOMER_SELECT)
+    .eq("shop_id", shopId)
+    .limit(5000)) as {
+    data: CustomerMatch[] | null;
+    error: SupabaseErrorLike | null;
+  };
+
+  if (error || !data?.length) return [];
+  return data.filter((candidate) => candidate.shop_id === shopId);
+}
+
+async function findByNormalizedEmailFallback(
+  supabase: SupabaseRouteClient,
+  shopId: string,
+  email: string | null | undefined,
+): Promise<CustomerMatch | null> {
+  const targetEmail = normalizeEmailComparable(email);
+  if (!targetEmail) return null;
+  const candidates = await getShopCustomerCandidates(supabase, shopId);
+  return (
+    candidates.find(
+      (candidate) => normalizeEmailComparable(candidate.email) === targetEmail,
+    ) ?? null
+  );
+}
+
+async function findByNormalizedPhoneFallback(
+  supabase: SupabaseRouteClient,
+  shopId: string,
+  phone: string | null | undefined,
+): Promise<CustomerMatch | null> {
+  const targetPhone = normalizePhoneComparable(phone);
+  if (!targetPhone) return null;
+  const candidates = await getShopCustomerCandidates(supabase, shopId);
+  return (
+    candidates.find(
+      (candidate) =>
+        normalizePhoneComparable(candidate.phone) === targetPhone ||
+        normalizePhoneComparable(candidate.phone_number) === targetPhone,
+    ) ?? null
+  );
+}
+
 async function findByNameAndLocationFallback(
   supabase: SupabaseRouteClient,
   shopId: string,
@@ -222,19 +280,11 @@ async function findByNameAndLocationFallback(
   const targetLocation = locationKey(customer);
   if (!targetLocation && !customer.city && !customer.postal_code) return null;
 
-  const { data, error } = (await supabase
-    .from("customers")
-    .select(CUSTOMER_SELECT)
-    .eq("shop_id", shopId)
-    .limit(5000)) as {
-    data: CustomerMatch[] | null;
-    error: SupabaseErrorLike | null;
-  };
-
-  if (error || !data?.length) return null;
+  const candidates = await getShopCustomerCandidates(supabase, shopId);
+  if (!candidates.length) return null;
 
   return (
-    data.find((candidate) => {
+    candidates.find((candidate) => {
       if (candidate.shop_id !== shopId) return false;
       if (nameKey(candidate) !== targetName) return false;
       const candidateLocation = locationKey(candidate);
@@ -260,6 +310,13 @@ async function findExistingCustomer(
       query.eq("shop_id", shopId).eq("email", customer.email),
     );
     if (match?.id) return match;
+
+    const normalizedMatch = await findByNormalizedEmailFallback(
+      supabase,
+      shopId,
+      customer.email,
+    );
+    if (normalizedMatch?.id) return normalizedMatch;
   }
 
   const phone = customer.phone ?? customer.phone_number;
@@ -272,6 +329,13 @@ async function findExistingCustomer(
         ),
     );
     if (match?.id) return match;
+
+    const normalizedMatch = await findByNormalizedPhoneFallback(
+      supabase,
+      shopId,
+      phone,
+    );
+    if (normalizedMatch?.id) return normalizedMatch;
   }
 
   return findByNameAndLocationFallback(supabase, shopId, customer);
@@ -417,7 +481,7 @@ async function updateExistingCustomer(
 }> {
   if (existing.shop_id && existing.shop_id !== shopId) {
     return {
-      status: "failed",
+      status: "skipped",
       reason: "Matched customer is outside the authenticated shop scope.",
     };
   }
@@ -434,7 +498,17 @@ async function updateExistingCustomer(
     .update(update)
     .eq("shop_id", shopId)
     .eq("id", existing.id)) as { error: SupabaseErrorLike | null };
-  if (error) return { status: "failed", error };
+  if (error) {
+    if (isDuplicateError(error)) {
+      return {
+        status: "skipped",
+        error,
+        reason:
+          "Existing customer update hit a duplicate constraint; the row was skipped to avoid merging unsafe data.",
+      };
+    }
+    return { status: "failed", error };
+  }
   return { status: "updated" };
 }
 
