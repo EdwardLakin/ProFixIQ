@@ -63,9 +63,9 @@ export const GUIDED_ONBOARDING_STEPS = [
   {
     stepKey: "staff",
     label: "Staff",
-    question: "Do you want to invite or create staff accounts now?",
+    question: "Do you want to set up your staff, technicians, or advisors now?",
     destinationPath: "/dashboard/owner/create-user",
-    highlightKey: "staff-create-user",
+    highlightKey: "staff-import",
     description: "Route owners/admins to the existing staff creation page; no bulk user creation happens here.",
     implementationStatus: "placeholder",
   },
