@@ -72,9 +72,9 @@ export const GUIDED_ONBOARDING_STEPS = [
   {
     stepKey: "labor_tax_shop_settings",
     label: "Labor, tax, and shop settings",
-    question: "Do you want to review labor rates, tax, and shop settings now?",
+    question: "Do you want to review your labor, tax, and shop settings now?",
     destinationPath: "/dashboard/owner/settings",
-    highlightKey: "shop-settings-labor-tax",
+    highlightKey: "shop-settings",
     description: "Guide setup through the existing owner settings surface.",
     implementationStatus: "placeholder",
   },
