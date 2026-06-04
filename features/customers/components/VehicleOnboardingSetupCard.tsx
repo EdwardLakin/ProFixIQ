@@ -73,7 +73,7 @@ export function VehicleOnboardingSetupCard({
             <div className="mt-3 space-y-2 text-sm text-neutral-300">
               <p>This is where vehicle setup/import will live.</p>
               <p>Vehicles are tied to customer files, so this step helps you prepare vehicle records in the real workflow.</p>
-              <p>For now, you can create vehicles manually from customer files or mark this onboarding step complete.</p>
+              <p>For now, you can create vehicles manually from customer files.</p>
               <p>CSV import will be added here next.</p>
             </div>
             {error ? (
@@ -91,25 +91,17 @@ export function VehicleOnboardingSetupCard({
             </button>
             <button
               type="button"
-              onClick={() => void postStepAction("complete")}
-              disabled={disabled}
-              className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-55"
-            >
-              {busyAction === "complete" ? "Marking complete…" : "Mark vehicles step complete"}
-            </button>
-            <button
-              type="button"
               onClick={() => void postStepAction("skip")}
               disabled={disabled}
               className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
             >
-              {busyAction === "skip" ? "Skipping…" : "Skip vehicles"}
+              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
             <Link
               href={guidedQuery.returnTo}
               className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
             >
-              Back to Data Onboarding
+              Return to Data Onboarding
             </Link>
           </div>
         </div>

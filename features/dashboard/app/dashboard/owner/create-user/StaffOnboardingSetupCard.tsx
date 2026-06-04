@@ -119,7 +119,7 @@ export function StaffOnboardingSetupCard({ guidedQuery, onUseCreateUserForm }: P
               disabled={disabled}
               className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-55"
             >
-              {busyAction === "complete" ? "Marking complete…" : "Mark staff step complete"}
+              {busyAction === "complete" ? "Marking complete…" : "Mark reviewed"}
             </button>
             <button
               type="button"
@@ -127,13 +127,13 @@ export function StaffOnboardingSetupCard({ guidedQuery, onUseCreateUserForm }: P
               disabled={disabled}
               className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
             >
-              {busyAction === "skip" ? "Skipping…" : "Skip staff"}
+              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
             <Link
               href={guidedQuery.returnTo}
               className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
             >
-              Back to Data Onboarding
+              Return to Data Onboarding
             </Link>
           </div>
         </div>

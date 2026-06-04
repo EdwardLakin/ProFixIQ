@@ -67,7 +67,7 @@ export function CustomerOnboardingSetupCard({ guidedQuery, onCreateCustomer }: P
             <h2 className="mt-2 text-xl font-semibold text-white">Set up your customer list</h2>
             <div className="mt-3 space-y-2 text-sm text-neutral-300">
               <p>This is where customer setup/import will live.</p>
-              <p>For now, you can create customers manually or mark this onboarding step complete.</p>
+              <p>For now, you can create customers manually.</p>
               <p>CSV import will be added here next.</p>
             </div>
             {error ? (
@@ -85,25 +85,17 @@ export function CustomerOnboardingSetupCard({ guidedQuery, onCreateCustomer }: P
             </button>
             <button
               type="button"
-              onClick={() => void postStepAction("complete")}
-              disabled={disabled}
-              className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-55"
-            >
-              {busyAction === "complete" ? "Marking complete…" : "Mark customers step complete"}
-            </button>
-            <button
-              type="button"
               onClick={() => void postStepAction("skip")}
               disabled={disabled}
               className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
             >
-              {busyAction === "skip" ? "Skipping…" : "Skip customers"}
+              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
             <Link
               href={guidedQuery.returnTo}
               className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
             >
-              Back to Data Onboarding
+              Return to Data Onboarding
             </Link>
           </div>
         </div>

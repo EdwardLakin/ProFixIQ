@@ -409,7 +409,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setAgentDialogOpen(true)}
                 title="Submit a request to ProFixIQ Agent"
               >
-                <span>Agent Request</span>
+                <span>Agent Requests</span>
               </ActionButton>
 
               <AskAssistantEntry placement="header" />

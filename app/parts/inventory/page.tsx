@@ -823,7 +823,7 @@ export default function InventoryPage(): JSX.Element {
                   href={guidedOnboarding.returnTo}
                   className="mt-3 inline-flex rounded-lg border border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.12)] px-3 py-2 text-xs font-semibold text-orange-100 hover:bg-[rgba(197,122,74,0.2)]"
                 >
-                  Return to guided onboarding
+                  Return to Data Onboarding
                 </Link>
               ) : null}
             </div>

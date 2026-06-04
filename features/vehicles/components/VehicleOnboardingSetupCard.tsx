@@ -61,7 +61,7 @@ export function VehicleOnboardingSetupCard({ guidedQuery, addVehicleTargetId = "
             <h2 className="mt-2 text-xl font-semibold text-white">Vehicle import/setup</h2>
             <div className="mt-3 space-y-2 text-sm text-neutral-300">
               <p>Guided onboarding brought you here because Vehicles owns unit, VIN, plate, and asset setup.</p>
-              <p>CSV import will be added here next. For now, add vehicles manually or mark this step complete.</p>
+              <p>CSV import will be added here next. For now, add vehicles manually.</p>
             </div>
             {error ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">{error}</div> : null}
           </div>
@@ -70,14 +70,11 @@ export function VehicleOnboardingSetupCard({ guidedQuery, addVehicleTargetId = "
             <a href={`#${addVehicleTargetId}`} className="rounded-xl border border-[var(--accent-copper-soft)]/60 bg-[linear-gradient(135deg,rgba(197,122,74,0.26),rgba(197,122,74,0.14))] px-4 py-2 text-center text-sm font-semibold text-orange-50 hover:border-[var(--accent-copper)] hover:bg-orange-400/15">
               Add vehicle
             </a>
-            <button type="button" onClick={() => void postStepAction("complete")} disabled={disabled} className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30 disabled:opacity-55">
-              {busyAction === "complete" ? "Marking complete…" : "Mark vehicles step complete"}
-            </button>
             <button type="button" onClick={() => void postStepAction("skip")} disabled={disabled} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55">
-              {busyAction === "skip" ? "Skipping…" : "Skip vehicles"}
+              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>
             <Link href={guidedQuery.returnTo} className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30">
-              Back to Data Onboarding
+              Return to Data Onboarding
             </Link>
           </div>
         </div>
