@@ -147,6 +147,42 @@ describe("VehicleCsvImportCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/onboarding-v2/guided/sessions/session-123/steps/vehicles/complete", expect.objectContaining({ method: "POST" })));
   });
 
+  it("shows API diagnostic samples when vehicle import fails", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({
+        error: "Vehicle insert payload rejected by database schema.",
+        errors: [{ row: 1, message: "Could not find the 'import_notes' column" }],
+        diagnostics: [{
+          row: 1,
+          external_id: "VEH-1",
+          vin: "1HGCM82633A004352",
+          unit_number: "A-1",
+          plate: "ABC123",
+          customer_external_id: "CUST-100425",
+          code: "PGRST204",
+          status: 400,
+          message: "Could not find the 'import_notes' column",
+          details: "schema cache",
+          hint: "reload schema",
+          payloadKeys: ["customer_id", "external_id", "shop_id", "unit_number", "vin"],
+          containsUserId: false,
+        }],
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VehicleCsvImportCard customers={[]} />);
+
+    await userEvent.type(screen.getByLabelText(/paste csv text/i), "vehicle_id,unit,vin,plate,customer_id\nVEH-1,A-1,1HGCM82633A004352,ABC123,CUST-100425");
+    await userEvent.click(screen.getByRole("button", { name: /preview csv/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm import/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/payload rejected by database schema/i));
+    expect(screen.getByRole("alert")).toHaveTextContent(/PGRST204/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Payload keys: customer_id, external_id, shop_id, unit_number, vin/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Contains user_id: no/);
+  });
+
   it("does not call guided completion on failed import or cancel", async () => {
     const fetchMock = vi.fn(async () => ({ ok: false, json: async () => ({ error: "failed" }) }));
     vi.stubGlobal("fetch", fetchMock);

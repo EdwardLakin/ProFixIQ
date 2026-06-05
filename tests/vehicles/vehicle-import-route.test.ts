@@ -10,6 +10,11 @@ const { mockSupabaseState } = vi.hoisted(() => ({
     inserts: [] as Array<Record<string, unknown>>,
     updates: [] as Array<{ payload: Record<string, unknown>; filters: Record<string, unknown> }>,
     customerRanges: [] as Array<{ from: number; to: number; shopId: unknown }>,
+    vehicleRanges: [] as Array<{ from: number; to: number; shopId: unknown }>,
+    insertErrors: [] as Array<Record<string, unknown>>,
+    insertCallCount: 0,
+    duplicateLookupCount: 0,
+    duplicateRecoveryVehicles: [] as Array<Record<string, unknown>>,
   },
 }));
 
@@ -42,6 +47,10 @@ function makeQuery(table: string): MockQuery {
         mockSupabaseState.customerRanges.push({ from, to, shopId: query.filters.shop_id });
         return Promise.resolve({ data: mockSupabaseState.customers.filter((row) => row.shop_id === query.filters.shop_id).slice(from, to + 1), error: null });
       }
+      if (table === "vehicles" && query.filters.shop_id) {
+        mockSupabaseState.vehicleRanges.push({ from, to, shopId: query.filters.shop_id });
+        return Promise.resolve({ data: mockSupabaseState.vehicles.filter((row) => row.shop_id === query.filters.shop_id).slice(from, to + 1), error: null });
+      }
       return query;
     }),
     maybeSingle: vi.fn(async () => {
@@ -51,7 +60,9 @@ function makeQuery(table: string): MockQuery {
         return { data: found ?? null, error: null };
       }
       if (table === "vehicles") {
-        const found = mockSupabaseState.vehicles.find((row) => {
+        mockSupabaseState.duplicateLookupCount += 1;
+        const lookupRows = [...mockSupabaseState.vehicles, ...mockSupabaseState.duplicateRecoveryVehicles];
+        const found = lookupRows.find((row) => {
           if (row.shop_id !== query.filters.shop_id) return false;
           if (query.filters.vin) return row.vin === query.filters.vin;
           if (query.filters.external_id) return row.external_id === query.filters.external_id;
@@ -63,9 +74,12 @@ function makeQuery(table: string): MockQuery {
       }
       return { data: null, error: null };
     }),
-    insert: vi.fn(async (payload: Record<string, unknown>) => {
-      mockSupabaseState.inserts.push(payload);
-      mockSupabaseState.vehicles.push({ id: `vehicle-${mockSupabaseState.vehicles.length + 1}`, ...payload });
+    insert: vi.fn(async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
+      mockSupabaseState.insertCallCount += 1;
+      if (mockSupabaseState.insertErrors.length > 0) return { error: mockSupabaseState.insertErrors.shift() ?? null };
+      const rows = Array.isArray(payload) ? payload : [payload];
+      mockSupabaseState.inserts.push(...rows);
+      mockSupabaseState.vehicles.push(...rows.map((row) => ({ id: `vehicle-${mockSupabaseState.vehicles.length + 1}`, ...row })));
       return { error: null };
     }),
     update: vi.fn((payload: Record<string, unknown>) => {
@@ -105,6 +119,11 @@ describe("POST /api/vehicles/import", () => {
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
     mockSupabaseState.customerRanges = [];
+    mockSupabaseState.vehicleRanges = [];
+    mockSupabaseState.insertErrors = [];
+    mockSupabaseState.insertCallCount = 0;
+    mockSupabaseState.duplicateLookupCount = 0;
+    mockSupabaseState.duplicateRecoveryVehicles = [];
   });
 
   it("rejects unauthenticated import", async () => {
@@ -338,4 +357,83 @@ describe("POST /api/vehicles/import", () => {
     expect(mockSupabaseState.inserts).toHaveLength(2);
     expect(payload.warnings[0].message).toMatch(/continuing because VIN or external vehicle ID/i);
   });
+  it("large import prefetches customers and vehicles instead of per-row lookups", async () => {
+    mockSupabaseState.customers = Array.from({ length: 1001 }, (_, index) => ({
+      id: `customer-${index}`,
+      shop_id: "shop-real",
+      external_id: `CUST-${index}`,
+    }));
+    mockSupabaseState.vehicles = Array.from({ length: 1001 }, (_, index) => ({
+      id: `existing-${index}`,
+      shop_id: "shop-real",
+      vin: `EXISTINGVIN${index}`,
+    }));
+    const rows = Array.from({ length: 2600 }, (_, index) => ({ unit_number: `UNIT-${index}`, customer_id: `CUST-${index % 1001}` }));
+
+    const response = await POST(request(rows));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts.created).toBe(2600);
+    expect(mockSupabaseState.customerRanges).toEqual([
+      { from: 0, to: 999, shopId: "shop-real" },
+      { from: 1000, to: 1999, shopId: "shop-real" },
+    ]);
+    expect(mockSupabaseState.vehicleRanges).toEqual([
+      { from: 0, to: 999, shopId: "shop-real" },
+      { from: 1000, to: 1999, shopId: "shop-real" },
+    ]);
+    expect(mockSupabaseState.duplicateLookupCount).toBe(0);
+    expect(mockSupabaseState.insertCallCount).toBe(26);
+  });
+
+  it("PostgREST 400 insert error is not retried and returns a safe diagnostic", async () => {
+    mockSupabaseState.insertErrors = [{ code: "PGRST204", status: 400, message: "Could not find the 'import_notes' column", details: "schema cache", hint: "reload schema" }];
+
+    const response = await POST(request([{ unit_number: "A-1", vin: "1HGCM82633A004352", user_id: "csv-user" }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(mockSupabaseState.insertCallCount).toBe(1);
+    expect(payload.error).toMatch(/payload rejected/i);
+    expect(payload.diagnostics[0]).toMatchObject({
+      row: 1,
+      vin: "1HGCM82633A004352",
+      unit_number: "A-1",
+      code: "PGRST204",
+      status: 400,
+      containsUserId: false,
+    });
+    expect(payload.diagnostics[0].payloadKeys).toContain("shop_id");
+    expect(payload.diagnostics[0].payloadKeys).not.toContain("user_id");
+    expect(JSON.stringify(payload.diagnostics[0])).not.toContain("csv-user");
+  });
+
+  it("duplicate conflict recovery re-queries a deterministic same-shop vehicle once", async () => {
+    mockSupabaseState.insertErrors = [{ code: "23505", status: 409, message: "duplicate key value violates unique constraint" }];
+    mockSupabaseState.duplicateRecoveryVehicles = [{ id: "vehicle-existing", shop_id: "shop-real", vin: "1HGCM82633A004352" }];
+
+    const response = await POST(request([{ vin: "1HGCM82633A004352", make: "Honda" }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({ created: 0, updated: 1 });
+    expect(mockSupabaseState.insertCallCount).toBe(1);
+    expect(mockSupabaseState.duplicateLookupCount).toBe(1);
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({ shop_id: "shop-real", id: "vehicle-existing" });
+  });
+
+  it("returns promptly on schema rejection instead of attempting later batches", async () => {
+    mockSupabaseState.insertErrors = [{ code: "PGRST204", status: 400, message: "unknown vehicle column" }];
+    const rows = Array.from({ length: 250 }, (_, index) => ({ unit_number: `UNIT-${index}` }));
+
+    const response = await POST(request(rows));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(mockSupabaseState.insertCallCount).toBe(1);
+    expect(payload.counts.created).toBe(0);
+    expect(payload.diagnostics[0].payloadKeys).toContain("unit_number");
+  });
+
 });
