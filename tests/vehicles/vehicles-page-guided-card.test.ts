@@ -1,6 +1,12 @@
+import React from "react";
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { shouldShowVehicleOnboardingCard } from "@/features/vehicles/lib/guided";
+import { VehicleDirectory } from "@/features/vehicles/components/VehicleDirectory";
+import { fetchVehicleImportCustomers } from "@/features/vehicles/lib/importCustomers";
+import { fetchVehicleDirectoryRows, filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
 
 describe("Vehicles page guided onboarding card visibility", () => {
   it("does not show the onboarding card during a normal Vehicles visit", () => {
@@ -20,10 +26,11 @@ describe("Vehicles page guided onboarding card visibility", () => {
   });
 });
 
-import { fetchVehicleDirectoryRows, filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
 
 const baseVehicle = (overrides: Partial<VehicleListRow>): VehicleListRow => ({
   id: String(overrides.id ?? "vehicle"),
+  shop_id: "shop-real",
+  created_at: null,
   external_id: null,
   unit_number: null,
   year: null,
@@ -88,7 +95,52 @@ describe("Vehicles page list filtering", () => {
   });
 });
 
-import { fetchVehicleImportCustomers } from "@/features/vehicles/lib/importCustomers";
+describe("VehicleDirectory", () => {
+  it("displays linked customer names and customer external IDs", () => {
+    render(React.createElement(VehicleDirectory, {
+      vehicles: [baseVehicle({ id: "vehicle-1", unit_number: "TRK-110", customer_id: "customer-1", customerName: "Edward Nguyen", customerExternalId: "CUST-101788" })],
+    }));
+
+    expect(screen.getByText("Linked to Edward Nguyen (CUST-101788)")).toBeInTheDocument();
+    expect(screen.getByText("Edward Nguyen")).toBeInTheDocument();
+    expect(screen.getByText("CUST-101788")).toBeInTheDocument();
+  });
+
+  it("shows unlinked and missing customer-link states without hiding vehicles", () => {
+    render(React.createElement(VehicleDirectory, {
+      vehicles: [
+        baseVehicle({ id: "unlinked", unit_number: "A-1", customer_id: null }),
+        baseVehicle({ id: "missing", unit_number: "B-1", customer_id: "missing-customer", customerName: null, customerExternalId: null }),
+      ],
+    }));
+
+    expect(screen.getAllByText("No customer linked").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Customer link missing").length).toBeGreaterThan(0);
+    expect(screen.getByText("A-1")).toBeInTheDocument();
+    expect(screen.getByText("B-1")).toBeInTheDocument();
+  });
+
+  it("searches by customer name and customer external ID", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(VehicleDirectory, {
+      vehicles: [
+        baseVehicle({ id: "match", unit_number: "TRK-110", external_id: "VEH-201126", customer_id: "customer-1", customerName: "Edward Nguyen", customerExternalId: "CUST-101788" }),
+        baseVehicle({ id: "miss", unit_number: "VAN-220", customer_id: null }),
+      ],
+    }));
+
+    const search = screen.getByPlaceholderText(/search vin/i);
+    await user.type(search, "Edward Nguyen");
+    expect(screen.getByText("TRK-110")).toBeInTheDocument();
+    expect(screen.queryByText("VAN-220")).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "CUST-101788");
+    expect(screen.getByText("TRK-110")).toBeInTheDocument();
+    expect(screen.queryByText("VAN-220")).not.toBeInTheDocument();
+  });
+});
+
 
 describe("Vehicles import customer lookup", () => {
   it("paginates same-shop customers beyond the first 1000 rows for CSV preview linking", async () => {
@@ -167,6 +219,8 @@ describe("Vehicles page directory data loading", () => {
     expect(result.error).toBeNull();
     expect(result.rows.map((row) => row.id)).toEqual(["vehicle-unlinked", "vehicle-linked", "vehicle-missing-customer"]);
     expect(result.rows.find((row) => row.id === "vehicle-linked")?.customers?.external_id).toBe("CUST-1");
+    expect(result.rows.find((row) => row.id === "vehicle-linked")?.customerName).toBe("Linked Fleet");
+    expect(result.rows.find((row) => row.id === "vehicle-linked")?.customerExternalId).toBe("CUST-1");
     expect(result.rows.find((row) => row.id === "vehicle-unlinked")?.customers).toBeNull();
     expect(result.rows.find((row) => row.id === "vehicle-missing-customer")?.customers).toBeNull();
     expect(calls).toContainEqual(expect.objectContaining({ table: "vehicles", column: "shop_id", value: "shop-real" }));
