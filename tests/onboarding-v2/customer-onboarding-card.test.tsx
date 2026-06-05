@@ -21,7 +21,9 @@ const { router, mockSupabaseState } = vi.hoisted(() => ({
     customerSelects: 0,
     profileSelects: 0,
     insertError: null as
-      | ((payload: Record<string, unknown> | Record<string, unknown>[]) => Record<string, unknown> | null)
+      | ((
+          payload: Record<string, unknown> | Record<string, unknown>[],
+        ) => Record<string, unknown> | null)
       | null,
     updateError: null as
       | ((payload: Record<string, unknown>) => Record<string, unknown> | null)
@@ -81,19 +83,21 @@ function makeQuery(table: string): MockQuery {
       )[0];
       return { data: match ? { ...match } : null, error: null };
     }),
-    insert: vi.fn(async (payload: Record<string, unknown> | Record<string, unknown>[]) => {
-      const error = mockSupabaseState.insertError?.(payload) ?? null;
-      if (error) return { data: null, error };
-      const rows = Array.isArray(payload) ? payload : [payload];
-      for (const row of rows) {
-        mockSupabaseState.inserts.push(row);
-        mockSupabaseState.customers.push({
-          id: `inserted-${mockSupabaseState.inserts.length}`,
-          ...row,
-        });
-      }
-      return { data: null, error: null };
-    }),
+    insert: vi.fn(
+      async (payload: Record<string, unknown> | Record<string, unknown>[]) => {
+        const error = mockSupabaseState.insertError?.(payload) ?? null;
+        if (error) return { data: null, error };
+        const rows = Array.isArray(payload) ? payload : [payload];
+        for (const row of rows) {
+          mockSupabaseState.inserts.push(row);
+          mockSupabaseState.customers.push({
+            id: `inserted-${mockSupabaseState.inserts.length}`,
+            ...row,
+          });
+        }
+        return { data: null, error: null };
+      },
+    ),
     update: vi.fn((payload: Record<string, unknown>) => {
       const updateQuery: {
         eq: ReturnType<typeof vi.fn>;
@@ -565,6 +569,56 @@ describe("POST /api/customers/import", () => {
     });
   });
 
+  it("recovers a batch insert conflict by falling back only to rows in that batch", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSupabaseState.insertError = (payload) =>
+      Array.isArray(payload)
+        ? {
+            code: "23505",
+            status: 409,
+            message:
+              'duplicate key value violates unique constraint "customers_shop_email_uq"',
+          }
+        : null;
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { name: "Ada Lovelace", email: "ada@example.com" },
+            { name: "Grace Hopper", email: "grace@example.com" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({
+      created: 2,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(2);
+    expect(mockSupabaseState.inserts.every((row) => !("user_id" in row))).toBe(
+      true,
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[customers-import] batch import issue",
+      expect.objectContaining({
+        rowRange: "1-2",
+        code: "23505",
+        status: 409,
+        constraint: "customers_shop_email_uq",
+        containsUserId: false,
+        payloadKeyList: expect.arrayContaining(["email", "shop_id", "name"]),
+      }),
+    );
+    warnSpy.mockRestore();
+  });
+
   it("does not trigger customers_user_id_uq during normal imports because user_id is omitted", async () => {
     mockSupabaseState.insertError = (payload) => {
       const rows = Array.isArray(payload) ? payload : [payload];
@@ -605,6 +659,7 @@ describe("POST /api/customers/import", () => {
   });
 
   it("recovers safely if customers_user_id_uq is unexpectedly returned", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockSupabaseState.insertError = () => ({
       code: "23505",
       status: 409,
@@ -622,6 +677,7 @@ describe("POST /api/customers/import", () => {
     );
     const payload = await response.json();
 
+    expect(response.status).toBe(200);
     expect(payload.counts).toMatchObject({
       created: 0,
       updated: 0,
@@ -631,10 +687,24 @@ describe("POST /api/customers/import", () => {
     expect(payload.warnings[0]).toMatchObject({
       row: 1,
       code: "23505",
+      status: 409,
       constraint: "customers_user_id_uq",
       reason:
         "CSV import unexpectedly hit customers_user_id_uq even though customer user_id is not set; row skipped for safe recovery.",
     });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[customers-import] row import issue",
+      expect.objectContaining({
+        row: 1,
+        context: "single-insert-fallback",
+        code: "23505",
+        status: 409,
+        constraint: "customers_user_id_uq",
+        containsUserId: false,
+        payloadKeyList: expect.not.arrayContaining(["user_id"]),
+      }),
+    );
+    warnSpy.mockRestore();
   });
 
   it("prefetches same-shop customers once for a large import instead of per row", async () => {

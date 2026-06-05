@@ -58,6 +58,7 @@ type ImportDiagnostic = {
   identity: SafeRowIdentity;
   reason: string;
   code?: string;
+  status?: number;
   constraint?: string;
 };
 
@@ -207,7 +208,9 @@ function nameLocationKey(customer: CustomerInsert | CustomerMatch): string {
   return `${targetName}|${city}|${postalCode}`;
 }
 
-function createCustomerMatchIndex(customers: CustomerMatch[]): CustomerMatchIndex {
+function createCustomerMatchIndex(
+  customers: CustomerMatch[],
+): CustomerMatchIndex {
   const index: CustomerMatchIndex = {
     byEmail: new Map(),
     byPhone: new Map(),
@@ -220,7 +223,8 @@ function createCustomerMatchIndex(customers: CustomerMatch[]): CustomerMatchInde
 
     for (const phoneValue of [customer.phone, customer.phone_number]) {
       const phone = normalizePhoneComparable(phoneValue);
-      if (phone && !index.byPhone.has(phone)) index.byPhone.set(phone, customer);
+      if (phone && !index.byPhone.has(phone))
+        index.byPhone.set(phone, customer);
     }
 
     const combinedNameLocation = nameLocationKey(customer);
@@ -297,7 +301,9 @@ function findExistingCustomer(
   const emailMatch = email ? index.byEmail.get(email) : null;
   if (emailMatch?.shop_id === shopId) return emailMatch;
 
-  const phone = normalizePhoneComparable(customer.phone ?? customer.phone_number);
+  const phone = normalizePhoneComparable(
+    customer.phone ?? customer.phone_number,
+  );
   const phoneMatch = phone ? index.byPhone.get(phone) : null;
   if (phoneMatch?.shop_id === shopId) return phoneMatch;
 
@@ -404,6 +410,42 @@ function getConstraint(
   );
 }
 
+function getPayloadKeys(customer: CustomerInsert): string[] {
+  return Object.keys(customer).sort();
+}
+
+function payloadHasUserId(customer: CustomerInsert): boolean {
+  return Object.hasOwn(customer, "user_id");
+}
+
+function logBatchImportIssue(
+  rows: PendingCustomerInsert[],
+  error: SupabaseErrorLike,
+  context: string,
+) {
+  const rowNumbers = rows.map(({ rowNumber }) => rowNumber);
+  const startRow = Math.min(...rowNumbers);
+  const endRow = Math.max(...rowNumbers);
+  const payloadKeyList = Array.from(
+    new Set(rows.flatMap(({ customer }) => getPayloadKeys(customer))),
+  ).sort();
+  console.warn("[customers-import] batch import issue", {
+    rowRange: `${startRow}-${endRow}`,
+    context,
+    rowCount: rows.length,
+    code: error.code,
+    status: error.status,
+    constraint: getConstraint(error),
+    message: error.message,
+    containsUserId: rows.some(({ customer }) => payloadHasUserId(customer)),
+    payloadKeyList,
+    identities: rows.slice(0, 5).map(({ rowNumber, customer }) => ({
+      row: rowNumber,
+      identity: getSafeIdentity(customer),
+    })),
+  });
+}
+
 function isDuplicateError(
   error: SupabaseErrorLike | null | undefined,
 ): boolean {
@@ -435,9 +477,10 @@ function logRowImportIssue(
     status: error.status,
     constraint: getConstraint(error),
     message: error.message,
+    containsUserId: payloadHasUserId(customer),
+    payloadKeyList: getPayloadKeys(customer),
   });
 }
-
 
 function isPendingImportMatch(customer: CustomerMatch): boolean {
   return customer.id.startsWith("pending-");
@@ -478,6 +521,8 @@ async function insertCustomerBatch(
     return;
   }
 
+  logBatchImportIssue(rows, error, "batch-insert");
+
   if (!isDuplicateError(error)) {
     for (const { rowNumber, customer } of rows) {
       logRowImportIssue(rowNumber, customer, error, "batch-insert");
@@ -487,11 +532,16 @@ async function insertCustomerBatch(
         identity: getSafeIdentity(customer),
         reason: error.message ?? "Unable to import customer.",
         code: error.code,
+        status: error.status,
         constraint: getConstraint(error),
       });
     }
     return;
   }
+
+  const conflictedRows: Array<
+    PendingCustomerInsert & { error: SupabaseErrorLike }
+  > = [];
 
   for (const { rowNumber, customer } of rows) {
     const { error: rowError } = (await supabase
@@ -504,7 +554,7 @@ async function insertCustomerBatch(
       continue;
     }
 
-    logRowImportIssue(rowNumber, customer, rowError, "insert");
+    logRowImportIssue(rowNumber, customer, rowError, "single-insert-fallback");
 
     if (!isDuplicateError(rowError)) {
       counts.failed += 1;
@@ -513,14 +563,26 @@ async function insertCustomerBatch(
         identity: getSafeIdentity(customer),
         reason: rowError.message ?? "Unable to import customer.",
         code: rowError.code,
+        status: rowError.status,
         constraint: getConstraint(rowError),
       });
       continue;
     }
 
-    const refreshedCustomers = await getShopCustomerCandidates(supabase, shopId);
-    const refreshedIndex = createCustomerMatchIndex(refreshedCustomers);
-    const duplicateMatch = findExistingCustomer(refreshedIndex, shopId, customer);
+    conflictedRows.push({ rowNumber, customer, error: rowError });
+  }
+
+  if (!conflictedRows.length) return;
+
+  const refreshedCustomers = await getShopCustomerCandidates(supabase, shopId);
+  const refreshedIndex = createCustomerMatchIndex(refreshedCustomers);
+
+  for (const { rowNumber, customer, error: rowError } of conflictedRows) {
+    const duplicateMatch = findExistingCustomer(
+      refreshedIndex,
+      shopId,
+      customer,
+    );
 
     if (duplicateMatch?.id) {
       const result = await updateExistingCustomer(
@@ -535,12 +597,19 @@ async function insertCustomerBatch(
           matchIndex,
           customerInsertToMatch(customer, duplicateMatch.id),
         );
+        addCustomerToMatchIndex(
+          refreshedIndex,
+          customerInsertToMatch(customer, duplicateMatch.id),
+        );
       } else if (result.status === "skipped") {
         counts.skipped += 1;
         addDiagnostic(warnings, {
           row: rowNumber,
           identity: getSafeIdentity(customer),
           reason: result.reason ?? "Duplicate customer already exists.",
+          code: result.error?.code,
+          status: result.error?.status,
+          constraint: getConstraint(result.error),
         });
       } else {
         counts.failed += 1;
@@ -559,6 +628,7 @@ async function insertCustomerBatch(
             result.reason ??
             "Duplicate customer could not be updated.",
           code: result.error?.code,
+          status: result.error?.status,
           constraint: getConstraint(result.error),
         });
       }
@@ -571,6 +641,7 @@ async function insertCustomerBatch(
       identity: getSafeIdentity(customer),
       reason: duplicateUserIdConstraintReason(getConstraint(rowError)),
       code: rowError.code,
+      status: rowError.status,
       constraint: getConstraint(rowError),
     });
   }
@@ -761,6 +832,7 @@ export async function POST(req: Request) {
               result.reason ??
               "Unable to update existing customer.",
             code: result.error?.code,
+            status: result.error?.status,
             constraint: getConstraint(result.error),
           });
         }
@@ -790,7 +862,11 @@ export async function POST(req: Request) {
     }
   }
 
-  for (let index = 0; index < pendingInserts.length; index += INSERT_BATCH_SIZE) {
+  for (
+    let index = 0;
+    index < pendingInserts.length;
+    index += INSERT_BATCH_SIZE
+  ) {
     await insertCustomerBatch(
       supabase,
       shopId,
