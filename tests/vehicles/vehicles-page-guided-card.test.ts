@@ -6,7 +6,7 @@ import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/quer
 import { shouldShowVehicleOnboardingCard } from "@/features/vehicles/lib/guided";
 import { VehicleDirectory } from "@/features/vehicles/components/VehicleDirectory";
 import { fetchVehicleImportCustomers } from "@/features/vehicles/lib/importCustomers";
-import { fetchVehicleDirectoryRows, filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
+import { fetchVehicleDirectoryRows, filterSortAndCapVehicles, vehicleCustomerName, type VehicleListRow } from "@/features/vehicles/lib/list";
 
 describe("Vehicles page guided onboarding card visibility", () => {
   it("does not show the onboarding card during a normal Vehicles visit", () => {
@@ -226,6 +226,69 @@ describe("Vehicles page directory data loading", () => {
     expect(calls).toContainEqual(expect.objectContaining({ table: "vehicles", column: "shop_id", value: "shop-real" }));
     expect(calls).toContainEqual(expect.objectContaining({ table: "customers", column: "shop_id", value: "shop-real" }));
     expect(calls).not.toContainEqual(expect.objectContaining({ column: "user_id" }));
+    expect(calls).not.toContainEqual(expect.objectContaining({ column: "email" }));
+    expect(calls).not.toContainEqual(expect.objectContaining({ column: "external_id" }));
+  });
+
+
+  it("uses the supported customer display-name fallback order", () => {
+    expect(vehicleCustomerName({ id: "business", external_id: null, business_name: "Business Fleet", name: "Named Customer", display_name: "Display Customer", first_name: "First", last_name: "Last", email: "email@example.com", phone: "555-1111", phone_number: "555-2222" })).toBe("Business Fleet");
+    expect(vehicleCustomerName({ id: "name", external_id: null, business_name: null, name: "Named Customer", display_name: "Display Customer", first_name: "First", last_name: "Last", email: "email@example.com", phone: "555-1111", phone_number: "555-2222" })).toBe("Named Customer");
+    expect(vehicleCustomerName({ id: "display", external_id: null, business_name: null, name: null, display_name: "Display Customer", first_name: "First", last_name: "Last", email: "email@example.com", phone: "555-1111", phone_number: "555-2222" })).toBe("Display Customer");
+    expect(vehicleCustomerName({ id: "person", external_id: null, business_name: null, name: null, display_name: null, first_name: "Edward", last_name: "Nguyen", email: "email@example.com", phone: "555-1111", phone_number: "555-2222" })).toBe("Edward Nguyen");
+    expect(vehicleCustomerName({ id: "email", external_id: null, business_name: null, name: null, display_name: null, first_name: null, last_name: null, email: "email@example.com", phone: "555-1111", phone_number: "555-2222" })).toBe("email@example.com");
+    expect(vehicleCustomerName({ id: "phone", external_id: null, business_name: null, name: null, display_name: null, first_name: null, last_name: null, email: null, phone: "555-1111", phone_number: "555-2222" })).toBe("555-1111");
+    expect(vehicleCustomerName({ id: "fallback", external_id: null, business_name: null, name: null, display_name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null })).toBe("Customer");
+  });
+
+  it("falls back to a paginated same-shop customer scan when the direct id lookup fails", async () => {
+    const calls: Array<{ table: string; column?: string; value?: unknown; values?: unknown[]; from?: number; to?: number }> = [];
+    const vehicleRows = [baseVehicle({ id: "vehicle-linked", unit_number: "TRK-110", customer_id: "customer-1" })];
+    const customerRows = [
+      { id: "other-shop-customer", shop_id: "other-shop", external_id: "CUST-OTHER", business_name: "Wrong Shop", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null },
+      { id: "customer-1", shop_id: "shop-real", external_id: "CUST-101788", business_name: null, name: "Edward Nguyen", first_name: null, last_name: null, email: null, phone: null, phone_number: null },
+    ];
+
+    function makeQuery(table: string) {
+      const query = {
+        shopId: "",
+        directLookup: false,
+        select: () => query,
+        eq: (column: string, value: unknown) => {
+          calls.push({ table, column, value });
+          if (column === "shop_id") query.shopId = String(value);
+          return query;
+        },
+        order: () => query,
+        in: (column: string, values: unknown[]) => {
+          calls.push({ table, column, values });
+          query.directLookup = true;
+          return query;
+        },
+        range: async (from: number, to: number) => {
+          calls.push({ table, from, to });
+          const data = table === "vehicles"
+            ? vehicleRows
+            : customerRows.filter((row) => row.shop_id === query.shopId).slice(from, to + 1);
+          return { data, error: null };
+        },
+        then: (resolve: (value: { data: unknown[]; error: unknown | null }) => void) => {
+          resolve({ data: [], error: query.directLookup ? { code: "414", message: "URI too long" } : null });
+        },
+      };
+      return query;
+    }
+
+    const result = await fetchVehicleDirectoryRows({ from: (table: string) => makeQuery(table) }, "shop-real");
+
+    expect(result.error).toBeNull();
+    expect(result.rows).toEqual([expect.objectContaining({
+      id: "vehicle-linked",
+      customerName: "Edward Nguyen",
+      customerExternalId: "CUST-101788",
+    })]);
+    expect(calls).toContainEqual(expect.objectContaining({ table: "customers", column: "id", values: ["customer-1"] }));
+    expect(calls).toContainEqual(expect.objectContaining({ table: "customers", from: 0, to: 999 }));
   });
 
   it("still returns vehicles when the customer lookup fails", async () => {
