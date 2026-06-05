@@ -89,6 +89,7 @@ function normalizeRows(input: unknown): NormalizedVehicleImportRow[] {
     return {
       sourceRowNumber: numberValue(row.sourceRowNumber) ?? index + 1,
       sourceFilename: cleanVehicleImportText(row.sourceFilename),
+      source_row_id: cleanVehicleImportText(row.source_row_id) ?? cleanVehicleImportText(row.sourceRowId),
       external_id: cleanVehicleImportText(row.external_id) ?? cleanVehicleImportText(row.vehicle_id) ?? cleanVehicleImportText(row.vehicleid),
       unit_number: cleanVehicleImportText(row.unit_number) ?? cleanVehicleImportText(row.unit) ?? cleanVehicleImportText(row.fleet_number),
       vin: normalizeImportVin(row.vin),
@@ -129,9 +130,19 @@ function buildImportNotes(row: NormalizedVehicleImportRow): string | null {
   return notes || null;
 }
 
+function normalizedSourceRowId(row: NormalizedVehicleImportRow): string | undefined {
+  const sourceRowId = row.source_row_id?.trim();
+  return sourceRowId && isUuid(sourceRowId) ? sourceRowId : undefined;
+}
+
+function sourceRowIdWarning(row: NormalizedVehicleImportRow): ImportWarning | null {
+  if (!row.source_row_id || isUuid(row.source_row_id)) return null;
+  return { row: row.sourceRowNumber, message: "Invalid source_row_id was omitted because vehicles.source_row_id only accepts UUID source row references." };
+}
+
 function buildVehiclePayload(row: NormalizedVehicleImportRow, args: { shopId: string; customerId: string | null }): VehicleInsert {
   const notes = buildImportNotes(row);
-  return {
+  const payload: VehicleInsert = {
     shop_id: args.shopId,
     customer_id: args.customerId,
     external_id: row.external_id ?? null,
@@ -152,8 +163,10 @@ function buildVehiclePayload(row: NormalizedVehicleImportRow, args: { shopId: st
     engine_hours: row.engine_hours ?? null,
     mileage: row.odometer ?? null,
     import_notes: notes,
-    source_row_id: String(row.sourceRowNumber),
-  } satisfies VehicleInsert;
+  };
+  const sourceRowId = normalizedSourceRowId(row);
+  if (sourceRowId) payload.source_row_id = sourceRowId;
+  return payload;
 }
 
 function setMeaningfulString(patch: VehicleUpdate, key: keyof VehicleUpdate, value: string | undefined) {
@@ -185,7 +198,7 @@ function buildVehiclePatch(row: NormalizedVehicleImportRow, existing: VehicleRow
   setMeaningfulNumber(patch, "engine_hours", row.engine_hours);
   setMeaningfulString(patch, "mileage", row.odometer);
   setMeaningfulString(patch, "import_notes", buildImportNotes(row) ?? undefined);
-  patch.source_row_id = String(row.sourceRowNumber);
+  setMeaningfulString(patch, "source_row_id", normalizedSourceRowId(row));
   return patch;
 }
 
@@ -468,6 +481,9 @@ export async function POST(req: Request) {
     const inserts: VehicleWriteItem[] = [];
 
     for (const row of rows) {
+      const sourceWarning = sourceRowIdWarning(row);
+      if (sourceWarning) samplePush(warnings, sourceWarning);
+
       const vinKey = normalizeImportLookupValue(row.vin);
       const externalIdKey = normalizeImportLookupValue(row.external_id);
       const unitKey = normalizeImportLookupValue(row.unit_number);

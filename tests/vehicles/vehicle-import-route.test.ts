@@ -180,6 +180,58 @@ describe("POST /api/vehicles/import", () => {
     expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
   });
 
+  it("omits CSV row numbers from source_row_id and keeps the row number in import notes", async () => {
+    const response = await POST(request([{ sourceRowNumber: 2, external_id: "VEH-200000", unit: "TRK-957", plate: "C-240-T", customer_id: "CUST-100425" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("source_row_id");
+    expect(String(mockSupabaseState.inserts[0].import_notes)).toContain("Vehicle CSV import row 2");
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+  it("omits and warns for invalid source_row_id CSV values instead of posting them", async () => {
+    const response = await POST(request([{ sourceRowNumber: 2, unit_number: "A-1", source_row_id: "2" }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("source_row_id");
+    expect(String(mockSupabaseState.inserts[0].import_notes)).toContain("Vehicle CSV import row 2");
+    expect(payload.warnings).toContainEqual(expect.objectContaining({ row: 2, message: expect.stringMatching(/Invalid source_row_id was omitted/i) }));
+  });
+
+  it("includes valid UUID source_row_id CSV values as source row references", async () => {
+    const sourceRowId = "11111111-1111-4111-8111-111111111111";
+    const response = await POST(request([{ unit_number: "A-1", source_row_id: sourceRowId }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0].source_row_id).toBe(sourceRowId);
+    expect(payload.warnings).toEqual([]);
+  });
+
+  it("400 schema diagnostics keep payload keys and report containsUserId false without source_row_id for normal CSV rows", async () => {
+    mockSupabaseState.insertErrors = [{ code: "22P02", status: 400, message: 'invalid input syntax for type uuid: "2"' }];
+
+    const response = await POST(request([{ sourceRowNumber: 2, external_id: "VEH-200000", unit: "TRK-957", plate: "C-240-T", customer_id: "CUST-100425", user_id: "csv-user" }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toMatch(/Vehicle insert payload rejected by database schema/i);
+    expect(payload.diagnostics[0]).toMatchObject({
+      row: 2,
+      external_id: "VEH-200000",
+      unit_number: "TRK-957",
+      plate: "C-240-T",
+      customer_external_id: "CUST-100425",
+      status: 400,
+      containsUserId: false,
+    });
+    expect(payload.diagnostics[0].payloadKeys).toContain("shop_id");
+    expect(payload.diagnostics[0].payloadKeys).not.toContain("source_row_id");
+    expect(payload.diagnostics[0].payloadKeys).not.toContain("user_id");
+    expect(JSON.stringify(payload.diagnostics[0])).not.toContain("csv-user");
+  });
+
   it("resolves customer_external_id in the authenticated shop before customer fallback", async () => {
     mockSupabaseState.customers = [
       { id: "other-customer", shop_id: "other-shop", external_id: "cust-legacy", email: "fleet@example.com", name: "Fleet Co" },

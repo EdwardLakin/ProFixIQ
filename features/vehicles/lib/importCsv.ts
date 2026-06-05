@@ -15,6 +15,7 @@ export type VehicleImportCustomerOption = {
 export type VehicleImportRow = {
   sourceRowNumber: number;
   sourceFilename?: string;
+  source_row_id?: string;
   external_id?: string;
   unit_number?: string;
   vin?: string;
@@ -63,6 +64,8 @@ const HEADER_ALIASES: Record<string, keyof VehicleImportRow> = {
   vehicle_id: "external_id",
   externalid: "external_id",
   external_id: "external_id",
+  sourcerowid: "source_row_id",
+  source_row_id: "source_row_id",
   unitnumber: "unit_number",
   unit: "unit_number",
   unitno: "unit_number",
