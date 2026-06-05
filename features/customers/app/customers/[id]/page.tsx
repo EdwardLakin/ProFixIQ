@@ -21,6 +21,7 @@ type VehicleMedia = DB["public"]["Tables"]["vehicle_media"]["Row"];
 type CustomerSearchRow = Pick<
   Customer,
   | "id"
+  | "external_id"
   | "first_name"
   | "last_name"
   | "name"
@@ -77,6 +78,10 @@ const looksLikeUuid = (s: string | null): boolean =>
 const CARD_BASE =
   "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
 const CARD_INNER = "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-[color:var(--desktop-item-bg)]";
+const CUSTOMER_DIRECTORY_LIMIT = 20;
+const CUSTOMER_DIRECTORY_FETCH_LIMIT = 1000;
+const CUSTOMER_DIRECTORY_SELECT =
+  "id, external_id, first_name, last_name, name, business_name, email, phone, phone_number, address, street, city, province, postal_code, created_at";
 
 const STATUS_CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
@@ -169,6 +174,29 @@ function optNumber(obj: Record<string, unknown>, key: string): number | null {
   const v = obj[key];
   if (typeof v === "number" && Number.isFinite(v)) return v;
   return null;
+}
+
+function sortCustomersByDisplayName(customers: CustomerSearchRow[]): CustomerSearchRow[] {
+  return [...customers].sort((a, b) => {
+    const byName = bestCustomerDisplayName(a).localeCompare(
+      bestCustomerDisplayName(b),
+      undefined,
+      { sensitivity: "base", numeric: true },
+    );
+    if (byName !== 0) return byName;
+
+    const byExternalId = (a.external_id ?? "").localeCompare(
+      b.external_id ?? "",
+      undefined,
+      { sensitivity: "base", numeric: true },
+    );
+    if (byExternalId !== 0) return byExternalId;
+
+    const byCreatedAt = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    if (byCreatedAt !== 0) return byCreatedAt;
+
+    return a.id.localeCompare(b.id);
+  });
 }
 
 
@@ -790,47 +818,45 @@ export default function CustomerProfilePage(): JSX.Element {
   }, [getOrLinkShopId, newCustomer, router, supabase]);
 
   // ------------------ Directory search ------------------
-  const runSearch = useCallback(async () => {
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
+  const runSearch = useCallback(async (nextQuery?: string) => {
+    const q = (nextQuery ?? query).trim();
 
     setSearching(true);
     try {
-      const like = `%${q.replaceAll("%", "").replaceAll("_", "")}%`;
-
-      const { data, error } = await supabase
+      let request = supabase
         .from("customers")
-        .select(
-          "id, first_name, last_name, name, business_name, email, phone, phone_number, address, street, city, province, postal_code, created_at",
-        )
-        .or(
+        .select(CUSTOMER_DIRECTORY_SELECT)
+        .order("business_name", { ascending: true, nullsFirst: false })
+        .order("name", { ascending: true, nullsFirst: false })
+        .order("first_name", { ascending: true, nullsFirst: false })
+        .order("last_name", { ascending: true, nullsFirst: false })
+        .order("email", { ascending: true, nullsFirst: false })
+        .limit(CUSTOMER_DIRECTORY_FETCH_LIMIT);
+
+      if (q) {
+        const like = `%${q.replaceAll("%", "").replaceAll("_", "")}%`;
+        request = request.or(
           [
+            `business_name.ilike.${like}`,
             `first_name.ilike.${like}`,
             `last_name.ilike.${like}`,
-            `business_name.ilike.${like}`,
             `name.ilike.${like}`,
             `email.ilike.${like}`,
             `phone.ilike.${like}`,
             `phone_number.ilike.${like}`,
-            `address.ilike.${like}`,
-            `street.ilike.${like}`,
-            `city.ilike.${like}`,
-            `province.ilike.${like}`,
-            `postal_code.ilike.${like}`,
+            `external_id.ilike.${like}`,
           ].join(","),
-        )
-        .order("created_at", { ascending: false })
-        .limit(20);
+        );
+      }
+
+      const { data, error } = await request;
 
       if (error) {
         setResults([]);
         return;
       }
 
-      setResults((data ?? []) as CustomerSearchRow[]);
+      setResults(sortCustomersByDisplayName((data ?? []) as CustomerSearchRow[]).slice(0, CUSTOMER_DIRECTORY_LIMIT));
     } catch {
       setResults([]);
     } finally {
@@ -853,14 +879,8 @@ export default function CustomerProfilePage(): JSX.Element {
   useEffect(() => {
     if (!(isDirectoryMode || sp.get("mode") === "search")) return;
 
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-
     const t = window.setTimeout(() => {
-      void runSearch();
+      void runSearch(query);
     }, 250);
 
     return () => window.clearTimeout(t);
@@ -1235,7 +1255,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 Customer Files
               </h1>
               <p className="mt-1 text-xs text-neutral-400">
-                Search by name, email, or phone. Open a customer to view the full file.
+                Showing up to 20 customers alphabetically. Search by name, external ID, email, or phone.
               </p>
             </div>
 
@@ -1257,7 +1277,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    void runSearch();
+                    void runSearch(query);
                   }
                 }}
                 placeholder="Search customers…"
@@ -1265,7 +1285,7 @@ export default function CustomerProfilePage(): JSX.Element {
               />
               <button
                 type="button"
-                onClick={() => void runSearch()}
+                onClick={() => void runSearch(query)}
                 className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
                 disabled={searching}
               >
@@ -1275,11 +1295,11 @@ export default function CustomerProfilePage(): JSX.Element {
           </div>
 
           <div className="mt-4">
-            {query.trim().length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>Start typing to search customers.</div>
+            {searching && results.length === 0 ? (
+              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>Loading customers…</div>
             ) : results.length === 0 ? (
               <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
-                {searching ? "Searching…" : "No matches yet."}
+                {query.trim().length === 0 ? "No customers found yet." : "No matching customers found."}
               </div>
             ) : (
               <div className="space-y-2">
@@ -1308,6 +1328,11 @@ export default function CustomerProfilePage(): JSX.Element {
                           <div className="mt-0.5 text-[11px] text-neutral-400">
                             {compactSecondaryDetails({ firstName: r.first_name, lastName: r.last_name, businessName: r.business_name, email: r.email, phone: r.phone, phoneNumber: r.phone_number, city: r.city, province: r.province, postalCode: r.postal_code }) ?? "No contact details imported"}
                           </div>
+                          {r.external_id ? (
+                            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                              External ID: {r.external_id}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="text-[10px] text-neutral-500">{safeDate(r.created_at)}</div>
                       </div>
