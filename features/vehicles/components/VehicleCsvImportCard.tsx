@@ -20,15 +20,61 @@ type ImportCounts = {
   warnings: number;
 };
 
+type ImportDiagnostic = {
+  row?: number;
+  external_id?: string | null;
+  vin?: string | null;
+  unit_number?: string | null;
+  plate?: string | null;
+  customer_external_id?: string | null;
+  code?: string | null;
+  status?: number | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+  payloadKeys?: string[];
+  containsUserId?: boolean;
+};
+
 type ImportResponse = {
   ok?: boolean;
   counts?: ImportCounts;
   warnings?: Array<{ row: number; message: string }>;
   errors?: Array<{ row: number; message: string }>;
+  diagnostics?: ImportDiagnostic[];
   error?: string;
 };
 
 const EMPTY_COUNTS: ImportCounts = { created: 0, updated: 0, skipped: 0, failed: 0, warnings: 0 };
+
+function formatImportFailure(payload: ImportResponse): string {
+  const parts = [payload.error?.trim() || "Vehicle import failed."];
+  const firstError = payload.errors?.find((item) => item.message);
+  if (firstError) parts.push(`Row ${firstError.row}: ${firstError.message}`);
+
+  const diagnostic = payload.diagnostics?.[0];
+  if (diagnostic) {
+    const identity = [
+      diagnostic.external_id ? `external_id ${diagnostic.external_id}` : null,
+      diagnostic.vin ? `VIN ${diagnostic.vin}` : null,
+      diagnostic.unit_number ? `unit ${diagnostic.unit_number}` : null,
+      diagnostic.plate ? `plate ${diagnostic.plate}` : null,
+      diagnostic.customer_external_id ? `customer ${diagnostic.customer_external_id}` : null,
+    ].filter(Boolean).join(", ");
+    const status = [diagnostic.code, diagnostic.status ? `HTTP ${diagnostic.status}` : null].filter(Boolean).join(" / ");
+    const payloadKeys = diagnostic.payloadKeys?.length ? `Payload keys: ${diagnostic.payloadKeys.join(", ")}.` : null;
+    parts.push([
+      `Diagnostic row ${diagnostic.row ?? "unknown"}${identity ? ` (${identity})` : ""}: ${diagnostic.message ?? "database rejected the vehicle payload"}`,
+      status ? `(${status})` : null,
+      diagnostic.details ? `Details: ${diagnostic.details}.` : null,
+      diagnostic.hint ? `Hint: ${diagnostic.hint}.` : null,
+      payloadKeys,
+      typeof diagnostic.containsUserId === "boolean" ? `Contains user_id: ${diagnostic.containsUserId ? "yes" : "no"}.` : null,
+    ].filter(Boolean).join(" "));
+  }
+
+  return parts.join(" ");
+}
 
 export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighted = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -99,7 +145,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
         body: JSON.stringify({ rows: validRows }),
       });
       const payload = (await response.json().catch(() => ({}))) as ImportResponse;
-      if (!response.ok || payload.ok === false) throw new Error(payload.error ?? "Vehicle import failed.");
+      if (!response.ok || payload.ok === false) throw new Error(formatImportFailure(payload));
       setSuccess(payload);
       clearSelectedCsvAfterSuccess();
 
