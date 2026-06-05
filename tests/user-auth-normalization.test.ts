@@ -11,7 +11,7 @@ import {
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   createAdminSupabase: vi.fn(),
-  assertShopHasAvailableSeat: vi.fn(),
+  getShopSeatLimitSnapshot: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -23,7 +23,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/features/shared/lib/server/shop-seat-limit", () => ({
-  assertShopHasAvailableSeat: mocks.assertShopHasAvailableSeat,
+  getShopSeatLimitSnapshot: mocks.getShopSeatLimitSnapshot,
 }));
 
 type CreateUserPayload = {
@@ -46,6 +46,10 @@ type MockAdminOptions = {
   shopName?: string;
   sameShopProfiles?: { id: string; username: string | null }[];
   createdUserId?: string;
+  actorRole?: "owner" | "admin";
+  profileError?: { message: string } | null;
+  workforceError?: { message: string } | null;
+  seatSnapshot?: { plan: "starter" | "pro" | "unlimited"; cap: number; activeUsers: number; source: string };
 };
 
 function jsonRequest(body: Record<string, unknown>): Request {
@@ -64,11 +68,12 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
     data: { user: { id: createdUserId } },
     error: null,
   }));
-  const profileUpsert = vi.fn(async (_payload: ProfileUpsertPayload) => ({ error: null }));
-  const workforceUpsert = vi.fn(async (_payload: Record<string, unknown>) => ({ error: null }));
+  const deleteUser = vi.fn(async (_id: string) => ({ error: null }));
+  const profileUpsert = vi.fn(async (_payload: ProfileUpsertPayload) => ({ error: options.profileError ?? null }));
+  const workforceUpsert = vi.fn(async (_payload: Record<string, unknown>) => ({ error: options.workforceError ?? null }));
 
   const adminClient = {
-    auth: { admin: { createUser } },
+    auth: { admin: { createUser, deleteUser } },
     from: vi.fn((table: string) => {
       if (table === "shops") {
         return {
@@ -106,12 +111,18 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
 
   mocks.requireShopScopedApiAccess.mockResolvedValue({
     ok: true,
-    profile: { id: adminId, shop_id: shopId },
+    profile: { id: adminId, shop_id: shopId, role: options.actorRole ?? "owner" },
+    canonicalRole: options.actorRole ?? "owner",
   });
   mocks.createAdminSupabase.mockReturnValue(adminClient);
-  mocks.assertShopHasAvailableSeat.mockResolvedValue(undefined);
+  mocks.getShopSeatLimitSnapshot.mockResolvedValue(options.seatSnapshot ?? {
+    plan: "starter",
+    cap: 10,
+    activeUsers: 0,
+    source: "shop.plan",
+  });
 
-  return { createUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
+  return { createUser, deleteUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
 }
 
 describe("shop user auth normalization", () => {
@@ -242,6 +253,92 @@ describe("shop user auth normalization", () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe("A user with this username already exists in this shop.");
     expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects admin users creating owner or admin roles before auth user creation", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser } = buildCreateUserRouteMocks({ actorRole: "admin" });
+
+    const ownerResponse = await POST(jsonRequest({
+      username: "Privileged Owner",
+      password: "temporary-password",
+      role: "owner",
+    }));
+    const adminResponse = await POST(jsonRequest({
+      username: "Privileged Admin",
+      password: "temporary-password",
+      role: "admin",
+    }));
+
+    expect(ownerResponse.status).toBe(403);
+    expect(adminResponse.status).toBe(403);
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it.each(["manager", "advisor", "mechanic", "tech", "parts"])(
+    "allows admin users to create %s staff roles",
+    async (role) => {
+      const { POST } = await import("../app/api/admin/create-user/route");
+      const { createUser } = buildCreateUserRouteMocks({ actorRole: "admin" });
+
+      const response = await POST(jsonRequest({
+        username: `Allowed ${role}`,
+        password: "temporary-password",
+        role,
+      }));
+
+      expect(response.status).toBe(200);
+      expect(createUser).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("allows owner users to create admin users", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser } = buildCreateUserRouteMocks({ actorRole: "owner" });
+
+    const response = await POST(jsonRequest({
+      username: "Shop Admin",
+      password: "temporary-password",
+      role: "admin",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(createUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects over-seat-limit staff creation before auth user creation with a clear error", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser } = buildCreateUserRouteMocks({
+      seatSnapshot: { plan: "starter", cap: 10, activeUsers: 10, source: "shop.plan" },
+    });
+
+    const response = await POST(jsonRequest({
+      username: "Seat Limited",
+      password: "temporary-password",
+      role: "mechanic",
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("Shop user limit reached for your current plan.");
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the created auth user when profile creation fails", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser, deleteUser, createdUserId } = buildCreateUserRouteMocks({
+      profileError: { message: "profile insert failed" },
+    });
+
+    const response = await POST(jsonRequest({
+      username: "Cleanup User",
+      password: "temporary-password",
+      role: "mechanic",
+    }));
+
+    expect(response.status).toBe(400);
+    expect(createUser).toHaveBeenCalledTimes(1);
+    expect(deleteUser).toHaveBeenCalledWith(createdUserId);
   });
 
   it("uses the server-side shop namespace, so different shop namespaces produce different usernames and auth emails", () => {

@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-const MAX_ROWS = 500;
+const MAX_ROWS = 20;
+
+function escapePostgrestSearchValue(value: string): string {
+  return value.replace(/[\\%_,]/g, (char) => `\\${char}`);
+}
 
 export async function GET(req: Request) {
   const access = await requireShopScopedApiAccess({
@@ -19,13 +23,21 @@ export async function GET(req: Request) {
 
   let query = admin
     .from("profiles")
-    .select("id, full_name, email, phone, role, created_at, shop_id")
+    .select("id, full_name, email, phone, role, username, created_at, shop_id")
     .eq("shop_id", access.profile.shop_id)
-    .order("created_at", { ascending: false })
+    .order("full_name", { ascending: true, nullsFirst: false })
+    .order("username", { ascending: true, nullsFirst: false })
     .limit(MAX_ROWS);
 
   if (q) {
-    query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
+    const like = `%${escapePostgrestSearchValue(q)}%`;
+    query = query.or([
+      `full_name.ilike.${like}`,
+      `email.ilike.${like}`,
+      `username.ilike.${like}`,
+      `phone.ilike.${like}`,
+      `role.ilike.${like}`,
+    ].join(","));
   }
 
   const { data: users, error: usersErr } = await query;

@@ -33,6 +33,18 @@ const PANEL_CLASS =
 const INPUT_CLASS =
   "w-full rounded-lg border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--metal-border-strong,#64748b)]";
 
+const OWNER_ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
+  { value: "admin", label: "Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "advisor", label: "Advisor" },
+  { value: "mechanic", label: "Mechanic / Tech" },
+  { value: "parts", label: "Parts" },
+];
+
+const ADMIN_ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = OWNER_ROLE_OPTIONS.filter(
+  (role) => role.value !== "admin",
+);
+
 export default function CreateUserPage(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,9 +80,11 @@ export default function CreateUserPage(): JSX.Element {
   const [resetBusy, setResetBusy] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  // creator’s shop id (for auto-fill)
+  // creator’s shop context (server still enforces/overrides shop_id)
   const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
   const [creatorShopName, setCreatorShopName] = useState<string | null>(null);
+  const [actorRole, setActorRole] = useState<UserRole | null>(null);
+  const roleOptions = actorRole === "admin" ? ADMIN_ROLE_OPTIONS : OWNER_ROLE_OPTIONS;
   const [usernameTouched, setUsernameTouched] = useState(false);
 
   // load current user's shop_id once
@@ -83,12 +97,17 @@ export default function CreateUserPage(): JSX.Element {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("shop_id")
+        .select("shop_id, role")
         .eq("id", user.id)
         .maybeSingle();
 
       const shopId = profile?.shop_id ?? null;
       setCreatorShopId(shopId);
+      const role = (profile?.role ?? null) as UserRole | null;
+      setActorRole(role);
+      if (role === "admin") {
+        setForm((prev) => (prev.role === "owner" || prev.role === "admin" ? { ...prev, role: "manager" } : prev));
+      }
 
       if (shopId) {
         const { data: shop } = await supabase
@@ -142,7 +161,8 @@ export default function CreateUserPage(): JSX.Element {
         email: (form.email ?? "").trim().toLowerCase() || null,
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
-        shop_id: (form.shop_id ?? "")?.trim() || creatorShopId || null,
+        // Server intentionally ignores/overrides any client shop_id.
+        // Future multi-location staff creation should use a verified manageable-shop resolver.
         phone: (form.phone ?? "")?.trim() || null,
       };
 
@@ -195,7 +215,7 @@ export default function CreateUserPage(): JSX.Element {
         email: "",
         full_name: "",
         phone: "",
-        shop_id: body.shop_id ?? creatorShopId ?? null,
+        shop_id: creatorShopId ?? null,
       }));
       setUsernameTouched(false);
 
@@ -394,44 +414,25 @@ export default function CreateUserPage(): JSX.Element {
                   setForm({ ...form, role: e.target.value as UserRole })
                 }
               >
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
-                <option value="manager">Manager</option>
-                <option value="foreman">Foreman</option>
-                <option value="lead_hand">Lead Hand</option>
-                <option value="advisor">Advisor</option>
-                <option value="mechanic">Mechanic / Technician</option>
-                <option value="parts">Parts</option>
-                <option value="driver">Driver</option>
-                <option value="dispatcher">Dispatcher</option>
-                <option value="fleet_manager">Fleet manager</option>
+                {roleOptions.map((role) => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
+                  </option>
+                ))}
               </select>
               <p className="text-[11px] text-neutral-500">
                 App role controls access and permissions. Workforce title/category is managed
-                separately in the People profile. Use{" "}
-                <span style={{ color: COPPER }}>driver / dispatcher / fleet manager</span> for
-                Fleet Portal accounts.
+                separately in the People profile.
               </p>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
-                Shop ID{" "}
-                <span className="text-neutral-500">
-                  {creatorShopId ? "(auto from your profile)" : "(optional)"}
-                </span>
-              </label>
-              <input
-                className={INPUT_CLASS}
-                placeholder="Shop ID"
-                value={form.shop_id ?? ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    shop_id: e.target.value || null,
-                  })
-                }
-              />
+            <div className="space-y-1 rounded-xl border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/60 px-3 py-2">
+              <div className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                Current shop
+              </div>
+              <p className="text-sm text-neutral-200">
+                New staff will be added to your current shop{creatorShopName ? `: ${creatorShopName}` : "."}
+              </p>
             </div>
           </div>
 

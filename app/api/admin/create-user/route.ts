@@ -6,14 +6,36 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { assertShopHasAvailableSeat } from "@/features/shared/lib/server/shop-seat-limit";
+import { getShopSeatLimitSnapshot } from "@/features/shared/lib/server/shop-seat-limit";
 import {
   buildShopUserAuthEmail,
   buildShopUsernameNamespace,
   normalizeProvisioningUsername,
   withShopUsernameSuffix,
 } from "@/features/users/lib/username";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { canonicalizeRole, type CanonicalRole } from "@/features/shared/lib/rbac";
+
+
+const OWNER_CREATABLE_ROLES: ReadonlySet<CanonicalRole> = new Set([
+  "admin",
+  "manager",
+  "advisor",
+  "mechanic",
+  "parts",
+]);
+
+const ADMIN_CREATABLE_ROLES: ReadonlySet<CanonicalRole> = new Set([
+  "manager",
+  "advisor",
+  "mechanic",
+  "parts",
+]);
+
+function canCreateRole(actorRole: CanonicalRole, requestedRole: CanonicalRole): boolean {
+  if (actorRole === "owner") return OWNER_CREATABLE_ROLES.has(requestedRole);
+  if (actorRole === "admin") return ADMIN_CREATABLE_ROLES.has(requestedRole);
+  return false;
+}
 
 type Body = {
   username: string;
@@ -34,9 +56,12 @@ function logCreateUserStep(
     role?: string | null;
     authUserId?: string | null;
     profileId?: string | null;
-    normalizedUsername?: string | null;
-    syntheticAuthEmail?: string | null;
-    contactEmail?: string | null;
+    hasActorId?: boolean;
+    requestedRole?: string | null;
+    plan?: string | null;
+    cap?: number | null;
+    activeUsers?: number | null;
+    reason?: string | null;
     hasContactEmail?: boolean;
     emailConfirmed?: boolean | null;
   } = {},
@@ -52,9 +77,12 @@ function logCreateUserError(
     role?: string | null;
     authUserId?: string | null;
     profileId?: string | null;
-    normalizedUsername?: string | null;
-    syntheticAuthEmail?: string | null;
-    contactEmail?: string | null;
+    hasActorId?: boolean;
+    requestedRole?: string | null;
+    plan?: string | null;
+    cap?: number | null;
+    activeUsers?: number | null;
+    reason?: string | null;
     hasContactEmail?: boolean;
     emailConfirmed?: boolean | null;
     error?: string | null;
@@ -78,7 +106,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid role. Allowed roles: owner, admin, manager, foreman, lead_hand, advisor, service, dispatcher, parts, mechanic, fleet_manager, driver, customer.",
+            "Invalid role. Allowed roles for staff creation: admin, manager, advisor, mechanic/tech, parts.",
         },
         { status: 400 }
       );
@@ -101,10 +129,27 @@ export async function POST(req: Request) {
     }
 
     logCreateUserStep("access_authorized", {
+      hasActorId: Boolean(access.profile.id),
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
-      role: canonicalRole,
+      requestedRole: canonicalRole,
     });
+
+    if (!canCreateRole(access.canonicalRole, canonicalRole)) {
+      logCreateUserError("role_not_allowed", {
+        hasActorId: Boolean(access.profile.id),
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        requestedRole: canonicalRole,
+        reason: `actor_${access.canonicalRole}_cannot_create_requested_role`,
+      });
+      return NextResponse.json(
+        { error: "You are not allowed to create users with that role." },
+        { status: 403 },
+      );
+    }
+
+    // Future multi-location staff creation should use a verified manageable-shop resolver.
 
     // Service-role client is created server-side only and is never exposed to the browser.
     const serviceSupabase = createAdminSupabase();
@@ -137,7 +182,7 @@ export async function POST(req: Request) {
       logCreateUserError("username_lookup_failed", {
         adminId: access.profile.id,
         targetShopId: effectiveShopId,
-        role: canonicalRole,
+        requestedRole: canonicalRole,
         error: existingErr.message,
       });
       return NextResponse.json(
@@ -153,11 +198,31 @@ export async function POST(req: Request) {
       );
     }
 
-    try {
-      await assertShopHasAvailableSeat(serviceSupabase, effectiveShopId);
-    } catch (seatErr) {
-      const msg = seatErr instanceof Error ? seatErr.message : "Shop user limit reached for your current plan.";
-      return NextResponse.json({ error: msg }, { status: 400 });
+    const seatSnapshot = await getShopSeatLimitSnapshot(serviceSupabase, effectiveShopId);
+    logCreateUserStep("seat_limit_checked", {
+      hasActorId: Boolean(access.profile.id),
+      adminId: access.profile.id,
+      targetShopId: effectiveShopId,
+      requestedRole: canonicalRole,
+      plan: seatSnapshot.plan,
+      cap: seatSnapshot.cap,
+      activeUsers: seatSnapshot.activeUsers,
+    });
+    if (seatSnapshot.activeUsers >= seatSnapshot.cap) {
+      logCreateUserError("seat_limit_reached", {
+        hasActorId: Boolean(access.profile.id),
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        requestedRole: canonicalRole,
+        plan: seatSnapshot.plan,
+        cap: seatSnapshot.cap,
+        activeUsers: seatSnapshot.activeUsers,
+        reason: "current_plan_cap_reached",
+      });
+      return NextResponse.json(
+        { error: "Shop user limit reached for your current plan." },
+        { status: 400 },
+      );
     }
 
     // Staff username auth is primary: Supabase Auth uses the same synthetic email
@@ -167,12 +232,13 @@ export async function POST(req: Request) {
     const contactEmail = inputEmail || null;
 
     logCreateUserStep("creating_auth_user", {
+      hasActorId: Boolean(access.profile.id),
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
-      role: canonicalRole,
-      normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
+      requestedRole: canonicalRole,
+      plan: seatSnapshot.plan,
+      cap: seatSnapshot.cap,
+      activeUsers: seatSnapshot.activeUsers,
       hasContactEmail: Boolean(contactEmail),
     });
 
@@ -195,7 +261,8 @@ export async function POST(req: Request) {
       logCreateUserError("auth_user_create_failed", {
         adminId: access.profile.id,
         targetShopId: effectiveShopId,
-        role: canonicalRole,
+        requestedRole: canonicalRole,
+        reason: "auth_create_failed",
         error: createErr?.message ?? "No auth user returned",
       });
       const safeMessage = createErr?.message?.toLowerCase().includes("already been registered")
@@ -206,14 +273,37 @@ export async function POST(req: Request) {
     }
 
     const newUserId = created.user.id;
+    const cleanupCreatedAuthUser = async (reason: string): Promise<void> => {
+      const { error: cleanupErr } = await serviceSupabase.auth.admin.deleteUser(newUserId);
+      if (cleanupErr) {
+        logCreateUserError("auth_user_cleanup_failed", {
+          hasActorId: Boolean(access.profile.id),
+          adminId: access.profile.id,
+          targetShopId: effectiveShopId,
+          requestedRole: canonicalRole,
+          authUserId: newUserId,
+          reason,
+          error: cleanupErr.message,
+        });
+        return;
+      }
+
+      logCreateUserStep("auth_user_cleanup_completed", {
+        hasActorId: Boolean(access.profile.id),
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        requestedRole: canonicalRole,
+        authUserId: newUserId,
+        reason,
+      });
+    };
+
     logCreateUserStep("auth_user_created", {
+      hasActorId: Boolean(access.profile.id),
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
-      role: canonicalRole,
+      requestedRole: canonicalRole,
       authUserId: newUserId,
-      normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
       hasContactEmail: Boolean(contactEmail),
       emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
@@ -241,6 +331,7 @@ export async function POST(req: Request) {
 
     if (profileErr) {
       if (String(profileErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
+        await cleanupCreatedAuthUser("profile_seat_limit_failure");
         return NextResponse.json(
           { error: "Shop user limit reached for your current plan." },
           { status: 400 }
@@ -249,10 +340,12 @@ export async function POST(req: Request) {
       logCreateUserError("profile_upsert_failed", {
         adminId: access.profile.id,
         targetShopId: effectiveShopId,
-        role: canonicalRole,
+        requestedRole: canonicalRole,
         authUserId: newUserId,
+        reason: "profile_upsert_failed",
         error: profileErr.message,
       });
+      await cleanupCreatedAuthUser("profile_upsert_failed");
       return NextResponse.json(
         { error: "Profile upsert failed.", code: "profile_upsert_failed" },
         { status: 400 }
@@ -277,10 +370,12 @@ export async function POST(req: Request) {
       logCreateUserError("workforce_profile_seed_failed", {
         adminId: access.profile.id,
         targetShopId: effectiveShopId,
-        role: canonicalRole,
+        requestedRole: canonicalRole,
         authUserId: newUserId,
+        reason: "workforce_profile_seed_failed",
         error: workforceErr.message,
       });
+      await cleanupCreatedAuthUser("workforce_profile_seed_failed");
       return NextResponse.json(
         { error: "Workforce profile seed failed.", code: "workforce_profile_seed_failed" },
         { status: 400 }
@@ -288,14 +383,12 @@ export async function POST(req: Request) {
     }
 
     logCreateUserStep("completed", {
+      hasActorId: Boolean(access.profile.id),
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
-      role: canonicalRole,
+      requestedRole: canonicalRole,
       authUserId: newUserId,
       profileId: newUserId,
-      normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
       hasContactEmail: Boolean(contactEmail),
       emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
