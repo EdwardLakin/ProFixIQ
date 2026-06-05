@@ -11,6 +11,7 @@ type CustomerMatch = Pick<
   CustomerRow,
   | "id"
   | "shop_id"
+  | "external_id"
   | "business_name"
   | "name"
   | "first_name"
@@ -25,18 +26,25 @@ type CustomerMatch = Pick<
   | "postal_code"
   | "notes"
   | "import_notes"
+  | "created_at"
 >;
 type SupabaseRouteClient = ReturnType<typeof createServerSupabaseRoute>;
 type ImportRow = {
+  customer_id?: unknown;
+  external_id?: unknown;
   first_name?: unknown;
   last_name?: unknown;
   name?: unknown;
+  display_name?: unknown;
   company_name?: unknown;
   business_name?: unknown;
   email?: unknown;
   phone?: unknown;
   phone_number?: unknown;
+  phone_primary?: unknown;
+  phone_secondary?: unknown;
   address?: unknown;
+  address1?: unknown;
   street?: unknown;
   city?: unknown;
   province?: unknown;
@@ -44,6 +52,8 @@ type ImportRow = {
   postal_code?: unknown;
   zip?: unknown;
   notes?: unknown;
+  tags?: unknown;
+  customer_type?: unknown;
 };
 
 type Counts = {
@@ -78,7 +88,7 @@ type SupabaseErrorLike = {
 };
 
 const CUSTOMER_SELECT =
-  "id,shop_id,business_name,name,first_name,last_name,email,phone,phone_number,address,street,city,province,postal_code,notes,import_notes";
+  "id,shop_id,external_id,business_name,name,first_name,last_name,email,phone,phone_number,address,street,city,province,postal_code,notes,import_notes,created_at";
 const MAX_IMPORT_ROWS = 5000;
 const MAX_DIAGNOSTICS = 25;
 const INSERT_BATCH_SIZE = 250;
@@ -136,31 +146,49 @@ function splitName(name: string | null): {
 }
 
 function normalizeRow(row: ImportRow, shopId: string): CustomerInsert | null {
+  const externalId =
+    cleanString(row.external_id) ?? cleanString(row.customer_id);
   const businessName =
     cleanString(row.business_name) ?? cleanString(row.company_name);
-  const explicitName = cleanString(row.name);
+  const explicitName = cleanString(row.display_name) ?? cleanString(row.name);
   const split = splitName(explicitName);
   const firstName = cleanString(row.first_name) ?? split.firstName;
   const lastName = cleanString(row.last_name) ?? split.lastName;
   const email = cleanEmail(row.email);
-  const phone = cleanPhone(row.phone) ?? cleanPhone(row.phone_number);
+  const primaryPhone = cleanPhone(row.phone_primary) ?? cleanPhone(row.phone);
+  const secondaryPhone =
+    cleanPhone(row.phone_secondary) ?? cleanPhone(row.phone_number);
+  const phone = primaryPhone ?? secondaryPhone;
   const personName = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const displayName = businessName ?? explicitName ?? (personName || null);
+  const displayName = explicitName ?? businessName ?? (personName || null);
+  const customerType = normalizeComparable(row.customer_type);
+  const isFleet =
+    Boolean(businessName) ||
+    customerType === "fleet" ||
+    customerType === "business" ||
+    customerType === "company";
 
-  if (!displayName && !email && !phone) return null;
+  if (!externalId && !displayName && !email && !phone) return null;
 
   return {
     shop_id: shopId,
-    is_fleet: Boolean(businessName),
+    external_id: externalId,
+    is_fleet: isFleet,
     business_name: businessName,
     name: displayName,
     first_name: firstName,
     last_name: lastName,
     email,
     phone,
-    phone_number: phone,
-    address: cleanString(row.address) ?? cleanString(row.street),
-    street: cleanString(row.street) ?? cleanString(row.address),
+    phone_number: secondaryPhone ?? phone,
+    address:
+      cleanString(row.address1) ??
+      cleanString(row.address) ??
+      cleanString(row.street),
+    street:
+      cleanString(row.street) ??
+      cleanString(row.address1) ??
+      cleanString(row.address),
     city: cleanString(row.city),
     province: cleanString(row.province) ?? cleanString(row.state),
     postal_code: cleanString(row.postal_code) ?? cleanString(row.zip),
@@ -170,6 +198,7 @@ function normalizeRow(row: ImportRow, shopId: string): CustomerInsert | null {
 }
 
 type CustomerMatchIndex = {
+  byExternalId: Map<string, CustomerMatch>;
   byEmail: Map<string, CustomerMatch>;
   byPhone: Map<string, CustomerMatch>;
   byNameLocation: Map<string, CustomerMatch>;
@@ -212,12 +241,17 @@ function createCustomerMatchIndex(
   customers: CustomerMatch[],
 ): CustomerMatchIndex {
   const index: CustomerMatchIndex = {
+    byExternalId: new Map(),
     byEmail: new Map(),
     byPhone: new Map(),
     byNameLocation: new Map(),
   };
 
   for (const customer of customers) {
+    const externalId = normalizeComparable(customer.external_id);
+    if (externalId && !index.byExternalId.has(externalId))
+      index.byExternalId.set(externalId, customer);
+
     const email = normalizeEmailComparable(customer.email);
     if (email && !index.byEmail.has(email)) index.byEmail.set(email, customer);
 
@@ -240,6 +274,9 @@ function addCustomerToMatchIndex(
   customer: CustomerMatch,
 ) {
   const scopedIndex = createCustomerMatchIndex([customer]);
+  for (const [key, value] of scopedIndex.byExternalId) {
+    if (!index.byExternalId.has(key)) index.byExternalId.set(key, value);
+  }
   for (const [key, value] of scopedIndex.byEmail) {
     if (!index.byEmail.has(key)) index.byEmail.set(key, value);
   }
@@ -258,6 +295,7 @@ function customerInsertToMatch(
   return {
     id,
     shop_id: customer.shop_id ?? null,
+    external_id: customer.external_id ?? null,
     business_name: customer.business_name ?? null,
     name: customer.name ?? null,
     first_name: customer.first_name ?? null,
@@ -272,6 +310,7 @@ function customerInsertToMatch(
     postal_code: customer.postal_code ?? null,
     notes: customer.notes ?? null,
     import_notes: customer.import_notes ?? null,
+    created_at: customer.created_at ?? null,
   };
 }
 
@@ -283,6 +322,8 @@ async function getShopCustomerCandidates(
     .from("customers")
     .select(CUSTOMER_SELECT)
     .eq("shop_id", shopId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(10000)) as {
     data: CustomerMatch[] | null;
     error: SupabaseErrorLike | null;
@@ -297,6 +338,10 @@ function findExistingCustomer(
   shopId: string,
   customer: CustomerInsert,
 ): CustomerMatch | null {
+  const externalId = normalizeComparable(customer.external_id);
+  const externalMatch = externalId ? index.byExternalId.get(externalId) : null;
+  if (externalMatch?.shop_id === shopId) return externalMatch;
+
   const email = normalizeEmailComparable(customer.email);
   const emailMatch = email ? index.byEmail.get(email) : null;
   if (emailMatch?.shop_id === shopId) return emailMatch;
@@ -354,6 +399,7 @@ function logCustomerImportAuthDiagnostic(
 function updatePayload(customer: CustomerInsert): CustomerUpdate {
   const update: CustomerUpdate = { updated_at: new Date().toISOString() };
   for (const key of [
+    "external_id",
     "business_name",
     "name",
     "first_name",
