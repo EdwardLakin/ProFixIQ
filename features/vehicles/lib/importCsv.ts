@@ -46,6 +46,7 @@ export type VehicleImportPreviewRow = VehicleImportRow & {
   warnings: string[];
   errors: string[];
   resolvedCustomerId?: string;
+  resolvedCustomerLabel?: string;
 };
 
 export type VehicleImportPreview = {
@@ -101,6 +102,8 @@ const HEADER_ALIASES: Record<string, keyof VehicleImportRow> = {
   customerid: "customer_id",
   customerexternalid: "customer_external_id",
   customer_external_id: "customer_external_id",
+  externalcustomerid: "customer_external_id",
+  external_customer_id: "customer_external_id",
   customername: "customer_name",
   customer: "customer_name",
   customeremail: "customer_email",
@@ -146,22 +149,46 @@ function hasIdentity(row: VehicleImportRow): boolean {
   return Boolean(row.vin || row.unit_number || row.license_plate || (row.year && row.make && row.model));
 }
 
+export function isUuid(value: unknown): boolean {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+export function normalizeImportLookupValue(value: unknown): string | undefined {
+  const text = cleanVehicleImportText(value);
+  return text ? text.toLowerCase() : undefined;
+}
+
+function normalizeCustomerReference(row: VehicleImportRow): VehicleImportRow {
+  const customerId = cleanVehicleImportText(row.customer_id);
+  const customerExternalId = cleanVehicleImportText(row.customer_external_id);
+  if (!customerId && !customerExternalId) return row;
+  if (customerExternalId) return { ...row, customer_id: customerId && isUuid(customerId) ? customerId.trim() : undefined, customer_external_id: customerExternalId.trim() };
+  if (!customerId) return row;
+  if (isUuid(customerId)) return { ...row, customer_id: customerId.trim() };
+  return { ...row, customer_id: undefined, customer_external_id: customerId.trim() };
+}
+
 function customerLabel(customer: VehicleImportCustomerOption): string {
   return [customer.business_name, customer.name, [customer.first_name, customer.last_name].filter(Boolean).join(" "), customer.email, customer.phone, customer.phone_number]
     .map((value) => value?.trim())
     .find(Boolean) ?? customer.id;
 }
 
-function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomerOption[]): { id?: string; warning?: string } {
-  const customerExternalId = (row.customer_external_id ?? row.customer_id)?.trim();
+function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomerOption[]): { id?: string; label?: string; warning?: string } {
+  const customerExternalId = normalizeImportLookupValue(row.customer_external_id);
   if (customerExternalId) {
-    const externalMatch = customers.find((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
-    if (externalMatch) return { id: externalMatch.id };
-
-    const directIdMatch = customers.find((customer) => customer.id === customerExternalId);
-    if (directIdMatch) return { id: directIdMatch.id };
+    const externalMatches = customers.filter((customer) => normalizeImportLookupValue(customer.external_id) === customerExternalId);
+    if (externalMatches.length === 1) return { id: externalMatches[0].id, label: customerLabel(externalMatches[0]) };
+    if (externalMatches.length > 1) return { warning: `Ambiguous customer external ID match (${externalMatches.map(customerLabel).join(", ")}); this vehicle will import without a customer link.` };
 
     return { warning: "No matching customer found by external ID; this vehicle will import without a customer link." };
+  }
+
+  const customerUuid = row.customer_id?.trim();
+  if (customerUuid && isUuid(customerUuid)) {
+    const directIdMatch = customers.find((customer) => customer.id === customerUuid);
+    if (directIdMatch) return { id: directIdMatch.id, label: customerLabel(directIdMatch) };
+    return { warning: "No matching customer found by ID; this vehicle will import without a customer link." };
   }
 
   const candidates = customers.filter((customer) => {
@@ -175,7 +202,7 @@ function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomer
     return Boolean(emailMatch || phoneMatch || nameMatch);
   });
 
-  if (candidates.length === 1) return { id: candidates[0].id };
+  if (candidates.length === 1) return { id: candidates[0].id, label: customerLabel(candidates[0]) };
   if (candidates.length > 1) return { warning: `Ambiguous customer match (${candidates.map(customerLabel).join(", ")}); this vehicle will import without a customer link.` };
   if (row.customer_external_id || row.customer_name || row.customer_email || row.customer_phone) return { warning: "No matching customer found; this vehicle will import without a customer link." };
   return {};
@@ -201,7 +228,7 @@ export function parseVehicleCsv(csvText: string, sourceFilename?: string): Vehic
         if (text) (row as Record<string, unknown>)[key] = text;
       }
     }
-    return row;
+    return normalizeCustomerReference(row);
   });
 }
 
@@ -227,7 +254,7 @@ export function previewVehicleCsv(csvText: string, customers: VehicleImportCusto
     const customer = resolveCustomer(row, customers);
     if (customer.warning) warnings.push(customer.warning);
 
-    return { ...row, resolvedCustomerId: customer.id, status: errors.length ? "invalid" : "valid", errors, warnings };
+    return { ...row, resolvedCustomerId: customer.id, resolvedCustomerLabel: customer.label, status: errors.length ? "invalid" : "valid", errors, warnings };
   });
 
   return {

@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { toIntakeProgress } from "@/features/integrations/shopBoost/status";
 import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
 import {
@@ -13,13 +10,12 @@ import {
   summarizeRunJobsDetailed,
 } from "@/features/integrations/shopBoost/orchestrator";
 
-type DB = Database;
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export async function GET() {
-  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const supabaseUser = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,

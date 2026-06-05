@@ -72,3 +72,46 @@ describe("Vehicles page list filtering", () => {
     expect(result.map((row) => row.id)).toContain("older-match");
   });
 });
+
+import { fetchVehicleImportCustomers } from "@/features/vehicles/lib/importCustomers";
+
+describe("Vehicles import customer lookup", () => {
+  it("paginates same-shop customers beyond the first 1000 rows for CSV preview linking", async () => {
+    const rows = Array.from({ length: 1002 }, (_, index) => ({
+      id: `customer-${index}`,
+      shop_id: index === 1000 ? "other-shop" : "shop-real",
+      external_id: index === 1001 ? "CUST-100247" : `CUST-${index}`,
+      business_name: index === 1001 ? "Fleet Customer" : null,
+      name: null,
+      first_name: null,
+      last_name: null,
+      email: null,
+      phone: null,
+      phone_number: null,
+    }));
+    const ranges: Array<{ from: number; to: number; shopId: string }> = [];
+    const query = {
+      select: () => query,
+      eq: (_column: string, shopId: string) => {
+        query.shopId = shopId;
+        return query;
+      },
+      order: () => query,
+      range: async (from: number, to: number) => {
+        ranges.push({ from, to, shopId: query.shopId });
+        return { data: rows.filter((row) => row.shop_id === query.shopId).slice(from, to + 1), error: null };
+      },
+      shopId: "",
+    };
+    const supabase = { from: () => query } as any;
+
+    const customers = await fetchVehicleImportCustomers(supabase, "shop-real");
+
+    expect(ranges).toEqual([
+      { from: 0, to: 999, shopId: "shop-real" },
+      { from: 1000, to: 1999, shopId: "shop-real" },
+    ]);
+    expect(customers).toContainEqual(expect.objectContaining({ id: "customer-1001", external_id: "CUST-100247" }));
+    expect(customers).not.toContainEqual(expect.objectContaining({ id: "customer-1000" }));
+  });
+});

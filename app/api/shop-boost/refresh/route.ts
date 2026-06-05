@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-
-import type { Database } from "@shared/types/types/supabase";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 
-type DB = Database;
 
 export async function POST() {
-  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const supabaseUser = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,

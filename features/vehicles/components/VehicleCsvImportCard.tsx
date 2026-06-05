@@ -175,7 +175,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
                 <tr key={row.sourceRowNumber} className="text-neutral-200">
                   <td className="p-3">{row.sourceRowNumber}</td>
                   <td className="p-3">{row.unit_number || row.vin || row.license_plate || [row.year, row.make, row.model].filter(Boolean).join(" ") || "—"}</td>
-                  <td className="p-3">{row.resolvedCustomerId ?? row.customer_name ?? row.customer_email ?? row.customer_phone ?? "Unlinked"}</td>
+                  <td className="p-3">{row.resolvedCustomerLabel ?? row.resolvedCustomerId ?? row.customer_name ?? row.customer_email ?? row.customer_phone ?? "Unlinked"}</td>
                   <td className="p-3"><span className={row.status === "valid" ? "text-emerald-200" : "text-red-200"}>{row.status}</span></td>
                   <td className="p-3 text-amber-100">{[...row.errors, ...row.warnings].join(" ") || "—"}</td>
                 </tr>

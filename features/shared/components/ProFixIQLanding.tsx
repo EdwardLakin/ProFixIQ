@@ -4,8 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Toaster } from "sonner";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import LandingHero from "@shared/components/ui/LandingHero";
 import LandingShopBoost from "@shared/components/ui/LandingShopBoost";
@@ -21,7 +20,7 @@ import LandingReviews from "@shared/components/ui/LandingReviews";
 type Interval = "monthly" | "yearly";
 
 export default function ProFixIQLanding() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [sessionExists, setSessionExists] = useState(false);
 
   useEffect(() => {

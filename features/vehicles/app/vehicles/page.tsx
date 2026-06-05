@@ -9,11 +9,12 @@ import { VehicleCreateForm } from "@/features/vehicles/components/VehicleCreateF
 import { shouldShowVehicleOnboardingCard } from "@/features/vehicles/lib/guided";
 import { formatVehicleIdentifier, formatVehicleYearMakeModel, normalizeVehicleIdentifier, normalizeVehicleText } from "@/features/vehicles/lib/display";
 import { filterSortAndCapVehicles, vehicleCustomerName, type VehicleListRow } from "@/features/vehicles/lib/list";
+import { fetchVehicleImportCustomers } from "@/features/vehicles/lib/importCustomers";
 
 type DB = Database;
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-type CustomerOption = Pick<Customer, "id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number">;
+type CustomerOption = Pick<Customer, "id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number" | "external_id">;
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -37,21 +38,16 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
   if (!actor.user?.id) redirect(`/sign-in?redirect=${encodeURIComponent("/vehicles")}`);
   if (!actor.shopId) redirect("/account/shop-assignment-required");
 
-  const [{ data: vehicleRows, error: vehicleError }, { data: customerRows }] = await Promise.all([
+  const [{ data: vehicleRows, error: vehicleError }, importCustomers] = await Promise.all([
     supabase
       .from("vehicles")
       .select("id, external_id, unit_number, year, make, model, submodel, vin, license_plate, customer_id, mileage, engine_hours, engine, fuel_type, import_notes, source_row_id, customers(id, business_name, name, first_name, last_name, email, phone, phone_number)")
       .eq("shop_id", actor.shopId),
-    supabase
-      .from("customers")
-      .select("id, business_name, name, first_name, last_name, email, phone, phone_number")
-      .eq("shop_id", actor.shopId)
-      .order("updated_at", { ascending: false })
-      .limit(200),
+    fetchVehicleImportCustomers(supabase, actor.shopId),
   ]);
 
   const vehicles = filterSortAndCapVehicles(((vehicleRows ?? []) as unknown as VehicleListRow[]).map((row) => ({ ...row, customers: Array.isArray(row.customers) ? row.customers[0] ?? null : row.customers })), query);
-  const customers = (customerRows ?? []) as CustomerOption[];
+  const customers = importCustomers as CustomerOption[];
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">

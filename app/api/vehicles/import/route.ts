@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { cleanVehicleImportText, normalizeImportPlate, normalizeImportVin, type VehicleImportRow } from "@/features/vehicles/lib/importCsv";
+import { cleanVehicleImportText, isUuid, normalizeImportLookupValue, normalizeImportPlate, normalizeImportVin, type VehicleImportRow } from "@/features/vehicles/lib/importCsv";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
 type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 type VehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "customer_id" | "vin" | "unit_number" | "license_plate" | "external_id" | "year" | "make" | "model" | "submodel" | "color" | "engine" | "engine_type" | "engine_family" | "transmission" | "fuel_type" | "drivetrain" | "engine_hours" | "mileage" | "import_notes" | "source_row_id">;
 type CustomerRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number">;
-type CustomerLookupCache = { externalRows?: CustomerRow[] };
+type CustomerLookupCache = { allRows?: CustomerRow[] };
+
+const CUSTOMER_LOOKUP_PAGE_SIZE = 1000;
 
 type ImportBody = { rows?: unknown; shop_id?: unknown };
 
@@ -23,6 +25,25 @@ function numberValue(value: unknown): number | undefined {
   if (!text) return undefined;
   const parsed = Number(text.replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeCustomerReference(row: Record<string, unknown>): Pick<NormalizedVehicleImportRow, "customer_id" | "customer_external_id"> {
+  const explicitExternalId = cleanVehicleImportText(row.customer_external_id)
+    ?? cleanVehicleImportText(row.customerExternalId)
+    ?? cleanVehicleImportText(row.external_customer_id)
+    ?? cleanVehicleImportText(row.externalCustomerId);
+  const customerId = cleanVehicleImportText(row.customer_id) ?? cleanVehicleImportText(row.customerid) ?? cleanVehicleImportText(row.customerId);
+
+  if (explicitExternalId) {
+    return {
+      customer_external_id: explicitExternalId,
+      customer_id: customerId && isUuid(customerId) ? customerId.trim() : undefined,
+    };
+  }
+
+  if (!customerId) return {};
+  if (isUuid(customerId)) return { customer_id: customerId.trim() };
+  return { customer_external_id: customerId.trim() };
 }
 
 function normalizeRows(input: unknown): NormalizedVehicleImportRow[] {
@@ -51,8 +72,7 @@ function normalizeRows(input: unknown): NormalizedVehicleImportRow[] {
       odometer: cleanVehicleImportText(row.odometer) ?? cleanVehicleImportText(row.mileage),
       notes: cleanVehicleImportText(row.notes),
       status: cleanVehicleImportText(row.status),
-      customer_id: cleanVehicleImportText(row.customer_id),
-      customer_external_id: cleanVehicleImportText(row.customer_external_id) ?? cleanVehicleImportText(row.customer_id),
+      ...normalizeCustomerReference(row),
       customer_name: cleanVehicleImportText(row.customer_name),
       customer_email: cleanVehicleImportText(row.customer_email)?.toLowerCase(),
       customer_phone: cleanVehicleImportText(row.customer_phone),
@@ -142,38 +162,59 @@ function customerMatches(row: NormalizedVehicleImportRow, customer: CustomerRow)
   return Boolean(wantedName && names.some((value) => value === wantedName));
 }
 
-async function resolveCustomerId(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow, cache: CustomerLookupCache): Promise<{ customerId: string | null; warning?: string; error?: string }> {
-  const customerExternalId = row.customer_external_id?.trim();
+async function fetchSameShopCustomers(supabase: SupabaseClient<DB>, shopId: string, cache: CustomerLookupCache): Promise<{ customers: CustomerRow[]; error?: string }> {
+  if (cache.allRows) return { customers: cache.allRows };
 
-  if (customerExternalId) {
-    if (!cache.externalRows) {
-      const { data: customers, error } = await supabase.from("customers").select("id,external_id").eq("shop_id", shopId).limit(5000);
-      if (error) return { customerId: null, error: error.message };
-      cache.externalRows = (customers ?? []) as CustomerRow[];
-    }
-    const matches = cache.externalRows.filter((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
-    if (matches.length === 1) return { customerId: matches[0].id };
-    if (matches.length > 1) return { customerId: null, warning: "Ambiguous customer external ID match; vehicle imported without a customer link." };
+  const customers: CustomerRow[] = [];
+  for (let from = 0; ; from += CUSTOMER_LOOKUP_PAGE_SIZE) {
+    const to = from + CUSTOMER_LOOKUP_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id,external_id,business_name,name,first_name,last_name,email,phone,phone_number")
+      .eq("shop_id", shopId)
+      .range(from, to);
+
+    if (error) return { customers: [], error: error.message };
+
+    const page = (data ?? []) as CustomerRow[];
+    customers.push(...page);
+    if (page.length < CUSTOMER_LOOKUP_PAGE_SIZE) break;
   }
 
-  if (row.customer_id && row.customer_id !== customerExternalId) {
-    const { data: customer, error } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("id", row.customer_id).maybeSingle();
+  cache.allRows = customers;
+  return { customers };
+}
+
+async function resolveCustomerId(supabase: SupabaseClient<DB>, shopId: string, row: NormalizedVehicleImportRow, cache: CustomerLookupCache): Promise<{ customerId: string | null; warning?: string; error?: string }> {
+  const customerExternalId = normalizeImportLookupValue(row.customer_external_id);
+
+  if (customerExternalId) {
+    const { customers, error } = await fetchSameShopCustomers(supabase, shopId, cache);
+    if (error) return { customerId: null, error };
+    const matches = customers.filter((customer) => normalizeImportLookupValue(customer.external_id) === customerExternalId);
+    if (matches.length === 1) return { customerId: matches[0].id };
+    if (matches.length > 1) return { customerId: null, warning: "Ambiguous customer external ID match; vehicle imported without a customer link." };
+    return { customerId: null, warning: "No matching customer found by external ID; this vehicle will import without a customer link." };
+  }
+
+  if (row.customer_id && isUuid(row.customer_id)) {
+    const { data: customer, error } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("id", row.customer_id.trim()).maybeSingle();
     if (error) return { customerId: null, error: error.message };
-    if (!customer?.id) return { customerId: null, error: "Customer ID does not belong to this shop." };
+    if (!customer?.id) return { customerId: null, warning: "No matching customer found by ID; this vehicle will import without a customer link." };
     return { customerId: String(customer.id) };
   }
 
-  if (!row.customer_name && !row.customer_email && !row.customer_phone) return { customerId: null, warning: row.customer_external_id ? "No matching customer found; this vehicle will import without a customer link." : undefined };
+  if (!row.customer_name && !row.customer_email && !row.customer_phone) return { customerId: null };
 
-  const { data: customers, error } = await supabase.from("customers").select("id,external_id,business_name,name,first_name,last_name,email,phone,phone_number").eq("shop_id", shopId).limit(200);
-  if (error) return { customerId: null, error: error.message };
-  const matches = ((customers ?? []) as CustomerRow[]).filter((customer) => customerMatches(row, customer));
+  const { customers, error } = await fetchSameShopCustomers(supabase, shopId, cache);
+  if (error) return { customerId: null, error };
+  const matches = customers.filter((customer) => customerMatches(row, customer));
   if (matches.length === 1) return { customerId: matches[0].id };
   if (matches.length > 1) return { customerId: null, warning: "Ambiguous customer match; vehicle imported without a customer link." };
   return { customerId: null, warning: "No matching customer found; this vehicle will import without a customer link." };
 }
 
-async function findExistingVehicle(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow, options: { skipUnitNumberMatch?: boolean } = {}): Promise<{ vehicle: VehicleRow | null; matchKind?: "vin" | "external_id" | "unit_number" | "license_plate"; warning?: string; error?: string }> {
+async function findExistingVehicle(supabase: SupabaseClient<DB>, shopId: string, row: NormalizedVehicleImportRow, options: { skipUnitNumberMatch?: boolean } = {}): Promise<{ vehicle: VehicleRow | null; matchKind?: "vin" | "external_id" | "unit_number" | "license_plate"; warning?: string; error?: string }> {
   if (row.vin) {
     const { data, error } = await supabase.from("vehicles").select("id,customer_id,vin,unit_number,license_plate,external_id,year,make,model,submodel,color,engine,engine_type,engine_family,transmission,fuel_type,drivetrain,engine_hours,mileage,import_notes,source_row_id").eq("shop_id", shopId).eq("vin", row.vin).limit(1).maybeSingle();
     if (error) return { vehicle: null, error: error.message };
@@ -199,7 +240,7 @@ async function findExistingVehicle(supabase: ReturnType<typeof createRouteHandle
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
     if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
