@@ -19,3 +19,56 @@ describe("Vehicles page guided onboarding card visibility", () => {
     expect(shouldShowVehicleOnboardingCard(guidedQuery)).toBe(true);
   });
 });
+
+import { filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
+
+const baseVehicle = (overrides: Partial<VehicleListRow>): VehicleListRow => ({
+  id: String(overrides.id ?? "vehicle"),
+  external_id: null,
+  unit_number: null,
+  year: null,
+  make: null,
+  model: null,
+  submodel: null,
+  vin: null,
+  license_plate: null,
+  customer_id: null,
+  mileage: null,
+  engine_hours: null,
+  engine: null,
+  fuel_type: null,
+  import_notes: null,
+  source_row_id: null,
+  customers: null,
+  ...overrides,
+});
+
+describe("Vehicles page list filtering", () => {
+  it("sorts the default list alphabetically by unit/display label and caps to 20", () => {
+    const rows = Array.from({ length: 25 }, (_, index) => baseVehicle({ id: `vehicle-${index}`, unit_number: `Unit-${String(25 - index).padStart(2, "0")}` }));
+
+    const result = filterSortAndCapVehicles(rows, "");
+
+    expect(result).toHaveLength(20);
+    expect(result[0].unit_number).toBe("Unit-01");
+    expect(result[19].unit_number).toBe("Unit-20");
+  });
+
+  it.each([
+    ["VIN", "older-vin", { vin: "OLDER-VIN" }],
+    ["unit_number", "unit 42", { unit_number: "Unit 42" }],
+    ["license_plate", "abc123", { license_plate: "ABC123" }],
+    ["year", "2021", { year: 2021 }],
+    ["make", "hino", { make: "Hino" }],
+    ["model", "268", { model: "268" }],
+    ["customer name", "acme", { customers: { id: "customer-1", business_name: "Acme Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null } }],
+    ["external_id", "legacy-99", { external_id: "legacy-99" }],
+  ])("matches %s without pre-capping the source list", (_label, query, match) => {
+    const rows = Array.from({ length: 220 }, (_, index) => baseVehicle({ id: `vehicle-${index}`, unit_number: `Unit-${index}` }));
+    rows.push(baseVehicle({ id: "older-match", unit_number: "Unit-999", ...match }));
+
+    const result = filterSortAndCapVehicles(rows, query);
+
+    expect(result.map((row) => row.id)).toContain("older-match");
+  });
+});

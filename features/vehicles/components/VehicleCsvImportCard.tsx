@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/OnboardingHighlightFrame";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
@@ -31,6 +31,7 @@ type ImportResponse = {
 const EMPTY_COUNTS: ImportCounts = { created: 0, updated: 0, skipped: 0, failed: 0, warnings: 0 };
 
 export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighted = false }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | undefined>();
   const [preview, setPreview] = useState<VehicleImportPreview | null>(null);
@@ -41,6 +42,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
 
   const guidedMode = Boolean(guidedQuery && highlighted);
   const validRows = useMemo(() => preview?.rows.filter((row) => row.status === "valid") ?? [], [preview]);
+  const canConfirmImport = Boolean(preview && validRows.length > 0 && !success);
 
   function reset() {
     setCsvText("");
@@ -49,6 +51,14 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
     setSuccess(null);
     setError(null);
     setOnboardingCompleted(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function clearSelectedCsvAfterSuccess() {
+    setCsvText("");
+    setFileName(undefined);
+    setPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function readFile(file: File | null) {
@@ -56,7 +66,15 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
     setError(null);
     if (!file) return;
     setFileName(file.name);
-    setCsvText(await file.text());
+    const text = typeof file.text === "function"
+      ? await file.text()
+      : await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(reader.error ?? new Error("Unable to read CSV file."));
+        reader.readAsText(file);
+      });
+    setCsvText(text);
     setPreview(null);
   }
 
@@ -69,7 +87,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
   }
 
   async function confirmImport() {
-    if (!preview || validRows.length === 0) return;
+    if (!canConfirmImport) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -83,6 +101,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
       const payload = (await response.json().catch(() => ({}))) as ImportResponse;
       if (!response.ok || payload.ok === false) throw new Error(payload.error ?? "Vehicle import failed.");
       setSuccess(payload);
+      clearSelectedCsvAfterSuccess();
 
       if (guidedQuery) {
         const completeResponse = await fetch(`/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicles/complete`, {
@@ -120,7 +139,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
         <div className="space-y-3">
           <label className="block rounded-2xl border border-dashed border-[color:var(--desktop-border)] bg-black/20 p-4 text-sm text-neutral-300">
             <span className="block font-semibold text-white">Upload .csv file</span>
-            <input data-testid="vehicle-csv-file" className="mt-3 block w-full text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-orange-400/15 file:px-4 file:py-2 file:font-semibold file:text-orange-50" type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.currentTarget.files?.[0] ?? null)} />
+            <input ref={fileInputRef} data-testid="vehicle-csv-file" className="mt-3 block w-full text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-orange-400/15 file:px-4 file:py-2 file:font-semibold file:text-orange-50" type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.currentTarget.files?.[0] ?? null)} />
           </label>
           <label className="block text-sm font-medium text-neutral-200">
             Paste CSV text
@@ -138,7 +157,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
           </dl>
           <div className="mt-4 flex flex-col gap-2">
             <button type="button" onClick={buildPreview} disabled={!csvText.trim() || busy} className="rounded-xl border border-[var(--accent-copper-soft)]/60 bg-[linear-gradient(135deg,rgba(197,122,74,0.28),rgba(197,122,74,0.16))] px-4 py-2 text-sm font-semibold text-orange-50 disabled:opacity-55">Preview CSV</button>
-            <button type="button" onClick={() => void confirmImport()} disabled={!preview || validRows.length === 0 || busy} className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-55">{busy ? "Importing…" : "Confirm import"}</button>
+            <button type="button" onClick={() => void confirmImport()} disabled={!canConfirmImport || busy} className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-55">{busy ? "Importing…" : "Confirm import"}</button>
             <button type="button" onClick={reset} disabled={busy} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 disabled:opacity-55">Cancel/reset</button>
           </div>
         </aside>

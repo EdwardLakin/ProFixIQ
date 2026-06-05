@@ -48,6 +48,7 @@ function makeQuery(table: string): MockQuery {
         const found = mockSupabaseState.vehicles.find((row) => {
           if (row.shop_id !== query.filters.shop_id) return false;
           if (query.filters.vin) return row.vin === query.filters.vin;
+          if (query.filters.external_id) return row.external_id === query.filters.external_id;
           if (query.filters.unit_number) return String(row.unit_number).toLowerCase() === String(query.filters.unit_number).toLowerCase();
           if (query.filters.license_plate) return row.license_plate === query.filters.license_plate;
           return false;
@@ -116,8 +117,54 @@ describe("POST /api/vehicles/import", () => {
     const payload = await response.json();
     expect(response.status).toBe(200);
     expect(payload.counts.created).toBe(1);
-    expect(mockSupabaseState.inserts[0]).toMatchObject({ shop_id: "shop-real", user_id: "user-1", unit_number: "A-1", vin: "1HGCM82633A004352" });
+    expect(mockSupabaseState.inserts[0]).toMatchObject({ shop_id: "shop-real", unit_number: "A-1", vin: "1HGCM82633A004352" });
     expect(mockSupabaseState.inserts[0].shop_id).not.toBe("evil-shop");
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+
+  it("maps supported CSV fields into the vehicle insert payload", async () => {
+    const response = await POST(request([{
+      vehicle_id: "veh-legacy-1",
+      unit: "Unit-7",
+      plate: "abc123",
+      odometer: "123456",
+      trim: "XL",
+      notes: "Imported note",
+      engine: "6.7L",
+      fuel_type: "Diesel",
+      engine_hours: "4567",
+      shop_id: "csv-evil-shop",
+    }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      external_id: "veh-legacy-1",
+      unit_number: "Unit-7",
+      license_plate: "ABC123",
+      mileage: "123456",
+      submodel: "XL",
+      engine: "6.7L",
+      fuel_type: "Diesel",
+      engine_hours: 4567,
+    });
+    expect(String(mockSupabaseState.inserts[0].import_notes)).toContain("Imported note");
+    expect(mockSupabaseState.inserts[0].shop_id).not.toBe("csv-evil-shop");
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+  it("resolves customer_external_id in the authenticated shop before customer fallback", async () => {
+    mockSupabaseState.customers = [
+      { id: "other-customer", shop_id: "other-shop", external_id: "cust-legacy", email: "fleet@example.com", name: "Fleet Co" },
+      { id: "real-customer", shop_id: "shop-real", external_id: "cust-legacy", email: "other@example.com", name: "Other Name" },
+      { id: "fallback-customer", shop_id: "shop-real", external_id: "fallback", email: "fleet@example.com", name: "Fleet Co" },
+    ];
+
+    const response = await POST(request([{ unit_number: "A-1", customer_external_id: "cust-legacy", customer_email: "fleet@example.com", customer_name: "Fleet Co" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0].customer_id).toBe("real-customer");
   });
 
   it("rejects cross-shop customer_id", async () => {
@@ -137,6 +184,79 @@ describe("POST /api/vehicles/import", () => {
     const response = await POST(request([{ unit_number: "A-1", customer_email: "jane@example.com", customer_name: "Jane" }]));
     expect(response.status).toBe(200);
     expect(mockSupabaseState.inserts[0].customer_id).toBe("real-customer");
+  });
+
+
+  it.each([
+    ["VIN", { vin: "1HGCM82633A004352", make: "Honda" }, { vin: "1HGCM82633A004352" }],
+    ["external_id", { external_id: "veh-1", model: "Transit" }, { external_id: "veh-1" }],
+    ["unit_number", { unit_number: "A-1", year: 2020 }, { unit_number: "a-1" }],
+    ["license_plate", { license_plate: "ABC123", make: "Ford" }, { license_plate: "ABC123" }],
+  ])("existing same-shop %s updates instead of inserting", async (_label, importRow, existingVehicle) => {
+    mockSupabaseState.vehicles = [{ id: "vehicle-existing", shop_id: "shop-real", ...existingVehicle }];
+
+    const response = await POST(request([importRow]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({ created: 0, updated: 1 });
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({ shop_id: "shop-real", id: "vehicle-existing" });
+  });
+
+  it.each([
+    ["VIN", [{ vin: "1HGCM82633A004352" }, { vin: "1HGCM82633A004352", make: "Honda" }]],
+    ["external_id", [{ external_id: "veh-1" }, { external_id: "veh-1", make: "Honda" }]],
+    ["unit_number", [{ unit_number: "A-1" }, { unit_number: "a-1", make: "Honda" }]],
+    ["license_plate", [{ license_plate: "ABC123" }, { license_plate: "abc123", make: "Honda" }]],
+  ])("same-file duplicate %s is skipped", async (_label, rows) => {
+    const response = await POST(request(rows));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({ created: 1, skipped: 1 });
+    expect(mockSupabaseState.inserts).toHaveLength(1);
+  });
+
+  it.each([
+    ["VIN", { vin: "1HGCM82633A004352" }],
+    ["external_id", { external_id: "veh-1" }],
+    ["unit_number", { unit_number: "A-1" }],
+    ["license_plate", { license_plate: "ABC123" }],
+  ])("cross-shop duplicate %s does not block current shop import", async (_label, identity) => {
+    mockSupabaseState.vehicles = [{ id: "other-vehicle", shop_id: "other-shop", ...identity }];
+
+    const response = await POST(request([identity]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({ created: 1, updated: 0 });
+    expect(mockSupabaseState.inserts).toHaveLength(1);
+  });
+
+  it("sparse duplicate import does not erase existing non-empty fields", async () => {
+    mockSupabaseState.vehicles = [{ id: "vehicle-existing", shop_id: "shop-real", vin: "1HGCM82633A004352", make: "Ford", model: "F-150", mileage: "1000" }];
+
+    const response = await POST(request([{ vin: "1HGCM82633A004352", unit_number: "A-1" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.updates[0].payload).toMatchObject({ vin: "1HGCM82633A004352", unit_number: "A-1" });
+    expect(mockSupabaseState.updates[0].payload).not.toHaveProperty("make");
+    expect(mockSupabaseState.updates[0].payload).not.toHaveProperty("model");
+    expect(mockSupabaseState.updates[0].payload).not.toHaveProperty("mileage");
+  });
+
+  it("conflicting weak match does not overwrite VIN", async () => {
+    mockSupabaseState.vehicles = [{ id: "vehicle-existing", shop_id: "shop-real", unit_number: "A-1", vin: "1HGCM82633A004352" }];
+
+    const response = await POST(request([{ unit_number: "A-1", vin: "2HGCM82633A004352" }]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.counts).toMatchObject({ created: 0, updated: 0, skipped: 1 });
+    expect(mockSupabaseState.updates).toHaveLength(0);
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(payload.warnings[0].message).toMatch(/conflicts/i);
   });
 
   it("duplicate VIN is not inserted twice", async () => {

@@ -66,6 +66,41 @@ describe("VehicleCsvImportCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vehicles/import", expect.objectContaining({ method: "POST" })));
   });
 
+
+  it("clears selected CSV and disables confirm after a successful import", async () => {
+    const fetchMock = vi.fn(async () => importOk());
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VehicleCsvImportCard customers={[]} />);
+
+    const fileInput = screen.getByTestId("vehicle-csv-file") as HTMLInputElement;
+    await userEvent.upload(fileInput, new File(["unit,vin\nA-1,1HGCM82633A004352"], "vehicles.csv", { type: "text/csv" }));
+    expect(fileInput.files?.[0]?.name).toBe("vehicles.csv");
+
+    await userEvent.click(screen.getByRole("button", { name: /preview csv/i }));
+    const confirmButton = screen.getByRole("button", { name: /confirm import/i });
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(screen.getByText(/import complete: 1 created/i)).toBeInTheDocument());
+    expect(fileInput.value).toBe("");
+    expect(screen.getByLabelText(/paste csv text/i)).toHaveValue("");
+    expect(screen.queryByText("A-1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm import/i })).toBeDisabled();
+  });
+
+  it("does not POST again when confirm is clicked after a successful import", async () => {
+    const fetchMock = vi.fn(async () => importOk());
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VehicleCsvImportCard customers={[]} />);
+
+    await userEvent.type(screen.getByLabelText(/paste csv text/i), "unit\nA-1");
+    await userEvent.click(screen.getByRole("button", { name: /preview csv/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm import/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getByRole("button", { name: /confirm import/i }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("calls guided completion only after successful import", async () => {
     const fetchMock = vi.fn(async (url: string) => (url.includes("/api/vehicles/import") ? importOk() : onboardingOk()));
     vi.stubGlobal("fetch", fetchMock);

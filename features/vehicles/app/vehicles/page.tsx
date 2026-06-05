@@ -7,15 +7,11 @@ import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/quer
 import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvImportCard";
 import { VehicleCreateForm } from "@/features/vehicles/components/VehicleCreateForm";
 import { shouldShowVehicleOnboardingCard } from "@/features/vehicles/lib/guided";
-import { formatVehicleDisplayLabel, formatVehicleIdentifier, formatVehicleYearMakeModel, normalizeVehicleIdentifier, normalizeVehicleText } from "@/features/vehicles/lib/display";
+import { formatVehicleIdentifier, formatVehicleYearMakeModel, normalizeVehicleIdentifier, normalizeVehicleText } from "@/features/vehicles/lib/display";
+import { filterSortAndCapVehicles, vehicleCustomerName, type VehicleListRow } from "@/features/vehicles/lib/list";
 
 type DB = Database;
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-
-type VehicleRow = Pick<Vehicle, "id" | "unit_number" | "year" | "make" | "model" | "vin" | "license_plate" | "customer_id"> & {
-  customers?: Pick<Customer, "id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number"> | null;
-};
 
 type CustomerOption = Pick<Customer, "id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number">;
 
@@ -24,37 +20,6 @@ type SearchParams = Record<string, string | string[] | undefined>;
 function paramToString(value: string | string[] | undefined): string | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-function customerName(customer: VehicleRow["customers"]): string | null {
-  if (!customer) return null;
-  return (
-    customer.business_name?.trim() ||
-    customer.name?.trim() ||
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() ||
-    customer.email ||
-    customer.phone ||
-    customer.phone_number ||
-    null
-  );
-}
-
-function vehicleMatchesSearch(row: VehicleRow, query: string): boolean {
-  if (!query) return true;
-  const haystack = [
-    row.unit_number,
-    row.vin,
-    row.license_plate,
-    row.year != null ? String(row.year) : null,
-    row.make,
-    row.model,
-    customerName(row.customers),
-    formatVehicleDisplayLabel(row),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.toLowerCase());
 }
 
 export default async function VehiclesPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
@@ -75,10 +40,8 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
   const [{ data: vehicleRows, error: vehicleError }, { data: customerRows }] = await Promise.all([
     supabase
       .from("vehicles")
-      .select("id, unit_number, year, make, model, vin, license_plate, customer_id, customers(id, business_name, name, first_name, last_name, email, phone, phone_number)")
-      .eq("shop_id", actor.shopId)
-      .order("created_at", { ascending: false })
-      .limit(200),
+      .select("id, external_id, unit_number, year, make, model, submodel, vin, license_plate, customer_id, mileage, engine_hours, engine, fuel_type, import_notes, source_row_id, customers(id, business_name, name, first_name, last_name, email, phone, phone_number)")
+      .eq("shop_id", actor.shopId),
     supabase
       .from("customers")
       .select("id, business_name, name, first_name, last_name, email, phone, phone_number")
@@ -87,7 +50,7 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
       .limit(200),
   ]);
 
-  const vehicles = ((vehicleRows ?? []) as unknown as VehicleRow[]).map((row) => ({ ...row, customers: Array.isArray(row.customers) ? row.customers[0] ?? null : row.customers })).filter((row) => vehicleMatchesSearch(row, query));
+  const vehicles = filterSortAndCapVehicles(((vehicleRows ?? []) as unknown as VehicleListRow[]).map((row) => ({ ...row, customers: Array.isArray(row.customers) ? row.customers[0] ?? null : row.customers })), query);
   const customers = (customerRows ?? []) as CustomerOption[];
 
   return (
@@ -113,7 +76,7 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
             <h2 className="text-lg font-semibold text-white">Vehicle directory</h2>
             <p className="mt-1 text-sm text-neutral-400">Showing current-shop vehicles only.</p>
           </div>
-          <input name="q" defaultValue={query} placeholder="Search VIN, plate, unit, YMM, customer…" className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] sm:max-w-md" />
+          <input name="q" defaultValue={query} placeholder="Search VIN, plate, unit, YMM, customer, external ID…" className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] sm:max-w-md" />
         </form>
 
         {vehicleError ? <div className="mt-4 rounded-xl border border-red-500/30 bg-red-950/25 p-3 text-sm text-red-100">Unable to load vehicles right now.</div> : null}
@@ -129,7 +92,7 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
         {vehicles.length > 0 ? (
           <div className="mt-4 grid gap-3">
             {vehicles.map((vehicle) => {
-              const name = customerName(vehicle.customers);
+              const name = vehicleCustomerName(vehicle.customers);
               return (
                 <article key={vehicle.id} className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -141,11 +104,22 @@ export default async function VehiclesPage({ searchParams }: { searchParams?: Pr
                     {vehicle.customer_id && name ? <Link href={`/customers/${encodeURIComponent(vehicle.customer_id)}`} className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-3 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30">Open customer file</Link> : null}
                   </div>
                   <dl className="mt-4 grid gap-2 md:grid-cols-4">
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">External ID</dt><dd className="mt-1 truncate text-sm font-medium text-white">{normalizeVehicleText(vehicle.external_id) ?? "—"}</dd></div>
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Unit</dt><dd className="mt-1 truncate text-sm font-medium text-white">{normalizeVehicleText(vehicle.unit_number) ?? "—"}</dd></div>
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">VIN</dt><dd className="mt-1 truncate text-sm font-medium text-white">{normalizeVehicleIdentifier(vehicle.vin) ?? "—"}</dd></div>
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Plate</dt><dd className="mt-1 truncate text-sm font-medium text-white">{normalizeVehicleIdentifier(vehicle.license_plate) ?? "—"}</dd></div>
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Mileage</dt><dd className="mt-1 truncate text-sm font-medium text-white">{normalizeVehicleText(vehicle.mileage) ?? "—"}</dd></div>
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Engine hours</dt><dd className="mt-1 truncate text-sm font-medium text-white">{vehicle.engine_hours ?? "—"}</dd></div>
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Engine / fuel</dt><dd className="mt-1 truncate text-sm font-medium text-white">{[vehicle.engine, vehicle.fuel_type].map(normalizeVehicleText).filter(Boolean).join(" · ") || "—"}</dd></div>
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3"><dt className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Customer</dt><dd className="mt-1 truncate text-sm font-medium text-white">{name ?? "No customer linked"}</dd></div>
                   </dl>
+                  {(vehicle.import_notes || vehicle.source_row_id || vehicle.submodel) ? (
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-neutral-400">
+                      {vehicle.submodel ? <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Trim: {vehicle.submodel}</span> : null}
+                      {vehicle.source_row_id ? <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Source row: {vehicle.source_row_id}</span> : null}
+                      {vehicle.import_notes ? <span className="max-w-full truncate rounded-full border border-white/10 bg-black/20 px-2 py-1">Import notes: {vehicle.import_notes}</span> : null}
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
