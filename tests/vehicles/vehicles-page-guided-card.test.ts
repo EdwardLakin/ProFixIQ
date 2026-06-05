@@ -20,7 +20,7 @@ describe("Vehicles page guided onboarding card visibility", () => {
   });
 });
 
-import { filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
+import { fetchVehicleDirectoryRows, filterSortAndCapVehicles, type VehicleListRow } from "@/features/vehicles/lib/list";
 
 const baseVehicle = (overrides: Partial<VehicleListRow>): VehicleListRow => ({
   id: String(overrides.id ?? "vehicle"),
@@ -61,8 +61,10 @@ describe("Vehicles page list filtering", () => {
     ["year", "2021", { year: 2021 }],
     ["make", "hino", { make: "Hino" }],
     ["model", "268", { model: "268" }],
-    ["customer name", "acme", { customers: { id: "customer-1", business_name: "Acme Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null } }],
+    ["year/make/model", "2019 ford super", { year: 2019, make: "Ford", model: "Super Duty F-350" }],
+    ["customer name", "acme", { customers: { id: "customer-1", business_name: "Acme Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null, external_id: null } }],
     ["external_id", "legacy-99", { external_id: "legacy-99" }],
+    ["customer external_id", "cust-42", { customers: { id: "customer-1", external_id: "CUST-42", business_name: "Acme Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null } }],
   ])("matches %s without pre-capping the source list", (_label, query, match) => {
     const rows = Array.from({ length: 220 }, (_, index) => baseVehicle({ id: `vehicle-${index}`, unit_number: `Unit-${index}` }));
     rows.push(baseVehicle({ id: "older-match", unit_number: "Unit-999", ...match }));
@@ -70,6 +72,19 @@ describe("Vehicles page list filtering", () => {
     const result = filterSortAndCapVehicles(rows, query);
 
     expect(result.map((row) => row.id)).toContain("older-match");
+  });
+
+
+  it("keeps duplicate units, null customer_id vehicles, and linked customer vehicles visible", () => {
+    const rows = [
+      baseVehicle({ id: "duplicate-1", unit_number: "DUP-1", customer_id: null }),
+      baseVehicle({ id: "duplicate-2", unit_number: "DUP-1", customer_id: null }),
+      baseVehicle({ id: "unlinked", unit_number: "UNLINKED", customer_id: null }),
+      baseVehicle({ id: "linked", unit_number: "LINKED", customer_id: "customer-1", customers: { id: "customer-1", external_id: "CUST-1", business_name: "Linked Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null } }),
+    ];
+
+    expect(filterSortAndCapVehicles(rows, "").map((row) => row.id)).toEqual(["duplicate-1", "duplicate-2", "linked", "unlinked"]);
+    expect(filterSortAndCapVehicles(rows, "Linked Fleet").map((row) => row.id)).toEqual(["linked"]);
   });
 });
 
@@ -113,5 +128,68 @@ describe("Vehicles import customer lookup", () => {
     ]);
     expect(customers).toContainEqual(expect.objectContaining({ id: "customer-1001", external_id: "CUST-100247" }));
     expect(customers).not.toContainEqual(expect.objectContaining({ id: "customer-1000" }));
+  });
+});
+
+describe("Vehicles page directory data loading", () => {
+  it("loads current-shop public.vehicles without user_id filtering and keeps unlinked/customer-join-missing rows", async () => {
+    const calls: Array<{ table: string; column?: string; value?: unknown; values?: unknown[]; from?: number; to?: number }> = [];
+    const vehicleRows = [
+      baseVehicle({ id: "vehicle-unlinked", unit_number: "A-1", customer_id: null }),
+      baseVehicle({ id: "vehicle-linked", unit_number: "B-1", customer_id: "customer-1" }),
+      baseVehicle({ id: "vehicle-missing-customer", unit_number: "C-1", customer_id: "missing-customer" }),
+    ];
+    const customerRows = [{ id: "customer-1", external_id: "CUST-1", business_name: "Linked Fleet", name: null, first_name: null, last_name: null, email: null, phone: null, phone_number: null }];
+
+    function makeQuery(table: string) {
+      const query = {
+        select: () => query,
+        eq: (column: string, value: unknown) => {
+          calls.push({ table, column, value });
+          return query;
+        },
+        order: () => query,
+        in: (column: string, values: unknown[]) => {
+          calls.push({ table, column, values });
+          return query;
+        },
+        range: async (from: number, to: number) => {
+          calls.push({ table, from, to });
+          return { data: table === "vehicles" ? vehicleRows : [], error: null };
+        },
+        then: (resolve: (value: { data: unknown[]; error: null }) => void) => resolve({ data: table === "customers" ? customerRows : [], error: null }),
+      };
+      return query;
+    }
+
+    const result = await fetchVehicleDirectoryRows({ from: (table: string) => makeQuery(table) }, "shop-real");
+
+    expect(result.error).toBeNull();
+    expect(result.rows.map((row) => row.id)).toEqual(["vehicle-unlinked", "vehicle-linked", "vehicle-missing-customer"]);
+    expect(result.rows.find((row) => row.id === "vehicle-linked")?.customers?.external_id).toBe("CUST-1");
+    expect(result.rows.find((row) => row.id === "vehicle-unlinked")?.customers).toBeNull();
+    expect(result.rows.find((row) => row.id === "vehicle-missing-customer")?.customers).toBeNull();
+    expect(calls).toContainEqual(expect.objectContaining({ table: "vehicles", column: "shop_id", value: "shop-real" }));
+    expect(calls).toContainEqual(expect.objectContaining({ table: "customers", column: "shop_id", value: "shop-real" }));
+    expect(calls).not.toContainEqual(expect.objectContaining({ column: "user_id" }));
+  });
+
+  it("still returns vehicles when the customer lookup fails", async () => {
+    function makeQuery(table: string) {
+      const query = {
+        select: () => query,
+        eq: () => query,
+        order: () => query,
+        in: () => query,
+        range: async () => ({ data: [baseVehicle({ id: "vehicle-1", unit_number: "A-1", customer_id: "customer-1" })], error: null }),
+        then: (resolve: (value: { data: unknown[]; error: unknown | null }) => void) => resolve({ data: [], error: table === "customers" ? new Error("customer lookup failed") : null }),
+      };
+      return query;
+    }
+
+    const result = await fetchVehicleDirectoryRows({ from: (table: string) => makeQuery(table) }, "shop-real");
+
+    expect(result.error).toBeNull();
+    expect(result.rows).toEqual([expect.objectContaining({ id: "vehicle-1", customers: null })]);
   });
 });
