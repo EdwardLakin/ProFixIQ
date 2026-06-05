@@ -28,6 +28,11 @@ type CustomerSearchRow = Pick<
   | "email"
   | "phone"
   | "phone_number"
+  | "address"
+  | "street"
+  | "city"
+  | "province"
+  | "postal_code"
   | "created_at"
 >;
 
@@ -176,10 +181,11 @@ function compactSecondaryDetails(input: {
   phoneNumber?: string | null;
   city?: string | null;
   province?: string | null;
+  postalCode?: string | null;
 }): string | null {
   const contactName = [input.firstName ?? "", input.lastName ?? ""].filter(Boolean).join(" ").trim();
   const phone = input.phone ?? input.phoneNumber ?? null;
-  const location = [input.city ?? "", input.province ?? ""].filter(Boolean).join(", ").trim();
+  const location = [input.city ?? "", input.province ?? "", input.postalCode ?? ""].filter(Boolean).join(", ").trim();
   const parts = [contactName, phone ?? "", input.email ?? "", location].filter((part) => part && part !== input.businessName);
   return parts.length ? parts.join(" • ") : null;
 }
@@ -444,7 +450,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, address, city, province, postal_code",
+            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, address, street, city, province, postal_code, created_at",
           )
           .eq("id", customerId)
           .maybeSingle();
@@ -798,7 +804,7 @@ export default function CustomerProfilePage(): JSX.Element {
       const { data, error } = await supabase
         .from("customers")
         .select(
-          "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+          "id, first_name, last_name, name, business_name, email, phone, phone_number, address, street, city, province, postal_code, created_at",
         )
         .or(
           [
@@ -809,6 +815,11 @@ export default function CustomerProfilePage(): JSX.Element {
             `email.ilike.${like}`,
             `phone.ilike.${like}`,
             `phone_number.ilike.${like}`,
+            `address.ilike.${like}`,
+            `street.ilike.${like}`,
+            `city.ilike.${like}`,
+            `province.ilike.${like}`,
+            `postal_code.ilike.${like}`,
           ].join(","),
         )
         .order("created_at", { ascending: false })
@@ -1295,7 +1306,7 @@ export default function CustomerProfilePage(): JSX.Element {
                                   : "—"}
                           </div>
                           <div className="mt-0.5 text-[11px] text-neutral-400">
-                            {compactSecondaryDetails({ firstName: r.first_name, lastName: r.last_name, businessName: r.business_name, email: r.email, phone: r.phone, phoneNumber: r.phone_number }) ?? "No contact details imported"}
+                            {compactSecondaryDetails({ firstName: r.first_name, lastName: r.last_name, businessName: r.business_name, email: r.email, phone: r.phone, phoneNumber: r.phone_number, city: r.city, province: r.province, postalCode: r.postal_code }) ?? "No contact details imported"}
                           </div>
                         </div>
                         <div className="text-[10px] text-neutral-500">{safeDate(r.created_at)}</div>
@@ -1551,6 +1562,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             phoneNumber: customer.phone_number,
                             city: typeof customerRecord["city"] === "string" ? customerRecord["city"] : null,
                             province: typeof customerRecord["province"] === "string" ? customerRecord["province"] : null,
+                            postalCode: typeof customerRecord["postal_code"] === "string" ? customerRecord["postal_code"] : null,
                           }) ?? "No contact details imported"}
                         </div>
                       </>
@@ -1558,7 +1570,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   })()}
 
                   <div className="mt-2 text-sm leading-6 text-neutral-400">
-                    <div>{asText((customer as unknown as Record<string, unknown>)["address"])}</div>
+                    <div>{asText((customer as unknown as Record<string, unknown>)["address"] ?? (customer as unknown as Record<string, unknown>)["street"])}</div>
                     <div>
                       {[
                         (customer as unknown as Record<string, unknown>)["city"],

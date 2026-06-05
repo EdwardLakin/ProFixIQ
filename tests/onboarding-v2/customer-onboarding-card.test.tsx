@@ -40,6 +40,7 @@ type MockQuery = {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
@@ -73,6 +74,7 @@ function makeQuery(table: string): MockQuery {
       return query;
     }),
     limit: vi.fn(() => query),
+    order: vi.fn(() => query),
     maybeSingle: vi.fn(async () => {
       if (table === "profiles") {
         mockSupabaseState.profileSelects += 1;
@@ -283,6 +285,33 @@ describe("CustomerCsvImportCard", () => {
     );
   });
 
+  it("clears the selected CSV and disables confirm after a successful import", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        counts: { created: 1, updated: 0, skipped: 0, failed: 0 },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CustomerCsvImportCard />);
+
+    await uploadCsv(
+      "display_name,email,phone_primary,address1,city,province,postal_code\nAda Lovelace,ada@example.com,(555) 111-2222,123 Engine Way,Toronto,ON,M5V 2T6\n",
+    );
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirm import/i,
+    });
+    expect(confirmButton).toBeEnabled();
+
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(confirmButton).toBeDisabled());
+    expect(screen.getByText("No CSV selected")).toBeInTheDocument();
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+  });
+
   it("does not call onboarding completion when the import has hard failures", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/customers/import")
@@ -436,6 +465,92 @@ describe("POST /api/customers/import", () => {
     });
     expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
     expect(mockSupabaseState.inserts[0].shop_id).not.toBe("evil-shop");
+  });
+
+  it("maps uploaded CSV-style customer fields into the customer insert payload without user_id", async () => {
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            {
+              customer_id: "CUST-100",
+              customer_type: "fleet",
+              company_name: "Ada Logistics",
+              display_name: "Ada Logistics Display",
+              first_name: "Ada",
+              last_name: "Lovelace",
+              email: "ADA@EXAMPLE.COM",
+              phone_primary: "(555) 111-2222",
+              phone_secondary: "(555) 333-4444",
+              address1: "123 Engine Way",
+              city: "Toronto",
+              province: "ON",
+              postal_code: "M5V 2T6",
+              notes: "VIP fleet",
+            },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      external_id: "CUST-100",
+      is_fleet: true,
+      business_name: "Ada Logistics",
+      name: "Ada Logistics Display",
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.com",
+      phone: "5551112222",
+      phone_number: "5553334444",
+      address: "123 Engine Way",
+      street: "123 Engine Way",
+      city: "Toronto",
+      province: "ON",
+      postal_code: "M5V 2T6",
+      notes: "VIP fleet",
+    });
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+  it("does not create duplicate customer records for duplicate emails in the same shop import", async () => {
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { name: "Ada One", email: "ada@example.com" },
+            { name: "Ada Two", email: "ADA@example.com" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(1);
+    expect(
+      mockSupabaseState.customers.filter(
+        (customer) =>
+          customer.shop_id === "shop-real" &&
+          String(customer.email).toLowerCase() === "ada@example.com",
+      ),
+    ).toHaveLength(1);
   });
 
   it("updates or skips a duplicate email in the same shop instead of failing", async () => {

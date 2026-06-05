@@ -8,15 +8,21 @@ import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/On
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type CustomerImportRow = {
+  customer_id?: string | null;
+  external_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   name?: string | null;
+  display_name?: string | null;
   company_name?: string | null;
   business_name?: string | null;
   email?: string | null;
   phone?: string | null;
   phone_number?: string | null;
+  phone_primary?: string | null;
+  phone_secondary?: string | null;
   address?: string | null;
+  address1?: string | null;
   street?: string | null;
   city?: string | null;
   province?: string | null;
@@ -24,6 +30,8 @@ type CustomerImportRow = {
   postal_code?: string | null;
   zip?: string | null;
   notes?: string | null;
+  tags?: string | null;
+  customer_type?: string | null;
 };
 
 type ImportCounts = {
@@ -59,15 +67,21 @@ type Props = {
 };
 
 const SUPPORTED_COLUMNS = [
+  "customer_id",
+  "external_id",
   "first_name",
   "last_name",
   "name",
+  "display_name",
   "company_name",
   "business_name",
   "email",
   "phone",
   "phone_number",
+  "phone_primary",
+  "phone_secondary",
   "address",
+  "address1",
   "street",
   "city",
   "province",
@@ -75,10 +89,12 @@ const SUPPORTED_COLUMNS = [
   "postal_code",
   "zip",
   "notes",
+  "tags",
+  "customer_type",
 ] as const;
 
 const RECOMMENDED_COLUMNS =
-  "first_name, last_name, email, phone, address, city, province/state, postal_code/zip";
+  "customer_id, company_name/display_name, first_name, last_name, email, phone_primary/phone, address1/address, city, province/state, postal_code/zip";
 
 function cleanHeader(value: string): string {
   return value
@@ -106,10 +122,15 @@ function normalizeParsedRow(row: Record<string, unknown>): CustomerImportRow {
 
 function hasImportableIdentity(row: CustomerImportRow): boolean {
   return Boolean(
+    row.customer_id ||
+    row.external_id ||
     row.email ||
+    row.phone_primary ||
     row.phone ||
+    row.phone_secondary ||
     row.phone_number ||
     row.name ||
+    row.display_name ||
     row.company_name ||
     row.business_name ||
     row.first_name ||
@@ -121,10 +142,15 @@ function displayName(row: CustomerImportRow): string {
   return (
     row.company_name ||
     row.business_name ||
+    row.display_name ||
     row.name ||
     [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+    row.customer_id ||
+    row.external_id ||
     row.email ||
+    row.phone_primary ||
     row.phone ||
+    row.phone_secondary ||
     row.phone_number ||
     "—"
   );
@@ -263,6 +289,12 @@ export function CustomerCsvImportCard({
         warnings: payload.warnings ?? [],
         errors: payload.errors ?? [],
       });
+      if (payload.counts.failed === 0) {
+        setRows([]);
+        setHeaders([]);
+        setFileName(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
       if (
         isOnboarding &&
         payload.counts.created + payload.counts.updated > 0 &&
@@ -443,7 +475,11 @@ export function CustomerCsvImportCard({
                     </td>
                     <td className="px-3 py-2">{row.email ?? "—"}</td>
                     <td className="px-3 py-2">
-                      {row.phone ?? row.phone_number ?? "—"}
+                      {row.phone_primary ??
+                        row.phone ??
+                        row.phone_secondary ??
+                        row.phone_number ??
+                        "—"}
                     </td>
                     <td className="px-3 py-2">
                       {[row.city, row.province ?? row.state]
