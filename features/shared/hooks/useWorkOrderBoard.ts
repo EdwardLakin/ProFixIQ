@@ -1,20 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { useCallback, useEffect, useState } from "react";
 import type { WorkOrderBoardRow, WorkOrderBoardVariant } from "../lib/workboard/types";
-
-type ViewName =
-  | "v_work_order_board_cards_shop"
-  | "v_work_order_board_cards_fleet"
-  | "v_work_order_board_cards_portal";
-
-function viewForVariant(variant: WorkOrderBoardVariant): ViewName {
-  if (variant === "fleet") return "v_work_order_board_cards_fleet";
-  if (variant === "portal") return "v_work_order_board_cards_portal";
-  return "v_work_order_board_cards_shop";
-}
 
 export function useWorkOrderBoard(
   variant: WorkOrderBoardVariant,
@@ -23,7 +10,6 @@ export function useWorkOrderBoard(
     fleetId?: string | null;
   },
 ) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [rows, setRows] = useState<WorkOrderBoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,67 +18,27 @@ export function useWorkOrderBoard(
     setLoading(true);
     setError(null);
 
-    let query = supabase
-      .from(viewForVariant(variant))
-      .select("*")
-      .order("activity_at", { ascending: false });
+    const params = new URLSearchParams({ variant });
+    if (opts?.fleetId) params.set("fleetId", opts.fleetId);
+    if (opts?.limit) params.set("limit", String(opts.limit));
 
-    if (variant === "fleet" && opts?.fleetId) {
-      query = query.eq("fleet_id", opts.fleetId);
-    }
+    const res = await fetch(`/api/work-order-board?${params.toString()}`, { cache: "no-store" });
+    const payload = (await res.json().catch(() => null)) as { rows?: WorkOrderBoardRow[]; error?: string } | null;
 
-    if (opts?.limit) {
-      query = query.limit(opts.limit);
-    }
-
-    const { data, error: queryError } = await query;
-    if (queryError) {
-      setError(queryError.message);
+    if (!res.ok || !payload) {
+      setError(payload?.error ?? "Unable to load work order board.");
       setRows([]);
       setLoading(false);
       return;
     }
 
-    setRows((data ?? []) as WorkOrderBoardRow[]);
+    setRows(payload.rows ?? []);
     setLoading(false);
-  }, [opts?.fleetId, opts?.limit, supabase, variant]);
+  }, [opts?.fleetId, opts?.limit, variant]);
 
   useEffect(() => {
-    fetchRows();
-
-    const channel = supabase
-      .channel(`work-order-board:${variant}:${opts?.fleetId ?? "all"}:${opts?.limit ?? "all"}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => fetchRows(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines" },
-        () => fetchRows(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "part_request_items" },
-        () => fetchRows(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "part_requests" },
-        () => fetchRows(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "fleet_vehicles" },
-        () => fetchRows(),
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchRows, supabase, variant, opts?.fleetId, opts?.limit]);
+    void fetchRows();
+  }, [fetchRows]);
 
   return { rows, loading, error, refetch: fetchRows };
 }
