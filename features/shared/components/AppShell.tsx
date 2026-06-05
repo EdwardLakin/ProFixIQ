@@ -16,6 +16,7 @@ import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
+import ShopSwitcher from "@/features/shops/components/ShopSwitcher";
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 
@@ -391,6 +392,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 lg:gap-2">
+              <div className="hidden max-w-[280px] md:block">
+                <ShopSwitcher compact />
+              </div>
+
               <BillingBadge />
 
               <ActionButton
@@ -450,6 +455,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">
+            <div className="mb-3 md:hidden">
+              <ShopSwitcher compact />
+            </div>
+
             <TabsBridge tabsSubdued={chatOpen}>
               <div className="relative z-0 min-w-0">{children}</div>
             </TabsBridge>
