@@ -37,12 +37,15 @@ vi.mock("next/navigation", () => ({
 
 type MockQuery = {
   filters: Record<string, unknown>;
+  rangeFrom: number | null;
+  rangeTo: number | null;
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
+  range: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   then: ReturnType<typeof vi.fn>;
@@ -51,6 +54,8 @@ type MockQuery = {
 function selectCustomers(filters: Record<string, unknown>) {
   return mockSupabaseState.customers.filter((customer) => {
     if (filters.shop_id && customer.shop_id !== filters.shop_id) return false;
+    if (filters.external_id && customer.external_id !== filters.external_id)
+      return false;
     if (filters.email && customer.email !== filters.email) return false;
     if (filters.name && customer.name !== filters.name) return false;
     if (filters.or) {
@@ -64,6 +69,8 @@ function selectCustomers(filters: Record<string, unknown>) {
 function makeQuery(table: string): MockQuery {
   const query: MockQuery = {
     filters: {} as Record<string, unknown>,
+    rangeFrom: null,
+    rangeTo: null,
     select: vi.fn(() => query),
     eq: vi.fn((column: string, value: unknown) => {
       query.filters[column] = value;
@@ -74,6 +81,11 @@ function makeQuery(table: string): MockQuery {
       return query;
     }),
     limit: vi.fn(() => query),
+    range: vi.fn((from: number, to: number) => {
+      query.rangeFrom = from;
+      query.rangeTo = to;
+      return query;
+    }),
     order: vi.fn(() => query),
     maybeSingle: vi.fn(async () => {
       if (table === "profiles") {
@@ -124,9 +136,12 @@ function makeQuery(table: string): MockQuery {
     then: vi.fn((resolve: (value: unknown) => unknown) => {
       if (table === "customers") {
         mockSupabaseState.customerSelects += 1;
-        return Promise.resolve(
-          resolve({ data: selectCustomers(query.filters), error: null }),
-        );
+        const rows = selectCustomers(query.filters);
+        const pagedRows =
+          query.rangeFrom == null || query.rangeTo == null
+            ? rows
+            : rows.slice(query.rangeFrom, query.rangeTo + 1);
+        return Promise.resolve(resolve({ data: pagedRows, error: null }));
       }
       return Promise.resolve(resolve({ data: null, error: null }));
     }),
@@ -551,6 +566,130 @@ describe("POST /api/customers/import", () => {
           String(customer.email).toLowerCase() === "ada@example.com",
       ),
     ).toHaveLength(1);
+  });
+
+  it("updates an older same-shop customer matched by normalized external_id before email, phone, or name", async () => {
+    mockSupabaseState.customers = [
+      {
+        id: "older-external-customer",
+        shop_id: "shop-real",
+        external_id: " cust-100011 ",
+        business_name: null,
+        email: null,
+        name: null,
+      },
+      {
+        id: "email-collision",
+        shop_id: "shop-real",
+        external_id: "CUST-OTHER",
+        business_name: "Email Collision",
+        email: "ada@example.com",
+        name: "Email Collision",
+      },
+    ];
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            {
+              external_id: "CUST-100011",
+              business_name: "Ada Logistics",
+              email: "ada@example.com",
+            },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(mockSupabaseState.updates[0]).toMatchObject({
+      filters: { shop_id: "shop-real", id: "older-external-customer" },
+      payload: expect.objectContaining({
+        external_id: "CUST-100011",
+        business_name: "Ada Logistics",
+        email: "ada@example.com",
+      }),
+    });
+  });
+
+  it("prefetches beyond the first 1000 same-shop customers before matching external_id", async () => {
+    mockSupabaseState.customers = Array.from({ length: 1205 }, (_, index) => ({
+      id: `customer-${index}`,
+      shop_id: "shop-real",
+      external_id: `CUST-${String(index).padStart(6, "0")}`,
+      created_at: `2026-04-${String((index % 28) + 1).padStart(2, "0")}`,
+    }));
+
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            {
+              external_id: "CUST-001200",
+              business_name: "Customer 1200 Updated",
+            },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mockSupabaseState.customerSelects).toBe(2);
+    expect(mockSupabaseState.inserts).toHaveLength(0);
+    expect(mockSupabaseState.updates[0].filters).toMatchObject({
+      shop_id: "shop-real",
+      id: "customer-1200",
+    });
+  });
+
+  it("dedupes repeated external_id values inside one CSV before insert", async () => {
+    const response = await importCustomers(
+      new Request("http://localhost/api/customers/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { external_id: "CUST-100011", business_name: "Ada One" },
+            { external_id: " cust-100011 ", business_name: "Ada Two" },
+          ],
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(payload.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(mockSupabaseState.inserts).toHaveLength(1);
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      external_id: "CUST-100011",
+      business_name: "Ada One",
+    });
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+    expect(payload.warnings[0]).toMatchObject({
+      row: 2,
+      reason:
+        "Duplicate external_id already exists earlier in this import batch.",
+    });
   });
 
   it("updates or skips a duplicate email in the same shop instead of failing", async () => {

@@ -92,6 +92,7 @@ const CUSTOMER_SELECT =
 const MAX_IMPORT_ROWS = 5000;
 const MAX_DIAGNOSTICS = 25;
 const INSERT_BATCH_SIZE = 250;
+const CUSTOMER_PREFETCH_PAGE_SIZE = 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -129,6 +130,12 @@ function normalizeComparable(value: unknown): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeExternalIdComparable(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function splitName(name: string | null): {
@@ -248,7 +255,7 @@ function createCustomerMatchIndex(
   };
 
   for (const customer of customers) {
-    const externalId = normalizeComparable(customer.external_id);
+    const externalId = normalizeExternalIdComparable(customer.external_id);
     if (externalId && !index.byExternalId.has(externalId))
       index.byExternalId.set(externalId, customer);
 
@@ -318,19 +325,42 @@ async function getShopCustomerCandidates(
   supabase: SupabaseRouteClient,
   shopId: string,
 ): Promise<CustomerMatch[]> {
-  const { data, error } = (await supabase
-    .from("customers")
-    .select(CUSTOMER_SELECT)
-    .eq("shop_id", shopId)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(10000)) as {
-    data: CustomerMatch[] | null;
-    error: SupabaseErrorLike | null;
-  };
+  const customers: CustomerMatch[] = [];
 
-  if (error || !data?.length) return [];
-  return data.filter((candidate) => candidate.shop_id === shopId);
+  for (let from = 0; ; from += CUSTOMER_PREFETCH_PAGE_SIZE) {
+    const to = from + CUSTOMER_PREFETCH_PAGE_SIZE - 1;
+    const { data, error } = (await supabase
+      .from("customers")
+      .select(CUSTOMER_SELECT)
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)) as {
+      data: CustomerMatch[] | null;
+      error: SupabaseErrorLike | null;
+    };
+
+    if (error) {
+      console.warn("[customers-import] customer prefetch failed", {
+        shopId,
+        from,
+        to,
+        code: error.code,
+        status: error.status,
+        message: error.message,
+      });
+      break;
+    }
+
+    const page = (data ?? []).filter(
+      (candidate) => candidate.shop_id === shopId,
+    );
+    customers.push(...page);
+
+    if (!data || data.length < CUSTOMER_PREFETCH_PAGE_SIZE) break;
+  }
+
+  return customers;
 }
 
 function findExistingCustomer(
@@ -338,7 +368,7 @@ function findExistingCustomer(
   shopId: string,
   customer: CustomerInsert,
 ): CustomerMatch | null {
-  const externalId = normalizeComparable(customer.external_id);
+  const externalId = normalizeExternalIdComparable(customer.external_id);
   const externalMatch = externalId ? index.byExternalId.get(externalId) : null;
   if (externalMatch?.shop_id === shopId) return externalMatch;
 
@@ -809,6 +839,7 @@ export async function POST(req: Request) {
   const existingCustomers = await getShopCustomerCandidates(supabase, shopId);
   const matchIndex = createCustomerMatchIndex(existingCustomers);
   const pendingInserts: PendingCustomerInsert[] = [];
+  const importedExternalIds = new Set<string>();
 
   for (const [index, rawRow] of inputRows.entries()) {
     const rowNumber = index + 1;
@@ -831,6 +862,21 @@ export async function POST(req: Request) {
         reason: "Missing customer identity fields.",
       });
       continue;
+    }
+
+    const externalId = normalizeExternalIdComparable(customer.external_id);
+    if (externalId) {
+      if (importedExternalIds.has(externalId)) {
+        counts.skipped += 1;
+        addDiagnostic(warnings, {
+          row: rowNumber,
+          identity: getSafeIdentity(customer),
+          reason:
+            "Duplicate external_id already exists earlier in this import batch.",
+        });
+        continue;
+      }
+      importedExternalIds.add(externalId);
     }
 
     try {
