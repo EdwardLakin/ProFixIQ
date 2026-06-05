@@ -9,6 +9,7 @@ type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 type VehicleRow = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "customer_id" | "vin" | "unit_number" | "license_plate" | "external_id" | "year" | "make" | "model" | "submodel" | "color" | "engine" | "engine_type" | "engine_family" | "transmission" | "fuel_type" | "drivetrain" | "engine_hours" | "mileage" | "import_notes" | "source_row_id">;
 type CustomerRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number">;
+type CustomerLookupCache = { externalRows?: CustomerRow[] };
 
 type ImportBody = { rows?: unknown; shop_id?: unknown };
 
@@ -51,7 +52,7 @@ function normalizeRows(input: unknown): NormalizedVehicleImportRow[] {
       notes: cleanVehicleImportText(row.notes),
       status: cleanVehicleImportText(row.status),
       customer_id: cleanVehicleImportText(row.customer_id),
-      customer_external_id: cleanVehicleImportText(row.customer_external_id),
+      customer_external_id: cleanVehicleImportText(row.customer_external_id) ?? cleanVehicleImportText(row.customer_id),
       customer_name: cleanVehicleImportText(row.customer_name),
       customer_email: cleanVehicleImportText(row.customer_email)?.toLowerCase(),
       customer_phone: cleanVehicleImportText(row.customer_phone),
@@ -141,20 +142,25 @@ function customerMatches(row: NormalizedVehicleImportRow, customer: CustomerRow)
   return Boolean(wantedName && names.some((value) => value === wantedName));
 }
 
-async function resolveCustomerId(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow): Promise<{ customerId: string | null; warning?: string; error?: string }> {
-  if (row.customer_id) {
+async function resolveCustomerId(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow, cache: CustomerLookupCache): Promise<{ customerId: string | null; warning?: string; error?: string }> {
+  const customerExternalId = row.customer_external_id?.trim();
+
+  if (customerExternalId) {
+    if (!cache.externalRows) {
+      const { data: customers, error } = await supabase.from("customers").select("id,external_id").eq("shop_id", shopId).limit(5000);
+      if (error) return { customerId: null, error: error.message };
+      cache.externalRows = (customers ?? []) as CustomerRow[];
+    }
+    const matches = cache.externalRows.filter((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
+    if (matches.length === 1) return { customerId: matches[0].id };
+    if (matches.length > 1) return { customerId: null, warning: "Ambiguous customer external ID match; vehicle imported without a customer link." };
+  }
+
+  if (row.customer_id && row.customer_id !== customerExternalId) {
     const { data: customer, error } = await supabase.from("customers").select("id").eq("shop_id", shopId).eq("id", row.customer_id).maybeSingle();
     if (error) return { customerId: null, error: error.message };
     if (!customer?.id) return { customerId: null, error: "Customer ID does not belong to this shop." };
     return { customerId: String(customer.id) };
-  }
-
-  if (row.customer_external_id) {
-    const { data: customers, error } = await supabase.from("customers").select("id,external_id").eq("shop_id", shopId).limit(500);
-    if (error) return { customerId: null, error: error.message };
-    const matches = ((customers ?? []) as CustomerRow[]).filter((customer) => customer.external_id?.trim().toLowerCase() === row.customer_external_id?.trim().toLowerCase());
-    if (matches.length === 1) return { customerId: matches[0].id };
-    if (matches.length > 1) return { customerId: null, warning: "Ambiguous customer external ID match; vehicle imported without a customer link." };
   }
 
   if (!row.customer_name && !row.customer_email && !row.customer_phone) return { customerId: null, warning: row.customer_external_id ? "No matching customer found; this vehicle will import without a customer link." : undefined };
@@ -167,7 +173,7 @@ async function resolveCustomerId(supabase: ReturnType<typeof createRouteHandlerC
   return { customerId: null, warning: "No matching customer found; this vehicle will import without a customer link." };
 }
 
-async function findExistingVehicle(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow): Promise<{ vehicle: VehicleRow | null; matchKind?: "vin" | "external_id" | "unit_number" | "license_plate"; warning?: string; error?: string }> {
+async function findExistingVehicle(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string, row: NormalizedVehicleImportRow, options: { skipUnitNumberMatch?: boolean } = {}): Promise<{ vehicle: VehicleRow | null; matchKind?: "vin" | "external_id" | "unit_number" | "license_plate"; warning?: string; error?: string }> {
   if (row.vin) {
     const { data, error } = await supabase.from("vehicles").select("id,customer_id,vin,unit_number,license_plate,external_id,year,make,model,submodel,color,engine,engine_type,engine_family,transmission,fuel_type,drivetrain,engine_hours,mileage,import_notes,source_row_id").eq("shop_id", shopId).eq("vin", row.vin).limit(1).maybeSingle();
     if (error) return { vehicle: null, error: error.message };
@@ -178,7 +184,7 @@ async function findExistingVehicle(supabase: ReturnType<typeof createRouteHandle
     if (error) return { vehicle: null, error: error.message };
     if (data?.id) return { vehicle: data as VehicleRow, matchKind: "external_id" };
   }
-  if (row.unit_number) {
+  if (row.unit_number && !options.skipUnitNumberMatch) {
     const { data, error } = await supabase.from("vehicles").select("id,customer_id,vin,unit_number,license_plate,external_id,year,make,model,submodel,color,engine,engine_type,engine_family,transmission,fuel_type,drivetrain,engine_hours,mileage,import_notes,source_row_id").eq("shop_id", shopId).ilike("unit_number", row.unit_number).limit(1).maybeSingle();
     if (error) return { vehicle: null, error: error.message };
     if (data?.id) return { vehicle: data as VehicleRow, matchKind: "unit_number" };
@@ -216,6 +222,7 @@ export async function POST(req: Request) {
     let created = 0;
     let updated = 0;
     let skipped = 0;
+    const customerLookupCache: CustomerLookupCache = {};
 
     for (const row of rows) {
       try {
@@ -229,10 +236,14 @@ export async function POST(req: Request) {
           warnings.push({ row: row.sourceRowNumber, message: "Duplicate external vehicle ID in submitted import; skipped duplicate row." });
           continue;
         }
-        if (row.unit_number && seenUnits.has(row.unit_number.trim().toLowerCase())) {
+        const duplicateUnitNumberInImport = Boolean(row.unit_number && seenUnits.has(row.unit_number.trim().toLowerCase()));
+        if (duplicateUnitNumberInImport && !row.vin && !row.external_id) {
           skipped += 1;
-          warnings.push({ row: row.sourceRowNumber, message: "Duplicate unit number in submitted import; skipped duplicate row." });
+          warnings.push({ row: row.sourceRowNumber, message: "Duplicate unit number in submitted import and no unique VIN or external vehicle ID was provided; skipped duplicate row." });
           continue;
+        }
+        if (duplicateUnitNumberInImport) {
+          warnings.push({ row: row.sourceRowNumber, message: "Duplicate unit number in submitted import; continuing because VIN or external vehicle ID can identify this vehicle." });
         }
         if (row.license_plate && seenPlates.has(row.license_plate.trim().toLowerCase())) {
           skipped += 1;
@@ -244,14 +255,14 @@ export async function POST(req: Request) {
         if (row.unit_number) seenUnits.add(row.unit_number.trim().toLowerCase());
         if (row.license_plate) seenPlates.add(row.license_plate.trim().toLowerCase());
 
-        const customer = await resolveCustomerId(supabase, shopId, row);
+        const customer = await resolveCustomerId(supabase, shopId, row, customerLookupCache);
         if (customer.error) {
           errors.push({ row: row.sourceRowNumber, message: customer.error });
           continue;
         }
         if (customer.warning) warnings.push({ row: row.sourceRowNumber, message: customer.warning });
 
-        const existing = await findExistingVehicle(supabase, shopId, row);
+        const existing = await findExistingVehicle(supabase, shopId, row, { skipUnitNumberMatch: duplicateUnitNumberInImport && Boolean(row.vin || row.external_id) });
         if (existing.error) throw new Error(existing.error);
         if (existing.warning) warnings.push({ row: row.sourceRowNumber, message: existing.warning });
 
