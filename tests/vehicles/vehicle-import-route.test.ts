@@ -9,6 +9,7 @@ const { mockSupabaseState } = vi.hoisted(() => ({
     vehicles: [] as Array<Record<string, unknown>>,
     inserts: [] as Array<Record<string, unknown>>,
     updates: [] as Array<{ payload: Record<string, unknown>; filters: Record<string, unknown> }>,
+    customerRanges: [] as Array<{ from: number; to: number; shopId: unknown }>,
   },
 }));
 
@@ -21,6 +22,8 @@ type MockQuery = {
   eq: ReturnType<typeof vi.fn>;
   ilike: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
+  range: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
@@ -32,9 +35,12 @@ function makeQuery(table: string): MockQuery {
     select: vi.fn(() => query),
     eq: vi.fn((column: string, value: unknown) => { query.filters[column] = value; return query; }),
     ilike: vi.fn((column: string, value: unknown) => { query.filters[column] = value; return query; }),
-    limit: vi.fn(() => {
+    limit: vi.fn(() => query),
+    order: vi.fn(() => query),
+    range: vi.fn((from: number, to: number) => {
       if (table === "customers" && query.filters.shop_id && !query.filters.id) {
-        return Promise.resolve({ data: mockSupabaseState.customers.filter((row) => row.shop_id === query.filters.shop_id), error: null });
+        mockSupabaseState.customerRanges.push({ from, to, shopId: query.filters.shop_id });
+        return Promise.resolve({ data: mockSupabaseState.customers.filter((row) => row.shop_id === query.filters.shop_id).slice(from, to + 1), error: null });
       }
       return query;
     }),
@@ -78,8 +84,8 @@ function makeQuery(table: string): MockQuery {
   return query;
 }
 
-vi.mock("@supabase/auth-helpers-nextjs", () => ({
-  createRouteHandlerClient: vi.fn(() => ({
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createServerSupabaseRoute: vi.fn(() => ({
     auth: { getUser: vi.fn(async () => ({ data: { user: mockSupabaseState.user }, error: null })) },
     from: vi.fn((table: string) => makeQuery(table)),
   })),
@@ -98,6 +104,7 @@ describe("POST /api/vehicles/import", () => {
     mockSupabaseState.vehicles = [];
     mockSupabaseState.inserts = [];
     mockSupabaseState.updates = [];
+    mockSupabaseState.customerRanges = [];
   });
 
   it("rejects unauthenticated import", async () => {
@@ -182,6 +189,30 @@ describe("POST /api/vehicles/import", () => {
       external_id: "VEH-1",
     });
     expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+  it("paginates same-shop customer external_id lookup beyond 1000 rows", async () => {
+    mockSupabaseState.customers = Array.from({ length: 1002 }, (_, index) => ({
+      id: `customer-${index}`,
+      shop_id: "shop-real",
+      external_id: index === 1001 ? "CUST-100247" : `CUST-${index}`,
+    }));
+
+    const response = await POST(request([{ unit_number: "A-1", customer_id: "CUST-100247" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.customerRanges).toEqual([
+      { from: 0, to: 999, shopId: "shop-real" },
+      { from: 1000, to: 1999, shopId: "shop-real" },
+    ]);
+    expect(mockSupabaseState.inserts[0].customer_id).toBe("customer-1001");
+  });
+
+  it("does not use a non-UUID vehicle CSV customer_id as vehicles.customer_id directly", async () => {
+    const response = await POST(request([{ unit_number: "A-1", customer_id: "CUST-404" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0].customer_id).toBeNull();
   });
 
   it("does not link a missing same-shop customer external_id to another shop", async () => {

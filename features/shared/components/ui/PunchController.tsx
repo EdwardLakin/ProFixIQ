@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
 import PunchInOutButton from "@shared/components/PunchInOutButton";
@@ -28,7 +28,7 @@ function safeMsg(e: unknown, fallback: string): string {
 }
 
 export default function PunchController(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);

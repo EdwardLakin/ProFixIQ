@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 const COPPER_LIGHT = "var(--accent-copper-light)";
@@ -31,7 +31,7 @@ function Star({ filled }: { filled: boolean }) {
 }
 
 export default function ReviewForm({ shopId, onCreated }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [rating, setRating] = useState<number>(5);
   const [comment, setComment] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);

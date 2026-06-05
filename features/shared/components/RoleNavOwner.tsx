@@ -2,13 +2,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import Link from "next/link";
 
 export default function RoleNavOwner() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [userId, setUserId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
 

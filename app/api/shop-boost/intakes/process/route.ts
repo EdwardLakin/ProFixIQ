@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
   ensureRun,
@@ -21,7 +19,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 export async function POST(req: NextRequest) {
   // Public control-plane route: enqueue/trigger only.
   // Execution happens in /api/internal/shop-boost/run.
-  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const supabaseUser = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,

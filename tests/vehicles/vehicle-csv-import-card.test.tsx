@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvImportCard";
+import { parseVehicleCsv } from "@/features/vehicles/lib/importCsv";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 const guidedQuery: GuidedOnboardingQuery = {
@@ -66,13 +67,34 @@ describe("VehicleCsvImportCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vehicles/import", expect.objectContaining({ method: "POST" })));
   });
 
-  it("previews vehicle customer_id as a linked customer external_id", async () => {
-    render(<VehicleCsvImportCard customers={[{ id: "customer-uuid", external_id: "CUST-100425", name: "Fleet Customer" }]} />);
+  it("maps vehicle CSV customer_id to customer_external_id instead of a database customer UUID", () => {
+    expect(parseVehicleCsv("vehicle_id,unit_number,customer_id\nVEH-1,A-1,CUST-100247")[0]).toMatchObject({
+      external_id: "VEH-1",
+      unit_number: "A-1",
+      customer_external_id: "CUST-100247",
+    });
+    expect(parseVehicleCsv("vehicle_id,unit_number,customer_id\nVEH-1,A-1,CUST-100247")[0].customer_id).toBeUndefined();
+  });
 
-    await userEvent.type(screen.getByLabelText(/paste csv text/i), "vehicle_id,unit_number,customer_id\nVEH-1,A-1,CUST-100425");
+  it.each([
+    "customer_id",
+    "customerid",
+    "customer_external_id",
+    "customerExternalId",
+    "external_customer_id",
+    "externalCustomerId",
+  ])("supports %s as a customer external ID CSV header alias", (header) => {
+    const row = parseVehicleCsv(`unit_number,${header}\nA-1,CUST-100247`)[0];
+    expect(row.customer_external_id).toBe("CUST-100247");
+  });
+
+  it("previews vehicle customer_id as a linked customer external_id", async () => {
+    render(<VehicleCsvImportCard customers={[{ id: "customer-uuid", external_id: "CUST-100247", name: "Fleet Customer" }]} />);
+
+    await userEvent.type(screen.getByLabelText(/paste csv text/i), "vehicle_id,unit_number,customer_id\nVEH-1,A-1,CUST-100247");
     await userEvent.click(screen.getByRole("button", { name: /preview csv/i }));
 
-    expect(screen.getByText("customer-uuid")).toBeInTheDocument();
+    expect(screen.getByText("Fleet Customer")).toBeInTheDocument();
     expect(screen.queryByText("Unlinked")).not.toBeInTheDocument();
     expect(screen.queryByText(/No matching customer found/i)).not.toBeInTheDocument();
   });
