@@ -2,9 +2,8 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import type { Role } from "@shared/components/RoleHubTiles/tiles";
 import { TILES } from "@shared/components/RoleHubTiles/tiles";
 import Link from "next/link";
@@ -12,22 +11,9 @@ import PageShell from "@/features/shared/components/PageShell";
 import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 
-type DB = Database;
-
 async function getUserRole(): Promise<Role | null> {
-  const supabase = createServerComponentClient<DB>({ cookies });
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  return (profile?.role as Role | null) ?? null;
+  const actor = await resolveCurrentActor(createServerSupabaseRSC());
+  return (actor.role as Role | null) ?? null;
 }
 
 export default async function WorkOrdersHome() {

@@ -19,7 +19,6 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type Row = WorkOrder & {
   is_waiter?: boolean | null;
@@ -74,9 +73,6 @@ const ACTIVE_STATUS_FILTER = [
 
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUS_FILTER);
 
-const SEEDED_DEFAULT_STATUSES = [...ACTIVE_STATUS_FILTER, "completed"] as const satisfies readonly StatusKey[];
-const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
-
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
@@ -127,22 +123,6 @@ function isStatusPickerStatus(x: string): x is WorkOrderStatus {
     x === "ready_to_invoice" ||
     x === "invoiced"
   );
-}
-
-function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
-  const s = new Set(
-    (lines ?? []).map((l) => String(l.status ?? "awaiting").toLowerCase()),
-  );
-
-  if (s.has("in_progress")) return "in_progress";
-  if (s.has("on_hold")) return "on_hold";
-  if (
-    (lines ?? []).length > 0 &&
-    (lines ?? []).every((l) => (l.status ?? "") === "completed")
-  ) {
-    return "completed";
-  }
-  return "awaiting";
 }
 
 function stageAccent(status: string | null | undefined): {
@@ -342,87 +322,30 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(true);
     setErr(null);
 
-    let query = supabase
-      .from("work_orders")
-      .select(`
-        *,
-        customers:customers(first_name,last_name,phone,email),
-        vehicles:vehicles(year,make,model,license_plate)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (status === "") {
-      const defaultStatuses = isSeededShop ? SEEDED_DEFAULT_STATUSES : ACTIVE_STATUS_FILTER;
-      query = query.in("status", [...defaultStatuses]);
-    } else {
-      query = query.eq("status", status);
-    }
-
-    let data: Row[] | null = null;
-    let error: { message: string } | null = null;
-
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (status) params.set("status", status);
+    if (isSeededShop) params.set("seededShop", "1");
     if (workforceDrilldownActive) {
-      const { data: activeLines, error: activeLinesErr } = await supabase
-        .from("work_order_lines")
-        .select("id, work_order_id, assigned_tech_id, line_status, status, voided_at")
-        .is("voided_at", null);
-      if (activeLinesErr) {
-        setErr(activeLinesErr.message);
-        setRows([]);
-        setTechRollupByWo({});
-        setAssignedByWo({});
-        setHasLinesByWo({});
-        setLoading(false);
-        return;
-      }
-
-      const scopedActiveLines = (activeLines ?? []).filter(
-        (line) => !ACTIVE_LINE_EXCLUDED.has(String(line.line_status ?? line.status ?? "").toLowerCase()),
-      );
-      const lineIds = scopedActiveLines.map((line) => line.id);
-      const { data: bridgeRows, error: bridgeErr } = lineIds.length
-        ? await supabase
-            .from("work_order_line_technicians")
-            .select("work_order_line_id")
-            .in("work_order_line_id", lineIds)
-        : { data: [], error: null };
-
-      if (bridgeErr) {
-        setErr(bridgeErr.message);
-        setRows([]);
-        setTechRollupByWo({});
-        setAssignedByWo({});
-        setHasLinesByWo({});
-        setLoading(false);
-        return;
-      }
-
-      const hasBridgeAssignment = new Set((bridgeRows ?? []).map((row) => row.work_order_line_id));
-      const unassignedWorkOrderIds = Array.from(
-        new Set(
-          scopedActiveLines
-            .filter((line) => !line.assigned_tech_id && !hasBridgeAssignment.has(line.id))
-            .map((line) => line.work_order_id)
-            .filter(Boolean),
-        ),
-      );
-
-      if (unassignedWorkOrderIds.length === 0) {
-        data = [];
-      } else {
-        const result = await query.in("id", unassignedWorkOrderIds);
-        data = (result.data ?? []) as Row[];
-        error = result.error;
-      }
-    } else {
-      const result = await query;
-      data = (result.data ?? []) as Row[];
-      error = result.error;
+      params.set("assignment", "unassigned");
+      params.set("statusFilter", "active");
+      params.set("source", "workforce");
     }
 
-    if (error) {
-      setErr(error.message);
+    const res = await fetch(`/api/work-orders/list?${params.toString()}`, {
+      cache: "no-store",
+    });
+
+    const payload = (await res.json().catch(() => null)) as {
+      rows?: Row[];
+      techRollupByWo?: Record<string, TechRollup>;
+      assignedByWo?: Record<string, boolean>;
+      hasLinesByWo?: Record<string, boolean>;
+      error?: string;
+    } | null;
+
+    if (!res.ok || !payload) {
+      setErr(payload?.error ?? "Unable to load work orders.");
       setRows([]);
       setTechRollupByWo({});
       setAssignedByWo({});
@@ -431,106 +354,10 @@ export default function WorkOrdersView(): JSX.Element {
       return;
     }
 
-    const workOrders = (data ?? []) as Row[];
-    const qlc = q.trim().toLowerCase();
-
-    const filtered =
-      qlc.length === 0
-        ? workOrders
-        : workOrders.filter((r) => {
-            const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase();
-
-            const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-
-            const ymm = [
-              r.vehicles?.year ?? "",
-              r.vehicles?.make ?? "",
-              r.vehicles?.model ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-
-            const cid = (r.custom_id ?? "").toLowerCase();
-
-            return (
-              r.id.toLowerCase().includes(qlc) ||
-              cid.includes(qlc) ||
-              name.includes(qlc) ||
-              plate.includes(qlc) ||
-              ymm.includes(qlc)
-            );
-          });
-
-    setRows(filtered);
-
-    const ids = filtered.map((r) => r.id).filter(Boolean);
-    if (ids.length === 0) {
-      setTechRollupByWo({});
-      setAssignedByWo({});
-      setHasLinesByWo({});
-      setLoading(false);
-      return;
-    }
-
-    const { data: lines, error: lnErr } = await supabase
-      .from("work_order_lines")
-      .select("id,work_order_id,status,assigned_tech_id")
-      .in("work_order_id", ids);
-
-    if (lnErr) {
-      console.warn("[WorkOrdersView] failed to load lines for rollup:", lnErr.message);
-      setTechRollupByWo({});
-      setAssignedByWo({});
-      setHasLinesByWo({});
-      setLoading(false);
-      return;
-    }
-
-    const lineRows = (lines ?? []) as Array<Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">>;
-    const lineIds = lineRows.map((line) => line.id).filter(Boolean);
-    const { data: bridgeAssignments, error: bridgeAssignErr } = lineIds.length
-      ? await supabase
-          .from("work_order_line_technicians")
-          .select("work_order_line_id")
-          .in("work_order_line_id", lineIds)
-      : { data: [], error: null };
-
-    if (bridgeAssignErr) {
-      console.warn("[WorkOrdersView] failed to load assignment bridge rows:", bridgeAssignErr.message);
-    }
-
-    const bridgeAssignedLineIds = new Set(
-      (bridgeAssignments ?? []).map((row) => row.work_order_line_id).filter(Boolean),
-    );
-
-    const map: Record<string, Array<Pick<Line, "status">>> = {};
-    const assignedMap: Record<string, boolean> = {};
-    const hasLinesMap: Record<string, boolean> = {};
-    lineRows.forEach((l) => {
-      const woId = l.work_order_id;
-      if (!woId) return;
-      hasLinesMap[woId] = true;
-      if (!map[woId]) map[woId] = [];
-      map[woId].push(l);
-
-      if (l.assigned_tech_id || bridgeAssignedLineIds.has(l.id)) {
-        assignedMap[woId] = true;
-      }
-    });
-
-    const rollups: Record<string, TechRollup> = {};
-    ids.forEach((woId) => {
-      rollups[woId] = rollupTechStatus(map[woId] ?? []);
-      assignedMap[woId] = Boolean(assignedMap[woId]);
-      hasLinesMap[woId] = Boolean(hasLinesMap[woId]);
-    });
-
-    setTechRollupByWo(rollups);
-    setAssignedByWo(assignedMap);
-    setHasLinesByWo(hasLinesMap);
+    setRows(payload.rows ?? []);
+    setTechRollupByWo(payload.techRollupByWo ?? {});
+    setAssignedByWo(payload.assignedByWo ?? {});
+    setHasLinesByWo(payload.hasLinesByWo ?? {});
     setLoading(false);
   }, [isSeededShop, q, status, supabase, workforceDrilldownActive]);
 
