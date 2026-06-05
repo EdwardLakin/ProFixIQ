@@ -300,7 +300,7 @@ describe("CustomerCsvImportCard", () => {
     );
   });
 
-  it("clears the selected CSV and disables confirm after a successful import", async () => {
+  it("clears the selected CSV state and keeps the success summary after a successful import", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -325,6 +325,70 @@ describe("CustomerCsvImportCard", () => {
     await waitFor(() => expect(confirmButton).toBeDisabled());
     expect(screen.getByText("No CSV selected")).toBeInTheDocument();
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rows parsed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Preview")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Detected \d+ columns/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Import results: created 1, updated 0, skipped 0, failed 0.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      (screen.getByTestId("customer-csv-file-input") as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
+  it("does not send another import request when confirm is clicked after a successful import", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        counts: { created: 1, updated: 0, skipped: 0, failed: 0 },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CustomerCsvImportCard />);
+
+    await uploadCsv("first_name,last_name,email\nAda,Lovelace,ada@example.com\n");
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirm import/i,
+    });
+
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(confirmButton).toBeDisabled());
+
+    await userEvent.click(confirmButton);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-enables confirm after selecting and parsing a new valid CSV", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        counts: { created: 1, updated: 0, skipped: 0, failed: 0 },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CustomerCsvImportCard />);
+
+    await uploadCsv("first_name,last_name,email\nAda,Lovelace,ada@example.com\n");
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirm import/i,
+    });
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(confirmButton).toBeDisabled());
+    expect(screen.getByText("No CSV selected")).toBeInTheDocument();
+
+    await uploadCsv("first_name,last_name,email\nGrace,Hopper,grace@example.com\n");
+
+    expect(await screen.findByText("Grace Hopper")).toBeInTheDocument();
+    expect(confirmButton).toBeEnabled();
   });
 
   it("does not call onboarding completion when the import has hard failures", async () => {

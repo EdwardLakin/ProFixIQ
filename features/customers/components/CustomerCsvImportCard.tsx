@@ -188,6 +188,7 @@ export function CustomerCsvImportCard({
   const importSucceeded = Boolean(
     counts && counts.created + counts.updated > 0 && counts.failed === 0,
   );
+  const canConfirmImport = Boolean(fileName && importableRows.length);
 
   function resetImportState() {
     setRows([]);
@@ -196,6 +197,14 @@ export function CustomerCsvImportCard({
     setDiagnostics({});
     setParseError(null);
     setImportError(null);
+  }
+
+  function clearSelectedCsv() {
+    setFileName(null);
+    setRows([]);
+    setHeaders([]);
+    setParseError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -262,10 +271,7 @@ export function CustomerCsvImportCard({
   }
 
   async function confirmImport() {
-    if (!importableRows.length) {
-      setImportError(
-        "Upload a CSV with at least one customer name, company, email, or phone before importing.",
-      );
+    if (!canConfirmImport) {
       return;
     }
     setImporting(true);
@@ -290,10 +296,7 @@ export function CustomerCsvImportCard({
         errors: payload.errors ?? [],
       });
       if (payload.counts.failed === 0) {
-        setRows([]);
-        setHeaders([]);
-        setFileName(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        clearSelectedCsv();
       }
       if (
         isOnboarding &&
@@ -545,7 +548,7 @@ export function CustomerCsvImportCard({
         <button
           type="button"
           onClick={() => void confirmImport()}
-          disabled={importing || completingOnboarding || !importableRows.length}
+          disabled={importing || completingOnboarding || !canConfirmImport}
           className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
         >
           {importing
