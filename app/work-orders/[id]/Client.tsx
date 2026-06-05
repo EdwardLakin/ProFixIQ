@@ -61,6 +61,15 @@ type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   parts?: { name: string | null; sku?: string | null } | null;
 };
 type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
+type WorkOrderDetailPayload = {
+  work_order: WorkOrder;
+  lines: WorkOrderLine[];
+  customer: Customer | null;
+  vehicle: Vehicle | null;
+  line_technicians: LineTechRow[];
+  actor?: { profile_id: string; role: string | null; active_shop_id: string | null };
+  target_shop_id?: string | null;
+};
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -96,15 +105,6 @@ type PropertyContext = {
   assetType: string | null;
   latestVendorAssignment: string | null;
 };
-
-const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
-
-function splitCustomId(raw: string): { prefix: string; n: number | null } {
-  const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
-  if (!m) return { prefix: raw.toUpperCase(), n: null };
-  const n = m[2] ? parseInt(m[2], 10) : null;
-  return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
-}
 
 function isCompletedLineStatus(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").trim().toLowerCase();
@@ -380,27 +380,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       setUserId(uid);
       setAuthChecked(true);
 
-      if (uid) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .maybeSingle();
-        setCurrentUserRole(prof?.role ?? null);
-      }
-
-      try {
-        const res = await fetch("/api/assignables");
-        const json = (await res.json().catch(() => null)) as
-          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
-          | null;
-        if (res.ok && Array.isArray(json?.data)) {
-          setAssignables(json.data);
-        }
-      } catch {
-        // ignore
-      }
-
       if (!uid) setLoading(false);
     };
 
@@ -430,62 +409,22 @@ export default function WorkOrderIdClient(): JSX.Element {
       setViewError(null);
 
       try {
-        let woRow: WorkOrder | null = null;
-
-        // by UUID
-        if (looksLikeUuid(routeId)) {
-          const { data, error } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", routeId)
-            .maybeSingle();
-          if (!error) woRow = (data as WorkOrder | null) ?? null;
-        }
-
-        // by custom_id
-        if (!woRow) {
-          const eqRes = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("custom_id", routeId)
-            .maybeSingle();
-          woRow = (eqRes.data as WorkOrder | null) ?? null;
-
-          if (!woRow) {
-            const ilikeRes = await supabase
-              .from("work_orders")
-              .select("*")
-              .ilike("custom_id", routeId.toUpperCase())
-              .maybeSingle();
-            woRow = (ilikeRes.data as WorkOrder | null) ?? null;
-          }
-
-          if (!woRow) {
-            const { prefix, n } = splitCustomId(routeId);
-            if (n !== null) {
-              const { data: cands } = await supabase
-                .from("work_orders")
-                .select("*")
-                .ilike("custom_id", `${prefix}%`)
-                .limit(50);
-              const wanted = `${prefix}${n}`;
-              const match = (cands ?? []).find(
-                (r) =>
-                  (r.custom_id ?? "")
-                    .toUpperCase()
-                    .replace(/^([A-Z]+)0+/, "$1") === wanted,
-              );
-              if (match) woRow = match as WorkOrder;
-            }
-          }
-        }
+        const detailRes = await fetch(`/api/work-orders/${encodeURIComponent(routeId)}/detail`, {
+          cache: "no-store",
+        });
+        const detailJson = (await detailRes.json().catch(() => null)) as
+          | { data?: WorkOrderDetailPayload; error?: string; message?: string }
+          | null;
+        const detail = detailJson?.data ?? null;
+        const woRow: WorkOrder | null = detail?.work_order ?? null;
+        const detailErrorMessage = detailJson?.message || detailJson?.error || "Work order not visible / not found.";
 
         if (!woRow) {
           if (retry < 2) {
             await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
             return fetchAll(retry + 1);
           }
-          setViewError("Work order not visible / not found.");
+          setViewError(detailRes.ok ? "Work order not visible / not found." : detailErrorMessage);
           if (!loadedOnce) {
             setWo(null);
             setLines([]);
@@ -508,6 +447,25 @@ export default function WorkOrderIdClient(): JSX.Element {
         }
 
         setWo(woRow);
+        if (detail?.actor) setCurrentUserRole(detail.actor.role ?? null);
+
+        try {
+          const params = new URLSearchParams({ work_order_id: woRow.id });
+          const res = await fetch(`/api/assignables?${params.toString()}`);
+          const json = (await res.json().catch(() => null)) as
+            | { data?: Array<Pick<Profile, "id" | "full_name" | "role">>; error?: string; message?: string }
+            | null;
+          if (!res.ok || !Array.isArray(json?.data)) {
+            throw new Error(json?.message || json?.error || "Unable to load assignable technicians.");
+          }
+          setAssignables(json.data);
+        } catch (assignablesError) {
+          setAssignables([]);
+          console.warn("[WO id page] assignables load failed", {
+            workOrderId: woRow.id,
+            reason: assignablesError instanceof Error ? assignablesError.message : "unknown",
+          });
+        }
 
         // ✅ reset review state until loaded for this WO
         setReviewChecked(false);
@@ -521,31 +479,17 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes] = await Promise.all([
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
+        const lineRows = detail?.lines ?? [];
+        setLines(lineRows);
+        setVehicle(detail?.vehicle ?? null);
+        setCustomer(detail?.customer ?? null);
+
+        const [quoteRes, shopRes, propertyReqRes] = await Promise.all([
           supabase
             .from("work_order_quote_lines")
             .select("*")
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
-          woRow.vehicle_id
-            ? supabase
-                .from("vehicles")
-                .select("*")
-                .eq("id", woRow.vehicle_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          woRow.customer_id
-            ? supabase
-                .from("customers")
-                .select("*")
-                .eq("id", woRow.customer_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
           woRow.shop_id
             ? supabase
                 .from("shops")
@@ -560,19 +504,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             .maybeSingle(),
         ]);
 
-        if (linesRes.error) throw linesRes.error;
-        const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
-        setLines(lineRows);
-
         if (quoteRes.error) throw quoteRes.error;
         const quoteRows = (quoteRes.data ?? []) as WorkOrderQuoteLine[];
         setQuoteLines(quoteRows);
-
-        if (vehRes?.error) throw vehRes.error;
-        setVehicle((vehRes?.data as Vehicle | null) ?? null);
-
-        if (custRes?.error) throw custRes.error;
-        setCustomer((custRes?.data as Customer | null) ?? null);
 
         if (shopRes?.error) throw shopRes.error;
         setShopLaborRate(
@@ -641,7 +575,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // allocations + line techs
         if (lineRows.length) {
-          const [allocsQuery, stagedQuery, lineTechsQuery] = await Promise.all([
+          const [allocsQuery, stagedQuery] = await Promise.all([
             supabase
               .from("work_order_part_allocations")
               .select("*, parts(name)")
@@ -654,14 +588,6 @@ export default function WorkOrderIdClient(): JSX.Element {
             supabase
               .from("work_order_parts")
               .select("*, parts(name, sku)")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            supabase
-              .from("work_order_line_technicians")
-              .select("work_order_line_id, technician_id")
               .in(
                 "work_order_line_id",
                 lineRows.map((l) => l.id),
@@ -688,7 +614,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setStagedPartsByLine(stagedByLine);
 
           const techMap: Record<string, string[]> = {};
-          (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
+          (detail?.line_technicians ?? []).forEach((lt) => {
             const lnId = lt.work_order_line_id;
             const techId = lt.technician_id;
             if (!techMap[lnId]) techMap[lnId] = [];

@@ -5,6 +5,12 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  canActorAssignInShop,
+  canRoleAssignWorkOrders,
+  isAssignableTechnicianRole,
+  logAssignmentDiagnostic,
+} from "@/features/work-orders/lib/server/assignment-access";
 
 type Body = {
   work_order_id: string;
@@ -18,143 +24,189 @@ type LineTechInsert = {
   assigned_by?: string | null;
 };
 
-const ASSIGNABLE_ROLES = new Set([
-  "mechanic",
-  "tech",
-  "foreman",
-  "lead_hand",
-]);
+type WorkOrderScope = { id: string; shop_id: string | null };
+type TechnicianScope = { id: string; role: string | null; full_name: string | null; shop_id: string | null };
 
-function isAssignableRole(role: unknown): boolean {
-  return ASSIGNABLE_ROLES.has(String(role ?? "").toLowerCase());
+function jsonError(error: string, status: number, message?: string) {
+  return NextResponse.json({ error, message: message ?? error }, { status });
 }
 
 export async function POST(req: Request) {
+  let access: Awaited<ReturnType<typeof requireShopScopedApiAccess>> | null = null;
+  let workOrderId: string | null = null;
+  let targetShopId: string | null = null;
+
   try {
     const body = (await req.json()) as Partial<Body>;
     const { work_order_id, tech_id, only_unassigned = true } = body;
+    workOrderId = work_order_id ?? null;
 
-    if (!work_order_id) {
-      return NextResponse.json(
-        { error: "work_order_id is required" },
-        { status: 400 },
-      );
+    access = await requireShopScopedApiAccess();
+    if (!access.ok) {
+      logAssignmentDiagnostic({ actorPresent: false, workOrderId, reason: "not_authenticated" });
+      return jsonError("not_authenticated", 401, "Not authenticated");
     }
 
-    if (!tech_id) {
-      return NextResponse.json(
-        { error: "tech_id is required" },
-        { status: 400 },
-      );
+    if (!work_order_id || !tech_id) {
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        workOrderId,
+        reason: "missing_assignment_fields",
+      });
+      return jsonError("assignment_failed", 400, "work_order_id and tech_id are required");
     }
 
-    const access = await requireShopScopedApiAccess({
-      requiredCapability: "canManageWorkOrders",
-    });
-    if (!access.ok) return access.response;
+    const actorProfile = access.profile;
+    const admin = createAdminSupabase();
 
-    const admin = await createAdminSupabase();
-    const assigned_by = access.profile.id;
-    const shopId = access.profile.shop_id;
+    if (!canRoleAssignWorkOrders(access.profile.role)) {
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        workOrderId,
+        reason: "forbidden_assignment_role",
+      });
+      return jsonError("forbidden_assignment_role", 403, "Current role cannot assign technicians");
+    }
 
-    // Work order: use admin client
     const { data: wo, error: woErr } = await admin
       .from("work_orders")
       .select("id, shop_id")
       .eq("id", work_order_id)
-      .maybeSingle();
+      .maybeSingle<WorkOrderScope>();
 
     if (woErr) {
-      return NextResponse.json({ error: woErr.message }, { status: 400 });
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        workOrderId,
+        reason: "work_order_lookup_failed",
+      });
+      return jsonError("assignment_failed", 400, woErr.message);
     }
 
-    if (!wo) {
-      return NextResponse.json(
-        { error: "Work order not found" },
-        { status: 404 },
-      );
+    if (!wo?.shop_id) {
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        workOrderId,
+        reason: "work_order_not_found",
+      });
+      return jsonError("work_order_not_found", 404, "Work order not found");
     }
 
-    if (wo.shop_id !== shopId) {
-      return NextResponse.json(
-        { error: "Forbidden: cross-shop assignment" },
-        { status: 403 },
-      );
+    targetShopId = wo.shop_id;
+
+    const canAssignInTargetShop = await canActorAssignInShop({
+      admin,
+      profile: access.profile,
+      targetShopId,
+    });
+
+    if (!canAssignInTargetShop) {
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        targetShopId,
+        workOrderId,
+        reason: "forbidden_shop",
+      });
+      return jsonError("forbidden_shop", 403, "Current user cannot assign in this shop");
     }
 
-    // Tech profile: use admin client
     const { data: techProfile, error: techErr } = await admin
       .from("profiles")
       .select("id, role, full_name, shop_id")
       .eq("id", tech_id)
-      .maybeSingle();
+      .eq("shop_id", targetShopId)
+      .maybeSingle<TechnicianScope>();
 
     if (techErr) {
-      return NextResponse.json(
-        { error: `Failed to load tech profile: ${techErr.message}` },
-        { status: 400 },
-      );
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        targetShopId,
+        workOrderId,
+        reason: "technician_lookup_failed",
+      });
+      return jsonError("assignment_failed", 400, techErr.message);
     }
 
-    if (!techProfile) {
-      return NextResponse.json(
-        { error: "Tech profile not found for that id." },
-        { status: 404 },
-      );
-    }
-
-    if (techProfile.shop_id !== shopId) {
-      return NextResponse.json(
-        { error: "Tech is not in the same shop." },
-        { status: 403 },
-      );
-    }
-
-    if (!isAssignableRole(techProfile.role)) {
-      return NextResponse.json(
-        { error: "Selected profile is not assignable." },
-        { status: 400 },
-      );
+    if (!techProfile || !isAssignableTechnicianRole(techProfile.role)) {
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        targetShopId,
+        workOrderId,
+        reason: "technician_not_found",
+      });
+      return jsonError("technician_not_found", 404, "Assignable technician not found in target shop");
     }
 
     let updateQuery = admin
       .from("work_order_lines")
       .update({ assigned_tech_id: tech_id })
       .eq("work_order_id", work_order_id)
+      .eq("shop_id", targetShopId)
       .eq("line_type", "job");
 
     if (only_unassigned) {
       updateQuery = updateQuery.is("assigned_tech_id", null);
     }
 
-    const { data: updatedRows, error: updErr } = await updateQuery
-      .select("id");
+    const { data: updatedRows, error: updErr } = await updateQuery.select("id");
 
     if (updErr) {
-      return NextResponse.json(
-        { error: `Update failed: ${updErr.message}` },
-        { status: 400 },
-      );
+      logAssignmentDiagnostic({
+        actorPresent: true,
+        actorProfileId: access.profile.id,
+        actorRole: access.profile.role,
+        activeShopId: access.profile.shop_id,
+        targetShopId,
+        workOrderId,
+        reason: "assignment_failed",
+      });
+      return jsonError("assignment_failed", 400, updErr.message);
     }
 
     if (updatedRows && updatedRows.length > 0) {
       const linkRows: LineTechInsert[] = updatedRows.map((row) => ({
         work_order_line_id: row.id,
         technician_id: tech_id,
-        assigned_by,
+        assigned_by: actorProfile.id,
       }));
 
       const { error: linkErr } = await admin
         .from("work_order_line_technicians")
-        .upsert(linkRows, {
-          onConflict: "work_order_line_id,technician_id",
-        });
+        .upsert(linkRows, { onConflict: "work_order_line_id,technician_id" });
 
       if (linkErr) {
-        console.warn(
-          "assign-all: failed to upsert work_order_line_technicians:",
-          linkErr.message,
-        );
+        console.warn("[work-order-assignment] bridge upsert failed", {
+          actorPresent: true,
+          actorProfileId: access.profile.id,
+          actorRole: access.profile.role,
+          activeShopId: access.profile.shop_id,
+          targetShopId,
+          workOrderId,
+          reason: "bridge_upsert_failed",
+          code: linkErr.code,
+          message: linkErr.message,
+        });
       }
     }
 
@@ -169,6 +221,16 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const profile = access?.ok ? access.profile : null;
+    logAssignmentDiagnostic({
+      actorPresent: Boolean(profile),
+      actorProfileId: profile?.id,
+      actorRole: profile?.role,
+      activeShopId: profile?.shop_id,
+      targetShopId,
+      workOrderId,
+      reason: "assignment_failed",
+    });
+    return jsonError("assignment_failed", 500, msg);
   }
 }
