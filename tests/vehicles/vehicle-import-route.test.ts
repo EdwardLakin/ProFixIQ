@@ -167,13 +167,32 @@ describe("POST /api/vehicles/import", () => {
     expect(mockSupabaseState.inserts[0].customer_id).toBe("real-customer");
   });
 
-  it("rejects cross-shop customer_id", async () => {
-    mockSupabaseState.customers = [{ id: "customer-1", shop_id: "other-shop" }];
-    const response = await POST(request([{ unit_number: "A-1", customer_id: "customer-1" }]));
+  it("treats vehicle CSV customer_id as a same-shop customer external_id", async () => {
+    mockSupabaseState.customers = [
+      { id: "other-customer", shop_id: "other-shop", external_id: "CUST-100425" },
+      { id: "real-customer-uuid", shop_id: "shop-real", external_id: " CUST-100425 " },
+    ];
+
+    const response = await POST(request([{ vehicle_id: "VEH-1", unit_number: "A-1", customer_id: "CUST-100425", shop_id: "csv-evil-shop", user_id: "csv-user" }]));
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0]).toMatchObject({
+      shop_id: "shop-real",
+      customer_id: "real-customer-uuid",
+      external_id: "VEH-1",
+    });
+    expect(mockSupabaseState.inserts[0]).not.toHaveProperty("user_id");
+  });
+
+  it("does not link a missing same-shop customer external_id to another shop", async () => {
+    mockSupabaseState.customers = [{ id: "other-customer", shop_id: "other-shop", external_id: "CUST-100425" }];
+
+    const response = await POST(request([{ unit_number: "A-1", customer_id: "CUST-100425" }]));
     const payload = await response.json();
-    expect(response.status).toBe(400);
-    expect(payload.errors[0].message).toMatch(/does not belong/i);
-    expect(mockSupabaseState.inserts).toHaveLength(0);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseState.inserts[0].customer_id).toBeNull();
+    expect(payload.warnings[0].message).toMatch(/without a customer link/i);
   });
 
   it("customer email/name lookup is shop scoped", async () => {
@@ -267,11 +286,25 @@ describe("POST /api/vehicles/import", () => {
     expect(mockSupabaseState.inserts).toHaveLength(1);
   });
 
-  it("duplicate unit number is handled/skipped", async () => {
+  it("duplicate unit number without a stronger identity is handled/skipped", async () => {
     const response = await POST(request([{ unit_number: "A-1" }, { unit_number: "a-1" }]));
     const payload = await response.json();
     expect(response.status).toBe(200);
     expect(payload.counts).toMatchObject({ created: 1, skipped: 1 });
     expect(mockSupabaseState.inserts).toHaveLength(1);
+    expect(payload.warnings[0].message).toMatch(/no unique VIN or external vehicle ID/i);
+  });
+
+  it("duplicate unit number does not block unique VIN or external vehicle ID imports", async () => {
+    const response = await POST(request([
+      { vehicle_id: "VEH-1", unit_number: "A-1", vin: "1HGCM82633A004352" },
+      { vehicle_id: "VEH-2", unit_number: "a-1", vin: "2HGCM82633A004352" },
+    ]));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.counts).toMatchObject({ created: 2, skipped: 0 });
+    expect(mockSupabaseState.inserts).toHaveLength(2);
+    expect(payload.warnings[0].message).toMatch(/continuing because VIN or external vehicle ID/i);
   });
 });

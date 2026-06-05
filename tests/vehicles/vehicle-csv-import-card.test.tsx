@@ -66,6 +66,17 @@ describe("VehicleCsvImportCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vehicles/import", expect.objectContaining({ method: "POST" })));
   });
 
+  it("previews vehicle customer_id as a linked customer external_id", async () => {
+    render(<VehicleCsvImportCard customers={[{ id: "customer-uuid", external_id: "CUST-100425", name: "Fleet Customer" }]} />);
+
+    await userEvent.type(screen.getByLabelText(/paste csv text/i), "vehicle_id,unit_number,customer_id\nVEH-1,A-1,CUST-100425");
+    await userEvent.click(screen.getByRole("button", { name: /preview csv/i }));
+
+    expect(screen.getByText("customer-uuid")).toBeInTheDocument();
+    expect(screen.queryByText("Unlinked")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No matching customer found/i)).not.toBeInTheDocument();
+  });
+
 
   it("clears selected CSV and disables confirm after a successful import", async () => {
     const fetchMock = vi.fn(async () => importOk());

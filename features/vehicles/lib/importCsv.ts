@@ -153,17 +153,15 @@ function customerLabel(customer: VehicleImportCustomerOption): string {
 }
 
 function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomerOption[]): { id?: string; warning?: string } {
-  const customerExternalId = row.customer_external_id?.trim();
+  const customerExternalId = (row.customer_external_id ?? row.customer_id)?.trim();
   if (customerExternalId) {
-    const match = customers.find((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
-    if (match) return { id: match.id };
-  }
+    const externalMatch = customers.find((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
+    if (externalMatch) return { id: externalMatch.id };
 
-  const customerId = row.customer_id?.trim();
-  if (customerId) {
-    const match = customers.find((customer) => customer.id === customerId);
-    if (match) return { id: match.id };
-    return { warning: "No matching customer found; this vehicle will import without a customer link." };
+    const directIdMatch = customers.find((customer) => customer.id === customerExternalId);
+    if (directIdMatch) return { id: directIdMatch.id };
+
+    return { warning: "No matching customer found by external ID; this vehicle will import without a customer link." };
   }
 
   const candidates = customers.filter((customer) => {
@@ -224,7 +222,7 @@ export function previewVehicleCsv(csvText: string, customers: VehicleImportCusto
     if (!hasAnyValue) errors.push("Row is empty.");
     if (hasAnyValue && !hasIdentity(row)) errors.push("Add VIN, unit number, license plate, or year + make + model.");
     if (row.vin && (vinCounts.get(row.vin) ?? 0) > 1) warnings.push("Duplicate VIN inside this CSV; the server will import only one unambiguous vehicle.");
-    if (row.unit_number && (unitCounts.get(row.unit_number.trim().toLowerCase()) ?? 0) > 1) warnings.push("Duplicate unit number inside this CSV; the server will import only one unambiguous vehicle.");
+    if (row.unit_number && (unitCounts.get(row.unit_number.trim().toLowerCase()) ?? 0) > 1) warnings.push("Duplicate unit number inside this CSV; expected for some fleets and will not block rows with a unique VIN or external vehicle ID.");
 
     const customer = resolveCustomer(row, customers);
     if (customer.warning) warnings.push(customer.warning);
