@@ -370,6 +370,8 @@ function computeVehicleExtraDetails(
 
     { label: "Fuel Type", key: "fuel_type", kind: "string" },
     { label: "Drivetrain", key: "drivetrain", kind: "string" },
+    { label: "Import Notes", key: "import_notes", kind: "string" },
+    { label: "Source Row", key: "source_row_id", kind: "string" },
   ];
 
   const out: Array<{ label: string; value: string | number }> = [];
@@ -1696,6 +1698,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     <div className="text-sm font-semibold text-white">{fmtVehicleLabel(selectedVehicle)}</div>
 
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <DetailRow label="External ID" value={selectedVehicle.external_id} />
                       <DetailRow label="VIN" value={selectedVehicle.vin} />
                       <DetailRow
                         label="License Plate"

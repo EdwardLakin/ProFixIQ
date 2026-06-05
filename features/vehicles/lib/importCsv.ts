@@ -9,11 +9,13 @@ export type VehicleImportCustomerOption = {
   email?: string | null;
   phone?: string | null;
   phone_number?: string | null;
+  external_id?: string | null;
 };
 
 export type VehicleImportRow = {
   sourceRowNumber: number;
   sourceFilename?: string;
+  external_id?: string;
   unit_number?: string;
   vin?: string;
   license_plate?: string;
@@ -30,7 +32,10 @@ export type VehicleImportRow = {
   drivetrain?: string;
   engine_hours?: number;
   odometer?: string;
+  notes?: string;
+  status?: string;
   customer_id?: string;
+  customer_external_id?: string;
   customer_name?: string;
   customer_email?: string;
   customer_phone?: string;
@@ -53,6 +58,10 @@ export type VehicleImportPreview = {
 };
 
 const HEADER_ALIASES: Record<string, keyof VehicleImportRow> = {
+  vehicleid: "external_id",
+  vehicle_id: "external_id",
+  externalid: "external_id",
+  external_id: "external_id",
   unitnumber: "unit_number",
   unit: "unit_number",
   unitno: "unit_number",
@@ -60,8 +69,8 @@ const HEADER_ALIASES: Record<string, keyof VehicleImportRow> = {
   unitid: "unit_number",
   unitfleetnumber: "unit_number",
   fleetnumber: "unit_number",
+  fleet_number: "unit_number",
   vehiclenumber: "unit_number",
-  vehicleid: "unit_number",
   vin: "vin",
   serial: "vin",
   serialnumber: "vin",
@@ -87,7 +96,11 @@ const HEADER_ALIASES: Record<string, keyof VehicleImportRow> = {
   hours: "engine_hours",
   odometer: "odometer",
   mileage: "odometer",
+  notes: "notes",
+  status: "status",
   customerid: "customer_id",
+  customerexternalid: "customer_external_id",
+  customer_external_id: "customer_external_id",
   customername: "customer_name",
   customer: "customer_name",
   customeremail: "customer_email",
@@ -140,6 +153,12 @@ function customerLabel(customer: VehicleImportCustomerOption): string {
 }
 
 function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomerOption[]): { id?: string; warning?: string } {
+  const customerExternalId = row.customer_external_id?.trim();
+  if (customerExternalId) {
+    const match = customers.find((customer) => customer.external_id?.trim().toLowerCase() === customerExternalId.toLowerCase());
+    if (match) return { id: match.id };
+  }
+
   const customerId = row.customer_id?.trim();
   if (customerId) {
     const match = customers.find((customer) => customer.id === customerId);
@@ -160,7 +179,7 @@ function resolveCustomer(row: VehicleImportRow, customers: VehicleImportCustomer
 
   if (candidates.length === 1) return { id: candidates[0].id };
   if (candidates.length > 1) return { warning: `Ambiguous customer match (${candidates.map(customerLabel).join(", ")}); this vehicle will import without a customer link.` };
-  if (row.customer_name || row.customer_email || row.customer_phone) return { warning: "No matching customer found; this vehicle will import without a customer link." };
+  if (row.customer_external_id || row.customer_name || row.customer_email || row.customer_phone) return { warning: "No matching customer found; this vehicle will import without a customer link." };
   return {};
 }
 

@@ -15,7 +15,7 @@ type WO = Pick<
 >;
 
 type Customer = Pick<Tables<"customers">, "name" | "email" | "phone" | "first_name" | "last_name">;
-type Vehicle  = Pick<Tables<"vehicles">, "year" | "make" | "model" | "license_plate" | "vin" | "color" | "mileage" | "unit_number">;
+type Vehicle  = Pick<Tables<"vehicles">, "external_id" | "year" | "make" | "model" | "submodel" | "license_plate" | "vin" | "color" | "mileage" | "unit_number" | "engine_hours" | "engine" | "fuel_type">;
 
 type WOLine = Pick<
   Tables<"work_order_lines">,
@@ -71,7 +71,7 @@ export function WorkOrderPreview({ woId }: Props) {
         if (woData.vehicle_id) {
           const { data: v } = await supabase
             .from("vehicles")
-            .select("year,make,model,license_plate,vin,color,mileage,unit_number")
+            .select("external_id,year,make,model,submodel,license_plate,vin,color,mileage,unit_number,engine_hours,engine,fuel_type")
             .eq("id", woData.vehicle_id)
             .single<Vehicle>();
           if (!active) return;
@@ -130,7 +130,7 @@ export function WorkOrderPreview({ woId }: Props) {
     customer?.name ??
     ([customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "—");
 
-  const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ");
+  const vehicleLabel = [vehicle?.year, vehicle?.make, vehicle?.model, vehicle?.submodel].filter(Boolean).join(" ");
   const plateOrVin = vehicle?.license_plate ?? vehicle?.vin ?? "—";
 
   return (
@@ -166,7 +166,13 @@ export function WorkOrderPreview({ woId }: Props) {
           <div className="text-neutral-100">{vehicleLabel || "—"}</div>
           <div className="text-neutral-300">Plate/VIN: {plateOrVin}</div>
           <div className="text-neutral-300">
-            Color: {vehicle?.color || "—"} · Mileage: {vehicle?.mileage ?? "—"} · Unit: {vehicle?.unit_number || "—"}
+            External ID: {vehicle?.external_id || "—"} · Unit: {vehicle?.unit_number || "—"}
+          </div>
+          <div className="text-neutral-300">
+            Color: {vehicle?.color || "—"} · Mileage: {vehicle?.mileage ?? "—"} · Hours: {vehicle?.engine_hours ?? "—"}
+          </div>
+          <div className="text-neutral-300">
+            Engine: {vehicle?.engine || "—"} · Fuel: {vehicle?.fuel_type || "—"}
           </div>
         </section>
       </div>
