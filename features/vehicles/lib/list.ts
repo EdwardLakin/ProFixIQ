@@ -26,8 +26,8 @@ type VehicleDirectoryVehicleRow = Pick<
   | "created_at"
 >;
 
-type VehicleDirectoryCustomerRow = Pick<Customer, "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone"> & {
-  phone_number?: string | null;
+type VehicleDirectoryCustomerRow = Pick<Customer, "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number"> & {
+  display_name?: string | null;
 };
 
 export type VehicleListRow = VehicleDirectoryVehicleRow & {
@@ -43,11 +43,12 @@ export function vehicleCustomerName(customer: VehicleListRow["customers"]): stri
   return (
     customer.business_name?.trim() ||
     customer.name?.trim() ||
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() ||
+    customer.display_name?.trim() ||
+    [customer.first_name ?? "", customer.last_name ?? ""].map((name) => name.trim()).filter(Boolean).join(" ").trim() ||
     customer.email?.trim() ||
     customer.phone?.trim() ||
     customer.phone_number?.trim() ||
-    null
+    "Customer"
   );
 }
 
@@ -91,7 +92,7 @@ export function filterSortAndCapVehicles(rows: VehicleListRow[], query: string, 
 
 const VEHICLE_DIRECTORY_PAGE_SIZE = 1000;
 const VEHICLE_DIRECTORY_SELECT = "id, shop_id, customer_id, external_id, unit_number, vin, license_plate, year, make, model, submodel, mileage, engine_hours, engine, fuel_type, source_row_id, import_notes, created_at";
-const VEHICLE_DIRECTORY_CUSTOMER_SELECT = "id, external_id, name, first_name, last_name, business_name, email, phone";
+const VEHICLE_DIRECTORY_CUSTOMER_SELECT = "id, external_id, name, first_name, last_name, business_name, email, phone, phone_number";
 
 type VehicleDirectoryClient = {
   from: (table: string) => any;
@@ -113,6 +114,87 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
 
+function customerLookupErrorSummary(error: unknown): { code: string | null; message: string } | null {
+  if (!error) return null;
+  if (typeof error === "object") {
+    const record = error as { code?: unknown; message?: unknown };
+    return {
+      code: typeof record.code === "string" ? record.code : null,
+      message: typeof record.message === "string" ? record.message : String(error),
+    };
+  }
+  return { code: null, message: String(error) };
+}
+
+function vehicleDirectoryCustomerDiagnostics(
+  shopId: string,
+  vehicles: VehicleDirectoryVehicleRow[],
+  customersById: Map<string, VehicleDirectoryCustomerRow>,
+  customerLookupError: unknown | null,
+) {
+  console.info("Vehicle directory customer resolution", {
+    shopId,
+    vehicleCountLoaded: vehicles.length,
+    nonNullCustomerIdCount: vehicles.filter((row) => Boolean(row.customer_id?.trim())).length,
+    firstVehicleCustomerIds: vehicles.map((row) => row.customer_id?.trim()).filter(Boolean).slice(0, 3),
+    customerLookupCount: customersById.size,
+    firstLoadedCustomers: Array.from(customersById.values()).slice(0, 3).map((customer) => ({
+      id: customer.id,
+      external_id: customer.external_id ?? null,
+      display_name: customer.display_name ?? null,
+      name: customer.name ?? null,
+      business_name: customer.business_name ?? null,
+    })),
+    customerLookupError: customerLookupErrorSummary(customerLookupError),
+  });
+}
+
+async function fetchCustomersByDirectIds(
+  supabase: VehicleDirectoryClient,
+  shopId: string,
+  customerIds: string[],
+): Promise<{ customersById: Map<string, VehicleDirectoryCustomerRow>; error: unknown | null }> {
+  const customersById = new Map<string, VehicleDirectoryCustomerRow>();
+
+  for (let index = 0; index < customerIds.length; index += VEHICLE_DIRECTORY_PAGE_SIZE) {
+    const ids = customerIds.slice(index, index + VEHICLE_DIRECTORY_PAGE_SIZE);
+    const { data, error } = await supabase
+      .from("customers")
+      .select(VEHICLE_DIRECTORY_CUSTOMER_SELECT)
+      .eq("shop_id", shopId)
+      .in("id", ids);
+
+    if (error) return { customersById, error };
+    for (const customer of (data ?? []) as VehicleDirectoryCustomerRow[]) {
+      customersById.set(customer.id, customer);
+    }
+  }
+
+  return { customersById, error: null };
+}
+
+async function fetchCustomersBySameShopFallback(
+  supabase: VehicleDirectoryClient,
+  shopId: string,
+  customerIds: string[],
+): Promise<{ customersById: Map<string, VehicleDirectoryCustomerRow>; error: unknown | null }> {
+  const wantedIds = new Set(customerIds);
+  const customersById = new Map<string, VehicleDirectoryCustomerRow>();
+  const customersResult = await fetchPagedRows<VehicleDirectoryCustomerRow>(
+    supabase
+      .from("customers")
+      .select(VEHICLE_DIRECTORY_CUSTOMER_SELECT)
+      .eq("shop_id", shopId)
+      .order("id", { ascending: true }),
+  );
+
+  for (const customer of customersResult.rows) {
+    if (wantedIds.has(customer.id)) customersById.set(customer.id, customer);
+  }
+
+  return { customersById, error: customersResult.error };
+}
+
 export async function fetchVehicleDirectoryRows(supabase: VehicleDirectoryClient, shopId: string): Promise<{ rows: VehicleListRow[]; error: unknown | null }> {
   const vehiclesResult = await fetchPagedRows<VehicleDirectoryVehicleRow>(
     supabase
@@ -127,29 +209,28 @@ export async function fetchVehicleDirectoryRows(supabase: VehicleDirectoryClient
 
   const vehicles = vehiclesResult.rows;
   const customerIds = uniqueNonEmpty(vehicles.map((row) => row.customer_id));
-  const customersById = new Map<string, VehicleDirectoryCustomerRow>();
+  let customersById = new Map<string, VehicleDirectoryCustomerRow>();
+  let customerLookupError: unknown | null = null;
 
-  for (let index = 0; index < customerIds.length; index += VEHICLE_DIRECTORY_PAGE_SIZE) {
-    const ids = customerIds.slice(index, index + VEHICLE_DIRECTORY_PAGE_SIZE);
-    const { data, error } = await supabase
-      .from("customers")
-      .select(VEHICLE_DIRECTORY_CUSTOMER_SELECT)
-      .eq("shop_id", shopId)
-      .in("id", ids);
+  if (customerIds.length > 0) {
+    const directResult = await fetchCustomersByDirectIds(supabase, shopId, customerIds);
+    customersById = directResult.customersById;
+    customerLookupError = directResult.error;
 
-    if (error) continue;
-    for (const customer of (data ?? []) as VehicleDirectoryCustomerRow[]) {
-      customersById.set(customer.id, customer);
+    if (directResult.error || directResult.customersById.size === 0) {
+      console.warn("Vehicle directory direct customer lookup failed or returned no matches; falling back to same-shop customer scan", {
+        shopId,
+        customerIdCount: customerIds.length,
+        directCustomerLookupCount: directResult.customersById.size,
+        customerLookupError: customerLookupErrorSummary(directResult.error),
+      });
+      const fallbackResult = await fetchCustomersBySameShopFallback(supabase, shopId, customerIds);
+      customersById = fallbackResult.customersById;
+      customerLookupError = fallbackResult.error ?? directResult.error;
     }
   }
 
-  if (customerIds.length > 0) {
-    console.info("Vehicle directory customer resolution", {
-      shopId,
-      vehicleCustomerIdCount: customerIds.length,
-      matchedCustomerRowCount: customersById.size,
-    });
-  }
+  vehicleDirectoryCustomerDiagnostics(shopId, vehicles, customersById, customerLookupError);
 
   return {
     rows: vehicles.map((row) => {
