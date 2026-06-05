@@ -2,6 +2,7 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/OnboardingHighlightFrame";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { previewVehicleCsv, type VehicleImportCustomerOption, type VehicleImportPreview } from "@/features/vehicles/lib/importCsv";
@@ -77,6 +78,7 @@ function formatImportFailure(payload: ImportResponse): string {
 }
 
 export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighted = false }: Props) {
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | undefined>();
@@ -148,6 +150,7 @@ export function VehicleCsvImportCard({ customers, guidedQuery = null, highlighte
       if (!response.ok || payload.ok === false) throw new Error(formatImportFailure(payload));
       setSuccess(payload);
       clearSelectedCsvAfterSuccess();
+      router.refresh();
 
       if (guidedQuery) {
         const completeResponse = await fetch(`/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicles/complete`, {

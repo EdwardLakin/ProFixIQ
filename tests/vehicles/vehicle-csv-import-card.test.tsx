@@ -6,6 +6,12 @@ import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvI
 import { parseVehicleCsv } from "@/features/vehicles/lib/importCsv";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
+const router = { refresh: vi.fn() };
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
+
 const guidedQuery: GuidedOnboardingQuery = {
   onboardingSession: "session-123",
   onboardingStep: "vehicles",
@@ -25,6 +31,7 @@ function onboardingOk() {
 describe("VehicleCsvImportCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    router.refresh.mockClear();
     vi.unstubAllGlobals();
   });
 
@@ -118,6 +125,7 @@ describe("VehicleCsvImportCard", () => {
     expect(screen.getByLabelText(/paste csv text/i)).toHaveValue("");
     expect(screen.queryByText("A-1")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /confirm import/i })).toBeDisabled();
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not POST again when confirm is clicked after a successful import", async () => {
