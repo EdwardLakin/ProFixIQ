@@ -24,6 +24,7 @@ type UserRow = {
   email: string | null;
   phone: string | null;
   role: UserRole | null;
+  username: string | null;
   created_at: string | null;
   shop_id: string | null;
 };
@@ -33,7 +34,8 @@ const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
   { value: "admin", label: "Admin" },
   { value: "manager", label: "Manager" },
   { value: "advisor", label: "Advisor" },
-  { value: "mechanic", label: "Mechanic" },
+  { value: "mechanic", label: "Mechanic / Tech" },
+  { value: "parts", label: "Parts" },
 ];
 
 function safeMsg(e: unknown, fallback: string): string {
@@ -158,7 +160,7 @@ export default function UsersList(): JSX.Element {
       <AdminPanel>
         <AdminPanelTitle
           title="Filter & Locate"
-          description="Search by name, email, or phone, then narrow by role for targeted governance actions."
+          description="Search by name, email, username, phone, or role, then narrow by role for targeted governance actions."
           action={
             <Button type="button" variant="default" className="font-semibold" onClick={() => void load()} disabled={loading}>
               {loading ? "Loading…" : "Refresh"}
@@ -170,7 +172,7 @@ export default function UsersList(): JSX.Element {
           <AdminField label="Search" className="flex-1">
             <input
               className="w-full rounded-lg border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/70 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)]"
-              placeholder="Search name, email, or phone…"
+              placeholder="Search name, email, username, phone, or role…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -225,8 +227,10 @@ export default function UsersList(): JSX.Element {
               {filteredRows.map((u) => (
                 <tr key={u.id} className="text-neutral-200">
                   <td className="px-4 py-2.5">
-                    <div className="font-medium text-neutral-100">{u.full_name ?? "—"}</div>
-                    <div className="text-xs text-neutral-500">{u.id.slice(0, 8)}</div>
+                    <div className="font-medium text-neutral-100">{u.full_name ?? u.username ?? "—"}</div>
+                    <div className="text-xs text-neutral-500">
+                      {u.username ? `@${u.username}` : u.id.slice(0, 8)}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">{u.email ?? "—"}</td>
                   <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
@@ -270,8 +274,10 @@ export default function UsersList(): JSX.Element {
 
           {!loading && filteredRows.length === 0 ? (
             <AdminEmptyState
-              title="No users found"
-              body="Try adjusting search and role filters, or confirm users exist in the current shop scope."
+              title={rows.length === 0 && !search.trim() && roleFilter === "all" ? "No staff yet" : "No matching staff"}
+              body={rows.length === 0 && !search.trim() && roleFilter === "all"
+                ? "Create your first staff user above. Results are scoped to your current shop."
+                : "Try adjusting search and role filters. Results are capped to the first 20 matching staff in your current shop."}
             />
           ) : null}
 
