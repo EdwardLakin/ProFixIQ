@@ -4,8 +4,38 @@ import type { Database } from "@shared/types/types/supabase";
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
-export type VehicleListRow = Pick<Vehicle, "id" | "external_id" | "unit_number" | "year" | "make" | "model" | "submodel" | "vin" | "license_plate" | "customer_id" | "mileage" | "engine_hours" | "engine" | "fuel_type" | "import_notes" | "source_row_id"> & {
-  customers?: Pick<Customer, "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone" | "phone_number"> | null;
+type VehicleDirectoryVehicleRow = Pick<
+  Vehicle,
+  | "id"
+  | "shop_id"
+  | "customer_id"
+  | "external_id"
+  | "unit_number"
+  | "vin"
+  | "license_plate"
+  | "year"
+  | "make"
+  | "model"
+  | "submodel"
+  | "mileage"
+  | "engine_hours"
+  | "engine"
+  | "fuel_type"
+  | "source_row_id"
+  | "import_notes"
+  | "created_at"
+>;
+
+type VehicleDirectoryCustomerRow = Pick<Customer, "id" | "external_id" | "business_name" | "name" | "first_name" | "last_name" | "email" | "phone"> & {
+  phone_number?: string | null;
+};
+
+export type VehicleListRow = VehicleDirectoryVehicleRow & {
+  customers?: VehicleDirectoryCustomerRow | null;
+  customerName?: string | null;
+  customerExternalId?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
 };
 
 export function vehicleCustomerName(customer: VehicleListRow["customers"]): string | null {
@@ -14,9 +44,9 @@ export function vehicleCustomerName(customer: VehicleListRow["customers"]): stri
     customer.business_name?.trim() ||
     customer.name?.trim() ||
     [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() ||
-    customer.email ||
-    customer.phone ||
-    customer.phone_number ||
+    customer.email?.trim() ||
+    customer.phone?.trim() ||
+    customer.phone_number?.trim() ||
     null
   );
 }
@@ -29,6 +59,8 @@ function searchText(row: VehicleListRow): string {
     row.year != null ? String(row.year) : null,
     row.make,
     row.model,
+    row.customerName,
+    row.customerExternalId,
     vehicleCustomerName(row.customers),
     row.customers?.external_id,
     row.external_id,
@@ -58,8 +90,8 @@ export function filterSortAndCapVehicles(rows: VehicleListRow[], query: string, 
 }
 
 const VEHICLE_DIRECTORY_PAGE_SIZE = 1000;
-const VEHICLE_DIRECTORY_SELECT = "id, external_id, unit_number, year, make, model, submodel, vin, license_plate, customer_id, mileage, engine_hours, engine, fuel_type, import_notes, source_row_id";
-const VEHICLE_DIRECTORY_CUSTOMER_SELECT = "id, external_id, business_name, name, first_name, last_name, email, phone, phone_number";
+const VEHICLE_DIRECTORY_SELECT = "id, shop_id, customer_id, external_id, unit_number, vin, license_plate, year, make, model, submodel, mileage, engine_hours, engine, fuel_type, source_row_id, import_notes, created_at";
+const VEHICLE_DIRECTORY_CUSTOMER_SELECT = "id, external_id, name, first_name, last_name, business_name, email, phone";
 
 type VehicleDirectoryClient = {
   from: (table: string) => any;
@@ -82,7 +114,7 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
 }
 
 export async function fetchVehicleDirectoryRows(supabase: VehicleDirectoryClient, shopId: string): Promise<{ rows: VehicleListRow[]; error: unknown | null }> {
-  const vehiclesResult = await fetchPagedRows<Omit<VehicleListRow, "customers">>(
+  const vehiclesResult = await fetchPagedRows<VehicleDirectoryVehicleRow>(
     supabase
       .from("vehicles")
       .select(VEHICLE_DIRECTORY_SELECT)
@@ -95,7 +127,7 @@ export async function fetchVehicleDirectoryRows(supabase: VehicleDirectoryClient
 
   const vehicles = vehiclesResult.rows;
   const customerIds = uniqueNonEmpty(vehicles.map((row) => row.customer_id));
-  const customersById = new Map<string, VehicleListRow["customers"]>();
+  const customersById = new Map<string, VehicleDirectoryCustomerRow>();
 
   for (let index = 0; index < customerIds.length; index += VEHICLE_DIRECTORY_PAGE_SIZE) {
     const ids = customerIds.slice(index, index + VEHICLE_DIRECTORY_PAGE_SIZE);
@@ -106,13 +138,31 @@ export async function fetchVehicleDirectoryRows(supabase: VehicleDirectoryClient
       .in("id", ids);
 
     if (error) continue;
-    for (const customer of (data ?? []) as NonNullable<VehicleListRow["customers"]>[]) {
+    for (const customer of (data ?? []) as VehicleDirectoryCustomerRow[]) {
       customersById.set(customer.id, customer);
     }
   }
 
+  if (customerIds.length > 0) {
+    console.info("Vehicle directory customer resolution", {
+      shopId,
+      vehicleCustomerIdCount: customerIds.length,
+      matchedCustomerRowCount: customersById.size,
+    });
+  }
+
   return {
-    rows: vehicles.map((row) => ({ ...row, customers: row.customer_id ? customersById.get(row.customer_id) ?? null : null })),
+    rows: vehicles.map((row) => {
+      const customer = row.customer_id ? customersById.get(row.customer_id) ?? null : null;
+      return {
+        ...row,
+        customers: customer,
+        customerName: vehicleCustomerName(customer),
+        customerExternalId: customer?.external_id?.trim() || null,
+        customerEmail: customer?.email?.trim() || null,
+        customerPhone: customer?.phone?.trim() || customer?.phone_number?.trim() || null,
+      };
+    }),
     error: vehiclesResult.error,
   };
 }
