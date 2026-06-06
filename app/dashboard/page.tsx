@@ -1,73 +1,25 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-
-import {
-  DASHBOARD_LAST_VIEW_KEY,
-  type DashboardView,
-} from "@/features/dashboard/lib/dashboard-views";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
-function isDashboardView(value: string | null): value is DashboardView {
-  return value === "operations" || value === "performance";
-}
+export default async function DashboardEntryPage() {
+  const supabase = createServerSupabaseRSC();
+  const actor = await resolveCurrentActor(supabase);
+  const role = canonicalizeRole(actor.role);
 
-export default function DashboardEntryPage() {
-  const router = useRouter();
+  console.info("[DashboardEntry] server profile resolved", {
+    actorPresent: Boolean(actor.user),
+    profileId: actor.profile?.id ?? null,
+    profileRole: actor.role ?? null,
+    activeShopId: actor.shopId,
+    route: "/dashboard",
+  });
 
-  useEffect(() => {
-    const supabase = createBrowserSupabase();
+  if (!actor.user) redirect("/sign-in");
+  if (role === "admin") redirect("/dashboard/admin");
+  if (role === "lead_hand" || role === "foreman") redirect("/dashboard/operations");
 
-    (async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      const uid = user?.id;
-      let role = "unknown";
-
-      if (uid) {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("id,email,role,shop_id")
-          .eq("id", uid)
-          .maybeSingle();
-
-        console.info("[DashboardEntry] profile resolved", {
-          authUserId: uid,
-          authEmail: user?.email ?? null,
-          profileId: profile?.id ?? null,
-          profileEmail: profile?.email ?? null,
-          role: profile?.role ?? null,
-          shopIdPresent: Boolean(profile?.shop_id),
-          authError: authError?.message ?? null,
-          profileError: profileError
-            ? { message: profileError.message, code: profileError.code }
-            : null,
-        });
-
-        role = canonicalizeRole(profile?.role);
-      }
-
-      if (role === "admin") {
-        router.replace("/dashboard/admin");
-        return;
-      }
-
-      if (role === "lead_hand" || role === "foreman") {
-        router.replace("/dashboard/operations");
-        return;
-      }
-
-      const stored = window.localStorage.getItem(DASHBOARD_LAST_VIEW_KEY);
-      const view: DashboardView = isDashboardView(stored) ? stored : "operations";
-
-      router.replace(view === "performance" ? "/dashboard/performance" : "/dashboard/operations");
-    })();
-  }, [router]);
-
-  return null;
+  redirect("/dashboard/operations");
 }

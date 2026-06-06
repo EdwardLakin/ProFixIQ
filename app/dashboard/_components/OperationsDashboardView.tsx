@@ -4,7 +4,6 @@ import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
 import { CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
-import ShopBoostActivationPanel from "@/features/dashboard/components/ShopBoostActivationPanel";
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
   return (
@@ -21,18 +20,12 @@ function getCountSeverity(count: number): "neutral" | "amber" | "red" {
   return "neutral";
 }
 
-function isOwnerAdminRole(role: string | null): boolean {
-  const normalizedRole = (role ?? "").toLowerCase();
-  return normalizedRole === "owner" || normalizedRole === "admin";
-}
-
 export default async function OperationsDashboardView() {
   const payload = await getOperationsDashboardPayload();
   const displayName = payload.identity.fullName?.trim() || "Operator";
   const isTechnicianView = payload.viewerScope === "technician";
   const hasTechnicianActivity = payload.technicianActivity.length > 0;
   const hasRightRailSignals = payload.blockerStack.length > 0 || payload.alerts.length > 0 || payload.suggestedActions.length > 0;
-  const canSeeShopBoostMissionControl = isOwnerAdminRole(payload.identity.role);
 
   return (
     <DashboardShell>
@@ -51,7 +44,6 @@ export default async function OperationsDashboardView() {
         ]}
       />
 
-      {canSeeShopBoostMissionControl ? <ShopBoostActivationPanel eligible /> : null}
 
       <MetricStrip
         className="mb-0"

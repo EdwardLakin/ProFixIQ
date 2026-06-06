@@ -10,7 +10,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { format } from "date-fns";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -18,15 +17,11 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
 type DB = Database;
 
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
-
-type WorkOrderLite = Pick<WorkOrderRow, "id" | "custom_id" | "status" | "customer_id">;
-type CustomerLite = Pick<CustomerRow, "id" | "first_name" | "last_name" | "business_name">;
 
 type InspectionComplianceRow = Pick<
   InspectionRow,
@@ -94,34 +89,7 @@ function pickPdfHref(row: InspectionComplianceRow): string | null {
   return null;
 }
 
-function toIsoStartOfDay(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00.000Z`).toISOString();
-}
-
-function toIsoEndOfDay(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00.000Z`);
-  d.setUTCHours(23, 59, 59, 999);
-  return d.toISOString();
-}
-
-function uniqStrings(list: Array<string | null | undefined>): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const v of list) {
-    const s = (v ?? "").toString().trim();
-    if (!s) continue;
-    if (seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
-
 export default function SavedInspectionsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
-  const [shopId, setShopId] = useState<string | null>(null);
-
   const [rows, setRows] = useState<InspectionComplianceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -131,205 +99,32 @@ export default function SavedInspectionsPage(): JSX.Element {
   const [to, setTo] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  // ---- Load current user's shop ----
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setErr(null);
-
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-
-      if (cancelled) return;
-
-      if (userErr || !user) {
-        setErr("You must be signed in to view inspection history.");
-        setShopId(null);
-        setLoading(false);
-        return;
-      }
-
-      const { data: profile, error: profErr } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle<Pick<ProfileRow, "shop_id">>();
-
-      if (cancelled) return;
-
-      if (profErr) {
-        setErr(profErr.message);
-        setShopId(null);
-        setLoading(false);
-        return;
-      }
-
-      const sid = profile?.shop_id ?? null;
-      if (!sid) {
-        setErr("No shop is linked to your profile yet.");
-        setShopId(null);
-        setLoading(false);
-        return;
-      }
-
-      setShopId(sid);
-      setLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
   const load = useCallback(async () => {
-    if (!shopId) return;
-
     setLoading(true);
     setErr(null);
 
-    // NOTE:
-    // - This is intentionally shop-scoped for compliance.
-    // - We embed vehicles + template (typically unambiguous),
-    //   but we DO NOT embed work_orders because PostgREST can throw:
-    //   "more than one relationship was found for inspections and work_orders".
-    let query = supabase
-      .from("inspections")
-      .select(
-        `
-          id,
-          shop_id,
-          vehicle_id,
-          work_order_id,
-          status,
-          summary,
-          created_at,
-          updated_at,
-          pdf_url,
-          pdf_storage_path,
-          vehicles:vehicles(year,make,model,vin,license_plate,unit_number),
-          inspection_templates:inspection_templates(template_name,description)
-        `,
-      )
-      .eq("shop_id", shopId)
-      .order("created_at", { ascending: false })
-      .limit(400);
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
 
-    if (from) query = query.gte("created_at", toIsoStartOfDay(from));
-    if (to) query = query.lte("created_at", toIsoEndOfDay(to));
+    const res = await fetch(`/api/inspections/history?${params.toString()}`, {
+      credentials: "same-origin",
+    });
+    const json = (await res.json().catch(() => null)) as { rows?: InspectionComplianceRow[]; error?: string } | null;
 
-    const { data: baseData, error: baseErr } = await query;
-
-    if (baseErr) {
-      setErr(baseErr.message);
+    if (!res.ok) {
+      setErr(json?.error ?? "Unable to load inspection history.");
       setRows([]);
       setLoading(false);
       return;
     }
 
-    const baseList: Array<
-      Pick<
-        InspectionRow,
-        | "id"
-        | "shop_id"
-        | "vehicle_id"
-        | "work_order_id"
-        | "status"
-        | "summary"
-        | "created_at"
-        | "updated_at"
-        | "pdf_url"
-        | "pdf_storage_path"
-      > & {
-        vehicles: Pick<
-          VehicleRow,
-          "year" | "make" | "model" | "vin" | "license_plate" | "unit_number"
-        > | null;
-        inspection_templates: Pick<TemplateRow, "template_name" | "description"> | null;
-      }
-    > = Array.isArray(baseData) ? (baseData as unknown as typeof baseList) : [];
+    const baseList = json?.rows ?? [];
 
-    const workOrderIds = uniqStrings(baseList.map((r) => (r.work_order_id as unknown as string | null) ?? null));
-
-    const woMap = new Map<string, WorkOrderLite>();
-    const custMap = new Map<string, CustomerLite>();
-
-    if (workOrderIds.length > 0) {
-      // Fetch work orders
-      const { data: woRows, error: woErr } = await supabase
-        .from("work_orders")
-        .select("id, custom_id, status, customer_id")
-        .in("id", workOrderIds)
-        .returns<WorkOrderLite[]>();
-
-      if (woErr) {
-        // Not fatal for the whole page (compliance still works without WO join)
-        // eslint-disable-next-line no-console
-        console.warn("[saved inspections] work_orders fetch failed:", woErr.message);
-      } else {
-        for (const w of Array.isArray(woRows) ? woRows : []) {
-          if (w?.id) woMap.set(w.id, w);
-        }
-
-        const customerIds = uniqStrings(
-          (Array.isArray(woRows) ? woRows : []).map((w) => (w.customer_id as unknown as string | null) ?? null),
-        );
-
-        if (customerIds.length > 0) {
-          const { data: custRows, error: custErr } = await supabase
-            .from("customers")
-            .select("id, first_name, last_name, business_name")
-            .in("id", customerIds)
-            .returns<CustomerLite[]>();
-
-          if (custErr) {
-            // eslint-disable-next-line no-console
-            console.warn("[saved inspections] customers fetch failed:", custErr.message);
-          } else {
-            for (const c of Array.isArray(custRows) ? custRows : []) {
-              if (c?.id) custMap.set(c.id, c);
-            }
-          }
-        }
-      }
-    }
-
-    // Stitch rows into the shape the UI expects
-    const stitched: InspectionComplianceRow[] = baseList.map((r) => {
-      const woId = (r.work_order_id as unknown as string | null) ?? null;
-      const wo = woId ? woMap.get(woId) : undefined;
-
-      const custId = wo?.customer_id ?? null;
-      const cust = custId ? custMap.get(custId) : undefined;
-
-      return {
-        ...r,
-        work_orders: wo
-          ? {
-              id: wo.id,
-              custom_id: wo.custom_id ?? null,
-              status: wo.status ?? null,
-              customer_id: wo.customer_id ?? null,
-              customers: cust
-                ? {
-                    first_name: cust.first_name ?? null,
-                    last_name: cust.last_name ?? null,
-                    business_name: cust.business_name ?? null,
-                  }
-                : null,
-            }
-          : null,
-      } as InspectionComplianceRow;
-    });
-
-    // Status filter (client-side to be resilient across status enum changes)
     const statusFiltered =
       statusFilter === "all"
-        ? stitched
-        : stitched.filter((r) => {
+        ? baseList
+        : baseList.filter((r) => {
             const completed = isCompletedInspection(r);
             if (statusFilter === "completed") return completed;
             if (statusFilter === "in_progress") return !completed;
@@ -340,7 +135,6 @@ export default function SavedInspectionsPage(): JSX.Element {
             return true;
           });
 
-    // Search filter
     const qlc = q.trim().toLowerCase();
     const filtered = qlc
       ? statusFiltered.filter((r) => {
@@ -388,12 +182,11 @@ export default function SavedInspectionsPage(): JSX.Element {
 
     setRows(filtered);
     setLoading(false);
-  }, [supabase, shopId, from, to, q, statusFilter]);
+  }, [from, to, q, statusFilter]);
 
   useEffect(() => {
-    if (!shopId) return;
     void load();
-  }, [shopId, load]);
+  }, [load]);
 
   function exportCSV() {
     const header = [

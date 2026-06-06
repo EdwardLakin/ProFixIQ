@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { format } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
 import { ServiceHistoryOnboardingSetupCard, getServiceHistoryGuidedOnboardingQuery } from "@/features/work-orders/components/history/ServiceHistoryOnboardingSetupCard";
@@ -13,7 +12,6 @@ type DB = Database;
 type HistoryRow = DB["public"]["Tables"]["history"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Row = Pick<
   HistoryRow,
@@ -31,13 +29,11 @@ function fmtDate(iso: string | null | undefined, pattern = "PPpp"): string {
 }
 
 export default function WorkOrdersHistoryClient(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const searchParams = useSearchParams();
   const guidedOnboardingQuery = useMemo(
     () => getServiceHistoryGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())),
     [searchParams],
   );
-  const [shopId, setShopId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -45,24 +41,15 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
-  useEffect(() => { void (async () => {
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !user) return setErr("You must be signed in to view service history."), setLoading(false);
-      const { data: profile, error: profileErr } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle<Pick<ProfileRow, "shop_id">>();
-      if (profileErr) return setErr(profileErr.message), setLoading(false);
-      if (!profile?.shop_id) return setErr("No shop is linked to your profile yet."), setLoading(false);
-      setShopId(profile.shop_id); setLoading(false);
-  })(); }, [supabase]);
-
   const load = useCallback(async () => {
-    if (!shopId) return;
     setLoading(true); setErr(null);
-    let query = supabase.from("history").select("id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_sale, parts_sale, tax, total, symptom, cause, correction, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)").order("service_date", { ascending: false }).limit(300);
-    if (from) query = query.gte("service_date", new Date(`${from}T00:00:00Z`).toISOString());
-    if (to) { const toEnd = new Date(`${to}T00:00:00Z`); toEnd.setHours(23, 59, 59, 999); query = query.lte("service_date", toEnd.toISOString()); }
-    const { data, error } = await query;
-    if (error) return setErr(error.message), setRows([]), setLoading(false);
-    const list = (data ?? []) as unknown as Row[];
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const res = await fetch(`/api/work-orders/history?${params.toString()}`, { credentials: "same-origin" });
+    const json = (await res.json().catch(() => null)) as { rows?: Row[]; error?: string } | null;
+    if (!res.ok) return setErr(json?.error ?? "Unable to load service history."), setRows([]), setLoading(false);
+    const list = json?.rows ?? [];
     const qlc = q.trim().toLowerCase();
     const filtered = qlc ? list.filter((r) => {
       const p = parseHistoryNotes(r.notes);
@@ -73,9 +60,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       return haystack.includes(qlc);
     }) : list;
     setRows(filtered); setLoading(false);
-  }, [from, q, shopId, supabase, to]);
+  }, [from, q, to]);
 
-  useEffect(() => { if (shopId) void load(); }, [load, shopId]);
+  useEffect(() => { void load(); }, [load]);
 
   function exportCSV() {
     const header = ["History ID","Service Date","Customer","Email","Phone","Vehicle","Plate","VIN","Work Order","Invoice","Total","Labor","Description","Details","Source External ID","Source Row ID","Onboarding Session","Live Work Order ID"];

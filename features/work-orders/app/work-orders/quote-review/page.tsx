@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
@@ -18,7 +17,6 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type WorkOrderWithMeta = WorkOrder & {
   shops?: Pick<Shop, "name"> | null;
@@ -66,138 +64,36 @@ function approvalProgress(lines: WorkOrderWithMeta["work_order_lines"] | undefin
 }
 
 function ApprovalsList(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<WorkOrderWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [shopId, setShopId] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setErr(null);
-
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-
-      if (cancelled) return;
-
-      if (userErr || !user) {
-        setErr("You must be signed in to view quote approvals.");
-        setLoading(false);
-        return;
-      }
-
-      const { data: profile, error: profErr } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle<Pick<Profile, "shop_id">>();
-
-      if (cancelled) return;
-
-      if (profErr) {
-        setErr(profErr.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!profile?.shop_id) {
-        setErr("No shop is linked to your profile yet.");
-        setLoading(false);
-        return;
-      }
-
-      setShopId(profile.shop_id);
-      setLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
-  const load = async () => {
-    if (!shopId) return;
-
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
-    const { data: wo, error } = await supabase
-      .from("work_orders")
-      .select(
-        `
-        *,
-        shops(name),
-        work_order_lines(id,status,approval_state,labor_time,line_no,description,created_at,updated_at),
-        work_order_quote_lines(id,stage)
-      `,
-      )
-      .eq("shop_id", shopId)
-      .order("created_at", { ascending: false })
-      .limit(300);
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
 
-    if (error) {
+    const res = await fetch(`/api/work-orders/quote-review?${params.toString()}`, {
+      credentials: "same-origin",
+    });
+    const json = (await res.json().catch(() => null)) as { rows?: WorkOrderWithMeta[]; error?: string } | null;
+
+    if (!res.ok) {
       setRows([]);
-      setErr(error.message);
+      setErr(json?.error ?? "Unable to load quote approvals.");
       setLoading(false);
       return;
     }
 
-    const list = (wo ?? []) as unknown as WorkOrderWithMeta[];
-
-    const PENDING_LINE_STATUSES = new Set<string>([
-      "waiting_for_approval",
-      "awaiting_approval",
-    ]);
-
-    const isPendingLine = (
-      l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number],
-    ): boolean => {
-      const st = safeTrim(l?.status).toLowerCase();
-      const ap = safeTrim(l?.approval_state).toLowerCase();
-      return PENDING_LINE_STATUSES.has(st) || ap === "pending";
-    };
-
-    const filtered = list.filter((w) => {
-      const woStatus = safeTrim(w.status).toLowerCase();
-      if (woStatus === "awaiting_approval") return true;
-
-      const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
-      return lines.some((l) => isPendingLine(l));
-    });
-
-    const next = filtered.map((w) => {
-      const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
-      const hours = lines.reduce(
-        (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
-        0,
-      );
-
-      const qlines = Array.isArray(w.work_order_quote_lines)
-        ? w.work_order_quote_lines
-        : [];
-      const hasQuotes = qlines.length > 0;
-      const waitingForParts = !hasQuotes;
-
-      return {
-        ...w,
-        labor_hours: hours,
-        waiting_for_parts: waitingForParts,
-      };
-    });
-
+    const list = json?.rows ?? [];
     const qlc = q.trim().toLowerCase();
-
     const searched =
       qlc.length === 0
-        ? next
-        : next.filter((w) => {
+        ? list
+        : list.filter((w) => {
             const cid = String(w.custom_id ?? "").toLowerCase();
             const id = String(w.id ?? "").toLowerCase();
             const shopName = String(w.shops?.name ?? "").toLowerCase();
@@ -215,41 +111,11 @@ function ApprovalsList(): JSX.Element {
 
     setRows(searched);
     setLoading(false);
-  };
+  }, [q]);
 
   useEffect(() => {
-    if (!shopId) return;
-
     void load();
-
-    const ch = supabase
-      .channel("qr:approvals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => void load(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines" },
-        () => void load(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_quote_lines" },
-        () => void load(),
-      )
-      .subscribe();
-
-    return () => {
-      try {
-        supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, shopId, q]);
+  }, [load]);
 
   const waitingCount = useMemo(
     () => rows.filter((w) => Boolean(w.waiting_for_parts)).length,
