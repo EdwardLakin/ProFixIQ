@@ -2,14 +2,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { sendPortalInviteEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
-type DB = Database;
 
 type Body = {
   email?: string;
@@ -61,7 +58,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

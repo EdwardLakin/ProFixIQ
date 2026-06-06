@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   appendActivationContextToHref,
@@ -52,7 +52,7 @@ const TIMEZONES = [
 ] as const;
 
 export default function OnboardingPage() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
   const demoId = searchParams.get("demoId");

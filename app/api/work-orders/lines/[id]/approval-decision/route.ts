@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 
-type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
 type Decision = "approve" | "decline" | "defer";
 type Body = {
@@ -18,7 +15,7 @@ function safeString(v: unknown): string {
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { id } = await ctx.params;
   const lineId = safeString(id);
 

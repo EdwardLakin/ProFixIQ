@@ -1,9 +1,7 @@
 // app/api/work-orders/suggest-lines/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { openai } from "lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
@@ -16,7 +14,6 @@ import {
 
 export const runtime = "nodejs";
 
-type DB = Database;
 
 type VehicleLite = {
   id: string | null;
@@ -87,7 +84,7 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
   const policy = getAIPolicy("work_orders_suggest_lines");
   const model = getOpenAIModelForPurpose(policy.modelPurpose);
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   let userId: string | null = null;
   let shopIdForContext: string | null = null;
 

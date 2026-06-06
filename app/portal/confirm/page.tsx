@@ -3,12 +3,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export default function PortalConfirmPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   useEffect(() => {
     let cancelled = false;

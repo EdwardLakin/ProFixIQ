@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import SignaturePad, {
   openSignaturePad,
@@ -253,7 +253,7 @@ export default function ApproveWorkOrderPage() {
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);

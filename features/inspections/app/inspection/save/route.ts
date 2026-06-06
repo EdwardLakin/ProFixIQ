@@ -1,10 +1,8 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { NextResponse } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let customer, vehicle;
 

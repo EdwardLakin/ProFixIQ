@@ -2,9 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
 import {
   getTechLeaderboard,
@@ -43,7 +42,7 @@ const T = {
 
 export default function TechLeaderboardPage() {
   const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
+    () => createBrowserSupabase(),
     [],
   );
 

@@ -30,7 +30,7 @@ import React, {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast, Toaster } from "sonner";
 
 import WeeklyCalendar from "./WeeklyCalendar";
@@ -191,7 +191,7 @@ function canCreateWorkOrderFromBooking(b: Booking): boolean {
 /* ----------------------------- page ----------------------------- */
 
 export default function PortalAppointmentsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const search = useSearchParams();
   const router = useRouter();
 

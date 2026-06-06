@@ -3,15 +3,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 
 const COPPER = "#C57A4A";
 const DEFAULT_ACCENT = "#38BDF8";
 
-type DB = Database;
 
 export type OperationsPortalNavItem = { href: string; label: string };
 export type OperationsPortalShellProps = {
@@ -38,7 +36,7 @@ function NavPill({ href, label, active, accentColor, onClick }: { href: string; 
 export function OperationsPortalShell({ title, subtitle, badgeLabel, accentColor = DEFAULT_ACCENT, nav, signInRedirectPath = "/portal/auth/sign-in", enableAuthControls = true, children }: OperationsPortalShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = useMemo(() => (enableAuthControls ? createClientComponentClient<DB>() : null), [enableAuthControls]);
+  const supabase = useMemo(() => (enableAuthControls ? createBrowserSupabase() : null), [enableAuthControls]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [signingOut, setSigningOut] = useState(false);

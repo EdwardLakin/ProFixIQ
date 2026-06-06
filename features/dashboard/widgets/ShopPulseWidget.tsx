@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
@@ -59,7 +59,7 @@ export default function ShopPulseWidget({
   shopId: string | null;
   embedded?: boolean;
 }) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<BoardRow[]>([]);

@@ -1,13 +1,10 @@
 // features/parts/lib/requests/setPartRequestItemStatus.ts
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
-type DB = Database;
 
 export async function setPartRequestItemStatus(input: {
   partRequestItemId: string;
@@ -27,7 +24,7 @@ export async function setPartRequestItemStatus(input: {
   // optional: revalidate targets (work order pages, parts pages)
   revalidate?: { paths?: string[] };
 }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const { data: updatedItem, error } = await supabase
     .from("part_request_items")

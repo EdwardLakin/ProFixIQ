@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type ProfileLite = Pick<
@@ -10,7 +10,7 @@ type ProfileLite = Pick<
 >;
 
 export default function AdminRolesClient() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [rows, setRows] = useState<ProfileLite[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 

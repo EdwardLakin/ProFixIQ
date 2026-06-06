@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import PageShell from "@/features/shared/components/PageShell";
@@ -18,7 +18,7 @@ type AllocationLite = Pick<DB["public"]["Tables"]["work_order_part_allocations"]
 type RefContext = { workOrderId?: string | null; requestItemId?: string | null; sourceLabel: string };
 
 function n(v: unknown): number { const num = typeof v === "number" ? v : Number(v); return Number.isFinite(num) ? num : 0; }
-async function resolveShopId(supabase: ReturnType<typeof createClientComponentClient<DB>>) {
+async function resolveShopId(supabase: ReturnType<typeof createBrowserSupabase>) {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
   if (!uid) return "";
@@ -49,7 +49,7 @@ function reasonLabel(reason: string | null): string {
 }
 
 export default function StockMovementsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

@@ -1,9 +1,7 @@
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 export function getServerSupabase() {
-  return createRouteHandlerClient<Database>({ cookies });
+  return createServerSupabaseRoute();
 }
 
 export async function getUserAndShopId() {

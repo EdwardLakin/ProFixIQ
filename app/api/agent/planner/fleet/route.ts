@@ -1,8 +1,7 @@
 // app/api/agent/planner/fleet/route.ts
-import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { ToolContext } from "@/features/agent/lib/toolTypes";
@@ -24,7 +23,7 @@ type Body = {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

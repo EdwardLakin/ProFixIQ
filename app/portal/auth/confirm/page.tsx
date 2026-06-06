@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
@@ -27,7 +27,7 @@ export default function PortalConfirmPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

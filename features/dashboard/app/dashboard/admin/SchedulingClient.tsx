@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addMinutes, format, isValid, parseISO } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
@@ -254,7 +254,7 @@ function keepEndSameDay(startLocal: string, endLocal: string): string {
 }
 
 export default function SchedulingClient(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [tab, setTab] = useState<TabKey>("shifts");
 

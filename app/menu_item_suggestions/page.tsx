@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type MenuSuggestion = DB["public"]["Tables"]["menu_item_suggestions"]["Row"];
 
 export default function MenuItemSuggestionsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<MenuSuggestion[]>([]);
   const [error, setError] = useState<string>("");
 

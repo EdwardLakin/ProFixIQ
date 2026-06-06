@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
@@ -223,7 +223,7 @@ function errMsg(err: unknown): string {
  * fall back to the 5-arg legacy shape. Strictly typed; ignores return value.
  */
 async function applyStockMoveRPC(
-  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  supabase: ReturnType<typeof createBrowserSupabase>,
   args: {
     p_part: string;
     p_loc: string;
@@ -274,7 +274,7 @@ async function applyStockMoveRPC(
 /* ---------------------------- Page ---------------------------- */
 
 export default function InventoryPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string>("");
 
   const [search, setSearch] = useState<string>("");

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
@@ -227,7 +227,7 @@ export default function QuotePageClient(): JSX.Element {
   const router = useRouter();
   const params = useParams();
   const workOrderId = useMemo(() => paramToString((params as ParamsShape).id), [params]);
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);

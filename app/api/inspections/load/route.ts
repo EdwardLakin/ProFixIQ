@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database, Json } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
-type DB = Database;
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -13,7 +11,7 @@ function asString(value: unknown): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const inspectionId = asString(req.nextUrl.searchParams.get("inspectionId"));
   const workOrderLineId = asString(req.nextUrl.searchParams.get("workOrderLineId"));

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   AdminBadge,
@@ -36,7 +36,7 @@ function healthLabel(shop: ShopRow): "Complete" | "Needs profile" {
 }
 
 export default function AdminShopsClient() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [rows, setRows] = useState<ShopRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);

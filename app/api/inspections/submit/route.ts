@@ -1,14 +1,12 @@
 // app/api/inspections/submit/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
 import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
 import { sendQuoteEmail } from "@shared/lib/email/email/sendQuoteEmail";
 import { generateInspectionSummary } from "@inspections/lib/inspection/generateInspectionSummary";
 
-import type { Database } from "@shared/types/types/supabase";
 import type {
   InspectionSession,
   QuoteLineItem,
@@ -33,7 +31,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     // 1) Structured inspection summary
     const summary = generateInspectionSummary(inspectionSession);

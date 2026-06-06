@@ -1,7 +1,6 @@
 // app/api/portal/bookings/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -42,7 +41,7 @@ function bad(msg: string, status = 400): NextResponse {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const supabase = createRouteHandlerClient<Db>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const url = new URL(req.url);
   const shopSlug = url.searchParams.get("shop") ?? "";
@@ -162,7 +161,7 @@ export async function GET(req: Request): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const supabase = createRouteHandlerClient<Db>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,

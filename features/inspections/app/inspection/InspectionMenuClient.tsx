@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
@@ -38,7 +38,7 @@ function TileLink({ href, title, subtitle }: Tile) {
 }
 
 export default function InspectionMenuClient() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [active, setActive] = useState<InspectionCategory[] | null>(null);
 

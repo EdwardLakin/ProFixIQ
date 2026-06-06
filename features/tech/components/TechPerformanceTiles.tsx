@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
@@ -47,7 +47,7 @@ export default function TechPerformanceTiles({
   range = "weekly",
   assignedJobsCount,
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [row, setRow] = useState<TechLeaderboardRow | null>(null);

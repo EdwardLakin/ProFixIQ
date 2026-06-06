@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
@@ -66,7 +66,7 @@ function approvalProgress(lines: WorkOrderWithMeta["work_order_lines"] | undefin
 }
 
 function ApprovalsList(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<WorkOrderWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

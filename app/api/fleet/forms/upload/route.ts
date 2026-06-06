@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "fleet-forms";
@@ -36,10 +34,7 @@ function guessMimeFromName(name: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient<Database>({
-      cookies: () => cookieStore,
-    });
+    const supabase = createServerSupabaseRoute();
     const admin = createAdminSupabase();
 
     const {

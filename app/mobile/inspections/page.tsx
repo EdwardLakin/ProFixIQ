@@ -4,10 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-type DB = Database;
 
 /** Only the columns we actually care about for mobile */
 type InspectionRow = {
@@ -36,7 +34,7 @@ function statusChip(status: string | null | undefined): string {
 }
 
 export default function MobileInspectionsListPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [rows, setRows] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);

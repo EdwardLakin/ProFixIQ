@@ -3,8 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   appendActivationContextToHref,
   parseActivationContextFromSearchParams,
@@ -14,7 +13,7 @@ import { trackShopBoostEvent } from "@/features/analytics/shopBoostEvents";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 
 export default function SignUpClient() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const router = useRouter();
   const sp = useSearchParams();
 

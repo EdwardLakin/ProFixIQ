@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -153,7 +153,7 @@ function isShopBoostRunResp(v: unknown): v is ShopBoostRunResp {
 }
 
 export default function ReportsShopHealthPanel({ shopId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [latest, setLatest] = useState<ShopHealthLatestRow | null>(null);

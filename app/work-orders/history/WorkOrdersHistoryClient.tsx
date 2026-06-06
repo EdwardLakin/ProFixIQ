@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { format } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
 import { fmtCustomerName, fmtVehicle, formatMoneyLike, historyTitle, parseHistoryNotes } from "./historyDisplay";
@@ -29,7 +29,7 @@ function fmtDate(iso: string | null | undefined, pattern = "PPpp"): string {
 }
 
 export default function WorkOrdersHistoryClient(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);

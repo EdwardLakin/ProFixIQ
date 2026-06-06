@@ -1,12 +1,12 @@
 "use client";
 
 
-// import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+// import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 // import type { Database } from "@shared/types/types/supabase";
 
 export default function CertificationsClient() {
   // TODO: show employee certifications & expirations
-  // const supabase = createClientComponentClient<Database>();
+  // const supabase = createBrowserSupabase();
   // const { data } = await supabase.from("employee_certifications").select("*");
 
   const sample = [

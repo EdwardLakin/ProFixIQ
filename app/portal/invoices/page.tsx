@@ -1,7 +1,6 @@
 // app/portal/invoices/page.tsx (FULL FILE REPLACEMENT)
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
@@ -122,8 +121,7 @@ function invoiceTotalOrNull(invTotal: unknown): number | null {
 }
 
 export default async function PortalInvoicesIndexPage() {
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseRSC();
 
   try {
     const actor = await requirePortalCustomerActor(supabase);

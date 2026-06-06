@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -53,7 +53,7 @@ type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
 const OWNER_ROLES: ProfileRole[] = ["owner", "admin", "manager"];
 
 export default function MobileReportsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shopId, setShopId] = useState<string | null>(null);
   const [role, setRole] = useState<ProfileRole | null>(null);

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { format } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
 import { formatMoneyLike, historyShortId, parseHistoryNotes } from "../historyDisplay";
@@ -11,7 +10,7 @@ type HistoryDetail = Pick<DB["public"]["Tables"]["history"]["Row"], "id" | "work
 
 export default async function HistoryDetailPage({ params }: { params: Promise<{ id: string }> }): Promise<JSX.Element> {
   const { id } = await params;
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
   const { data: profile } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle();

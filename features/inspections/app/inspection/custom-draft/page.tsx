@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   InspectionSection,
@@ -189,7 +189,7 @@ function coerceNumberOrNull(s: string): number | null {
 export default function CustomDraftPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const nextKeyRef = useRef(1);
   const mkKey = () =>

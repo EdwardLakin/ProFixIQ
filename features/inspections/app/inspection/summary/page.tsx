@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -27,7 +27,7 @@ import type { QuoteLine } from "@quotes/lib/quote/generateQuoteFromInspection";
 export default function SummaryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const inspectionId = searchParams.get("inspectionId");
   const workOrderIdFromUrl = searchParams.get("workOrderId");

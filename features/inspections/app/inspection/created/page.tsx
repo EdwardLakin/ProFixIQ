@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
@@ -12,7 +12,7 @@ type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
 type Scope = "mine" | "public";
 
 export default function CreatedTemplatesPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   const [scope, setScope] = useState<Scope>("mine");
   const [userId, setUserId] = useState<string | null>(null);

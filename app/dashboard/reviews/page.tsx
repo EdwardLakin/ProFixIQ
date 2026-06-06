@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import ReviewForm from "@/features/shared/components/reviews/ReviewForm";
@@ -14,7 +14,7 @@ type Profile = Pick<
 >;
 
 export default function ReviewsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [loading, setLoading] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
 

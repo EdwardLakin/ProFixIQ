@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import { requirePortalCustomerActor, } from "@/features/portal/server/requirePortalActor";
@@ -66,10 +65,7 @@ function vehicleLabel(v: VehicleLite | undefined): string {
 }
 
 export default async function HistoryPage() {
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createServerSupabaseRSC();
 
   try {
     const actor = await requirePortalCustomerActor(supabase);

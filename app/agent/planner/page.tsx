@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
@@ -359,7 +358,7 @@ export default function PlannerPage() {
 
   const [toast, setToast] = useState<string | null>(null);
 
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const draft = useWorkOrderDraft();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
   const setCustomerDraft = useWorkOrderDraft((s) => s.setCustomer);

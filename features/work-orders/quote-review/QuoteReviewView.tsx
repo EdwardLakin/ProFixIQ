@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database, Json } from "@shared/types/types/supabase";
 
@@ -313,7 +313,7 @@ export default function QuoteReviewView(props: {
   const router = useRouter();
   const woId = String(props.workOrderId ?? "").trim();
   const embedded = Boolean(props.embedded);
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);

@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { getOfflineSyncSummary, subscribeOfflineMutations } from "@/features/shared/lib/offline/mutations";
 
@@ -123,7 +123,7 @@ type WorkOrderMapRow = {
 };
 
 export default function MobileTechQueuePage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [lines, setLines] = useState<Line[]>([]);

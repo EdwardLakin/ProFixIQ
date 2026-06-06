@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import { replaceFleetTireSectionWithGrid } from "@/features/inspections/lib/fleet/replaceFleetTireSectionWithGrid";
@@ -74,7 +74,7 @@ function normalizeParsedSections(
 export default function FleetFormReviewPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const uploadId = sp.get("uploadId");
   const uploadIds = sp.get("uploadIds");

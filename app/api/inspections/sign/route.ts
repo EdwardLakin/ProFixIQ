@@ -2,9 +2,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database as BaseDatabase } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 /**
  * SQL function:
@@ -55,7 +53,7 @@ function isSignRequestBody(value: unknown): value is SignRequestBody {
   return ALLOWED_ROLES.includes(role as Role);
 }
 
-type Supabase = ReturnType<typeof createRouteHandlerClient<BaseDatabase>>;
+type Supabase = ReturnType<typeof createServerSupabaseRoute>;
 
 type RpcReturn = {
   data: unknown;
@@ -108,7 +106,7 @@ async function ensureInspectionExists(args: {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<BaseDatabase>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // Require authed user
   const userRes = await supabase.auth.getUser();

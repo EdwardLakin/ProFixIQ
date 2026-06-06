@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
@@ -60,7 +60,7 @@ type UiLine = POLineRow & {
 export default function PurchaseOrderDetailPage(): JSX.Element {
   const { id: poId } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);

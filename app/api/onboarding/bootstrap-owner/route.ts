@@ -1,8 +1,6 @@
 // app/api/onboarding/bootstrap-owner/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 import { OWNER_PIN_PURPOSES, setOwnerPinVerifiedCookie } from "@/features/shared/lib/server/owner-pin";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
@@ -11,7 +9,6 @@ import {
   reconcileShopBillingFromUser,
 } from "@/features/stripe/lib/server/canonical-shop-billing";
 
-type DB = Database;
 
 const NA_COUNTRIES = new Set(["US", "CA"]);
 
@@ -28,7 +25,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const {

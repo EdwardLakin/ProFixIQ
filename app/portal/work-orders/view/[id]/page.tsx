@@ -1,9 +1,8 @@
 // /app/portal/work-orders/view/[id]/page.tsx (FULL FILE REPLACEMENT)
 
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -131,10 +130,7 @@ export default async function PortalWorkOrderViewerPage({
 }) {
   const { id: workOrderId } = await params;
 
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createServerSupabaseRSC();
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);

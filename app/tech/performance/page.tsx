@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -53,7 +53,7 @@ function avg(nums: number[]): number {
 }
 
 export default function TechPerformancePage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);

@@ -4,8 +4,7 @@ import "server-only";
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
 import type { InspectionItem } from "@/features/inspections/lib/inspection/types";
@@ -41,7 +40,7 @@ type CompleteRequest = {
 
 /* --------------------------------- Route -------------------------------- */
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     // 1) Parse & validate

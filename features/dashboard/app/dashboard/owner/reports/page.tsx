@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import html2canvas from "html2canvas";
 import { startOfYear, endOfYear } from "date-fns";
 import {
@@ -19,7 +19,6 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
-import type { Database } from "@shared/types/types/supabase";
 import {
   getShopStats,
   type TimeRange,
@@ -74,7 +73,7 @@ const RANGE_LABELS: Record<Range, string> = {
 type TabKey = "performance" | "health";
 
 export default function ReportsPage() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 

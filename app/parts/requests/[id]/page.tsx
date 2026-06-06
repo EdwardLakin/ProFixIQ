@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -185,7 +185,7 @@ function lineLabelFrom(line?: LineLite): string {
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
   const [lineById, setLineById] = useState<Map<string, LineLite>>(

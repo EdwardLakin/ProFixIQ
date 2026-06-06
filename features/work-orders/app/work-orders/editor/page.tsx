@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
@@ -34,7 +34,7 @@ type LineDraft = {
 const fieldClass = ui.input;
 
 export default function WorkOrderEditorPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [query, setQuery] = useState("");
   const [filtered, setFiltered] = useState<MenuItem[]>([]);

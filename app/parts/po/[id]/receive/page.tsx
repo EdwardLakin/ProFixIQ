@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
 import {
@@ -74,7 +74,7 @@ function n(v: unknown): number {
 }
 
 async function resolveShopId(
-  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  supabase: ReturnType<typeof createBrowserSupabase>,
 ): Promise<string> {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
@@ -125,7 +125,7 @@ function extractReceiveResult(data: unknown): ReceiveResult | null {
 }
 
 export default function PoReceivePage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const params = useParams<{ id: string }>();
   const router = useRouter();
 

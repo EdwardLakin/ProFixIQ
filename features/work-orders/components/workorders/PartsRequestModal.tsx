@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -49,7 +49,7 @@ export default function PartsRequestModal({
   closeEventName = "parts-request:close",
   submittedEventName = "parts-request:submitted",
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [headerNotes, setHeaderNotes] = useState(requestNote ?? "");
   const [rows, setRows] = useState<Item[]>([

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type Body = {
   workOrderId: string;
@@ -15,7 +13,7 @@ type JsonOk = { sessionId: string; reused: boolean };
 type JsonErr = { error: string };
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let parsed: unknown;
   try {

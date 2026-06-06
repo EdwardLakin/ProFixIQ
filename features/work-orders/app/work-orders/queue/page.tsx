@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import WorkOrderAiIndicatorBadge from "@/features/work-orders/components/WorkOrderAiIndicatorBadge";
 import type { WorkOrderRecommendationIndicatorMap } from "@/features/ai/server/domains/workOrders/getWorkOrderRecommendationIndicators";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
@@ -72,7 +72,7 @@ type WorkOrderWaiterFlags = {
 };
 
 export default function QueuePage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   // auth / profile
   const [userId, setUserId] = useState<string | null>(null);

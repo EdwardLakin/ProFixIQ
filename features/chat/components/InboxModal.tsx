@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import UserAvatar from "@/features/chat/components/UserAvatar";
 import ModalShell from "@/features/shared/components/ModalShell";
@@ -121,7 +121,7 @@ export default function InboxModal({
   seedConversationId = null,
 }: Props): JSX.Element | null {
   const pathname = usePathname() ?? "/dashboard";
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [me, setMe] = useState<string | null>(null);
   const [rows, setRows] = useState<ConversationPayload[]>([]);

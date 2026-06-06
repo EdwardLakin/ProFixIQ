@@ -1,8 +1,7 @@
 // /features/integrations/shopBoost/runIntakeHandler.ts
 import { randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -145,7 +144,7 @@ export async function runShopBoostIntake(
   req: NextRequest,
   mode: RunMode,
 ): Promise<ShopBoostRunResp> {
-  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const supabaseUser = createServerSupabaseRoute();
 
   const {
     data: { user },

@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   useAiPartSuggestions,
@@ -107,7 +107,7 @@ export function PartPicker({
   onPick,
   variant = "modal",
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shopId, setShopId] = useState<UUID>("");
   const [search, setSearch] = useState(initialSearch);

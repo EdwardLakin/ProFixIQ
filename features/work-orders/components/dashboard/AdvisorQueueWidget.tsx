@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import WorkOrderAiIndicatorBadge from "@/features/work-orders/components/WorkOrderAiIndicatorBadge";
 import type { WorkOrderRecommendationIndicatorMap } from "@/features/ai/server/domains/workOrders/getWorkOrderRecommendationIndicators";
@@ -139,7 +139,7 @@ function BucketButton({
 }
 
 export default function AdvisorQueueWidget({ embedded = false }: { embedded?: boolean }): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   
   const [role, setRole] = useState<string | null>(null);

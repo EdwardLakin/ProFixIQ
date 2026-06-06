@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModalWrapper";
 
@@ -16,7 +16,7 @@ type Conversation = {
 };
 
 export default function ChatDock(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   // dock open/close
   const [open, setOpen] = useState<boolean>(false);

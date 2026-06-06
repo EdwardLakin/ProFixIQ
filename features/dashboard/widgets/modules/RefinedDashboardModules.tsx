@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import {
   DashboardActionBar,
@@ -19,7 +19,6 @@ import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnici
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import { useWorkOrderBoard } from "@/features/shared/hooks/useWorkOrderBoard";
 import { getShopStats } from "@/features/shared/lib/stats/getShopStats";
-import type { Database } from "@shared/types/types/supabase";
 import { useEffect, useState } from "react";
 
 function actionBtn() {
@@ -129,7 +128,7 @@ export function TechLoadModule({ shopId, mode }: { shopId: string | null; mode: 
 }
 
 export function ShopPulseModule({ shopId, mode }: { shopId: string | null; mode: DashboardModuleMode }) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Array<{ label: string; value: string }>>([]);

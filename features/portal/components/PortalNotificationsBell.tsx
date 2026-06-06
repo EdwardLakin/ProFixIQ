@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -14,7 +14,7 @@ function classNames(...parts: Array<string | false | null | undefined>) {
 const COPPER = "#C57A4A";
 
 export default function PortalNotificationsBell() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [items, setItems] = useState<PortalNotificationRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);

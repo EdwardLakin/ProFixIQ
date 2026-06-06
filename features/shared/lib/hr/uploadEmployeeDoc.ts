@@ -1,7 +1,7 @@
 // features/shared/lib/hr/uploadEmployeeDoc.ts
 "use client";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Database,
@@ -26,7 +26,7 @@ export async function uploadEmployeeDoc(
   userId: string
 ) {
   // 🔒 make sure the client is strongly typed to your Database + "public"
-  const raw = createClientComponentClient<DB>();
+  const raw = createBrowserSupabase();
   const supabase = raw as unknown as SupabaseClient<DB, "public">;
 
   // ---------- 1) Upload to Storage (bucket: employee_docs)

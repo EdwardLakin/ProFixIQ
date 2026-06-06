@@ -3,16 +3,13 @@
 // IMPORTANT: params.id may be a custom_id (e.g. "T0000007") OR a UUID.
 // We resolve to the real work_orders.id UUID before embedding quote review.
 
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
-import type { Database } from "@shared/types/types/supabase";
 
 import FocusedJobSplitView from "../focused-job/_components/FocusedJobSplitView";
 import WorkOrderIdClient from "../Client"; // adjust ONLY if your filename is actually ../Client
 import QuoteReviewPanelClient from "./_components/QuoteReviewPanelClient";
 
-type DB = Database;
 
 function looksLikeUuid(s: string): boolean {
   return s.includes("-") && s.length >= 36;
@@ -21,7 +18,7 @@ function looksLikeUuid(s: string): boolean {
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const { id: routeId } = await props.params;
 
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   // Resolve routeId -> real UUID + custom_id
   let resolved: { id: string; custom_id: string | null } | null = null;

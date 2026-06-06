@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 import { PortalActionCard, PortalEmptyState, PortalPageHeader, PortalPrimaryButton, PortalSecondaryButton, PortalSectionCard, PortalStatCard, PortalStatusChip } from "@/features/portal/components/PortalUi";
@@ -18,7 +18,7 @@ const formatWhen = (iso: string) => { const d = new Date(iso); if (Number.isNaN(
 const formatWoRef = (wo: Pick<WorkOrderRow, "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"> | null) => wo ? `#${wo.id?.slice(0, 8) ?? "—"}` : "—";
 
 export default function PortalHomePage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);

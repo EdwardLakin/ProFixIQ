@@ -3,14 +3,12 @@ import "server-only";
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import crypto from "crypto";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
-type DB = Database;
 
 function asString(v: FormDataEntryValue | null): string | null {
   if (typeof v !== "string") return null;
@@ -29,7 +27,7 @@ function extFromMime(mime: string | null): "jpg" | "png" {
 }
 
 async function resolveShopId(args: {
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  supabase: ReturnType<typeof createServerSupabaseRoute>;
   inspectionId: string;
   workOrderId: string | null;
   workOrderLineId: string | null;
@@ -117,7 +115,7 @@ async function resolveShopId(args: {
 }
 
 async function ensureInspectionRow(args: {
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  supabase: ReturnType<typeof createServerSupabaseRoute>;
   inspectionId: string;
   shopId: string;
   workOrderId: string | null;
@@ -204,7 +202,7 @@ async function ensureInspectionRow(args: {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

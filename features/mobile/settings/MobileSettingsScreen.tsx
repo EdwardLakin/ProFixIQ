@@ -6,7 +6,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import SignaturePad, {
@@ -44,7 +44,7 @@ async function sha256Base64(dataUrl: string): Promise<string> {
 }
 
 export default function MobileTechSettingsPage(): JSX.Element {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   // profile fields (from profiles table)
   const [loading, setLoading] = useState(true);

@@ -3,16 +3,14 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PretripForm from "@/features/fleet/components/PretripForm";
 
-type DB = Database;
 
 export default function MobileFleetPretripPage() {
   const params = useParams<{ unitId: string }>();
   const search = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const unitId = params?.unitId ? String(params.unitId) : null;
   const driverHint = search.get("driver"); // optional query param for name prefill

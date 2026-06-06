@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -267,7 +267,7 @@ function priorityChip(priority: number | null | undefined): string {
 }
 
 export default function WorkOrdersView(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -346,7 +346,6 @@ export default function WorkOrdersView(): JSX.Element {
       .from("work_orders")
       .select(`
         *,
-        customers:customers(first_name,last_name,phone,email),
         vehicles:vehicles(year,make,model,license_plate)
       `)
       .order("created_at", { ascending: false })
@@ -432,6 +431,33 @@ export default function WorkOrdersView(): JSX.Element {
     }
 
     const workOrders = (data ?? []) as Row[];
+    const customerIds = Array.from(
+      new Set(
+        workOrders
+          .map((row) => row.customer_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (customerIds.length > 0) {
+      const { data: customerRows, error: customerErr } = await supabase
+        .from("customers")
+        .select("id,first_name,last_name,phone,email")
+        .in("id", customerIds);
+
+      if (customerErr) {
+        console.warn("[WorkOrdersView] customer lookup failed; showing work orders without customer details:", customerErr.message);
+      } else {
+        const customersById = new Map(
+          (customerRows ?? []).map((customer) => [customer.id, customer]),
+        );
+
+        workOrders.forEach((row) => {
+          row.customers = row.customer_id ? customersById.get(row.customer_id) ?? null : null;
+        });
+      }
+    }
+
     const qlc = q.trim().toLowerCase();
 
     const filtered =

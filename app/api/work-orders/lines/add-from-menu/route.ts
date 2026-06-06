@@ -1,10 +1,7 @@
 // app/api/work-orders/lines/add-from-menu/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 type Body = {
   workOrderId: string;
@@ -77,7 +74,7 @@ function parseMenu(row: unknown): MenuItemRow | null {
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let body: Body;
   try {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   itemFlowLabel,
@@ -49,7 +49,7 @@ function n(v: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-async function resolveShopId(supabase: ReturnType<typeof createClientComponentClient<DB>>) {
+async function resolveShopId(supabase: ReturnType<typeof createBrowserSupabase>) {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
   if (!uid) return "";
@@ -62,7 +62,7 @@ async function resolveShopId(supabase: ReturnType<typeof createClientComponentCl
 const ReceiveDrawer = dynamic(() => import("@/features/parts/components/ReceiveDrawer"), { ssr: false });
 
 export default function ReceivingInboxPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);

@@ -10,9 +10,8 @@ import {
   startOfYear,
   endOfYear,
 } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import type { TimeRange } from "./getShopStats";
 
 type SlimProfile = {
@@ -127,7 +126,7 @@ export async function getTechLeaderboard(
   shopId: string,
   timeRange: TimeRange,
 ): Promise<TechLeaderboardResult> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const now = new Date();
   let start: Date;

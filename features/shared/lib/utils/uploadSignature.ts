@@ -1,10 +1,9 @@
 // features/shared/lib/utils/uploadSignature.ts
 "use client";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserSupabase();
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, base64] = dataUrl.split(",");

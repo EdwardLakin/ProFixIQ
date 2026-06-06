@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
@@ -348,7 +348,7 @@ export default function CustomerProfilePage(): JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const rawId = useMemo(() => {
     const raw = (params as ParamsShape)?.id;

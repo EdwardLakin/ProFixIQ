@@ -5,11 +5,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrderLineForm";
 
-type DB = Database;
 
 type JobType = "diagnosis" | "inspection" | "maintenance" | "repair";
 
@@ -26,7 +24,7 @@ export function MobileJobLineAdd({
   defaultJobType = "diagnosis",
   onCreated,
 }: Props): JSX.Element | null {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string | null>(null);
 
   // look up shop_id from the work order once

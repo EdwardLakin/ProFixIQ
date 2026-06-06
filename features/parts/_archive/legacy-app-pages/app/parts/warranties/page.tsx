@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { format, addMonths, isBefore, differenceInDays } from "date-fns";
 import { toast } from "sonner";
@@ -77,7 +77,7 @@ function PartPickerDialog({
   shopId: string;
   onPick: (p: PartLite) => void;
 }): JSX.Element | null {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [q, setQ] = useState<string>("");
   const [rows, setRows] = useState<PartLite[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -191,7 +191,7 @@ function PartPickerDialog({
 /*                               PAGE                                    */
 /* ===================================================================== */
 export default function WarrantiesPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shopId, setShopId] = useState<string>("");
   const [ready, setReady] = useState(false);

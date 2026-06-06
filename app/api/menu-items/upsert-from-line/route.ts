@@ -1,8 +1,7 @@
 // app/api/menu-items/upsert-from-line/route.ts
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -65,7 +64,7 @@ function partNameFromJoin(j: AllocationJoined["parts"]): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   /* ---------------------------------------------------------------------- */
   /* 1) AUTH                                                                */

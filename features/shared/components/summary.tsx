@@ -3,14 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { extractSummaryFromSession } from "@inspections/lib/inspection/summary";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 export default function InspectionSummaryPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);

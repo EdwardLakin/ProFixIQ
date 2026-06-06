@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { openai } from "lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -165,7 +164,7 @@ function parseSummary(value: unknown): DtcAnalysisSummary | null {
 }
 
 async function loadRouteContext(jobId: string): Promise<RouteContext | null> {
-  const routeSupabase = createRouteHandlerClient<DB>({ cookies });
+  const routeSupabase = createServerSupabaseRoute();
   const admin = await createAdminSupabase();
 
   const {

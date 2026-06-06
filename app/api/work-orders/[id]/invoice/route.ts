@@ -4,13 +4,10 @@
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 
-type DB = Database;
 
 function isError(x: unknown): x is Error {
   return typeof x === "object" && x !== null && "message" in x;
@@ -20,7 +17,7 @@ export async function POST(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const params = await ctx.params;
   const woId = typeof params?.id === "string" ? params.id : "";
@@ -75,7 +72,7 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const params = await ctx.params;
   const woId = typeof params?.id === "string" ? params.id : "";
   if (!woId) return NextResponse.json({ error: "Missing work order id" }, { status: 400 });

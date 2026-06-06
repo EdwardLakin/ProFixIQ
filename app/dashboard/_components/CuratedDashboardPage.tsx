@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import DashboardAlertStrip from "@/features/dashboard/components/DashboardAlertStrip";
 import DashboardWidgetBoard from "@/features/dashboard/components/DashboardWidgetBoard";
 import {
@@ -23,7 +22,6 @@ import type {
 } from "@/features/dashboard/types/layout";
 import DashboardViewSwitcher from "./DashboardViewSwitcher";
 
-type DB = Database;
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
@@ -49,7 +47,7 @@ type Props = {
 };
 
 export default function CuratedDashboardPage({ view }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestLayoutRef = useRef<DashboardWidgetLayout[] | undefined>(undefined);
 

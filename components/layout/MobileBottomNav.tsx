@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   getMobileTilesForRole,
@@ -13,7 +12,6 @@ import {
 
 import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
 
-type DB = Database;
 
 type NavItem = {
   href: string;
@@ -74,7 +72,7 @@ function NavSection({
 
 export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<MobileRole | null>(null);

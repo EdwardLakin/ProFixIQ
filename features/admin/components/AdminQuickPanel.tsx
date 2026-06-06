@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 // ---- Lite shapes (kept independent from exact DB types) ----
 type ActivityLog = {
@@ -108,7 +107,7 @@ const fmtDate = (iso?: string | null) => {
 };
 
 export default function AdminQuickPanel() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   // state for cards
   const [activity, setActivity] = useState<ActivityLog[] | null>(null);

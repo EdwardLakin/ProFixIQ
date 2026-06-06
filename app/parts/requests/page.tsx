@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { requestFlowLabel, toItemFlowDisplay, toRequestFlowDisplay } from "@/features/parts/lib/status-display";
@@ -97,7 +97,7 @@ function buildVehicleLabel(input: {
 }
 
 export default function PartsRequestsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

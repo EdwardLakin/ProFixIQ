@@ -1,9 +1,6 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-type DB = Database;
 
 /**
  * Fetch the user's session and related profile/shop info without using
@@ -15,7 +12,7 @@ type DB = Database;
  */
 
 export async function requireUserSession() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   const {
     data: { session },
@@ -66,7 +63,7 @@ export async function requireUserSession() {
 }
 
 export async function getUserSession() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   const {
     data: { session },

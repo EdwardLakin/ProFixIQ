@@ -1,11 +1,8 @@
 "use server";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-type DB = Database;
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 export async function listParts(shopId: string) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const { data, error } = await supabase
     .from("parts")
     .select("id, sku, name, category, default_price, low_stock_threshold")
@@ -16,7 +13,7 @@ export async function listParts(shopId: string) {
 }
 
 export async function getPart(id: string) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const { data, error } = await supabase
     .from("parts")
     .select("*, part_suppliers(*), v_part_stock(*)")

@@ -1,9 +1,8 @@
 // features/work-orders/lib/parts/allocateMenuItemParts.ts
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
 import { ensureMainLocation } from "@parts/lib/locations";
@@ -29,7 +28,7 @@ function asFiniteNumberOrUndefined(v: unknown): number | undefined {
 }
 
 export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // 1) Load line (source of truth for shop + work order)
   const { data: woLine, error: wlErr } = await supabase

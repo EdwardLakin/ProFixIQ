@@ -1,13 +1,10 @@
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-import type { Database } from "@shared/types/types/supabase";
 import type { DashboardLayoutItem } from "@/features/dashboard/types/layout";
 
-type DB = Database;
 
 type JsonResponse = {
   ok: boolean;
@@ -17,7 +14,7 @@ type JsonResponse = {
 
 export async function GET(req: NextRequest) {
   const scope = req.nextUrl.searchParams.get("scope") || "desktop";
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { session },
@@ -48,7 +45,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { session },

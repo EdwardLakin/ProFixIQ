@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import {
   getShopStats,
   type TimeRange,
@@ -84,7 +83,7 @@ function SummaryMiniCard({
 }
 
 export default function ReportsPerformanceWidget({ compact = false }: { compact?: boolean }) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shopId, setShopId] = useState<string | null>(null);
   const [range, setRange] = useState<TimeRange>("monthly");

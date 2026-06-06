@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
@@ -61,7 +61,7 @@ type LineDraft = {
 const DEFAULT_SUPPLIER_NAME = "General / Stock";
 
 export default function PurchaseOrdersPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [shopId, setShopId] = useState<string>("");
 

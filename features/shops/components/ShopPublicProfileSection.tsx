@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
@@ -51,7 +51,7 @@ const EMPTY_FORM: Form = {
 };
 
 export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY_FORM);

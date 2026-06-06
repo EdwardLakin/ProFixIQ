@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import PortalShell from "@/features/portal/components/PortalShell";
 import type { Database } from "@shared/types/types/supabase";
@@ -23,7 +23,7 @@ const glass =
 const muted = "text-neutral-400";
 
 export default function PortalPartsRequestsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<

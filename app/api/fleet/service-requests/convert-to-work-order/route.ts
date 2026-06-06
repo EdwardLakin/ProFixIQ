@@ -1,11 +1,8 @@
 // app/api/fleet/service-requests/convert-to-work-order/route.ts
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
-type DB = Database;
 
 type ConvertBody = {
   serviceRequestId: string;
@@ -13,7 +10,7 @@ type ConvertBody = {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const body = (await req.json().catch(() => null)) as ConvertBody | null;
 
     if (!body?.serviceRequestId) {

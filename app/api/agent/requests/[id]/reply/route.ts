@@ -1,9 +1,7 @@
 // /app/api/agent/requests/[id]/reply/route.ts (FULL FILE REPLACEMENT)
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 /** Minimal JSON type compatible with Supabase jsonb */
 type Json =
@@ -70,7 +68,7 @@ export async function POST(req: Request, context: unknown) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

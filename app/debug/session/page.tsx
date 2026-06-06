@@ -1,8 +1,7 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 export default async function SessionDebug() {
-  const sb = createServerComponentClient({ cookies });
+  const sb = createServerSupabaseRSC();
 
   // session + user
   const { data: s } = await sb.auth.getSession();
@@ -24,7 +23,7 @@ export default async function SessionDebug() {
   // current shop id from session (via accessor RPC)
   let currentShopId = null;
   try {
-    const { data } = await sb.rpc("get_current_shop_id");
+    const { data } = await sb.rpc("get_current_shop_id" as never);
     currentShopId = data || null;
   } catch {}
 

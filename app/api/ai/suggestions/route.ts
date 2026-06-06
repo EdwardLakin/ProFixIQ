@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createOpenAIEmbedding } from "@/features/shared/lib/server/openai-embeddings";
 
-type DB = Database;
 
 type Body = {
   item?: string;
@@ -194,7 +191,7 @@ function buildIntelligenceSuggestion(
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const rpcClient = supabase as unknown as {
       rpc: (
         fn: string,

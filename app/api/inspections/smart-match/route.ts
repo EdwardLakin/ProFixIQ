@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { findSmartInspectionMatch } from "@/features/inspections/server/findSmartInspectionMatch";
 
-type DB = Database;
 
 type Body = {
   item?: string;
@@ -23,7 +20,7 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const body = (await req.json().catch(() => null)) as Body | null;
 
   const {

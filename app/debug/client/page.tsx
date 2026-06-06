@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type AuthInfo = {
   hasSession: boolean;
@@ -12,7 +11,7 @@ type AuthInfo = {
 };
 
 export default function ClientDebug(): JSX.Element {
-  const sb = createClientComponentClient<Database>();
+  const sb = createBrowserSupabase();
 
   const [info, setInfo] = useState<AuthInfo | null>(null);
   const [repl, setRepl] = useState<Record<string, unknown> | null>(null);

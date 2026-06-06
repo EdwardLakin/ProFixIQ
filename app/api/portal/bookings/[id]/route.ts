@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
@@ -13,7 +12,7 @@ type PatchBody = {
   ends_at?: string;
 };
 
-async function getAuthedContext(supabase: ReturnType<typeof createRouteHandlerClient<DB>>) {
+async function getAuthedContext(supabase: ReturnType<typeof createServerSupabaseRoute>) {
   const {
     data: { user },
     error: userErr,
@@ -54,7 +53,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await ctx.params;
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const auth = await getAuthedContext(supabase);
     if ("error" in auth) return auth.error;
@@ -114,7 +113,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await ctx.params;
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const auth = await getAuthedContext(supabase);
     if ("error" in auth) return auth.error;

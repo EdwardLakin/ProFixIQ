@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -168,7 +168,7 @@ function mergeNotes(existing: string | null | undefined, intakeBlock: string) {
 }
 
 export default function PortalRequestBuildPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const router = useRouter();
   const sp = useSearchParams();
 

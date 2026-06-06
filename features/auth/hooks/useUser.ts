@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -13,7 +13,7 @@ type Role    = DB["public"]["Enums"]["user_role_enum"];
 export type UserWithShop = Profile & { shops: Shop | null };
 
 export function useUser() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   const [user, setUser] = useState<UserWithShop | null>(null);
   const [isLoading, setIsLoading] = useState(true);

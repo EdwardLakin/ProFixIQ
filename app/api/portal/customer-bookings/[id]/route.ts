@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { cancelCustomerBooking } from "@/features/portal/server/customerBookings";
 
-type DB = Database;
 
 type Body = {
   status?: "cancelled";
@@ -21,7 +18,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "Only cancellation is allowed" }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const actor = await requirePortalCustomerActor(supabase);

@@ -1,7 +1,6 @@
 // app/api/agent/requests/[id]/notify-discord/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -52,8 +51,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
     }
 
-    // ✅ IMPORTANT: do NOT await cookies(); createRouteHandlerClient expects sync cookies access
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    // ✅ IMPORTANT: do NOT await cookies(); createServerSupabaseRoute uses request cookies
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

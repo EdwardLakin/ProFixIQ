@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
@@ -79,7 +78,7 @@ async function renderPdf(report: Record<string, unknown>): Promise<Buffer> {
 
 export async function GET(req: Request, context: RouteContext) {
   const { id } = await context.params;
-  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const supabaseUser = createServerSupabaseRoute();
   const {
     data: { user },
   } = await supabaseUser.auth.getUser();

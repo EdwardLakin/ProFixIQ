@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
@@ -55,7 +55,7 @@ export function MobileTechHome({
   jobs,
   loadingStats = false,
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");

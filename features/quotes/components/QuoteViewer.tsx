@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
 import type { QuoteLine } from "@quotes/lib/quote/generateQuoteFromInspection";
 import type { QuoteLineItem as BaseQuoteLineItem } from "@inspections/lib/inspection/types";
@@ -22,7 +21,7 @@ interface QuoteViewerProps {
   quote: (QuoteLine | BaseQuoteLineItem)[];
 }
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserSupabase();
 
 /** Minimal inline save; adjust table/columns if yours differ */
 async function updateQuoteLine(item: EditableQuoteLineItem) {
