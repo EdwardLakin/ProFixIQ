@@ -5,6 +5,7 @@ import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
 import { headers } from "next/headers";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
 
@@ -54,14 +55,23 @@ export default async function RootLayout({
 
   const useAppShell = !isPublicRoute;
 
-  const session = useAppShell
-    ? (await createServerSupabaseRSC().auth.getSession()).data.session
-    : null;
+  const [session, dashboardIdentity] = useAppShell
+    ? await Promise.all([
+        createServerSupabaseRSC()
+          .auth.getSession()
+          .then((result) => result.data.session),
+        getDashboardIdentity(),
+      ])
+    : [null, null];
 
   const appContent = (
     <VoiceProvider>
       <BrandThemeBoot />
-      {useAppShell ? <AppShell>{children}</AppShell> : children}
+      {useAppShell ? (
+        <AppShell initialIdentity={dashboardIdentity}>{children}</AppShell>
+      ) : (
+        children
+      )}
     </VoiceProvider>
   );
 

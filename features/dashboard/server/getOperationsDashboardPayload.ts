@@ -1,9 +1,16 @@
 import { endOfDay, startOfDay, startOfMonth } from "date-fns";
 
-import { createDashboardServerClient, getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
+import {
+  createDashboardServerClient,
+  getDashboardIdentity,
+} from "@/features/dashboard/server/dashboard-shell-data";
 
 const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
-const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
+const CLOSED_LINE_STATUSES = [
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+] as const;
 const TECH_ROLES = new Set(["tech", "technician", "mechanic"]);
 
 type OpSignal = {
@@ -87,9 +94,11 @@ function elapsedLabel(updatedAt: string | null): string {
 }
 
 export async function getOperationsDashboardPayload(): Promise<OperationsDashboardPayload> {
-  const identity = await getDashboardIdentity();
+  const supabase = createDashboardServerClient();
+  const identity = await getDashboardIdentity(supabase);
   const normalizedRole = (identity.role ?? "").toLowerCase();
-  const isTechnicianScoped = Boolean(identity.userId) && TECH_ROLES.has(normalizedRole);
+  const isTechnicianScoped =
+    Boolean(identity.userId) && TECH_ROLES.has(normalizedRole);
   const payload: OperationsDashboardPayload = {
     identity,
     viewerScope: isTechnicianScoped ? "technician" : "shop",
@@ -123,7 +132,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     return payload;
   }
 
-  const supabase = createDashboardServerClient();
   const todayStart = startOfDay(new Date()).toISOString();
   const todayEnd = endOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
@@ -133,21 +141,27 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     .select("id,work_order_id,status,updated_at", { count: "exact" })
     .eq("shop_id", identity.shopId)
     .in("approval_state", ["requested", "pending", "awaiting_approval"]);
-  const scopedApprovalsQuery = isTechnicianScoped && identity.userId
-    ? approvalsQuery.eq("assigned_tech_id", identity.userId)
-    : approvalsQuery;
+  const scopedApprovalsQuery =
+    isTechnicianScoped && identity.userId
+      ? approvalsQuery.eq("assigned_tech_id", identity.userId)
+      : approvalsQuery;
 
   const activeLinesQuery = supabase
     .from("work_order_lines")
     .select("id,work_order_id,assigned_tech_id,status,updated_at")
     .eq("shop_id", identity.shopId)
-    .not("status", "in", `(${CLOSED_LINE_STATUSES.map((status) => `'${status}'`).join(",")})`)
+    .not(
+      "status",
+      "in",
+      `(${CLOSED_LINE_STATUSES.map((status) => `'${status}'`).join(",")})`,
+    )
     .not("assigned_tech_id", "is", null)
     .order("updated_at", { ascending: false })
     .limit(400);
-  const scopedActiveLinesQuery = isTechnicianScoped && identity.userId
-    ? activeLinesQuery.eq("assigned_tech_id", identity.userId)
-    : activeLinesQuery;
+  const scopedActiveLinesQuery =
+    isTechnicianScoped && identity.userId
+      ? activeLinesQuery.eq("assigned_tech_id", identity.userId)
+      : activeLinesQuery;
 
   const [
     boardResult,
@@ -159,7 +173,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   ] = await Promise.all([
     supabase
       .from("v_work_order_board_cards_shop")
-      .select("work_order_id,custom_id,display_name,overall_stage,risk_level,priority")
+      .select(
+        "work_order_id,custom_id,display_name,overall_stage,risk_level,priority",
+      )
       .eq("shop_id", identity.shopId)
       .order("activity_at", { ascending: false })
       .limit(isTechnicianScoped ? 200 : 48),
@@ -183,12 +199,16 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .lte("created_at", todayEnd),
   ]);
 
-  const boardRows = boardResult.error ? [] : boardResult.data ?? [];
-  const activeLines = activeLinesResult.error ? [] : activeLinesResult.data ?? [];
+  const boardRows = boardResult.error ? [] : (boardResult.data ?? []);
+  const activeLines = activeLinesResult.error
+    ? []
+    : (activeLinesResult.data ?? []);
   const buildOpenPartsQuery = () =>
     supabase
       .from("part_requests")
-      .select("id,status,work_order_id,job_id,created_at,requested_by,assigned_to")
+      .select(
+        "id,status,work_order_id,job_id,created_at,requested_by,assigned_to",
+      )
       .eq("shop_id", identity.shopId)
       .in("status", OPEN_PART_STATUSES as unknown as string[]);
 
@@ -204,25 +224,40 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   let partsQueryFailed = false;
 
   if (isTechnicianScoped && identity.userId) {
-    const assignedLineIds = [...new Set(activeLines.map((line) => line.id).filter(Boolean))];
+    const assignedLineIds = [
+      ...new Set(activeLines.map((line) => line.id).filter(Boolean)),
+    ];
     const assignedWorkOrderIds = [
-      ...new Set(activeLines.map((line) => line.work_order_id).filter((id): id is string => Boolean(id))),
+      ...new Set(
+        activeLines
+          .map((line) => line.work_order_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
     ];
     const partRowsById = new Map<string, (typeof partsRows)[number]>();
 
-    const [partsByJobResult, partsByWorkOrderResult, partsByOwnerResult] = await Promise.all([
-      assignedLineIds.length > 0
-        ? buildOpenPartsQuery().in("job_id", assignedLineIds).limit(200)
-        : Promise.resolve({ data: [], error: null }),
-      assignedWorkOrderIds.length > 0
-        ? buildOpenPartsQuery().in("work_order_id", assignedWorkOrderIds).limit(200)
-        : Promise.resolve({ data: [], error: null }),
-      buildOpenPartsQuery()
-        .or(`requested_by.eq.${identity.userId},assigned_to.eq.${identity.userId}`)
-        .limit(120),
-    ]);
+    const [partsByJobResult, partsByWorkOrderResult, partsByOwnerResult] =
+      await Promise.all([
+        assignedLineIds.length > 0
+          ? buildOpenPartsQuery().in("job_id", assignedLineIds).limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        assignedWorkOrderIds.length > 0
+          ? buildOpenPartsQuery()
+              .in("work_order_id", assignedWorkOrderIds)
+              .limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        buildOpenPartsQuery()
+          .or(
+            `requested_by.eq.${identity.userId},assigned_to.eq.${identity.userId}`,
+          )
+          .limit(120),
+      ]);
 
-    if (partsByJobResult.error || partsByWorkOrderResult.error || partsByOwnerResult.error) {
+    if (
+      partsByJobResult.error ||
+      partsByWorkOrderResult.error ||
+      partsByOwnerResult.error
+    ) {
       partsQueryFailed = true;
       console.error("[Dashboard][Operations] parts query failed", {
         shopId: identity.shopId,
@@ -233,7 +268,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       });
     }
 
-    [partsByJobResult.data ?? [], partsByWorkOrderResult.data ?? [], partsByOwnerResult.data ?? []]
+    [
+      partsByJobResult.data ?? [],
+      partsByWorkOrderResult.data ?? [],
+      partsByOwnerResult.data ?? [],
+    ]
       .flat()
       .forEach((row) => {
         partRowsById.set(row.id, row);
@@ -257,7 +296,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   const scopedWorkOrderIds = new Set<string>();
 
   if (isTechnicianScoped) {
-    const approvalRows = approvalsResult.error ? [] : approvalsResult.data ?? [];
+    const approvalRows = approvalsResult.error
+      ? []
+      : (approvalsResult.data ?? []);
     const scopedPartRows = partsRows;
 
     for (const row of approvalRows) {
@@ -275,10 +316,14 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   const boardRowsForViewer = isTechnicianScoped
     ? boardRows.filter((row) => scopedWorkOrderIds.has(row.work_order_id))
     : boardRows;
-  const activeBoardRows = boardRowsForViewer.filter((row) => row.overall_stage !== "completed");
+  const activeBoardRows = boardRowsForViewer.filter(
+    (row) => row.overall_stage !== "completed",
+  );
   const mostRecentBlockedWorkOrderId =
     activeBoardRows.find(
-      (row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold",
+      (row) =>
+        row.overall_stage === "waiting_parts" ||
+        row.overall_stage === "on_hold",
     )?.work_order_id ?? null;
 
   if (boardResult.error) {
@@ -291,7 +336,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   } else {
     payload.topSummary.activeJobs = activeBoardRows.length;
     payload.topSummary.blockedJobs = activeBoardRows.filter(
-      (row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold",
+      (row) =>
+        row.overall_stage === "waiting_parts" ||
+        row.overall_stage === "on_hold",
     ).length;
 
     const stageCounts = new Map<string, number>();
@@ -311,12 +358,23 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     const waitingParts = stageCounts.get("waiting parts") ?? 0;
     payload.activeJobSummary = [
       { label: "Awaiting", value: awaiting, pct: asPct(awaiting, total) },
-      { label: "In progress", value: inProgress, pct: asPct(inProgress, total) },
-      { label: "Waiting parts", value: waitingParts, pct: asPct(waitingParts, total) },
+      {
+        label: "In progress",
+        value: inProgress,
+        pct: asPct(inProgress, total),
+      },
+      {
+        label: "Waiting parts",
+        value: waitingParts,
+        pct: asPct(waitingParts, total),
+      },
       {
         label: "Tech coverage",
         value: Math.min(total, (techProfilesResult.data ?? []).length),
-        pct: asPct(Math.min(total, (techProfilesResult.data ?? []).length), Math.max(total, 1)),
+        pct: asPct(
+          Math.min(total, (techProfilesResult.data ?? []).length),
+          Math.max(total, 1),
+        ),
       },
     ];
 
@@ -346,40 +404,42 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   }
 
   if (partsQueryFailed) {
-    payload.sectionErrors.push("Parts blocker signal is temporarily unavailable.");
+    payload.sectionErrors.push(
+      "Parts blocker signal is temporarily unavailable.",
+    );
   } else {
     payload.topSummary.waitingParts = partsRows.length;
   }
 
   const recentApprovalLine = approvalsResult.error
     ? null
-    : (approvalsResult.data ?? [])
+    : ((approvalsResult.data ?? [])
         .filter((row) => !!row.work_order_id)
         .sort(
           (a, b) =>
-            new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime(),
-        )[0] ?? null;
+            new Date(b.updated_at ?? 0).getTime() -
+            new Date(a.updated_at ?? 0).getTime(),
+        )[0] ?? null);
   const approvalTargetHref = recentApprovalLine?.work_order_id
     ? `/work-orders/${recentApprovalLine.work_order_id}`
     : "/work-orders/board?stage=awaiting_approval";
-  const approvalTargetKind: "item" | "filtered" = recentApprovalLine?.work_order_id
-    ? "item"
-    : "filtered";
+  const approvalTargetKind: "item" | "filtered" =
+    recentApprovalLine?.work_order_id ? "item" : "filtered";
 
   const recentPartsRequest = partsQueryFailed
     ? null
-    : partsRows
+    : (partsRows
         .filter((row) => !!row.work_order_id)
         .sort(
           (a, b) =>
-            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
-        )[0] ?? null;
+            new Date(b.created_at ?? 0).getTime() -
+            new Date(a.created_at ?? 0).getTime(),
+        )[0] ?? null);
   const waitingPartsTargetHref = recentPartsRequest?.work_order_id
     ? `/work-orders/${recentPartsRequest.work_order_id}`
     : "/parts/requests?status=requested,quoted,approved";
-  const waitingPartsTargetKind: "item" | "filtered" = recentPartsRequest?.work_order_id
-    ? "item"
-    : "filtered";
+  const waitingPartsTargetKind: "item" | "filtered" =
+    recentPartsRequest?.work_order_id ? "item" : "filtered";
 
   const blockedTargetHref = mostRecentBlockedWorkOrderId
     ? `/work-orders/${mostRecentBlockedWorkOrderId}`
@@ -397,14 +457,18 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       targetKind: approvalTargetKind,
     },
     {
-      label: isTechnicianScoped ? "My open parts requests" : "Open parts requests",
+      label: isTechnicianScoped
+        ? "My open parts requests"
+        : "Open parts requests",
       value: String(payload.topSummary.waitingParts),
       tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
       href: waitingPartsTargetHref,
       targetKind: waitingPartsTargetKind,
     },
     {
-      label: isTechnicianScoped ? "My blocked jobs (parts/on hold)" : "Blocked jobs (parts/on hold)",
+      label: isTechnicianScoped
+        ? "My blocked jobs (parts/on hold)"
+        : "Blocked jobs (parts/on hold)",
       value: String(payload.topSummary.blockedJobs),
       tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
       href: blockedTargetHref,
@@ -418,7 +482,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       userId: identity.userId,
       error: bookingsTodayResult.error.message,
     });
-    payload.sectionErrors.push("Daily summary signal is temporarily unavailable.");
+    payload.sectionErrors.push(
+      "Daily summary signal is temporarily unavailable.",
+    );
   }
 
   payload.dailySummary = isTechnicianScoped
@@ -438,10 +504,16 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           href: waitingPartsTargetHref,
           targetKind: waitingPartsTargetKind,
         },
-        { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
+        {
+          label: "Today's bookings",
+          value: String(bookingsTodayResult.count ?? 0),
+        },
       ]
     : [
-        { label: "Today's bookings", value: String(bookingsTodayResult.count ?? 0) },
+        {
+          label: "Today's bookings",
+          value: String(bookingsTodayResult.count ?? 0),
+        },
         {
           label: "Approval queue",
           value: String(payload.topSummary.waitingApprovals),
@@ -460,10 +532,15 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       ];
 
   if (techProfilesResult.error || activeLinesResult.error) {
-    payload.sectionErrors.push("Technician activity section is degraded due to query failures.");
+    payload.sectionErrors.push(
+      "Technician activity section is degraded due to query failures.",
+    );
   } else {
     const techs = techProfilesResult.data ?? [];
-    const counts = new Map<string, { activeLines: number; latestStatus: string; lastUpdated: string | null }>();
+    const counts = new Map<
+      string,
+      { activeLines: number; latestStatus: string; lastUpdated: string | null }
+    >();
 
     activeLines.forEach((line) => {
       if (!line.assigned_tech_id) return;
@@ -475,29 +552,35 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       });
     });
 
-    const maxLines = Math.max(1, ...[...counts.values()].map((entry) => entry.activeLines));
-    const technicianRows = techs
-      .map((tech) => {
-        const activity = counts.get(tech.id);
-        return {
-          id: tech.id,
-          name: tech.full_name ?? "Unassigned tech",
-          activeLines: activity?.activeLines ?? 0,
-          stage: activity?.latestStatus ?? "idle",
-          elapsed: elapsedLabel(activity?.lastUpdated ?? null),
-          utilizationPct: asPct(activity?.activeLines ?? 0, maxLines),
-        };
-      });
+    const maxLines = Math.max(
+      1,
+      ...[...counts.values()].map((entry) => entry.activeLines),
+    );
+    const technicianRows = techs.map((tech) => {
+      const activity = counts.get(tech.id);
+      return {
+        id: tech.id,
+        name: tech.full_name ?? "Unassigned tech",
+        activeLines: activity?.activeLines ?? 0,
+        stage: activity?.latestStatus ?? "idle",
+        elapsed: elapsedLabel(activity?.lastUpdated ?? null),
+        utilizationPct: asPct(activity?.activeLines ?? 0, maxLines),
+      };
+    });
 
     payload.technicianActivity = isTechnicianScoped
       ? technicianRows.filter((tech) => tech.id === identity.userId)
-      : technicianRows.sort((a, b) => b.activeLines - a.activeLines).slice(0, 6);
+      : technicianRows
+          .sort((a, b) => b.activeLines - a.activeLines)
+          .slice(0, 6);
   }
 
   payload.alerts = [
     payload.topSummary.blockedJobs > 0
       ? {
-          label: isTechnicianScoped ? "My blocked jobs need action" : "Blocked jobs climbing",
+          label: isTechnicianScoped
+            ? "My blocked jobs need action"
+            : "Blocked jobs climbing",
           detail: isTechnicianScoped
             ? `${payload.topSummary.blockedJobs} of your assigned jobs are waiting parts or on hold.`
             : `${payload.topSummary.blockedJobs} jobs are currently waiting parts or on hold.`,
@@ -506,7 +589,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: blockedTargetKind,
         }
       : {
-          label: isTechnicianScoped ? "My blocker pressure stable" : "Blocker pressure stable",
+          label: isTechnicianScoped
+            ? "My blocker pressure stable"
+            : "Blocker pressure stable",
           detail: isTechnicianScoped
             ? "None of your assigned jobs are currently blocked."
             : "No blocked stage spike detected.",
@@ -516,7 +601,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         },
     payload.topSummary.waitingApprovals > 3
       ? {
-          label: isTechnicianScoped ? "My approvals are aging" : "Approval queue aging",
+          label: isTechnicianScoped
+            ? "My approvals are aging"
+            : "Approval queue aging",
           detail: isTechnicianScoped
             ? `${payload.topSummary.waitingApprovals} of your lines need approval follow-up.`
             : `${payload.topSummary.waitingApprovals} approvals need advisor follow-up.`,
@@ -525,7 +612,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: approvalTargetKind,
         }
       : {
-          label: isTechnicianScoped ? "My approval queue healthy" : "Approval queue healthy",
+          label: isTechnicianScoped
+            ? "My approval queue healthy"
+            : "Approval queue healthy",
           detail: isTechnicianScoped
             ? "Your approval-dependent lines are below action threshold."
             : "Approval queue is below action threshold.",
@@ -535,7 +624,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         },
     payload.topSummary.waitingParts > 0
       ? {
-          label: isTechnicianScoped ? "My parts constraints active" : "Parts constraints active",
+          label: isTechnicianScoped
+            ? "My parts constraints active"
+            : "Parts constraints active",
           detail: isTechnicianScoped
             ? `${payload.topSummary.waitingParts} of your part requests are still unresolved.`
             : `${payload.topSummary.waitingParts} open part requests still unresolved.`,
@@ -544,7 +635,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: waitingPartsTargetKind,
         }
       : {
-          label: isTechnicianScoped ? "No parts constraints on my work" : "No parts constraints",
+          label: isTechnicianScoped
+            ? "No parts constraints on my work"
+            : "No parts constraints",
           detail: isTechnicianScoped
             ? "Your assigned jobs currently have no open parts blockers."
             : "Parts flow is currently clear.",
@@ -567,7 +660,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
               label: "Open my active board",
               href: "/work-orders/board",
               tone: "neutral",
-              detail: "Review your assigned jobs and move the next line forward.",
+              detail:
+                "Review your assigned jobs and move the next line forward.",
             },
         payload.topSummary.waitingApprovals > 0
           ? {
@@ -633,21 +727,30 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.sectionErrors.push("Revenue snapshot is temporarily unavailable.");
   } else {
     const invoices = invoicesMonthResult.data ?? [];
-    const revenue = invoices.reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+    const revenue = invoices.reduce(
+      (sum, invoice) => sum + Number(invoice.total ?? 0),
+      0,
+    );
     const profit = invoices.reduce(
-      (sum, invoice) => sum + Number(invoice.total ?? 0) - Number(invoice.labor_cost ?? 0),
+      (sum, invoice) =>
+        sum + Number(invoice.total ?? 0) - Number(invoice.labor_cost ?? 0),
       0,
     );
 
     payload.revenueEfficiency = {
       revenue: Math.round(revenue),
       profit: Math.round(profit),
-      completedLines: payload.technicianActivity.reduce((sum, tech) => sum + tech.activeLines, 0),
+      completedLines: payload.technicianActivity.reduce(
+        (sum, tech) => sum + tech.activeLines,
+        0,
+      ),
       efficiencyPct: revenue > 0 ? Math.round((profit / revenue) * 100) : 0,
     };
   }
 
-  payload.fetchAudit.push("Operations dashboard now renders from one server payload with composed panel data.");
+  payload.fetchAudit.push(
+    "Operations dashboard now renders from one server payload with composed panel data.",
+  );
 
   return payload;
 }
