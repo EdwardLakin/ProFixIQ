@@ -2,9 +2,8 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
@@ -12,7 +11,7 @@ import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktop
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
-type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
+type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
 type TrustExtendedPart = {
   part_number?: string | null;
   normalized_part_key?: string | null;
@@ -74,7 +73,6 @@ function sourceLabel(kind: string | null, reason: string | null): string {
 }
 
 export default function PartsDashboardPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [loading, setLoading] = useState(true);
   const [skuTotal, setSkuTotal] = useState(0);
   const [skuNewThis7d, setSkuNewThis7d] = useState(0);
@@ -94,29 +92,33 @@ export default function PartsDashboardPage(): JSX.Element {
       const d7Ago = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
       const d30Ago = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
 
-      const [partsRes, movesRes, openReqRes, openPoRes, receiveQueueRes, stagingRes, candidateRes] = await Promise.all([
-        supabase.from("parts").select("id, created_at, sku, part_number, normalized_part_key, import_confidence, source_intake_id"),
-        supabase
-          .from("stock_moves")
-          .select("id, part_id, qty_change, reason, created_at, reference_kind, reference_id")
-          .gte("created_at", d30Ago.toISOString())
-          .order("created_at", { ascending: true }),
-        supabase.from("part_requests").select("id", { count: "exact", head: true }).in("status", ["requested", "quoted", "approved"] as RequestRow["status"][]),
-        supabase.from("purchase_orders").select("id", { count: "exact", head: true }).in("status", ["draft", "sent", "partially_received"]),
-        supabase.from("part_request_items").select("qty_approved, qty_received").gt("qty_approved", 0),
-        supabase.from("shop_parts_import_staging").select("status"),
-        supabase.from("shop_parts_import_match_candidates").select("staging_id, candidate_part_id"),
-      ]);
+      const res = await fetch("/api/parts/dashboard", { credentials: "same-origin" });
+      const payload = (await res.json().catch(() => null)) as {
+        parts?: Array<Pick<PartRow, "id" | "created_at" | "sku"> & TrustExtendedPart>;
+        moves?: RecentMove[];
+        openRequestsCount?: number;
+        openPoCount?: number;
+        receiveQueueItems?: Array<Pick<PartRequestItem, "qty_approved" | "qty_received">>;
+        staging?: Array<{ status: string | null }>;
+        candidates?: Array<{ staging_id: string | null; candidate_part_id: string | null }>;
+        error?: string;
+      } | null;
 
-      const partsRows = (partsRes.data ?? []) as Array<Pick<PartRow, "id" | "created_at" | "sku"> & TrustExtendedPart>;
+      if (!res.ok) {
+        console.error("[parts] dashboard load failed:", payload?.error ?? res.statusText);
+        setLoading(false);
+        return;
+      }
+
+      const partsRows = payload?.parts ?? [];
 
       setSkuTotal(partsRows.length);
       setSkuNewThis7d(partsRows.filter((p) => !!p.created_at && new Date(p.created_at) >= d7Ago && new Date(p.created_at) < now).length);
 
       const lowTrust = partsRows.filter((p) => !p.sku?.trim() || !p.part_number?.trim() || !p.normalized_part_key?.trim() || (typeof p.import_confidence === "number" && p.import_confidence < 0.75)).length;
-      const reviewStaging = (stagingRes.data ?? []).filter((s) => ["pending", "review", "ambiguous"].includes(String(s.status ?? "").toLowerCase())).length;
+      const reviewStaging = (payload?.staging ?? []).filter((s) => ["pending", "review", "ambiguous"].includes(String(s.status ?? "").toLowerCase())).length;
       const candidateCounts: Record<string, number> = {};
-      for (const row of candidateRes.data ?? []) {
+      for (const row of payload?.candidates ?? []) {
         const key = String(row.staging_id ?? row.candidate_part_id ?? "");
         if (!key) continue;
         candidateCounts[key] = (candidateCounts[key] ?? 0) + 1;
@@ -124,7 +126,7 @@ export default function PartsDashboardPage(): JSX.Element {
       const ambiguousCandidates = Object.values(candidateCounts).filter((count) => count > 1).length;
       setTrustSummary({ lowTrust, reviewStaging, ambiguousCandidates });
 
-      const mv = (movesRes.data ?? []) as RecentMove[];
+      const mv = payload?.moves ?? [];
       setMoves7dCount(mv.filter((m) => new Date(String(m.created_at)) >= d7Ago).length);
       const buckets = Array<number>(30).fill(0);
       for (const m of mv) {
@@ -138,21 +140,22 @@ export default function PartsDashboardPage(): JSX.Element {
 
       const partIds = [...new Set(recent.map((x) => String(x.part_id ?? "")).filter(Boolean))];
       if (partIds.length) {
-        const partInfo = await supabase.from("parts").select("id, name, sku").in("id", partIds);
         const map: Record<string, { name: string | null; sku: string | null }> = {};
-        for (const p of partInfo.data ?? []) map[String(p.id)] = { name: p.name ?? null, sku: p.sku ?? null };
+        for (const p of partsRows) {
+          if (partIds.includes(String(p.id))) map[String(p.id)] = { name: (p as { name?: string | null }).name ?? null, sku: p.sku ?? null };
+        }
         setPartNameById(map);
       } else {
         setPartNameById({});
       }
 
-      setOpenRequestsCount(openReqRes.count ?? 0);
-      setOpenPoCount(openPoRes.count ?? 0);
-      const receiveQueue = (receiveQueueRes.data ?? []).filter((r) => Number(r.qty_received ?? 0) < Number(r.qty_approved ?? 0)).length;
+      setOpenRequestsCount(payload?.openRequestsCount ?? 0);
+      setOpenPoCount(payload?.openPoCount ?? 0);
+      const receiveQueue = (payload?.receiveQueueItems ?? []).filter((r) => Number(r.qty_received ?? 0) < Number(r.qty_approved ?? 0)).length;
       setReceiveQueueCount(receiveQueue);
       setLoading(false);
     })();
-  }, [supabase]);
+  }, []);
 
   const openReqDisplay = openRequestsCount == null || loading ? "…" : openRequestsCount.toLocaleString();
   const hasOpenRequests = (openRequestsCount ?? 0) > 0;

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { requestFlowLabel, toItemFlowDisplay, toRequestFlowDisplay } from "@/features/parts/lib/status-display";
@@ -43,13 +42,6 @@ type WorkOrderListRow = {
     | { year: string | number | null; make: string | null; model: string | null }[]
     | null;
 };
-
-const VISIBLE_STATUSES: PartRequest["status"][] = [
-  "requested",
-  "quoted",
-  "approved",
-  "fulfilled",
-];
 
 function looksLikeUuid(s: string): boolean {
   return s.includes("-") && s.length >= 36;
@@ -97,8 +89,6 @@ function buildVehicleLabel(input: {
 }
 
 export default function PartsRequestsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -147,20 +137,22 @@ export default function PartsRequestsPage(): JSX.Element {
   const reload = async (): Promise<void> => {
     setLoading(true);
 
-    const { data: reqs, error } = await supabase
-      .from("part_requests")
-      .select("*")
-      .in("status", VISIBLE_STATUSES)
-      .order("created_at", { ascending: false });
+    const res = await fetch("/api/parts/requests/active", { credentials: "same-origin" });
+    const payload = (await res.json().catch(() => null)) as {
+      requests?: PartRequest[];
+      items?: Array<Pick<PartRequestItem, "request_id" | "description" | "part_id" | "qty" | "quoted_price"> & { status?: string | null; qty_approved?: unknown; qty_received?: unknown; qty_consumed?: unknown }>;
+      workOrders?: WorkOrderListRow[];
+      error?: string;
+    } | null;
 
-    if (error) {
-      console.error("[parts/requests] load part_requests failed:", error);
+    if (!res.ok) {
+      console.error("[parts/requests] load active requests failed:", payload?.error ?? res.statusText);
       toast.error("Failed to load parts requests");
       setLoading(false);
       return;
     }
 
-    const requestList = (reqs ?? []) as PartRequest[];
+    const requestList = payload?.requests ?? [];
 
     const requestIds = requestList.map((r) => r.id);
     const itemsCountByRequest: Record<string, number> = {};
@@ -169,18 +161,7 @@ export default function PartsRequestsPage(): JSX.Element {
     const itemStatesByRequest: Record<string, ReturnType<typeof toItemFlowDisplay>[]> = {};
 
     if (requestIds.length) {
-      const { data: items, error: itemsErr } = await supabase
-        .from("part_request_items")
-        .select("request_id, description, part_id, qty, quoted_price, status, qty_approved, qty_received, qty_consumed")
-        .in("request_id", requestIds);
-
-      if (itemsErr) {
-        console.error(
-          "[parts/requests] load part_request_items failed:",
-          itemsErr,
-        );
-      } else {
-        (items ?? []).forEach((it) => {
+      (payload?.items ?? []).forEach((it) => {
           const row = it as Pick<
             PartRequestItem,
             "request_id" | "description" | "part_id" | "qty" | "quoted_price"
@@ -207,7 +188,6 @@ export default function PartsRequestsPage(): JSX.Element {
             }),
           );
         });
-      }
     }
 
     const woIds = Array.from(
@@ -221,33 +201,10 @@ export default function PartsRequestsPage(): JSX.Element {
     const woById: Record<string, WorkOrderListRow> = {};
 
     if (woIds.length) {
-      const { data: wos, error: woErr } = await supabase
-        .from("work_orders")
-        .select(`
-          id,
-          custom_id,
-          customer_id,
-          vehicle_id,
-          customers (
-            first_name,
-            last_name
-          ),
-          vehicles (
-            year,
-            make,
-            model
-          )
-        `)
-        .in("id", woIds);
-
-      if (woErr) {
-        console.error("[parts/requests] load work_orders failed:", woErr);
-      } else {
-        (wos ?? []).forEach((w) => {
-          const row = w as WorkOrderListRow;
-          woById[row.id] = row;
-        });
-      }
+      (payload?.workOrders ?? []).forEach((w) => {
+        const row = w as WorkOrderListRow;
+        woById[row.id] = row;
+      });
     }
 
     const byWo: Record<string, WoBucket> = {};
@@ -371,24 +328,16 @@ export default function PartsRequestsPage(): JSX.Element {
     const t = toast.loading("Deleting requests…");
 
     try {
-      const { error: itemsErr } = await supabase
-        .from("part_request_items")
-        .delete()
-        .in("request_id", requestIds);
+      const deleteRes = await fetch("/api/parts/requests/delete-bucket", {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestIds }),
+      });
+      const deletePayload = (await deleteRes.json().catch(() => null)) as { error?: string } | null;
 
-      if (itemsErr) {
-        console.error("[parts/requests] delete items failed:", itemsErr);
-        toast.error("Failed to delete request items", { id: t });
-        return;
-      }
-
-      const { error: reqErr } = await supabase
-        .from("part_requests")
-        .delete()
-        .in("id", requestIds);
-
-      if (reqErr) {
-        console.error("[parts/requests] delete requests failed:", reqErr);
+      if (!deleteRes.ok) {
+        console.error("[parts/requests] delete bucket failed:", deletePayload?.error ?? deleteRes.statusText);
         toast.error("Failed to delete requests", { id: t });
         return;
       }

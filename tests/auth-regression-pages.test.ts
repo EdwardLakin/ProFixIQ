@@ -53,7 +53,49 @@ describe("post-deploy auth regression coverage", () => {
     expect(page).toContain("/api/work-orders/history");
     for (const pattern of browserAuthPatterns) expect(page).not.toContain(pattern);
     expect(route).toContain("resolveCurrentActor");
+    expect(route).toContain('rpc("set_current_shop_id"');
+    expect(route).not.toContain('.eq("shop_id", actor.shopId)');
+  });
+
+  it("loads parts dashboard through server-scoped shop context", () => {
+    const page = read("app/parts/page.tsx");
+    const route = read("app/api/parts/dashboard/route.ts");
+
+    expect(page).toContain("/api/parts/dashboard");
+    for (const pattern of browserAuthPatterns) expect(page).not.toContain(pattern);
+    expect(route).toContain("resolveCurrentActor");
+    expect(route).toContain('rpc("set_current_shop_id"');
     expect(route).toContain('.eq("shop_id", actor.shopId)');
+  });
+
+  it("loads active parts requests through server-scoped shop context", () => {
+    const page = read("app/parts/requests/page.tsx");
+    const route = read("app/api/parts/requests/active/route.ts");
+
+    expect(page).toContain("/api/parts/requests/active");
+    for (const pattern of browserAuthPatterns) expect(page).not.toContain(pattern);
+    expect(route).toContain("resolveCurrentActor");
+    expect(route).toContain('rpc("set_current_shop_id"');
+    expect(route).toContain('.eq("shop_id", actor.shopId)');
+    expect(route).toContain('"requested"');
+    expect(route).toContain('"quoted"');
+    expect(route).toContain('"approved"');
+    expect(route).toContain('"fulfilled"');
+  });
+
+  it("routes dispatch links to the fleet dispatch board", () => {
+    const tiles = read("features/shared/config/tiles.ts");
+    const operationsDashboard = read("app/dashboard/_components/OperationsDashboardView.tsx");
+    const operationsPayload = read("features/dashboard/server/getOperationsDashboardPayload.ts");
+    const quickActions = read("features/shared/components/DashboardQuickActions.tsx");
+
+    expect(tiles).toContain('href: "/fleet/dispatch"');
+    expect(operationsDashboard).toContain('href: "/fleet/dispatch"');
+    expect(operationsPayload).toContain('href: "/fleet/dispatch"');
+    expect(quickActions).toContain('href: "/fleet/dispatch"');
+    expect(operationsDashboard).not.toContain("/dashboard/manager/dispatch");
+    expect(operationsPayload).not.toContain("/dashboard/manager/dispatch");
+    expect(quickActions).not.toContain("/dashboard/manager/dispatch");
   });
 
   it("loads inspection history through server-scoped auth/data loading", () => {

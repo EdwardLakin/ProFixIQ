@@ -602,7 +602,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             },
         {
           label: "Check dispatch notes",
-          href: "/dashboard/manager/dispatch",
+          href: "/fleet/dispatch",
           tone: "neutral",
           detail: "Confirm assignment updates and immediate next actions.",
         },
@@ -636,7 +636,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             },
         {
           label: "Open dispatch view",
-          href: "/dashboard/manager/dispatch",
+          href: "/fleet/dispatch",
           tone: "neutral",
           detail: "Review technician assignment and bay balancing.",
         },

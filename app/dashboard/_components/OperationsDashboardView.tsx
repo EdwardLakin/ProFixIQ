@@ -40,7 +40,7 @@ export default async function OperationsDashboardView() {
         }
         actions={[
           { label: "Create work order", href: "/work-orders/create", tone: "primary" },
-          { label: "Dispatch", href: "/dashboard/manager/dispatch", tone: "secondary" },
+          { label: "Dispatch", href: "/fleet/dispatch", tone: "secondary" },
         ]}
       />
 
@@ -231,7 +231,7 @@ export default async function OperationsDashboardView() {
                 {payload.technicianActivity.map((tech) => (
                   <Link
                     key={tech.id}
-                    href="/dashboard/manager/dispatch"
+                    href="/fleet/dispatch"
                     className="group grid grid-cols-[minmax(0,1fr)_76px_auto] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                   >
                     <div className="min-w-0">
