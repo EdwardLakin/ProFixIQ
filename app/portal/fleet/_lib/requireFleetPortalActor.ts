@@ -1,17 +1,14 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
   getFleetUiContext,
   type FleetUiContext,
 } from "@/features/fleet/lib/fleetUiCapabilities";
 
-type DB = Database;
 
 export async function requireFleetPortalActor(): Promise<FleetUiContext> {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const {
     data: { user },
   } = await supabase.auth.getUser();

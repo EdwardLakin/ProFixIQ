@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 function safeTrim(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -33,7 +30,7 @@ function overlapScore(a: string, b: string): number {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

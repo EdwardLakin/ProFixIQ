@@ -1,9 +1,8 @@
 // features/work-orders/lib/parts/consumePart.ts
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { ensureMainLocation } from "@parts/lib/locations";
 
@@ -41,7 +40,7 @@ function asFiniteNumber(v: unknown): number | null {
  * This is defensive: any schema mismatch falls back silently.
  */
 async function resolveBestLocationId(args: {
-  supabase: ReturnType<typeof createServerActionClient<DB>>;
+  supabase: ReturnType<typeof createServerSupabaseRoute>;
   shopId: string;
   partId: string;
 }): Promise<string> {
@@ -88,7 +87,7 @@ async function resolveBestLocationId(args: {
 }
 
 export async function consumePart(input: ConsumePartInput) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   if (!input.qty || input.qty <= 0) {
     throw new Error("Quantity must be greater than 0");

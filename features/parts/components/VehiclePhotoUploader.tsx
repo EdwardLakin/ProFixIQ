@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export default function VehiclePhotoUploader({ vehicleId, onUpload }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");

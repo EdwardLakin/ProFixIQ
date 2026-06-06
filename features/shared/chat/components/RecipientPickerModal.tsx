@@ -1,7 +1,7 @@
 // features/chat/components/RecipientPickerModal.tsx
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import debounce from "lodash-es/debounce";
 
@@ -29,7 +29,7 @@ export default function RecipientPickerModal({
   onStartChat,
   allowGroup = true,
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [query, setQuery] = useState<string>("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");

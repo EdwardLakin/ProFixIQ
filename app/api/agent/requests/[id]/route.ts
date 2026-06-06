@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type AgentRequestStatus =
   | "submitted"
@@ -62,7 +60,7 @@ function safeUuid(v: unknown): string | null {
 const PENDING_ACTION_STATUSES = ["awaiting_approval"] as const;
 
 async function approveActionsAndEnqueueJobs(params: {
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+  supabase: ReturnType<typeof createServerSupabaseRoute>;
   requestId: string;
   approvedBy: string;
 }) {
@@ -138,9 +136,7 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
-
-  const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseRoute();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -286,9 +282,7 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const id = getIdFromUrl(req);
   if (!id) return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
-
-  const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseRoute();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

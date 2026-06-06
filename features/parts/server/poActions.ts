@@ -1,12 +1,9 @@
 // /features/parts/server/poActions.ts (FULL FILE REPLACEMENT)
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 function pickShopIdFromJoin(v: unknown): string | null {
   // Supabase generated types often model joins as arrays, even for !inner single row.
@@ -32,7 +29,7 @@ export async function createPurchaseOrder(input: {
   supplier_id?: string | null;
   notes?: string | null;
 }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },
@@ -69,7 +66,7 @@ export async function addPoLine(input: {
   unit_cost?: number | null;
   location_id?: string | null;
 }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   if (input.qty <= 0) throw new Error("Quantity must be > 0");
 
@@ -89,7 +86,7 @@ export async function addPoLine(input: {
 }
 
 export async function markPoSent(po_id: string) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const { error } = await supabase
     .from("purchase_orders")
@@ -103,7 +100,7 @@ export async function markPoSent(po_id: string) {
 
 /** Receive all remaining qty for lines (simple MVP). */
 export async function receivePo(po_id: string) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // Load PO lines + joined shop_id
   const { data: lines, error: le } = await supabase

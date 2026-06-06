@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { z } from "zod";
 
-import type { Database } from "@shared/types/types/supabase";
 import type { PlannerProposal } from "@/features/agent/lib/plannerProposal";
 import { runRescheduleBooking, runSetLineApproval, runAddWorkOrderLine } from "@/features/agent/lib/toolRegistry";
 
@@ -14,7 +12,6 @@ const ApplyBodySchema = z.object({
   applyKey: z.string().min(8),
 });
 
-type DB = Database;
 
 function asProposal(value: unknown): PlannerProposal | null {
   if (!value || typeof value !== "object") return null;
@@ -24,7 +21,7 @@ function asProposal(value: unknown): PlannerProposal | null {
 }
 
 async function resolveShopId(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
 ): Promise<string | null> {
   const { data } = await supabase.from("profiles").select("shop_id").eq("id", userId).maybeSingle();
@@ -32,7 +29,7 @@ async function resolveShopId(
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

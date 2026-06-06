@@ -1,9 +1,8 @@
 import "server-only";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
   applyWorkOrderQuoteLineDecision,
@@ -33,7 +32,7 @@ function serviceSupabase() {
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
-  const routeSupabase = createRouteHandlerClient<DB>({ cookies });
+  const routeSupabase = createServerSupabaseRoute();
   const { id } = await ctx.params;
   const routeQuoteLineId = safeTrim(id);
 

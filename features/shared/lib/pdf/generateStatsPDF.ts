@@ -2,9 +2,8 @@
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import { formatCurrency } from "@shared/lib/formatters";
 
 /* -------------------------------------------------------------------------- */
@@ -38,7 +37,7 @@ export async function generateStatsPDF(
   range: string,
   chartImgData: string,
 ): Promise<Blob> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const { data: shop } = await supabase
     .from("shops")

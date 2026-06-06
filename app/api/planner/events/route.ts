@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { z } from "zod";
 
-import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
 
 const QuerySchema = z.object({
   runId: z.string().uuid().optional(),
@@ -13,7 +10,7 @@ const QuerySchema = z.object({
 });
 
 async function requireUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
 ) {
   const {
     data: { user },
@@ -25,7 +22,7 @@ async function requireUser(
 }
 
 async function resolveShopId(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
@@ -39,7 +36,7 @@ async function resolveShopId(
 }
 
 export async function GET(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const user = await requireUser(supabase);
   if (!user) {

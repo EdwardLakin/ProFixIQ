@@ -5,12 +5,9 @@ export const dynamic = "force-dynamic";
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
-type DB = Database;
 
 type ImportBody = {
   workOrderId: string;
@@ -20,7 +17,7 @@ type ImportBody = {
 };
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const body = (await req.json()) as Partial<ImportBody>;

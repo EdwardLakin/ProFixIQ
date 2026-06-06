@@ -4,13 +4,10 @@
 // For now: internal-only (uses your own historical lines). Later we can add web search + citations
 // via your existing AI layer once you confirm the exact server OpenAI helper + allowed egress.
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-type DB = Database;
 
 type Body = {
   workOrderId: string;
@@ -33,7 +30,7 @@ type Suggestion = {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

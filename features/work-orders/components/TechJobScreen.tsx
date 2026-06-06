@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import JobQueueCard from "@shared/components/JobQueueCard";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransi
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function TechJobScreen() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [jobs, setJobs] = useState<JobLine[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

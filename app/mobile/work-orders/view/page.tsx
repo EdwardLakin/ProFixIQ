@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -94,7 +94,7 @@ const BUTTON_MUTED =
 /* ------------------------------------------------------------------ */
 
 export default function MobileWorkOrdersViewPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);

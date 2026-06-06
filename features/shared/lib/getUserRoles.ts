@@ -1,12 +1,10 @@
 // app/(wherever)/getUserRoles.ts
 "use server";
 
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 export async function getUserRoles(): Promise<string[]> {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   // Check auth session
   const {

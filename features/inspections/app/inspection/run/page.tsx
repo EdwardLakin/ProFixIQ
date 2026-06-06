@@ -3,7 +3,7 @@
 
 import { useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
@@ -19,7 +19,7 @@ type Section = { title: string; items: SectionItem[] };
 export default function RunInspectionPage() {
   const sp = useSearchParams();
   const router = useRouter();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   useEffect(() => {
     const templateId = sp.get("templateId");

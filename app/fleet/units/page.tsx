@@ -1,15 +1,12 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import Container from "@shared/components/ui/Container";
 import FleetUnitsPage from "@/features/fleet/components/FleetUnitsPage";
 import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
-type DB = Database;
 
 export default async function FleetUnitsRoutePage() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const actor = await resolveFleetActorContext(supabase);
   const uiContext = await resolveFleetUiContext(supabase);
 

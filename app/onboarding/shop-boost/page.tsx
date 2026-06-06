@@ -3,15 +3,13 @@
 
 import { useEffect, useMemo, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
-type DB = Database;
 
 type QuestionnaireState = {
   hasExistingCustomers: boolean;
@@ -68,7 +66,7 @@ function uuidv4(): string {
 }
 
 export default function ShopBoostOnboardingPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [loadingProfile, setLoadingProfile] = useState(true);

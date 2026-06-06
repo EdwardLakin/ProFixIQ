@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
-  getRouteHandlerCookies,
   OWNER_PIN_PURPOSES,
   type OwnerPinPurpose,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { normalizeOwnerPin, verifyOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 
-type DB = Database;
 
 type Body = {
   shopId?: string;
@@ -21,7 +18,7 @@ const OWNER_PIN_PURPOSE_VALUES = new Set<OwnerPinPurpose>(Object.values(OWNER_PI
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies: getRouteHandlerCookies() });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
 import type {
@@ -106,7 +106,7 @@ function numStringOrNull(v: unknown): string | null {
  * - If none, tries shops.owner_id = userId and writes back to profile
  */
 async function getOrLinkShopId(
-  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  supabase: ReturnType<typeof createBrowserSupabase>,
   userId: string,
 ): Promise<string | null> {
   // ✅ prefer user_id (new)
@@ -190,7 +190,7 @@ function CustomerSearch({
   value,
   onPick,
 }: {
-  supabase: ReturnType<typeof createClientComponentClient<DB>>;
+  supabase: ReturnType<typeof createBrowserSupabase>;
   shopId: string | null;
   value: string;
   onPick: (c: CustomerPick) => void;
@@ -343,7 +343,7 @@ function VehicleSearch({
   value,
   onPick,
 }: {
-  supabase: ReturnType<typeof createClientComponentClient<DB>>;
+  supabase: ReturnType<typeof createBrowserSupabase>;
   shopId: string | null;
   customerId: string | null;
   value: string;
@@ -448,7 +448,7 @@ function VehicleSearch({
 
 export default function MobileCreateWorkOrderPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const draft = useWorkOrderDraft();
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);

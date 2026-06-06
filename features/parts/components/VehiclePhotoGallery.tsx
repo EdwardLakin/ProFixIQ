@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Dialog } from "@headlessui/react";
 import {
   PencilIcon,
@@ -21,7 +21,7 @@ export default function VehiclePhotoGallery({
   vehicleId,
   currentUserId,
 }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const [photos, setPhotos] = useState<VehiclePhoto[]>([]);
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);

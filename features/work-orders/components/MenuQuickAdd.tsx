@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
@@ -284,7 +284,7 @@ function extractInspectionTemplateIdFromMenuItem(mi: MenuItemRow): string | null
 }
 
 export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [addingId, setAddingId] = useState<string | null>(null);

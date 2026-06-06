@@ -6,13 +6,10 @@
 // NOTE: This is a safe, internal-first baseline. We can later swap in embeddings via ai_training_data
 // once you confirm your existing vector setup and OpenAI helper path.
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-type DB = Database;
 
 type Body = {
   workOrderId: string;
@@ -29,7 +26,7 @@ function norm(s: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

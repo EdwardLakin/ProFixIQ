@@ -2,10 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-type DB = Database;
 
 type Props = {
   workOrderId: string;
@@ -19,7 +17,7 @@ type AssignmentRow = {
 };
 
 export function WorkOrderAssignedSummary({ workOrderId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<AssignmentRow[]>([]);

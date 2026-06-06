@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getMaintenanceMappings } from "@/features/maintenance/server/getMaintenanceMappings";
 
-type DB = Database;
 
 type UpsertBody = {
   serviceCode?: string;
@@ -16,7 +13,7 @@ type UpsertBody = {
   matchSource?: string | null;
 };
 
-async function requireShopContext(supabase: ReturnType<typeof createRouteHandlerClient<DB>>) {
+async function requireShopContext(supabase: ReturnType<typeof createServerSupabaseRoute>) {
   const {
     data: { user },
     error: userError,
@@ -47,7 +44,7 @@ async function requireShopContext(supabase: ReturnType<typeof createRouteHandler
 }
 
 export async function GET() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const ctx = await requireShopContext(supabase);
   if ("error" in ctx) return ctx.error;
 
@@ -66,7 +63,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const ctx = await requireShopContext(supabase);
   if ("error" in ctx) return ctx.error;
 

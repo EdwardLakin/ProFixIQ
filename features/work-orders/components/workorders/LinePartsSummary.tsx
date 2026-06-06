@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -28,7 +28,7 @@ function num(v: unknown): number {
 }
 
 export default function LinePartsSummary({ workOrderLineId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [s, setS] = useState<Summary>({
     requested: 0,
     approved: 0,

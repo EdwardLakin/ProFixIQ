@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { toast } from "sonner";
@@ -339,7 +339,7 @@ function extractInspectionTemplateId(
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const queryCustomerId =
     searchParams.get("customerId")?.trim() ||
     searchParams.get("customer_id")?.trim() ||

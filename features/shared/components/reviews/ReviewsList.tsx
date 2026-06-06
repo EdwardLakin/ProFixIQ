@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "var(--pfq-copper)";
@@ -42,7 +42,7 @@ function StarsRow({ rating }: { rating: number }) {
 }
 
 export default function ReviewsList({ shopId }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [me, setMe] = useState<Profile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);

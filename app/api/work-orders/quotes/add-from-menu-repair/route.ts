@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
@@ -179,7 +178,7 @@ function partTotal(parts: ReusePart[], usePricing: boolean): number | null {
 }
 
 async function createPartRequestForQuoteLine(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   input: {
     shopId: string;
     workOrderId: string;
@@ -245,7 +244,7 @@ async function createPartRequestForQuoteLine(
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const body = (await req.json().catch(() => null)) as Body | null;
 
     const workOrderId = safeTrim(body?.workOrderId);

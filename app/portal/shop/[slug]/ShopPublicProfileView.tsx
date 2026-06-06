@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import ReviewsList from "@shared/components/reviews/ReviewsList";
@@ -64,7 +64,7 @@ function SignalDot() {
 }
 
 export default function PublicProfileClient({ slug }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [data, setData] = useState<PublicFields>(emptyPublic);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);

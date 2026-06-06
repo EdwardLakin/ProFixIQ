@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
-type DB = Database;
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -21,7 +18,7 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Invalid itemId" }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const {
     data: { user },
     error: userErr,

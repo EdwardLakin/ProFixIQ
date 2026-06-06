@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { WorkOrderBoardRow, WorkOrderBoardVariant } from "../lib/workboard/types";
 
 type ViewName =
@@ -23,7 +22,7 @@ export function useWorkOrderBoard(
     fleetId?: string | null;
   },
 ) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<WorkOrderBoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

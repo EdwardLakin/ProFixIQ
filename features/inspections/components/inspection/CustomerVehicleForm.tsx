@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type {
   SessionCustomer as CustomerInfo,
   SessionVehicle,
@@ -132,7 +131,7 @@ function CustomerAutocomplete({
   shopId: string | null;
   onPick: (c: CustomerRow) => void;
 }) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -275,7 +274,7 @@ function UnitNumberAutocomplete({
   customerId: string | null;
   onPick: (v: VehicleRow) => void;
 }) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<VehicleRow[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -407,7 +406,7 @@ export default function CustomerVehicleForm({
   selectedVehicleId = null,
   handlers,
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const {
     onCustomerChange = () => {},

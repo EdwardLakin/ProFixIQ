@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
@@ -74,7 +74,7 @@ function sourceLabel(kind: string | null, reason: string | null): string {
 }
 
 export default function PartsDashboardPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [loading, setLoading] = useState(true);
   const [skuTotal, setSkuTotal] = useState(0);
   const [skuNewThis7d, setSkuNewThis7d] = useState(0);

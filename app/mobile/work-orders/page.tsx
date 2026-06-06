@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
@@ -128,7 +128,7 @@ function MiniStat({
 }
 
 export default function MobileWorkOrdersListPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);

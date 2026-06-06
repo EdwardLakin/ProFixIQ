@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
-  getRouteHandlerCookies,
   OWNER_PIN_PURPOSES,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
 
-type DB = Database;
 
 type Body = {
   shopId?: string;
@@ -18,7 +15,7 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies: getRouteHandlerCookies() });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
@@ -23,7 +22,7 @@ type TimeOffRequest = {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);

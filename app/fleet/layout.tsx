@@ -1,17 +1,14 @@
 import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import type { ReactNode } from "react";
-import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
-type DB = Database;
 export default async function FleetLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const actor = await resolveFleetActorContext(supabase);
 
   if (!actor.userId) {

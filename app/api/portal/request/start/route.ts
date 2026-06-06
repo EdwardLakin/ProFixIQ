@@ -1,14 +1,11 @@
 // app/api/portal/request/start/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
 export const runtime = "nodejs";
 
-type DB = Database;
 
 type Body = {
   vehicleId?: string | null;
@@ -51,7 +48,7 @@ function isDuplicateKeyError(err: { code?: string | null; message?: string | nul
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const actor = await requirePortalCustomerActor(supabase);
 

@@ -5,12 +5,10 @@
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { MobileBottomNav } from "./MobileBottomNav";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 
-type DB = Database;
 
 type Props = {
   children: ReactNode;
@@ -35,7 +33,7 @@ export function MobileShell({ children, title }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 

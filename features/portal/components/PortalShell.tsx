@@ -4,11 +4,9 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PortalNotificationsBell from "@/features/portal/components/PortalNotificationsBell";
 
-type DB = Database;
 
 type NavItem = {
   href: string;
@@ -92,7 +90,7 @@ export default function PortalShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);

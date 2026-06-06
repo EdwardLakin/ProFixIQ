@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { signShopReelPayload } from "@/features/integrations/shopreel/server/signShopReelPayload";
 import { getShopReelBaseUrl } from "@/features/integrations/shopreel/server/shopreelConfig";
 
-type DB = Database;
 
 async function getOwnerShopContext() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

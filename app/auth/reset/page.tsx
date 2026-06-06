@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 
 function parseHashParams(hash: string): URLSearchParams {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -14,7 +13,7 @@ function parseHashParams(hash: string): URLSearchParams {
 export default function AuthResetPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [message, setMessage] = useState("Preparing password reset…");
   const [details, setDetails] = useState<string | null>(null);

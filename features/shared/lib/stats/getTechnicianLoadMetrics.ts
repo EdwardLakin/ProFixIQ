@@ -1,8 +1,7 @@
 "use client";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 import {
   getTechnicianLoadMetricsWithClient,
   type TechnicianIdleBreakdown,
@@ -11,7 +10,6 @@ import {
   type TechnicianLoadMetricSummary,
 } from "@shared/lib/stats/getTechnicianLoadMetricsCore";
 
-type DB = Database;
 
 export type {
   TechnicianIdleBreakdown,
@@ -23,6 +21,6 @@ export type {
 export async function getTechnicianLoadMetrics(
   shopId: string,
 ): Promise<TechnicianLoadMetricResult> {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   return getTechnicianLoadMetricsWithClient(supabase, shopId);
 }

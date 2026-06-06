@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { suggestMaintenanceMenuMatch } from "@/features/maintenance/server/suggestMaintenanceMenuMatch";
 
-type DB = Database;
 
 type RequestBody = {
   serviceCode?: string;
@@ -12,7 +9,7 @@ type RequestBody = {
 };
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

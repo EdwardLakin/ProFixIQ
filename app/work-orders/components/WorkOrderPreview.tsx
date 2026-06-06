@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database, Tables } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { Tables } from "@shared/types/types/supabase";
 
 type Props = { woId: string | null };
 
@@ -25,7 +25,7 @@ type WOLine = Pick<
 >;
 
 export function WorkOrderPreview({ woId }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [wo, setWO] = useState<WO | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);

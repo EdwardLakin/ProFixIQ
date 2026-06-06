@@ -1,12 +1,9 @@
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import BookingsTable, { type BookingRow } from "./BookingsTable";
 
-type DB = Database;
 
 export default async function BookingsTableWrapper() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

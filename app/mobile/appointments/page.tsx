@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -39,7 +39,7 @@ function startOfToday(): Date {
 /* -------------------------------------------------------------------------- */
 
 export default function MobileAppointmentsPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const search = useSearchParams();
   const router = useRouter();
 

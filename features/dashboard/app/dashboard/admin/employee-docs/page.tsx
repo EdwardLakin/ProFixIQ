@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { uploadEmployeeDoc, type EmployeeDocType } from "@shared/lib/hr/uploadEmployeeDoc";
 
@@ -10,7 +10,7 @@ type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type EmpDoc = DB["public"]["Tables"]["employee_documents"]["Row"];
 
 export default function AdminEmployeeDocsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [me, setMe] = useState<Profile | null>(null);
   const [docs, setDocs] = useState<EmpDoc[]>([]);
   const [file, setFile] = useState<File | null>(null);

@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

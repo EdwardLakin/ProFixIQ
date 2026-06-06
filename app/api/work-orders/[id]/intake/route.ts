@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 import { IntakeV1Schema } from "@/features/work-orders/intake/schema.zod";
@@ -35,7 +34,7 @@ function getMode(url: string): IntakeMode {
 }
 
 async function requireFleetIntakeAccess(params: {
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  supabase: ReturnType<typeof createServerSupabaseRoute>;
   userId: string;
   workOrder: Pick<
     DB["public"]["Tables"]["work_orders"]["Row"],
@@ -81,7 +80,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   const mode = getMode(req.url);
 
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return text("Not authenticated.", 401);
@@ -195,7 +194,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let body: { intake?: IntakeV1; mode?: IntakeMode } | null = null;
   try {
@@ -245,7 +244,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let body: { intake?: IntakeV1; mode?: IntakeMode } | null = null;
   try {

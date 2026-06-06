@@ -1,13 +1,10 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import WorkOrderBoard from "@shared/components/workboard/WorkOrderBoard";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
-type DB = Database;
 
 export default async function PortalStatusPage() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   try {
     await requirePortalCustomerActor(supabase);

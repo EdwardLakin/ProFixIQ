@@ -3,12 +3,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ShiftTracker from "@shared/components/ShiftTracker";
 
 export default function RoleNavAdmin() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 

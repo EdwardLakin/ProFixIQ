@@ -2,11 +2,8 @@
 
 import { NextResponse } from "next/server";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { cookies as nextCookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY ?? "");
 
@@ -57,7 +54,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createRouteHandlerClient<DB>({ cookies: nextCookies });
+    const supabase = createServerSupabaseRoute();
 
     const {
       data: { user },

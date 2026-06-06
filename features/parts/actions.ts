@@ -2,8 +2,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -37,7 +36,7 @@ export async function createPart(input: {
   subcategory?: string;
   low_stock_threshold?: number;
 }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const { data, error } = await supabase
     .from("parts")
@@ -66,7 +65,7 @@ export async function adjustStock(input: {
   reference_kind?: string | null;
   reference_id?: string | null; // UUID or null
 }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // Build args using a Record to allow nulls for uuid/text fields safely
   const rpcArgs: Record<string, unknown> = {

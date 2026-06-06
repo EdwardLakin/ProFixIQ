@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -59,7 +59,7 @@ function fmtRange(startsAtIso: string, endsAtIso: string) {
 }
 
 export default function PortalCustomerAppointmentsPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);

@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
@@ -95,7 +95,7 @@ function money(n: number | null | undefined): string {
 }
 
 export default function MenuItemDetailPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const params = useParams<{ id: string }>();
   const router = useRouter();
 

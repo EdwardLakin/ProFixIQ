@@ -3,8 +3,7 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export type SignatureRole = "technician" | "customer" | "advisor";
 
@@ -86,7 +85,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   techSettingsHref,
   lockNameInput,
 }) => {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const defaultLock = role === "technician";
   const [autoFilledName, setAutoFilledName] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);

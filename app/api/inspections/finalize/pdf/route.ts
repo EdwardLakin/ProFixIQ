@@ -4,8 +4,7 @@ import "server-only";
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
@@ -28,7 +27,7 @@ function safeFilePart(x: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // 1) Parse body
   const raw = (await req.json().catch(() => null)) as unknown;

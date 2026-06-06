@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
@@ -90,7 +90,7 @@ function formatDate(v: string | null): string {
   return d.toLocaleDateString();
 }
 
-async function resolveShopId(supabase: ReturnType<typeof createClientComponentClient<DB>>): Promise<string> {
+async function resolveShopId(supabase: ReturnType<typeof createBrowserSupabase>): Promise<string> {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
   if (!uid) return "";
@@ -130,7 +130,7 @@ function KpiCard({ title, value, hint, href }: { title: string; value: string; h
 }
 
 export default function PartsVendorsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

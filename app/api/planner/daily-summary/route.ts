@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-import type { Database } from "@shared/types/types/supabase";
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 
-type DB = Database;
 
 async function requireUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
 ) {
   const {
     data: { user },
@@ -20,7 +17,7 @@ async function requireUser(
 }
 
 async function resolveProfile(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
 ): Promise<{ shopId: string | null; role: string | null }> {
   const { data, error } = await supabase
@@ -40,7 +37,7 @@ async function resolveProfile(
 }
 
 export async function GET() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const user = await requireUser(supabase);
   if (!user) {

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 const REOPEN_ALLOWED_ROLES = new Set(["admin", "advisor", "owner", "manager"]);
 
 function asString(v: unknown): string | null {
@@ -11,7 +8,7 @@ function asString(v: unknown): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

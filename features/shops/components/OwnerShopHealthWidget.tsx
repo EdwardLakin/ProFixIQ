@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
@@ -44,7 +44,7 @@ function isShopHealthSnapshot(v: unknown): v is ShopHealthSnapshot {
 }
 
 export default function OwnerShopHealthWidget({ shopId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [aiProfile, setAiProfile] = useState<ShopAiProfileRow | null>(null);
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);

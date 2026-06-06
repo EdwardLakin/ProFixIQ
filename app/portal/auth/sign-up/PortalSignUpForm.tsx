@@ -4,15 +4,14 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import AuthShell from "@/features/auth/components/AuthShell";
 
 const COPPER = "#C57A4A";
 
 export default function PortalSignUpForm() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");

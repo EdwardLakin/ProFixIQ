@@ -1,12 +1,9 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import Container from "@shared/components/ui/Container";
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
-type DB = Database;
 
 type ProfileWithShop = {
   id: string;
@@ -16,7 +13,7 @@ type ProfileWithShop = {
 };
 
 export default async function FleetTowerPage() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const actor = await resolveFleetActorContext(supabase);
   const uiContext = getFleetUiContext(actor);
 

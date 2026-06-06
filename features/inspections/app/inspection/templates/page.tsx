@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import FleetFormImportCard from "@/features/inspections/components/FleetFormImportCard";
 
@@ -12,7 +12,7 @@ type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
 type Scope = "mine" | "shared" | "all";
 
 export default function InspectionTemplatesPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [scope, setScope] = useState<Scope>("mine");
   const [search, setSearch] = useState("");
   const [mine, setMine] = useState<Template[]>([]);

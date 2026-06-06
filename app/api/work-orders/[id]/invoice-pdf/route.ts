@@ -3,8 +3,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -139,7 +138,7 @@ export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user?.id) {

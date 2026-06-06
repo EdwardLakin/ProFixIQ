@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -35,7 +35,7 @@ const fmtTime = (iso: string, tz: string) =>
   }).format(new Date(iso));
 
 export default function PortalBookingPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const search = useSearchParams();
   const router = useRouter();

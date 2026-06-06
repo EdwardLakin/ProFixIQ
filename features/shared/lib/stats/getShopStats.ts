@@ -14,7 +14,7 @@ import {
   eachQuarterOfInterval,
   format,
 } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 export type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
@@ -76,7 +76,7 @@ export async function getShopStats(
   filters: ShopStatsFilters = {},
   options: ShopStatsOptions = {},
 ): Promise<ShopStats> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const now = new Date();
 

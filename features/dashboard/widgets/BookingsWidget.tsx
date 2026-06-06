@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 
@@ -20,7 +20,7 @@ function startOfToday() {
 }
 
 export default function BookingsWidget() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const [rows, setRows] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
 

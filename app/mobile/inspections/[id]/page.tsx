@@ -3,8 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
@@ -158,7 +157,7 @@ export default function MobileInspectionRunnerPage() {
   const search = useSearchParams();
   const searchKey = search.toString(); // ✅ stable snapshot for deps
 
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const lineId = params?.id ? String(params.id) : null;
 

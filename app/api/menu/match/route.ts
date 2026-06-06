@@ -1,11 +1,6 @@
 // app/api/menu/match/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-
-type DB = Database;
-
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 type Body = {
   workOrderId: string;
   description: string;
@@ -108,7 +103,7 @@ function parseYear(v: unknown): number | null {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   let body: Body;
   try {

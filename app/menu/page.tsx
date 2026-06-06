@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 import { toast } from "sonner";
@@ -91,7 +91,7 @@ type PartsRequestBody = {
 };
 
 export default function MenuItemsPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createBrowserSupabase();
   const router = useRouter();
   const { user, isLoading } = useUser();
 

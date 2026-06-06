@@ -1,11 +1,9 @@
 //app/api/ai/quote-suggest/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database, Json } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Json } from "@shared/types/types/supabase";
 import { ProFixAI, type QuoteEnginePart } from "@/features/integrations/ai";
 
-type DB = Database;
 
 type ConfidenceLevel = "low" | "medium" | "high";
 
@@ -81,7 +79,7 @@ function buildComplaint(input: RequestBody): string {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const rawBody: unknown = await req.json();

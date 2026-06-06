@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   createPortalBooking,
@@ -16,7 +14,7 @@ function bad(msg: string, code = 400) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const {
       data: { user },
       error: authErr,

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
@@ -19,7 +18,7 @@ function mustEnv(name: string) {
 }
 
 export async function POST() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

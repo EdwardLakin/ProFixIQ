@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import RoleHubTiles from "@/features/shared/components/RoleHubTiles/RoleHubTiles";
 import type { Role, Scope } from "@/features/shared/components/RoleHubTiles/tiles";
@@ -19,7 +18,7 @@ export default function NavFromTiles({
   description?: string;
   rolesOverride?: Role[];
 }) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const [roles, setRoles] = useState<Role[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

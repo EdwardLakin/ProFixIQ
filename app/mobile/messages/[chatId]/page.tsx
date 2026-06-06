@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 
@@ -23,7 +23,7 @@ export default function MobileChatThreadPage() {
   const router = useRouter();
   const conversationId = params.chatId;
 
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [userId, setUserId] = useState<string | null>(null);
   const [title, setTitle] = useState<string>("Conversation");
 

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 const COPPER_LIGHT = "var(--accent-copper-light)";
@@ -101,7 +101,7 @@ function StatPill({ label, value }: { label: string; value: string }) {
 }
 
 export default function LandingReviews() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [loading, setLoading] = useState(true);
 

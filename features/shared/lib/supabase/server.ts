@@ -1,7 +1,7 @@
 // features/shared/lib/supabase/server.ts
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -23,7 +23,7 @@ function createCookieBackedServerClient() {
 
   const { supabaseUrl, supabaseAnonKey } = readSupabaseServerEnv();
 
-  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
+  const client = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -40,6 +40,52 @@ function createCookieBackedServerClient() {
       },
     },
   });
+
+  const originalGetUser = client.auth.getUser.bind(client.auth);
+  client.auth.getUser = async (...args) => {
+    const result = await originalGetUser(...args);
+    const user = result.data.user;
+    let profile: Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "shop_id"> | null = null;
+
+    if (user?.id) {
+      const { data } = await client
+        .from("profiles")
+        .select("id, shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      profile = data ?? null;
+    }
+
+    try {
+      const headerStore = headers() as unknown as { get: (name: string) => string | null };
+      console.info("[auth/server-get-user]", {
+        pathname:
+          headerStore.get("x-pathname") ??
+          headerStore.get("x-invoke-path") ??
+          headerStore.get("next-url") ??
+          headerStore.get("referer") ??
+          "unknown",
+        routeName: headerStore.get("x-matched-path") ?? "unknown",
+        hasUser: Boolean(user),
+        userId: user?.id ?? null,
+        profileExists: Boolean(profile),
+        profileShopId: profile?.shop_id ?? null,
+      });
+    } catch {
+      console.info("[auth/server-get-user]", {
+        pathname: "unknown",
+        routeName: "unknown",
+        hasUser: Boolean(user),
+        userId: user?.id ?? null,
+        profileExists: Boolean(profile),
+        profileShopId: profile?.shop_id ?? null,
+      });
+    }
+
+    return result;
+  };
+
+  return client;
 }
 
 /**

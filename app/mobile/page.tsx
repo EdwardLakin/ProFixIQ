@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
@@ -70,7 +70,7 @@ function calcEfficiencyPct(worked: number, billed: number): number | null {
 }
 
 export default function MobileHome() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);

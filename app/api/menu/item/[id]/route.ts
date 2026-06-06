@@ -9,8 +9,7 @@
 
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -53,13 +52,13 @@ function toShopId(v: unknown): string | null {
   return typeof v === "string" && v.trim().length ? v.trim() : null;
 }
 
-async function setShopContext(supabase: ReturnType<typeof createRouteHandlerClient<DB>>, shopId: string) {
+async function setShopContext(supabase: ReturnType<typeof createServerSupabaseRoute>, shopId: string) {
   const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
   return error ? error.message : null;
 }
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { id } = await ctx.params;
 
   const {
@@ -121,7 +120,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { id } = await ctx.params;
 
   const {
@@ -314,7 +313,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { id } = await ctx.params;
 
   const {

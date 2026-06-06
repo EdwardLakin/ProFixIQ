@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -49,7 +49,7 @@ export default function ChatWindow({
   title = "Conversation",
 }: ChatWindowProps) {
   const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
+    () => createBrowserSupabase(),
     [],
   );
   const [messages, setMessages] = useState<Message[]>([]);

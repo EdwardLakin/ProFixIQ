@@ -1,9 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-type DB = Database;
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 /**
  * Resolve a scanned code (barcode or SKU) to a part_id.
@@ -16,7 +13,7 @@ export async function resolveScannedCode(input: {
   code: string;
   supplier_id?: string | null;
 }): Promise<{ part_id: string | null }> {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const code = (input.code || "").trim();
   if (!code) return { part_id: null };
 

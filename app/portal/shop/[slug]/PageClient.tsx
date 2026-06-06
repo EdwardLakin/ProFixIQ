@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import ShareBox from "./ShareBox";
 import ReviewsList from "@shared/components/reviews/ReviewsList";
@@ -32,7 +31,7 @@ function SignalDot() {
 
 export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
   const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
+    () => createBrowserSupabase(),
     [],
   );
 

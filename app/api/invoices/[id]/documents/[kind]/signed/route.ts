@@ -2,11 +2,8 @@ import "server-only";
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 type SupportedInvoiceDocumentKind = "invoice_pdf";
 const SUPPORTED_KINDS: ReadonlySet<SupportedInvoiceDocumentKind> = new Set(["invoice_pdf"]);
@@ -34,7 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid kind" }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,

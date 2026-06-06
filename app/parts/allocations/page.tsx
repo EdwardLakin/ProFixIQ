@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import PageShell from "@/features/shared/components/PageShell";
@@ -25,7 +25,7 @@ function movementReasonLabel(reason: string | null | undefined): string {
   return key ? key.replaceAll("_", " ") : "—";
 }
 
-async function resolveShopId(supabase: ReturnType<typeof createClientComponentClient<DB>>) {
+async function resolveShopId(supabase: ReturnType<typeof createBrowserSupabase>) {
   const { data: userRes } = await supabase.auth.getUser();
   const uid = userRes.user?.id ?? null;
   if (!uid) return "";
@@ -36,7 +36,7 @@ async function resolveShopId(supabase: ReturnType<typeof createClientComponentCl
 }
 
 export default function AllocationsPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
@@ -38,7 +38,7 @@ function calcNet(amountCents: number | null, feeCents: number | null): number {
 }
 
 export default function OwnerPaymentsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState<string | null>(null);

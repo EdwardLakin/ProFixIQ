@@ -1,11 +1,8 @@
 "use server";
-import { cookies } from "next/headers";
-import { createServerComponentClient, createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-type DB = Database;
+import { createServerSupabaseRSC, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 export async function ensureMainLocation(shopId: string) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { data, error } = await supabase
     .from("stock_locations")
     .select("id, code, name")
@@ -24,7 +21,7 @@ export async function ensureMainLocation(shopId: string) {
 }
 
 export async function listLocations(shopId: string) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const { data, error } = await supabase
     .from("stock_locations")
     .select("id, code, name")
@@ -35,7 +32,7 @@ export async function listLocations(shopId: string) {
 }
 
 export async function createLocation(input: { shop_id: string; code: string; name: string }) {
-  const supabase = createServerActionClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { data, error } = await supabase
     .from("stock_locations")
     .insert(input)

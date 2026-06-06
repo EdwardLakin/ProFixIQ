@@ -1,11 +1,8 @@
 // app/api/fleet/ai-summary/route.ts
-import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-type DB = Database;
 
 export type SummaryResponse = {
   summary: string;
@@ -18,7 +15,7 @@ type Body = {
 };
 
 async function requireUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
 ) {
   const {
     data: { user },
@@ -30,7 +27,7 @@ async function requireUser(
 }
 
 async function resolveFleetIdForUser(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
   explicitFleetId?: string | null,
 ): Promise<string | null> {
   const user = await requireUser(supabase);
@@ -62,7 +59,7 @@ async function resolveFleetIdForUser(
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
 
     const body = (await req.json().catch(() => ({}))) as Body;
 

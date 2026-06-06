@@ -2,18 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
-import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 
-type DB = Database;
 
 export default function CreateOrganizationPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);

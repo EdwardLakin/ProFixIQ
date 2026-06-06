@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type InspectionSuggestion = DB["public"]["Tables"]["inspection_template_suggestions"]["Row"];
 
 export default function InspectionTemplateSuggestionsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<InspectionSuggestion[]>([]);
   const [error, setError] = useState<string>("");
 

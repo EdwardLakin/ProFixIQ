@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
 import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
   // Compatibility note:
   // This route is an authenticated approval-submission endpoint (not an anonymous third-party webhook).
   // Keep this path for backward compatibility; future cleanup may alias/rename to /api/quotes/approve.
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

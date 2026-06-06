@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import type { Database } from "@shared/types/types/supabase";
 
 type StaffRole = "owner" | "admin" | "manager" | "advisor" | "parts";
 
 export default function ShareBookingLink() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
 
   const [slug, setSlug] = useState<string | null>(null);
   const [isStaff, setIsStaff] = useState<boolean>(false);

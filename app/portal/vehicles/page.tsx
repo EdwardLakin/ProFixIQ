@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 
 /** Minimal shapes (keep lint happy, no `any`, no big supabase types) */
@@ -79,7 +78,7 @@ function dangerButtonStyle(): React.CSSProperties {
 }
 
 export default function PortalVehiclesPage() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);

@@ -1,12 +1,9 @@
 // app/api/maintenance/generate-rules/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
 
-type DB = Database;
 
 export const runtime = "nodejs";
 
@@ -50,7 +47,7 @@ function parseBody(json: unknown): GenerateBody {
 }
 
 export async function POST(req: Request) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   try {
     const bodyRaw = await req.json().catch(() => null);

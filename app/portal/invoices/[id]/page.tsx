@@ -1,8 +1,7 @@
 // app/portal/invoices/[id]/page.tsx (FULL FILE REPLACEMENT)
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -152,8 +151,7 @@ export default async function PortalInvoicePage({
 }) {
   const { id: workOrderId } = await params;
 
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseRSC();
 
   let workOrder: WorkOrderForPortalInvoice | null = null;
   let invoice: InvoiceLite | null = null;

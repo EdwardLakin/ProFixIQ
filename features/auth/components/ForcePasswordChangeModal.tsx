@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-type DB = Database;
 
 type Props = {
   open: boolean;
@@ -23,7 +21,7 @@ export default function ForcePasswordChangeModal({
   title = "Set your new password",
   subtitle = "This account was created by an owner/manager. You must choose a new password before continuing.",
 }: Props): JSX.Element | null {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

@@ -1,14 +1,11 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import PageShell from "@/features/shared/components/PageShell";
 import OwnerMarketingSettingsCard from "@/features/integrations/shopreel/components/OwnerMarketingSettingsCard";
 import { DEFAULT_SHOPREEL_EVENT_TYPES, getShopReelBaseUrl } from "@/features/integrations/shopreel/server/shopreelConfig";
 
-type DB = Database;
 
 export default async function OwnerMarketingPage() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
 
   const {
     data: { user },

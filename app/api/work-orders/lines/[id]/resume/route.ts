@@ -1,9 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 function getId(req: NextRequest) {
@@ -15,7 +13,7 @@ export async function POST(req: NextRequest) {
   const id = getId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const { data: auth, error: authErr } = await supabase.auth.getUser();
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

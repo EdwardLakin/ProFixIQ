@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Recommendation = {
   recommendedAction: "link_existing" | "create_new" | "merge_candidate" | "ignore";
@@ -135,7 +134,7 @@ function toResolutionAction(action: Recommendation["recommendedAction"]): "linke
 
 export default function ShopBoostReviewPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [domain, setDomain] = useState("");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);

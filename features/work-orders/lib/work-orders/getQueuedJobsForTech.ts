@@ -1,5 +1,5 @@
 // features/work-orders/lib/work-orders/getQueuedJobsForTech.ts
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   getWorkOrderLineStatusDbFilter,
@@ -15,7 +15,7 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
  * - Ordered by parent work order priority first, then oldest → newest
  */
 export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserSupabase();
   const queueStatuses: WorkOrderLineStatus[] = ["in_progress", "awaiting", "on_hold"];
 
   // join work_orders so we can sort by work order priority

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export default function PartsRequestChat({ requestId, senderId }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMsg, setNewMsg] = useState("");

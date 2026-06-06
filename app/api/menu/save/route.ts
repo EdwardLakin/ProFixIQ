@@ -1,7 +1,6 @@
 // app/api/menu/save/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -40,7 +39,7 @@ function clampNonNeg(n: number): number {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   const {
     data: { user },

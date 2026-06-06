@@ -1,8 +1,7 @@
 // app/api/work-orders/quotes/[id]/approval/route.ts
 import "server-only";
 import { NextResponse, NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { buildWorkOrderApprovedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
@@ -20,7 +19,7 @@ type DecisionBody = {
 };
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   // URL shape: /api/work-orders/quotes/:id/approval
   const segments = req.nextUrl.pathname.split("/").filter(Boolean);

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -47,7 +47,7 @@ function subtleButtonClass() {
 }
 
 export default function PortalProfilePage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [loading, setLoading] = useState(true);

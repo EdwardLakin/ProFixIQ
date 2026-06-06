@@ -4,8 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -150,7 +149,7 @@ function isUuid(v: unknown): v is string {
 export async function POST(req: Request) {
   try {
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const {
       data: { user },
     } = await supabase.auth.getUser();

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
@@ -22,7 +21,7 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
     }
 
-    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const {
       data: { user },
     } = await supabase.auth.getUser();

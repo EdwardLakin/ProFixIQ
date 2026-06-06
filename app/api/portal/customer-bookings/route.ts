@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { listCustomerBookings } from "@/features/portal/server/customerBookings";
 
-type DB = Database;
 
 export async function GET() {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
 
   try {
     const actor = await requirePortalCustomerActor(supabase);

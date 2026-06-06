@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -26,7 +26,7 @@ const RANGE_LABELS: Record<Range, string> = {
 };
 
 export default function MobileTechPerformancePage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);

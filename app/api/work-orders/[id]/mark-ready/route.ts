@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import type { Database } from "@shared/types/types/supabase";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { buildWorkOrderCompletedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
-type DB = Database;
 
 function getIdFromUrl(url: string): string | null {
   const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "mark-ready"]
@@ -20,7 +17,7 @@ function isError(x: unknown): x is Error {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const supabase = createServerSupabaseRoute();
   const woId = getIdFromUrl(req.url);
   if (!woId) {
     return NextResponse.json({ ok: false, error: "Missing work order id" }, { status: 400 });

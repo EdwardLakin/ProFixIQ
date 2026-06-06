@@ -1,7 +1,6 @@
 // app/api/portal/availability/route.ts
 import { NextResponse, NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 /** Build a Date in UTC that corresponds to local components in a given IANA tz. */
@@ -135,7 +134,7 @@ type BookingPick = Pick<BookingRow, "starts_at" | "ends_at" | "status">;
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const supabase = createServerSupabaseRoute();
     const { searchParams } = new URL(req.url);
 
     const slug = searchParams.get("shop") || "";

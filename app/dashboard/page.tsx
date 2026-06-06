@@ -2,8 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import {
   DASHBOARD_LAST_VIEW_KEY,
@@ -19,7 +18,7 @@ export default function DashboardEntryPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const supabase = createClientComponentClient<Database>();
+    const supabase = createBrowserSupabase();
 
     (async () => {
       const {

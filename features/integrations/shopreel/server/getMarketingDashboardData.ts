@@ -1,5 +1,4 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import { DEFAULT_SHOPREEL_EVENT_TYPES, getShopReelBaseUrl } from "./shopreelConfig";
@@ -55,7 +54,7 @@ function toDeliveryStatus(value: string): DeliveryStatus {
 }
 
 export async function getMarketingDashboardData() {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createServerSupabaseRSC();
   const lifecycleSupabase = supabase as unknown as {
     from: (table: string) => ReturnType<typeof supabase.from>
   };
