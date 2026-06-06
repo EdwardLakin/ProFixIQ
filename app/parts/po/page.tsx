@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
@@ -11,13 +10,9 @@ import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part
 type DB = Database;
 
 type PurchaseOrder = DB["public"]["Tables"]["purchase_orders"]["Row"];
-type PurchaseOrderInsert = DB["public"]["Tables"]["purchase_orders"]["Insert"];
 type Supplier = DB["public"]["Tables"]["suppliers"]["Row"];
-type SupplierInsert = DB["public"]["Tables"]["suppliers"]["Insert"];
-type PurchaseOrderLineInsert = DB["public"]["Tables"]["purchase_order_lines"]["Insert"];
 type Part = DB["public"]["Tables"]["parts"]["Row"];
 
-type Status = PurchaseOrder["status"];
 
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -39,10 +34,6 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
 
-function normalizeName(s: string): string {
-  return s.trim().replace(/\s+/g, " ");
-}
-
 function toNum(v: unknown, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -61,10 +52,6 @@ type LineDraft = {
 const DEFAULT_SUPPLIER_NAME = "General / Stock";
 
 export default function PurchaseOrdersPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
-  const [shopId, setShopId] = useState<string>("");
-
   const [loading, setLoading] = useState(true);
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -94,63 +81,33 @@ export default function PurchaseOrdersPage(): JSX.Element {
   const [busyCreate, setBusyCreate] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const refresh = async (sid: string): Promise<void> => {
-    const [poRes, supRes, partsRes] = await Promise.all([
-      supabase.from("purchase_orders").select("*").eq("shop_id", sid).order("created_at", { ascending: false }).limit(200),
-      supabase.from("suppliers").select("*").eq("shop_id", sid).order("name", { ascending: true }).limit(1000),
-      supabase.from("parts").select("*").eq("shop_id", sid).order("name", { ascending: true }).limit(2000),
-    ]);
+  const refresh = async (): Promise<void> => {
+    const res = await fetch("/api/parts/purchase-orders", { credentials: "same-origin" });
+    const json = (await res.json().catch(() => null)) as
+      | { pos?: PurchaseOrder[]; suppliers?: Supplier[]; parts?: Part[]; error?: string }
+      | null;
 
-    if (poRes.error) setErrorMsg(poRes.error.message);
-    if (supRes.error) setErrorMsg(supRes.error.message);
-    if (partsRes.error) setErrorMsg(partsRes.error.message);
+    if (!res.ok) {
+      setErrorMsg(json?.error ?? "Unable to load purchase orders.");
+      setPOs([]);
+      setSuppliers([]);
+      setParts([]);
+      return;
+    }
 
-    setPOs((poRes.data as PurchaseOrder[]) ?? []);
-    setSuppliers((supRes.data as Supplier[]) ?? []);
-    setParts((partsRes.data as Part[]) ?? []);
+    setPOs(json?.pos ?? []);
+    setSuppliers(json?.suppliers ?? []);
+    setParts(json?.parts ?? []);
   };
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErrorMsg(null);
-
-      const { data: userRes, error: uErr } = await supabase.auth.getUser();
-      const uid = userRes.user?.id ?? null;
-
-      if (uErr) {
-        setErrorMsg(uErr.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!uid) {
-        setErrorMsg("Not authenticated.");
-        setLoading(false);
-        return;
-      }
-
-      const { data: prof, error: pErr } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("user_id", uid)
-        .maybeSingle();
-
-      if (pErr) {
-        setErrorMsg(pErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const sid = (prof?.shop_id as string | null) ?? "";
-      setShopId(sid);
-
-      if (sid) await refresh(sid);
-
+      await refresh();
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
+  }, []);
 
   function resetModal(): void {
     setSupplierId("");
@@ -205,110 +162,33 @@ export default function PurchaseOrdersPage(): JSX.Element {
     return null;
   }
 
-  async function createSupplier(nameRaw: string): Promise<string> {
-    if (!shopId) throw new Error("Missing shop_id.");
-
-    const name = normalizeName(nameRaw);
-    const existing = suppliers.find((s) => normalizeName(String(s.name ?? "")) === name);
-    if (existing?.id) return String(existing.id);
-
-    const insert: SupplierInsert = {
-      id: uuidv4(),
-      shop_id: shopId,
-      name,
-    };
-
-    const { data, error } = await supabase.from("suppliers").insert(insert).select("*").single();
-    if (error) throw new Error(error.message);
-
-    const createdId = (data?.id as string | null) ?? null;
-    if (!createdId) throw new Error("Supplier create failed.");
-
-    setSuppliers((prev) => [data as Supplier, ...prev]);
-    return createdId;
-  }
-
-  async function ensureSupplierIdRequired(): Promise<string> {
-    if (isNonEmptyString(supplierId)) return supplierId.trim();
-
-    const typed = normalizeName(newSupplierName);
-    if (typed) return await createSupplier(typed);
-
-    return await createSupplier(DEFAULT_SUPPLIER_NAME);
-  }
-
   const createPo = async (): Promise<void> => {
-    if (!shopId || busyCreate) return;
+    if (busyCreate) return;
 
     setBusyCreate(true);
     setErrorMsg(null);
 
     try {
-      const supplierResolved = await ensureSupplierIdRequired();
-      const nowIso = new Date().toISOString();
-
-      const fallbackId = uuidv4();
-
-      const insertPo: PurchaseOrderInsert = {
-        id: fallbackId,
-        shop_id: shopId,
-        supplier_id: supplierResolved,
-        status: "open" as Status,
-        notes: poNote.trim() ? poNote.trim() : null,
-        created_at: nowIso,
-      };
-
-      const { data: poData, error: poErr } = await supabase.from("purchase_orders").insert(insertPo).select("id").single();
-      if (poErr) throw new Error(poErr.message);
-
-      const newPoId = (poData?.id as string | null) ?? fallbackId;
-
       const lineError = validateLines();
       if (lineError) throw new Error(lineError);
 
-      const linesToInsert = lines
-        .filter((l) => isNonEmptyString(l.part_id) || isNonEmptyString(l.description))
-        .map((l): PurchaseOrderLineInsert => {
-          const vendorPn = l.vendor_part_number.trim();
-          const notes = l.notes.trim();
-          const typedDescription = l.description.trim();
-          const selectedPart = l.part_id ? parts.find((p) => String(p.id) === String(l.part_id)) ?? null : null;
-          const defaultPartDescription = selectedPart?.name ? String(selectedPart.name).trim() : "";
-
-          const descriptionParts: string[] = [];
-          if (typedDescription) {
-            descriptionParts.push(typedDescription);
-          } else if (!l.part_id && defaultPartDescription) {
-            descriptionParts.push(defaultPartDescription);
-          }
-          if (vendorPn) descriptionParts.push(`Vendor PN: ${vendorPn}`);
-          if (notes) descriptionParts.push(notes);
-
-          const description = descriptionParts.length ? descriptionParts.join(" • ") : null;
-
-          return {
-            id: uuidv4(),
-            po_id: newPoId,
-            part_id: isNonEmptyString(l.part_id) ? String(l.part_id) : null,
-            qty: Math.max(0, Math.floor(toNum(l.ordered_qty, 0))),
-            unit_cost: Math.max(0, toNum(l.unit_cost, 0)),
-            sku: vendorPn ? vendorPn : null,
-            description,
-            received_qty: 0,
-            location_id: null,
-            created_at: nowIso,
-          };
-        });
-
-      if (linesToInsert.length > 0) {
-        const { error: lineErr } = await supabase.from("purchase_order_lines").insert(linesToInsert);
-        if (lineErr) throw new Error(lineErr.message);
-      }
-
+      const res = await fetch("/api/parts/purchase-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          supplierId: supplierId.trim() || undefined,
+          newSupplierName: newSupplierName.trim() || undefined,
+          notes: poNote.trim() || undefined,
+          lines,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Create PO failed.");
       setOpen(false);
       resetModal();
 
-      await refresh(shopId);
+      await refresh();
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : "Create PO failed.");
     } finally {
@@ -340,8 +220,8 @@ export default function PurchaseOrdersPage(): JSX.Element {
         <div className="flex items-center gap-2">
           <button
             className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/60 disabled:opacity-60"
-            onClick={() => (shopId ? void refresh(shopId) : null)}
-            disabled={!shopId || loading}
+            onClick={() => void refresh()}
+            disabled={loading}
             type="button"
           >
             Refresh
@@ -350,7 +230,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
           <button
             className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
             onClick={() => setOpen(true)}
-            disabled={!shopId}
+            disabled={loading}
             type="button"
           >
             New PO
@@ -759,7 +639,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     <button
                       className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
                       onClick={() => void createPo()}
-                      disabled={!shopId || busyCreate}
+                      disabled={loading || busyCreate}
                       type="button"
                     >
                       {busyCreate ? "Creating…" : "Create PO"}

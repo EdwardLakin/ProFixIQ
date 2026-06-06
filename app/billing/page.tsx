@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -21,7 +20,6 @@ type Row = WorkOrder & {
 
 type Status = Exclude<WorkOrder["status"], null> | "ready_to_invoice" | "invoiced";
 
-const BILLING_STATUSES: Status[] = ["completed", "ready_to_invoice", "invoiced"];
 
 const INPUT_DARK =
   "desktop-input w-full px-3 py-2 text-sm";
@@ -89,7 +87,6 @@ function formatMoney(value: number | null | undefined): string {
 }
 
 export default function BillingPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const searchParams = useSearchParams();
   const guidedOnboardingQuery = useMemo(
     () => getInvoicesGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())),
@@ -106,34 +103,22 @@ export default function BillingPage(): JSX.Element {
     setLoading(true);
     setErr(null);
 
-    let query = supabase
-      .from("work_orders")
-      .select(
-        `
-        *,
-        customers:customers(first_name,last_name,email),
-        vehicles:vehicles(year,make,model,license_plate)
-      `,
-      )
-      .order("updated_at", { ascending: false })
-      .limit(100);
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
 
-    if (status) {
-      query = query.eq("status", status);
-    } else {
-      query = query.in("status", BILLING_STATUSES as unknown as string[]);
-    }
+    const res = await fetch(`/api/billing/work-orders?${params.toString()}`, {
+      credentials: "same-origin",
+    });
+    const json = (await res.json().catch(() => null)) as { rows?: Row[]; error?: string } | null;
 
-    const { data, error } = await query;
-
-    if (error) {
-      setErr(error.message);
+    if (!res.ok) {
+      setErr(json?.error ?? "Unable to load billing work orders.");
       setRows([]);
       setLoading(false);
       return;
     }
 
-    const baseRows = (data ?? []) as Row[];
+    const baseRows = json?.rows ?? [];
     const qlc = q.trim().toLowerCase();
 
     const filtered =
@@ -170,32 +155,13 @@ export default function BillingPage(): JSX.Element {
 
     setRows(filtered);
     setLoading(false);
-  }, [q, status, supabase]);
+  }, [q, status]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    const ch = supabase
-      .channel("billing:list")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => {
-          setTimeout(() => void load(), 60);
-        },
-      )
-      .subscribe();
 
-    return () => {
-      try {
-        supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
-    };
-  }, [supabase, load]);
 
   const handleAiReview = useCallback(async (id: string) => {
     try {
