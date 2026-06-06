@@ -33,9 +33,10 @@ const GROUP_ORDER = [
   "General",
 ];
 
-
 function normalizeRole(raw: string | null | undefined): Role | null {
-  const r = String(raw ?? "").toLowerCase().trim();
+  const r = String(raw ?? "")
+    .toLowerCase()
+    .trim();
   if (!r) return null;
 
   if (r === "tech" || r === "technician") return "mechanic";
@@ -56,16 +57,19 @@ function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
   return matching.sort((a, b) => b.href.length - a.href.length)[0] ?? null;
 }
 
-export default function RoleSidebar() {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
+export default function RoleSidebar({
+  initialRole = null,
+  initialEmail = null,
+}: {
+  initialRole?: string | null;
+  initialEmail?: string | null;
+}) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const pathname = usePathname();
 
-  const [role, setRole] = useState<Role | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<Role | null>(normalizeRole(initialRole));
+  const [userEmail, setUserEmail] = useState<string | null>(initialEmail);
   const [scopeFilter] = useState<Scope | "all">("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
@@ -95,7 +99,9 @@ export default function RoleSidebar() {
     const filteredTiles = TILES.filter((t) => t.roles.includes(role))
       .filter((t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter))
       .filter((t) => canShowTileForEmail(t, userEmail))
-      .filter((t) => (t.href === "/dashboard/onboarding-v2" ? navV2Enabled : true));
+      .filter((t) =>
+        t.href === "/dashboard/onboarding-v2" ? navV2Enabled : true,
+      );
 
     if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
     return filteredTiles;

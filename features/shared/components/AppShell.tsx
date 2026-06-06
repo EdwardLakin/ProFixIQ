@@ -66,8 +66,17 @@ type ProfileScope = Pick<
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
-  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end"
+  | "stripe_subscription_status"
+  | "stripe_trial_end"
+  | "stripe_current_period_end"
 >;
+
+type AppShellInitialIdentity = {
+  userId: string | null;
+  email: string | null;
+  shopId: string | null;
+  role: string | null;
+};
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
@@ -77,16 +86,28 @@ function daysUntil(iso: string | null): number | null {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  initialIdentity,
+}: {
+  children: React.ReactNode;
+  initialIdentity?: AppShellInitialIdentity | null;
+}) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
   const { data: activeBrand } = useActiveBrand();
 
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(
+    initialIdentity?.userId ?? null,
+  );
+  const [userRole, setUserRole] = useState<string | null>(
+    initialIdentity?.role ?? null,
+  );
   const [mustChangePassword, setMustChangePassword] = useState(false);
-  const [, setShopId] = useState<string | null>(null);
+  const [, setShopId] = useState<string | null>(
+    initialIdentity?.shopId ?? null,
+  );
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
@@ -102,7 +123,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  const isPortalRoute = pathname === "/portal" || pathname.startsWith("/portal/");
+  const isPortalRoute =
+    pathname === "/portal" || pathname.startsWith("/portal/");
   const isAppRoute =
     !isPortalRoute &&
     !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -110,7 +132,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeAgentConsole =
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
-  const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(pathname);
+  const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(
+    pathname,
+  );
 
   const showBillingBadge = isBillingAttentionStatus(subStatus);
 
@@ -153,9 +177,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             .eq("id", sid)
             .maybeSingle<ShopBillingScope>();
 
-          setSubStatus((shop?.stripe_subscription_status as string | null) ?? null);
+          setSubStatus(
+            (shop?.stripe_subscription_status as string | null) ?? null,
+          );
           setTrialEndIso((shop?.stripe_trial_end as string | null) ?? null);
-          setPeriodEndIso((shop?.stripe_current_period_end as string | null) ?? null);
+          setPeriodEndIso(
+            (shop?.stripe_current_period_end as string | null) ?? null,
+          );
         } else {
           setSubStatus(null);
           setTrialEndIso(null);
@@ -176,12 +204,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           },
           (payload) => {
             const raw = payload.new as unknown;
-            const msg = raw as Database["public"]["Tables"]["messages"]["Row"] & {
-              recipients?: string[] | null;
-            };
+            const msg =
+              raw as Database["public"]["Tables"]["messages"]["Row"] & {
+                recipients?: string[] | null;
+              };
 
             if (msg.sender_id === uid) return;
-            if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid)) return;
+            if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid))
+              return;
 
             setIncomingConvoId(msg.conversation_id);
             setChatOpen(true);
@@ -291,8 +321,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="rounded-full border border-red-500/30 bg-red-950/30 px-3 py-1 text-[11px] font-semibold text-red-100 shadow-sm backdrop-blur transition hover:border-red-400/40">
           Billing issue:
-          <span className="ml-1 uppercase tracking-[0.12em]">{statusLabel}</span>
-          {dueLabel ? <span className="ml-2 text-red-200/80">{dueLabel}</span> : null}
+          <span className="ml-1 uppercase tracking-[0.12em]">
+            {statusLabel}
+          </span>
+          {dueLabel ? (
+            <span className="ml-2 text-red-200/80">{dueLabel}</span>
+          ) : null}
         </div>
       </button>
     );
@@ -346,7 +380,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <span
                     className="truncate text-lg font-semibold tracking-tight"
                     style={{
-                      fontFamily: "Black Ops One, var(--font-blackops), system-ui",
+                      fontFamily:
+                        "Black Ops One, var(--font-blackops), system-ui",
                       color: "var(--brand-primary, #C1663B)",
                     }}
                   >
@@ -356,7 +391,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
 
-            <RoleSidebar />
+            <RoleSidebar
+              initialRole={initialIdentity?.role ?? null}
+              initialEmail={initialIdentity?.email ?? null}
+            />
 
             <div className="mt-auto h-12 border-t border-white/10" />
           </div>
@@ -455,7 +493,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 boxShadow: "0 18px 40px rgba(0,0,0,0.95)",
               }}
             >
-              <h2 className="mb-2 text-sm font-medium text-neutral-100">Shift Tracker</h2>
+              <h2 className="mb-2 text-sm font-medium text-neutral-100">
+                Shift Tracker
+              </h2>
               <ShiftTracker userId={userId} />
             </div>
           ) : null}

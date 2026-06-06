@@ -1,6 +1,9 @@
 import { endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 
-import { createDashboardServerClient, getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
+import {
+  createDashboardServerClient,
+  getDashboardIdentity,
+} from "@/features/dashboard/server/dashboard-shell-data";
 
 type TrendPoint = {
   label: string;
@@ -24,10 +27,23 @@ export type PerformanceDashboardPayload = {
     efficiencyPct: number;
   };
   trend: TrendPoint[];
-  technicianPerformance: Array<{ label: string; completed: number; pace: string; utilizationPct: number }>;
+  technicianPerformance: Array<{
+    label: string;
+    completed: number;
+    pace: string;
+    utilizationPct: number;
+  }>;
   businessSignals: PerfSignal[];
-  revenueWatch: Array<{ label: string; value: string; tone?: "default" | "accent" }>;
-  optimizationSummary: Array<{ label: string; detail: string; tone: "critical" | "warning" | "info" }>;
+  revenueWatch: Array<{
+    label: string;
+    value: string;
+    tone?: "default" | "accent";
+  }>;
+  optimizationSummary: Array<{
+    label: string;
+    detail: string;
+    tone: "critical" | "warning" | "info";
+  }>;
   sectionErrors: string[];
   fetchAudit: string[];
 };
@@ -42,7 +58,8 @@ function pct(delta: number, baseline: number): number {
 }
 
 export async function getPerformanceDashboardPayload(): Promise<PerformanceDashboardPayload> {
-  const identity = await getDashboardIdentity();
+  const supabase = createDashboardServerClient();
+  const identity = await getDashboardIdentity(supabase);
   const payload: PerformanceDashboardPayload = {
     identity,
     kpis: { revenue: 0, profit: 0, jobs: 0, efficiencyPct: 0 },
@@ -60,11 +77,16 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
     return payload;
   }
 
-  const supabase = createDashboardServerClient();
   const rangeStart = startOfMonth(subMonths(new Date(), 5)).toISOString();
   const rangeEnd = endOfMonth(new Date()).toISOString();
 
-  const [invoiceResult, expenseResult, techProfilesResult, completedLinesResult, comebackRiskResult] = await Promise.all([
+  const [
+    invoiceResult,
+    expenseResult,
+    techProfilesResult,
+    completedLinesResult,
+    comebackRiskResult,
+  ] = await Promise.all([
     supabase
       .from("invoices")
       .select("id,total,labor_cost,created_at")
@@ -98,7 +120,9 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   ]);
 
   if (invoiceResult.error || expenseResult.error) {
-    payload.sectionErrors.push("Finance trend section is degraded due to invoice/expense query failures.");
+    payload.sectionErrors.push(
+      "Finance trend section is degraded due to invoice/expense query failures.",
+    );
   } else {
     const invoices = invoiceResult.data ?? [];
     const expenses = expenseResult.data ?? [];
@@ -146,7 +170,10 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
     payload.kpis.revenue = latest?.revenue ?? 0;
     payload.kpis.profit = latest?.profit ?? 0;
     payload.kpis.jobs = latest?.jobs ?? 0;
-    payload.kpis.efficiencyPct = payload.kpis.revenue > 0 ? Math.round((payload.kpis.profit / payload.kpis.revenue) * 100) : 0;
+    payload.kpis.efficiencyPct =
+      payload.kpis.revenue > 0
+        ? Math.round((payload.kpis.profit / payload.kpis.revenue) * 100)
+        : 0;
 
     const revenueDelta = (latest?.revenue ?? 0) - (previous?.revenue ?? 0);
     const jobsDelta = (latest?.jobs ?? 0) - (previous?.jobs ?? 0);
@@ -169,7 +196,9 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   }
 
   if (techProfilesResult.error || completedLinesResult.error) {
-    payload.sectionErrors.push("Technician performance section is degraded due to work-order line query failures.");
+    payload.sectionErrors.push(
+      "Technician performance section is degraded due to work-order line query failures.",
+    );
   } else {
     const techs = techProfilesResult.data ?? [];
     const completed = completedLinesResult.data ?? [];
@@ -177,7 +206,10 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
 
     completed.forEach((row) => {
       if (!row.assigned_tech_id) return;
-      byTech.set(row.assigned_tech_id, (byTech.get(row.assigned_tech_id) ?? 0) + 1);
+      byTech.set(
+        row.assigned_tech_id,
+        (byTech.get(row.assigned_tech_id) ?? 0) + 1,
+      );
     });
 
     const maxCompleted = Math.max(1, ...[...byTech.values()]);
@@ -187,7 +219,10 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
         return {
           label: tech.full_name ?? "Unassigned tech",
           completed: completedCount,
-          pace: completedCount >= Math.ceil(maxCompleted * 0.75) ? "On pace" : "Watch",
+          pace:
+            completedCount >= Math.ceil(maxCompleted * 0.75)
+              ? "On pace"
+              : "Watch",
           utilizationPct: Math.round((completedCount / maxCompleted) * 100),
         };
       })
@@ -196,18 +231,36 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
   }
 
   if (comebackRiskResult.error) {
-    payload.sectionErrors.push("Business signals section is degraded due to board risk query failures.");
+    payload.sectionErrors.push(
+      "Business signals section is degraded due to board risk query failures.",
+    );
   } else {
     const riskRows = comebackRiskResult.data ?? [];
-    const highRisk = riskRows.filter((row) => row.risk_level === "danger").length;
+    const highRisk = riskRows.filter(
+      (row) => row.risk_level === "danger",
+    ).length;
     const warnRisk = riskRows.filter((row) => row.risk_level === "warn").length;
-    const onHold = riskRows.filter((row) => row.overall_stage === "on_hold").length;
+    const onHold = riskRows.filter(
+      (row) => row.overall_stage === "on_hold",
+    ).length;
 
     payload.businessSignals = [
-      { label: "Comeback risk", value: String(highRisk), tone: highRisk > 0 ? "accent" : "default" },
+      {
+        label: "Comeback risk",
+        value: String(highRisk),
+        tone: highRisk > 0 ? "accent" : "default",
+      },
       { label: "Margin watch", value: `${payload.kpis.efficiencyPct}%` },
-      { label: "Warning queue", value: String(warnRisk), tone: warnRisk > 0 ? "accent" : "default" },
-      { label: "On-hold revenue", value: String(onHold), tone: onHold > 0 ? "accent" : "default" },
+      {
+        label: "Warning queue",
+        value: String(warnRisk),
+        tone: warnRisk > 0 ? "accent" : "default",
+      },
+      {
+        label: "On-hold revenue",
+        value: String(onHold),
+        tone: onHold > 0 ? "accent" : "default",
+      },
     ];
 
     payload.optimizationSummary = [
@@ -247,7 +300,9 @@ export async function getPerformanceDashboardPayload(): Promise<PerformanceDashb
     ];
   }
 
-  payload.fetchAudit.push("Performance dashboard now ships a single curated payload with finance, throughput, and risk sections.");
+  payload.fetchAudit.push(
+    "Performance dashboard now ships a single curated payload with finance, throughput, and risk sections.",
+  );
 
   return payload;
 }
