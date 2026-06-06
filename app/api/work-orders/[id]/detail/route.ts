@@ -55,7 +55,7 @@ async function loadWorkOrder(admin: ReturnType<typeof createAdminSupabase>, rout
   return { data: match ?? null, error: null } as const;
 }
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const access = await requireShopScopedApiAccess();
   const params = await context.params;
   const routeId = params.id;

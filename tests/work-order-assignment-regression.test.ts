@@ -168,7 +168,7 @@ describe("assignables and detail API", () => {
     store.work_order_line_technicians.push({ work_order_line_id: "line-uuid", technician_id: "tech-a" });
     setup(store);
     const { GET } = await import("../app/api/work-orders/[id]/detail/route");
-    const res = await GET(get("/api/work-orders/00000000-0000-0000-0000-000000000001/detail"), { params: { id: "00000000-0000-0000-0000-000000000001" } });
+    const res = await GET(get("/api/work-orders/00000000-0000-0000-0000-000000000001/detail"), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) });
     const payload = await res.json();
     expect(res.status).toBe(200);
     expect(payload.data.work_order.id).toBe("00000000-0000-0000-0000-000000000001");
@@ -183,7 +183,7 @@ describe("assignables and detail API", () => {
     store.vehicles = [];
     setup(store);
     const { GET } = await import("../app/api/work-orders/[id]/detail/route");
-    const res = await GET(get("/api/work-orders/00000000-0000-0000-0000-000000000001/detail"), { params: { id: "00000000-0000-0000-0000-000000000001" } });
+    const res = await GET(get("/api/work-orders/00000000-0000-0000-0000-000000000001/detail"), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) });
     const payload = await res.json();
     expect(res.status).toBe(200);
     expect(payload.data.customer).toBeNull();
