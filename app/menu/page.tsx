@@ -13,7 +13,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 import { toast } from "sonner";
-import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
+import { ServiceMenuOnboardingSetupCard } from "@/features/menu/components/ServiceMenuOnboardingSetupCard";
 
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
@@ -589,7 +589,7 @@ export default function MenuItemsPage() {
 
   return (
     <div className="relative space-y-8 fade-in">
-      <GuidedOnboardingStepCard stepKey="service_menu" surface="service_menu" />
+      <ServiceMenuOnboardingSetupCard />
       {/* Copper wash (was orange) */}
       <div
         aria-hidden

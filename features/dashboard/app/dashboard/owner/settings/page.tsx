@@ -30,7 +30,7 @@ import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSu
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 import { GuidedOnboardingLaunchCard } from "@/features/onboarding-v2/components/GuidedOnboardingLaunchCard";
-import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
+import { SettingsOnboardingSetupCard } from "@/features/dashboard/components/owner-settings/SettingsOnboardingSetupCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   parseStripeSubscriptionStatus,
@@ -1267,7 +1267,7 @@ try {
       </OwnerSettingsPanel>
 
       <GuidedOnboardingLaunchCard source="settings" />
-      <GuidedOnboardingStepCard stepKey="settings" surface="settings" />
+      <SettingsOnboardingSetupCard />
 
       {userId ? (
         <ProfileIdentityCard

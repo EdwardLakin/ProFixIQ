@@ -43,7 +43,9 @@ const guardedRecoveryFiles = [
   "features/onboarding-v2/components/GuidedOnboardingLaunchCard.tsx",
   "features/onboarding-v2/components/GuidedOnboardingStepCard.tsx",
   "features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx",
+  "features/onboarding-v2/components/OnboardingHighlightFrame.tsx",
   "features/onboarding-v2/guided/steps.ts",
+  "app/api/onboarding-v2/guided/status/route.ts",
 ];
 
 const stableLoaderExpectations = [
@@ -118,14 +120,15 @@ describe("guided onboarding recovery guardrails", () => {
   });
 
   it("adds onboarding cards as optional UI on requested existing pages", () => {
-    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain('stepKey="customers"');
-    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain('stepKey="vehicles"');
-    expect(read("features/dashboard/app/dashboard/owner/create-user/page.tsx")).toContain('stepKey="staff"');
-    expect(read("features/dashboard/app/dashboard/owner/settings/page.tsx")).toContain('stepKey="settings"');
-    expect(read("features/inspections/app/inspection/templates/page.tsx")).toContain('stepKey="inspection_templates"');
-    expect(read("app/menu/page.tsx")).toContain('stepKey="service_menu"');
+    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain("CustomerOnboardingSetupCard");
+    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain("VehicleOnboardingSetupCard");
+    expect(read("features/dashboard/app/dashboard/owner/create-user/page.tsx")).toContain("StaffOnboardingSetupCard");
+    expect(read("features/dashboard/app/dashboard/owner/settings/page.tsx")).toContain("SettingsOnboardingSetupCard");
+    expect(read("features/inspections/app/inspection/templates/page.tsx")).toContain("InspectionTemplatesOnboardingSetupCard");
+    expect(read("app/menu/page.tsx")).toContain("ServiceMenuOnboardingSetupCard");
     expect(read("app/parts/inventory/page.tsx")).toContain('stepKey="parts_inventory"');
-    expect(read("app/billing/page.tsx")).toContain('stepKey="invoices_history"');
+    expect(read("app/billing/page.tsx")).toContain("InvoicesOnboardingSetupCard");
+    expect(read("app/work-orders/history/WorkOrdersHistoryClient.tsx")).toContain("ServiceHistoryOnboardingSetupCard");
   });
 
   it("keeps stable page data loading paths in place", () => {
