@@ -40,7 +40,7 @@ export type ShopBoostRunResp =
         menuSuggestions: number;
         inspectionSuggestions: number;
       };
-      optimization: {
+      onboardingOptimization: {
         summary: {
           totalOpportunities: number;
           criticalCount: number;
@@ -468,7 +468,7 @@ export async function runShopBoostIntake(
         menuSuggestions: 0,
         inspectionSuggestions: 0,
       },
-      optimization: { summary: null, nextActions: [] },
+      onboardingOptimization: { summary: null, nextActions: [] },
     };
   }
 
@@ -529,7 +529,7 @@ export async function runShopBoostIntake(
     });
   }
 
-  let optimization: {
+  let onboardingOptimization: {
     summary: {
       totalOpportunities: number;
       criticalCount: number;
@@ -552,7 +552,7 @@ export async function runShopBoostIntake(
       lookbackDays: 365,
     });
 
-    optimization = {
+    onboardingOptimization = {
       summary: optimizationOutput.summary,
       nextActions: selectTopShopBoostOptimizationActions(optimizationOutput, 5),
     };
@@ -567,6 +567,6 @@ export async function runShopBoostIntake(
     snapshot,
     importSummary,
     shopBuildSummary: importSummary.shopBuildSummary,
-    optimization,
+    onboardingOptimization,
   };
 }

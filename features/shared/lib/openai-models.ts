@@ -17,7 +17,7 @@ export type OpenAIModelEnv = Partial<Record<
 
 export const DEFAULT_OPENAI_MODELS: Record<OpenAIModelPurpose, string> = {
   reasoning: "gpt-5.5",
-  fast: "gpt-5.5",
+  fast: "gpt-5.4-mini",
   extraction: "gpt-5.5",
   embedding: "text-embedding-3-small",
   vision: "gpt-5.5",
@@ -30,7 +30,6 @@ function clean(value: string | undefined): string | null {
 
 export function resolveOpenAIModel(purpose: OpenAIModelPurpose, env: OpenAIModelEnv = {}): string {
   const globalModel = clean(env.OPENAI_MODEL);
-
 
   if (purpose === "reasoning") {
     return clean(env.OPENAI_REASONING_MODEL) ?? globalModel ?? DEFAULT_OPENAI_MODELS.reasoning;
