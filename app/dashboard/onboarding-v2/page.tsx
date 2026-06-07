@@ -4,6 +4,7 @@ import { OnboardingV2Shell } from "@/features/onboarding-v2/components/Onboardin
 import { SafeModeVerifyOnlyBanner } from "@/features/onboarding-v2/components/SafeModeVerifyOnlyBanner";
 import { getAgentReadinessForDashboard } from "@/features/onboarding-v2/lib/agentReadinessServer";
 import { StartOnboardingSessionCard } from "@/features/onboarding-v2/components/StartOnboardingSessionCard";
+import { GuidedOnboardingWorkspace } from "@/features/onboarding-v2/components/GuidedOnboardingWorkspace";
 
 export default async function OnboardingV2Page() {
   await requireAdminPageAccess({ allow: ["owner", "admin"], redirectTo: "/dashboard" });
@@ -13,6 +14,7 @@ export default async function OnboardingV2Page() {
     <OnboardingV2Shell title="Onboarding Agent">
       <SafeModeVerifyOnlyBanner />
       <AgentReadinessBanner readiness={readiness} />
+      <GuidedOnboardingWorkspace />
       <StartOnboardingSessionCard />
       <div className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-300">Session listing coming next.</div>
       <div className="text-xs text-slate-400">Legacy onboarding remains available at /dashboard/onboarding during transition.</div>
