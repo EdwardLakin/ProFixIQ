@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import FleetFormImportCard from "@/features/inspections/components/FleetFormImportCard";
+import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 
 type DB = Database;
 type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
@@ -185,6 +186,7 @@ export default function InspectionTemplatesPage() {
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
+        <GuidedOnboardingStepCard stepKey="inspection_templates" surface="inspection_templates" />
         {/* Atmospheric page wash */}
         <div
           aria-hidden

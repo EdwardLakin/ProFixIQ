@@ -40,10 +40,21 @@ export function GuidedOnboardingWorkspace() {
                 <h3 className="mt-1 text-sm font-semibold text-white">{step.title}</h3>
               </div>
               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
-                Optional
+                Optional UI
               </span>
             </div>
             <p className="mt-2 min-h-12 text-xs leading-5 text-slate-400">{step.description}</p>
+            <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-slate-400">
+              State source: {step.dataSource.label}
+            </div>
+            {step.importLaunch?.stable ? (
+              <Link
+                href={step.importLaunch.href}
+                className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-orange-300/40 hover:bg-orange-400/10"
+              >
+                {step.importLaunch.label}
+              </Link>
+            ) : null}
             <Link
               href={step.destinationPath}
               className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-orange-300/40 hover:bg-orange-400/10"

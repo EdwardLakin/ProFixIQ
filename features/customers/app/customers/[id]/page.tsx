@@ -7,6 +7,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 
 type DB = Database;
 
@@ -689,23 +690,7 @@ export default function CustomerProfilePage(): JSX.Element {
       .maybeSingle();
 
     if (ownedShop.error) throw ownedShop.error;
-    if (!ownedShop.data?.id) return null;
-
-    const updByUserId = await supabase
-      .from("profiles")
-      .update({ shop_id: ownedShop.data.id })
-      .eq("user_id", userId);
-
-    if (updByUserId.error) {
-      const updById = await supabase
-        .from("profiles")
-        .update({ shop_id: ownedShop.data.id })
-        .eq("id", userId);
-
-      if (updById.error) throw updById.error;
-    }
-
-    return ownedShop.data.id;
+    return ownedShop.data?.id ?? null;
   }, [supabase]);
 
   const createCustomer = useCallback(async () => {
@@ -1444,6 +1429,8 @@ export default function CustomerProfilePage(): JSX.Element {
   if (!effectiveCustomerId) {
     return (
       <PageShell>
+        <GuidedOnboardingStepCard stepKey="customers" surface="customers" className="mb-4" />
+        <GuidedOnboardingStepCard stepKey="vehicles" surface="vehicles" className="mb-4" />
         <div className={`${CARD_BASE} p-4`}>
           <div className="text-sm text-neutral-200">This route expects a customer id.</div>
           <div className="mt-2 text-xs text-neutral-400">
@@ -1467,6 +1454,8 @@ export default function CustomerProfilePage(): JSX.Element {
   return (
     <PageShell>
       <TopBar rightLabel="Customer File" onBack={() => router.back()} />
+      <GuidedOnboardingStepCard stepKey="customers" surface="customers" className="mb-4" />
+      <GuidedOnboardingStepCard stepKey="vehicles" surface="vehicles" className="mb-4" />
 
       {viewError && (
         <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)]">

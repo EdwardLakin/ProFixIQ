@@ -6,6 +6,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -319,6 +320,7 @@ export default function BillingPage(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
+      <GuidedOnboardingStepCard stepKey="invoices_history" surface="billing" />
       <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_0_50px_rgba(2,6,23,0.55)]">
         <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.03))] px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

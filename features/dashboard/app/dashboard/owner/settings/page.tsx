@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSu
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 import { GuidedOnboardingLaunchCard } from "@/features/onboarding-v2/components/GuidedOnboardingLaunchCard";
+import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   parseStripeSubscriptionStatus,
@@ -1265,6 +1267,7 @@ try {
       </OwnerSettingsPanel>
 
       <GuidedOnboardingLaunchCard source="settings" />
+      <GuidedOnboardingStepCard stepKey="settings" surface="settings" />
 
       {userId ? (
         <ProfileIdentityCard
@@ -1290,10 +1293,10 @@ try {
           <a href="#hours-settings" className={navChipClass}>Hours</a>
           <a href="#timeoff-settings" className={navChipClass}>Time off</a>
           <a href="#billing-stripe" className={navChipClass}>Billing</a>
-          <a href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</a>
+          <Link href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</Link>
           <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
           <a href="#email-activity" className={navChipClass}>Activity</a>
-          <a href="/dashboard/onboarding-v2?mode=guided" className={navChipClass}>Onboarding</a>
+          <Link href="/dashboard/onboarding-v2?mode=guided" className={navChipClass}>Onboarding</Link>
         </div>
       </div>
 
