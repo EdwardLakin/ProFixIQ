@@ -46,6 +46,14 @@ const guardedRecoveryFiles = [
   "features/onboarding-v2/components/OnboardingHighlightFrame.tsx",
   "features/onboarding-v2/guided/steps.ts",
   "app/api/onboarding-v2/guided/status/route.ts",
+  "app/api/onboarding-v2/guided/sessions/route.ts",
+  "app/api/onboarding-v2/guided/sessions/[sessionId]/route.ts",
+  "app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/answer/route.ts",
+  "app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/complete/route.ts",
+  "app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/skip/route.ts",
+  "app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/status/route.ts",
+  "features/onboarding-v2/guided/sessionTypes.ts",
+  "features/onboarding-v2/server/guidedSessions.ts",
 ];
 
 const stableLoaderExpectations = [
@@ -144,6 +152,23 @@ describe("guided onboarding recovery guardrails", () => {
     expect(canRoleUseGuidedOnboardingStep("admin", ownerStep!)).toBe(true);
     expect(canRoleUseGuidedOnboardingStep("tech", ownerStep!)).toBe(false);
     expect(canRoleUseGuidedOnboardingStep("mechanic", ownerStep!)).toBe(false);
+  });
+
+
+  it("restores shop-scoped guided session and step routes without shop switching", () => {
+    const sessionRoute = read("app/api/onboarding-v2/guided/sessions/route.ts");
+    const sessionServer = read("features/onboarding-v2/server/guidedSessions.ts");
+    const workspace = read("features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx");
+
+    expect(sessionRoute).toContain('allowRoles: ["owner", "admin"]');
+    expect(sessionRoute).toContain("access.profile.shop_id");
+    expect(sessionServer).toContain('GUIDED_ONBOARDING_SOURCE = "guided_onboarding"');
+    expect(sessionServer).toContain('.eq("shop_id", params.shopId)');
+    expect(sessionServer).toContain('summary: mergeGuidedSummary');
+    expect(workspace).toContain("Existing system choice");
+    expect(workspace).toContain("/api/onboarding-v2/guided/sessions");
+    expect(workspace).toContain("Mark step complete");
+    expect(workspace).not.toContain("/api/shops/switch");
   });
 
   it("does not reintroduce legacy Supabase auth helpers in guarded app source", () => {
