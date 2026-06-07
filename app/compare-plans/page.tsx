@@ -111,7 +111,7 @@ export default function ComparePlansPage() {
         <div className="rounded-3xl border border-white/10 bg-black/35 p-4 backdrop-blur-xl md:p-6">
           {demoId ? (
             <div className="mb-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
-              Your shop preview is ready to resume. Nothing has been written yet, and activation will carry this analysis into guided import onboarding.
+              Your shop preview is ready to resume. Nothing has been written yet, and activation will carry this analysis into guided import setup.
             </div>
           ) : null}
           <PricingSection

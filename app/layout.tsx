@@ -49,7 +49,6 @@ export default async function RootLayout({
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/demo") ||
-    pathname.startsWith("/onboarding") ||
     pathname.startsWith("/portal/auth/") ||
     pathname.startsWith("/portal/confirm");
 

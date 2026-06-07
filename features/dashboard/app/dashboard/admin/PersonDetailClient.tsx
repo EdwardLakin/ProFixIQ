@@ -154,7 +154,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     const items: string[] = [];
     if (!detail.phone) items.push("Phone number");
     if (!detail.role) items.push("Identity role assignment");
-    if (!detail.completed_onboarding) items.push("Onboarding completion");
+    if (!detail.completed_onboarding) items.push("Profile setup completion");
     if (!detail.workforce_profile.start_date) items.push("Employment start date");
     if (!detail.workforce_profile.payroll_ready) items.push("Payroll readiness");
     return items;
@@ -298,7 +298,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
             <p>• Complete workforce profile (role/category/start date).</p>
             <p>• Add certifications/licensing if required.</p>
             <p>• Review payroll readiness when staffing details are complete.</p>
-            <p>• Ask the user to sign in and finish personal onboarding details.</p>
+            <p>• Ask the user to sign in and finish personal profile details.</p>
           </div>
         </AdminPanel>
       ) : null}

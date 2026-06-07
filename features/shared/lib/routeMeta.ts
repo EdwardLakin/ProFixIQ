@@ -39,12 +39,6 @@ const ALL_ROLES: UserRole[] | undefined = undefined;
 
 export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard": { title: () => "Dashboard", icon: "🏠", roles: ALL_ROLES },
-  "/dashboard/onboarding": {
-    title: () => "Onboarding Agent",
-    icon: "🧭",
-    roles: ["owner", "admin"],
-  },
-
   // ----------------------------------------------------------------
   // Work Orders
   // ----------------------------------------------------------------
@@ -461,11 +455,6 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     showInTabs: false,
     persist: { scroll: false, inputs: false },
     roles: ALL_ROLES,
-  },
-  "/onboarding": {
-    title: () => "Onboarding",
-    showInTabs: false,
-    roles: ["owner", "admin"],
   },
   "/subscribe": {
     title: () => "Plans",

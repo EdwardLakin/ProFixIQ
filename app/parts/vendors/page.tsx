@@ -546,7 +546,7 @@ export default function PartsVendorsPage(): JSX.Element {
             {!loading && vendors.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-neutral-700 bg-black/20 p-4 text-sm text-neutral-300">
                 <p className="font-medium text-neutral-100">No vendors found yet.</p>
-                <p className="mt-1 text-neutral-400">Vendors can appear from Parts inventory usage, purchase orders, receiving flows, or onboarding activation later.</p>
+                <p className="mt-1 text-neutral-400">Vendors can appear from Parts inventory usage, purchase orders, receiving flows, or import activation later.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link href="/parts/inventory" className={ui.buttonSecondary}>Go to Inventory</Link>
                   <Link href="/parts/po" className={ui.buttonSecondary}>Go to Purchase Orders</Link>

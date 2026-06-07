@@ -5,7 +5,6 @@ import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOp
 import { CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
 import ShopBoostActivationPanel from "@/features/dashboard/components/ShopBoostActivationPanel";
-import { GuidedOnboardingLaunchCard } from "@/features/onboarding-v2/components/GuidedOnboardingLaunchCard";
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
   return (
@@ -53,7 +52,6 @@ export default async function OperationsDashboardView() {
       />
 
       {canSeeShopBoostMissionControl ? <ShopBoostActivationPanel eligible /> : null}
-      {canSeeShopBoostMissionControl ? <GuidedOnboardingLaunchCard source="dashboard" /> : null}
 
       <MetricStrip
         className="mb-0"

@@ -82,7 +82,7 @@ export default function AdminEmployeesClient() {
 
   const summary = useMemo(() => {
     const allRows = rows ?? [];
-    const onboardingMissing = allRows.filter((row) => !row.completed_onboarding).length;
+    const profileSetupMissing = allRows.filter((row) => !row.completed_onboarding).length;
     const contactGaps = allRows.filter((row) => !row.email || !row.phone).length;
     const recentlyActive = allRows.filter((row) => {
       if (!row.last_active_at) return false;
@@ -96,7 +96,7 @@ export default function AdminEmployeesClient() {
 
     return {
       total: allRows.length,
-      onboardingMissing,
+      profileSetupMissing,
       contactGaps,
       recentlyActive,
       payrollFollowUp,
@@ -118,7 +118,7 @@ export default function AdminEmployeesClient() {
         />
         <AdminStatGrid>
           <AdminStatCard label="Employees" value={summary.total} />
-          <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
+          <AdminStatCard label="Profile setup incomplete" value={summary.profileSetupMissing} />
           <AdminStatCard label="Contact gaps" value={summary.contactGaps} hint="Missing email or phone" />
           <AdminStatCard label="Active in 30d" value={summary.recentlyActive} />
           <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Employees with open payroll exceptions" />
@@ -162,7 +162,7 @@ export default function AdminEmployeesClient() {
       <AdminPanel>
         <AdminPanelTitle
           title="Employee Records"
-          description="Directory posture across role, onboarding, contact completeness, activity recency, and payroll exception linkage."
+          description="Directory posture across role, profile setup, contact completeness, activity recency, and payroll exception linkage."
           action={
             <Link href="/dashboard/admin/payroll-time" className="text-xs font-medium text-orange-300 hover:text-orange-200">
               Open Payroll Time →

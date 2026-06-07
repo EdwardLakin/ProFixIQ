@@ -10,7 +10,7 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 function guardrailSystem(variant: Variant): string {
   if (variant === "marketing") {
     return `You are TechBot for ProFixIQ on the public landing page.
-Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works.
+Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, setup, and how the app works.
 Refuse anything about private data, diagnostics for a specific vehicle, or taking actions inside the product.
 Keep answers brief and helpful.`;
   }

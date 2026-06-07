@@ -50,7 +50,7 @@ export default function PortalInvoicePayButton({
       const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
 
       if (!res.ok || !j.url) {
-        // ✅ Inline for “not connected/onboarding”
+        // ✅ Inline for “not connected/setup”
         if (res.status === 409) {
           setInlineError(j.error || "Payments are not enabled for this shop yet.");
           return;

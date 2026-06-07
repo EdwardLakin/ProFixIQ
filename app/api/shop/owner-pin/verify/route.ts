@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     }
 
     if (!profile.completed_onboarding) {
-      return NextResponse.json({ error: "Finish onboarding before unlocking owner settings" }, { status: 409 });
+      return NextResponse.json({ error: "Complete profile setup before unlocking owner settings" }, { status: 409 });
     }
 
     if (profile.shop_id !== shopId) {

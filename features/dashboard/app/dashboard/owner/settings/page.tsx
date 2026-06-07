@@ -29,8 +29,6 @@ import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
-import { GuidedOnboardingLaunchCard } from "@/features/onboarding-v2/components/GuidedOnboardingLaunchCard";
-import { SettingsOnboardingSetupCard } from "@/features/dashboard/components/owner-settings/SettingsOnboardingSetupCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   parseStripeSubscriptionStatus,
@@ -1266,9 +1264,6 @@ try {
         </div>
       </OwnerSettingsPanel>
 
-      <GuidedOnboardingLaunchCard source="settings" />
-      <SettingsOnboardingSetupCard />
-
       {userId ? (
         <ProfileIdentityCard
           supabase={supabase}
@@ -1296,7 +1291,6 @@ try {
           <Link href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</Link>
           <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
           <a href="#email-activity" className={navChipClass}>Activity</a>
-          <Link href="/dashboard/onboarding-v2?mode=guided" className={navChipClass}>Onboarding</Link>
         </div>
       </div>
 

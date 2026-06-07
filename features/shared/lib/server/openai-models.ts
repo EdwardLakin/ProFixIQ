@@ -18,7 +18,6 @@ function readOpenAIModelEnv(): OpenAIModelEnv {
     OPENAI_EXTRACTION_MODEL: process.env.OPENAI_EXTRACTION_MODEL,
     OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
     OPENAI_VISION_MODEL: process.env.OPENAI_VISION_MODEL,
-    ONBOARDING_AGENT_MODEL: process.env.ONBOARDING_AGENT_MODEL,
   };
 }
 
@@ -34,7 +33,6 @@ export function getOpenAIModelDiagnostics() {
     extraction: getOpenAIModelForPurpose("extraction"),
     embedding: getOpenAIModelForPurpose("embedding"),
     vision: getOpenAIModelForPurpose("vision"),
-    onboarding: getOpenAIModelForPurpose("onboarding"),
   };
 }
 
@@ -57,8 +55,4 @@ export function getOpenAIEmbeddingModel(): string {
 
 export function getOpenAIVisionModel(): string {
   return getOpenAIModelForPurpose("vision");
-}
-
-export function getOnboardingAgentModel(): string {
-  return getOpenAIModelForPurpose("onboarding");
 }

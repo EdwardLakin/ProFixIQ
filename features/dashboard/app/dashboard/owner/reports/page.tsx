@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import html2canvas from "html2canvas";
@@ -322,7 +321,7 @@ export default function ReportsPage() {
                 Reports &amp; Shop Health
               </h1>
               <p className="text-xs text-neutral-400">
-                Performance trends + AI-driven shop scoring and onboarding suggestions.
+                Performance trends + AI-driven shop scoring and setup suggestions.
               </p>
             </div>
 
@@ -374,18 +373,11 @@ export default function ReportsPage() {
           ) : (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
               <div className="text-[11px] text-neutral-400">
-                Shop Health is a diagnostics surface. Snapshot health does not mean onboarding activation readiness.
+                Shop Health is a diagnostics surface. Snapshot health is informational and should be reviewed before acting.
               </div>
 
               {/* Upload + Run Snapshot buttons */}
               <div className="flex items-center gap-2">
-                <Link
-                  href="/dashboard/onboarding"
-                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:bg-black/35 hover:text-white"
-                >
-                  🧭 Onboarding Agent
-                </Link>
-
                 <button
                   type="button"
                   onClick={() => {

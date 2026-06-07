@@ -90,7 +90,7 @@ const gateCopyByAction: Record<GateActionContext, GateCopy> = {
   },
   settings: {
     title: "Activate to finish setup",
-    detail: "Activation unlocks shop setup actions and launches your real import + onboarding flow.",
+    detail: "Activation unlocks shop setup actions and launches your real import and setup flow.",
   },
 };
 

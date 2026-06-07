@@ -1,5 +1,5 @@
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { stableUuidFromParts } from "@/features/onboarding-agent/lib/staging";
 import type { Database } from "@/features/shared/types/types/supabase";
 
 type DB = Database;
@@ -43,6 +43,12 @@ function cleanText(value: unknown): string | null {
 
 function compact(values: Array<string | null | undefined>): string[] {
   return values.filter((value): value is string => Boolean(value && value.trim()));
+}
+
+function stableUuidFromParts(parts: Array<string | number | null | undefined>): string {
+  const seed = parts.map((part) => String(part ?? "")).join("|");
+  const hex = createHash("sha1").update(seed).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 function lineSummary(line: WorkOrderLineHistorySource): string | null {

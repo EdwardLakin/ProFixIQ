@@ -527,7 +527,6 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   const openMenu = useCallback(() => router.push("/menu"), [router]);
   const openInspections = useCallback(() => router.push("/inspections/templates"), [router]);
   const openTeam = useCallback(() => router.push("/dashboard/owner/create-user"), [router]);
-  const openOnboardingAgent = useCallback(() => router.push("/dashboard/onboarding"), [router]);
   const openGuidedReview = useCallback(() => router.push("/dashboard/setup/review"), [router]);
 
   /** ✅ WIRED: calls /api/shop-health/accept-suggestion and handles per-createdType */
@@ -816,13 +815,11 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 {activationReadiness.statusLabel === "Activation not ready" ? (
                   <>
-                    <QuickLinkButton label="Open Onboarding Agent" onClick={openOnboardingAgent} />
                     <QuickLinkButton label="Open legacy guided review" onClick={openGuidedReview} />
                     <QuickLinkButton label="Apply setup suggestions" onClick={openMenu} />
                   </>
                 ) : (
                   <>
-                    <QuickLinkButton label="Open Onboarding Agent" onClick={openOnboardingAgent} />
                     <QuickLinkButton label="Open Menu Builder" onClick={openMenu} />
                     <QuickLinkButton label="Open Inspections" onClick={openInspections} />
                     <QuickLinkButton label="Open Team" onClick={openTeam} />
@@ -835,8 +832,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               <div className="grid gap-3 md:grid-cols-3">
                 <StepCard
                   step="1"
-                  title="Open Onboarding Agent"
-                  body="Stage files and review onboarding sessions first. Staged analysis does not create live records until activation is explicitly approved."
+                  title="Review shop health"
+                  body="Review the latest diagnostics, then use the stable setup tools to apply changes explicitly."
                   tone="watch"
                 />
                 <StepCard
@@ -854,7 +851,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               </div>
 
               <div className="mt-3 text-[11px] text-neutral-400">
-                Recommendation: <b>start in Onboarding Agent</b>, then use Shop Health and legacy guided review for diagnostics and follow-up checks.
+                Recommendation: use Shop Health and legacy guided review for diagnostics and follow-up checks.
               </div>
             </div>
           </section>

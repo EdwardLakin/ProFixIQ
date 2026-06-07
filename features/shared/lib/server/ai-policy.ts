@@ -4,7 +4,7 @@ export type AIFallbackMode = "hard_fail" | "graceful_empty" | "cached_if_availab
 
 export type AIPolicy = {
   feature: AIFeature;
-  modelPurpose: "fast" | "reasoning" | "extraction" | "vision" | "onboarding";
+  modelPurpose: "fast" | "reasoning" | "extraction" | "vision";
   timeoutMs: number;
   maxTokens: number;
   fallbackMode: AIFallbackMode;

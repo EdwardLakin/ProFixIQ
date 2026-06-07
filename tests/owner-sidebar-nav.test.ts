@@ -54,16 +54,6 @@ describe("owner sidebar IA", () => {
     }
   });
 
-  it("keeps onboarding routes in admin oversight with explicit legacy/new labels", () => {
-    const tiles = ownerTiles();
-    const legacy = tiles.find((tile) => tile.href === "/dashboard/onboarding");
-    const v2 = tiles.find((tile) => tile.href === "/dashboard/onboarding-v2");
-
-    expect(legacy?.section).toBe("Admin & Oversight");
-    expect(legacy?.title).toBe("Data Onboarding");
-    expect(v2?.section).toBe("Admin & Oversight");
-    expect(v2?.title).toBe("Onboarding Agent");
-  });
 
   it("does not remove expected primary routes for tech/admin/parts roles", () => {
     const roleToHrefs: Record<Role, string[]> = {

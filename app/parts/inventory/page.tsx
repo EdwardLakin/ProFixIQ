@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
@@ -805,7 +804,6 @@ export default function InventoryPage(): JSX.Element {
 
   return (
     <div className={pageWrap}>
-      <GuidedOnboardingStepCard stepKey="parts_inventory" surface="parts_inventory" />
       <div className={`${glassCard} overflow-hidden`}>
         <div className={`${glassHeader} px-5 py-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
