@@ -7,8 +7,6 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
-import { CustomerOnboardingSetupCard } from "@/features/customers/components/CustomerOnboardingSetupCard";
-import { VehicleOnboardingSetupCard } from "@/features/customers/components/VehicleOnboardingSetupCard";
 
 type DB = Database;
 
@@ -1430,8 +1428,6 @@ export default function CustomerProfilePage(): JSX.Element {
   if (!effectiveCustomerId) {
     return (
       <PageShell>
-        <CustomerOnboardingSetupCard className="mb-4" />
-        <VehicleOnboardingSetupCard className="mb-4" />
         <div className={`${CARD_BASE} p-4`}>
           <div className="text-sm text-neutral-200">This route expects a customer id.</div>
           <div className="mt-2 text-xs text-neutral-400">
@@ -1455,17 +1451,12 @@ export default function CustomerProfilePage(): JSX.Element {
   return (
     <PageShell>
       <TopBar rightLabel="Customer File" onBack={() => router.back()} />
-      <CustomerOnboardingSetupCard className="mb-4" />
-      <VehicleOnboardingSetupCard className="mb-4" />
 
       {viewError && (
         <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)]">
           {viewError}
         </div>
       )}
-
-      <div className="mb-6">
-      </div>
 
       {loading ? (
         <div className="grid gap-4">

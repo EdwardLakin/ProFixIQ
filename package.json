@@ -12,7 +12,6 @@
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
     "test": "vitest run",
-    "test:shop-boost-replay": "RUN_SHOP_BOOST_REPLAY_TEST=true vitest run tests/shop-boost-onboarding-replay.test.ts",
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "prepare": "husky",

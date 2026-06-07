@@ -180,7 +180,7 @@ export function buildShopBoostPostActivationRecommendations(input: {
           recommended_action: {
             type: "review_roi_opportunities",
             label: "Review ROI opportunities",
-            details: "Review impact assumptions and prioritize internal onboarding follow-through tasks.",
+            details: "Review impact assumptions and prioritize internal setup follow-through tasks.",
           },
           side_effects: [],
           requires_approval: false,

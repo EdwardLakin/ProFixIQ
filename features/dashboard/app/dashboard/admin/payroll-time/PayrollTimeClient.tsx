@@ -287,7 +287,7 @@ export default function PayrollTimeClient() {
           <Link href="/dashboard/admin/scheduling" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
             Open Scheduling Board
           </Link>
-          <span className="text-neutral-400">Use People for all person-level governance, certifications, onboarding, and workforce updates.</span>
+          <span className="text-neutral-400">Use People for all person-level governance, certifications, profile setup, and workforce updates.</span>
         </div>
       </AdminPanel>
 

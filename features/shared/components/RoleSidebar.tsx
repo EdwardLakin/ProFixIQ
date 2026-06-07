@@ -17,7 +17,6 @@ import {
 } from "@/features/shared/lib/ownerSidebarNav";
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { isOnboardingV2NavEnabled } from "@/features/onboarding-v2/lib/flags";
 
 const GROUP_ORDER = [
   "Tech",
@@ -94,13 +93,9 @@ export default function RoleSidebar({
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
 
-    const navV2Enabled = isOnboardingV2NavEnabled();
     const filteredTiles = TILES.filter((t) => t.roles.includes(role))
       .filter((t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter))
-      .filter((t) => canShowTileForEmail(t, userEmail))
-      .filter((t) =>
-        t.href === "/dashboard/onboarding-v2" ? navV2Enabled : true,
-      );
+      .filter((t) => canShowTileForEmail(t, userEmail));
 
     if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
     return filteredTiles;

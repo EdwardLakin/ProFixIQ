@@ -462,7 +462,7 @@ export default function InstantShopAnalysisPage() {
 
                 <p className={THEME.help}>
                   This is a preflight preview. Full migration and materialization run only after signup,
-                  activation, and onboarding.
+                  activation, and setup.
                 </p>
               </div>
             </section>

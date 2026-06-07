@@ -123,7 +123,7 @@ export default function PeoplePageClient() {
     const source = rows ?? [];
     return {
       total: source.length,
-      onboardingMissing: source.filter((row) => !row.completed_onboarding).length,
+      profileSetupMissing: source.filter((row) => !row.completed_onboarding).length,
       payrollFollowUp: source.filter((row) => row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready).length,
       certFollowUp: source.filter((row) => row.expired_certifications > 0 || row.expiring_certifications > 0).length,
       pendingTimeOff: source.filter((row) => row.pending_time_off_requests > 0).length,
@@ -153,7 +153,7 @@ export default function PeoplePageClient() {
         />
         <AdminStatGrid>
           <AdminStatCard label="People" value={summary.total} />
-          <AdminStatCard label="Onboarding incomplete" value={summary.onboardingMissing} />
+          <AdminStatCard label="Profile setup incomplete" value={summary.profileSetupMissing} />
           <AdminStatCard label="Payroll follow-up" value={summary.payrollFollowUp} hint="Exceptions or not payroll-ready" />
           <AdminStatCard label="Credential follow-up" value={summary.certFollowUp} hint="Expired or expiring in 30 days" />
           <AdminStatCard label="Pending time off" value={summary.pendingTimeOff} />

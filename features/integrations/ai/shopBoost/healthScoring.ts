@@ -640,7 +640,7 @@ function buildNarrative(args: {
     `Based on ${totalRepairOrders} repair-order rows and an estimated total revenue of **$${totalRevenue.toLocaleString()}** (avg RO **$${averageRo.toLocaleString()}**).`,
     topLine,
     hvLine,
-    `Next step: publish the suggested menus/inspections to standardize quoting and reduce “misc” lines — that improves accuracy and speeds onboarding.`,
+    `Next step: publish the suggested menus/inspections to standardize quoting and reduce “misc” lines — that improves accuracy and speeds setup.`,
   ].join("\n\n");
 }
 

@@ -153,22 +153,6 @@ export const TILES: Tile[] = [
     scopes: ["management", "settings", "all"],
     section: "Tools",
   },
-  {
-    href: "/dashboard/onboarding",
-    title: "Legacy Onboarding",
-    subtitle: "Stage files and prepare activation safely",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Tools",
-  },
-  {
-    href: "/dashboard/onboarding-v2",
-    title: "Onboarding Agent",
-    subtitle: "Optional guided setup checklist",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Tools",
-  },
 
   /* ---------------------------------------------------------------------- */
   /* APPOINTMENTS                                                            */
@@ -489,7 +473,7 @@ export const TILES: Tile[] = [
   {
     href: "/dashboard/admin/employees",
     title: "Workforce View",
-    subtitle: "Workforce posture, onboarding, and payroll readiness filters",
+    subtitle: "Workforce posture, profile setup, and payroll readiness filters",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
     section: "Admin",

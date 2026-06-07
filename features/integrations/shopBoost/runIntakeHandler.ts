@@ -9,9 +9,9 @@ import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import { runShopBoostImport, type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
 import {
-  selectTopOnboardingOptimizationActions,
-  type OnboardingOptimizationAction,
-} from "@/features/optimization/server/selectOnboardingRecommendedActions";
+  selectTopShopBoostOptimizationActions,
+  type ShopBoostOptimizationAction,
+} from "@/features/optimization/server/selectShopBoostRecommendedActions";
 import {
   SHOP_BOOST_UPLOAD_DATASETS,
   SHOP_BOOST_UPLOAD_DATASET_KEYS,
@@ -40,7 +40,7 @@ export type ShopBoostRunResp =
         menuSuggestions: number;
         inspectionSuggestions: number;
       };
-      onboardingOptimization: {
+      optimization: {
         summary: {
           totalOpportunities: number;
           criticalCount: number;
@@ -49,7 +49,7 @@ export type ShopBoostRunResp =
           dataFreshness: "fresh" | "stale";
           lastAnalyzedAt: string;
         } | null;
-        nextActions: OnboardingOptimizationAction[];
+        nextActions: ShopBoostOptimizationAction[];
       };
     }
   | { ok: false; error: string };
@@ -468,7 +468,7 @@ export async function runShopBoostIntake(
         menuSuggestions: 0,
         inspectionSuggestions: 0,
       },
-      onboardingOptimization: { summary: null, nextActions: [] },
+      optimization: { summary: null, nextActions: [] },
     };
   }
 
@@ -529,7 +529,7 @@ export async function runShopBoostIntake(
     });
   }
 
-  let onboardingOptimization: {
+  let optimization: {
     summary: {
       totalOpportunities: number;
       criticalCount: number;
@@ -538,7 +538,7 @@ export async function runShopBoostIntake(
       dataFreshness: "fresh" | "stale";
       lastAnalyzedAt: string;
     } | null;
-    nextActions: OnboardingOptimizationAction[];
+    nextActions: ShopBoostOptimizationAction[];
   } = {
     summary: null,
     nextActions: [],
@@ -552,9 +552,9 @@ export async function runShopBoostIntake(
       lookbackDays: 365,
     });
 
-    onboardingOptimization = {
+    optimization = {
       summary: optimizationOutput.summary,
-      nextActions: selectTopOnboardingOptimizationActions(optimizationOutput, 5),
+      nextActions: selectTopShopBoostOptimizationActions(optimizationOutput, 5),
     };
   } catch (error) {
     console.warn("[shop-boost/intake] optimization handoff skipped", error);
@@ -567,6 +567,6 @@ export async function runShopBoostIntake(
     snapshot,
     importSummary,
     shopBuildSummary: importSummary.shopBuildSummary,
-    onboardingOptimization,
+    optimization,
   };
 }

@@ -21,7 +21,7 @@ type AdminSummary = {
   openPayrollPeriods: number;
   payrollBlockingExceptions: number;
   payrollWarningExceptions: number;
-  onboardingMissingWorkforce: number;
+  profileSetupMissingWorkforce: number;
 };
 
 const CANONICAL_ADMIN_ROUTES = [
@@ -35,7 +35,7 @@ const CANONICAL_ADMIN_ROUTES = [
     href: "/dashboard/admin/employees",
     label: "Workforce Readiness View",
     description: "Filtered workforce posture view sourced from canonical People records.",
-    nextStep: "Close onboarding/certification gaps",
+    nextStep: "Close profile/certification gaps",
   },
   {
     href: "/dashboard/admin/shops",
@@ -76,7 +76,7 @@ export default function AdminLandingClient() {
         openPeriods,
         blockingExceptions,
         warningExceptions,
-        onboardingMissing,
+        profileSetupMissing,
       ] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("profiles").select("id", { count: "exact", head: true }).not("role", "is", null),
@@ -116,7 +116,7 @@ export default function AdminLandingClient() {
         openPeriods,
         blockingExceptions,
         warningExceptions,
-        onboardingMissing,
+        profileSetupMissing,
       ].find((r) => r.error);
       if (failed?.error) {
         setError(failed.error.message);
@@ -133,7 +133,7 @@ export default function AdminLandingClient() {
         openPayrollPeriods: openPeriods.count ?? 0,
         payrollBlockingExceptions: blockingExceptions.count ?? 0,
         payrollWarningExceptions: warningExceptions.count ?? 0,
-        onboardingMissingWorkforce: onboardingMissing.count ?? 0,
+        profileSetupMissingWorkforce: profileSetupMissing.count ?? 0,
       });
     })();
   }, [supabase]);
@@ -160,7 +160,7 @@ export default function AdminLandingClient() {
             <AdminStatCard label="Open payroll periods" value={summary.openPayrollPeriods} hint="Open or draft periods needing reviewer attention." />
             <AdminStatCard label="Payroll blocking exceptions" value={summary.payrollBlockingExceptions} hint="Must be cleared before approval lock." />
             <AdminStatCard label="Payroll warnings" value={summary.payrollWarningExceptions} hint="Non-blocking anomalies to review." />
-            <AdminStatCard label="Workforce missing onboarding" value={summary.onboardingMissingWorkforce} hint="Workforce readiness follow-up." />
+            <AdminStatCard label="Workforce missing profile setup" value={summary.profileSetupMissingWorkforce} hint="Workforce readiness follow-up." />
           </AdminStatGrid>
         )}
       </AdminPanel>
@@ -200,7 +200,7 @@ export default function AdminLandingClient() {
           <div className="rounded-xl border border-white/10 bg-black/25 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Workforce</p>
             <p className="mt-2 text-sm font-medium text-white">People → Payroll Time</p>
-            <p className="mt-2 text-xs text-neutral-400">Close onboarding/certification gaps, then review payroll exceptions.</p>
+            <p className="mt-2 text-xs text-neutral-400">Close profile/certification gaps, then review payroll exceptions.</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/25 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Tenant quality</p>
@@ -217,7 +217,7 @@ export default function AdminLandingClient() {
         />
         <div className="space-y-2 p-4 text-sm text-neutral-300">
           <p>• Use People for account-level edits and role governance actions.</p>
-          <p>• Use Workforce Readiness View for workforce profile completeness, onboarding posture, and payroll readiness context.</p>
+          <p>• Use Workforce Readiness View for workforce profile completeness, profile setup posture, and payroll readiness context.</p>
           <p>• Use Payroll Time for pay-period review, exception resolution, period approval, and export snapshots.</p>
           <p>• Use Shops to identify incomplete tenant records before operational impact.</p>
           <p>• Use Audit to validate sensitive changes and investigate anomalies quickly.</p>

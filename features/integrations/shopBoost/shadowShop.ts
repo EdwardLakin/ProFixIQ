@@ -659,7 +659,7 @@ function deriveOperationalPayload(args: {
     noWritesBeforeActivation: true,
     contextCarriesForward: true,
     confidenceCopy:
-      "This preview is generated from your uploaded files using the same preflight logic used for migration readiness. Activating starts your real import and carries this context into onboarding.",
+      "This preview is generated from your uploaded files using the same preflight logic used for migration readiness. Activating starts your real import and carries this context into setup.",
   };
 
   return {

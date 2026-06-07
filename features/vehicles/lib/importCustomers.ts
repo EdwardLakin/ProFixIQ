@@ -42,7 +42,7 @@ export function mapCustomerCsvRow(row: CsvRow, shopId: string, userId: string): 
     postal_code: pick(row, ["postal_code", "zip", "zip_code"]),
     external_id: pick(row, ["external_id", "customer_id", "customer_number"]),
     import_confidence: 0.86,
-    import_notes: "Guided onboarding CSV mapping",
+    import_notes: "CSV mapping",
   };
 }
 
@@ -61,6 +61,6 @@ export function mapVehicleCsvRow(row: CsvRow, shopId: string, userId: string, cu
     mileage: pick(row, ["mileage", "odometer"]),
     external_id: pick(row, ["vehicle_id", "vehicle_external_id"]),
     import_confidence: 0.86,
-    import_notes: "Guided onboarding CSV mapping",
+    import_notes: "CSV mapping",
   };
 }

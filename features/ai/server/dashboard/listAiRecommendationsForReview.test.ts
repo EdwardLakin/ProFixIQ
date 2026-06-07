@@ -36,7 +36,7 @@ function mockFromTable() {
           subject_type: "shop_boost_activation",
           subject_id: null,
           title: "Shop Boost intake follow-up",
-          summary: "Review onboarding blockers",
+          summary: "Review setup blockers",
           status: "acknowledged",
           priority: "high",
           risk_tier: "high",

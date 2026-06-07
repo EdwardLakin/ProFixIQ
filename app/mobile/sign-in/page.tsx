@@ -25,7 +25,7 @@ export default function MobileSignInPage() {
     router.push(`/forgot-password${tail}`);
   };
 
-  // If already signed in, gate by onboarding before letting them into mobile
+  // If already signed in, send them into the mobile companion when a session exists
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -38,15 +38,7 @@ export default function MobileSignInPage() {
         .eq("id", session.user.id)
         .maybeSingle();
 
-      const hasShop = !!profile?.shop_id;
-      const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-      if (!isOnboarded) {
-        router.replace("/onboarding");
-        return;
-      }
-
-      router.replace("/mobile/dashboard");
+      router.replace(profile?.shop_id ? "/mobile/dashboard" : "/dashboard");
     })();
   }, [router, supabase]);
 
@@ -110,15 +102,10 @@ export default function MobileSignInPage() {
       .eq("id", u.user.id)
       .maybeSingle();
 
-    const hasShop = !!profile?.shop_id;
-    const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-    if (!isOnboarded) {
-      // must finish setup in the full portal first
-      router.replace("/onboarding");
-    } else {
-      // ✅ fully onboarded → go straight to mobile companion
+    if (profile?.shop_id) {
       router.replace("/mobile/dashboard");
+    } else {
+      router.replace("/dashboard");
     }
 
     setLoading(false);

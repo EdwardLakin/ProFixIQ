@@ -3,7 +3,7 @@ import type {
   OptimizationOpportunity,
 } from "@/features/optimization/types";
 
-export type OnboardingOptimizationAction = {
+export type ShopBoostOptimizationAction = {
   id: string;
   type: OptimizationOpportunity["type"];
   title: string;
@@ -68,10 +68,10 @@ function rankOpportunity(opportunity: OptimizationOpportunity): number {
   );
 }
 
-export function selectTopOnboardingOptimizationActions(
+export function selectTopShopBoostOptimizationActions(
   payload: OptimizationEngineOutput | null,
   limit = 5,
-): OnboardingOptimizationAction[] {
+): ShopBoostOptimizationAction[] {
   if (!payload) return [];
 
   const flattened = payload.groups.flatMap((group) => group.opportunities ?? []);

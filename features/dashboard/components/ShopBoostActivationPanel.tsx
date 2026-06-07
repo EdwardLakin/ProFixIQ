@@ -194,9 +194,6 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
           <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Shop Boost Operational Status</p>
           <h3 className="text-sm font-semibold text-neutral-100">{visibility.headline}</h3>
           <p className="mt-1 text-xs text-neutral-300">{visibility.explanation}</p>
-          <p className="mt-1 text-xs text-cyan-100/85">
-            New imports should use the staging-first Onboarding Agent. Legacy Shop Boost review remains available for diagnostics only.
-          </p>
           <p className="mt-1 text-xs text-neutral-400">
             Current stage: <span className="font-medium text-neutral-100">{fmtStep(intake.progress?.currentStep ?? intake.status)}</span>
           </p>
@@ -247,9 +244,6 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <Link href="/dashboard/onboarding" className="rounded-md border border-cyan-300/40 bg-cyan-500/10 px-2.5 py-1 text-cyan-100 hover:bg-cyan-500/20">
-          Open Onboarding Agent
-        </Link>
         <Link href="/dashboard/owner/reports" className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
           Open Shop Health
         </Link>

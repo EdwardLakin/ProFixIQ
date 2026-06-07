@@ -13,7 +13,7 @@ type ChatMessage = { role: ChatRole; content: string };
 function systemPromptFor(variant: Variant) {
   if (variant === "marketing") {
     return `You are TechBot for ProFixIQ on the public landing page.
-Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works.
+Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, setup, and how the app works.
 Refuse or deflect anything about private shop data, diagnostics for a specific vehicle, or taking actions in the app.
 Keep answers short, clear, and helpful for shop owners and fleet managers.`;
   }

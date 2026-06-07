@@ -152,16 +152,14 @@ export default function SignUpClient() {
     if (sessionIdParam) params.set("session_id", sessionIdParam);
     if (flowParam) params.set("flow", flowParam);
 
-    const onboardingTarget = `/onboarding${
-      params.toString() ? `?${params.toString()}` : ""
-    }`;
+    const dashboardTarget = params.toString() ? `/dashboard?${params.toString()}` : "/dashboard";
 
     const destination = activationContext
       ? appendActivationContextToHref(
-          redirect || onboardingTarget,
+          redirect || dashboardTarget,
           activationContext,
         )
-      : redirect || onboardingTarget;
+      : redirect || dashboardTarget;
 
     trackShopBoostEvent("signup_completed", {
       demoId: demoId ?? "unknown",
