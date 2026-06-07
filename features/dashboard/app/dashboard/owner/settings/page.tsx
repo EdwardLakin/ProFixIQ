@@ -28,6 +28,7 @@ import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
+import { GuidedOnboardingLaunchCard } from "@/features/onboarding-v2/components/GuidedOnboardingLaunchCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   parseStripeSubscriptionStatus,
@@ -150,11 +151,6 @@ function planLabel(p: PlanName): string {
 function planSeatLimit(p: PlanName): number | null {
   const resolved = p === "unknown" ? "starter" : p;
   return PLAN_LIMITS[resolved as Exclude<PlanName, "unknown">] ?? 10;
-}
-
-function isPlanUserLimitReachedError(err: unknown): boolean {
-  const msg = String((err as { message?: unknown } | null)?.message ?? err ?? "");
-  return msg.includes("PLAN_USER_LIMIT_REACHED");
 }
 
 function daysUntil(iso: string | null | undefined): number | null {
@@ -904,43 +900,13 @@ try {
   };
 
   const switchLocation = async (nextShopId: string) => {
-    if (!userId) return;
     if (!guardUnlock()) return;
-
     if (nextShopId === shopId) return;
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        shop_id: nextShopId,
-        organization_id: orgId,
-      } as unknown as Database["public"]["Tables"]["profiles"]["Update"])
-      .eq("id", userId);
-
-    if (error) {
-      if (isPlanUserLimitReachedError(error)) {
-        toast.error(
-          "That location is at its user limit for this plan. Upgrade the location to add more staff.",
-        );
-      } else {
-        toast.error(error.message);
-      }
-      return;
-    }
-
-    toast.success("Switched location.");
-    await fetchSettings();
-    router.refresh();
+    toast.error(
+      "Location switching is disabled here to preserve the signed-in profile shop boundary.",
+    );
   };
-
-
-;
-
-;
-
-;
-
-
 
   const openStripeConnect = async () => {
     if (!guardUnlock()) return;
@@ -1298,6 +1264,8 @@ try {
         </div>
       </OwnerSettingsPanel>
 
+      <GuidedOnboardingLaunchCard source="settings" />
+
       {userId ? (
         <ProfileIdentityCard
           supabase={supabase}
@@ -1325,6 +1293,7 @@ try {
           <a href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</a>
           <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
           <a href="#email-activity" className={navChipClass}>Activity</a>
+          <a href="/dashboard/onboarding-v2?mode=guided" className={navChipClass}>Onboarding</a>
         </div>
       </div>
 
