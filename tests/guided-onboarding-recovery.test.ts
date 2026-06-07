@@ -1,7 +1,10 @@
 import { readFileSync, existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { GUIDED_ONBOARDING_STEPS } from "@/features/onboarding-v2/guided/steps";
+import {
+  canRoleUseGuidedOnboardingStep,
+  GUIDED_ONBOARDING_STEPS,
+} from "@/features/onboarding-v2/guided/steps";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
@@ -24,44 +27,80 @@ const stableProductionPages = [
   ["work orders view list", "app/work-orders/view/page.tsx"],
   ["customers directory", "app/customers/page.tsx"],
   ["customer vehicle detail", "app/customers/[id]/page.tsx"],
-  ["parts requests", "app/parts/requests/page.tsx"],
+  ["parts inventory", "app/parts/inventory/page.tsx"],
 ] as const;
 
-const changedRecoveryFiles = [
-  "app/dashboard/_components/OperationsDashboardView.tsx",
-  "app/dashboard/onboarding-v2/page.tsx",
+const unchangedRoutingFiles = ["middleware.ts", "features/auth/lib/postAuthRouting.ts"] as const;
+
+const guardedRecoveryFiles = [
+  "app/billing/page.tsx",
+  "app/menu/page.tsx",
+  "app/parts/inventory/page.tsx",
+  "features/customers/app/customers/[id]/page.tsx",
+  "features/dashboard/app/dashboard/owner/create-user/page.tsx",
   "features/dashboard/app/dashboard/owner/settings/page.tsx",
-  "features/shared/config/tiles.ts",
-  "features/shared/lib/ownerSidebarNav.ts",
+  "features/inspections/app/inspection/templates/page.tsx",
   "features/onboarding-v2/components/GuidedOnboardingLaunchCard.tsx",
+  "features/onboarding-v2/components/GuidedOnboardingStepCard.tsx",
   "features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx",
   "features/onboarding-v2/guided/steps.ts",
 ];
 
+const stableLoaderExpectations = [
+  ["work orders", "app/work-orders/page.tsx", /from\("work_orders"\)|from\('work_orders'\)|WorkOrders/],
+  ["customers", "features/customers/app/customers/[id]/page.tsx", /from\("customers"\)|from\('customers'/],
+  ["vehicles", "features/customers/app/customers/[id]/page.tsx", /from\("vehicles"\)|from\('vehicles'/],
+  ["parts", "app/parts/inventory/page.tsx", /from\("parts"\)|from\('parts'/],
+] as const;
+
 describe("guided onboarding recovery guardrails", () => {
-  it("keeps stable owner, work-order, customer, vehicle, and parts request pages present", () => {
+  it("keeps stable owner, work-order, customer, vehicle, and parts pages present", () => {
     for (const [label, path] of stableProductionPages) {
       expect(existsSync(path), `${label} route should exist at ${path}`).toBe(true);
       expect(read(path), `${label} route should still export a Next page`).toMatch(/export\s+(?:default|\{\s*default\s*\})/);
     }
   });
 
-  it("keeps guided onboarding optional from dashboard/settings instead of forcing redirects", () => {
+  it("keeps middleware and post-auth routing out of the onboarding recovery", () => {
+    for (const path of unchangedRoutingFiles) {
+      expect(existsSync(path), `${path} should exist for routing guardrails`).toBe(true);
+      expect(read(path), `${path} must not import guided onboarding`).not.toMatch(/onboarding-v2|GuidedOnboarding|mode=guided/);
+    }
+  });
+
+  it("keeps guided onboarding optional from existing pages instead of forcing redirects", () => {
     const dashboardSource = read("app/dashboard/_components/OperationsDashboardView.tsx");
     const settingsSource = read("features/dashboard/app/dashboard/owner/settings/page.tsx");
     const launchSource = read("features/onboarding-v2/components/GuidedOnboardingLaunchCard.tsx");
     const entrySource = read("app/dashboard/page.tsx");
+    const cardSource = read("features/onboarding-v2/components/GuidedOnboardingStepCard.tsx");
 
     expect(dashboardSource).toContain("<GuidedOnboardingLaunchCard source=\"dashboard\" />");
     expect(settingsSource).toContain("<GuidedOnboardingLaunchCard source=\"settings\" />");
     expect(launchSource).toContain("/dashboard/onboarding-v2?mode=guided");
+    expect(cardSource).toContain('data-onboarding-optional="true"');
+    expect(cardSource).toContain("setDismissed(true)");
     expect(entrySource).not.toContain("/dashboard/onboarding-v2");
     expect(entrySource).not.toContain("/dashboard/onboarding");
   });
 
-  it("uses existing production destinations for guided steps", () => {
+  it("uses existing production destinations and data-backed state for guided steps", () => {
     const destinations = GUIDED_ONBOARDING_STEPS.map((step) => step.destinationPath);
+    const stepKeys = GUIDED_ONBOARDING_STEPS.map((step) => step.stepKey);
 
+    expect(stepKeys).toEqual(
+      expect.arrayContaining([
+        "customers",
+        "vehicles",
+        "staff",
+        "settings",
+        "inspection_templates",
+        "service_menu",
+        "parts_inventory",
+        "invoices_history",
+        "fleet_history_import",
+      ]),
+    );
     expect(destinations).toEqual(
       expect.arrayContaining([
         "/customers/search",
@@ -74,16 +113,44 @@ describe("guided onboarding recovery guardrails", () => {
       ]),
     );
     expect(destinations).not.toContain("/work-orders/assignment");
+    expect(GUIDED_ONBOARDING_STEPS.every((step) => step.optional)).toBe(true);
+    expect(GUIDED_ONBOARDING_STEPS.every((step) => step.dataSource.label.length > 0)).toBe(true);
+  });
+
+  it("adds onboarding cards as optional UI on requested existing pages", () => {
+    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain('stepKey="customers"');
+    expect(read("features/customers/app/customers/[id]/page.tsx")).toContain('stepKey="vehicles"');
+    expect(read("features/dashboard/app/dashboard/owner/create-user/page.tsx")).toContain('stepKey="staff"');
+    expect(read("features/dashboard/app/dashboard/owner/settings/page.tsx")).toContain('stepKey="settings"');
+    expect(read("features/inspections/app/inspection/templates/page.tsx")).toContain('stepKey="inspection_templates"');
+    expect(read("app/menu/page.tsx")).toContain('stepKey="service_menu"');
+    expect(read("app/parts/inventory/page.tsx")).toContain('stepKey="parts_inventory"');
+    expect(read("app/billing/page.tsx")).toContain('stepKey="invoices_history"');
+  });
+
+  it("keeps stable page data loading paths in place", () => {
+    for (const [label, path, pattern] of stableLoaderExpectations) {
+      expect(read(path), `${label} loader should still use its production table path`).toMatch(pattern);
+    }
+  });
+
+  it("allows owner/admin onboarding cards while hiding them from tech/mechanic by default", () => {
+    const ownerStep = GUIDED_ONBOARDING_STEPS.find((step) => step.stepKey === "settings");
+    expect(ownerStep).toBeTruthy();
+    expect(canRoleUseGuidedOnboardingStep("owner", ownerStep!)).toBe(true);
+    expect(canRoleUseGuidedOnboardingStep("admin", ownerStep!)).toBe(true);
+    expect(canRoleUseGuidedOnboardingStep("tech", ownerStep!)).toBe(false);
+    expect(canRoleUseGuidedOnboardingStep("mechanic", ownerStep!)).toBe(false);
   });
 
   it("does not reintroduce legacy Supabase auth helpers in guarded app source", () => {
-    for (const path of changedRecoveryFiles) {
+    for (const path of guardedRecoveryFiles) {
       expect(read(path), `${path} should not import legacy auth helpers`).not.toMatch(legacyAuthHelpers);
     }
   });
 
-  it("does not update profiles.shop_id in guarded app source", () => {
-    for (const path of changedRecoveryFiles) {
+  it("does not update profiles.shop_id in onboarding recovery source", () => {
+    for (const path of guardedRecoveryFiles) {
       expect(updatesProfileShopId(read(path)), `${path} should not update profiles.shop_id`).toBe(false);
     }
   });

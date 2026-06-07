@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import UsersList from "@/features/admin/components/UsersList";
 import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
+import { GuidedOnboardingStepCard } from "@/features/onboarding-v2/components/GuidedOnboardingStepCard";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -246,6 +247,7 @@ export default function CreateUserPage(): JSX.Element {
       title="Create User (Access Provisioning)"
       description="Provision account access, assign the initial role, and link the person to your shop. Complete workforce/profile setup in People."
     >
+      <GuidedOnboardingStepCard stepKey="staff" surface="staff" className="mb-6" />
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
