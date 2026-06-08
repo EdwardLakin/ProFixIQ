@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import FleetFormImportCard from "@/features/inspections/components/FleetFormImportCard";
+import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 
 type DB = Database;
 type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
@@ -197,6 +198,8 @@ export default function InspectionTemplatesPage() {
           aria-hidden
           className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(2,4,9,0.25),rgba(0,0,0,0.78)_72%)]"
         />
+
+        <GuidedPageStepPanel />
 
         {/* Header + filters */}
         <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>

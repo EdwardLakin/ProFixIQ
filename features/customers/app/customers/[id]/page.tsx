@@ -7,6 +7,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 
 type DB = Database;
 
@@ -1168,6 +1169,8 @@ export default function CustomerProfilePage(): JSX.Element {
       <PageShell>
         <TopBar rightLabel="Customers" onBack={() => router.back()} />
 
+        <GuidedPageStepPanel />
+
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -1451,6 +1454,8 @@ export default function CustomerProfilePage(): JSX.Element {
   return (
     <PageShell>
       <TopBar rightLabel="Customer File" onBack={() => router.back()} />
+
+      <GuidedPageStepPanel />
 
       {viewError && (
         <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)]">
