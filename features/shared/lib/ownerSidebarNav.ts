@@ -62,6 +62,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/dashboard/admin/payroll-time": "Workforce",
   "/dashboard/owner/create-user": "Workforce",
   "/dashboard/admin": "Admin & Oversight",
+  "/dashboard/onboarding-v2": "Admin & Oversight",
   "/dashboard/admin/shops": "Admin & Oversight",
   "/dashboard/admin/audit": "Admin & Oversight",
   "/dashboard/marketing": "Growth",
