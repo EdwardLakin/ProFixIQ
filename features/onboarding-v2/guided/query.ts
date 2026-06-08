@@ -38,3 +38,36 @@ export function buildGuidedSessionDetail(
     progress: calculateGuidedProgress(orderedSteps),
   };
 }
+
+
+// Compatibility for restored guided setup cards from the original guided UI.
+export type GuidedOnboardingQuery = {
+  onboardingSession: string;
+  onboardingStep: string;
+  highlight: string;
+  returnTo: string;
+  source?: string;
+};
+
+export function isSafeGuidedReturnTo(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return value.startsWith("/") && !value.startsWith("//") && !value.includes("://");
+}
+
+export function parseGuidedOnboardingQuery(params: URLSearchParams): GuidedOnboardingQuery | null {
+  const onboardingSession = params.get("onboardingSession") ?? params.get("guidedSessionId") ?? "";
+  const onboardingStep = params.get("onboardingStep") ?? params.get("guidedStep") ?? "";
+  const highlight = params.get("highlight") ?? "";
+  const rawReturnTo = params.get("returnTo") ?? "/dashboard/onboarding-v2";
+  const source = params.get("source") ?? "guided-onboarding-v2";
+
+  if (!onboardingSession || !onboardingStep || !highlight) return null;
+
+  return {
+    onboardingSession,
+    onboardingStep,
+    highlight,
+    returnTo: isSafeGuidedReturnTo(rawReturnTo) ? rawReturnTo : "/dashboard/onboarding-v2",
+    source,
+  };
+}
