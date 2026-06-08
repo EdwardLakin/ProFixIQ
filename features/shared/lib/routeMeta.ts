@@ -77,6 +77,26 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     icon: "💵",
     roles: ["owner", "admin", "manager", "advisor"],
   },
+  "/customers": {
+    title: () => "Customer Files",
+    icon: "👤",
+    roles: ["owner", "admin", "manager", "advisor"],
+  },
+  "/customers/directory": {
+    title: () => "Customer Files",
+    icon: "👤",
+    roles: ["owner", "admin", "manager", "advisor"],
+  },
+  "/customers/search": {
+    title: () => "Customer Files",
+    icon: "👤",
+    roles: ["owner", "admin", "manager", "advisor"],
+  },
+  "/vehicles": {
+    title: () => "Vehicle Files",
+    icon: "🚗",
+    roles: ["owner", "admin", "manager", "advisor"],
+  },
 
   "/work-orders/[id]": {
     title: (href) => `WO #${href.split("/").pop()?.slice(0, 8) ?? "…"}`,

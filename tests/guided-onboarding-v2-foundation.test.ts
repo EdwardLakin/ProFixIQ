@@ -35,7 +35,9 @@ function read(path: string) {
 
 describe("guided onboarding v2 foundation", () => {
   it("adds the dedicated dashboard page without old removed control copy", () => {
-    const dashboardSource = read("app/dashboard/onboarding-v2/page.tsx") + read("features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx");
+    const dashboardSource =
+      read("app/dashboard/onboarding-v2/page.tsx") +
+      read("features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx");
 
     expect(dashboardSource).toContain("Guided Setup");
     expect(dashboardSource).not.toContain("Onboarding Agent");
@@ -63,9 +65,22 @@ describe("guided onboarding v2 foundation", () => {
 
     expect(ownerGuidedTile).toMatchObject({
       title: "Guided Setup",
+      href: "/dashboard/onboarding-v2",
+      roles: ["owner", "admin"],
       section: "Admin & Oversight",
     });
     expect(guidedTile?.title).not.toBe("Onboarding Agent");
+  });
+
+  it("adds Vehicle Files to app navigation", () => {
+    const vehicleTile = TILES.find((tile) => tile.href === "/vehicles");
+
+    expect(vehicleTile).toMatchObject({
+      title: "Vehicle Files",
+      href: "/vehicles",
+      roles: ["advisor", "manager", "owner", "admin"],
+      section: "Operations",
+    });
   });
 
   it("keeps Planner out of the dashboard header while retaining other header actions", () => {
@@ -135,16 +150,22 @@ describe("guided onboarding v2 foundation", () => {
 
   it("keeps API access shop-scoped through the stable helper", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");
-    const routeSources = newFiles.filter((path) => path.startsWith("app/api/onboarding-v2/")).map(read).join("\n");
+    const routeSources = newFiles
+      .filter((path) => path.startsWith("app/api/onboarding-v2/"))
+      .map(read)
+      .join("\n");
 
     expect(serverSource).toContain("requireShopScopedApiAccess");
-    expect(serverSource).toContain("allowRoles: [\"owner\", \"admin\"]");
+    expect(serverSource).toContain('allowRoles: ["owner", "admin"]');
     expect(routeSources).toContain("@/features/onboarding-v2/guided/server");
   });
 
   it("renders progress, current step, and existing-system intake in the workspace", async () => {
-    const { default: GuidedOnboardingWorkspace } = await import("@/features/onboarding-v2/components/GuidedOnboardingWorkspace");
-    const markup = renderToStaticMarkup(React.createElement(GuidedOnboardingWorkspace));
+    const { default: GuidedOnboardingWorkspace } =
+      await import("@/features/onboarding-v2/components/GuidedOnboardingWorkspace");
+    const markup = renderToStaticMarkup(
+      React.createElement(GuidedOnboardingWorkspace),
+    );
 
     expect(markup).toContain("Guided Setup");
     expect(markup).toContain("Progress");
