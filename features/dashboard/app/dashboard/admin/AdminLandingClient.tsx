@@ -26,6 +26,12 @@ type AdminSummary = {
 
 const CANONICAL_ADMIN_ROUTES = [
   {
+    href: "/dashboard/onboarding-v2",
+    label: "Guided Setup",
+    description: "Optional owner/admin control room for step-by-step shop configuration and imports.",
+    nextStep: "Resume setup progress or launch the next production page",
+  },
+  {
     href: "/dashboard/admin/people",
     label: "People & Staff",
     description: "Canonical person records for identity/access, workforce profile, certifications, and payroll posture.",
