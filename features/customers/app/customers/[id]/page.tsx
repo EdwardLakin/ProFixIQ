@@ -1214,8 +1214,17 @@ export default function CustomerProfilePage(): JSX.Element {
   // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {
     return (
-      <PageShell>
-        <TopBar rightLabel="Customers" onBack={() => router.back()} />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 text-neutral-100">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-200 hover:border-[var(--accent-copper-soft)]/70 hover:text-white"
+          >
+            ← Back
+          </button>
+          <div className="text-xs text-neutral-500">Customers</div>
+        </div>
 
         <GuidedPageStepPanel
           actions={{
@@ -1504,7 +1513,7 @@ export default function CustomerProfilePage(): JSX.Element {
             </label>
           </div>
         </Modal>
-      </PageShell>
+      </div>
     );
   }
 
