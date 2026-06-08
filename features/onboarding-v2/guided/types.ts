@@ -11,7 +11,7 @@ export type GuidedOnboardingStepKey =
 
 export type GuidedOnboardingStepStatus = "not_started" | "in_progress" | "completed" | "skipped";
 
-export type GuidedOnboardingSessionStatus = "active" | "completed" | "paused";
+export type GuidedOnboardingSessionStatus = "active" | "completed" | "paused" | "skipped";
 
 export type GuidedOnboardingStepCategory = "data" | "team" | "settings" | "workflow" | "finance";
 
@@ -54,6 +54,10 @@ export type GuidedOnboardingStepRow = {
   completed_at: string | null;
   skipped_at: string | null;
   created_at: string | null;
+  destination_path?: string | null;
+  title?: string | null;
+  question?: string | null;
+  description?: string | null;
   updated_at: string | null;
 };
 

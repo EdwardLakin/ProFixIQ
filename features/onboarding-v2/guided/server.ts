@@ -37,6 +37,20 @@ function nowPatch() {
   return { updated_at: new Date().toISOString() };
 }
 
+function stepInsertPayload(step: (typeof GUIDED_ONBOARDING_STEPS)[number], sessionId: string, shopId: string) {
+  return {
+    session_id: sessionId,
+    shop_id: shopId,
+    step_key: step.key,
+    status: "not_started",
+    answer: {},
+    destination_path: step.destinationPath,
+    title: step.title,
+    question: step.question,
+    description: step.shortDescription,
+  };
+}
+
 async function logGuidedEvent(
   access: Access,
   sessionId: string,
@@ -163,12 +177,7 @@ export async function createOrResumeGuidedSession() {
     const { error: insertStepsError } = await db(access)
       .from(STEPS_TABLE)
       .insert(
-        missingSteps.map((step) => ({
-          session_id: session!.id,
-          shop_id: access.profile.shop_id,
-          step_key: step.key,
-          status: "not_started",
-        })),
+        missingSteps.map((step) => stepInsertPayload(step, session!.id, access.profile.shop_id!)),
       );
 
     if (insertStepsError) return jsonError(insertStepsError.message, 500);
@@ -224,14 +233,19 @@ export async function setExistingSystem(sessionId: string, body: JsonPayload) {
   if (!access.ok) return access.response;
 
   const value = typeof body.existing_system === "string" ? body.existing_system.trim() : null;
+  const skipGuidedSetup = body.skip_guided_setup === true;
+  const sessionPatch = skipGuidedSetup
+    ? { existing_system: value, status: "skipped", current_step_key: null, completed_at: new Date().toISOString(), ...nowPatch() }
+    : { existing_system: value, status: "active", completed_at: null, ...nowPatch() };
+
   const { error } = await db(access)
     .from(SESSIONS_TABLE)
-    .update({ existing_system: value, ...nowPatch() })
+    .update(sessionPatch)
     .eq("id", sessionId)
     .eq("shop_id", access.profile.shop_id);
 
   if (error) return jsonError(error.message, 500);
-  await logGuidedEvent(access, sessionId, null, "existing_system_answered", { existing_system: value });
+  await logGuidedEvent(access, sessionId, null, "existing_system_answered", { existing_system: value, skipGuidedSetup });
   return detailResponse(access, sessionId);
 }
 

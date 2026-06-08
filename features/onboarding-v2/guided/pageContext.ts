@@ -45,7 +45,7 @@ export function sanitizeGuidedReturnTo(value: string | null, sessionId: string):
 export function getGuidedStepPageInstructions(stepKey: GuidedOnboardingStepKey): string {
   switch (stepKey) {
     case "customers":
-      return "Create a customer, search existing files, or use your stable customer import path if your shop already has records ready.";
+      return "Import or create your customer records.";
     case "vehicles":
       return "Open a customer file and add the vehicles or fleet units that should be ready before advisors build work orders.";
     case "staff":

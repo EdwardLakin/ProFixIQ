@@ -5,14 +5,14 @@ export const GUIDED_ONBOARDING_STEPS: GuidedOnboardingStepDefinition[] = [
     key: "customers",
     title: "Customers",
     shortDescription: "Create or import the customer records your advisors will use every day.",
-    question: "Do you already have a customer list to bring into ProFixIQ?",
-    destinationPath: "/customers/directory",
-    ctaLabel: "Open customers",
-    skipLabel: "Skip customers for now",
+    question: "Do you have a customer file to import?",
+    destinationPath: "/customers/search",
+    ctaLabel: "Yes, import customers",
+    skipLabel: "No, skip customers for now",
     category: "data",
     order: 10,
     productionOwnerPage: "Customers workspace",
-    highlightQuery: { setup: "guided", focus: "customers" },
+    highlightQuery: { highlight: "customer-import" },
   },
   {
     key: "vehicles",
@@ -133,11 +133,14 @@ export function isGuidedOnboardingStepKey(value: string): value is GuidedOnboard
 export function buildGuidedDestination(step: GuidedOnboardingStepDefinition, sessionId: string) {
   const params = new URLSearchParams({
     ...step.highlightQuery,
-    highlight: step.key,
     returnTo: `/dashboard/onboarding-v2/${sessionId}`,
     guidedSessionId: sessionId,
     guidedStep: step.key,
   });
+
+  if (!params.has("highlight")) {
+    params.set("highlight", step.key);
+  }
 
   return `${step.destinationPath}?${params.toString()}`;
 }

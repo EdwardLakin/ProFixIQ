@@ -437,6 +437,7 @@ export default function CustomerProfilePage(): JSX.Element {
   const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [createCustomerError, setCreateCustomerError] = useState<string | null>(null);
+  const [customerImportPlaceholderVisible, setCustomerImportPlaceholderVisible] = useState(false);
   const [newCustomer, setNewCustomer] = useState<NewCustomerDraft>(EMPTY_NEW_CUSTOMER);
 
   const selectedVehicle = useMemo(() => {
@@ -1210,7 +1211,32 @@ export default function CustomerProfilePage(): JSX.Element {
       <PageShell>
         <TopBar rightLabel="Customers" onBack={() => router.back()} />
 
-        <GuidedPageStepPanel />
+        <GuidedPageStepPanel
+          actions={{
+            customers: {
+              label: "Prepare customer CSV import",
+              description: "Customer CSV import will be connected here. You can safely create customers manually now without leaving this page.",
+              onClick: () => setCustomerImportPlaceholderVisible(true),
+            },
+          }}
+        />
+
+        {customerImportPlaceholderVisible ? (
+          <div className={`${CARD_BASE} border-[var(--accent-copper-soft)]/55 p-4 text-sm text-neutral-200`} data-guided-customer-import-placeholder>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper,#C57A4A)]">Customer import</div>
+            <p className="mt-2">Customer CSV import will be connected here. For now, use <span className="font-semibold text-white">+ Create Customer</span> to add records safely.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setCreateCustomerError(null);
+                setCreateCustomerOpen(true);
+              }}
+              className="mt-3 rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+            >
+              + Create Customer
+            </button>
+          </div>
+        ) : null}
 
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
