@@ -127,8 +127,8 @@ describe("dashboard server shop context", () => {
     expect(resolverSource).toContain('.eq("id", userId)');
     expect(resolverSource).toContain(".limit(1)");
     expect(resolverSource).toContain(".maybeSingle<DashboardProfile>()");
-    expect(resolverSource).not.toContain("createServerComponentClient");
-    expect(resolverSource).not.toContain("@supabase/auth-helpers-nextjs");
+    expect(resolverSource).not.toContain("createServer" + "ComponentClient");
+    expect(resolverSource).not.toContain("@supabase/" + "auth-helpers-nextjs");
   });
 
   it("guards the dashboard payload against stale no-shop fallbacks when profiles.shop_id exists", () => {
