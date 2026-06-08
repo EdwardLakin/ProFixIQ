@@ -55,9 +55,6 @@ function splitName(name: string | null): { firstName: string | null; lastName: s
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) ?? null };
 }
 
-function escapeOrValue(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll(",", "\\,").replaceAll("%", "\\%").replaceAll("_", "\\_");
-}
 
 function normalizeRow(row: ImportRow, userId: string, shopId: string): CustomerInsert | null {
   const businessName = cleanString(row.business_name) ?? cleanString(row.company_name);
@@ -93,26 +90,69 @@ function normalizeRow(row: ImportRow, userId: string, shopId: string): CustomerI
 async function findExistingCustomer(
   supabase: SupabaseClient<DB>,
   shopId: string,
-  row: CustomerInsert,
+  normalized: CustomerInsert,
 ): Promise<CustomerMatch | null> {
-  const ors: string[] = [];
+  if (normalized.external_id) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("external_id", normalized.external_id)
+      .maybeSingle();
 
-  if (row.email) ors.push(`email.ilike.${escapeOrValue(row.email)}`);
-  if (row.phone) ors.push(`phone.ilike.${escapeOrValue(row.phone)}`);
-  if (row.phone_number) ors.push(`phone_number.ilike.${escapeOrValue(row.phone_number)}`);
+    if (error) throw error;
+    if (data) return data;
+  }
 
-  if (!ors.length) return null;
+  if (normalized.email) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("email", normalized.email)
+      .maybeSingle();
 
-  const { data, error } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("shop_id", shopId)
-    .or(ors.join(","))
-    .limit(1)
-    .maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
 
-  if (error) throw error;
-  return data ?? null;
+  if (normalized.phone) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("phone", normalized.phone)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  if (normalized.name) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("name", normalized.name)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  if (normalized.business_name) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("business_name", normalized.business_name)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  return null;
 }
 
 export async function POST(req: Request) {
