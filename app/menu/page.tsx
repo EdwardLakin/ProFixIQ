@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
+import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 
 type DB = Database;
 
@@ -596,6 +597,8 @@ export default function MenuItemsPage() {
           bg-[radial-gradient(circle_at_top,${COPPER_WASH_A},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.95),#020617_70%)]
         `}
       />
+
+      <GuidedPageStepPanel />
 
       {/* Header */}
       <section className="metal-card mb-2 flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">

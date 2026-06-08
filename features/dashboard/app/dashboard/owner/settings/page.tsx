@@ -35,6 +35,7 @@ import {
   type StripeSubscriptionStatusWithUnknown,
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
+import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 
 type FileInputChangeEvent = {
   target: {
@@ -1244,6 +1245,8 @@ try {
         onLock={() => void lockOwnerSettings()}
         onSave={handleSave}
       />
+
+      <GuidedPageStepPanel />
 
       <OwnerSettingsPanel
         tone="passive"

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -804,6 +805,16 @@ export default function InventoryPage(): JSX.Element {
 
   return (
     <div className={pageWrap}>
+      <GuidedPageStepPanel
+        actions={{
+          inventory_parts: {
+            label: "Open import tools",
+            description: "Uses the existing CSV Import modal on this page; no new import engine or backend route is created.",
+            onClick: () => setCsvOpen(true),
+          },
+        }}
+      />
+
       <div className={`${glassCard} overflow-hidden`}>
         <div className={`${glassHeader} px-5 py-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
