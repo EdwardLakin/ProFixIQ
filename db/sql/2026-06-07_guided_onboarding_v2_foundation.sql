@@ -58,6 +58,9 @@ alter table public.guided_onboarding_sessions enable row level security;
 alter table public.guided_onboarding_steps enable row level security;
 alter table public.guided_onboarding_events enable row level security;
 
+drop policy if exists guided_onboarding_sessions_shop_select
+  on public.guided_onboarding_sessions;
+
 create policy guided_onboarding_sessions_shop_select
   on public.guided_onboarding_sessions
   for select to authenticated
@@ -71,6 +74,9 @@ create policy guided_onboarding_sessions_shop_select
     )
   );
 
+drop policy if exists guided_onboarding_sessions_shop_insert
+  on public.guided_onboarding_sessions;
+
 create policy guided_onboarding_sessions_shop_insert
   on public.guided_onboarding_sessions
   for insert to authenticated
@@ -83,6 +89,9 @@ create policy guided_onboarding_sessions_shop_insert
         and lower(coalesce(p.role, '')) in ('owner', 'admin')
     )
   );
+
+drop policy if exists guided_onboarding_sessions_shop_update
+  on public.guided_onboarding_sessions;
 
 create policy guided_onboarding_sessions_shop_update
   on public.guided_onboarding_sessions
@@ -106,6 +115,9 @@ create policy guided_onboarding_sessions_shop_update
     )
   );
 
+drop policy if exists guided_onboarding_steps_shop_select
+  on public.guided_onboarding_steps;
+
 create policy guided_onboarding_steps_shop_select
   on public.guided_onboarding_steps
   for select to authenticated
@@ -119,6 +131,9 @@ create policy guided_onboarding_steps_shop_select
     )
   );
 
+drop policy if exists guided_onboarding_steps_shop_insert
+  on public.guided_onboarding_steps;
+
 create policy guided_onboarding_steps_shop_insert
   on public.guided_onboarding_steps
   for insert to authenticated
@@ -131,6 +146,9 @@ create policy guided_onboarding_steps_shop_insert
         and lower(coalesce(p.role, '')) in ('owner', 'admin')
     )
   );
+
+drop policy if exists guided_onboarding_steps_shop_update
+  on public.guided_onboarding_steps;
 
 create policy guided_onboarding_steps_shop_update
   on public.guided_onboarding_steps
@@ -154,6 +172,9 @@ create policy guided_onboarding_steps_shop_update
     )
   );
 
+drop policy if exists guided_onboarding_events_shop_select
+  on public.guided_onboarding_events;
+
 create policy guided_onboarding_events_shop_select
   on public.guided_onboarding_events
   for select to authenticated
@@ -166,6 +187,9 @@ create policy guided_onboarding_events_shop_select
         and lower(coalesce(p.role, '')) in ('owner', 'admin')
     )
   );
+
+drop policy if exists guided_onboarding_events_shop_insert
+  on public.guided_onboarding_events;
 
 create policy guided_onboarding_events_shop_insert
   on public.guided_onboarding_events
@@ -180,17 +204,26 @@ create policy guided_onboarding_events_shop_insert
     )
   );
 
+drop policy if exists service_role_manage_guided_onboarding_sessions
+  on public.guided_onboarding_sessions;
+
 create policy service_role_manage_guided_onboarding_sessions
   on public.guided_onboarding_sessions
   to service_role
   using (auth.role() = 'service_role')
   with check (auth.role() = 'service_role');
 
+drop policy if exists service_role_manage_guided_onboarding_steps
+  on public.guided_onboarding_steps;
+
 create policy service_role_manage_guided_onboarding_steps
   on public.guided_onboarding_steps
   to service_role
   using (auth.role() = 'service_role')
   with check (auth.role() = 'service_role');
+
+drop policy if exists service_role_manage_guided_onboarding_events
+  on public.guided_onboarding_events;
 
 create policy service_role_manage_guided_onboarding_events
   on public.guided_onboarding_events
