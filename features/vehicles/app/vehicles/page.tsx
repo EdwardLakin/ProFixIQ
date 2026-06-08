@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvImportCard";
+import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -106,6 +108,9 @@ function sortVehicleRows(rows: VehicleSearchRow[]): VehicleSearchRow[] {
 
 export default function VehicleFilesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(searchParams), [searchParams]);
+  const vehicleGuidedQuery = guidedQuery?.onboardingStep === "vehicles" ? guidedQuery : null;
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -219,6 +224,8 @@ export default function VehicleFilesPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 text-neutral-100">
       <GuidedPageStepPanel />
+
+      <VehicleCsvImportCard guidedQuery={vehicleGuidedQuery} />
 
       <div className={`${CARD_BASE} p-4`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
