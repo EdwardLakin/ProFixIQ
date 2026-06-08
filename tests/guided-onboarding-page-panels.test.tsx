@@ -148,7 +148,7 @@ describe("guided onboarding page panels", () => {
 
   it("maps every guided step to a production destination with guided query params", () => {
     const expectedDestinations: Record<string, string> = {
-      customers: "/customers/directory",
+      customers: "/customers/search",
       vehicles: "/vehicles",
       staff: "/dashboard/owner/create-user",
       labor_tax_shop_settings: "/dashboard/owner/settings",
@@ -166,7 +166,7 @@ describe("guided onboarding page panels", () => {
       );
       expect(destination).toContain("guidedSessionId=session-xyz");
       expect(destination).toContain(`guidedStep=${step.key}`);
-      expect(destination).toContain(`highlight=${step.key}`);
+      expect(destination).toContain(`highlight=${step.key === "customers" ? "customer-import" : step.key}`);
       expect(destination).toContain(
         "returnTo=%2Fdashboard%2Fonboarding-v2%2Fsession-xyz",
       );
@@ -186,7 +186,7 @@ describe("guided onboarding page panels", () => {
       (step) => step.key === "vehicles",
     );
 
-    expect(customerStep?.destinationPath).toBe("/customers/directory");
+    expect(customerStep?.destinationPath).toBe("/customers/search");
     expect(vehicleStep?.destinationPath).toBe("/vehicles");
   });
 

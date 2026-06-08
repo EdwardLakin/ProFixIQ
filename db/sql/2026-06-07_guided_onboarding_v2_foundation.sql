@@ -19,6 +19,10 @@ create table if not exists public.guided_onboarding_steps (
   session_id uuid not null references public.guided_onboarding_sessions(id) on delete cascade,
   shop_id uuid not null references public.shops(id) on delete cascade,
   step_key text not null,
+  destination_path text not null,
+  title text not null,
+  question text not null,
+  description text not null default '',
   status text not null default 'not_started',
   answer jsonb not null default '{}'::jsonb,
   started_at timestamptz,
@@ -53,6 +57,31 @@ create index if not exists guided_onboarding_events_shop_id_idx on public.guided
 create index if not exists guided_onboarding_events_session_id_idx on public.guided_onboarding_events(session_id);
 create index if not exists guided_onboarding_events_step_key_idx on public.guided_onboarding_events(step_key);
 create index if not exists guided_onboarding_events_event_type_idx on public.guided_onboarding_events(event_type);
+
+alter table public.guided_onboarding_steps
+  add column if not exists destination_path text;
+alter table public.guided_onboarding_steps
+  add column if not exists title text;
+alter table public.guided_onboarding_steps
+  add column if not exists question text;
+alter table public.guided_onboarding_steps
+  add column if not exists description text not null default '';
+
+update public.guided_onboarding_steps
+set
+  destination_path = coalesce(destination_path, '/dashboard/onboarding-v2'),
+  title = coalesce(title, step_key),
+  question = coalesce(question, 'Continue this guided setup step.'),
+  description = coalesce(description, '')
+where destination_path is null
+  or title is null
+  or question is null
+  or description is null;
+
+alter table public.guided_onboarding_steps
+  alter column destination_path set not null,
+  alter column title set not null,
+  alter column question set not null;
 
 alter table public.guided_onboarding_sessions enable row level security;
 alter table public.guided_onboarding_steps enable row level security;

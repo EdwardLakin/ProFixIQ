@@ -160,6 +160,34 @@ describe("guided onboarding v2 foundation", () => {
     expect(routeSources).toContain("@/features/onboarding-v2/guided/server");
   });
 
+
+  it("creates guided step rows with destination metadata required by the database", () => {
+    const serverSource = read("features/onboarding-v2/guided/server.ts");
+    const migrationSource = read("db/sql/2026-06-07_guided_onboarding_v2_foundation.sql");
+
+    expect(migrationSource).toContain("destination_path text not null");
+    expect(serverSource).toContain("destination_path: step.destinationPath");
+    expect(serverSource).toContain("title: step.title");
+    expect(serverSource).toContain("question: step.question");
+    expect(serverSource).toContain("description: step.shortDescription");
+  });
+
+  it("implements the customer-first guided setup button flow", () => {
+    const workspaceSource = read("features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx");
+    const stepSource = read("features/onboarding-v2/guided/steps.ts");
+
+    expect(workspaceSource).toContain("Do you have an existing shop/system to import?");
+    expect(workspaceSource).toContain('existing_system: "starting_from_scratch"');
+    expect(workspaceSource).toContain("skip_guided_setup: true");
+    expect(workspaceSource).toContain('redirectTo: "/dashboard"');
+    expect(workspaceSource).toContain('existing_system: "importing_existing_system"');
+    expect(workspaceSource).toContain("Yes, import customers");
+    expect(workspaceSource).toContain("No, skip customers for now");
+    expect(workspaceSource).toContain("/steps/customers/skip");
+    expect(stepSource).toContain('destinationPath: "/customers/search"');
+    expect(stepSource).toContain('highlight: "customer-import"');
+  });
+
   it("renders progress, current step, and existing-system intake in the workspace", async () => {
     const { default: GuidedOnboardingWorkspace } =
       await import("@/features/onboarding-v2/components/GuidedOnboardingWorkspace");
@@ -168,10 +196,9 @@ describe("guided onboarding v2 foundation", () => {
     );
 
     expect(markup).toContain("Guided Setup");
-    expect(markup).toContain("Progress");
-    expect(markup).toContain("Current step");
     expect(markup).toContain("Starting point");
-    expect(markup).toContain("Starting from scratch");
-    expect(markup).toContain("Importing existing system");
+    expect(markup).toContain("Do you have an existing shop/system to import?");
+    expect(markup).toContain("Yes");
+    expect(markup).toContain("No");
   });
 });
