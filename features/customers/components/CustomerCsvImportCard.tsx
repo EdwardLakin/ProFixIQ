@@ -8,21 +8,33 @@ import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/On
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type CustomerImportRow = {
+  customer_id?: string | null;
+  customer_type?: string | null;
+  company_name?: string | null;
+  business_name?: string | null;
+  display_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   name?: string | null;
-  company_name?: string | null;
-  business_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  phone_primary?: string | null;
   phone_number?: string | null;
+  phone_secondary?: string | null;
   address?: string | null;
+  address1?: string | null;
   street?: string | null;
   city?: string | null;
   province?: string | null;
   state?: string | null;
   postal_code?: string | null;
   zip?: string | null;
+  preferred_contact?: string | null;
+  marketing_opt_in?: string | null;
+  tax_exempt?: string | null;
+  credit_limit?: string | null;
+  ar_balance?: string | null;
+  tags?: string | null;
   notes?: string | null;
 };
 
@@ -45,25 +57,37 @@ type Props = {
 };
 
 const SUPPORTED_COLUMNS = [
+  "customer_id",
+  "customer_type",
+  "company_name",
+  "business_name",
+  "display_name",
   "first_name",
   "last_name",
   "name",
-  "company_name",
-  "business_name",
   "email",
   "phone",
+  "phone_primary",
   "phone_number",
+  "phone_secondary",
   "address",
+  "address1",
   "street",
   "city",
   "province",
   "state",
   "postal_code",
   "zip",
+  "preferred_contact",
+  "marketing_opt_in",
+  "tax_exempt",
+  "credit_limit",
+  "ar_balance",
+  "tags",
   "notes",
 ] as const;
 
-const RECOMMENDED_COLUMNS = "first_name, last_name, email, phone, address, city, province/state, postal_code/zip";
+const RECOMMENDED_COLUMNS = "customer_id, display_name, company_name, first_name, last_name, email, phone_primary, phone_secondary, address1, city, province, postal_code";
 
 function cleanHeader(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
@@ -76,12 +100,20 @@ function cleanCell(value: unknown): string | null {
 
 function normalizeParsedRow(row: Record<string, unknown>): CustomerImportRow {
   const normalized: CustomerImportRow = {};
+
   for (const [header, value] of Object.entries(row)) {
-    const key = cleanHeader(header) as keyof CustomerImportRow;
-    if ((SUPPORTED_COLUMNS as readonly string[]).includes(key)) {
-      normalized[key] = cleanCell(value);
-    }
+    const key = cleanHeader(header);
+    if (!(SUPPORTED_COLUMNS as readonly string[]).includes(key)) continue;
+
+    const cell = cleanCell(value);
+
+    if (key === "phone_primary") normalized.phone = cell;
+    else if (key === "phone_secondary") normalized.phone_number = cell;
+    else if (key === "address1") normalized.address = cell;
+    else if (key === "display_name") normalized.name = cell;
+    else normalized[key as keyof CustomerImportRow] = cell;
   }
+
   return normalized;
 }
 
@@ -89,7 +121,9 @@ function hasImportableIdentity(row: CustomerImportRow): boolean {
   return Boolean(
     row.email ||
       row.phone ||
+      row.phone_primary ||
       row.phone_number ||
+      row.phone_secondary ||
       row.name ||
       row.company_name ||
       row.business_name ||
@@ -102,11 +136,14 @@ function displayName(row: CustomerImportRow): string {
   return (
     row.company_name ||
     row.business_name ||
+    row.display_name ||
     row.name ||
     [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
     row.email ||
     row.phone ||
+    row.phone_primary ||
     row.phone_number ||
+    row.phone_secondary ||
     "—"
   );
 }

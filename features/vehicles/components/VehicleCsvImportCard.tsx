@@ -31,6 +31,10 @@ type ImportResponse = {
 };
 
 const SUPPORTED_COLUMNS = [
+  "vehicle_id",
+
+  "customer_id",
+
   "unit_number",
   "unit",
   "unit_no",
@@ -42,7 +46,7 @@ const SUPPORTED_COLUMNS = [
   "model",
 ] as const;
 
-const RECOMMENDED_COLUMNS = "unit_number, vin, license_plate, year, make, model";
+const RECOMMENDED_COLUMNS = "vehicle_id, customer_id, unit_number, year, make, model, trim, vin, plate, color, odometer, engine, fuel_type, drive_type";
 
 function cleanHeader(value: string): string {
   return value

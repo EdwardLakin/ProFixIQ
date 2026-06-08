@@ -9,6 +9,42 @@ type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 type VehicleMatch = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id">;
 
 type VehicleImportRow = {
+
+  vehicle_id?: unknown;
+
+  customer_id?: unknown;
+
+  plate?: unknown;
+
+  trim?: unknown;
+
+  color?: unknown;
+
+  odometer?: unknown;
+
+  odometer_unit?: unknown;
+
+  engine?: unknown;
+
+  fuel_type?: unknown;
+
+  drive_type?: unknown;
+
+  body_type?: unknown;
+
+  asset_type?: unknown;
+
+  status?: unknown;
+
+  purchase_date?: unknown;
+
+  in_service_date?: unknown;
+
+  last_service_date?: unknown;
+
+  tags?: unknown;
+
+  notes?: unknown;
   unit_number?: unknown;
   vin?: unknown;
   license_plate?: unknown;
@@ -39,13 +75,99 @@ function cleanYear(value: unknown): number | null {
   return Math.trunc(parsed);
 }
 
-function normalizeRow(row: VehicleImportRow, shopId: string): VehicleInsert | null {
+function buildVehicleImportNotes(row: VehicleImportRow): string | null {
+
+  const notes: string[] = [];
+
+  const pairs: Array<[string, unknown]> = [
+
+    ["csv_customer_id", row.customer_id],
+
+    ["body_type", row.body_type],
+
+    ["asset_type", row.asset_type],
+
+    ["status", row.status],
+
+    ["purchase_date", row.purchase_date],
+
+    ["in_service_date", row.in_service_date],
+
+    ["last_service_date", row.last_service_date],
+
+    ["tags", row.tags],
+
+    ["notes", row.notes],
+
+  ];
+
+  for (const [label, value] of pairs) {
+
+    const text = cleanString(value);
+
+    if (text) notes.push(`${label}: ${text}`);
+
+  }
+
+  return notes.length ? notes.join("\n") : null;
+
+}
+
+async function findCustomerIdByExternalId(
+
+  supabase: SupabaseClient<DB>,
+
+  shopId: string,
+
+  externalId: string | null,
+
+): Promise<string | null> {
+
+  if (!externalId) return null;
+
+  const { data, error } = await supabase
+
+    .from("customers")
+
+    .select("id")
+
+    .eq("shop_id", shopId)
+
+    .eq("external_id", externalId)
+
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data?.id ?? null;
+
+}
+
+async function normalizeRow(
+
+  supabase: SupabaseClient<DB>,
+
+  row: VehicleImportRow,
+
+  shopId: string,
+
+): Promise<VehicleInsert | null> {
   const unitNumber = cleanString(row.unit_number);
   const vin = cleanVin(row.vin);
-  const plate = cleanPlate(row.license_plate);
+  const plate = cleanPlate(row.license_plate ?? row.plate);
   const year = cleanYear(row.year);
   const make = cleanString(row.make);
   const model = cleanString(row.model);
+
+  const odometer = cleanString(row.odometer);
+
+  const odometerUnit = cleanString(row.odometer_unit);
+
+  const mileage = [odometer, odometerUnit].filter(Boolean).join(" ") || null;
+
+  const customerId = await findCustomerIdByExternalId(supabase, shopId, cleanString(row.customer_id));
+
+  const importNotes = buildVehicleImportNotes(row);
 
   if (!vin && !unitNumber && !plate && !(year && make && model)) return null;
 
@@ -57,6 +179,15 @@ function normalizeRow(row: VehicleImportRow, shopId: string): VehicleInsert | nu
     year,
     make,
     model,
+    customer_id: customerId,
+    external_id: cleanString(row.vehicle_id),
+    submodel: cleanString(row.trim),
+    color: cleanString(row.color),
+    mileage,
+    engine: cleanString(row.engine),
+    fuel_type: cleanString(row.fuel_type),
+    drivetrain: cleanString(row.drive_type),
+    import_notes: importNotes,
   };
 }
 
@@ -136,7 +267,7 @@ export async function POST(req: Request) {
     };
 
     for (const raw of rows) {
-      const normalized = normalizeRow(raw as VehicleImportRow, shopId);
+      const normalized = await normalizeRow(supabase, raw as VehicleImportRow, shopId);
 
       if (!normalized) {
         counts.skipped += 1;
@@ -154,6 +285,24 @@ export async function POST(req: Request) {
             year: normalized.year,
             make: normalized.make,
             model: normalized.model,
+
+            customer_id: normalized.customer_id,
+
+            external_id: normalized.external_id,
+
+            submodel: normalized.submodel,
+
+            color: normalized.color,
+
+            mileage: normalized.mileage,
+
+            engine: normalized.engine,
+
+            fuel_type: normalized.fuel_type,
+
+            drivetrain: normalized.drivetrain,
+
+            import_notes: normalized.import_notes,
           };
 
           const { error } = await supabase
