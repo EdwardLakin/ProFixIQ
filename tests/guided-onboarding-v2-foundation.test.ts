@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { GUIDED_ONBOARDING_STEP_KEYS } from "@/features/onboarding-v2/guided/steps";
+import { TILES } from "@/features/shared/config/tiles";
+import { getOwnerSidebarTiles } from "@/features/shared/lib/ownerSidebarNav";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -41,6 +43,44 @@ describe("guided onboarding v2 foundation", () => {
     expect(dashboardSource).not.toContain("SafeModeVerifyOnlyBanner");
     expect(dashboardSource).not.toContain("AgentReadinessBanner");
     expect(dashboardSource).not.toContain("Materialization");
+  });
+
+  it("exposes guided setup in owner/admin dashboard navigation without legacy onboarding labels", () => {
+    const guidedTile = TILES.find(
+      (tile) => tile.href === "/dashboard/onboarding-v2",
+    );
+
+    expect(guidedTile).toMatchObject({
+      title: "Guided Setup",
+      href: "/dashboard/onboarding-v2",
+      roles: ["owner", "admin"],
+      scopes: ["management", "all"],
+    });
+
+    const ownerGuidedTile = getOwnerSidebarTiles(TILES).find(
+      (tile) => tile.href === "/dashboard/onboarding-v2",
+    );
+
+    expect(ownerGuidedTile).toMatchObject({
+      title: "Guided Setup",
+      section: "Admin & Oversight",
+    });
+    expect(guidedTile?.title).not.toBe("Onboarding Agent");
+  });
+
+  it("keeps Planner out of the dashboard header while retaining other header actions", () => {
+    const appShellSource = read("features/shared/components/AppShell.tsx");
+    const assistantEntrySource = read(
+      "features/assistant/components/AskAssistantEntry.tsx",
+    );
+
+    expect(appShellSource).toContain("Shift");
+    expect(appShellSource).toContain("Inbox");
+    expect(appShellSource).toContain("Agent Request");
+    expect(appShellSource).toContain("Agent Console");
+    expect(appShellSource).toContain("Sign out");
+    expect(assistantEntrySource).toContain("<span>Assistant</span>");
+    expect(assistantEntrySource).not.toContain("<span>Planner</span>");
   });
 
   it("uses the new guided onboarding tables in server code", () => {

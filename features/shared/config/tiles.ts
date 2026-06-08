@@ -463,6 +463,14 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
+    href: "/dashboard/onboarding-v2",
+    title: "Guided Setup",
+    subtitle: "Step-by-step shop configuration",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
     href: "/dashboard/admin/people",
     title: "People & Staff",
     subtitle: "Canonical staff directory and governance workspace",
