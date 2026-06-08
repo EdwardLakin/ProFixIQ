@@ -3,7 +3,11 @@ import { setGuidedStepStatus } from "@/features/onboarding-v2/guided/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, { params }: { params: { sessionId: string; stepKey: string } }) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ sessionId: string; stepKey: string }> }
+) {
+  const { sessionId, stepKey } = await context.params;
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  return setGuidedStepStatus(params.sessionId, params.stepKey, body);
+  return setGuidedStepStatus(sessionId, stepKey, body);
 }

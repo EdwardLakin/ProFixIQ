@@ -3,11 +3,19 @@ import { getGuidedSession, patchGuidedSession } from "@/features/onboarding-v2/g
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, { params }: { params: { sessionId: string } }) {
-  return getGuidedSession(params.sessionId);
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ sessionId: string }> }
+) {
+  const { sessionId } = await context.params;
+  return getGuidedSession(sessionId);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { sessionId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ sessionId: string }> }
+) {
+  const { sessionId } = await context.params;
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  return patchGuidedSession(params.sessionId, body);
+  return patchGuidedSession(sessionId, body);
 }
