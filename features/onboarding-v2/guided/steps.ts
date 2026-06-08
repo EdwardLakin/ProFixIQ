@@ -1,3 +1,4 @@
+export const GUIDED_ONBOARDING_SOURCE = "guided-onboarding-v2";
 import type { GuidedOnboardingStepDefinition, GuidedOnboardingStepKey } from "./types";
 
 export const GUIDED_ONBOARDING_STEPS: GuidedOnboardingStepDefinition[] = [

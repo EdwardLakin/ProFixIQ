@@ -8,6 +8,8 @@ import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
+import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type DB = Database;
 
@@ -373,6 +375,10 @@ export default function CustomerProfilePage(): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const sp = useSearchParams();
+
+  const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(sp), [sp]);
+  const customerGuidedQuery =
+    guidedQuery?.onboardingStep === "customers" ? guidedQuery : null;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -1220,6 +1226,14 @@ export default function CustomerProfilePage(): JSX.Element {
             },
           }}
         />
+
+        {customerGuidedQuery ? (
+          <CustomerCsvImportCard
+            guidedQuery={customerGuidedQuery}
+            onCreateCustomer={() => setCreateCustomerOpen(true)}
+          />
+        ) : null}
+
 
         {customerImportPlaceholderVisible ? (
           <div className={`${CARD_BASE} border-[var(--accent-copper-soft)]/55 p-4 text-sm text-neutral-200`} data-guided-customer-import-placeholder>

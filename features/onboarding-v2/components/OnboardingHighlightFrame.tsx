@@ -1,22 +1,31 @@
+"use client";
+
 import type { ReactNode } from "react";
 
-export function OnboardingHighlightFrame({
-  title,
-  description,
-  children,
-}: {
+type Props = {
   title: string;
   description: string;
   children: ReactNode;
-}) {
+  active?: boolean;
+  highlightKey?: string;
+};
+
+export function OnboardingHighlightFrame({ title, description, children, active = true, highlightKey }: Props) {
+  if (!active) return <>{children}</>;
+
   return (
-    <section className="rounded-3xl border border-orange-300/20 bg-[linear-gradient(135deg,rgba(251,146,60,0.12),rgba(15,23,42,0.72))] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl">
-      <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/80">Guided setup focus</p>
-        <h2 className="mt-2 text-xl font-semibold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-neutral-300">{description}</p>
+    <section
+      data-onboarding-highlight={highlightKey}
+      className="rounded-2xl border border-orange-400/40 bg-orange-950/20 p-4 shadow-lg shadow-orange-950/20"
+    >
+      <div className="mb-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/80">Upload/setup here</div>
+        <h2 className="mt-1 text-lg font-semibold text-white">{title}</h2>
+        <p className="mt-1 text-sm text-orange-100/80">{description}</p>
       </div>
       {children}
     </section>
   );
 }
+
+export default OnboardingHighlightFrame;
