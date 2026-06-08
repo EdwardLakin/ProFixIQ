@@ -19,6 +19,7 @@ type VehicleMedia = DB["public"]["Tables"]["vehicle_media"]["Row"];
 type CustomerSearchRow = Pick<
   Customer,
   | "id"
+  | "shop_id"
   | "first_name"
   | "last_name"
   | "name"
@@ -103,6 +104,30 @@ function bestCustomerDisplayName(c: Pick<Customer, "business_name" | "name" | "f
   const person = [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ").trim();
   if (person) return person;
   return c.email ?? c.phone ?? c.phone_number ?? "—";
+}
+
+function customerSearchHaystack(c: CustomerSearchRow): string {
+  return [
+    c.business_name,
+    c.name,
+    c.first_name,
+    c.last_name,
+    c.email,
+    c.phone,
+    c.phone_number,
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function sortCustomerRows(rows: CustomerSearchRow[]): CustomerSearchRow[] {
+  return [...rows].sort((a, b) =>
+    bestCustomerDisplayName(a).localeCompare(bestCustomerDisplayName(b), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
 }
 
 function fmtVehicleLabel(v: Vehicle): string {
@@ -404,6 +429,8 @@ export default function CustomerProfilePage(): JSX.Element {
   const [query, setQuery] = useState<string>("");
   const [searching, setSearching] = useState<boolean>(false);
   const [results, setResults] = useState<CustomerSearchRow[]>([]);
+  const [directoryRows, setDirectoryRows] = useState<CustomerSearchRow[]>([]);
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Create customer from directory mode
@@ -761,48 +788,62 @@ export default function CustomerProfilePage(): JSX.Element {
   }, [getOrLinkShopId, newCustomer, router, supabase]);
 
   // ------------------ Directory search ------------------
-  const runSearch = useCallback(async () => {
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-
+  const loadDirectoryRows = useCallback(async () => {
     setSearching(true);
     try {
-      const like = `%${q.replaceAll("%", "").replaceAll("_", "")}%`;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user?.id) {
+        setDirectoryRows([]);
+        setResults([]);
+        setDirectoryLoaded(true);
+        return;
+      }
+
+      const shopId = await getOrLinkShopId(user.id);
+      if (!shopId) {
+        setDirectoryRows([]);
+        setResults([]);
+        setDirectoryLoaded(true);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("customers")
         .select(
-          "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+          "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
         )
-        .or(
-          [
-            `first_name.ilike.${like}`,
-            `last_name.ilike.${like}`,
-            `business_name.ilike.${like}`,
-            `name.ilike.${like}`,
-            `email.ilike.${like}`,
-            `phone.ilike.${like}`,
-            `phone_number.ilike.${like}`,
-          ].join(","),
-        )
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .eq("shop_id", shopId);
 
       if (error) {
+        setDirectoryRows([]);
         setResults([]);
+        setDirectoryLoaded(true);
         return;
       }
 
-      setResults((data ?? []) as CustomerSearchRow[]);
+      const sortedRows = sortCustomerRows((data ?? []) as CustomerSearchRow[]);
+      setDirectoryRows(sortedRows);
+      setResults(sortedRows.slice(0, 20));
+      setDirectoryLoaded(true);
     } catch {
+      setDirectoryRows([]);
       setResults([]);
+      setDirectoryLoaded(true);
     } finally {
       setSearching(false);
     }
-  }, [query, supabase]);
+  }, [getOrLinkShopId, supabase]);
+
+  const runSearch = useCallback(() => {
+    const q = query.trim().toLowerCase();
+    const rows = q
+      ? directoryRows.filter((row) => customerSearchHaystack(row).includes(q))
+      : directoryRows;
+    setResults(sortCustomerRows(rows).slice(0, 20));
+  }, [directoryRows, query]);
 
   // Optional: prime query from ?q= ONCE (do not keep syncing, avoids focus/typing weirdness)
   useEffect(() => {
@@ -815,22 +856,22 @@ export default function CustomerProfilePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirectoryMode]);
 
-  // Debounced search while typing (no URL updates; avoids remount/focus loss)
   useEffect(() => {
     if (!(isDirectoryMode || sp.get("mode") === "search")) return;
+    void loadDirectoryRows();
+  }, [isDirectoryMode, sp, loadDirectoryRows]);
 
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
+  // Debounced live filtering while typing (no URL updates; avoids remount/focus loss)
+  useEffect(() => {
+    if (!(isDirectoryMode || sp.get("mode") === "search")) return;
+    if (!directoryLoaded) return;
 
     const t = window.setTimeout(() => {
-      void runSearch();
-    }, 250);
+      runSearch();
+    }, 150);
 
     return () => window.clearTimeout(t);
-  }, [query, isDirectoryMode, sp, runSearch]);
+  }, [query, isDirectoryMode, sp, directoryLoaded, runSearch]);
 
   // ------------------ Upload ------------------
   const handleUpload = useCallback(
@@ -1203,10 +1244,10 @@ export default function CustomerProfilePage(): JSX.Element {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    void runSearch();
+                    runSearch();
                   }
                 }}
-                placeholder="Search customers…"
+                placeholder="Search customers..."
                 className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
               <button
@@ -1221,11 +1262,13 @@ export default function CustomerProfilePage(): JSX.Element {
           </div>
 
           <div className="mt-4">
-            {query.trim().length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>Start typing to search customers.</div>
-            ) : results.length === 0 ? (
+            {results.length === 0 ? (
               <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
-                {searching ? "Searching…" : "No matches yet."}
+                {searching
+                  ? "Searching…"
+                  : directoryRows.length === 0
+                    ? "No customers found yet."
+                    : "No customers match your search."}
               </div>
             ) : (
               <div className="space-y-2">

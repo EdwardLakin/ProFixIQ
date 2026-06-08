@@ -19,7 +19,7 @@ export const GUIDED_ONBOARDING_STEPS: GuidedOnboardingStepDefinition[] = [
     title: "Vehicles",
     shortDescription: "Attach vehicles and fleet units to customer records before live repair work starts.",
     question: "Do you need to import vehicles or fleet units from an existing system?",
-    destinationPath: "/customers/directory",
+    destinationPath: "/vehicles",
     ctaLabel: "Open vehicles",
     skipLabel: "Skip vehicles for now",
     category: "data",
