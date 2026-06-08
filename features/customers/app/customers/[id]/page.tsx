@@ -1227,13 +1227,6 @@ export default function CustomerProfilePage(): JSX.Element {
           }}
         />
 
-        {customerGuidedQuery ? (
-          <CustomerCsvImportCard
-            guidedQuery={customerGuidedQuery}
-            onCreateCustomer={() => setCreateCustomerOpen(true)}
-          />
-        ) : null}
-
 
         {customerImportPlaceholderVisible ? (
           <div className={`${CARD_BASE} border-[var(--accent-copper-soft)]/55 p-4 text-sm text-neutral-200`} data-guided-customer-import-placeholder>
@@ -1251,6 +1244,11 @@ export default function CustomerProfilePage(): JSX.Element {
             </button>
           </div>
         ) : null}
+
+        <CustomerCsvImportCard
+          guidedQuery={customerGuidedQuery}
+          onCreateCustomer={() => setCreateCustomerOpen(true)}
+        />
 
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
