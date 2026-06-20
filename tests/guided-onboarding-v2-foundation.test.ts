@@ -72,11 +72,11 @@ describe("guided onboarding v2 foundation", () => {
     expect(guidedTile?.title).not.toBe("Onboarding Agent");
   });
 
-  it("adds Vehicle Files to app navigation", () => {
+  it("adds Vehicles to app navigation", () => {
     const vehicleTile = TILES.find((tile) => tile.href === "/vehicles");
 
     expect(vehicleTile).toMatchObject({
-      title: "Vehicle Files",
+      title: "Vehicles",
       href: "/vehicles",
       roles: ["advisor", "manager", "owner", "admin"],
       section: "Operations",
@@ -161,6 +161,16 @@ describe("guided onboarding v2 foundation", () => {
   });
 
 
+
+  it("keeps starting-from-scratch setup active while skipping import-only steps", () => {
+    const serverSource = read("features/onboarding-v2/guided/server.ts");
+
+    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "service_history"] as const');
+    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_FIRST_STEP = "staff"');
+    expect(serverSource).toContain("skip_import_steps");
+    expect(serverSource).toContain('.in("step_key", STARTING_FROM_SCRATCH_SKIP_STEPS)');
+  });
+
   it("creates guided step rows with destination metadata required by the database", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");
     const migrationSource = read("db/sql/2026-06-07_guided_onboarding_v2_foundation.sql");
@@ -172,18 +182,21 @@ describe("guided onboarding v2 foundation", () => {
     expect(serverSource).toContain("description: step.shortDescription");
   });
 
-  it("implements the customer-first guided setup button flow", () => {
+  it("implements the guided setup button flow", () => {
     const workspaceSource = read("features/onboarding-v2/components/GuidedOnboardingWorkspace.tsx");
     const stepSource = read("features/onboarding-v2/guided/steps.ts");
 
     expect(workspaceSource).toContain("Do you have an existing shop/system to import?");
     expect(workspaceSource).toContain('existing_system: "starting_from_scratch"');
-    expect(workspaceSource).toContain("skip_guided_setup: true");
-    expect(workspaceSource).toContain('redirectTo: "/dashboard"');
+    expect(workspaceSource).toContain('current_step_key: "staff"');
+    expect(workspaceSource).toContain("skip_import_steps: true");
+    expect(workspaceSource).not.toContain("skip_guided_setup: true");
+    expect(workspaceSource).not.toContain('redirectTo: "/dashboard"');
     expect(workspaceSource).toContain('existing_system: "importing_existing_system"');
-    expect(workspaceSource).toContain("Yes, import customers");
-    expect(workspaceSource).toContain("No, skip customers for now");
-    expect(workspaceSource).toContain("/steps/customers/skip");
+    expect(workspaceSource).toContain("activeStep.ctaLabel");
+    expect(workspaceSource).toContain("buildGuidedDestination(activeStep, detail.session.id)");
+    expect(workspaceSource).toContain("/steps/${activeStep.key}/answer");
+    expect(workspaceSource).toContain("/steps/${activeStep.key}/skip");
     expect(stepSource).toContain('destinationPath: "/customers/search"');
     expect(stepSource).toContain('highlight: "customer-import"');
   });

@@ -133,6 +133,36 @@ describe("guided onboarding page panels", () => {
     );
   });
 
+
+  it("routes every guided step through the production panel complete loop", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+
+    for (const step of GUIDED_ONBOARDING_STEPS) {
+      cleanup();
+      routerPush.mockReset();
+      fetchMock.mockClear();
+      currentSearchParams = new URLSearchParams({
+        guidedSessionId: "loop-session",
+        guidedStep: step.key,
+        returnTo: "/dashboard/onboarding-v2/loop-session",
+        highlight: step.key,
+      });
+
+      render(<GuidedPageStepPanel />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark step complete" }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          `/api/onboarding-v2/guided/sessions/loop-session/steps/${step.key}/complete`,
+          { method: "POST" },
+        );
+      });
+      expect(routerPush).toHaveBeenCalledWith("/dashboard/onboarding-v2/loop-session");
+    }
+  });
+
   it("provides a safe parser and fallback return path", () => {
     const context = parseGuidedPageContext(
       new URLSearchParams({
