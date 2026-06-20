@@ -124,11 +124,11 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
 
   const answerNoExistingSystem = useCallback(async () => {
     const started = await startOrResume();
-    const skipped = await postJson(`/api/onboarding-v2/guided/sessions/${started.session.id}/existing-system`, {
+    return postJson(`/api/onboarding-v2/guided/sessions/${started.session.id}/existing-system`, {
       existing_system: "starting_from_scratch",
-      skip_guided_setup: true,
+      current_step_key: "staff",
+      skip_import_steps: true,
     });
-    return { detail: skipped, redirectTo: "/dashboard" };
   }, [startOrResume]);
 
   const answerYesExistingSystem = useCallback(async () => {
@@ -138,18 +138,14 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
     });
   }, [startOrResume]);
 
-  const answerImportCustomers = useCallback(async () => {
-    if (!detail || !activeStep || activeStep.key !== "customers") throw new Error("Customer step is not ready yet.");
-    const answered = await postJson(`/api/onboarding-v2/guided/sessions/${detail.session.id}/steps/customers/answer`, {
-      answer: { hasCustomerFile: true, intent: "import_customers" },
+  const openActiveStep = useCallback(async () => {
+    if (!detail || !activeStep) throw new Error("Guided step is not ready yet.");
+    const answered = await postJson(`/api/onboarding-v2/guided/sessions/${detail.session.id}/steps/${activeStep.key}/answer`, {
+      answer: { intent: `open_${activeStep.key}`, destinationPath: activeStep.destinationPath },
     });
     return { detail: answered, redirectTo: buildGuidedDestination(activeStep, detail.session.id) };
   }, [activeStep, detail]);
 
-  const skipCustomers = useCallback(async () => {
-    if (!detail) throw new Error("Guided session is not ready yet.");
-    return postJson(`/api/onboarding-v2/guided/sessions/${detail.session.id}/steps/customers/skip`);
-  }, [detail]);
 
   const sessionId = detail?.session.id;
   const progress = detail?.progress ?? { total: GUIDED_ONBOARDING_STEPS.length, completed: 0, skipped: 0, inProgress: 0, percent: 0 };
@@ -164,7 +160,7 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
           <div>
             <h1 className="text-3xl font-semibold text-white sm:text-4xl">Guided Setup</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-300">
-              Start with customers only. If you are importing from an existing shop system, ProFixIQ will send you to the real Customer Files page and bring you back here.
+              Follow a safe, step-by-step setup path through real ProFixIQ workspaces. Importing shops start with customer files; new shops continue into staff, settings, workflow, parts, invoices, and history.
             </p>
           </div>
           {sessionId ? (
@@ -225,37 +221,24 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
                 <div className="rounded-2xl border border-white/10 bg-black/30 p-4 md:col-span-2">
                   <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">Current step</p>
                   <h2 className="mt-2 text-2xl font-semibold text-white">{activeStep.question}</h2>
-                  {activeStep.key === "customers" ? (
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        className="rounded-full bg-orange-400 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-orange-500/20 transition hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => runAction("Opening Customer Files", answerImportCustomers)}
-                      >
-                        Yes, import customers
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        className="rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-neutral-100 transition hover:border-yellow-300/60 hover:bg-yellow-300/10 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => runAction("Skipping customers", skipCustomers)}
-                      >
-                        No, skip customers for now
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={!sessionId || isBusy}
-                        className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:border-yellow-300/60 disabled:opacity-50"
-                        onClick={() => sessionId && runAction("Skipping step", () => postJson(`/api/onboarding-v2/guided/sessions/${sessionId}/steps/${activeStep.key}/skip`))}
-                      >
-                        {activeStep.skipLabel}
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      className="rounded-full bg-orange-400 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-orange-500/20 transition hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => runAction(`Opening ${activeStep.title}`, openActiveStep)}
+                    >
+                      {activeStep.ctaLabel}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!sessionId || isBusy}
+                      className="rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-neutral-100 transition hover:border-yellow-300/60 hover:bg-yellow-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => sessionId && runAction(`Skipping ${activeStep.title}`, () => postJson(`/api/onboarding-v2/guided/sessions/${sessionId}/steps/${activeStep.key}/skip`))}
+                    >
+                      {activeStep.skipLabel}
+                    </button>
+                  </div>
                 </div>
               </div>
             </OnboardingHighlightFrame>

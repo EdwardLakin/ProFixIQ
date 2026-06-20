@@ -12,6 +12,8 @@ const STEPS_TABLE = `${GUIDED_TABLE_PREFIX}steps`;
 const EVENTS_TABLE = `${GUIDED_TABLE_PREFIX}events`;
 
 const SAFE_STEP_STATUSES: GuidedOnboardingStepStatus[] = ["not_started", "in_progress", "completed", "skipped"];
+const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "service_history"] as const;
+const STARTING_FROM_SCRATCH_FIRST_STEP = "staff";
 
 type Access = Extract<Awaited<ReturnType<typeof requireShopScopedApiAccess>>, { ok: true }>;
 
@@ -234,9 +236,17 @@ export async function setExistingSystem(sessionId: string, body: JsonPayload) {
 
   const value = typeof body.existing_system === "string" ? body.existing_system.trim() : null;
   const skipGuidedSetup = body.skip_guided_setup === true;
+  const skipImportSteps = body.skip_import_steps === true;
+  const requestedStepKey = typeof body.current_step_key === "string" && isGuidedOnboardingStepKey(body.current_step_key)
+    ? body.current_step_key
+    : null;
+  const startingFromScratch = value === "starting_from_scratch";
+  const currentStepKey = startingFromScratch
+    ? requestedStepKey ?? STARTING_FROM_SCRATCH_FIRST_STEP
+    : requestedStepKey;
   const sessionPatch = skipGuidedSetup
     ? { existing_system: value, status: "skipped", current_step_key: null, completed_at: new Date().toISOString(), ...nowPatch() }
-    : { existing_system: value, status: "active", completed_at: null, ...nowPatch() };
+    : { existing_system: value, status: "active", current_step_key: currentStepKey, completed_at: null, ...nowPatch() };
 
   const { error } = await db(access)
     .from(SESSIONS_TABLE)
@@ -245,7 +255,25 @@ export async function setExistingSystem(sessionId: string, body: JsonPayload) {
     .eq("shop_id", access.profile.shop_id);
 
   if (error) return jsonError(error.message, 500);
-  await logGuidedEvent(access, sessionId, null, "existing_system_answered", { existing_system: value, skipGuidedSetup });
+
+  if (!skipGuidedSetup && startingFromScratch && skipImportSteps) {
+    const timestamp = new Date().toISOString();
+    const { error: skipStepsError } = await db(access)
+      .from(STEPS_TABLE)
+      .update({ status: "skipped", skipped_at: timestamp, completed_at: null, ...nowPatch() })
+      .eq("session_id", sessionId)
+      .eq("shop_id", access.profile.shop_id)
+      .in("step_key", STARTING_FROM_SCRATCH_SKIP_STEPS);
+
+    if (skipStepsError) return jsonError(skipStepsError.message, 500);
+  }
+
+  await logGuidedEvent(access, sessionId, null, "existing_system_answered", {
+    existing_system: value,
+    skipGuidedSetup,
+    skipImportSteps,
+    currentStepKey,
+  });
   return detailResponse(access, sessionId);
 }
 
@@ -307,7 +335,7 @@ async function finishGuidedStep(sessionId: string, stepKey: string, status: "com
   if (stepError) return jsonError(stepError.message, 500);
 
   let steps = await getStepsForSession(access, sessionId);
-  let session = await updateSessionCurrentStep(access, sessionId, steps);
+  const session = await updateSessionCurrentStep(access, sessionId, steps);
   steps = await getStepsForSession(access, sessionId);
 
   await logGuidedEvent(access, sessionId, stepKey, status === "completed" ? "step_completed" : "step_skipped", {
