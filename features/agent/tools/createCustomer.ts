@@ -27,7 +27,6 @@ export const toolCreateCustomer: ToolDef<CreateCustomerIn, CreateCustomerOut> = 
         email: input.email ?? undefined,
         phone: input.phone ?? undefined,
         shop_id: ctx.shopId,          // ← critical for RLS
-        user_id: ctx.userId ?? null,  // ok if nullable in your schema
       })
       .select("id")
       .single();

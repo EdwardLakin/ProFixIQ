@@ -56,7 +56,7 @@ function splitName(name: string | null): { firstName: string | null; lastName: s
 }
 
 
-function normalizeRow(row: ImportRow, userId: string, shopId: string): CustomerInsert | null {
+export function normalizeImportedCustomerRow(row: ImportRow, shopId: string): CustomerInsert | null {
   const businessName = cleanString(row.business_name) ?? cleanString(row.company_name);
   const explicitName = cleanString(row.name);
   const split = splitName(explicitName);
@@ -71,7 +71,6 @@ function normalizeRow(row: ImportRow, userId: string, shopId: string): CustomerI
 
   return {
     shop_id: shopId,
-    user_id: userId,
     first_name: firstName,
     last_name: lastName,
     name: explicitName ?? displayName,
@@ -162,8 +161,6 @@ export async function POST(req: Request) {
 
     const { supabase, profile } = access;
     const shopId = profile.shop_id;
-    const userId = profile.id;
-
     if (!shopId) {
       return NextResponse.json({ error: "Missing shop context." }, { status: 400 });
     }
@@ -182,7 +179,7 @@ export async function POST(req: Request) {
 
     for (const [index, raw] of rawRows.entries()) {
       try {
-        const normalized = normalizeRow(raw as ImportRow, userId, shopId);
+        const normalized = normalizeImportedCustomerRow(raw as ImportRow, shopId);
 
         if (!normalized) {
           counts.skipped += 1;
