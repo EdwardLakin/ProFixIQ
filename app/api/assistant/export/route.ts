@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
 
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
-      temperature: 0.3,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.3),
       stream: false,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },

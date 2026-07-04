@@ -3,7 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import {
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
     const completion = await Promise.race([
       openai.chat.completions.create({
         model,
-        temperature: 0.4,
+        ...openAITemperatureParam(model, 0.4),
         messages: [
           { role: "system", content: system },
           { role: "user", content: userContext },

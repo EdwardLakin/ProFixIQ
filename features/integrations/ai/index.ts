@@ -7,7 +7,7 @@ async function getRuntimeOpenAIClient() {
 
 //features/integrations/ai/index.ts
 
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 /* ========================================================================== */
 /*  QUOTE ENGINE – CENTRAL AI ENTRYPOINT                                      */
@@ -61,7 +61,7 @@ export const ProFixAI = {
 
     const completion = await (await getRuntimeOpenAIClient()).chat.completions.create({
       model: getOpenAIModelForPurpose("fast"),
-      temperature: 0.4,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
       max_tokens: 600,
       messages: [
         { role: "system", content: system },

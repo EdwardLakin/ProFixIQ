@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
 
 export const runtime = "nodejs";
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
     const completion = await client.chat.completions.create({
       model: getOpenAIModelForPurpose("extraction"),
       messages,
-      temperature: 0,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0),
       // Ensures a valid JSON object string
       response_format: { type: "json_object" },
     });

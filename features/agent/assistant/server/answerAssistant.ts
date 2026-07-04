@@ -18,7 +18,7 @@ import {
   getOpenAIClient,
   isOpenAIConfigured,
 } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import type {
@@ -473,7 +473,7 @@ async function answerDiagnosticConversation(args: {
   const completion = await getOpenAIClient().chat.completions.create({
     model: getOpenAIModelForPurpose("reasoning"),
     messages: buildDiagnosticMessages(args),
-    temperature: 0.2,
+    ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
   });
 
   const content = completion.choices[0]?.message?.content?.trim();

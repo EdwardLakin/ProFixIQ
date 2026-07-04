@@ -1,7 +1,7 @@
 // app/api/generate-inspection/route.ts
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { toInspectionCategories } from "@/features/inspections/lib/inspection/normalize";
 
 const openai = getOpenAIClient();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
 
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("extraction"),
-      temperature: 0.2,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.2),
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },

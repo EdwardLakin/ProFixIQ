@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggestions";
@@ -67,7 +67,7 @@ async function inferAiOnlySuggestions(args: {
         },
         { role: "user", content: query },
       ],
-      temperature: 0.2,
+      ...openAITemperatureParam(MODEL, 0.2),
     });
 
     const raw = completion.choices[0]?.message?.content || "{}";
