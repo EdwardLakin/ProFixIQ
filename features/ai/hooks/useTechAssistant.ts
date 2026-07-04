@@ -91,11 +91,18 @@ export function formatAssistantAnswer(answer?: AssistantAnswer, fallbackText?: s
     ].join("\n"));
   }
 
-  if (answer.entities.length > 0) {
-    sections.push([
-      "### Related records",
-      ...answer.entities.map((entity) => `- ${entity.href ? `[${entity.label}](${entity.href})` : entity.label}`),
-    ].join("\n"));
+  const usefulEntities = answer.entities.filter((entity) => entity.type !== "vehicle" && Boolean(entity.href));
+  const linkKeys = new Set(answer.links.map((link) => `${link.label.toLowerCase()}::${link.href.toLowerCase()}`));
+  const linkHrefs = new Set(answer.links.map((link) => link.href.toLowerCase()));
+  const entityRows = usefulEntities
+    .filter((entity) => {
+      const href = entity.href ?? "";
+      return !linkKeys.has(`${entity.label.toLowerCase()}::${href.toLowerCase()}`) && !linkHrefs.has(href.toLowerCase());
+    })
+    .map((entity) => `- [${entity.label}](${entity.href})`);
+
+  if (entityRows.length > 0) {
+    sections.push(["### Related records", ...entityRows].join("\n"));
   }
 
   if (answer.links.length > 0) {

@@ -106,8 +106,7 @@ describe("useTechAssistant", () => {
     expect(text).toContain("- Check B+ at the sensor heater.");
     expect(text).toContain("### Part suggestions");
     expect(text).toContain("Downstream oxygen sensor");
-    expect(text).toContain("### Related records");
-    expect(text).toContain("[WO 1001](/work-orders/wo_1)");
+    expect(text).not.toContain("### Related records");
     expect(text).toContain("### Links");
   });
 
