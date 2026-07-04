@@ -193,7 +193,76 @@ function isFollowUp(question: string): boolean {
     "plan follow up",
     "what about this",
     "what about that",
+    "what next",
+    "next step",
+    "diagnosis steps",
+    "diagnostic steps",
+    "diagnosis path",
+    "diagnostic path",
+    "where is it",
+    "where's it",
+    "pinout",
+    "expected voltage",
+    "what should i check",
+    "what do i check",
+    "what now",
   ].some((token) => q.includes(token));
+}
+
+function extractDtc(value: string): string | null {
+  return value.match(/\b([PBCU][0-9A-F]{4})\b/i)?.[1]?.toUpperCase() ?? null;
+}
+
+function getVehicleLabel(request: AssistantAskRequest, question: string): string | null {
+  const fromRequest = [request.vehicle?.year, request.vehicle?.make, request.vehicle?.model]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (fromRequest) return fromRequest;
+
+  const vehicleMatch = question.match(/vehicle:\s*([^\n]+)/i);
+  return vehicleMatch?.[1]?.trim() || null;
+}
+
+function recentConversationText(request: AssistantAskRequest): string {
+  return (request.messages ?? [])
+    .slice(-8)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n");
+}
+
+function getActiveDiagnosticTopic(request: AssistantAskRequest, question: string): { code: string | null; mentionCount: number } {
+  const messages = request.messages ?? [];
+  const code = extractDtc(question) ?? extractDtc(recentConversationText(request));
+  const mentionCount = code
+    ? messages.filter((message) => message.content.toUpperCase().includes(code)).length
+    : 0;
+  return { code, mentionCount };
+}
+
+function isDiagnosticQuestion(question: string, request: AssistantAskRequest): boolean {
+  const q = question.toLowerCase();
+  return Boolean(
+    extractDtc(question) ||
+      getActiveDiagnosticTopic(request, question).code ||
+      questionIncludes(q, [
+        "vehicle:",
+        "dtc",
+        "code",
+        "p0",
+        "p1",
+        "b0",
+        "c0",
+        "u0",
+        "no start",
+        "misfire",
+        "heater circuit",
+        "diagnosis",
+        "diagnostic",
+        "pinout",
+        "expected voltage",
+      ]),
+  );
 }
 
 function resolveContext(request: AssistantAskRequest): AssistantResolvedContext {
@@ -1370,29 +1439,49 @@ export async function answerAssistant({
     });
   }
 
-  if (questionIncludes(q, ["vehicle:", "dtc", "code", "p0", "p1", "b0", "c0", "u0", "no start", "misfire", "heater circuit"])) {
-    const codeMatch = question.match(/\b([PBCU][0-9A-F]{4})\b/i);
-    const code = codeMatch?.[1]?.toUpperCase();
-    const vehicleMatch = question.match(/vehicle:\s*([^\n]+)/i);
-    const vehicleLabel = vehicleMatch?.[1]?.trim();
+  if (isDiagnosticQuestion(question, request)) {
+    const { code, mentionCount } = getActiveDiagnosticTopic(request, question);
+    const vehicleLabel = getVehicleLabel(request, question);
     const subject = [vehicleLabel, code].filter(Boolean).join(" • ") || "this vehicle concern";
+    const followUp = isFollowUp(question) && mentionCount > 0;
+    const repeatedPathAsk = followUp && questionIncludes(q, ["diagnosis path", "diagnostic path"]);
+
+    const p0141Path = [
+      "Key on: verify heater B+ at the downstream O2 connector. If missing, chase fuse/relay/feed before touching the sensor.",
+      "Load-test the ground/PCM control side with the sensor plugged in if possible; look for high resistance, opens, or a short to power/ground.",
+      "If power and control pass, check heater resistance/current against service info and inspect the exhaust-side harness for heat damage before replacing B1S2.",
+    ];
+
+    const genericPath = [
+      code
+        ? `Use freeze-frame for ${code} to reproduce the enable conditions; do not clear it until you know when it sets.`
+        : "Start by capturing all DTCs and freeze-frame so the fault conditions are not lost.",
+      "Prove the affected circuit under load: power feed, ground/control, connector tension, water intrusion, rub-through, and prior splices.",
+      "Only condemn the component after circuit checks pass and scan data or a bidirectional test confirms it cannot operate correctly.",
+    ];
+
+    const path = code === "P0141" ? p0141Path : genericPath;
 
     return buildAnswer({
       intent: "unknown",
-      summary: `Technician triage for ${subject}: start with a code-specific diagnostic path, verify the complaint, and prove power/ground/signal before replacing parts.`,
-      bullets: dedupeStrings([
+      summary: followUp
+        ? repeatedPathAsk
+          ? `Same ${code ?? "diagnostic"} path — continue at the first unproven circuit check.`
+          : `For ${subject}, continue the diagnostic from the current fault instead of restarting.`
+        : code === "P0141"
+          ? `P0141 is an O2 heater circuit fault. On this ${vehicleLabel ?? "vehicle"}, identify the exact downstream sensor/bank in service info, then prove heater power and control before replacing it.`
+          : `Treat ${subject} as a circuit diagnosis: verify the fault conditions, then prove power, ground/control, and signal under load.`,
+      bullets: followUp ? path : dedupeStrings([
         code === "P0141"
-          ? "P0141 is commonly an O2 sensor heater circuit fault for the downstream sensor (Bank 1 Sensor 2 on many inline engines); confirm exact bank/sensor from service information before ordering."
+          ? "First check: confirm which downstream O2 is Bank 1 Sensor 2 for this engine, then inspect that connector/harness near the exhaust."
           : code
-            ? `Pull freeze-frame data for ${code}, note coolant temp, run time, voltage, and whether the code resets immediately or after a drive cycle.`
-            : "Pull all DTCs and freeze-frame data before clearing anything.",
-        "Check battery voltage and charging health; low system voltage can create misleading circuit faults.",
-        "Inspect connector lock, water intrusion, rubbed harness sections, exhaust heat damage, and prior repair splices near the component.",
-        "Load-test fused power and ground/control circuits with the component connected when possible; avoid condemning the part from resistance checks alone.",
-        "If circuit tests pass, confirm component operation with scan data or a bidirectional/output test, then document the failed test result for advisor approval.",
-      ]),
+            ? `First check: pull freeze-frame for ${code} and note when it sets.`
+            : "First check: pull all codes and freeze-frame before clearing anything.",
+        path[0],
+        "Tell me what you have at the connector and I’ll call the next branch.",
+      ], 3),
       links: [],
-      entities: vehicleLabel ? [{ type: "vehicle", label: vehicleLabel }] : [],
+      entities: [],
       actions: [
         {
           type: "planner",

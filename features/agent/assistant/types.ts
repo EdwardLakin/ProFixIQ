@@ -98,10 +98,23 @@ export type AssistantAskSession = {
   lastIntent?: AssistantAnswer["intent"];
 };
 
+export type AssistantConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type AssistantVehicleContext = {
+  year?: string | null;
+  make?: string | null;
+  model?: string | null;
+};
+
 export type AssistantAskRequest = {
   question: string;
   context?: AssistantAskContext;
   session?: AssistantAskSession;
+  messages?: AssistantConversationMessage[];
+  vehicle?: AssistantVehicleContext;
 };
 
 export type AssistantAskResponse =
