@@ -55,6 +55,7 @@ export type GuidedOnboardingStepRow = {
   skipped_at: string | null;
   created_at: string | null;
   destination_path?: string | null;
+  highlight_key?: string | null;
   title?: string | null;
   question?: string | null;
   description?: string | null;

@@ -259,6 +259,55 @@ describe("guided onboarding v2 foundation", () => {
     expect(stepSource).toContain('highlight: "customer-import"');
   });
 
+
+  it("seeds guided steps with canonical highlight keys required by the database", () => {
+    const serverSource = read("features/onboarding-v2/guided/server.ts");
+    const migrationSource = read("db/sql/2026-06-07_guided_onboarding_v2_foundation.sql");
+
+    expect(migrationSource).toContain("highlight_key text not null");
+    expect(serverSource).toContain("highlight_key: step.highlightQuery?.highlight ?? step.key");
+    expect(serverSource).toContain("ensureGuidedSteps");
+  });
+
+  it("completes the visible guided rail row and advances to the next incomplete step", () => {
+    const serverSource = read("features/onboarding-v2/guided/server.ts");
+
+    expect(serverSource).toContain("finishGuidedStep");
+    expect(serverSource).toContain('.eq("session_id", sessionId)');
+    expect(serverSource).toContain('.eq("shop_id", access.profile.shop_id)');
+    expect(serverSource).toContain('.eq("step_key", stepKey)');
+    expect(serverSource).toContain("updateSessionCurrentStep(access, sessionId, steps)");
+  });
+
+  it("keeps imported customer completion pointed at the canonical customers step", () => {
+    const componentSource = read("features/customers/components/CustomerCsvImportCard.tsx");
+
+    expect(componentSource).toContain("/steps/customers/complete");
+    expect(componentSource).toContain("completeOnboardingAfterImport");
+    expect(componentSource).not.toContain("customer_import");
+    expect(componentSource).not.toContain("import_customers");
+  });
+
+  it("returns skipped customer import row details for operators", () => {
+    const routeSource = read("app/api/customers/import/route.ts");
+    const componentSource = read("features/customers/components/CustomerCsvImportCard.tsx");
+
+    expect(routeSource).toContain("skippedRows");
+    expect(routeSource).toContain("reason");
+    expect(routeSource).toContain("matchedBy");
+    expect(routeSource).toContain("duplicate_in_csv");
+    expect(componentSource).toContain("Skipped rows");
+  });
+
+  it("re-imports duplicate customer CSV rows as skipped details instead of throwing conflict responses", () => {
+    const routeSource = read("app/api/customers/import/route.ts");
+
+    expect(routeSource).toContain("Matched an existing customer for this shop.");
+    expect(routeSource).toContain("Duplicate customer identity within this CSV.");
+    expect(routeSource).toContain("counts.skipped += 1");
+    expect(routeSource).not.toContain("status: 409");
+  });
+
   it("renders progress, current step, and existing-system intake in the workspace", async () => {
     const { default: GuidedOnboardingWorkspace } =
       await import("@/features/onboarding-v2/components/GuidedOnboardingWorkspace");

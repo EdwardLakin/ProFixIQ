@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { GUIDED_ONBOARDING_STEPS, isGuidedOnboardingStepKey } from "./steps";
+import { GUIDED_ONBOARDING_STEPS, getGuidedOnboardingStep, isGuidedOnboardingStepKey } from "./steps";
 import { buildGuidedSessionDetail, findNextGuidedStepKey, orderGuidedSteps } from "./query";
 import type { GuidedOnboardingSessionRow, GuidedOnboardingStepRow, GuidedOnboardingStepStatus } from "./types";
 
@@ -50,6 +50,7 @@ function stepInsertPayload(step: (typeof GUIDED_ONBOARDING_STEPS)[number], sessi
     title: step.title,
     question: step.question,
     description: step.shortDescription,
+    highlight_key: step.highlightQuery?.highlight ?? step.key,
   };
 }
 
@@ -113,6 +114,23 @@ async function updateSessionCurrentStep(access: Access, sessionId: string, steps
   return data as GuidedOnboardingSessionRow;
 }
 
+async function ensureGuidedSteps(access: Access, sessionId: string) {
+  const existingSteps = await getStepsForSession(access, sessionId);
+  const existingKeys = new Set(existingSteps.map((step) => step.step_key));
+  const missingSteps = GUIDED_ONBOARDING_STEPS.filter((step) => !existingKeys.has(step.key));
+
+  if (missingSteps.length > 0) {
+    const { error } = await db(access)
+      .from(STEPS_TABLE)
+      .insert(missingSteps.map((step) => stepInsertPayload(step, sessionId, access.profile.shop_id!)));
+
+    if (error) throw new Error(error.message);
+    return getStepsForSession(access, sessionId);
+  }
+
+  return existingSteps;
+}
+
 async function detailResponse(access: Access, sessionId: string) {
   const session = await getSessionForShop(access, sessionId);
   if (!session) return jsonError("Guided onboarding session not found", 404);
@@ -171,21 +189,12 @@ export async function createOrResumeGuidedSession() {
     await logGuidedEvent(access, session.id, null, "session_created", { stepCount: GUIDED_ONBOARDING_STEPS.length });
   }
 
-  const existingSteps = await getStepsForSession(access, session.id);
-  const existingKeys = new Set(existingSteps.map((step) => step.step_key));
-  const missingSteps = GUIDED_ONBOARDING_STEPS.filter((step) => !existingKeys.has(step.key));
-
-  if (missingSteps.length > 0) {
-    const { error: insertStepsError } = await db(access)
-      .from(STEPS_TABLE)
-      .insert(
-        missingSteps.map((step) => stepInsertPayload(step, session!.id, access.profile.shop_id!)),
-      );
-
-    if (insertStepsError) return jsonError(insertStepsError.message, 500);
+  let steps: GuidedOnboardingStepRow[];
+  try {
+    steps = await ensureGuidedSteps(access, session.id);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Failed to seed guided setup steps", 500);
   }
-
-  const steps = await getStepsForSession(access, session.id);
   if (!session.current_step_key) {
     session = await updateSessionCurrentStep(access, session.id, steps);
   }
@@ -319,29 +328,48 @@ async function finishGuidedStep(sessionId: string, stepKey: string, status: "com
   if (!access.ok) return access.response;
   if (!isGuidedOnboardingStepKey(stepKey)) return jsonError("Invalid guided onboarding step", 400);
 
+  const session = await getSessionForShop(access, sessionId);
+  if (!session) return jsonError("Guided onboarding session not found", 404);
+
+  try {
+    await ensureGuidedSteps(access, sessionId);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Failed to seed guided setup steps", 500);
+  }
+
+  const canonicalStep = getGuidedOnboardingStep(stepKey);
   const timestamp = new Date().toISOString();
-  const { error: stepError } = await db(access)
+  const { data: updatedSteps, error: stepError } = await db(access)
     .from(STEPS_TABLE)
     .update({
       status,
       completed_at: status === "completed" ? timestamp : null,
       skipped_at: status === "skipped" ? timestamp : null,
+      ...(canonicalStep ? {
+        destination_path: canonicalStep.destinationPath,
+        title: canonicalStep.title,
+        question: canonicalStep.question,
+        description: canonicalStep.shortDescription,
+        highlight_key: canonicalStep.highlightQuery?.highlight ?? canonicalStep.key,
+      } : {}),
       ...nowPatch(),
     })
     .eq("session_id", sessionId)
     .eq("shop_id", access.profile.shop_id)
-    .eq("step_key", stepKey);
+    .eq("step_key", stepKey)
+    .select("id");
 
   if (stepError) return jsonError(stepError.message, 500);
+  if (!updatedSteps?.length) return jsonError("Guided onboarding step not found", 404);
 
   let steps = await getStepsForSession(access, sessionId);
-  const session = await updateSessionCurrentStep(access, sessionId, steps);
+  const updatedSession = await updateSessionCurrentStep(access, sessionId, steps);
   steps = await getStepsForSession(access, sessionId);
 
   await logGuidedEvent(access, sessionId, stepKey, status === "completed" ? "step_completed" : "step_skipped", {
-    nextStepKey: session.current_step_key,
+    nextStepKey: updatedSession.current_step_key,
   });
-  return NextResponse.json(buildGuidedSessionDetail(session, steps));
+  return NextResponse.json(buildGuidedSessionDetail(updatedSession, steps));
 }
 
 export async function setGuidedStepStatus(sessionId: string, stepKey: string, body: JsonPayload) {
@@ -352,29 +380,48 @@ export async function setGuidedStepStatus(sessionId: string, stepKey: string, bo
   const status = typeof body.status === "string" ? body.status : "";
   if (!SAFE_STEP_STATUSES.includes(status as GuidedOnboardingStepStatus)) return jsonError("Invalid step status", 400);
 
+  const session = await getSessionForShop(access, sessionId);
+  if (!session) return jsonError("Guided onboarding session not found", 404);
+
+  try {
+    await ensureGuidedSteps(access, sessionId);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Failed to seed guided setup steps", 500);
+  }
+
+  const canonicalStep = getGuidedOnboardingStep(stepKey);
   const timestamp = new Date().toISOString();
-  const { error } = await db(access)
+  const { data: updatedSteps, error } = await db(access)
     .from(STEPS_TABLE)
     .update({
       status,
       started_at: status === "in_progress" ? timestamp : undefined,
       completed_at: status === "completed" ? timestamp : null,
       skipped_at: status === "skipped" ? timestamp : null,
+      ...(canonicalStep ? {
+        destination_path: canonicalStep.destinationPath,
+        title: canonicalStep.title,
+        question: canonicalStep.question,
+        description: canonicalStep.shortDescription,
+        highlight_key: canonicalStep.highlightQuery?.highlight ?? canonicalStep.key,
+      } : {}),
       ...nowPatch(),
     })
     .eq("session_id", sessionId)
     .eq("shop_id", access.profile.shop_id)
-    .eq("step_key", stepKey);
+    .eq("step_key", stepKey)
+    .select("id");
 
   if (error) return jsonError(error.message, 500);
+  if (!updatedSteps?.length) return jsonError("Guided onboarding step not found", 404);
 
   const steps = await getStepsForSession(access, sessionId);
-  const session = status === "in_progress"
+  const updatedSession = status === "in_progress"
     ? await updateSessionPointer(access, sessionId, stepKey)
     : await updateSessionCurrentStep(access, sessionId, steps);
 
   await logGuidedEvent(access, sessionId, stepKey, "step_status_updated", { status });
-  return NextResponse.json(buildGuidedSessionDetail(session, steps));
+  return NextResponse.json(buildGuidedSessionDetail(updatedSession, steps));
 }
 
 async function updateSessionPointer(access: Access, sessionId: string, stepKey: string) {

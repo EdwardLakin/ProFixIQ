@@ -23,6 +23,7 @@ create table if not exists public.guided_onboarding_steps (
   title text not null,
   question text not null,
   description text not null default '',
+  highlight_key text not null default 'default',
   status text not null default 'not_started',
   answer jsonb not null default '{}'::jsonb,
   started_at timestamptz,
@@ -66,22 +67,27 @@ alter table public.guided_onboarding_steps
   add column if not exists question text;
 alter table public.guided_onboarding_steps
   add column if not exists description text not null default '';
+alter table public.guided_onboarding_steps
+  add column if not exists highlight_key text;
 
 update public.guided_onboarding_steps
 set
   destination_path = coalesce(destination_path, '/dashboard/onboarding-v2'),
   title = coalesce(title, step_key),
   question = coalesce(question, 'Continue this guided setup step.'),
-  description = coalesce(description, '')
+  description = coalesce(description, ''),
+  highlight_key = coalesce(highlight_key, step_key, 'default')
 where destination_path is null
   or title is null
   or question is null
-  or description is null;
+  or description is null
+  or highlight_key is null;
 
 alter table public.guided_onboarding_steps
   alter column destination_path set not null,
   alter column title set not null,
-  alter column question set not null;
+  alter column question set not null,
+  alter column highlight_key set not null;
 
 alter table public.guided_onboarding_sessions enable row level security;
 alter table public.guided_onboarding_steps enable row level security;

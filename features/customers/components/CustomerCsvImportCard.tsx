@@ -46,10 +46,21 @@ type ImportCounts = {
   duplicates?: number;
 };
 
+type SkippedImportRow = {
+  row: number;
+  reason: string;
+  customerName: string | null;
+  email: string | null;
+  phone: string | null;
+  matchedBy: string;
+  matchedValue?: string | null;
+};
+
 type ImportResponse = {
   ok?: boolean;
   error?: string;
   counts?: ImportCounts;
+  skippedRows?: SkippedImportRow[];
 };
 
 type Props = {
@@ -158,6 +169,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [counts, setCounts] = useState<ImportCounts | null>(null);
+  const [skippedRows, setSkippedRows] = useState<SkippedImportRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const [busyAction, setBusyAction] = useState<"skip" | null>(null);
@@ -172,6 +184,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     setRows([]);
     setHeaders([]);
     setCounts(null);
+    setSkippedRows([]);
     setParseError(null);
     setImportError(null);
   }
@@ -235,6 +248,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     setImporting(true);
     setImportError(null);
     setCounts(null);
+    setSkippedRows([]);
     try {
       const response = await fetch("/api/customers/import", {
         method: "POST",
@@ -246,6 +260,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
         throw new Error(payload.error ?? "Unable to import customers.");
       }
       setCounts(payload.counts);
+      setSkippedRows(payload.skippedRows ?? []);
       if (isOnboarding && payload.counts.created + payload.counts.updated > 0 && payload.counts.failed === 0) {
         await completeOnboardingAfterImport(payload.counts);
       }
@@ -369,6 +384,26 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
       {counts ? (
         <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
           Import results: created {counts.created}, updated {counts.updated}, skipped {counts.skipped}, failed {counts.failed}.
+        </div>
+      ) : null}
+      {skippedRows.length ? (
+        <div className="mt-4 overflow-hidden rounded-xl border border-amber-500/25 bg-amber-950/20 text-sm text-amber-50">
+          <div className="border-b border-amber-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">Skipped rows</div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead className="text-xs uppercase tracking-[0.12em] text-amber-100/70">
+                <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Reason</th><th className="px-3 py-2">Matched by</th></tr>
+              </thead>
+              <tbody className="divide-y divide-amber-500/15 text-amber-50/90">
+                {skippedRows.slice(0, 25).map((row) => (
+                  <tr key={`${row.row}-${row.matchedBy}-${row.matchedValue ?? row.customerName ?? row.email ?? row.phone ?? "row"}`}>
+                    <td className="px-3 py-2">{row.row}</td><td className="px-3 py-2">{row.customerName ?? "—"}</td><td className="px-3 py-2">{row.email ?? "—"}</td><td className="px-3 py-2">{row.phone ?? "—"}</td><td className="px-3 py-2">{row.reason}</td><td className="px-3 py-2">{row.matchedBy}{row.matchedValue ? ` · ${row.matchedValue}` : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {skippedRows.length > 25 ? <div className="px-3 py-2 text-xs text-amber-100/70">Showing first 25 of {skippedRows.length} skipped rows.</div> : null}
         </div>
       ) : null}
       {importError ? <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">{importError}</div> : null}
