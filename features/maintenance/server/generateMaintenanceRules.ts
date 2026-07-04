@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 type DB = Database;
 
@@ -226,7 +226,7 @@ export async function generateMaintenanceRulesForVehicle(opts: {
 
   const completion = await openai.chat.completions.create({
     model: getOpenAIModelForPurpose("fast"),
-    temperature: 0.4,
+    ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
     max_tokens: 900,
     messages: [
       { role: "system", content: systemPrompt },

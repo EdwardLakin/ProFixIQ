@@ -1,7 +1,7 @@
 // app/api/ai/summarize-tech-performance/route.ts
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 type Range = "weekly" | "monthly" | "quarterly" | "yearly";
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("fast"),
-      temperature: 0.4,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
       max_tokens: 260,
       messages: [
         {

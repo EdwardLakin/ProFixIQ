@@ -2,7 +2,7 @@
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
   buildMenuItemEfficiencyRecommendations,
@@ -233,7 +233,7 @@ async function llmParseGoal(
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      temperature: 0.1,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.1),
     }),
   });
 

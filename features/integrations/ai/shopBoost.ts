@@ -8,7 +8,7 @@ async function getRuntimeOpenAIClient() {
 // /features/integrations/ai/shopBoost.ts
 import { randomUUID, createHash } from "crypto";
 
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import type {
@@ -1653,7 +1653,7 @@ async function generateSnapshotWithAI(
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.2,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.2),
     });
 
     const raw = completion.choices[0]?.message?.content ?? "{}";

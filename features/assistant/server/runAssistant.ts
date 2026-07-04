@@ -9,7 +9,7 @@ import type {
 } from "../types/assistant";
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import { getOpenAIClient as getCanonicalOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 type RunAssistantParams = {
   shopId: string;
@@ -287,7 +287,7 @@ export async function runAssistant(
   try {
     const response = await client.chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
-      temperature: 0.2,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
       response_format: { type: "json_object" },
       messages: [
         {

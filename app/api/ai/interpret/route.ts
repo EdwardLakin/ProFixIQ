@@ -1,7 +1,7 @@
 // /app/api/ai/interpret/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 export const runtime = "nodejs";
 
@@ -373,7 +373,7 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
 
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("extraction"),
-      temperature: 0.2,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.2),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: transcript },

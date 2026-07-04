@@ -1,4 +1,4 @@
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
 
 async function getRuntimeOpenAIClient() {
   const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
@@ -26,7 +26,7 @@ JSON:
   const response = await (await getRuntimeOpenAIClient()).chat.completions.create({
     model: getOpenAIModelForPurpose("extraction"),
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
+    ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.1),
   });
 
   const content = response.choices[0].message.content;

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import {  resolveOpenAIModel  } from "@/features/shared/lib/openai-models";
+import { openAITemperatureParam, resolveOpenAIModel } from "@/features/shared/lib/openai-models";
 
 const openai = getOpenAIClient();
 
@@ -18,11 +18,12 @@ Complaint: ${complaint}
 
 Response:`;
 
+    const model = resolveOpenAIModel("reasoning");
     const response = await openai.chat.completions.create({
-      model: resolveOpenAIModel("reasoning"),
+      model,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 10,
-      temperature: 0.3,
+      ...openAITemperatureParam(model, 0.3),
     });
 
     const raw = response.choices[0]?.message.content || "";

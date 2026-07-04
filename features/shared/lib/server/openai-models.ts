@@ -1,13 +1,17 @@
 import "server-only";
 
 import {
-  DEFAULT_OPENAI_MODELS,
   resolveOpenAIModel,
   type OpenAIModelEnv,
   type OpenAIModelPurpose,
 } from "@/features/shared/lib/openai-models";
 
-export { DEFAULT_OPENAI_MODELS, resolveOpenAIModel };
+export {
+  DEFAULT_OPENAI_MODELS,
+  openAITemperatureParam,
+  resolveOpenAIModel,
+  supportsOpenAITemperature,
+} from "@/features/shared/lib/openai-models";
 export type { OpenAIModelEnv, OpenAIModelPurpose };
 
 function readOpenAIModelEnv(): OpenAIModelEnv {

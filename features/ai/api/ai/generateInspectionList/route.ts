@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 const openai = getOpenAIClient();
 
@@ -25,14 +25,14 @@ export async function POST(req: Request) {
         content: prompt,
       },
     ],
-    temperature: 0.4, // Optional but recommended
+    ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.4),
   });
 
   const json = response.choices[0].message.content;
 
   try {
     return NextResponse.json(JSON.parse(json!));
-  } catch (_error) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to parse response from OpenAI", raw: json },
       { status: 500 },

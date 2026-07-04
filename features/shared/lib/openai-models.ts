@@ -67,3 +67,24 @@ export function getOpenAIModelForPurpose(
 ): string {
   return resolveOpenAIModel(purpose, env);
 }
+
+export function supportsOpenAITemperature(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  return !(
+    normalized.startsWith("gpt-5") ||
+    normalized.includes("reasoning") ||
+    normalized.startsWith("o1") ||
+    normalized.startsWith("o3") ||
+    normalized.startsWith("o4")
+  );
+}
+
+export function openAITemperatureParam(
+  model: string,
+  temperature: number,
+): { temperature: number } | Record<string, never> {
+  return supportsOpenAITemperature(model) ? { temperature } : {};
+}

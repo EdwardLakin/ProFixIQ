@@ -1,7 +1,7 @@
 // features/ai/api/stats/summarize/route.ts
 import { NextResponse } from "next/server";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 if (!isOpenAIConfigured()) {
   // Don’t throw at import-time in Next; return a clean error on request.
@@ -49,7 +49,7 @@ Output in paragraph form.
 
     const response = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
-      temperature: 0.7,
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.7),
       messages: [{ role: "user", content: prompt }],
     });
 

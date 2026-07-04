@@ -3,25 +3,9 @@ import "server-only";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   getOpenAIModelForPurpose,
+  openAITemperatureParam,
   type OpenAIModelPurpose,
 } from "@/features/shared/lib/server/openai-models";
-
-function supportsTemperature(model: string): boolean {
-  const normalized = model.toLowerCase();
-
-  // GPT-5 / reasoning-style models reject temperature in the Responses API.
-  if (
-    normalized.startsWith("gpt-5") ||
-    normalized.includes("reasoning") ||
-    normalized.startsWith("o1") ||
-    normalized.startsWith("o3") ||
-    normalized.startsWith("o4")
-  ) {
-    return false;
-  }
-
-  return true;
-}
 
 export async function runOpenAIStructuredJson<T>(params: {
   purpose: OpenAIModelPurpose;
@@ -57,7 +41,7 @@ export async function runOpenAIStructuredJson<T>(params: {
 
     const response = await client.responses.create({
       model,
-      ...(supportsTemperature(model) ? { temperature: params.temperature ?? 0.1 } : {}),
+      ...openAITemperatureParam(model, params.temperature ?? 0.1),
       ...(params.maxOutputTokens ? { max_output_tokens: params.maxOutputTokens } : {}),
       text: {
         format: {
