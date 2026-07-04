@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import { GUIDED_ONBOARDING_STEP_KEYS } from "@/features/onboarding-v2/guided/steps";
 import { TILES } from "@/features/shared/config/tiles";
 import { getOwnerSidebarTiles } from "@/features/shared/lib/ownerSidebarNav";
+import { normalizeImportedCustomerRow } from "../app/api/customers/import/route";
+import { mapCustomerCsvRow } from "@/features/vehicles/lib/importCustomers";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -160,6 +162,43 @@ describe("guided onboarding v2 foundation", () => {
     expect(routeSources).toContain("@/features/onboarding-v2/guided/server");
   });
 
+  it("keeps onboarding/import customer payloads shop-scoped without auth user linkage", () => {
+    const normalized = normalizeImportedCustomerRow(
+      { name: "Ada Lovelace", email: "ADA@EXAMPLE.COM", phone: "(555) 111-2222" },
+      "shop-123",
+    );
+    const csvMapped = mapCustomerCsvRow(
+      { customer_name: "Grace Hopper", customer_email: "grace@example.com", customer_phone: "555-333-4444" },
+      "shop-123",
+      "logged-in-owner-user",
+    );
+
+    expect(normalized).toMatchObject({
+      shop_id: "shop-123",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "5551112222",
+    });
+    expect(normalized).not.toHaveProperty("user_id");
+    expect(csvMapped).toMatchObject({
+      shop_id: "shop-123",
+      name: "Grace Hopper",
+      email: "grace@example.com",
+      phone: "555-333-4444",
+    });
+    expect(csvMapped).not.toHaveProperty("user_id");
+  });
+
+  it("allows multiple imported customers in one shop without reusing the logged-in auth user id", () => {
+    const importedCustomers = [
+      normalizeImportedCustomerRow({ name: "Customer One", email: "one@example.com" }, "shop-123"),
+      normalizeImportedCustomerRow({ name: "Customer Two", email: "two@example.com" }, "shop-123"),
+    ];
+
+    expect(importedCustomers).toHaveLength(2);
+    expect(importedCustomers.every((customer) => customer?.shop_id === "shop-123")).toBe(true);
+    expect(importedCustomers.map((customer) => customer && "user_id" in customer)).toEqual([false, false]);
+  });
 
 
   it("keeps starting-from-scratch setup active while skipping import-only steps", () => {

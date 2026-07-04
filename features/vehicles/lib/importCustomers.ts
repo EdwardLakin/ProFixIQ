@@ -19,7 +19,7 @@ function numberOrNull(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function mapCustomerCsvRow(row: CsvRow, shopId: string, userId: string): CustomerInsert {
+export function mapCustomerCsvRow(row: CsvRow, shopId: string, _userId?: string): CustomerInsert {
   const firstName = pick(row, ["first_name", "first", "customer_first_name"]);
   const lastName = pick(row, ["last_name", "last", "customer_last_name"]);
   const businessName = pick(row, ["business_name", "company", "fleet", "customer_company"]);
@@ -28,7 +28,6 @@ export function mapCustomerCsvRow(row: CsvRow, shopId: string, userId: string): 
 
   return {
     shop_id: shopId,
-    user_id: userId,
     first_name: firstName,
     last_name: lastName,
     business_name: businessName,
