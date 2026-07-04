@@ -65,22 +65,7 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    const v = vehicle ?? {};
-    const lines: string[] = [];
-
-    const vehicleLine = `Vehicle: ${[v.year, v.make, v.model]
-      .filter(Boolean)
-      .join(" ")}`.trim();
-    if (vehicleLine !== "Vehicle:") lines.push(vehicleLine);
-
-    if (context.trim()) {
-      lines.push(`Shop notes / complaint: ${context.trim()}`);
-    }
-
-    lines.push(`Question: ${text}`);
-    const payload = lines.join("\n\n");
-
-    sendChat(payload);
+    sendChat(text);
 
     if (inputRef.current) inputRef.current.value = "";
   };
