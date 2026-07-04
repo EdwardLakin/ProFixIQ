@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTabState } from "@/features/shared/hooks/useTabState";
+import type { AssistantAnswer, AssistantAskResponse } from "@/features/agent/assistant/types";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -12,6 +13,11 @@ export type Vehicle = {
 };
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
+
+type AnswerPayload = Record<string, unknown> & {
+  question?: string;
+  messages?: ChatMessage[];
+};
 
 // Browser-safe: convert File → data URL using FileReader
 async function fileToDataUrl(file: File): Promise<string> {
@@ -30,6 +36,80 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
     body: JSON.stringify(data),
     signal,
   });
+}
+
+function compactVehicle(vehicle?: Vehicle): string {
+  return [vehicle?.year, vehicle?.make, vehicle?.model]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function withVehicleContext(question: string, vehicle?: Vehicle, context?: string): string {
+  const trimmed = question.trim();
+  const vehicleText = compactVehicle(vehicle);
+  const contextText = context?.trim();
+  const lines: string[] = [];
+
+  if (vehicleText && !trimmed.toLowerCase().includes("vehicle:")) {
+    lines.push(`Vehicle: ${vehicleText}`);
+  }
+  if (contextText && !trimmed.toLowerCase().includes("shop notes / complaint:")) {
+    lines.push(`Shop notes / complaint: ${contextText}`);
+  }
+  lines.push(`Question: ${trimmed.replace(/^question:\s*/i, "")}`);
+
+  return lines.join("\n\n");
+}
+
+function formatPartSuggestion(part: NonNullable<AssistantAnswer["partSuggestions"]>[number]): string {
+  const label = part.title || part.sku || "Suggested part";
+  const details = [
+    part.sku ? `SKU ${part.sku}` : null,
+    `qty ${part.quantitySuggestion} ${part.unit}`,
+    part.fitmentConfidence.replaceAll("_", " "),
+    part.reviewRecommendation,
+  ].filter(Boolean);
+
+  return details.length ? `${label} — ${details.join("; ")}` : label;
+}
+
+export function formatAssistantAnswer(answer?: AssistantAnswer, fallbackText?: string): string {
+  if (!answer) return (fallbackText ?? "").trim();
+
+  const sections: string[] = [];
+  if (answer.summary?.trim()) sections.push(answer.summary.trim());
+
+  if (answer.bullets.length > 0) {
+    sections.push(answer.bullets.map((item) => `- ${item}`).join("\n"));
+  }
+
+  if (answer.partSuggestions?.length) {
+    sections.push([
+      "### Part suggestions",
+      ...answer.partSuggestions.slice(0, 5).map((part) => `- ${formatPartSuggestion(part)}`),
+    ].join("\n"));
+  }
+
+  if (answer.entities.length > 0) {
+    sections.push([
+      "### Related records",
+      ...answer.entities.map((entity) => `- ${entity.href ? `[${entity.label}](${entity.href})` : entity.label}`),
+    ].join("\n"));
+  }
+
+  if (answer.links.length > 0) {
+    sections.push([
+      "### Links",
+      ...answer.links.map((link) => `- [${link.label}](${link.href})`),
+    ].join("\n"));
+  }
+
+  return sections.join("\n\n").trim();
+}
+
+export function hasConversationTranscript(messages: ChatMessage[]): boolean {
+  return messages.some((message) => message.content.trim() && (message.role === "user" || message.role === "assistant"));
 }
 
 export function useTechAssistant(opts?: AssistantOptions) {
@@ -52,7 +132,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   const ask = useCallback(
-    async (payload: Record<string, unknown> = {}) => {
+    async (payload: AnswerPayload = {}) => {
       if (!canSend) {
         setError("Please provide vehicle info (year, make, model).");
         return;
@@ -71,6 +151,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
           messages,
           image_data: lastImageRef.current ?? null,
           ...payload,
+          question: withVehicleContext(payload.question ?? "", vehicle, context),
         };
 
         const res = await postJSON("/api/assistant/answer", body, ctrl.signal);
@@ -78,12 +159,13 @@ export function useTechAssistant(opts?: AssistantOptions) {
           const txt = await res.text().catch(() => "");
           throw new Error(txt || "Request failed.");
         }
-        const data = (await res.json()) as { text?: string; error?: string };
-        if (data.error) throw new Error(data.error);
+        const data = (await res.json()) as AssistantAskResponse & { text?: string };
+        if (!data.ok) throw new Error(data.error);
 
+        const content = formatAssistantAnswer(data.answer, data.text);
         const assistantMsg: ChatMessage = {
           role: "assistant",
-          content: (data.text ?? "").trim(),
+          content: content || "I could not produce an assistant response for that question.",
         };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
@@ -103,10 +185,11 @@ export function useTechAssistant(opts?: AssistantOptions) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await ask();
+      const nextMessages: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
+      setMessages(nextMessages);
+      await ask({ question: trimmed, messages: nextMessages });
     },
-    [ask, setMessages],
+    [ask, messages, setMessages],
   );
 
   const sendPhoto = useCallback(
@@ -114,13 +197,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!file) return;
       const image_data = await fileToDataUrl(file);
       lastImageRef.current = image_data;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
-      ]);
-      await ask();
+      const userContent = `Uploaded a photo.${note ? `\nNote: ${note}` : ""}`;
+      const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
+      setMessages(nextMessages);
+      await ask({ question: note?.trim() || "Review the uploaded vehicle photo and provide technician guidance.", messages: nextMessages });
     },
-    [ask, setMessages],
+    [ask, messages, setMessages],
   );
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
@@ -139,8 +221,11 @@ export function useTechAssistant(opts?: AssistantOptions) {
     async (workOrderLineId: string) => {
       if (!workOrderLineId) throw new Error("Missing work order line id.");
       if (!canSend) throw new Error("Provide vehicle info before exporting.");
+      if (!hasConversationTranscript(messages)) {
+        throw new Error("Ask the assistant a question before exporting.");
+      }
 
-      const res = await postJSON("/api/assistant/export", { vehicle, messages, workOrderLineId });
+      const res = await postJSON("/api/assistant/export", { vehicle, context, messages, workOrderLineId });
       if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Export failed.");
 
       return (await res.json()) as {
@@ -149,7 +234,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         estimatedLaborTime: number | null;
       };
     },
-    [messages, vehicle, canSend],
+    [messages, vehicle, context, canSend],
   );
 
   return {

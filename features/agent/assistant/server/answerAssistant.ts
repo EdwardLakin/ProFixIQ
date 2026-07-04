@@ -1370,6 +1370,44 @@ export async function answerAssistant({
     });
   }
 
+  if (questionIncludes(q, ["vehicle:", "dtc", "code", "p0", "p1", "b0", "c0", "u0", "no start", "misfire", "heater circuit"])) {
+    const codeMatch = question.match(/\b([PBCU][0-9A-F]{4})\b/i);
+    const code = codeMatch?.[1]?.toUpperCase();
+    const vehicleMatch = question.match(/vehicle:\s*([^\n]+)/i);
+    const vehicleLabel = vehicleMatch?.[1]?.trim();
+    const subject = [vehicleLabel, code].filter(Boolean).join(" • ") || "this vehicle concern";
+
+    return buildAnswer({
+      intent: "unknown",
+      summary: `Technician triage for ${subject}: start with a code-specific diagnostic path, verify the complaint, and prove power/ground/signal before replacing parts.`,
+      bullets: dedupeStrings([
+        code === "P0141"
+          ? "P0141 is commonly an O2 sensor heater circuit fault for the downstream sensor (Bank 1 Sensor 2 on many inline engines); confirm exact bank/sensor from service information before ordering."
+          : code
+            ? `Pull freeze-frame data for ${code}, note coolant temp, run time, voltage, and whether the code resets immediately or after a drive cycle.`
+            : "Pull all DTCs and freeze-frame data before clearing anything.",
+        "Check battery voltage and charging health; low system voltage can create misleading circuit faults.",
+        "Inspect connector lock, water intrusion, rubbed harness sections, exhaust heat damage, and prior repair splices near the component.",
+        "Load-test fused power and ground/control circuits with the component connected when possible; avoid condemning the part from resistance checks alone.",
+        "If circuit tests pass, confirm component operation with scan data or a bidirectional/output test, then document the failed test result for advisor approval.",
+      ]),
+      links: [],
+      entities: vehicleLabel ? [{ type: "vehicle", label: vehicleLabel }] : [],
+      actions: [
+        {
+          type: "planner",
+          label: "Build diagnostic plan",
+          goal: `Build a technician diagnostic plan for ${subject}`,
+          context: {
+            workOrderId: resolvedContext.workOrderId,
+            vehicleId: resolvedContext.vehicleId,
+          },
+        },
+      ],
+      resolvedContext,
+    });
+  }
+
   return buildAnswer({
     intent: "unknown",
     summary:

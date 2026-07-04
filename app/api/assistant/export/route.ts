@@ -36,8 +36,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { vehicle, messages, workOrderLineId } = (await req.json()) as {
+    const { vehicle, context, messages, workOrderLineId } = (await req.json()) as {
       vehicle?: Vehicle;
+      context?: string;
       messages?: ChatMessage[];
       workOrderLineId?: string;
     };
@@ -49,8 +50,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing work order line id." }, { status: 400 });
     }
 
+    const transcript = Array.isArray(messages)
+      ? messages.filter(
+          (message) =>
+            (message.role === "user" || message.role === "assistant") &&
+            typeof message.content === "string" &&
+            message.content.trim().length > 0,
+        )
+      : [];
+
+    if (transcript.length === 0) {
+      return NextResponse.json(
+        { error: "Ask the assistant a question before exporting." },
+        { status: 400 },
+      );
+    }
+
     const prompt = [
       `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      context?.trim() ? `Shop notes / complaint: ${context.trim()}` : null,
       "You are preparing a concise work-order entry for a shop management system.",
       "From the conversation below, produce:",
       "- Cause: one or two sentences (this is the diagnosis / story of what you found).",
@@ -58,7 +76,7 @@ export async function POST(req: Request) {
       "- EstimatedLaborTime: a decimal number in hours when appropriate, else null.",
       "",
       "Conversation (latest last):",
-      ...(messages ?? []).map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+      ...transcript.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
       "",
       'Return JSON with these exact keys: { "cause": string, "correction": string, "estimatedLaborTime": number | null }',
     ].join("\n");
