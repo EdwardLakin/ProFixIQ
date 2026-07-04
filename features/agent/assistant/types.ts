@@ -2,6 +2,18 @@ import type { CanonicalPartSuggestion } from "@/features/parts/types/partSuggest
 
 // features/agent/assistant/types.ts
 
+export type AssistantImageAttachment = {
+  id: string;
+  url?: string | null;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  fileName?: string | null;
+  contentType?: string | null;
+  note?: string | null;
+  workOrderId?: string | null;
+  workOrderLineId?: string | null;
+};
+
 export type AssistantEntityType =
   | "work_order"
   | "vehicle"
@@ -115,6 +127,7 @@ export type AssistantAskRequest = {
   session?: AssistantAskSession;
   messages?: AssistantConversationMessage[];
   vehicle?: AssistantVehicleContext;
+  imageAttachments?: AssistantImageAttachment[];
 };
 
 export type AssistantAskResponse =

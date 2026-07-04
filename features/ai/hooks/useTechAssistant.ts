@@ -2,9 +2,9 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTabState } from "@/features/shared/hooks/useTabState";
-import type { AssistantAnswer, AssistantAskResponse } from "@/features/agent/assistant/types";
+import type { AssistantAnswer, AssistantAskResponse, AssistantImageAttachment } from "@/features/agent/assistant/types";
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatMessage = { role: "user" | "assistant"; content: string; attachments?: AssistantImageAttachment[] };
 
 export type Vehicle = {
   year?: string | null;
@@ -12,22 +12,12 @@ export type Vehicle = {
   model?: string | null;
 };
 
-type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
+type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string; workOrderLineId?: string; workOrderId?: string };
 
 type AnswerPayload = Record<string, unknown> & {
   question?: string;
   messages?: ChatMessage[];
 };
-
-// Browser-safe: convert File → data URL using FileReader
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onerror = () => reject(fr.error);
-    fr.onload = () => resolve(String(fr.result));
-    fr.readAsDataURL(file);
-  });
-}
 
 async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
   return fetch(url, {
@@ -127,10 +117,11 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
   // Ephemeral UI state
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [partial, setPartial] = useState<string>("");
   const [error, setError]     = useState<string | null>(null);
 
-  const lastImageRef = useRef<string | null>(null);
+  const lastImageRef = useRef<AssistantImageAttachment | null>(null);
   const abortRef     = useRef<AbortController | null>(null);
 
   const canSend = useMemo(
@@ -156,7 +147,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
           vehicle,
           context,
           messages,
-          image_data: lastImageRef.current ?? null,
+          imageAttachments: lastImageRef.current ? [lastImageRef.current] : [],
           ...payload,
           question: withVehicleContext(payload.question ?? "", vehicle, context),
         };
@@ -202,14 +193,36 @@ export function useTechAssistant(opts?: AssistantOptions) {
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      const image_data = await fileToDataUrl(file);
-      lastImageRef.current = image_data;
-      const userContent = `Uploaded a photo.${note ? `\nNote: ${note}` : ""}`;
-      const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
-      setMessages(nextMessages);
-      await ask({ question: note?.trim() || "Review the uploaded vehicle photo and provide technician guidance.", messages: nextMessages });
+      if (!opts?.workOrderLineId && !opts?.workOrderId) {
+        setError("Open the assistant from a work order line before attaching evidence photos.");
+        return;
+      }
+      setUploading(true);
+      setError(null);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        if (note?.trim()) form.append("note", note.trim());
+        if (opts?.workOrderLineId) form.append("workOrderLineId", opts.workOrderLineId);
+        if (opts?.workOrderId) form.append("workOrderId", opts.workOrderId);
+
+        const res = await fetch("/api/assistant/attachments", { method: "POST", body: form });
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Photo upload failed.");
+        const data = (await res.json()) as { ok?: boolean; error?: string; attachment?: AssistantImageAttachment };
+        if (!data.ok || !data.attachment) throw new Error(data.error || "Photo upload failed.");
+
+        lastImageRef.current = data.attachment;
+        const userContent = `Uploaded photo: ${data.attachment.fileName ?? file.name}.${note ? `\nNote: ${note}` : ""}`;
+        const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userContent, attachments: [data.attachment] }];
+        setMessages(nextMessages);
+        await ask({ question: note?.trim() || "Review the uploaded vehicle photo and provide technician guidance.", messages: nextMessages });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Photo upload failed.");
+      } finally {
+        setUploading(false);
+      }
     },
-    [ask, messages, setMessages],
+    [ask, messages, opts?.workOrderId, opts?.workOrderLineId, setMessages],
   );
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
@@ -253,6 +266,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setContext,
     setMessages,
     sending,
+    uploading,
     error,
     sendChat,
     sendPhoto,

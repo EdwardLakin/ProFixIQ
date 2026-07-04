@@ -376,6 +376,22 @@ function buildDiagnosticMessages(args: {
       message.content.trim() === args.question.trim(),
   );
 
+  const images = (args.request.imageAttachments ?? [])
+    .filter((image) => typeof image.url === "string" && image.url.trim().length > 0)
+    .slice(-3);
+  const latestUserContent: ChatCompletionMessageParam = images.length > 0
+    ? {
+        role: "user",
+        content: [
+          { type: "text", text: args.question },
+          ...images.map((image) => ({
+            type: "image_url" as const,
+            image_url: { url: image.url as string, detail: "low" as const },
+          })),
+        ],
+      }
+    : { role: "user", content: args.question };
+
   return [
     {
       role: "system",
@@ -402,15 +418,13 @@ function buildDiagnosticMessages(args: {
         content: message.content,
       }),
     ),
-    ...(hasCurrentMessage
-      ? []
-      : ([
-          { role: "user" as const, content: args.question },
-        ] satisfies ChatCompletionMessageParam[])),
+    ...(hasCurrentMessage ? [] : [latestUserContent]),
     {
       role: "system",
       content:
-        "Current request: Continue diagnosing from the latest technician finding. Return only the technician-facing response.",
+        images.length > 0
+          ? "Current request: Continue diagnosing from the latest technician finding. Inspect the attached image(s) as visual diagnostic evidence, but mention uncertainty when the image is not conclusive. Return only the technician-facing response."
+          : "Current request: Continue diagnosing from the latest technician finding. Return only the technician-facing response.",
     },
   ];
 }

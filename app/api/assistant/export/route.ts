@@ -16,7 +16,7 @@ type Vehicle = {
   model?: string | null;
 };
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatMessage = { role: "user" | "assistant"; content: string; attachments?: Array<{ id?: string; fileName?: string | null; note?: string | null }> };
 
 function normalizeMarkdown(s: string): string {
   let out = (s ?? "").trim();
@@ -76,7 +76,13 @@ export async function POST(req: Request) {
       "- EstimatedLaborTime: a decimal number in hours when appropriate, else null.",
       "",
       "Conversation (latest last):",
-      ...transcript.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+      ...transcript.map((m) => {
+        const evidence = (m.attachments ?? [])
+          .map((attachment) => attachment.fileName || attachment.id)
+          .filter(Boolean)
+          .join(", ");
+        return `${m.role.toUpperCase()}: ${m.content}${evidence ? `\nEvidence images already saved to work_order_media: ${evidence}` : ""}`;
+      }),
       "",
       'Return JSON with these exact keys: { "cause": string, "correction": string, "estimatedLaborTime": number | null }',
     ].join("\n");
@@ -121,6 +127,7 @@ export async function POST(req: Request) {
 
     const updates: Database["public"]["Tables"]["work_order_lines"]["Update"] = {
       cause,
+      correction,
       labor_time: estimatedLaborTime,
     };
 
