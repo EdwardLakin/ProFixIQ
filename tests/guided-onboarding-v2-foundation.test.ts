@@ -179,7 +179,7 @@ describe("guided onboarding v2 foundation", () => {
       email: "ada@example.com",
       phone: "5551112222",
     });
-    expect(normalized).not.toHaveProperty("user_id");
+    expect(normalized).toHaveProperty("user_id", null);
     expect(csvMapped).toMatchObject({
       shop_id: "shop-123",
       name: "Grace Hopper",
@@ -197,9 +197,28 @@ describe("guided onboarding v2 foundation", () => {
 
     expect(importedCustomers).toHaveLength(2);
     expect(importedCustomers.every((customer) => customer?.shop_id === "shop-123")).toBe(true);
-    expect(importedCustomers.map((customer) => customer && "user_id" in customer)).toEqual([false, false]);
+    expect(importedCustomers.map((customer) => customer?.user_id)).toEqual([null, null]);
   });
 
+  it("keeps the active customer CSV import route from linking rows to the logged-in auth user", () => {
+    const routeSource = read("app/api/customers/import/route.ts");
+    const componentSource = read("features/customers/components/CustomerCsvImportCard.tsx");
+
+    expect(componentSource).toContain('fetch("/api/customers/import"');
+    expect(routeSource).toContain("user_id: null");
+    expect(routeSource).not.toContain("user_id: user.id");
+    expect(routeSource).not.toContain("user_id: profile.id");
+  });
+
+  it("dedupes customer CSV imports before inserting to avoid re-import conflict spam", () => {
+    const routeSource = read("app/api/customers/import/route.ts");
+
+    expect(routeSource).toContain("loadExistingCustomerIdentities");
+    expect(routeSource).toContain("seenImportIdentities");
+    expect(routeSource).toContain("customersToCreate");
+    expect(routeSource).toContain('.from("customers")');
+    expect(routeSource).toContain(".insert(customersToCreate)");
+  });
 
   it("keeps starting-from-scratch setup active while skipping import-only steps", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");

@@ -43,6 +43,7 @@ type ImportCounts = {
   updated: number;
   skipped: number;
   failed: number;
+  duplicates?: number;
 };
 
 type ImportResponse = {
