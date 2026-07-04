@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { GUIDED_ONBOARDING_STEP_KEYS } from "@/features/onboarding-v2/guided/steps";
 import { TILES } from "@/features/shared/config/tiles";
 import { getOwnerSidebarTiles } from "@/features/shared/lib/ownerSidebarNav";
-import { normalizeImportedCustomerRow } from "../app/api/customers/import/route";
+import { normalizeImportedCustomerRow } from "../features/customers/import/normalizeImportedCustomerRow";
 import { mapCustomerCsvRow } from "@/features/vehicles/lib/importCustomers";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
