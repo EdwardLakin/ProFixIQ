@@ -7,8 +7,9 @@ import { answerAssistant } from "@/features/agent/assistant/server/answerAssista
 import type {
   AssistantAskContext,
   AssistantAskSession,
+  AssistantConversationMessage,
+  AssistantVehicleContext,
 } from "@/features/agent/assistant/types";
-
 
 async function requireUser(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
@@ -57,17 +58,22 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as {
     query?: unknown;
+    question?: unknown;
     context?: AssistantAskContext;
     session?: AssistantAskSession;
+    messages?: AssistantConversationMessage[];
+    vehicle?: AssistantVehicleContext;
   };
 
-  const query = typeof body.query === "string" ? body.query.trim() : "";
+  const query =
+    typeof body.query === "string"
+      ? body.query.trim()
+      : typeof body.question === "string"
+        ? body.question.trim()
+        : "";
 
   if (!query) {
-    return NextResponse.json(
-      { error: "Query is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Query is required" }, { status: 400 });
   }
 
   try {
@@ -79,6 +85,8 @@ export async function POST(req: Request) {
         question: query,
         context: body.context,
         session: body.session,
+        messages: Array.isArray(body.messages) ? body.messages : undefined,
+        vehicle: body.vehicle,
       },
     });
 
@@ -134,7 +142,8 @@ export async function POST(req: Request) {
                   action.context?.lane === "fleet_follow_up" ||
                   action.context?.lane === "smart_match_readiness" ||
                   action.context?.lane === "menu_item_efficiency_review" ||
-                  action.context?.lane === "inspection_template_efficiency_review" ||
+                  action.context?.lane ===
+                    "inspection_template_efficiency_review" ||
                   action.context?.lane === "menu_item_draft" ||
                   action.context?.lane === "inspection_template_draft" ||
                   action.context?.lane === "service_bundle_draft"
@@ -153,7 +162,11 @@ export async function POST(req: Request) {
         entityId: entity.id,
       })),
       relatedRecords: [
-        ...answer.links.map((link) => ({ label: link.label, href: link.href, type: "link" })),
+        ...answer.links.map((link) => ({
+          label: link.label,
+          href: link.href,
+          type: "link",
+        })),
         ...answer.entities.map((entity) => ({
           label: entity.label,
           href: entity.href,
@@ -165,8 +178,7 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Assistant failed",
+        error: error instanceof Error ? error.message : "Assistant failed",
       },
       { status: 500 },
     );
