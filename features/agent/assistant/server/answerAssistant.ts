@@ -14,11 +14,18 @@ import {
   evaluateSmartMatchReadiness,
 } from "../../server/opsRecommendations";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
+import {
+  getOpenAIClient,
+  isOpenAIConfigured,
+} from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import type {
   AssistantAction,
   AssistantAnswer,
   AssistantAskRequest,
+  AssistantConversationMessage,
   AssistantEntity,
   AssistantLink,
   AssistantResolvedContext,
@@ -165,7 +172,10 @@ function buildAnswer(params: {
   };
 }
 
-function dedupeStrings(values: Array<string | null | undefined>, limit = 6): string[] {
+function dedupeStrings(
+  values: Array<string | null | undefined>,
+  limit = 6,
+): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
 
@@ -213,8 +223,15 @@ function extractDtc(value: string): string | null {
   return value.match(/\b([PBCU][0-9A-F]{4})\b/i)?.[1]?.toUpperCase() ?? null;
 }
 
-function getVehicleLabel(request: AssistantAskRequest, question: string): string | null {
-  const fromRequest = [request.vehicle?.year, request.vehicle?.make, request.vehicle?.model]
+function getVehicleLabel(
+  request: AssistantAskRequest,
+  question: string,
+): string | null {
+  const fromRequest = [
+    request.vehicle?.year,
+    request.vehicle?.make,
+    request.vehicle?.model,
+  ]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(" ");
@@ -231,41 +248,249 @@ function recentConversationText(request: AssistantAskRequest): string {
     .join("\n");
 }
 
-function getActiveDiagnosticTopic(request: AssistantAskRequest, question: string): { code: string | null; mentionCount: number } {
+function getActiveDiagnosticTopic(
+  request: AssistantAskRequest,
+  question: string,
+): { code: string | null; mentionCount: number } {
   const messages = request.messages ?? [];
-  const code = extractDtc(question) ?? extractDtc(recentConversationText(request));
+  const code =
+    extractDtc(question) ?? extractDtc(recentConversationText(request));
   const mentionCount = code
-    ? messages.filter((message) => message.content.toUpperCase().includes(code)).length
+    ? messages.filter((message) => message.content.toUpperCase().includes(code))
+        .length
     : 0;
   return { code, mentionCount };
 }
 
-function isDiagnosticQuestion(question: string, request: AssistantAskRequest): boolean {
+function isDiagnosticQuestion(
+  question: string,
+  request: AssistantAskRequest,
+): boolean {
   const q = question.toLowerCase();
   return Boolean(
     extractDtc(question) ||
-      getActiveDiagnosticTopic(request, question).code ||
-      questionIncludes(q, [
-        "vehicle:",
-        "dtc",
-        "code",
-        "p0",
-        "p1",
-        "b0",
-        "c0",
-        "u0",
-        "no start",
-        "misfire",
-        "heater circuit",
-        "diagnosis",
-        "diagnostic",
-        "pinout",
-        "expected voltage",
-      ]),
+    getActiveDiagnosticTopic(request, question).code ||
+    questionIncludes(q, [
+      "vehicle:",
+      "dtc",
+      "code",
+      "p0",
+      "p1",
+      "b0",
+      "c0",
+      "u0",
+      "no start",
+      "misfire",
+      "heater circuit",
+      "diagnosis",
+      "diagnostic",
+      "pinout",
+      "expected voltage",
+    ]),
   );
 }
 
-function resolveContext(request: AssistantAskRequest): AssistantResolvedContext {
+function cleanConversationMessages(
+  request: AssistantAskRequest,
+): AssistantConversationMessage[] {
+  const messages = Array.isArray(request.messages) ? request.messages : [];
+
+  return messages
+    .filter((message): message is AssistantConversationMessage =>
+      Boolean(
+        message &&
+        (message.role === "user" || message.role === "assistant") &&
+        typeof message.content === "string" &&
+        message.content.trim(),
+      ),
+    )
+    .slice(-20)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim().slice(0, 4000),
+    }));
+}
+
+function requestContextSummary(
+  request: AssistantAskRequest,
+  resolvedContext: AssistantResolvedContext,
+): string {
+  const vehicleLabel =
+    [request.vehicle?.year, request.vehicle?.make, request.vehicle?.model]
+      .map((part) => part?.trim())
+      .filter(Boolean)
+      .join(" ") || "Not provided";
+
+  return [
+    `Vehicle: ${vehicleLabel}`,
+    `Work order id: ${resolvedContext.workOrderId ?? "Not provided"}`,
+    `Customer id: ${resolvedContext.customerId ?? "Not provided"}`,
+    `Vehicle id: ${resolvedContext.vehicleId ?? "Not provided"}`,
+    `Fleet unit id: ${resolvedContext.fleetUnitId ?? "Not provided"}`,
+    `Page: ${request.context?.pageTitle ?? request.context?.pageType ?? "Not provided"}`,
+    `Previous intent: ${request.session?.lastIntent ?? "Not provided"}`,
+  ].join("\n");
+}
+
+function buildDiagnosticState(
+  request: AssistantAskRequest,
+  question: string,
+): string {
+  const transcript = recentConversationText(request);
+  const { code, mentionCount } = getActiveDiagnosticTopic(request, question);
+
+  return [
+    `Active DTC/topic: ${code ?? "Infer from conversation and latest technician finding"}`,
+    `DTC mention count in transcript: ${mentionCount}`,
+    `Latest technician finding/request: ${question}`,
+    transcript
+      ? `Recent transcript:\n${transcript}`
+      : "Recent transcript: Not provided",
+  ].join("\n");
+}
+
+function wantsKnowledgeMode(question: string): boolean {
+  const q = question.toLowerCase();
+  return questionIncludes(q, [
+    "write an article",
+    "article",
+    "explain generally",
+    "summary",
+    "summarize",
+    "what does this code mean",
+    "training",
+    "knowledge base",
+    "overview",
+  ]);
+}
+
+function buildDiagnosticMessages(args: {
+  question: string;
+  request: AssistantAskRequest;
+  resolvedContext: AssistantResolvedContext;
+}): ChatCompletionMessageParam[] {
+  const conversation = cleanConversationMessages(args.request);
+  const hasCurrentMessage = conversation.some(
+    (message) =>
+      message.role === "user" &&
+      message.content.trim() === args.question.trim(),
+  );
+
+  return [
+    {
+      role: "system",
+      content: [
+        "You are ProFixIQ Technician AI for professional automotive, heavy-duty, and fleet repair shops.",
+        "Default mode is Diagnostic Conversation Mode: persistent, conversational, context-aware, and minimal repetition.",
+        "NEVER restart the diagnosis.",
+        "NEVER repeat previous diagnostic steps unless the technician asks for a recap or knowledge article.",
+        "Continue from the latest technician finding.",
+        "Treat every new user message as an update to the active diagnostic session.",
+        "Ask for the next measurement only if required.",
+        "Build a natural decision tree from the proven-good/proven-bad evidence.",
+        "Do not tell the technician to replace parts until circuit evidence supports it.",
+        "If the technician gives a measurement, interpret whether it is expected, then give the next branch.",
+      ].join("\n"),
+    },
+    {
+      role: "system",
+      content: `Current vehicle / work order context:\n${requestContextSummary(args.request, args.resolvedContext)}\n\nCurrent diagnostic state:\n${buildDiagnosticState(args.request, args.question)}`,
+    },
+    ...conversation.map(
+      (message): ChatCompletionMessageParam => ({
+        role: message.role,
+        content: message.content,
+      }),
+    ),
+    ...(hasCurrentMessage
+      ? []
+      : ([
+          { role: "user" as const, content: args.question },
+        ] satisfies ChatCompletionMessageParam[])),
+    {
+      role: "system",
+      content:
+        "Current request: Continue diagnosing from the latest technician finding. Return only the technician-facing response.",
+    },
+  ];
+}
+
+function fallbackDiagnosticConversationAnswer(args: {
+  question: string;
+  request: AssistantAskRequest;
+  resolvedContext: AssistantResolvedContext;
+}): AssistantAnswer {
+  const { code } = getActiveDiagnosticTopic(args.request, args.question);
+  const q = args.question.toLowerCase();
+  const vehicleLabel = getVehicleLabel(args.request, args.question);
+  const subject =
+    [vehicleLabel, code].filter(Boolean).join(" • ") ||
+    "this diagnostic session";
+
+  if (
+    code === "P0141" &&
+    /5\s*v|5\s*volt|five\s*volt/.test(q) &&
+    q.includes("ground")
+  ) {
+    return buildAnswer({
+      intent: "unknown",
+      summary:
+        "Do not restart at the definition of P0141. Your latest measurement changes the branch: about 5 V on the heater feed with a good ground points away from the sensor and toward the heater power supply/control path.",
+      bullets: [
+        "The O2 heater B+ feed is typically battery voltage KOEO, not about 5 V, unless service information shows this circuit is PCM duty-cycle/PWM controlled at that test point.",
+        "Check the O2 heater fuse and verify battery voltage on both sides of the fuse under load.",
+        "Backprobe the heater feed at the sensor connector and then upstream toward the fuse/relay/splice to find the voltage drop or open/high-resistance section.",
+        "Verify whether the PCM controls the heater on the ground side or power side before condemning the PCM.",
+        "Do not replace the sensor yet; your measurement indicates a supply/control circuit problem that must be proven first.",
+      ],
+      actions: [],
+      resolvedContext: args.resolvedContext,
+    });
+  }
+
+  return buildAnswer({
+    intent: "unknown",
+    summary: `Continue ${subject} from the latest finding instead of restarting the diagnostic.`,
+    bullets: [
+      "Separate what is already proven good from what is still unproven.",
+      "Use the latest measurement to choose the next branch: verify the expected value at that exact pin, then test upstream/downstream under load.",
+      "Tell me the measured voltage/current/resistance at the next connector or fuse and I will continue the decision tree.",
+    ],
+    actions: [],
+    resolvedContext: args.resolvedContext,
+  });
+}
+
+async function answerDiagnosticConversation(args: {
+  question: string;
+  request: AssistantAskRequest;
+  resolvedContext: AssistantResolvedContext;
+}): Promise<AssistantAnswer> {
+  if (!isOpenAIConfigured()) {
+    return fallbackDiagnosticConversationAnswer(args);
+  }
+
+  const completion = await getOpenAIClient().chat.completions.create({
+    model: getOpenAIModelForPurpose("reasoning"),
+    messages: buildDiagnosticMessages(args),
+    temperature: 0.2,
+  });
+
+  const content = completion.choices[0]?.message?.content?.trim();
+  if (!content) return fallbackDiagnosticConversationAnswer(args);
+
+  return buildAnswer({
+    intent: "unknown",
+    summary: content,
+    bullets: [],
+    actions: [],
+    resolvedContext: args.resolvedContext,
+  });
+}
+
+function resolveContext(
+  request: AssistantAskRequest,
+): AssistantResolvedContext {
   return {
     workOrderId: request.context?.workOrderId ?? request.session?.workOrderId,
     customerId: request.context?.customerId ?? request.session?.customerId,
@@ -288,10 +513,12 @@ function withResolvedContext(
 
   for (const link of links) {
     if (!next.workOrderId) {
-      next.workOrderId = extractIdFromHref(link.href, "work-orders") ?? next.workOrderId;
+      next.workOrderId =
+        extractIdFromHref(link.href, "work-orders") ?? next.workOrderId;
     }
     if (!next.bookingId) {
-      next.bookingId = extractIdFromHref(link.href, "bookings") ?? next.bookingId;
+      next.bookingId =
+        extractIdFromHref(link.href, "bookings") ?? next.bookingId;
     }
   }
 
@@ -387,9 +614,18 @@ async function answerOpsIntelligenceDomain(args: {
   ]);
 
   const links: AssistantLink[] = [
-    { label: "Review in Planner: Smart Match readiness", href: "/agent/planner?planner=ops&lane=smart_match_readiness&allowCreate=0&goal=Review%20Smart%20Match%20readiness%20with%20evidence" },
-    { label: "Review in Planner: Menu item efficiency", href: "/agent/planner?planner=ops&lane=menu_item_efficiency_review&allowCreate=0&goal=Review%20repeated%20manual%20work%20for%20menu%20item%20drafts" },
-    { label: "Review in Planner: Inspection template efficiency", href: "/agent/planner?planner=ops&lane=inspection_template_efficiency_review&allowCreate=0&goal=Review%20repeated%20inspection%20patterns%20for%20template%20drafts" },
+    {
+      label: "Review in Planner: Smart Match readiness",
+      href: "/agent/planner?planner=ops&lane=smart_match_readiness&allowCreate=0&goal=Review%20Smart%20Match%20readiness%20with%20evidence",
+    },
+    {
+      label: "Review in Planner: Menu item efficiency",
+      href: "/agent/planner?planner=ops&lane=menu_item_efficiency_review&allowCreate=0&goal=Review%20repeated%20manual%20work%20for%20menu%20item%20drafts",
+    },
+    {
+      label: "Review in Planner: Inspection template efficiency",
+      href: "/agent/planner?planner=ops&lane=inspection_template_efficiency_review&allowCreate=0&goal=Review%20repeated%20inspection%20patterns%20for%20template%20drafts",
+    },
   ];
 
   return buildAnswer({
@@ -414,19 +650,31 @@ async function answerOpsIntelligenceDomain(args: {
         type: "planner",
         label: "Review Smart Match readiness proposal",
         goal: "Build Smart Match readiness recommendation with evidence and review warnings",
-        context: { planner: "ops", lane: "smart_match_readiness", allowCreate: false },
+        context: {
+          planner: "ops",
+          lane: "smart_match_readiness",
+          allowCreate: false,
+        },
       },
       {
         type: "planner",
         label: "Review menu item efficiency proposals",
         goal: "Build review-first menu item efficiency recommendations from repeated manual work",
-        context: { planner: "ops", lane: "menu_item_efficiency_review", allowCreate: false },
+        context: {
+          planner: "ops",
+          lane: "menu_item_efficiency_review",
+          allowCreate: false,
+        },
       },
       {
         type: "planner",
         label: "Review inspection template efficiency proposals",
         goal: "Build review-first inspection template recommendations from repeated inspection behavior",
-        context: { planner: "ops", lane: "inspection_template_efficiency_review", allowCreate: false },
+        context: {
+          planner: "ops",
+          lane: "inspection_template_efficiency_review",
+          allowCreate: false,
+        },
       },
     ],
     resolvedContext: args.resolvedContext,
@@ -442,47 +690,67 @@ async function answerPartsDomain(args: {
 
   const supabase = getServerSupabase();
 
-  const [stockRes, poRes, requestRes, requestItemsRes, woRes, partUsageRes] = await Promise.all([
-    supabase
-      .from("part_stock")
-      .select("part_id, qty_on_hand, reorder_point, reorder_qty, parts(name, sku, low_stock_threshold)")
-      .eq("parts.shop_id", args.shopId)
-      .limit(300),
-    supabase
-      .from("purchase_orders")
-      .select("id, status, created_at, expected_at, total")
-      .eq("shop_id", args.shopId)
-      .in("status", ["draft", "sent", "partially_received", "receiving"])
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabase
-      .from("part_requests")
-      .select("id, status, work_order_id, created_at")
-      .eq("shop_id", args.shopId)
-      .in("status", ["requested", "quoted", "approved", "ordered", "partially_received"])
-      .order("created_at", { ascending: false })
-      .limit(30),
-    supabase
-      .from("part_request_items")
-      .select("id, request_id, part_id, po_id, qty_approved, qty_received, work_order_id, work_order_line_id, description")
-      .eq("shop_id", args.shopId)
-      .order("updated_at", { ascending: false })
-      .limit(80),
-    supabase
-      .from("work_orders")
-      .select("id, custom_id, status, vehicle_id, customer_id")
-      .eq("shop_id", args.shopId)
-      .order("created_at", { ascending: false })
-      .limit(180),
-    supabase
-      .from("work_order_parts")
-      .select("id, work_order_id, work_order_line_id, part_id, part_number, part_name, quantity")
-      .eq("shop_id", args.shopId)
-      .order("created_at", { ascending: false })
-      .limit(280),
-  ]);
+  const [stockRes, poRes, requestRes, requestItemsRes, woRes, partUsageRes] =
+    await Promise.all([
+      supabase
+        .from("part_stock")
+        .select(
+          "part_id, qty_on_hand, reorder_point, reorder_qty, parts(name, sku, low_stock_threshold)",
+        )
+        .eq("parts.shop_id", args.shopId)
+        .limit(300),
+      supabase
+        .from("purchase_orders")
+        .select("id, status, created_at, expected_at, total")
+        .eq("shop_id", args.shopId)
+        .in("status", ["draft", "sent", "partially_received", "receiving"])
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("part_requests")
+        .select("id, status, work_order_id, created_at")
+        .eq("shop_id", args.shopId)
+        .in("status", [
+          "requested",
+          "quoted",
+          "approved",
+          "ordered",
+          "partially_received",
+        ])
+        .order("created_at", { ascending: false })
+        .limit(30),
+      supabase
+        .from("part_request_items")
+        .select(
+          "id, request_id, part_id, po_id, qty_approved, qty_received, work_order_id, work_order_line_id, description",
+        )
+        .eq("shop_id", args.shopId)
+        .order("updated_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("work_orders")
+        .select("id, custom_id, status, vehicle_id, customer_id")
+        .eq("shop_id", args.shopId)
+        .order("created_at", { ascending: false })
+        .limit(180),
+      supabase
+        .from("work_order_parts")
+        .select(
+          "id, work_order_id, work_order_line_id, part_id, part_number, part_name, quantity",
+        )
+        .eq("shop_id", args.shopId)
+        .order("created_at", { ascending: false })
+        .limit(280),
+    ]);
 
-  if (stockRes.error || poRes.error || requestRes.error || requestItemsRes.error || woRes.error || partUsageRes.error) {
+  if (
+    stockRes.error ||
+    poRes.error ||
+    requestRes.error ||
+    requestItemsRes.error ||
+    woRes.error ||
+    partUsageRes.error
+  ) {
     throw new Error(
       stockRes.error?.message ??
         poRes.error?.message ??
@@ -499,15 +767,21 @@ async function answerPartsDomain(args: {
     qty_on_hand: number;
     reorder_point: number | null;
     reorder_qty: number | null;
-    parts?: { name?: string | null; sku?: string | null; low_stock_threshold?: number | null } | null;
+    parts?: {
+      name?: string | null;
+      sku?: string | null;
+      low_stock_threshold?: number | null;
+    } | null;
   }>;
 
   const lowStock = stockRows
     .map((row) => {
-      const threshold = row.reorder_point ?? row.parts?.low_stock_threshold ?? null;
+      const threshold =
+        row.reorder_point ?? row.parts?.low_stock_threshold ?? null;
       if (threshold == null) return null;
       if (row.qty_on_hand > threshold) return null;
-      const suggested = row.reorder_qty ?? Math.max(1, threshold - row.qty_on_hand + 1);
+      const suggested =
+        row.reorder_qty ?? Math.max(1, threshold - row.qty_on_hand + 1);
       return { ...row, threshold, suggested };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -520,7 +794,9 @@ async function answerPartsDomain(args: {
     vehicle_id: string | null;
     customer_id: string | null;
   }>;
-  const workOrderById = new Map(workOrders.map((row) => [row.id, row] as const));
+  const workOrderById = new Map(
+    workOrders.map((row) => [row.id, row] as const),
+  );
 
   const partsUsed = (partUsageRes.data ?? []) as Array<{
     part_id: string | null;
@@ -561,7 +837,9 @@ async function answerPartsDomain(args: {
     ? lowStock.filter((row) =>
         [row.parts?.name, row.parts?.sku, row.part_id]
           .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(searchPartToken)),
+          .some((value) =>
+            String(value).toLowerCase().includes(searchPartToken),
+          ),
       )
     : [];
 
@@ -569,7 +847,9 @@ async function answerPartsDomain(args: {
     ? partsUsed.filter((row) =>
         [row.part_number, row.part_name, row.part_id]
           .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(searchPartToken)),
+          .some((value) =>
+            String(value).toLowerCase().includes(searchPartToken),
+          ),
       )
     : [];
 
@@ -586,19 +866,41 @@ async function answerPartsDomain(args: {
         shortage,
       )}`,
     );
-    entities.push({ type: "part", id: row.part_id, label: name, href: `/parts/inventory?part=${row.part_id}` });
+    entities.push({
+      type: "part",
+      id: row.part_id,
+      label: name,
+      href: `/parts/inventory?part=${row.part_id}`,
+    });
   }
 
-  const poRows = (poRes.data ?? []) as Array<{ id: string; status: string; total: number | null }>;
+  const poRows = (poRes.data ?? []) as Array<{
+    id: string;
+    status: string;
+    total: number | null;
+  }>;
   for (const po of poRows.slice(0, 3)) {
-    links.push({ label: `PO ${po.id.slice(0, 8)} • ${po.status}`, href: `/parts/po/${po.id}` });
-    entities.push({ type: "purchase_order", id: po.id, label: `PO ${po.id.slice(0, 8)} • ${po.status}`, href: `/parts/po/${po.id}` });
+    links.push({
+      label: `PO ${po.id.slice(0, 8)} • ${po.status}`,
+      href: `/parts/po/${po.id}`,
+    });
+    entities.push({
+      type: "purchase_order",
+      id: po.id,
+      label: `PO ${po.id.slice(0, 8)} • ${po.status}`,
+      href: `/parts/po/${po.id}`,
+    });
   }
 
   for (const woId of blockedWorkOrderIds.slice(0, 3)) {
     const wo = workOrderById.get(woId);
-    const woLabel = wo?.custom_id ? `WO #${wo.custom_id}` : `WO ${woId.slice(0, 8)}`;
-    links.push({ label: `${woLabel} blocked by parts • ${wo?.status ?? "status unknown"}`, href: `/work-orders/${woId}` });
+    const woLabel = wo?.custom_id
+      ? `WO #${wo.custom_id}`
+      : `WO ${woId.slice(0, 8)}`;
+    links.push({
+      label: `${woLabel} blocked by parts • ${wo?.status ?? "status unknown"}`,
+      href: `/work-orders/${woId}`,
+    });
   }
 
   const partsLinkedToActiveWork = requestItems
@@ -609,7 +911,9 @@ async function answerPartsDomain(args: {
       type: "part_request",
       id: item.id,
       label: `${item.description || item.part_id} • pending ${Math.max(0, item.qty_approved - item.qty_received)}`,
-      href: item.work_order_id ? `/work-orders/${item.work_order_id}` : undefined,
+      href: item.work_order_id
+        ? `/work-orders/${item.work_order_id}`
+        : undefined,
     });
   }
 
@@ -646,11 +950,14 @@ async function answerPartsDomain(args: {
       : " No active jobs are currently flagged as blocked by pending receiving items.");
 
   return buildAnswer({
-    intent: args.q.includes("po") || args.q.includes("purchase") || args.q.includes("receiving")
-      ? "parts_purchasing"
-      : blockedWorkOrderIds.length > 0
-        ? "parts_blockers"
-        : "parts_inventory",
+    intent:
+      args.q.includes("po") ||
+      args.q.includes("purchase") ||
+      args.q.includes("receiving")
+        ? "parts_purchasing"
+        : blockedWorkOrderIds.length > 0
+          ? "parts_blockers"
+          : "parts_inventory",
     summary,
     bullets: dedupeStrings(bullets, 6),
     links,
@@ -675,7 +982,8 @@ async function answerPartsDomain(args: {
           planner: "ops",
           lane: "parts_follow_up",
           allowCreate: false,
-          workOrderId: blockedWorkOrderIds[0] ?? args.resolvedContext.workOrderId,
+          workOrderId:
+            blockedWorkOrderIds[0] ?? args.resolvedContext.workOrderId,
         },
       },
       {
@@ -725,8 +1033,11 @@ async function answerFleetDomain(args: {
   if (!vehicleId) {
     return buildAnswer({
       intent: "fleet_history",
-      summary: "I need a fleet unit context (vehicle id, plate, or VIN) to load fleet history and service requests.",
-      bullets: ["Try asking with a plate/VIN, or open this from a fleet unit record."],
+      summary:
+        "I need a fleet unit context (vehicle id, plate, or VIN) to load fleet history and service requests.",
+      bullets: [
+        "Try asking with a plate/VIN, or open this from a fleet unit record.",
+      ],
       resolvedContext: args.resolvedContext,
     });
   }
@@ -734,14 +1045,18 @@ async function answerFleetDomain(args: {
   const [requestsRes, workOrdersRes, inspectionsRes] = await Promise.all([
     supabase
       .from("fleet_service_requests")
-      .select("id, status, severity, title, summary, scheduled_for_date, work_order_id, created_at")
+      .select(
+        "id, status, severity, title, summary, scheduled_for_date, work_order_id, created_at",
+      )
       .eq("shop_id", args.shopId)
       .eq("vehicle_id", vehicleId)
       .order("created_at", { ascending: false })
       .limit(15),
     supabase
       .from("work_orders")
-      .select("id, custom_id, status, created_at, source_fleet_service_request_id")
+      .select(
+        "id, custom_id, status, created_at, source_fleet_service_request_id",
+      )
       .eq("shop_id", args.shopId)
       .eq("vehicle_id", vehicleId)
       .order("created_at", { ascending: false })
@@ -757,15 +1072,40 @@ async function answerFleetDomain(args: {
 
   if (requestsRes.error || workOrdersRes.error || inspectionsRes.error) {
     throw new Error(
-      requestsRes.error?.message ?? workOrdersRes.error?.message ?? inspectionsRes.error?.message ?? "Failed to load fleet records",
+      requestsRes.error?.message ??
+        workOrdersRes.error?.message ??
+        inspectionsRes.error?.message ??
+        "Failed to load fleet records",
     );
   }
 
-  const requests = (requestsRes.data ?? []) as Array<{ id: string; status: string; severity: string; title: string; summary: string; work_order_id: string | null }>;
-  const openRequests = requests.filter((row) => row.status !== "completed" && row.status !== "closed");
-  const overdue = requests.filter((row) => row.status !== "completed" && row.status !== "closed" && row.status !== "scheduled");
-  const workOrders = (workOrdersRes.data ?? []) as Array<{ id: string; custom_id: string | null; status: string | null }>;
-  const inspections = (inspectionsRes.data ?? []) as Array<{ id: string; status: string | null; inspection_type: string | null }>;
+  const requests = (requestsRes.data ?? []) as Array<{
+    id: string;
+    status: string;
+    severity: string;
+    title: string;
+    summary: string;
+    work_order_id: string | null;
+  }>;
+  const openRequests = requests.filter(
+    (row) => row.status !== "completed" && row.status !== "closed",
+  );
+  const overdue = requests.filter(
+    (row) =>
+      row.status !== "completed" &&
+      row.status !== "closed" &&
+      row.status !== "scheduled",
+  );
+  const workOrders = (workOrdersRes.data ?? []) as Array<{
+    id: string;
+    custom_id: string | null;
+    status: string | null;
+  }>;
+  const inspections = (inspectionsRes.data ?? []) as Array<{
+    id: string;
+    status: string | null;
+    inspection_type: string | null;
+  }>;
 
   const links: AssistantLink[] = [
     ...openRequests.slice(0, 3).map((row) => ({
@@ -773,17 +1113,26 @@ async function answerFleetDomain(args: {
       href: `/fleet/service-requests`,
     })),
     ...workOrders.slice(0, 3).map((row) => ({
-      label: row.custom_id ? `WO #${row.custom_id} • ${row.status ?? "status unknown"}` : `WO ${row.id.slice(0, 8)} • ${row.status ?? "status unknown"}`,
+      label: row.custom_id
+        ? `WO #${row.custom_id} • ${row.status ?? "status unknown"}`
+        : `WO ${row.id.slice(0, 8)} • ${row.status ?? "status unknown"}`,
       href: `/work-orders/${row.id}`,
     })),
   ];
 
   const bullets = dedupeStrings([
     `Open service requests: ${openRequests.length}`,
-    overdue.length > 0 ? `Overdue or unscheduled fleet follow-ups: ${overdue.length}` : "No overdue fleet requests in the current unit scope.",
+    overdue.length > 0
+      ? `Overdue or unscheduled fleet follow-ups: ${overdue.length}`
+      : "No overdue fleet requests in the current unit scope.",
     `Recent work orders tied to this unit: ${workOrders.length}`,
     `Recent inspections/pre-trips tied to this unit: ${inspections.length}`,
-    ...openRequests.slice(0, 3).map((row) => `${row.title || row.summary} • ${row.severity} • ${row.status}`),
+    ...openRequests
+      .slice(0, 3)
+      .map(
+        (row) =>
+          `${row.title || row.summary} • ${row.severity} • ${row.status}`,
+      ),
   ]);
 
   return buildAnswer({
@@ -792,8 +1141,20 @@ async function answerFleetDomain(args: {
     bullets,
     links,
     entities: [
-      ...openRequests.slice(0, 4).map((row) => ({ type: "fleet_unit" as const, id: vehicleId, label: row.title || row.summary, href: "/fleet/service-requests" })),
-      ...workOrders.slice(0, 2).map((row) => ({ type: "work_order" as const, id: row.id, label: row.custom_id ? `WO #${row.custom_id}` : `WO ${row.id.slice(0, 8)}`, href: `/work-orders/${row.id}` })),
+      ...openRequests.slice(0, 4).map((row) => ({
+        type: "fleet_unit" as const,
+        id: vehicleId,
+        label: row.title || row.summary,
+        href: "/fleet/service-requests",
+      })),
+      ...workOrders.slice(0, 2).map((row) => ({
+        type: "work_order" as const,
+        id: row.id,
+        label: row.custom_id
+          ? `WO #${row.custom_id}`
+          : `WO ${row.id.slice(0, 8)}`,
+        href: `/work-orders/${row.id}`,
+      })),
     ],
     actions: [
       {
@@ -837,23 +1198,52 @@ async function answerAuthoringDomain(args: {
   const supabase = getServerSupabase();
 
   const [menuRes, templateRes, repeatLinesRes] = await Promise.all([
-    supabase.from("menu_items").select("id, name, category, inspection_template_id, created_at").eq("shop_id", args.shopId).order("created_at", { ascending: false }).limit(20),
-    supabase.from("inspection_templates").select("id, template_name, vehicle_type, updated_at").eq("shop_id", args.shopId).order("updated_at", { ascending: false }).limit(20),
+    supabase
+      .from("menu_items")
+      .select("id, name, category, inspection_template_id, created_at")
+      .eq("shop_id", args.shopId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("inspection_templates")
+      .select("id, template_name, vehicle_type, updated_at")
+      .eq("shop_id", args.shopId)
+      .order("updated_at", { ascending: false })
+      .limit(20),
     supabase
       .from("work_order_lines")
-      .select("id, description, complaint, created_at, work_order_id, work_orders!inner(shop_id)")
+      .select(
+        "id, description, complaint, created_at, work_order_id, work_orders!inner(shop_id)",
+      )
       .eq("work_orders.shop_id", args.shopId)
       .order("created_at", { ascending: false })
       .limit(120),
   ]);
 
   if (menuRes.error || templateRes.error || repeatLinesRes.error) {
-    throw new Error(menuRes.error?.message ?? templateRes.error?.message ?? repeatLinesRes.error?.message ?? "Failed to load authoring context");
+    throw new Error(
+      menuRes.error?.message ??
+        templateRes.error?.message ??
+        repeatLinesRes.error?.message ??
+        "Failed to load authoring context",
+    );
   }
 
-  const menuItems = (menuRes.data ?? []) as Array<{ id: string; name: string | null; category: string | null; inspection_template_id: string | null }>;
-  const templates = (templateRes.data ?? []) as Array<{ id: string; template_name: string; vehicle_type: string | null }>;
-  const lines = (repeatLinesRes.data ?? []) as Array<{ description: string | null; complaint: string | null }>;
+  const menuItems = (menuRes.data ?? []) as Array<{
+    id: string;
+    name: string | null;
+    category: string | null;
+    inspection_template_id: string | null;
+  }>;
+  const templates = (templateRes.data ?? []) as Array<{
+    id: string;
+    template_name: string;
+    vehicle_type: string | null;
+  }>;
+  const lines = (repeatLinesRes.data ?? []) as Array<{
+    description: string | null;
+    complaint: string | null;
+  }>;
 
   const counts = new Map<string, number>();
   for (const row of lines) {
@@ -869,14 +1259,23 @@ async function answerAuthoringDomain(args: {
 
   const topRepeat = repeats[0]?.[0] ?? null;
   const duplicateMenu = topRepeat
-    ? menuItems.filter((item) => (item.name ?? "").toLowerCase().includes(topRepeat.slice(0, 18))).slice(0, 3)
+    ? menuItems
+        .filter((item) =>
+          (item.name ?? "").toLowerCase().includes(topRepeat.slice(0, 18)),
+        )
+        .slice(0, 3)
     : [];
 
   const duplicateTemplates = topRepeat
-    ? templates.filter((item) => item.template_name.toLowerCase().includes(topRepeat.slice(0, 18))).slice(0, 3)
+    ? templates
+        .filter((item) =>
+          item.template_name.toLowerCase().includes(topRepeat.slice(0, 18)),
+        )
+        .slice(0, 3)
     : [];
 
-  const templateIntent = args.q.includes("inspection") || args.q.includes("template");
+  const templateIntent =
+    args.q.includes("inspection") || args.q.includes("template");
   const bundleIntent = args.q.includes("bundle") || args.q.includes("package");
 
   const summary = bundleIntent
@@ -898,17 +1297,39 @@ async function answerAuthoringDomain(args: {
         : "No repeated custom-line cluster cleared the draft threshold in the recent sample.",
       `Existing menu items sampled: ${menuItems.length}`,
       `Existing inspection templates sampled: ${templates.length}`,
-      duplicateMenu.length > 0 ? `Potential menu duplicates: ${duplicateMenu.map((item) => item.name ?? item.id.slice(0, 8)).join(", ")}` : "No immediate menu duplicates detected for the top repeated pattern.",
-      duplicateTemplates.length > 0 ? `Potential template duplicates: ${duplicateTemplates.map((item) => item.template_name).join(", ")}` : "No immediate inspection-template duplicates detected for the top repeated pattern.",
-      bundleIntent ? "Bundle/package note: this response is a draft proposal lane and does not assume a live authored package domain." : null,
+      duplicateMenu.length > 0
+        ? `Potential menu duplicates: ${duplicateMenu.map((item) => item.name ?? item.id.slice(0, 8)).join(", ")}`
+        : "No immediate menu duplicates detected for the top repeated pattern.",
+      duplicateTemplates.length > 0
+        ? `Potential template duplicates: ${duplicateTemplates.map((item) => item.template_name).join(", ")}`
+        : "No immediate inspection-template duplicates detected for the top repeated pattern.",
+      bundleIntent
+        ? "Bundle/package note: this response is a draft proposal lane and does not assume a live authored package domain."
+        : null,
     ]),
     links: [
-      ...menuItems.slice(0, 2).map((item) => ({ label: item.name ?? `Menu item ${item.id.slice(0, 8)}`, href: `/menu/item/${item.id}` })),
-      ...templates.slice(0, 2).map((item) => ({ label: item.template_name, href: "/inspection/templates" })),
+      ...menuItems.slice(0, 2).map((item) => ({
+        label: item.name ?? `Menu item ${item.id.slice(0, 8)}`,
+        href: `/menu/item/${item.id}`,
+      })),
+      ...templates.slice(0, 2).map((item) => ({
+        label: item.template_name,
+        href: "/inspection/templates",
+      })),
     ],
     entities: [
-      ...menuItems.slice(0, 3).map((item) => ({ type: "menu_item" as const, id: item.id, label: item.name ?? `Menu item ${item.id.slice(0, 8)}`, href: `/menu/item/${item.id}` })),
-      ...templates.slice(0, 2).map((item) => ({ type: "inspection_template" as const, id: item.id, label: item.template_name, href: "/inspection/templates" })),
+      ...menuItems.slice(0, 3).map((item) => ({
+        type: "menu_item" as const,
+        id: item.id,
+        label: item.name ?? `Menu item ${item.id.slice(0, 8)}`,
+        href: `/menu/item/${item.id}`,
+      })),
+      ...templates.slice(0, 2).map((item) => ({
+        type: "inspection_template" as const,
+        id: item.id,
+        label: item.template_name,
+        href: "/inspection/templates",
+      })),
     ],
     actions: [
       {
@@ -980,7 +1401,9 @@ export async function answerAssistant({
       return buildAnswer({
         intent: "pending_approvals",
         summary: "There are no work order lines awaiting approval right now.",
-        bullets: ["No pending advisor/customer approval lines were found in this shop."],
+        bullets: [
+          "No pending advisor/customer approval lines were found in this shop.",
+        ],
         actions: [
           {
             type: "planner",
@@ -1002,7 +1425,10 @@ export async function answerAssistant({
 
     const bullets = dedupeStrings(
       result.items.slice(0, 5).map((item) => {
-        const total = item.estimatedTotal != null ? ` • est $${item.estimatedTotal.toFixed(2)}` : "";
+        const total =
+          item.estimatedTotal != null
+            ? ` • est $${item.estimatedTotal.toFixed(2)}`
+            : "";
         return `${item.customId ? `WO #${item.customId}` : item.workOrderId.slice(0, 8)} • ${item.vehicleSummary ?? "Vehicle unknown"}${total}`;
       }),
       5,
@@ -1015,7 +1441,11 @@ export async function answerAssistant({
       summary: `There are ${result.items.length} work order(s) with pending approvals right now.`,
       bullets,
       links,
-      entities: links.map((link) => ({ type: "work_order", label: link.label, href: link.href })),
+      entities: links.map((link) => ({
+        type: "work_order",
+        label: link.label,
+        href: link.href,
+      })),
       actions: [
         {
           type: "link",
@@ -1075,8 +1505,15 @@ export async function answerAssistant({
 
   if (
     resolvedContext.workOrderId &&
-    (questionIncludes(q, ["blocking", "blocked", "on hold", "this work order", "what happened on this work order"]) ||
-      (isFollowUp(question) && request.session?.lastIntent === "work_order_status"))
+    (questionIncludes(q, [
+      "blocking",
+      "blocked",
+      "on hold",
+      "this work order",
+      "what happened on this work order",
+    ]) ||
+      (isFollowUp(question) &&
+        request.session?.lastIntent === "work_order_status"))
   ) {
     const result = await runGetWorkOrderStatusSummary(
       { workOrderId: resolvedContext.workOrderId },
@@ -1086,9 +1523,10 @@ export async function answerAssistant({
     const links = toLinks((result as { citations?: unknown }).citations);
     const bullets = dedupeStrings([
       (result as { summary?: string }).summary,
-      ...((result as { notifications?: Array<{ message?: string }> }).notifications ?? []).map(
-        (item) => item.message,
-      ),
+      ...(
+        (result as { notifications?: Array<{ message?: string }> })
+          .notifications ?? []
+      ).map((item) => item.message),
     ]);
 
     return buildAnswer({
@@ -1153,8 +1591,12 @@ export async function answerAssistant({
     const nextContext: AssistantResolvedContext = withResolvedContext(
       {
         ...resolvedContext,
-        customerId: (result as { customerId?: string }).customerId ?? resolvedContext.customerId,
-        vehicleId: (result as { vehicleId?: string }).vehicleId ?? resolvedContext.vehicleId,
+        customerId:
+          (result as { customerId?: string }).customerId ??
+          resolvedContext.customerId,
+        vehicleId:
+          (result as { vehicleId?: string }).vehicleId ??
+          resolvedContext.vehicleId,
       },
       links,
     );
@@ -1169,8 +1611,16 @@ export async function answerAssistant({
       entities: toEntities((result as { citations?: unknown }).citations),
       actions: [
         links[0]
-          ? { type: "link", label: "Open related work order", href: links[0].href }
-          : { type: "link", label: "See customer history", href: "/work-orders/history" },
+          ? {
+              type: "link",
+              label: "Open related work order",
+              href: links[0].href,
+            }
+          : {
+              type: "link",
+              label: "See customer history",
+              href: "/work-orders/history",
+            },
         {
           type: "planner",
           label: "Plan follow-up for repeat issue",
@@ -1195,7 +1645,8 @@ export async function answerAssistant({
       "fleet unit",
       "unit history",
     ]) ||
-    ((questionIncludes(q, ["who worked on it", "who worked last time"]) || isFollowUp(question)) &&
+    ((questionIncludes(q, ["who worked on it", "who worked last time"]) ||
+      isFollowUp(question)) &&
       Boolean(resolvedContext.vehicleId || resolvedContext.customerId))
   ) {
     const result = await runGetVehicleHistory(
@@ -1217,8 +1668,12 @@ export async function answerAssistant({
     const nextContext: AssistantResolvedContext = withResolvedContext(
       {
         ...resolvedContext,
-        customerId: (result as { customerId?: string }).customerId ?? resolvedContext.customerId,
-        vehicleId: (result as { vehicleId?: string }).vehicleId ?? resolvedContext.vehicleId,
+        customerId:
+          (result as { customerId?: string }).customerId ??
+          resolvedContext.customerId,
+        vehicleId:
+          (result as { vehicleId?: string }).vehicleId ??
+          resolvedContext.vehicleId,
       },
       links,
     );
@@ -1226,13 +1681,18 @@ export async function answerAssistant({
     return buildAnswer({
       intent: "vehicle_history",
       summary:
-        (result as { summary?: string }).summary ?? "I found vehicle history for this unit.",
+        (result as { summary?: string }).summary ??
+        "I found vehicle history for this unit.",
       bullets,
       links,
       entities: toEntities((result as { citations?: unknown }).citations),
       actions: [
         links[0]
-          ? { type: "link", label: "Open related work order", href: links[0].href }
+          ? {
+              type: "link",
+              label: "Open related work order",
+              href: links[0].href,
+            }
           : { type: "link", label: "Open vehicles", href: "/vehicles" },
         {
           type: "planner",
@@ -1263,7 +1723,10 @@ export async function answerAssistant({
         : undefined;
 
     const result = await runGetTechCurrentWork(
-      { techId: techIdCandidate, techName: techIdCandidate ? undefined : nameCandidate ?? undefined },
+      {
+        techId: techIdCandidate,
+        techName: techIdCandidate ? undefined : (nameCandidate ?? undefined),
+      },
       ctx,
     );
 
@@ -1276,7 +1739,8 @@ export async function answerAssistant({
     return buildAnswer({
       intent: "tech_current_work",
       summary:
-        (result as { summary?: string }).summary || "I checked the technician's current work.",
+        (result as { summary?: string }).summary ||
+        "I checked the technician's current work.",
       bullets,
       links,
       entities: toEntities((result as { citations?: unknown }).citations),
@@ -1384,7 +1848,8 @@ export async function answerAssistant({
     return buildAnswer({
       intent: "bookings",
       summary:
-        (result as { summary?: string }).summary || "I checked the current bookings.",
+        (result as { summary?: string }).summary ||
+        "I checked the current bookings.",
       bullets,
       links,
       entities: toEntities((result as { citations?: unknown }).citations),
@@ -1424,7 +1889,8 @@ export async function answerAssistant({
     return buildAnswer({
       intent: "shop_status",
       summary:
-        (result as { summary?: string }).summary || "I pulled the current shop status.",
+        (result as { summary?: string }).summary ||
+        "I pulled the current shop status.",
       bullets,
       links,
       entities: toEntities((result as { citations?: unknown }).citations),
@@ -1439,62 +1905,11 @@ export async function answerAssistant({
     });
   }
 
-  if (isDiagnosticQuestion(question, request)) {
-    const { code, mentionCount } = getActiveDiagnosticTopic(request, question);
-    const vehicleLabel = getVehicleLabel(request, question);
-    const subject = [vehicleLabel, code].filter(Boolean).join(" • ") || "this vehicle concern";
-    const followUp = isFollowUp(question) && mentionCount > 0;
-    const repeatedPathAsk = followUp && questionIncludes(q, ["diagnosis path", "diagnostic path"]);
-
-    const p0141Path = [
-      "Key on: verify heater B+ at the downstream O2 connector. If missing, chase fuse/relay/feed before touching the sensor.",
-      "Load-test the ground/PCM control side with the sensor plugged in if possible; look for high resistance, opens, or a short to power/ground.",
-      "If power and control pass, check heater resistance/current against service info and inspect the exhaust-side harness for heat damage before replacing B1S2.",
-    ];
-
-    const genericPath = [
-      code
-        ? `Use freeze-frame for ${code} to reproduce the enable conditions; do not clear it until you know when it sets.`
-        : "Start by capturing all DTCs and freeze-frame so the fault conditions are not lost.",
-      "Prove the affected circuit under load: power feed, ground/control, connector tension, water intrusion, rub-through, and prior splices.",
-      "Only condemn the component after circuit checks pass and scan data or a bidirectional test confirms it cannot operate correctly.",
-    ];
-
-    const path = code === "P0141" ? p0141Path : genericPath;
-
-    return buildAnswer({
-      intent: "unknown",
-      summary: followUp
-        ? repeatedPathAsk
-          ? `Same ${code ?? "diagnostic"} path — continue at the first unproven circuit check.`
-          : `For ${subject}, continue the diagnostic from the current fault instead of restarting.`
-        : code === "P0141"
-          ? `P0141 is an O2 heater circuit fault. On this ${vehicleLabel ?? "vehicle"}, identify the exact downstream sensor/bank in service info, then prove heater power and control before replacing it.`
-          : `Treat ${subject} as a circuit diagnosis: verify the fault conditions, then prove power, ground/control, and signal under load.`,
-      bullets: followUp ? path : dedupeStrings([
-        code === "P0141"
-          ? "First check: confirm which downstream O2 is Bank 1 Sensor 2 for this engine, then inspect that connector/harness near the exhaust."
-          : code
-            ? `First check: pull freeze-frame for ${code} and note when it sets.`
-            : "First check: pull all codes and freeze-frame before clearing anything.",
-        path[0],
-        "Tell me what you have at the connector and I’ll call the next branch.",
-      ], 3),
-      links: [],
-      entities: [],
-      actions: [
-        {
-          type: "planner",
-          label: "Build diagnostic plan",
-          goal: `Build a technician diagnostic plan for ${subject}`,
-          context: {
-            workOrderId: resolvedContext.workOrderId,
-            vehicleId: resolvedContext.vehicleId,
-          },
-        },
-      ],
-      resolvedContext,
-    });
+  if (
+    isDiagnosticQuestion(question, request) &&
+    !wantsKnowledgeMode(question)
+  ) {
+    return answerDiagnosticConversation({ question, request, resolvedContext });
   }
 
   return buildAnswer({
