@@ -20350,6 +20350,14 @@ export type Database = {
           url: string
           user_id: string | null
           work_order_id: string
+          work_order_line_id: string | null
+          storage_bucket: string | null
+          storage_path: string | null
+          file_name: string | null
+          content_type: string | null
+          file_size: number | null
+          note: string | null
+          source: string | null
         }
         Insert: {
           created_at?: string | null
@@ -20359,6 +20367,14 @@ export type Database = {
           url: string
           user_id?: string | null
           work_order_id: string
+          work_order_line_id?: string | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          file_name?: string | null
+          content_type?: string | null
+          file_size?: number | null
+          note?: string | null
+          source?: string | null
         }
         Update: {
           created_at?: string | null
@@ -20368,6 +20384,14 @@ export type Database = {
           url?: string
           user_id?: string | null
           work_order_id?: string
+          work_order_line_id?: string | null
+          storage_bucket?: string | null
+          storage_path?: string | null
+          file_name?: string | null
+          content_type?: string | null
+          file_size?: number | null
+          note?: string | null
+          source?: string | null
         }
         Relationships: [
           {

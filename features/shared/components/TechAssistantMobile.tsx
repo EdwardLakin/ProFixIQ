@@ -18,10 +18,10 @@ export default function TechAssistantMobile({
   const {
     vehicle, setVehicle,
     context, setContext,
-    messages, partial, sending, error,
+    messages, partial, sending, uploading, error,
     sendChat, sendPhoto,
     exportToWorkOrder, resetConversation,
-  } = useTechAssistant({ defaultVehicle });
+  } = useTechAssistant({ defaultVehicle, workOrderLineId });
 
   // refs
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +101,19 @@ export default function TechAssistantMobile({
                 <div key={i} className="flex justify-end">
                   <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-orange-600 text-black font-header">
                     {m.content}
+                    {m.attachments?.length ? (
+                      <div className="mt-2 space-y-1 text-[11px] text-black/80">
+                        {m.attachments.map((attachment) => (
+                          <div key={attachment.id} className="flex items-center gap-2 rounded bg-black/10 p-1">
+                            {attachment.url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={attachment.url} alt={attachment.fileName ?? "Attached diagnostic photo"} className="h-10 w-10 rounded object-cover" />
+                            ) : null}
+                            <span className="truncate">{attachment.fileName ?? "Diagnostic photo saved"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -176,16 +189,16 @@ export default function TechAssistantMobile({
                   });
                 }
               }}
-              disabled={sending}
+              disabled={sending || uploading}
             />
-            Attach Photo
+            {uploading ? "Saving Photo…" : "Attach Photo"}
           </label>
 
           <button
             type="button"
             className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60 font-header"
             onClick={resetConversation}
-            disabled={sending}
+            disabled={sending || uploading}
           >
             Reset
           </button>
@@ -200,12 +213,12 @@ export default function TechAssistantMobile({
             ref={chatInputRef}
             className={`${inputBase} flex-1 py-3`}
             placeholder={canSend ? "Ask the assistant…" : "Enter year, make, model first"}
-            disabled={sending}
+            disabled={sending || uploading}
           />
           <button
             type="submit"
             className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
-            disabled={sending || !canSend}
+            disabled={sending || uploading || !canSend}
           >
             {sending ? "…" : "Send"}
           </button>
@@ -224,7 +237,7 @@ export default function TechAssistantMobile({
         <div className="px-3 pb-3">
           <button
             className="w-full rounded bg-purple-600 px-3 py-3 text-sm font-header hover:bg-purple-700 disabled:opacity-60"
-            disabled={sending}
+            disabled={sending || uploading}
             onClick={async () => {
               try {
                 const res = await exportToWorkOrder(workOrderLineId);

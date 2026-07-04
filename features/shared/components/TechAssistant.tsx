@@ -28,6 +28,7 @@ export default function TechAssistant({
     setContext,
     messages,
     sending,
+    uploading,
     partial,
     error,
     sendChat,
@@ -35,7 +36,7 @@ export default function TechAssistant({
     exportToWorkOrder,
     resetConversation,
     cancel,
-  } = useTechAssistant({ defaultVehicle });
+  } = useTechAssistant({ defaultVehicle, workOrderLineId });
 
   // Seed default vehicle once (without clobbering restored vehicle)
   useEffect(() => {
@@ -154,22 +155,22 @@ export default function TechAssistant({
                     setNoteForPhoto("");
                   });
                 }}
-                disabled={sending}
+                disabled={sending || uploading}
               />
-              Attach Photo
+              {uploading ? "Saving Photo…" : "Attach Photo"}
             </label>
             <input
               className={`${inputBase} min-w-44 flex-1 py-1.5 text-xs`}
               placeholder="Optional note for this photo"
               value={noteForPhoto}
               onChange={(e) => setNoteForPhoto(e.target.value)}
-              disabled={sending}
+              disabled={sending || uploading}
             />
             <button
               className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-white/5 disabled:opacity-60"
               onClick={resetConversation}
               type="button"
-              disabled={sending}
+              disabled={sending || uploading}
             >
               Reset
             </button>
@@ -203,6 +204,19 @@ export default function TechAssistant({
                   className={`${bubble} bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold`}
                 >
                   {m.content}
+                  {m.attachments?.length ? (
+                    <div className="mt-2 space-y-1 text-[11px] font-medium text-black/80">
+                      {m.attachments.map((attachment) => (
+                        <div key={attachment.id} className="flex items-center gap-2 rounded-lg bg-black/10 p-1">
+                          {attachment.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={attachment.url} alt={attachment.fileName ?? "Attached diagnostic photo"} className="h-12 w-12 rounded object-cover" />
+                          ) : null}
+                          <span className="truncate">{attachment.fileName ?? "Diagnostic photo saved"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -264,7 +278,7 @@ export default function TechAssistant({
             placeholder={
               canSend ? "Ask the assistant…" : "Enter year, make, model first"
             }
-            disabled={sending}
+            disabled={sending || uploading}
           />
           <button
             className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
@@ -281,7 +295,7 @@ export default function TechAssistant({
         <div className="pt-1">
           <button
             className="rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_18px_rgba(147,51,234,0.7)] hover:bg-purple-500 disabled:opacity-60"
-            disabled={sending}
+            disabled={sending || uploading}
             onClick={async () => {
               try {
                 const res = await exportToWorkOrder(workOrderLineId);
