@@ -5,6 +5,8 @@ const routeSource = () =>
   readFileSync("app/api/vehicles/import/route.ts", "utf8");
 const cardSource = () =>
   readFileSync("features/vehicles/components/VehicleCsvImportCard.tsx", "utf8");
+const customerVehicleUiSource = () =>
+  readFileSync("features/customers/app/customers/[id]/page.tsx", "utf8");
 
 describe("vehicle CSV import route", () => {
   it("resolves CSV customer_id through customers.external_id before assigning vehicles.customer_id", () => {
@@ -26,7 +28,7 @@ describe("vehicle CSV import route", () => {
       'reason: "Customer not found for external customer_id."',
     );
     expect(source).toContain("counts.skipped += 1");
-    expect(source).toContain("failedRows.push");
+    expect(source).toContain('console.warn("Vehicle import row failed"');
   });
 
   it("matches re-imported vehicles without relying on duplicate insert conflicts", () => {
@@ -38,6 +40,49 @@ describe("vehicle CSV import route", () => {
     expect(source).toContain("findVehicleByField");
     expect(source).toContain(".limit(1)");
     expect(source).toContain("counts.updated += 1");
+  });
+
+  it("persists supported CSV vehicle detail fields and keeps response compact", () => {
+    const source = routeSource();
+
+    for (const field of [
+      "state_province",
+      "odometer_unit",
+      "body_type",
+      "asset_type",
+      "status",
+      "purchase_date",
+      "in_service_date",
+      "last_service_date",
+      "tags",
+      "notes",
+    ]) {
+      expect(source).toContain(`${field}:`);
+    }
+    expect(source).toContain("const mileage = odometer ?? null");
+    expect(source).not.toContain("skippedRows,");
+    expect(source).not.toContain("failedRows,");
+  });
+});
+
+describe("vehicle detail UI", () => {
+  it("renders imported vehicle detail fields", () => {
+    const source = customerVehicleUiSource();
+
+    for (const label of [
+      "Year / Make / Model / Trim",
+      "Plate + State/Province",
+      "Mileage / Odometer",
+      "Body Type",
+      "Asset Type",
+      "Purchase Date",
+      "In-Service Date",
+      "Last Service Date",
+      "Tags",
+      "Notes",
+    ]) {
+      expect(source).toContain(label);
+    }
   });
 });
 

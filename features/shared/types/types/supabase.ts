@@ -18364,8 +18364,10 @@ export type Database = {
       vehicles: {
         Row: {
           color: string | null
+          body_type: string | null
           created_at: string | null
           customer_id: string | null
+          asset_type: string | null
           drivetrain: string | null
           engine: string | null
           engine_family: string | null
@@ -18376,16 +18378,24 @@ export type Database = {
           id: string
           import_confidence: number | null
           import_notes: string | null
+          in_service_date: string | null
+          last_service_date: string | null
           license_plate: string | null
           make: string | null
           mileage: string | null
           model: string | null
+          notes: string | null
+          odometer_unit: string | null
+          purchase_date: string | null
           shop_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
+          state_province: string | null
+          status: string | null
           submodel: string | null
           transmission: string | null
           transmission_type: string | null
+          tags: string | null
           unit_number: string | null
           user_id: string | null
           vin: string | null
@@ -18393,8 +18403,10 @@ export type Database = {
         }
         Insert: {
           color?: string | null
+          body_type?: string | null
           created_at?: string | null
           customer_id?: string | null
+          asset_type?: string | null
           drivetrain?: string | null
           engine?: string | null
           engine_family?: string | null
@@ -18405,16 +18417,24 @@ export type Database = {
           id?: string
           import_confidence?: number | null
           import_notes?: string | null
+          in_service_date?: string | null
+          last_service_date?: string | null
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
+          notes?: string | null
+          odometer_unit?: string | null
+          purchase_date?: string | null
           shop_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
+          state_province?: string | null
+          status?: string | null
           submodel?: string | null
           transmission?: string | null
           transmission_type?: string | null
+          tags?: string | null
           unit_number?: string | null
           user_id?: string | null
           vin?: string | null
@@ -18422,8 +18442,10 @@ export type Database = {
         }
         Update: {
           color?: string | null
+          body_type?: string | null
           created_at?: string | null
           customer_id?: string | null
+          asset_type?: string | null
           drivetrain?: string | null
           engine?: string | null
           engine_family?: string | null
@@ -18434,16 +18456,24 @@ export type Database = {
           id?: string
           import_confidence?: number | null
           import_notes?: string | null
+          in_service_date?: string | null
+          last_service_date?: string | null
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
+          notes?: string | null
+          odometer_unit?: string | null
+          purchase_date?: string | null
           shop_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
+          state_province?: string | null
+          status?: string | null
           submodel?: string | null
           transmission?: string | null
           transmission_type?: string | null
+          tags?: string | null
           unit_number?: string | null
           user_id?: string | null
           vin?: string | null
