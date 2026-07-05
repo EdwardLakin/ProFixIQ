@@ -35,6 +35,7 @@ import {
   buildDeterministicSupplierSuggestions,
   type DeterministicSupplierSuggestion,
 } from "@/features/parts/lib/parts/deterministicSupplierMatcher";
+import { getStockSuggestionDisplay } from "@/features/parts/lib/parts/suggestionDisplay";
 
 type DB = Database;
 
@@ -76,6 +77,18 @@ type UiItem = ItemRow & {
   // PO assignment UI
   ui_po_id?: string; // derived from it.po_id (if exists) else ""
   ui_supplier_id?: string; // for create/select (optional helper)
+};
+
+type CreateInventoryDraft = {
+  requestId: string;
+  itemId: string;
+  name: string;
+  partNumber: string;
+  manufacturer: string;
+  sku: string;
+  category: string;
+  price: string;
+  supplier: string;
 };
 
 type RequestUi = {
@@ -199,6 +212,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
   const [supplierSuggestionsByItemId, setSupplierSuggestionsByItemId] = useState<Record<string, DeterministicSupplierSuggestion[]>>({});
   const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
+  const [createInventoryDraft, setCreateInventoryDraft] = useState<CreateInventoryDraft | null>(null);
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -520,6 +534,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           if (!desc) continue;
           const ranked = buildDeterministicStockSuggestions({
             requestedDescription: desc,
+            requestedPartNumber: item.requested_part_number,
+            requestedManufacturer: item.requested_manufacturer,
             requestedQty: toNum(item.qty, 1),
             parts: partRows,
             stockSummaries: ((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][],
@@ -616,6 +632,116 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         };
       }),
     );
+  }
+
+
+
+  async function persistItemFields(
+    itemId: string,
+    patch: Pick<Partial<UiItem>, "description" | "requested_part_number" | "requested_manufacturer" | "qty" | "quoted_price">,
+  ): Promise<void> {
+    setSavingItemId(itemId);
+    try {
+      const { data, error } = await supabase
+        .from("part_request_items")
+        .update({
+          ...patch,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", itemId)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      if (!data?.id) toast.error("Update did not apply (no matching row or blocked).");
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  function openCreateInventoryModal(reqId: string, item: UiItem): void {
+    const requestedPartNumber = String(item.requested_part_number ?? "").trim();
+    const requestedManufacturer = String(item.requested_manufacturer ?? "").trim();
+    setCreateInventoryDraft({
+      requestId: reqId,
+      itemId: String(item.id),
+      name: String(item.description ?? requestedPartNumber).trim(),
+      partNumber: requestedPartNumber,
+      manufacturer: requestedManufacturer,
+      sku: requestedPartNumber,
+      category: "",
+      price: item.ui_price == null ? "" : String(item.ui_price),
+      supplier: requestedManufacturer,
+    });
+  }
+
+  async function saveCreatedInventoryItem(): Promise<void> {
+    if (!wo?.shop_id || !createInventoryDraft) return;
+    const draft = createInventoryDraft;
+    const name = draft.name.trim();
+    const partNumber = draft.partNumber.trim();
+    if (!name) {
+      toast.error("Name is required.");
+      return;
+    }
+    const priceNum = draft.price.trim() ? Number(draft.price) : null;
+    if (priceNum != null && (!Number.isFinite(priceNum) || priceNum < 0)) {
+      toast.error("Enter a valid price.");
+      return;
+    }
+
+    setSavingItemId(draft.itemId);
+    try {
+      const insert: DB["public"]["Tables"]["parts"]["Insert"] = {
+        shop_id: String(wo.shop_id),
+        name,
+        part_number: partNumber || null,
+        sku: draft.sku.trim() || partNumber || null,
+        category: draft.category.trim() || null,
+        price: priceNum,
+        default_price: priceNum,
+        supplier: draft.supplier.trim() || draft.manufacturer.trim() || null,
+      };
+      const { data: part, error: partErr } = await supabase
+        .from("parts")
+        .insert(insert)
+        .select("*")
+        .single<PartRow>();
+      if (partErr) {
+        toast.error(partErr.message);
+        return;
+      }
+
+      const update: DB["public"]["Tables"]["part_request_items"]["Update"] = {
+        part_id: part.id,
+        requested_part_number: partNumber || null,
+        requested_manufacturer: draft.manufacturer.trim() || null,
+      };
+      const { error: itemErr } = await supabase
+        .from("part_request_items")
+        .update(update)
+        .eq("id", draft.itemId);
+      if (itemErr) {
+        toast.error(itemErr.message);
+        return;
+      }
+
+      setParts((prev) => [...prev, part].sort((a, b) => String(a.name).localeCompare(String(b.name))));
+      updateItem(draft.requestId, draft.itemId, {
+        part_id: part.id,
+        ui_part_id: part.id,
+        requested_part_number: partNumber || null,
+        requested_manufacturer: draft.manufacturer.trim() || null,
+        ui_price: priceNum ?? undefined,
+      });
+      setCreateInventoryDraft(null);
+      await load();
+      toast.success("Inventory item created and attached.");
+    } finally {
+      setSavingItemId(null);
+    }
   }
 
   function applySupplierSuggestionSelection(
@@ -1573,7 +1699,7 @@ if (!lineId || !isUuid(lineId)) {
                         <table className="w-full text-sm">
                           <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
                             <tr>
-                              <th className="px-3 py-2 text-left">Requested part</th>
+                              <th className="px-3 py-2 text-left">Requested part / catalog</th>
                               <th className="px-3 py-2 text-right">Qty</th>
                               <th className="px-3 py-2 text-right">Price (unit)</th>
                               <th className="px-3 py-2 text-left">PO</th>
@@ -1622,6 +1748,9 @@ if (!lineId || !isUuid(lineId)) {
                                 const topSuggestion = stockSuggestions[0] ?? null;
                                 const hasAttachedPart = isUuid(it.part_id);
                                 const showSuggestion = !!topSuggestion && !hasAttachedPart;
+                                const suggestionDisplay = topSuggestion ? getStockSuggestionDisplay(topSuggestion) : null;
+                                const requestedPartNumber = String(it.requested_part_number ?? "").trim();
+                                const canCreateInventory = !hasAttachedPart && requestedPartNumber.length > 0 && (!topSuggestion || topSuggestion.confidence === "low");
                                 const canReceive =
                                   !!effectivePartId &&
                                   approved > 0 &&
@@ -1664,9 +1793,61 @@ if (!lineId || !isUuid(lineId)) {
                                               description: e.target.value,
                                             })
                                           }
+                                          onBlur={() =>
+                                            void persistItemFields(String(it.id), {
+                                              description: String(it.description ?? "").trim(),
+                                            })
+                                          }
                                           disabled={rowBusy}
                                           rows={2}
                                         />
+
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                          <label className="grid gap-1 text-[11px] text-neutral-500">
+                                            Part #
+                                            <input
+                                              className={`${inputBase} w-full py-1.5 text-xs`}
+                                              value={it.requested_part_number ?? ""}
+                                              placeholder="FL500S"
+                                              onChange={(e) =>
+                                                updateItem(r.req.id, String(it.id), {
+                                                  requested_part_number: e.target.value,
+                                                })
+                                              }
+                                              onBlur={() =>
+                                                void (async () => {
+                                                  await persistItemFields(String(it.id), {
+                                                    requested_part_number: String(it.requested_part_number ?? "").trim() || null,
+                                                  });
+                                                  await load();
+                                                })()
+                                              }
+                                              disabled={rowBusy}
+                                            />
+                                          </label>
+                                          <label className="grid gap-1 text-[11px] text-neutral-500">
+                                            Manufacturer
+                                            <input
+                                              className={`${inputBase} w-full py-1.5 text-xs`}
+                                              value={it.requested_manufacturer ?? ""}
+                                              placeholder="Motorcraft / Ford"
+                                              onChange={(e) =>
+                                                updateItem(r.req.id, String(it.id), {
+                                                  requested_manufacturer: e.target.value,
+                                                })
+                                              }
+                                              onBlur={() =>
+                                                void (async () => {
+                                                  await persistItemFields(String(it.id), {
+                                                    requested_manufacturer: String(it.requested_manufacturer ?? "").trim() || null,
+                                                  });
+                                                  await load();
+                                                })()
+                                              }
+                                              disabled={rowBusy}
+                                            />
+                                          </label>
+                                        </div>
 
                                         <select
                                           className={`${selectBase} w-full py-1.5`}
@@ -1711,11 +1892,14 @@ if (!lineId || !isUuid(lineId)) {
 
                                         {showSuggestion && topSuggestion ? (
                                           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
-                                            Possible stock match: <span className="text-neutral-100">{topSuggestion.name}</span>
+                                            <div className="font-medium text-neutral-100">{suggestionDisplay?.headline ?? "Inventory match"}</div>
+                                            <div className="mt-0.5"><span className="text-neutral-100">{topSuggestion.name}</span>
                                             {topSuggestion.sku_or_part_number ? <span className="text-neutral-500"> · {topSuggestion.sku_or_part_number}</span> : null}
-                                            <span className="text-neutral-500"> · {topSuggestion.qty_available} available</span>
-                                            <span className="text-neutral-500"> · confidence {topSuggestion.confidence}</span>
-                                            <div className="mt-1 text-neutral-500">{topSuggestion.reasons.slice(0, 3).join(" · ")} · recommended: {topSuggestion.recommended_action}</div>
+                                            <span className="text-neutral-500"> · {topSuggestion.qty_available} available</span></div>
+                                            <details className="mt-1 text-neutral-500">
+                                              <summary className="cursor-pointer text-neutral-400">Why?</summary>
+                                              <div>{suggestionDisplay?.technicalReasons.slice(0, 3).join(" · ")}</div>
+                                            </details>
                                             <button
                                               type="button"
                                               className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
@@ -1723,8 +1907,8 @@ if (!lineId || !isUuid(lineId)) {
                                               disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
                                             >
                                               {topSuggestion.qty_available <= 0 || topSuggestion.confidence === "low"
-                                                ? "Review match"
-                                                : "Use this stock part"}
+                                                ? (suggestionDisplay?.actionLabel ?? "Review match")
+                                                : (suggestionDisplay?.actionLabel ?? "Use inventory")}
                                             </button>
                                             {topSuggestion.part_id === it.ui_part_id ? (
                                               <div className="mt-1 text-neutral-500">Selected for review. Click <span className="text-neutral-300">{isQuoteOnlyPreApprovalItem ? "Save Quote" : "Add"}</span> to run the normal {isQuoteOnlyPreApprovalItem ? "pre-approval quote" : "attach"} flow.</div>
@@ -1733,6 +1917,20 @@ if (!lineId || !isUuid(lineId)) {
                                         ) : hasAttachedPart && topSuggestion ? (
                                           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-500">
                                             Stock suggestion available as an alternative, but this row already has an attached part.
+                                          </div>
+                                        ) : null}
+                                        {canCreateInventory ? (
+                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
+                                            <div className="font-medium text-neutral-100">No catalog match found</div>
+                                            <div className="text-neutral-500">Create an inventory item and attach it to this request without leaving the page.</div>
+                                            <button
+                                              type="button"
+                                              className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
+                                              onClick={() => openCreateInventoryModal(r.req.id, it)}
+                                              disabled={rowBusy}
+                                            >
+                                              Create inventory item
+                                            </button>
                                           </div>
                                         ) : null}
                                         {supplierSuggestion ? (
@@ -1866,8 +2064,14 @@ if (!lineId || !isUuid(lineId)) {
                                                 );
                                           updateItem(r.req.id, String(it.id), {
                                             ui_qty: nextQty,
+                                            qty: nextQty,
                                           });
                                         }}
+                                        onBlur={() =>
+                                          void persistItemFields(String(it.id), {
+                                            qty: Math.max(1, Math.floor(toNum(it.ui_qty, 1))),
+                                          })
+                                        }
                                         disabled={rowBusy}
                                       />
                                     </td>
@@ -1887,6 +2091,11 @@ if (!lineId || !isUuid(lineId)) {
                                               raw === "" ? undefined : toNum(raw, 0),
                                           });
                                         }}
+                                        onBlur={() =>
+                                          void persistItemFields(String(it.id), {
+                                            quoted_price: it.ui_price == null ? null : it.ui_price,
+                                          })
+                                        }
                                         disabled={rowBusy}
                                       />
                                     </td>
@@ -2125,6 +2334,63 @@ if (!lineId || !isUuid(lineId)) {
           )}
         </>
       )}
+
+
+      {createInventoryDraft ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className={`${glassCard} w-full max-w-2xl overflow-hidden`}>
+            <div className={`${glassHeader} flex items-center justify-between px-4 py-3`}>
+              <div>
+                <div className="text-sm font-semibold text-white">Create inventory item</div>
+                <div className="text-xs text-neutral-400">Attach it to this parts request item immediately.</div>
+              </div>
+              <button className={btnGhost} type="button" onClick={() => setCreateInventoryDraft(null)}>
+                Close
+              </button>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
+              {[
+                ["Name", "name", "Motorcraft oil filter"],
+                ["Part #", "partNumber", "FL500S"],
+                ["Manufacturer", "manufacturer", "Motorcraft"],
+                ["SKU", "sku", "FL500S"],
+                ["Category", "category", "Filters"],
+                ["Price", "price", "12.99"],
+                ["Default supplier", "supplier", "Ford / Motorcraft"],
+              ].map(([label, key, placeholder]) => (
+                <label key={key} className="grid gap-1 text-xs text-neutral-400">
+                  {label}
+                  <input
+                    className={`${inputBase} w-full`}
+                    value={String(createInventoryDraft[key as keyof CreateInventoryDraft] ?? "")}
+                    placeholder={placeholder}
+                    type={key === "price" ? "number" : "text"}
+                    step={key === "price" ? 0.01 : undefined}
+                    onChange={(e) =>
+                      setCreateInventoryDraft((prev) =>
+                        prev ? { ...prev, [key]: e.target.value } : prev,
+                      )
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
+              <button className={btnGhost} type="button" onClick={() => setCreateInventoryDraft(null)}>
+                Cancel
+              </button>
+              <button
+                className={btnCopper}
+                type="button"
+                disabled={savingItemId === createInventoryDraft.itemId}
+                onClick={() => void saveCreatedInventoryItem()}
+              >
+                {savingItemId === createInventoryDraft.itemId ? "Saving…" : "Create and attach"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <ReceiveDrawer
         open={recvOpen}
