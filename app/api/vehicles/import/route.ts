@@ -6,6 +6,12 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
+
+function omitNullishVehicleUpdate(payload: VehicleUpdate): VehicleUpdate {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== null && value !== undefined),
+  ) as VehicleUpdate;
+}
 type VehicleMatch = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id">;
 type CustomerResolverRow = Pick<
   DB["public"]["Tables"]["customers"]["Row"],
@@ -234,6 +240,12 @@ function normalizeRow(
   const mileage = odometer ?? null;
 
   const rawCustomerId = cleanString(row.customer_id);
+  const hasCustomerReference = Boolean(
+    rawCustomerId ||
+      cleanString(row.customer_email ?? row.email) ||
+      cleanString(row.customer_phone ?? row.phone) ||
+      cleanString(row.customer_name ?? row.name),
+  );
   const customerId = resolveCustomerId(row, customers);
 
   const importNotes = buildVehicleImportNotes(row);
@@ -242,10 +254,17 @@ function normalizeRow(
     return { ok: false, reason: "Missing vehicle identity." };
   }
 
-  if (rawCustomerId && !customerId) {
+  if (hasCustomerReference && !customerId) {
+    if (rawCustomerId) {
+      return {
+        ok: false,
+        reason: "Customer not found for external customer_id.",
+      };
+    }
+
     return {
       ok: false,
-      reason: "Customer not found for external customer_id.",
+      reason: "Customer reference could not be resolved.",
     };
   }
 
@@ -392,7 +411,7 @@ export async function POST(req: Request) {
         );
 
         if (existing) {
-          const updatePayload: VehicleUpdate = {
+          const updatePayload: VehicleUpdate = omitNullishVehicleUpdate({
             unit_number: normalized.unit_number,
             vin: normalized.vin,
             license_plate: normalized.license_plate,
@@ -436,7 +455,7 @@ export async function POST(req: Request) {
             notes: normalized.notes,
 
             import_notes: normalized.import_notes,
-          };
+          });
 
           const { error } = await supabase
             .from("vehicles")
