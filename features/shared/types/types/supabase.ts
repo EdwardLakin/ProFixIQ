@@ -3093,6 +3093,7 @@ export type Database = {
           business_name: string | null
           city: string | null
           created_at: string | null
+          customer_since: string | null
           email: string | null
           external_id: string | null
           first_name: string | null
@@ -3120,6 +3121,7 @@ export type Database = {
           business_name?: string | null
           city?: string | null
           created_at?: string | null
+          customer_since?: string | null
           email?: string | null
           external_id?: string | null
           first_name?: string | null
@@ -3147,6 +3149,7 @@ export type Database = {
           business_name?: string | null
           city?: string | null
           created_at?: string | null
+          customer_since?: string | null
           email?: string | null
           external_id?: string | null
           first_name?: string | null

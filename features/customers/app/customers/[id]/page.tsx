@@ -30,6 +30,7 @@ type CustomerSearchRow = Pick<
   | "phone"
   | "phone_number"
   | "created_at"
+  | "customer_since"
 >;
 
 type NewCustomerType = "individual" | "business" | "fleet";
@@ -161,6 +162,20 @@ function formatNumberLike(value: string | number | null | undefined): string | n
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numeric);
 }
 
+function formatEngineFuel(vehicle: Vehicle): string | null {
+  return [strOrNull(vehicle.engine), strOrNull(vehicle.fuel_type)].filter(Boolean).join(" ") || null;
+}
+
+function formatDriveBody(vehicle: Vehicle): string | null {
+  return [strOrNull(vehicle.drivetrain), strOrNull(vehicle.body_type)].filter(Boolean).join(" ") || null;
+}
+
+function formatVehicleStatus(value: string | null | undefined): string | null {
+  const clean = strOrNull(value);
+  if (!clean) return null;
+  return clean.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function formatOdometer(value: string | number | null | undefined, unit: string | null | undefined): string | null {
   const formatted = formatNumberLike(value);
   if (!formatted) return null;
@@ -189,11 +204,11 @@ function DetailRow({
 }) {
   if (value == null || String(value).trim().length === 0) return null;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
+    <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
         {label}
       </div>
-      <div className="min-w-0 truncate text-sm font-medium text-white">
+      <div className="mt-1 min-w-0 break-words text-sm font-medium text-white">
         {value}
       </div>
     </div>
@@ -504,7 +519,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, address, city, province, postal_code",
+            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, address, city, province, postal_code",
           )
           .eq("id", customerId)
           .maybeSingle();
@@ -853,7 +868,7 @@ export default function CustomerProfilePage(): JSX.Element {
       const { data, error } = await supabase
         .from("customers")
         .select(
-          "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+          "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since",
         )
         .eq("shop_id", shopId);
 
@@ -1767,28 +1782,18 @@ export default function CustomerProfilePage(): JSX.Element {
                       <div className="break-words text-lg font-semibold leading-tight text-white sm:text-xl">
                         <span aria-hidden className="mr-2">🚗</span>{fmtVehicleLabel(selectedVehicle)}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-200">
-                        <span>VIN: {selectedVehicle.vin ?? "Not recorded"}</span>
-                        {formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province) ? (
-                          <span>Plate: {formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province)}</span>
-                        ) : null}
-                        {formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit) ? (
-                          <span>{formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit)}</span>
-                        ) : null}
-                        {compactDate(customer?.created_at) ? (
-                          <span>Customer since: {compactDate(customer?.created_at)}</span>
-                        ) : null}
-                      </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <DetailRow label="Year / Make / Model / Trim" value={[selectedVehicle.year, selectedVehicle.make, selectedVehicle.model, selectedVehicle.submodel].filter(Boolean).join(" ") || null} />
-                      <DetailRow label="VIN" value={selectedVehicle.vin} />
-                      <DetailRow label="Plate + State/Province" value={formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province)} />
-                      <DetailRow label="Mileage / Odometer" value={formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit)} />
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <DetailRow label="VIN" value={selectedVehicle.vin ?? "Not recorded"} />
+                      <DetailRow label="Plate" value={formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province)} />
+                      <DetailRow label="Mileage" value={formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit)} />
+                      <DetailRow label="Engine" value={formatEngineFuel(selectedVehicle)} />
+                      <DetailRow label="Drive" value={formatDriveBody(selectedVehicle)} />
+                      <DetailRow label="Status" value={formatVehicleStatus(selectedVehicle.status) ?? "Customer Vehicle"} />
+                      <DetailRow label="Customer since" value={compactDate(customer?.customer_since ?? customer?.created_at)} />
                       <DetailRow label="Unit #" value={selectedVehicle.unit_number} />
                       <DetailRow label="Color" value={selectedVehicle.color} />
-                      <DetailRow label="Engine Hours" value={selectedVehicle.engine_hours} />
                     </div>
 
                     {vehicleExtraDetails.length > 0 ? (

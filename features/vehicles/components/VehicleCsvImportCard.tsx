@@ -212,6 +212,8 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [counts, setCounts] = useState<ImportCounts | null>(null);
+  const [skippedRows, setSkippedRows] = useState<Array<{ row: number; reason: string }>>([]);
+  const [failedRows, setFailedRows] = useState<Array<{ row: number; error: string }>>([]);
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
 
@@ -291,6 +293,8 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     setImporting(true);
     setImportError(null);
     setCounts(null);
+    setSkippedRows([]);
+    setFailedRows([]);
 
     try {
       const response = await fetch("/api/vehicles/import", {
@@ -308,6 +312,8 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
       }
 
       setCounts(payload.counts);
+      setSkippedRows(payload.skippedRows ?? []);
+      setFailedRows(payload.failedRows ?? []);
 
       if (
         isOnboarding &&
@@ -394,8 +400,17 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
 
       {counts ? (
         <div className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-          Import complete. Created: {counts.created}. Updated: {counts.updated}.
-          Skipped: {counts.skipped}. Failed: {counts.failed}.
+          Import complete. Imported: {counts.created}. Updated: {counts.updated}. Skipped: {counts.skipped}. Failed: {counts.failed}.
+          {failedRows.length || skippedRows.length ? (
+            <details className="mt-2 text-xs text-emerald-50/80">
+              <summary className="cursor-pointer font-semibold">Developer diagnostics</summary>
+              <div className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/10 bg-black/25 p-2 text-left">
+                {[...failedRows.map((row) => `Failed row ${row.row}: ${row.error}`), ...skippedRows.map((row) => `Skipped row ${row.row}: ${row.reason}`)].slice(0, 25).map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </div>
       ) : null}
 
