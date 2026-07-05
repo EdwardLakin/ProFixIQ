@@ -23,7 +23,10 @@ type CustomerRow = Pick<
   | "province"
   | "postal_code"
 >;
-type CustomerMatch = Pick<CustomerRow, "id"> & { matchedBy?: string; matchedValue?: string | null };
+type CustomerMatch = Pick<CustomerRow, "id"> & {
+  matchedBy?: string;
+  matchedValue?: string | null;
+};
 
 type ImportRowSummary = {
   customerName: string | null;
@@ -34,7 +37,14 @@ type ImportRowSummary = {
 type SkippedCustomerImportRow = ImportRowSummary & {
   row: number;
   reason: string;
-  matchedBy: "email" | "phone" | "external_id" | "name_location" | "duplicate_in_csv" | "missing_identity" | "existing_customer";
+  matchedBy:
+    | "email"
+    | "phone"
+    | "external_id"
+    | "name_location"
+    | "duplicate_in_csv"
+    | "missing_identity"
+    | "existing_customer";
   matchedValue?: string | null;
 };
 
@@ -67,6 +77,13 @@ function cleanPhone(value: unknown): string | null {
   return digits || raw;
 }
 
+function normalizeEmail(value: string | null | undefined): string | null {
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return text.length ? text : null;
+}
+
 function normalizeIdentity(value: string | null | undefined): string | null {
   const text = String(value ?? "")
     .trim()
@@ -82,7 +99,7 @@ function customerIdentityKeys(
   const externalId = normalizeIdentity(customer.external_id);
   if (externalId) keys.push(`external:${externalId}`);
 
-  const email = normalizeIdentity(customer.email);
+  const email = normalizeEmail(customer.email);
   if (email) keys.push(`email:${email}`);
 
   const phone = cleanPhone(customer.phone) ?? cleanPhone(customer.phone_number);
@@ -114,38 +131,59 @@ async function loadExistingCustomerIdentities(
     .select(
       "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code",
     )
-    .eq("shop_id", shopId)
-    ;
-
+    .eq("shop_id", shopId);
   if (error) throw error;
 
   const byIdentity = new Map<string, CustomerMatch>();
   for (const customer of (data ?? []) as CustomerRow[]) {
     for (const key of customerIdentityKeys(customer)) {
-      if (!byIdentity.has(key)) byIdentity.set(key, { id: customer.id, ...describeIdentityKey(key) });
+      if (!byIdentity.has(key))
+        byIdentity.set(key, { id: customer.id, ...describeIdentityKey(key) });
     }
   }
 
   return byIdentity;
 }
 
-function describeIdentityKey(key: string): Pick<CustomerMatch, "matchedBy" | "matchedValue"> {
+function describeIdentityKey(
+  key: string,
+): Pick<CustomerMatch, "matchedBy" | "matchedValue"> {
   const [prefix, ...rest] = key.split(":");
   const value = rest.join(":") || null;
-  if (prefix === "external") return { matchedBy: "external_id", matchedValue: value };
+  if (prefix === "external")
+    return { matchedBy: "external_id", matchedValue: value };
   if (prefix === "email") return { matchedBy: "email", matchedValue: value };
   if (prefix === "phone") return { matchedBy: "phone", matchedValue: value };
-  if (prefix === "name-location") return { matchedBy: "name_location", matchedValue: value };
+  if (prefix === "name-location")
+    return { matchedBy: "name_location", matchedValue: value };
   return { matchedBy: "existing_customer", matchedValue: value };
 }
 
-function importRowSummary(row: ImportRow, normalized?: CustomerInsert | null): ImportRowSummary {
-  const rawName = cleanString(row.company_name) ?? cleanString(row.business_name) ?? cleanString(row.display_name) ?? cleanString(row.name) ?? [cleanString(row.first_name), cleanString(row.last_name)].filter(Boolean).join(" ").trim();
+function importRowSummary(
+  row: ImportRow,
+  normalized?: CustomerInsert | null,
+): ImportRowSummary {
+  const rawName =
+    cleanString(row.company_name) ??
+    cleanString(row.business_name) ??
+    cleanString(row.display_name) ??
+    cleanString(row.name) ??
+    [cleanString(row.first_name), cleanString(row.last_name)]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
   const name = rawName || normalized?.name || normalized?.business_name || null;
   return {
     customerName: name || null,
     email: cleanString(row.email) ?? normalized?.email ?? null,
-    phone: cleanPhone(row.phone) ?? cleanPhone(row.phone_primary) ?? cleanPhone(row.phone_number) ?? cleanPhone(row.phone_secondary) ?? normalized?.phone ?? normalized?.phone_number ?? null,
+    phone:
+      cleanPhone(row.phone) ??
+      cleanPhone(row.phone_primary) ??
+      cleanPhone(row.phone_number) ??
+      cleanPhone(row.phone_secondary) ??
+      normalized?.phone ??
+      normalized?.phone_number ??
+      null,
   };
 }
 
@@ -172,19 +210,50 @@ function extractConstraintName(error: unknown): string | null {
     const quoted = text.match(/constraint ["']([^"']+)["']/i);
     if (quoted?.[1]) return quoted[1];
 
-    const known = text.match(/(customers_user_id_uq|customers_shop_email_uq|customers_[a-z0-9_]*(?:email|phone|external|customer_id)[a-z0-9_]*)/i);
+    const known = text.match(
+      /(customers_user_id_uq|customers_shop_email_uq|customers_[a-z0-9_]*(?:email|phone|external|customer_id)[a-z0-9_]*)/i,
+    );
     if (known?.[1]) return known[1];
   }
 
   return null;
 }
 
-function describeSupabaseInsertError(error: unknown): { message: string; constraint: string | null } {
+function duplicateSkipReasonForConstraint(
+  constraint: string | null,
+): string | null {
+  if (!constraint) return null;
+  if (constraint === "customers_shop_email_uq")
+    return "Matched existing customer by email.";
+  if (/email/i.test(constraint)) return "Duplicate email for this shop.";
+  if (/phone/i.test(constraint)) return "Duplicate phone for this shop.";
+  if (/external|customer_id/i.test(constraint))
+    return "Duplicate external customer ID for this shop.";
+  return null;
+}
+
+function matchedByForConstraint(
+  constraint: string | null,
+): SkippedCustomerImportRow["matchedBy"] {
+  if (!constraint) return "existing_customer";
+  if (/email/i.test(constraint)) return "email";
+  if (/phone/i.test(constraint)) return "phone";
+  if (/external|customer_id/i.test(constraint)) return "external_id";
+  return "existing_customer";
+}
+
+function describeSupabaseInsertError(error: unknown): {
+  message: string;
+  constraint: string | null;
+} {
   const message =
     typeof (error as { message?: unknown }).message === "string"
       ? (error as { message: string }).message
       : "Customer row failed a database insert check.";
-  const details = typeof (error as { details?: unknown }).details === "string" ? (error as { details: string }).details : null;
+  const details =
+    typeof (error as { details?: unknown }).details === "string"
+      ? (error as { details: string }).details
+      : null;
   const constraint = extractConstraintName(error);
   const parts = [message];
   if (constraint) parts.push(`Constraint: ${constraint}.`);
@@ -238,18 +307,31 @@ export async function POST(req: Request) {
 
         if (!normalized) {
           counts.skipped += 1;
-          skippedRows.push({ row: index + 1, reason: "Missing customer name, company, email, and phone.", ...importRowSummary(raw as ImportRow), matchedBy: "missing_identity" });
+          skippedRows.push({
+            row: index + 1,
+            reason: "Missing customer name, company, email, and phone.",
+            ...importRowSummary(raw as ImportRow),
+            matchedBy: "missing_identity",
+          });
           continue;
         }
 
         const identityKeys = customerIdentityKeys(normalized);
 
-        const duplicateKey = identityKeys.find((key) => seenImportIdentities.has(key));
+        const duplicateKey = identityKeys.find((key) =>
+          seenImportIdentities.has(key),
+        );
         if (duplicateKey) {
           counts.duplicates += 1;
           counts.skipped += 1;
           const duplicateMatch = describeIdentityKey(duplicateKey);
-          skippedRows.push({ row: index + 1, reason: "Duplicate customer identity within this CSV.", ...importRowSummary(raw as ImportRow, normalized), matchedBy: "duplicate_in_csv", matchedValue: duplicateMatch.matchedValue });
+          skippedRows.push({
+            row: index + 1,
+            reason: "Duplicate customer identity within this CSV.",
+            ...importRowSummary(raw as ImportRow, normalized),
+            matchedBy: "duplicate_in_csv",
+            matchedValue: duplicateMatch.matchedValue,
+          });
           continue;
         }
 
@@ -257,13 +339,28 @@ export async function POST(req: Request) {
 
         if (existing?.id) {
           counts.skipped += 1;
-          skippedRows.push({ row: index + 1, reason: "Matched an existing customer for this shop.", ...importRowSummary(raw as ImportRow, normalized), matchedBy: (existing.matchedBy as SkippedCustomerImportRow["matchedBy"]) ?? "existing_customer", matchedValue: existing.matchedValue ?? existing.id });
+          const matchedBy =
+            (existing.matchedBy as SkippedCustomerImportRow["matchedBy"]) ??
+            "existing_customer";
+          skippedRows.push({
+            row: index + 1,
+            reason:
+              matchedBy === "email"
+                ? "Matched existing customer by email."
+                : "Matched an existing customer for this shop.",
+            ...importRowSummary(raw as ImportRow, normalized),
+            matchedBy,
+            matchedValue: existing.matchedValue ?? existing.id,
+          });
           continue;
         }
 
         for (const key of identityKeys) {
           seenImportIdentities.add(key);
-          existingByIdentity.set(key, { id: `pending-${index}`, ...describeIdentityKey(key) });
+          existingByIdentity.set(key, {
+            id: `pending-${index}`,
+            ...describeIdentityKey(key),
+          });
         }
 
         customersToCreate.push({
@@ -288,6 +385,25 @@ export async function POST(req: Request) {
 
       if (error) {
         const safeError = describeSupabaseInsertError(error);
+        const duplicateSkipReason = duplicateSkipReasonForConstraint(
+          safeError.constraint,
+        );
+
+        if (duplicateSkipReason) {
+          counts.skipped += 1;
+          skippedRows.push({
+            row: pending.row,
+            reason: duplicateSkipReason,
+            ...pending.summary,
+            matchedBy: matchedByForConstraint(safeError.constraint),
+            matchedValue:
+              safeError.constraint === "customers_shop_email_uq"
+                ? normalizeEmail(pending.customer.email)
+                : safeError.constraint,
+          });
+          continue;
+        }
+
         counts.failed += 1;
         errors.push({ row: pending.row, error: safeError.message });
         failedRows.push({
@@ -301,7 +417,10 @@ export async function POST(req: Request) {
 
       counts.created += 1;
       for (const key of pending.identityKeys) {
-        existingByIdentity.set(key, { id: `created-${pending.row}`, ...describeIdentityKey(key) });
+        existingByIdentity.set(key, {
+          id: `created-${pending.row}`,
+          ...describeIdentityKey(key),
+        });
       }
     }
 
