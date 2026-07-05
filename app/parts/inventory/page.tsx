@@ -807,7 +807,7 @@ export default function InventoryPage(): JSX.Element {
     <div className={pageWrap}>
       <GuidedPageStepPanel
         actions={{
-          inventory_parts: {
+          parts: {
             label: "Open import tools",
             description: "Uses the existing CSV Import modal on this page; no new import engine or backend route is created.",
             onClick: () => setCsvOpen(true),

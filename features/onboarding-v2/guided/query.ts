@@ -6,11 +6,13 @@ export function orderGuidedSteps<T extends { step_key: string }>(steps: T[]): T[
   return [...steps].sort((a, b) => (orderByKey.get(a.step_key as never) ?? 9999) - (orderByKey.get(b.step_key as never) ?? 9999));
 }
 
-export function calculateGuidedProgress(steps: Pick<GuidedOnboardingStepRow, "status">[]): GuidedOnboardingProgress {
+export function calculateGuidedProgress(steps: Pick<GuidedOnboardingStepRow, "step_key" | "status">[]): GuidedOnboardingProgress {
+  const canonicalKeys = new Set(GUIDED_ONBOARDING_STEPS.map((step) => step.key));
+  const visibleSteps = steps.filter((step) => canonicalKeys.has(step.step_key as never));
   const total = GUIDED_ONBOARDING_STEPS.length;
-  const completed = steps.filter((step) => step.status === "completed").length;
-  const skipped = steps.filter((step) => step.status === "skipped").length;
-  const inProgress = steps.filter((step) => step.status === "in_progress").length;
+  const completed = visibleSteps.filter((step) => step.status === "completed").length;
+  const skipped = visibleSteps.filter((step) => step.status === "skipped").length;
+  const inProgress = visibleSteps.filter((step) => step.status === "in_progress").length;
   return {
     total,
     completed,
@@ -21,7 +23,8 @@ export function calculateGuidedProgress(steps: Pick<GuidedOnboardingStepRow, "st
 }
 
 export function findNextGuidedStepKey(steps: Pick<GuidedOnboardingStepRow, "step_key" | "status">[]) {
-  const ordered = orderGuidedSteps(steps);
+  const canonicalKeys = new Set(GUIDED_ONBOARDING_STEPS.map((step) => step.key));
+  const ordered = orderGuidedSteps(steps).filter((step) => canonicalKeys.has(step.step_key as never));
   return ordered.find((step) => step.status !== "completed" && step.status !== "skipped")?.step_key ?? null;
 }
 
@@ -29,7 +32,8 @@ export function buildGuidedSessionDetail(
   session: GuidedOnboardingSessionRow,
   steps: GuidedOnboardingStepRow[],
 ): GuidedOnboardingSessionDetail {
-  const orderedSteps = orderGuidedSteps(steps);
+  const canonicalKeys = new Set(GUIDED_ONBOARDING_STEPS.map((step) => step.key));
+  const orderedSteps = orderGuidedSteps(steps).filter((step) => canonicalKeys.has(step.step_key as never));
   const currentStepKey = session.current_step_key ?? findNextGuidedStepKey(orderedSteps);
   return {
     session,

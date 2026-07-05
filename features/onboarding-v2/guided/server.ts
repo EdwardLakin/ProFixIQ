@@ -12,7 +12,7 @@ const STEPS_TABLE = `${GUIDED_TABLE_PREFIX}steps`;
 const EVENTS_TABLE = `${GUIDED_TABLE_PREFIX}events`;
 
 const SAFE_STEP_STATUSES: GuidedOnboardingStepStatus[] = ["not_started", "in_progress", "completed", "skipped"];
-const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "service_history"] as const;
+const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts"] as const;
 const STARTING_FROM_SCRATCH_FIRST_STEP = "staff";
 
 type Access = Extract<Awaited<ReturnType<typeof requireShopScopedApiAccess>>, { ok: true }>;
@@ -132,10 +132,14 @@ async function ensureGuidedSteps(access: Access, sessionId: string) {
 }
 
 async function detailResponse(access: Access, sessionId: string) {
-  const session = await getSessionForShop(access, sessionId);
+  let session = await getSessionForShop(access, sessionId);
   if (!session) return jsonError("Guided onboarding session not found", 404);
 
-  const steps = await getStepsForSession(access, sessionId);
+  const steps = await ensureGuidedSteps(access, sessionId);
+  if (session.status === "active" && (!session.current_step_key || !isGuidedOnboardingStepKey(session.current_step_key))) {
+    session = await updateSessionCurrentStep(access, sessionId, steps);
+  }
+
   return NextResponse.json(buildGuidedSessionDetail(session, steps));
 }
 
@@ -195,7 +199,7 @@ export async function createOrResumeGuidedSession() {
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Failed to seed guided setup steps", 500);
   }
-  if (!session.current_step_key) {
+  if (!session.current_step_key || !isGuidedOnboardingStepKey(session.current_step_key)) {
     session = await updateSessionCurrentStep(access, session.id, steps);
   }
 

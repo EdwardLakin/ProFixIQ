@@ -1,19 +1,18 @@
 export type GuidedOnboardingStepKey =
   | "customers"
   | "vehicles"
-  | "staff"
-  | "labor_tax_shop_settings"
-  | "inspection_templates"
-  | "service_menu"
-  | "inventory_parts"
+  | "vehicle_history"
   | "invoices"
-  | "service_history";
+  | "parts"
+  | "staff"
+  | "pricing_shop_defaults"
+  | "analysis";
 
 export type GuidedOnboardingStepStatus = "not_started" | "in_progress" | "completed" | "skipped";
 
 export type GuidedOnboardingSessionStatus = "active" | "completed" | "paused" | "skipped";
 
-export type GuidedOnboardingStepCategory = "data" | "team" | "settings" | "workflow" | "finance";
+export type GuidedOnboardingStepCategory = "data" | "team" | "settings" | "workflow" | "finance" | "analysis";
 
 export type GuidedOnboardingStepDefinition = {
   key: GuidedOnboardingStepKey;
