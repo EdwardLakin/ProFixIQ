@@ -56,11 +56,21 @@ type SkippedImportRow = {
   matchedValue?: string | null;
 };
 
+type FailedImportRow = {
+  row: number;
+  error: string;
+  customerName: string | null;
+  email: string | null;
+  phone: string | null;
+  constraint?: string | null;
+};
+
 type ImportResponse = {
   ok?: boolean;
   error?: string;
   counts?: ImportCounts;
   skippedRows?: SkippedImportRow[];
+  failedRows?: FailedImportRow[];
 };
 
 type Props = {
@@ -170,6 +180,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
   const [importError, setImportError] = useState<string | null>(null);
   const [counts, setCounts] = useState<ImportCounts | null>(null);
   const [skippedRows, setSkippedRows] = useState<SkippedImportRow[]>([]);
+  const [failedRows, setFailedRows] = useState<FailedImportRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const [busyAction, setBusyAction] = useState<"skip" | null>(null);
@@ -185,6 +196,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     setHeaders([]);
     setCounts(null);
     setSkippedRows([]);
+    setFailedRows([]);
     setParseError(null);
     setImportError(null);
   }
@@ -249,6 +261,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     setImportError(null);
     setCounts(null);
     setSkippedRows([]);
+    setFailedRows([]);
     try {
       const response = await fetch("/api/customers/import", {
         method: "POST",
@@ -261,6 +274,7 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
       }
       setCounts(payload.counts);
       setSkippedRows(payload.skippedRows ?? []);
+      setFailedRows(payload.failedRows ?? []);
       if (isOnboarding && payload.counts.created + payload.counts.updated > 0 && payload.counts.failed === 0) {
         await completeOnboardingAfterImport(payload.counts);
       }
@@ -386,6 +400,27 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
           Import results: created {counts.created}, updated {counts.updated}, skipped {counts.skipped}, failed {counts.failed}.
         </div>
       ) : null}
+      {failedRows.length ? (
+        <div className="mt-4 overflow-hidden rounded-xl border border-red-500/25 bg-red-950/20 text-sm text-red-50">
+          <div className="border-b border-red-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-100">Failed rows</div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left">
+              <thead className="text-xs uppercase tracking-[0.12em] text-red-100/70">
+                <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Error</th><th className="px-3 py-2">Constraint</th></tr>
+              </thead>
+              <tbody className="divide-y divide-red-500/15 text-red-50/90">
+                {failedRows.slice(0, 25).map((row) => (
+                  <tr key={`${row.row}-${row.constraint ?? row.error}`}>
+                    <td className="px-3 py-2">{row.row}</td><td className="px-3 py-2">{row.customerName ?? "—"}</td><td className="px-3 py-2">{row.email ?? "—"}</td><td className="px-3 py-2">{row.phone ?? "—"}</td><td className="px-3 py-2">{row.error}</td><td className="px-3 py-2">{row.constraint ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {failedRows.length > 25 ? <div className="px-3 py-2 text-xs text-red-100/70">Showing first 25 of {failedRows.length} failed rows.</div> : null}
+        </div>
+      ) : null}
+
       {skippedRows.length ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-amber-500/25 bg-amber-950/20 text-sm text-amber-50">
           <div className="border-b border-amber-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">Skipped rows</div>

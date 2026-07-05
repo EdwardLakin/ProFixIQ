@@ -25,14 +25,30 @@ type CustomerRow = Pick<
 >;
 type CustomerMatch = Pick<CustomerRow, "id"> & { matchedBy?: string; matchedValue?: string | null };
 
-type SkippedCustomerImportRow = {
-  row: number;
-  reason: string;
+type ImportRowSummary = {
   customerName: string | null;
   email: string | null;
   phone: string | null;
+};
+
+type SkippedCustomerImportRow = ImportRowSummary & {
+  row: number;
+  reason: string;
   matchedBy: "email" | "phone" | "external_id" | "name_location" | "duplicate_in_csv" | "missing_identity" | "existing_customer";
   matchedValue?: string | null;
+};
+
+type FailedCustomerImportRow = ImportRowSummary & {
+  row: number;
+  error: string;
+  constraint?: string | null;
+};
+
+type PendingCustomerInsert = {
+  row: number;
+  customer: CustomerInsert;
+  summary: ImportRowSummary;
+  identityKeys: string[];
 };
 
 type CustomerImportBody = {
@@ -99,7 +115,7 @@ async function loadExistingCustomerIdentities(
       "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code",
     )
     .eq("shop_id", shopId)
-    .limit(10000);
+    ;
 
   if (error) throw error;
 
@@ -123,7 +139,7 @@ function describeIdentityKey(key: string): Pick<CustomerMatch, "matchedBy" | "ma
   return { matchedBy: "existing_customer", matchedValue: value };
 }
 
-function importRowSummary(row: ImportRow, normalized?: CustomerInsert | null) {
+function importRowSummary(row: ImportRow, normalized?: CustomerInsert | null): ImportRowSummary {
   const rawName = cleanString(row.company_name) ?? cleanString(row.business_name) ?? cleanString(row.display_name) ?? cleanString(row.name) ?? [cleanString(row.first_name), cleanString(row.last_name)].filter(Boolean).join(" ").trim();
   const name = rawName || normalized?.name || normalized?.business_name || null;
   return {
@@ -142,6 +158,38 @@ function findExistingCustomer(
     if (existing) return existing;
   }
   return null;
+}
+
+function extractConstraintName(error: unknown): string | null {
+  const fields = [
+    (error as { constraint?: unknown }).constraint,
+    (error as { details?: unknown }).details,
+    (error as { message?: unknown }).message,
+  ];
+
+  for (const field of fields) {
+    const text = typeof field === "string" ? field : "";
+    const quoted = text.match(/constraint ["']([^"']+)["']/i);
+    if (quoted?.[1]) return quoted[1];
+
+    const known = text.match(/(customers_user_id_uq|customers_shop_email_uq|customers_[a-z0-9_]*(?:email|phone|external|customer_id)[a-z0-9_]*)/i);
+    if (known?.[1]) return known[1];
+  }
+
+  return null;
+}
+
+function describeSupabaseInsertError(error: unknown): { message: string; constraint: string | null } {
+  const message =
+    typeof (error as { message?: unknown }).message === "string"
+      ? (error as { message: string }).message
+      : "Customer row failed a database insert check.";
+  const details = typeof (error as { details?: unknown }).details === "string" ? (error as { details: string }).details : null;
+  const constraint = extractConstraintName(error);
+  const parts = [message];
+  if (constraint) parts.push(`Constraint: ${constraint}.`);
+  if (details && !details.includes(message)) parts.push(details);
+  return { message: parts.join(" "), constraint };
 }
 
 export async function POST(req: Request) {
@@ -173,12 +221,13 @@ export async function POST(req: Request) {
 
     const errors: Array<{ row: number; error: string }> = [];
     const skippedRows: SkippedCustomerImportRow[] = [];
+    const failedRows: FailedCustomerImportRow[] = [];
     const existingByIdentity = await loadExistingCustomerIdentities(
       supabase,
       shopId,
     );
     const seenImportIdentities = new Set<string>();
-    const customersToCreate: CustomerInsert[] = [];
+    const customersToCreate: PendingCustomerInsert[] = [];
 
     for (const [index, raw] of rawRows.entries()) {
       try {
@@ -217,7 +266,12 @@ export async function POST(req: Request) {
           existingByIdentity.set(key, { id: `pending-${index}`, ...describeIdentityKey(key) });
         }
 
-        customersToCreate.push({ ...normalized, user_id: null });
+        customersToCreate.push({
+          row: index + 1,
+          customer: { ...normalized, user_id: null },
+          summary: importRowSummary(raw as ImportRow, normalized),
+          identityKeys,
+        });
       } catch (error) {
         counts.failed += 1;
         errors.push({
@@ -228,15 +282,26 @@ export async function POST(req: Request) {
       }
     }
 
-    if (customersToCreate.length) {
-      const { error } = await supabase
-        .from("customers")
-        .insert(customersToCreate);
+    for (const pending of customersToCreate) {
+      const payload: CustomerInsert = { ...pending.customer, user_id: null };
+      const { error } = await supabase.from("customers").insert(payload);
+
       if (error) {
-        counts.failed += customersToCreate.length;
-        errors.push({ row: 0, error: error.message });
-      } else {
-        counts.created = customersToCreate.length;
+        const safeError = describeSupabaseInsertError(error);
+        counts.failed += 1;
+        errors.push({ row: pending.row, error: safeError.message });
+        failedRows.push({
+          row: pending.row,
+          ...pending.summary,
+          error: safeError.message,
+          constraint: safeError.constraint,
+        });
+        continue;
+      }
+
+      counts.created += 1;
+      for (const key of pending.identityKeys) {
+        existingByIdentity.set(key, { id: `created-${pending.row}`, ...describeIdentityKey(key) });
       }
     }
 
@@ -245,6 +310,7 @@ export async function POST(req: Request) {
       counts,
       errors,
       skippedRows,
+      failedRows,
     });
   } catch (error) {
     return NextResponse.json(

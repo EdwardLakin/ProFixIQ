@@ -16,12 +16,12 @@ export function OnboardingHighlightFrame({ title, description, children, active 
   return (
     <section
       data-onboarding-highlight={highlightKey}
-      className="rounded-2xl border border-orange-400/40 bg-orange-950/20 p-4 shadow-lg shadow-orange-950/20"
+      className="rounded-2xl border border-orange-300/50 bg-transparent p-2 shadow-[0_0_0_1px_rgba(251,146,60,0.16),0_0_28px_rgba(251,146,60,0.16)]"
     >
-      <div className="mb-3">
+      <div className="mb-2 rounded-xl border border-orange-300/25 bg-black/20 px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/80">Upload/setup here</div>
-        <h2 className="mt-1 text-lg font-semibold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-orange-100/80">{description}</p>
+        <h2 className="mt-1 text-sm font-semibold text-white">{title}</h2>
+        <p className="mt-1 text-xs text-orange-100/75">{description}</p>
       </div>
       {children}
     </section>
