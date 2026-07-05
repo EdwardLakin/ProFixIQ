@@ -233,8 +233,9 @@ describe("guided onboarding v2 foundation", () => {
     expect(routeSource).toContain("loadExistingCustomerIdentities");
     expect(routeSource).toContain("seenImportIdentities");
     expect(routeSource).toContain("customersToCreate");
+    expect(routeSource).toContain("for (const pending of customersToCreate)");
     expect(routeSource).toContain('.from("customers")');
-    expect(routeSource).toContain(".insert(customersToCreate)");
+    expect(routeSource).toContain(".insert(payload)");
   });
 
   it("keeps starting-from-scratch setup active while skipping import-only steps", () => {
