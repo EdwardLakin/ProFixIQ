@@ -350,7 +350,7 @@ function computeVehicleExtraDetails(
     key: string;
     kind: "string" | "number";
   }> = [
-    { label: "Submodel", key: "submodel", kind: "string" },
+    { label: "Trim", key: "submodel", kind: "string" },
 
     { label: "Engine", key: "engine", kind: "string" },
     { label: "Engine Type", key: "engine_type", kind: "string" },
@@ -360,7 +360,15 @@ function computeVehicleExtraDetails(
     { label: "Transmission Type", key: "transmission_type", kind: "string" },
 
     { label: "Fuel Type", key: "fuel_type", kind: "string" },
-    { label: "Drivetrain", key: "drivetrain", kind: "string" },
+    { label: "Body Type", key: "body_type", kind: "string" },
+    { label: "Drive Type", key: "drivetrain", kind: "string" },
+    { label: "Asset Type", key: "asset_type", kind: "string" },
+    { label: "Status", key: "status", kind: "string" },
+    { label: "Purchase Date", key: "purchase_date", kind: "string" },
+    { label: "In-Service Date", key: "in_service_date", kind: "string" },
+    { label: "Last Service Date", key: "last_service_date", kind: "string" },
+    { label: "Tags", key: "tags", kind: "string" },
+    { label: "Notes", key: "notes", kind: "string" },
   ];
 
   const out: Array<{ label: string; value: string | number }> = [];
@@ -1076,6 +1084,20 @@ export default function CustomerProfilePage(): JSX.Element {
       updateRecord["fuel_type"] = vehDraft["fuel_type"] || null;
     if (typeof vehDraft["drivetrain"] === "string")
       updateRecord["drivetrain"] = vehDraft["drivetrain"] || null;
+    for (const key of [
+      "state_province",
+      "odometer_unit",
+      "body_type",
+      "asset_type",
+      "status",
+      "purchase_date",
+      "in_service_date",
+      "last_service_date",
+      "tags",
+      "notes",
+    ] as const) {
+      if (typeof vehDraft[key] === "string") updateRecord[key] = vehDraft[key] || null;
+    }
 
     const duplicateCheck = await checkVehicleDuplicates({
       vin: typeof updateRecord["vin"] === "string" ? updateRecord["vin"] : null,
@@ -1134,6 +1156,16 @@ export default function CustomerProfilePage(): JSX.Element {
     transmission_type: "",
     fuel_type: "",
     drivetrain: "",
+    state_province: "",
+    odometer_unit: "",
+    body_type: "",
+    asset_type: "",
+    status: "",
+    purchase_date: "",
+    in_service_date: "",
+    last_service_date: "",
+    tags: "",
+    notes: "",
   });
 
   const createVehicle = useCallback(async () => {
@@ -1168,6 +1200,20 @@ export default function CustomerProfilePage(): JSX.Element {
 
     if (typeof newVeh["fuel_type"] === "string") insertRecord["fuel_type"] = newVeh["fuel_type"] || null;
     if (typeof newVeh["drivetrain"] === "string") insertRecord["drivetrain"] = newVeh["drivetrain"] || null;
+    for (const key of [
+      "state_province",
+      "odometer_unit",
+      "body_type",
+      "asset_type",
+      "status",
+      "purchase_date",
+      "in_service_date",
+      "last_service_date",
+      "tags",
+      "notes",
+    ] as const) {
+      if (typeof newVeh[key] === "string") insertRecord[key] = newVeh[key] || null;
+    }
 
     const duplicateCheck = await checkVehicleDuplicates({
       vin: typeof insertRecord["vin"] === "string" ? insertRecord["vin"] : null,
@@ -1695,24 +1741,21 @@ export default function CustomerProfilePage(): JSX.Element {
                     <div className="text-sm font-semibold text-white">{fmtVehicleLabel(selectedVehicle)}</div>
 
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <DetailRow label="Year / Make / Model / Trim" value={[selectedVehicle.year, selectedVehicle.make, selectedVehicle.model, selectedVehicle.submodel].filter(Boolean).join(" ") || null} />
                       <DetailRow label="VIN" value={selectedVehicle.vin} />
                       <DetailRow
-                        label="License Plate"
-                        value={
-                          ((selectedVehicle as unknown as Record<string, unknown>)["license_plate"] as
-                            | string
-                            | null
-                            | undefined) ?? selectedVehicle.license_plate
-                        }
+                        label="Plate + State/Province"
+                        value={[
+                          ((selectedVehicle as unknown as Record<string, unknown>)["license_plate"] as string | null | undefined) ?? selectedVehicle.license_plate,
+                          selectedVehicle.state_province,
+                        ].filter(Boolean).join(" / ") || null}
                       />
                       <DetailRow
-                        label="Mileage"
-                        value={
-                          ((selectedVehicle as unknown as Record<string, unknown>)["mileage"] as
-                            | string
-                            | null
-                            | undefined) ?? selectedVehicle.mileage
-                        }
+                        label="Mileage / Odometer"
+                        value={[
+                          ((selectedVehicle as unknown as Record<string, unknown>)["mileage"] as string | null | undefined) ?? selectedVehicle.mileage,
+                          selectedVehicle.odometer_unit,
+                        ].filter(Boolean).join(" ") || null}
                       />
                       <DetailRow
                         label="Unit #"
@@ -2027,10 +2070,12 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Year", "year"],
                 ["Make", "make"],
                 ["Model", "model"],
-                ["Submodel", "submodel"],
+                ["Trim", "submodel"],
                 ["VIN", "vin"],
                 ["License plate", "license_plate"],
-                ["Mileage", "mileage"],
+                ["State / province", "state_province"],
+                ["Mileage / odometer", "mileage"],
+                ["Odometer unit", "odometer_unit"],
                 ["Unit #", "unit_number"],
                 ["Color", "color"],
                 ["Engine hours", "engine_hours"],
@@ -2040,7 +2085,15 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Transmission", "transmission"],
                 ["Transmission type", "transmission_type"],
                 ["Fuel type", "fuel_type"],
-                ["Drivetrain", "drivetrain"],
+                ["Body type", "body_type"],
+                ["Drive type", "drivetrain"],
+                ["Asset type", "asset_type"],
+                ["Status", "status"],
+                ["Purchase date", "purchase_date"],
+                ["In-service date", "in_service_date"],
+                ["Last service date", "last_service_date"],
+                ["Tags", "tags"],
+                ["Notes", "notes"],
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
@@ -2099,10 +2152,12 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Year", "year"],
                 ["Make", "make"],
                 ["Model", "model"],
-                ["Submodel", "submodel"],
+                ["Trim", "submodel"],
                 ["VIN", "vin"],
                 ["License plate", "license_plate"],
-                ["Mileage", "mileage"],
+                ["State / province", "state_province"],
+                ["Mileage / odometer", "mileage"],
+                ["Odometer unit", "odometer_unit"],
                 ["Unit #", "unit_number"],
                 ["Color", "color"],
                 ["Engine hours", "engine_hours"],
@@ -2112,7 +2167,15 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Transmission", "transmission"],
                 ["Transmission type", "transmission_type"],
                 ["Fuel type", "fuel_type"],
-                ["Drivetrain", "drivetrain"],
+                ["Body type", "body_type"],
+                ["Drive type", "drivetrain"],
+                ["Asset type", "asset_type"],
+                ["Status", "status"],
+                ["Purchase date", "purchase_date"],
+                ["In-service date", "in_service_date"],
+                ["Last service date", "last_service_date"],
+                ["Tags", "tags"],
+                ["Notes", "notes"],
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">

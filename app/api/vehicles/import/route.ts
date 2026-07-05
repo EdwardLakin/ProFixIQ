@@ -39,6 +39,7 @@ type VehicleImportRow = {
   name?: unknown;
 
   plate?: unknown;
+  state_province?: unknown;
 
   trim?: unknown;
 
@@ -103,27 +104,21 @@ function cleanYear(value: unknown): number | null {
   return Math.trunc(parsed);
 }
 
+function cleanDate(value: unknown): string | null {
+  const text = cleanString(value);
+  if (!text) return null;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return text;
+}
+
 function buildVehicleImportNotes(row: VehicleImportRow): string | null {
   const notes: string[] = [];
 
   const pairs: Array<[string, unknown]> = [
     ["csv_customer_id", row.customer_id],
 
-    ["body_type", row.body_type],
-
-    ["asset_type", row.asset_type],
-
-    ["status", row.status],
-
-    ["purchase_date", row.purchase_date],
-
-    ["in_service_date", row.in_service_date],
-
-    ["last_service_date", row.last_service_date],
-
-    ["tags", row.tags],
-
-    ["notes", row.notes],
+    ["csv_notes", row.notes],
   ];
 
   for (const [label, value] of pairs) {
@@ -236,7 +231,7 @@ function normalizeRow(
 
   const odometerUnit = cleanString(row.odometer_unit);
 
-  const mileage = [odometer, odometerUnit].filter(Boolean).join(" ") || null;
+  const mileage = odometer ?? null;
 
   const rawCustomerId = cleanString(row.customer_id);
   const customerId = resolveCustomerId(row, customers);
@@ -261,6 +256,7 @@ function normalizeRow(
       unit_number: unitNumber,
       vin,
       license_plate: plate,
+      state_province: cleanString(row.state_province),
       year,
       make,
       model,
@@ -269,9 +265,18 @@ function normalizeRow(
       submodel: cleanString(row.trim),
       color: cleanString(row.color),
       mileage,
+      odometer_unit: odometerUnit,
       engine: cleanString(row.engine),
       fuel_type: cleanString(row.fuel_type),
       drivetrain: cleanString(row.drive_type),
+      body_type: cleanString(row.body_type),
+      asset_type: cleanString(row.asset_type),
+      status: cleanString(row.status),
+      purchase_date: cleanDate(row.purchase_date),
+      in_service_date: cleanDate(row.in_service_date),
+      last_service_date: cleanDate(row.last_service_date),
+      tags: cleanString(row.tags),
+      notes: cleanString(row.notes),
       import_notes: importNotes,
     },
   };
@@ -360,8 +365,6 @@ export async function POST(req: Request) {
       skipped: 0,
       failed: 0,
     };
-    const skippedRows: Array<{ row: number; reason: string }> = [];
-    const failedRows: Array<{ row: number; error: string }> = [];
     const customers = await loadCustomerResolverIndex(supabase, shopId);
 
     for (const [index, raw] of rows.entries()) {
@@ -373,7 +376,6 @@ export async function POST(req: Request) {
 
       if (!normalizedResult.ok) {
         counts.skipped += 1;
-        skippedRows.push({ row: index + 1, reason: normalizedResult.reason });
         continue;
       }
 
@@ -391,6 +393,7 @@ export async function POST(req: Request) {
             unit_number: normalized.unit_number,
             vin: normalized.vin,
             license_plate: normalized.license_plate,
+            state_province: normalized.state_province,
             year: normalized.year,
             make: normalized.make,
             model: normalized.model,
@@ -405,11 +408,29 @@ export async function POST(req: Request) {
 
             mileage: normalized.mileage,
 
+            odometer_unit: normalized.odometer_unit,
+
             engine: normalized.engine,
 
             fuel_type: normalized.fuel_type,
 
             drivetrain: normalized.drivetrain,
+
+            body_type: normalized.body_type,
+
+            asset_type: normalized.asset_type,
+
+            status: normalized.status,
+
+            purchase_date: normalized.purchase_date,
+
+            in_service_date: normalized.in_service_date,
+
+            last_service_date: normalized.last_service_date,
+
+            tags: normalized.tags,
+
+            notes: normalized.notes,
 
             import_notes: normalized.import_notes,
           };
@@ -431,7 +452,7 @@ export async function POST(req: Request) {
         counts.created += 1;
       } catch (error) {
         counts.failed += 1;
-        failedRows.push({
+        console.warn("Vehicle import row failed", {
           row: index + 1,
           error:
             error instanceof Error
@@ -447,8 +468,6 @@ export async function POST(req: Request) {
       ok: true,
       counts,
       explanation,
-      skippedRows,
-      failedRows,
     });
   } catch (error) {
     return NextResponse.json(
