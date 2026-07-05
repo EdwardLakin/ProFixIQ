@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type Params = { params: { jobId: string } };
-
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(_req: Request, context: { params: Promise<{ jobId: string }> }) {
+  const { jobId } = await context.params;
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor"],
   });
@@ -14,7 +13,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { data, error } = await (access.supabase as unknown as { from: (table: string) => any })
     .from("import_jobs")
     .select("id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at")
-    .eq("id", params.jobId)
+    .eq("id", jobId)
     .eq("shop_id", shopId)
     .single();
 
