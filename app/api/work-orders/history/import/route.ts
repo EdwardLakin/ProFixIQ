@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  chunkArray,
+  compactImportSummary,
+  parseCsvFileFromFormData,
+} from "@/features/shared/lib/import/csv";
 
 type DB = Database;
 type HistoryImportRow = {
@@ -185,19 +190,61 @@ function resolveVehicle(row: HistoryImportRow, r: Resolver): VehicleRef | null {
   return null;
 }
 
+const HISTORY_IMPORT_BATCH_SIZE = 250;
+const HISTORY_IMPORT_SAMPLE_LIMIT = 25;
+const HISTORY_IMPORT_MAX_ROWS = 20_000;
+
+type ImportCounts = {
+  imported: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  duplicates: number;
+};
+
 export async function POST(req: Request) {
   try {
     const access = await requireShopScopedApiAccess({
       allowRoles: ["owner", "admin", "manager", "advisor"],
     });
     if (!access.ok) return access.response;
-    const body = await req.json().catch(() => null);
-    const rows = Array.isArray(body?.rows) ? body.rows : null;
-    if (!rows?.length)
+
+    const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
+    if (!contentType.includes("multipart/form-data")) {
       return NextResponse.json(
-        { error: "No history rows provided." },
+        {
+          error:
+            "Vehicle history import now requires multipart/form-data with a CSV file field.",
+        },
+        { status: 415 },
+      );
+    }
+
+    const formData = await req.formData().catch((error) => {
+      throw new Error(
+        error instanceof Error
+          ? `Unable to read CSV upload: ${error.message}`
+          : "Unable to read CSV upload.",
+      );
+    });
+    let parsed;
+    try {
+      parsed = await parseCsvFileFromFormData<HistoryImportRow>({
+        formData,
+        maxRows: HISTORY_IMPORT_MAX_ROWS,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to parse vehicle history CSV.",
+        },
         { status: 400 },
       );
+    }
+    const rows = parsed.rows;
     const { supabase, profile } = access;
     const shopId = profile.shop_id;
     if (!shopId)
@@ -206,7 +253,13 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     const resolver = await loadResolver(supabase, shopId);
-    const counts = { imported: 0, skipped: 0, failed: 0, duplicates: 0 };
+    const counts: ImportCounts = {
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
+    };
     const skippedRows: Array<{
       row: number;
       reason: string;
@@ -219,7 +272,14 @@ export async function POST(req: Request) {
       repairOrderNumber: string | null;
       invoiceNumber: string | null;
     }> = [];
-    for (const [i, raw] of (rows as HistoryImportRow[]).entries()) {
+    const payloads: Array<{
+      rowNumber: number;
+      repairOrderNumber: string | null;
+      invoiceNumber: string | null;
+      payload: DB["public"]["Tables"]["history"]["Insert"] & Record<string, unknown>;
+    }> = [];
+
+    for (const [i, raw] of rows.entries()) {
       const rowNumber = i + 1;
       const row = raw;
       const repairOrderNumber = clean(
@@ -332,38 +392,39 @@ export async function POST(req: Request) {
           ]
             .filter(Boolean)
             .join(" · ") || "Imported historical service record";
-        const payload: DB["public"]["Tables"]["history"]["Insert"] &
-          Record<string, unknown> = {
-          customer_id: customer.id,
-          vehicle_id: vehicle?.id ?? null,
-          service_date: serviceDate,
-          description,
-          notes,
-          work_order_number: repairOrderNumber,
-          invoice_number: invoiceNumber,
-          odometer: num(row.odometer),
-          symptom: clean(row.complaint),
-          cause: clean(row.cause),
-          correction: clean(row.correction),
-          labor_hours: num(row.labor_hours),
-          total: num(row.total),
-          advisor_name: clean(row.advisor),
-          assigned_tech_name: clean(row.technician),
-          historical_status: "imported",
-          source_system: "vehicle_history_csv",
-          source_row_id: String(rowNumber),
-          source_payload: JSON.parse(
-            JSON.stringify({
-              imported_at: new Date().toISOString(),
-              raw_row: row,
-              service_category: clean(row.service_category),
-              parts: clean(row.parts),
-            }),
-          ) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"],
-        };
-        const { error } = await supabase.from("history").insert(payload);
-        if (error) throw error;
-        counts.imported++;
+        payloads.push({
+          rowNumber,
+          repairOrderNumber,
+          invoiceNumber,
+          payload: {
+            customer_id: customer.id,
+            vehicle_id: vehicle?.id ?? null,
+            service_date: serviceDate,
+            description,
+            notes,
+            work_order_number: repairOrderNumber,
+            invoice_number: invoiceNumber,
+            odometer: num(row.odometer),
+            symptom: clean(row.complaint),
+            cause: clean(row.cause),
+            correction: clean(row.correction),
+            labor_hours: num(row.labor_hours),
+            total: num(row.total),
+            advisor_name: clean(row.advisor),
+            assigned_tech_name: clean(row.technician),
+            historical_status: "imported",
+            source_system: "vehicle_history_csv",
+            source_row_id: String(rowNumber),
+            source_payload: JSON.parse(
+              JSON.stringify({
+                imported_at: new Date().toISOString(),
+                raw_row: row,
+                service_category: clean(row.service_category),
+                parts: clean(row.parts),
+              }),
+            ) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"],
+          },
+        });
       } catch (error) {
         counts.failed++;
         failedRows.push({
@@ -377,7 +438,43 @@ export async function POST(req: Request) {
         });
       }
     }
-    return NextResponse.json({ ok: true, counts, skippedRows, failedRows });
+
+    for (const batch of chunkArray(payloads, HISTORY_IMPORT_BATCH_SIZE)) {
+      if (!batch.length) continue;
+      const { error } = await supabase
+        .from("history")
+        .insert(batch.map((entry) => entry.payload));
+      if (error) {
+        for (const entry of batch) {
+          const { error: rowError } = await supabase
+            .from("history")
+            .insert(entry.payload);
+          if (rowError) {
+            counts.failed++;
+            failedRows.push({
+              row: entry.rowNumber,
+              error: rowError.message,
+              repairOrderNumber: entry.repairOrderNumber,
+              invoiceNumber: entry.invoiceNumber,
+            });
+          } else {
+            counts.imported++;
+          }
+        }
+      } else {
+        counts.imported += batch.length;
+      }
+    }
+
+    return NextResponse.json(
+      compactImportSummary({
+        counts,
+        totalRows: rows.length,
+        skippedRows,
+        failedRows,
+        sampleLimit: HISTORY_IMPORT_SAMPLE_LIMIT,
+      }),
+    );
   } catch (error) {
     return NextResponse.json(
       {

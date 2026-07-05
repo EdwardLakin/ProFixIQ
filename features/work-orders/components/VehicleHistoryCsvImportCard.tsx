@@ -40,10 +40,12 @@ type ImportResponse = {
   error?: string;
   counts?: {
     imported: number;
+    updated: number;
     skipped: number;
     failed: number;
     duplicates: number;
   };
+  totalRows?: number;
   skippedRows?: Array<{
     row: number;
     reason: string;
@@ -150,6 +152,7 @@ export function VehicleHistoryCsvImportCard({
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<HistoryImportRow[]>([]);
@@ -183,11 +186,14 @@ export function VehicleHistoryCsvImportCard({
     const file = event.target.files?.[0] ?? null;
     reset();
     if (!file) {
+      setFile(null);
       setFileName(null);
       return;
     }
+    setFile(file);
     setFileName(file.name);
     if (!file.name.toLowerCase().endsWith(".csv")) {
+      setFile(null);
       setParseError("Please choose a .csv file.");
       return;
     }
@@ -257,7 +263,8 @@ export function VehicleHistoryCsvImportCard({
   }
 
   async function confirmImport() {
-    if (!importableRows.length) {
+    if (importing || completingOnboarding) return;
+    if (!file || !importableRows.length) {
       setImportError(
         "Upload a CSV with at least one valid history row before importing.",
       );
@@ -267,17 +274,41 @@ export function VehicleHistoryCsvImportCard({
     setImportError(null);
     setResponse(null);
     setProgress({
-      phase: "Importing",
+      phase: "Uploading CSV",
       phaseKey: "importing",
       processed: 0,
       total: importableRows.length,
       percent: 35,
     });
     try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (guidedQuery?.onboardingSession) {
+        formData.append("guidedSessionId", guidedQuery.onboardingSession);
+      }
+      if (guidedQuery?.onboardingStep) {
+        formData.append("guidedStep", guidedQuery.onboardingStep);
+      }
+      if (guidedQuery?.returnTo) {
+        formData.append("returnTo", guidedQuery.returnTo);
+      }
+      setProgress({
+        phase: "Processing on server",
+        phaseKey: "matching",
+        processed: 0,
+        total: importableRows.length,
+        percent: 50,
+      });
       const res = await fetch("/api/work-orders/history/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: importableRows }),
+        body: formData,
+      });
+      setProgress({
+        phase: "Importing records",
+        phaseKey: "importing",
+        processed: 0,
+        total: importableRows.length,
+        percent: 75,
       });
       const payload = (await res.json().catch(() => ({}))) as ImportResponse;
       if (!res.ok || payload.ok === false || !payload.counts)
@@ -289,10 +320,10 @@ export function VehicleHistoryCsvImportCard({
         payload.counts.failed === 0
       ) {
         setProgress({
-          phase: "Finalizing guided step",
+          phase: "Finalizing",
           phaseKey: "finalizing",
-          processed: importableRows.length,
-          total: importableRows.length,
+          processed: payload.totalRows ?? importableRows.length,
+          total: payload.totalRows ?? importableRows.length,
           percent: 98,
         });
         await completeOnboardingAfterImport(payload.counts);
@@ -301,10 +332,10 @@ export function VehicleHistoryCsvImportCard({
         phase:
           payload.counts.failed > 0
             ? "Import completed with failures"
-            : "Completed",
+            : "Finalizing",
         phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
-        processed: importableRows.length,
-        total: importableRows.length,
+        processed: payload.totalRows ?? importableRows.length,
+        total: payload.totalRows ?? importableRows.length,
         percent: 100,
       });
       if (payload.counts.imported > 0) onImported?.();
@@ -512,7 +543,7 @@ export function VehicleHistoryCsvImportCard({
       <GuidedImportFooterActions
         importing={importing}
         completing={completingOnboarding}
-        canConfirm={importableRows.length > 0}
+        canConfirm={Boolean(file && importableRows.length > 0)}
         onConfirm={() => void confirmImport()}
         isOnboarding={isOnboarding}
         returnTo={guidedQuery?.returnTo}
