@@ -86,6 +86,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [showImport, setShowImport] = useState(false);
+  const shouldShowImport = Boolean(vehicleHistoryGuidedQuery || showImport);
 
   useEffect(() => {
     void (async () => {
@@ -233,6 +234,12 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.06),transparent_32%),#050914] px-4 py-6 text-white">
       <div className="mx-auto max-w-6xl space-y-4">
         <GuidedPageStepPanel />
+        {shouldShowImport ? (
+          <VehicleHistoryCsvImportCard
+            guidedQuery={vehicleHistoryGuidedQuery}
+            onImported={() => void load()}
+          />
+        ) : null}
         {/* existing controls kept */}
         <section className="rounded-[26px] border border-slate-700/60 bg-slate-950/70 px-4 py-5 shadow-[0_18px_48px_rgba(2,6,23,0.58)] sm:px-6 sm:py-6">
           <div className="mb-3 flex flex-wrap items-end gap-3">
@@ -274,14 +281,6 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               Export CSV
             </button>
           </div>
-          {showImport ? (
-            <div className="mb-4">
-              <VehicleHistoryCsvImportCard
-                guidedQuery={vehicleHistoryGuidedQuery}
-                onImported={() => void load()}
-              />
-            </div>
-          ) : null}
           {err ? (
             <div className="mb-4 rounded-xl border border-red-500/60 bg-red-950/80 px-4 py-2 text-sm text-red-100">
               {err}

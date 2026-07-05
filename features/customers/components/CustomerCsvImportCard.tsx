@@ -246,7 +246,8 @@ export function CustomerCsvImportCard({
     }
 
     setImportProgress({
-      phase: "Preparing rows",
+      phase: "Reading file",
+      phaseKey: "reading_file",
       processed: 0,
       total: 0,
       percent: 5,
@@ -264,7 +265,8 @@ export function CustomerCsvImportCard({
         );
         setRows(parsedRows);
         setImportProgress({
-          phase: "Preparing rows",
+          phase: "Reading file",
+          phaseKey: "reading_file",
           processed: parsedRows.length,
           total: parsedRows.length,
           percent: parsedRows.length ? 25 : 0,
@@ -320,6 +322,7 @@ export function CustomerCsvImportCard({
     setImportError(null);
     setImportProgress({
       phase: "Importing",
+      phaseKey: "importing",
       processed: 0,
       total: importableRows.length,
       percent: 30,
@@ -362,6 +365,7 @@ export function CustomerCsvImportCard({
       progressTimer = null;
       setImportProgress({
         phase: "Finalizing",
+        phaseKey: "finalizing",
         processed: importableRows.length,
         total: importableRows.length,
         percent: 95,
@@ -378,7 +382,8 @@ export function CustomerCsvImportCard({
         payload.counts.failed === 0
       ) {
         setImportProgress({
-          phase: "Completing guided step",
+          phase: "Finalizing guided step",
+          phaseKey: "finalizing",
           processed: importableRows.length,
           total: importableRows.length,
           percent: 98,
@@ -386,14 +391,24 @@ export function CustomerCsvImportCard({
         await completeOnboardingAfterImport(payload.counts);
       }
       setImportProgress({
-        phase: "Complete",
+        phase:
+          payload.counts.failed > 0
+            ? "Import completed with failures"
+            : "Completed",
+        phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
         processed: importableRows.length,
         total: importableRows.length,
         percent: 100,
       });
     } catch (error) {
       if (progressTimer) window.clearInterval(progressTimer);
-      setImportProgress(null);
+      setImportProgress({
+        phase: "Import failed",
+        phaseKey: "failed",
+        processed: 0,
+        total: importableRows.length,
+        percent: 100,
+      });
       setImportError(
         error instanceof Error ? error.message : "Unable to import customers.",
       );
@@ -690,15 +705,13 @@ export function CustomerCsvImportCard({
               ? "Completing onboarding…"
               : "Confirm import"}
         </button>
-        {isOnboarding && counts ? (
+        {isOnboarding && importSucceeded ? (
           <button
             type="button"
             onClick={() => router.push(guidedQuery!.returnTo)}
             className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
           >
-            {importSucceeded
-              ? "Continue onboarding"
-              : "Return to Data Onboarding"}
+            Continue onboarding
           </button>
         ) : null}
         {isOnboarding ? (
