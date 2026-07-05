@@ -4,6 +4,10 @@ import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import {
+  CsvImportProgress,
+  type CsvImportProgressState,
+} from "@/features/shared/components/import/CsvImportProgress";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type Props = {
@@ -212,9 +216,15 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [counts, setCounts] = useState<ImportCounts | null>(null);
-  const [skippedRows, setSkippedRows] = useState<Array<{ row: number; reason: string }>>([]);
-  const [failedRows, setFailedRows] = useState<Array<{ row: number; error: string }>>([]);
+  const [skippedRows, setSkippedRows] = useState<
+    Array<{ row: number; reason: string }>
+  >([]);
+  const [failedRows, setFailedRows] = useState<
+    Array<{ row: number; error: string }>
+  >([]);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<CsvImportProgressState | null>(null);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
 
   const isOnboarding = Boolean(
@@ -238,6 +248,9 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     setCounts(null);
     setParseError(null);
     setImportError(null);
+    setSkippedRows([]);
+    setFailedRows([]);
+    setImportProgress(null);
 
     if (!file) {
       setFileName(null);
@@ -251,11 +264,24 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
       return;
     }
 
+    setImportProgress({
+      phase: "Preparing rows",
+      processed: 0,
+      total: 0,
+      percent: 5,
+    });
+
     const text = await file.text();
     const parsedRows = parseCsv(text).filter(
       (row) => Object.keys(row).length > 0,
     );
     setRows(parsedRows);
+    setImportProgress({
+      phase: "Preparing rows",
+      processed: parsedRows.length,
+      total: parsedRows.length,
+      percent: parsedRows.length ? 25 : 0,
+    });
 
     if (!parsedRows.length) {
       setParseError("No vehicle rows were found in that CSV.");
@@ -267,7 +293,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
 
     setCompletingOnboarding(true);
     try {
-      await fetch(
+      const response = await fetch(
         `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicles/complete`,
         {
           method: "POST",
@@ -277,6 +303,16 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
           }),
         },
       );
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!response.ok || payload.ok === false) {
+        throw new Error(
+          payload.error ??
+            "Vehicle import succeeded, but onboarding completion failed.",
+        );
+      }
     } finally {
       setCompletingOnboarding(false);
     }
@@ -292,11 +328,36 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
 
     setImporting(true);
     setImportError(null);
+    setImportProgress({
+      phase: "Importing",
+      processed: 0,
+      total: importableRows.length,
+      percent: 30,
+    });
     setCounts(null);
     setSkippedRows([]);
     setFailedRows([]);
 
+    let progressTimer: number | null = null;
     try {
+      progressTimer = window.setInterval(() => {
+        setImportProgress((current) => {
+          if (!current || current.phase !== "Importing") return current;
+          const nextPercent = Math.min(90, current.percent + 3);
+          return {
+            ...current,
+            processed: Math.min(
+              importableRows.length,
+              Math.max(
+                current.processed,
+                Math.floor((nextPercent / 100) * importableRows.length),
+              ),
+            ),
+            percent: nextPercent,
+          };
+        });
+      }, 650);
+
       const response = await fetch("/api/vehicles/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -311,6 +372,14 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         throw new Error(payload.error ?? "Unable to import vehicles.");
       }
 
+      if (progressTimer) window.clearInterval(progressTimer);
+      progressTimer = null;
+      setImportProgress({
+        phase: "Finalizing",
+        processed: importableRows.length,
+        total: importableRows.length,
+        percent: 95,
+      });
       setCounts(payload.counts);
       setSkippedRows(payload.skippedRows ?? []);
       setFailedRows(payload.failedRows ?? []);
@@ -323,13 +392,28 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
           0 &&
         payload.counts.failed === 0
       ) {
+        setImportProgress({
+          phase: "Completing guided step",
+          processed: importableRows.length,
+          total: importableRows.length,
+          percent: 98,
+        });
         await completeOnboardingAfterImport(payload.counts);
       }
+      setImportProgress({
+        phase: "Complete",
+        processed: importableRows.length,
+        total: importableRows.length,
+        percent: 100,
+      });
     } catch (error) {
+      if (progressTimer) window.clearInterval(progressTimer);
+      setImportProgress(null);
       setImportError(
         error instanceof Error ? error.message : "Unable to import vehicles.",
       );
     } finally {
+      if (progressTimer) window.clearInterval(progressTimer);
       setImporting(false);
     }
   }
@@ -398,16 +482,33 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         </div>
       ) : null}
 
+      <CsvImportProgress
+        progress={importProgress}
+        label="Vehicle CSV import progress"
+      />
+
       {counts ? (
         <div className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-          Import complete. Imported: {counts.created}. Updated: {counts.updated}. Skipped: {counts.skipped}. Failed: {counts.failed}.
+          Import complete. Imported: {counts.created}. Updated: {counts.updated}
+          . Skipped: {counts.skipped}. Failed: {counts.failed}.
           {failedRows.length || skippedRows.length ? (
             <details className="mt-2 text-xs text-emerald-50/80">
-              <summary className="cursor-pointer font-semibold">Developer diagnostics</summary>
+              <summary className="cursor-pointer font-semibold">
+                Developer diagnostics
+              </summary>
               <div className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/10 bg-black/25 p-2 text-left">
-                {[...failedRows.map((row) => `Failed row ${row.row}: ${row.error}`), ...skippedRows.map((row) => `Skipped row ${row.row}: ${row.reason}`)].slice(0, 25).map((line) => (
-                  <div key={line}>{line}</div>
-                ))}
+                {[
+                  ...failedRows.map(
+                    (row) => `Failed row ${row.row}: ${row.error}`,
+                  ),
+                  ...skippedRows.map(
+                    (row) => `Skipped row ${row.row}: ${row.reason}`,
+                  ),
+                ]
+                  .slice(0, 25)
+                  .map((line) => (
+                    <div key={line}>{line}</div>
+                  ))}
               </div>
             </details>
           ) : null}

@@ -74,7 +74,9 @@ describe("vehicle detail UI", () => {
     expect(source).toContain("formatOdometer");
     expect(source).toContain("formatPlateWithRegion");
     expect(source).toContain("Customer since");
-    expect(source).toContain("compactDate(customer?.customer_since ?? customer?.created_at)");
+    expect(source).toContain(
+      "compactDate(customer?.customer_since ?? customer?.created_at)",
+    );
     expect(source).toContain("🚗");
 
     for (const label of [
@@ -107,5 +109,73 @@ describe("vehicle CSV import card", () => {
       /payload\.counts\.created\s*\+\s*payload\.counts\.updated\s*\+\s*payload\.counts\.skipped\s*>\s*0/,
     );
     expect(source).toContain("Continue onboarding");
+  });
+});
+
+describe("guided CSV import progress UI", () => {
+  it("shares the CSV import progress component across customer and vehicle import cards", () => {
+    const customerSource = readFileSync(
+      "features/customers/components/CustomerCsvImportCard.tsx",
+      "utf8",
+    );
+    const vehicleSource = cardSource();
+    const progressSource = readFileSync(
+      "features/shared/components/import/CsvImportProgress.tsx",
+      "utf8",
+    );
+
+    expect(progressSource).toContain("CsvImportProgress");
+    expect(progressSource).toContain("processed}/{total} rows");
+    expect(progressSource).toContain("percent");
+    expect(customerSource).toContain("Customer CSV import progress");
+    expect(vehicleSource).toContain("Vehicle CSV import progress");
+    expect(customerSource).toContain('phase: "Preparing rows"');
+    expect(vehicleSource).toContain('phase: "Preparing rows"');
+    expect(customerSource).toContain('phase: "Completing guided step"');
+    expect(vehicleSource).toContain('phase: "Completing guided step"');
+  });
+
+  it("keeps stale results cleared and duplicate import clicks disabled", () => {
+    const customerSource = readFileSync(
+      "features/customers/components/CustomerCsvImportCard.tsx",
+      "utf8",
+    );
+    const vehicleSource = cardSource();
+
+    expect(customerSource).toContain("setCounts(null)");
+    expect(vehicleSource).toContain("setCounts(null)");
+    expect(customerSource).toContain("setImportProgress(null)");
+    expect(vehicleSource).toContain("setImportProgress(null)");
+    expect(customerSource).toContain(
+      "disabled={importing || completingOnboarding || !importableRows.length}",
+    );
+    expect(vehicleSource).toContain(
+      "disabled={importing || completingOnboarding || !importableRows.length}",
+    );
+  });
+
+  it("only shows guided Continue onboarding after successful zero-failure imports", () => {
+    const customerSource = readFileSync(
+      "features/customers/components/CustomerCsvImportCard.tsx",
+      "utf8",
+    );
+    const vehicleSource = cardSource();
+
+    expect(customerSource).toContain("counts.failed === 0");
+    expect(vehicleSource).toContain("counts.failed === 0");
+    expect(customerSource).toContain("importSucceeded");
+    expect(vehicleSource).toContain("importSucceeded");
+    expect(customerSource).toContain("Continue onboarding");
+    expect(vehicleSource).toContain("Continue onboarding");
+  });
+
+  it("calls the vehicle guided completion endpoint with the vehicles step key", () => {
+    const vehicleSource = cardSource();
+
+    expect(vehicleSource).toContain("/steps/vehicles/complete");
+    expect(vehicleSource).toContain(
+      'summary: { importType: "vehicle_csv", ...nextCounts }',
+    );
+    expect(vehicleSource).toContain("payload.error ??");
   });
 });

@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import {
+  CsvImportProgress,
+  type CsvImportProgressState,
+} from "@/features/shared/components/import/CsvImportProgress";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type CustomerImportRow = {
@@ -196,6 +200,8 @@ export function CustomerCsvImportCard({
   const [skippedRows, setSkippedRows] = useState<SkippedImportRow[]>([]);
   const [failedRows, setFailedRows] = useState<FailedImportRow[]>([]);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<CsvImportProgressState | null>(null);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const [busyAction, setBusyAction] = useState<"skip" | null>(null);
 
@@ -223,6 +229,7 @@ export function CustomerCsvImportCard({
     setFailedRows([]);
     setParseError(null);
     setImportError(null);
+    setImportProgress(null);
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -238,6 +245,13 @@ export function CustomerCsvImportCard({
       return;
     }
 
+    setImportProgress({
+      phase: "Preparing rows",
+      processed: 0,
+      total: 0,
+      percent: 5,
+    });
+
     Papa.parse<Record<string, unknown>>(file, {
       header: true,
       skipEmptyLines: true,
@@ -249,11 +263,18 @@ export function CustomerCsvImportCard({
           (results.meta.fields ?? []).map(cleanHeader).filter(Boolean),
         );
         setRows(parsedRows);
+        setImportProgress({
+          phase: "Preparing rows",
+          processed: parsedRows.length,
+          total: parsedRows.length,
+          percent: parsedRows.length ? 25 : 0,
+        });
         if (!parsedRows.length) {
           setParseError("No customer rows were found in that CSV.");
         }
       },
       error: (error) => {
+        setImportProgress(null);
         setParseError(error.message || "Unable to parse that CSV file.");
       },
     });
@@ -297,10 +318,35 @@ export function CustomerCsvImportCard({
     }
     setImporting(true);
     setImportError(null);
+    setImportProgress({
+      phase: "Importing",
+      processed: 0,
+      total: importableRows.length,
+      percent: 30,
+    });
     setCounts(null);
     setSkippedRows([]);
     setFailedRows([]);
+    let progressTimer: number | null = null;
     try {
+      progressTimer = window.setInterval(() => {
+        setImportProgress((current) => {
+          if (!current || current.phase !== "Importing") return current;
+          const nextPercent = Math.min(90, current.percent + 3);
+          return {
+            ...current,
+            processed: Math.min(
+              importableRows.length,
+              Math.max(
+                current.processed,
+                Math.floor((nextPercent / 100) * importableRows.length),
+              ),
+            ),
+            percent: nextPercent,
+          };
+        });
+      }, 650);
+
       const response = await fetch("/api/customers/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,6 +358,14 @@ export function CustomerCsvImportCard({
       if (!response.ok || payload.ok === false || !payload.counts) {
         throw new Error(payload.error ?? "Unable to import customers.");
       }
+      if (progressTimer) window.clearInterval(progressTimer);
+      progressTimer = null;
+      setImportProgress({
+        phase: "Finalizing",
+        processed: importableRows.length,
+        total: importableRows.length,
+        percent: 95,
+      });
       setCounts(payload.counts);
       setSkippedRows(payload.skippedRows ?? []);
       setFailedRows(payload.failedRows ?? []);
@@ -323,13 +377,28 @@ export function CustomerCsvImportCard({
           0 &&
         payload.counts.failed === 0
       ) {
+        setImportProgress({
+          phase: "Completing guided step",
+          processed: importableRows.length,
+          total: importableRows.length,
+          percent: 98,
+        });
         await completeOnboardingAfterImport(payload.counts);
       }
+      setImportProgress({
+        phase: "Complete",
+        processed: importableRows.length,
+        total: importableRows.length,
+        percent: 100,
+      });
     } catch (error) {
+      if (progressTimer) window.clearInterval(progressTimer);
+      setImportProgress(null);
       setImportError(
         error instanceof Error ? error.message : "Unable to import customers.",
       );
     } finally {
+      if (progressTimer) window.clearInterval(progressTimer);
       setImporting(false);
     }
   }
@@ -509,9 +578,15 @@ export function CustomerCsvImportCard({
         </div>
       ) : null}
 
+      <CsvImportProgress
+        progress={importProgress}
+        label="Customer CSV import progress"
+      />
+
       {counts ? (
         <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
-          Import results: Imported {counts.created}, Updated {counts.updated}, Skipped {counts.skipped}, Failed {counts.failed}.
+          Import results: Imported {counts.created}, Updated {counts.updated},
+          Skipped {counts.skipped}, Failed {counts.failed}.
         </div>
       ) : null}
       {failedRows.length ? (
