@@ -49,6 +49,7 @@ type VehicleRef = Pick<
 >;
 
 type Resolver = {
+  shopCustomerIds: string[];
   customersById: Map<string, CustomerRef>;
   customersByExternal: Map<string, CustomerRef>;
   customersByEmail: Map<string, CustomerRef>;
@@ -121,6 +122,7 @@ async function loadResolver(
   if (customerError) throw customerError;
   if (vehicleError) throw vehicleError;
   const r: Resolver = {
+    shopCustomerIds: [],
     customersById: new Map(),
     customersByExternal: new Map(),
     customersByEmail: new Map(),
@@ -131,6 +133,7 @@ async function loadResolver(
     vehiclesByVin: new Map(),
   };
   for (const c of (customers ?? []) as CustomerRef[]) {
+    r.shopCustomerIds.push(c.id);
     r.customersById.set(c.id, c);
     const ex = key(c.external_id);
     if (ex && !r.customersByExternal.has(ex)) r.customersByExternal.set(ex, c);
@@ -278,28 +281,37 @@ export async function POST(req: Request) {
           });
           continue;
         }
-        if (repairOrderNumber || invoiceNumber) {
-          let q = supabase
+        let duplicateFound = false;
+        if (repairOrderNumber) {
+          const { data, error } = await supabase
             .from("history")
             .select("id")
-            .eq("customer_id", customer.id)
+            .in("customer_id", resolver.shopCustomerIds)
+            .eq("work_order_number" as "id", repairOrderNumber)
             .limit(1);
-          if (repairOrderNumber)
-            q = q.eq("work_order_number" as "id", repairOrderNumber);
-          if (invoiceNumber) q = q.eq("invoice_number" as "id", invoiceNumber);
-          const { data, error } = await q;
           if (error) throw error;
-          if ((data ?? []).length) {
-            counts.skipped++;
-            counts.duplicates++;
-            skippedRows.push({
-              row: rowNumber,
-              reason: "Duplicate repair order/invoice already exists.",
-              repairOrderNumber,
-              invoiceNumber,
-            });
-            continue;
-          }
+          duplicateFound = (data ?? []).length > 0;
+        }
+        if (!duplicateFound && invoiceNumber) {
+          const { data, error } = await supabase
+            .from("history")
+            .select("id")
+            .in("customer_id", resolver.shopCustomerIds)
+            .eq("invoice_number" as "id", invoiceNumber)
+            .limit(1);
+          if (error) throw error;
+          duplicateFound = (data ?? []).length > 0;
+        }
+        if (duplicateFound) {
+          counts.skipped++;
+          counts.duplicates++;
+          skippedRows.push({
+            row: rowNumber,
+            reason: "Duplicate repair order/invoice already exists.",
+            repairOrderNumber,
+            invoiceNumber,
+          });
+          continue;
         }
         const parts = clean(row.parts);
         const notes =
@@ -340,6 +352,14 @@ export async function POST(req: Request) {
           historical_status: "imported",
           source_system: "vehicle_history_csv",
           source_row_id: String(rowNumber),
+          source_payload: JSON.parse(
+            JSON.stringify({
+              imported_at: new Date().toISOString(),
+              raw_row: row,
+              service_category: clean(row.service_category),
+              parts: clean(row.parts),
+            }),
+          ) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"],
         };
         const { error } = await supabase.from("history").insert(payload);
         if (error) throw error;

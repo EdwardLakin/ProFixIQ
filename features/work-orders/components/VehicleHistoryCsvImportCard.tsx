@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
+import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type HistoryImportRow = {
   customer_id?: string | null;
@@ -138,10 +140,13 @@ function downloadSample() {
 }
 
 export function VehicleHistoryCsvImportCard({
+  guidedQuery,
   onImported,
 }: {
+  guidedQuery?: GuidedOnboardingQuery | null;
   onImported?: () => void;
 }) {
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -150,8 +155,13 @@ export function VehicleHistoryCsvImportCard({
   const [importError, setImportError] = useState<string | null>(null);
   const [response, setResponse] = useState<ImportResponse | null>(null);
   const [importing, setImporting] = useState(false);
+  const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const [progress, setProgress] = useState<CsvImportProgressState | null>(null);
 
+  const isOnboarding = Boolean(
+    guidedQuery?.onboardingSession &&
+    guidedQuery.onboardingStep === "vehicle_history",
+  );
   const rowValidation = useMemo(() => rows.map(localValidation), [rows]);
   const importableRows = useMemo(
     () => rows.filter((_, index) => !rowValidation[index]),
@@ -211,6 +221,37 @@ export function VehicleHistoryCsvImportCard({
       },
     });
   }
+  async function completeOnboardingAfterImport(
+    nextCounts: NonNullable<ImportResponse["counts"]>,
+  ) {
+    if (!guidedQuery || !isOnboarding) return;
+    setCompletingOnboarding(true);
+    try {
+      const res = await fetch(
+        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicle_history/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            summary: { importType: "vehicle_history_csv", ...nextCounts },
+          }),
+        },
+      );
+      const payload = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!res.ok || payload.ok === false) {
+        throw new Error(
+          payload.error ??
+            "Vehicle history import succeeded, but onboarding completion failed.",
+        );
+      }
+    } finally {
+      setCompletingOnboarding(false);
+    }
+  }
+
   async function confirmImport() {
     if (!importableRows.length) {
       setImportError(
@@ -237,6 +278,19 @@ export function VehicleHistoryCsvImportCard({
       if (!res.ok || payload.ok === false || !payload.counts)
         throw new Error(payload.error ?? "Unable to import vehicle history.");
       setResponse(payload);
+      if (
+        isOnboarding &&
+        payload.counts.imported > 0 &&
+        payload.counts.failed === 0
+      ) {
+        setProgress({
+          phase: "Completing guided step",
+          processed: importableRows.length,
+          total: importableRows.length,
+          percent: 98,
+        });
+        await completeOnboardingAfterImport(payload.counts);
+      }
       setProgress({
         phase: "Complete",
         processed: importableRows.length,
@@ -260,7 +314,9 @@ export function VehicleHistoryCsvImportCard({
     <GuidedSetupCardShell
       testId="vehicle-history-csv-import-card"
       eyebrow="Operations · History"
-      title="Import vehicle history"
+      title={
+        isOnboarding ? "Upload vehicle history CSV" : "Import vehicle history"
+      }
       description={
         <>
           <p>
@@ -271,7 +327,9 @@ export function VehicleHistoryCsvImportCard({
             Supported columns include{" "}
             <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>.
             Rows link to existing customers and vehicles by customer_id,
-            vehicle_id, VIN, name, email, or phone where available.
+            vehicle_id, VIN, name, email, or phone where available. Imported
+            rows remain historical records only and do not create active work
+            orders.
           </p>
         </>
       }
@@ -441,11 +499,24 @@ export function VehicleHistoryCsvImportCard({
         <button
           type="button"
           onClick={() => void confirmImport()}
-          disabled={importing || !importableRows.length}
+          disabled={importing || completingOnboarding || !importableRows.length}
           className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
         >
-          {importing ? "Importing…" : "Confirm import"}
+          {importing
+            ? "Importing…"
+            : completingOnboarding
+              ? "Completing onboarding…"
+              : "Confirm import"}
         </button>
+        {isOnboarding && response?.counts ? (
+          <button
+            type="button"
+            onClick={() => router.push(guidedQuery!.returnTo)}
+            className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
+          >
+            Continue onboarding
+          </button>
+        ) : null}
       </div>
     </GuidedSetupCardShell>
   );
