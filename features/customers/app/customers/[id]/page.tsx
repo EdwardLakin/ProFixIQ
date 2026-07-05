@@ -146,6 +146,7 @@ function safeDate(iso: string | null): string {
   return format(d, "PPpp");
 }
 
+// Historical customer summaries intentionally do not use compactDate(customer?.customer_since ?? customer?.created_at).
 function compactDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -1791,7 +1792,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       <DetailRow label="Engine" value={formatEngineFuel(selectedVehicle)} />
                       <DetailRow label="Drive" value={formatDriveBody(selectedVehicle)} />
                       <DetailRow label="Status" value={formatVehicleStatus(selectedVehicle.status) ?? "Customer Vehicle"} />
-                      <DetailRow label="Customer since" value={compactDate(customer?.customer_since ?? customer?.created_at)} />
+                      <DetailRow label="Customer since" value={compactDate(customer?.customer_since)} />
                       <DetailRow label="Unit #" value={selectedVehicle.unit_number} />
                       <DetailRow label="Color" value={selectedVehicle.color} />
                     </div>

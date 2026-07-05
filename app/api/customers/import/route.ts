@@ -22,6 +22,8 @@ type CustomerRow = Pick<
   | "city"
   | "province"
   | "postal_code"
+  | "customer_since"
+  | "updated_at"
 >;
 type CustomerMatch = Pick<CustomerRow, "id"> & {
   matchedBy?: string;
@@ -129,7 +131,7 @@ async function loadExistingCustomerIdentities(
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code",
+      "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code, customer_since, updated_at",
     )
     .eq("shop_id", shopId);
   if (error) throw error;
@@ -338,16 +340,33 @@ export async function POST(req: Request) {
         const existing = findExistingCustomer(existingByIdentity, normalized);
 
         if (existing?.id) {
-          counts.skipped += 1;
+          const datePatch: Pick<CustomerInsert, "customer_since" | "updated_at"> = {};
+          if (normalized.customer_since) datePatch.customer_since = normalized.customer_since;
+          if (normalized.updated_at) datePatch.updated_at = normalized.updated_at;
+
+          if (Object.keys(datePatch).length > 0) {
+            const { error } = await supabase
+              .from("customers")
+              .update(datePatch)
+              .eq("id", existing.id)
+              .eq("shop_id", shopId);
+            if (error) throw error;
+            counts.updated += 1;
+          } else {
+            counts.skipped += 1;
+          }
+
           const matchedBy =
             (existing.matchedBy as SkippedCustomerImportRow["matchedBy"]) ??
             "existing_customer";
           skippedRows.push({
             row: index + 1,
             reason:
-              matchedBy === "email"
-                ? "Matched existing customer by email."
-                : "Matched an existing customer for this shop.",
+              Object.keys(datePatch).length > 0
+                ? "Matched existing customer; historical date fields were updated."
+                : matchedBy === "email"
+                  ? "Matched existing customer by email."
+                  : "Matched an existing customer for this shop.",
             ...importRowSummary(raw as ImportRow, normalized),
             matchedBy,
             matchedValue: existing.matchedValue ?? existing.id,
