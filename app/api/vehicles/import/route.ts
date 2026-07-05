@@ -7,12 +7,36 @@ type DB = Database;
 type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 type VehicleMatch = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id">;
+type CustomerResolverRow = Pick<
+  DB["public"]["Tables"]["customers"]["Row"],
+  | "id"
+  | "external_id"
+  | "email"
+  | "phone"
+  | "phone_number"
+  | "name"
+  | "business_name"
+>;
+type CustomerResolverIndex = {
+  byExternalId: Map<string, string>;
+  byEmail: Map<string, string>;
+  byPhone: Map<string, string>;
+  byName: Map<string, string>;
+};
+type NormalizedVehicleResult =
+  | { ok: true; vehicle: VehicleInsert }
+  | { ok: false; reason: string };
 
 type VehicleImportRow = {
-
   vehicle_id?: unknown;
 
   customer_id?: unknown;
+  customer_email?: unknown;
+  email?: unknown;
+  customer_phone?: unknown;
+  phone?: unknown;
+  customer_name?: unknown;
+  name?: unknown;
 
   plate?: unknown;
 
@@ -59,7 +83,11 @@ function cleanString(value: unknown): string | null {
 }
 
 function cleanVin(value: unknown): string | null {
-  return cleanString(value)?.toUpperCase().replace(/[^A-Z0-9]/g, "") ?? null;
+  return (
+    cleanString(value)
+      ?.toUpperCase()
+      .replace(/[^A-Z0-9]/g, "") ?? null
+  );
 }
 
 function cleanPlate(value: unknown): string | null {
@@ -76,11 +104,9 @@ function cleanYear(value: unknown): number | null {
 }
 
 function buildVehicleImportNotes(row: VehicleImportRow): string | null {
-
   const notes: string[] = [];
 
   const pairs: Array<[string, unknown]> = [
-
     ["csv_customer_id", row.customer_id],
 
     ["body_type", row.body_type],
@@ -98,60 +124,107 @@ function buildVehicleImportNotes(row: VehicleImportRow): string | null {
     ["tags", row.tags],
 
     ["notes", row.notes],
-
   ];
 
   for (const [label, value] of pairs) {
-
     const text = cleanString(value);
 
     if (text) notes.push(`${label}: ${text}`);
-
   }
 
   return notes.length ? notes.join("\n") : null;
-
 }
 
-async function findCustomerIdByExternalId(
+function normalizeLookupKey(value: unknown): string | null {
+  const text = cleanString(value)?.toLowerCase().replace(/\s+/g, " ") ?? null;
+  return text || null;
+}
 
+function normalizePhone(value: unknown): string | null {
+  const text = cleanString(value);
+  if (!text) return null;
+  return text.replace(/\D/g, "") || text;
+}
+
+async function loadCustomerResolverIndex(
   supabase: SupabaseClient<DB>,
-
   shopId: string,
-
-  externalId: string | null,
-
-): Promise<string | null> {
-
-  if (!externalId) return null;
-
+): Promise<CustomerResolverIndex> {
   const { data, error } = await supabase
-
     .from("customers")
-
-    .select("id")
-
-    .eq("shop_id", shopId)
-
-    .eq("external_id", externalId)
-
-    .maybeSingle();
+    .select("id, external_id, email, phone, phone_number, name, business_name")
+    .eq("shop_id", shopId);
 
   if (error) throw error;
 
-  return data?.id ?? null;
+  const index: CustomerResolverIndex = {
+    byExternalId: new Map(),
+    byEmail: new Map(),
+    byPhone: new Map(),
+    byName: new Map(),
+  };
 
+  for (const customer of (data ?? []) as CustomerResolverRow[]) {
+    const externalId = normalizeLookupKey(customer.external_id);
+    if (externalId && !index.byExternalId.has(externalId)) {
+      index.byExternalId.set(externalId, customer.id);
+    }
+
+    const email = normalizeLookupKey(customer.email);
+    if (email && !index.byEmail.has(email))
+      index.byEmail.set(email, customer.id);
+
+    for (const phoneValue of [customer.phone, customer.phone_number]) {
+      const phone = normalizePhone(phoneValue);
+      if (phone && !index.byPhone.has(phone))
+        index.byPhone.set(phone, customer.id);
+    }
+
+    for (const nameValue of [customer.name, customer.business_name]) {
+      const name = normalizeLookupKey(nameValue);
+      if (name && !index.byName.has(name)) index.byName.set(name, customer.id);
+    }
+  }
+
+  return index;
 }
 
-async function normalizeRow(
+function resolveCustomerId(
+  row: VehicleImportRow,
+  customers: CustomerResolverIndex,
+): string | null {
+  const externalCustomerId = normalizeLookupKey(row.customer_id);
+  if (externalCustomerId)
+    return customers.byExternalId.get(externalCustomerId) ?? null;
 
-  supabase: SupabaseClient<DB>,
+  const email = normalizeLookupKey(row.customer_email ?? row.email);
+  if (email) {
+    const match = customers.byEmail.get(email);
+    if (match) return match;
+  }
 
+  const phone = normalizePhone(row.customer_phone ?? row.phone);
+  if (phone) {
+    const match = customers.byPhone.get(phone);
+    if (match) return match;
+  }
+
+  const name = normalizeLookupKey(row.customer_name ?? row.name);
+  if (name) {
+    const match = customers.byName.get(name);
+    if (match) return match;
+  }
+
+  return null;
+}
+
+function normalizeRow(
   row: VehicleImportRow,
 
   shopId: string,
 
-): Promise<VehicleInsert | null> {
+  customers: CustomerResolverIndex,
+): NormalizedVehicleResult {
   const unitNumber = cleanString(row.unit_number);
   const vin = cleanVin(row.vin);
   const plate = cleanPlate(row.license_plate ?? row.plate);
@@ -165,30 +238,62 @@ async function normalizeRow(
 
   const mileage = [odometer, odometerUnit].filter(Boolean).join(" ") || null;
 
-  const customerId = await findCustomerIdByExternalId(supabase, shopId, cleanString(row.customer_id));
+  const rawCustomerId = cleanString(row.customer_id);
+  const customerId = resolveCustomerId(row, customers);
 
   const importNotes = buildVehicleImportNotes(row);
 
-  if (!vin && !unitNumber && !plate && !(year && make && model)) return null;
+  if (!vin && !unitNumber && !plate && !(year && make && model)) {
+    return { ok: false, reason: "Missing vehicle identity." };
+  }
+
+  if (rawCustomerId && !customerId) {
+    return {
+      ok: false,
+      reason: "Customer not found for external customer_id.",
+    };
+  }
 
   return {
-    shop_id: shopId,
-    unit_number: unitNumber,
-    vin,
-    license_plate: plate,
-    year,
-    make,
-    model,
-    customer_id: customerId,
-    external_id: cleanString(row.vehicle_id),
-    submodel: cleanString(row.trim),
-    color: cleanString(row.color),
-    mileage,
-    engine: cleanString(row.engine),
-    fuel_type: cleanString(row.fuel_type),
-    drivetrain: cleanString(row.drive_type),
-    import_notes: importNotes,
+    ok: true,
+    vehicle: {
+      shop_id: shopId,
+      unit_number: unitNumber,
+      vin,
+      license_plate: plate,
+      year,
+      make,
+      model,
+      customer_id: customerId,
+      external_id: cleanString(row.vehicle_id),
+      submodel: cleanString(row.trim),
+      color: cleanString(row.color),
+      mileage,
+      engine: cleanString(row.engine),
+      fuel_type: cleanString(row.fuel_type),
+      drivetrain: cleanString(row.drive_type),
+      import_notes: importNotes,
+    },
   };
+}
+
+async function findVehicleByField(
+  supabase: SupabaseClient<DB>,
+  shopId: string,
+  field: "external_id" | "vin" | "unit_number" | "license_plate",
+  value: string | null | undefined,
+): Promise<VehicleMatch | null> {
+  if (!value) return null;
+
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq(field, value)
+    .limit(1);
+
+  if (error) throw error;
+  return ((data ?? [])[0] as VehicleMatch | undefined) ?? null;
 }
 
 async function findExistingVehicle(
@@ -196,43 +301,27 @@ async function findExistingVehicle(
   shopId: string,
   normalized: VehicleInsert,
 ): Promise<VehicleMatch | null> {
-  if (normalized.vin) {
-    const { data, error } = await supabase
-      .from("vehicles")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("vin", normalized.vin)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
-  }
-
-  if (normalized.unit_number) {
-    const { data, error } = await supabase
-      .from("vehicles")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("unit_number", normalized.unit_number)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
-  }
-
-  if (normalized.license_plate) {
-    const { data, error } = await supabase
-      .from("vehicles")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("license_plate", normalized.license_plate)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
-  }
-
-  return null;
+  return (
+    (await findVehicleByField(
+      supabase,
+      shopId,
+      "external_id",
+      normalized.external_id,
+    )) ??
+    (await findVehicleByField(supabase, shopId, "vin", normalized.vin)) ??
+    (await findVehicleByField(
+      supabase,
+      shopId,
+      "unit_number",
+      normalized.unit_number,
+    )) ??
+    (await findVehicleByField(
+      supabase,
+      shopId,
+      "license_plate",
+      normalized.license_plate,
+    ))
+  );
 }
 
 export async function POST(req: Request) {
@@ -249,14 +338,20 @@ export async function POST(req: Request) {
     const rows = Array.isArray(body?.rows) ? body.rows : [];
 
     if (!rows.length) {
-      return NextResponse.json({ error: "No vehicle rows provided." }, { status: 400 });
+      return NextResponse.json(
+        { error: "No vehicle rows provided." },
+        { status: 400 },
+      );
     }
 
     const { supabase, profile } = access;
     const shopId = profile.shop_id;
 
     if (!shopId) {
-      return NextResponse.json({ error: "No active shop is selected." }, { status: 400 });
+      return NextResponse.json(
+        { error: "No active shop is selected." },
+        { status: 400 },
+      );
     }
 
     const counts = {
@@ -265,17 +360,31 @@ export async function POST(req: Request) {
       skipped: 0,
       failed: 0,
     };
+    const skippedRows: Array<{ row: number; reason: string }> = [];
+    const failedRows: Array<{ row: number; error: string }> = [];
+    const customers = await loadCustomerResolverIndex(supabase, shopId);
 
-    for (const raw of rows) {
-      const normalized = await normalizeRow(supabase, raw as VehicleImportRow, shopId);
+    for (const [index, raw] of rows.entries()) {
+      const normalizedResult = normalizeRow(
+        raw as VehicleImportRow,
+        shopId,
+        customers,
+      );
 
-      if (!normalized) {
+      if (!normalizedResult.ok) {
         counts.skipped += 1;
+        skippedRows.push({ row: index + 1, reason: normalizedResult.reason });
         continue;
       }
 
+      const normalized = normalizedResult.vehicle;
+
       try {
-        const existing = await findExistingVehicle(supabase, shopId, normalized);
+        const existing = await findExistingVehicle(
+          supabase,
+          shopId,
+          normalized,
+        );
 
         if (existing) {
           const updatePayload: VehicleUpdate = {
@@ -320,15 +429,33 @@ export async function POST(req: Request) {
 
         if (error) throw error;
         counts.created += 1;
-      } catch {
+      } catch (error) {
         counts.failed += 1;
+        failedRows.push({
+          row: index + 1,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Vehicle row failed to import.",
+        });
       }
     }
 
-    return NextResponse.json({ ok: true, counts });
+    const explanation = `Vehicle import complete: created ${counts.created}, updated ${counts.updated}, skipped ${counts.skipped}, failed ${counts.failed}.`;
+
+    return NextResponse.json({
+      ok: true,
+      counts,
+      explanation,
+      skippedRows,
+      failedRows,
+    });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to import vehicles." },
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to import vehicles.",
+      },
       { status: 500 },
     );
   }
