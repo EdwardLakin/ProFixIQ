@@ -133,15 +133,9 @@ function sortCustomerRows(rows: CustomerSearchRow[]): CustomerSearchRow[] {
 }
 
 function fmtVehicleLabel(v: Vehicle): string {
-  const ym = [v.year != null ? String(v.year) : "", v.make ?? "", v.model ?? ""]
-    .filter(Boolean)
-    .join(" ");
-  const plate = (v as unknown as Record<string, unknown>)["license_plate"]
-    ? ` • ${(v as unknown as Record<string, unknown>)["license_plate"] as string}`
-    : v.license_plate
-      ? ` • ${v.license_plate}`
-      : "";
-  return `${ym || "Vehicle"}${plate}`;
+  return [v.year != null ? String(v.year) : "", v.make ?? "", v.model ?? "", v.submodel ?? ""]
+    .filter((part) => typeof part === "string" && part.trim().length > 0)
+    .join(" ") || "Vehicle";
 }
 
 function safeDate(iso: string | null): string {
@@ -149,6 +143,36 @@ function safeDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return format(d, "PPpp");
+}
+
+function compactDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return format(d, "MMM yyyy");
+}
+
+function formatNumberLike(value: string | number | null | undefined): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const numeric = Number(raw.replace(/,/g, ""));
+  if (!Number.isFinite(numeric)) return raw;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numeric);
+}
+
+function formatOdometer(value: string | number | null | undefined, unit: string | null | undefined): string | null {
+  const formatted = formatNumberLike(value);
+  if (!formatted) return null;
+  const cleanUnit = strOrNull(unit);
+  return cleanUnit ? `${formatted} ${cleanUnit}` : formatted;
+}
+
+function formatPlateWithRegion(plate: string | null | undefined, region: string | null | undefined): string | null {
+  const cleanPlateValue = strOrNull(plate);
+  if (!cleanPlateValue) return null;
+  const cleanRegion = strOrNull(region);
+  return cleanRegion ? `${cleanPlateValue} (${cleanRegion})` : cleanPlateValue;
 }
 
 function isImageUrl(url: string | null): boolean {
@@ -163,13 +187,14 @@ function DetailRow({
   label: string;
   value: string | number | null | undefined;
 }) {
+  if (value == null || String(value).trim().length === 0) return null;
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
         {label}
       </div>
       <div className="min-w-0 truncate text-sm font-medium text-white">
-        {value ?? "—"}
+        {value}
       </div>
     </div>
   );
@@ -1737,47 +1762,33 @@ export default function CustomerProfilePage(): JSX.Element {
                 <div className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}>No vehicles linked to this customer yet.</div>
               ) : selectedVehicle ? (
                 <div className="mt-3 space-y-3">
-                  <div className={`${CARD_INNER} p-3`}>
-                    <div className="text-sm font-semibold text-white">{fmtVehicleLabel(selectedVehicle)}</div>
+                  <div className={`${CARD_INNER} p-4`}>
+                    <div className="min-w-0 space-y-2">
+                      <div className="break-words text-lg font-semibold leading-tight text-white sm:text-xl">
+                        <span aria-hidden className="mr-2">🚗</span>{fmtVehicleLabel(selectedVehicle)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-200">
+                        <span>VIN: {selectedVehicle.vin ?? "Not recorded"}</span>
+                        {formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province) ? (
+                          <span>Plate: {formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province)}</span>
+                        ) : null}
+                        {formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit) ? (
+                          <span>{formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit)}</span>
+                        ) : null}
+                        {compactDate(customer?.created_at) ? (
+                          <span>Customer since: {compactDate(customer?.created_at)}</span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <DetailRow label="Year / Make / Model / Trim" value={[selectedVehicle.year, selectedVehicle.make, selectedVehicle.model, selectedVehicle.submodel].filter(Boolean).join(" ") || null} />
                       <DetailRow label="VIN" value={selectedVehicle.vin} />
-                      <DetailRow
-                        label="Plate + State/Province"
-                        value={[
-                          ((selectedVehicle as unknown as Record<string, unknown>)["license_plate"] as string | null | undefined) ?? selectedVehicle.license_plate,
-                          selectedVehicle.state_province,
-                        ].filter(Boolean).join(" / ") || null}
-                      />
-                      <DetailRow
-                        label="Mileage / Odometer"
-                        value={[
-                          ((selectedVehicle as unknown as Record<string, unknown>)["mileage"] as string | null | undefined) ?? selectedVehicle.mileage,
-                          selectedVehicle.odometer_unit,
-                        ].filter(Boolean).join(" ") || null}
-                      />
-                      <DetailRow
-                        label="Unit #"
-                        value={(selectedVehicle as unknown as Record<string, unknown>)["unit_number"] as
-                          | string
-                          | null
-                          | undefined}
-                      />
-                      <DetailRow
-                        label="Color"
-                        value={(selectedVehicle as unknown as Record<string, unknown>)["color"] as
-                          | string
-                          | null
-                          | undefined}
-                      />
-                      <DetailRow
-                        label="Engine Hours"
-                        value={(selectedVehicle as unknown as Record<string, unknown>)["engine_hours"] as
-                          | number
-                          | null
-                          | undefined}
-                      />
+                      <DetailRow label="Plate + State/Province" value={formatPlateWithRegion(selectedVehicle.license_plate, selectedVehicle.state_province)} />
+                      <DetailRow label="Mileage / Odometer" value={formatOdometer(selectedVehicle.mileage, selectedVehicle.odometer_unit)} />
+                      <DetailRow label="Unit #" value={selectedVehicle.unit_number} />
+                      <DetailRow label="Color" value={selectedVehicle.color} />
+                      <DetailRow label="Engine Hours" value={selectedVehicle.engine_hours} />
                     </div>
 
                     {vehicleExtraDetails.length > 0 ? (

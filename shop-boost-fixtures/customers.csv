@@ -204,7 +204,7 @@ CUST-100201,retail,,Amelia,Johnson,Amelia Johnson,,(625) 503-2501,+1 299 642 603
 CUST-100202,retail,,Jade,Green,Jade Green,,959-772-1688,,8892 Oak Dr,Chestermere,AB,S7K 3J8,email,true,false,,11846.95,mail-invoice,Prefers text after 4pm,05/22/2020
 CUST-100203,retail,,Jade,Green,Jade Green,jade.green@example.org,0593777569,+1 229 131 6708,4273 Park Lane,Calgary,BC,T1S 1A2,either,true,,,0,sms-only,Needs PO on all invoices,2022-06-02
 CUST-100204,retail,,Mikayla,Martinez,Mikayla Martinez,mikaylamartinez@icloud.com,(114) 243-6258,,1389 Centre St,Medicine Hat,BC,T1S 1A2,sms,false,,,0,"mail-invoice, sms-only, late-pay",Needs PO on all invoices,2022-07-25T13:30
-CUST-100205,retail,,Abigail,Sanchez,Abigail Sanchez,abigailsanchez@icloud.com,421-254-5080,2115871845 x8247,3278 Railway Ave,Calgary,SK,V5K 0A1,either,false,,,5253.22,"fleet, sms-only, warranty",Needs PO on all invoices,08/23/2022
+CUST-100205,retail,,Abigail,Sanchez,Abigail Sanchez,abigailsanchez@icloud.com,421-254-5080,2115871845 x8247,3278 Railway Ave,Calgary,SK,V5K 0A1,either,false,,,5253.22,"fleet, sms-only, warranty",Needs PO on all invoices,01/15/2022
 CUST-100206,fleet,Blue Ridge Contracting,,,Blue Ridge Contracting,accounts46@blueridgecontracting.com,8172031369,,6219 Centre St,Chestermere,AB,T3J 4V7,email,true,,17484.01,0,mail-invoice,Seasonal fleet,2024-02-22 13:30:28
 CUST-100207,retail,,Mila,Moore,Mila Moore,milamoore@outlook.com,082-697-1823,(228) 019-4425,6413 Railway Ave,Edmonton,SK,T2A 1A1,,false,,,0,"mail-invoice, late-pay, warranty",,2022-10-03 13:30:28
 CUST-100208,retail,,Hudson,Jones,Hudson Jones,hudson.jones@yahoo.com,2019712124,,8672 Bowness Rd,Chestermere,AB,T3J 4V7,either,false,false,,0,fleet,Needs PO on all invoices,11/28/2021

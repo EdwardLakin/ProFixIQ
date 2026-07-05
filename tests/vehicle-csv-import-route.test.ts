@@ -56,6 +56,8 @@ describe("vehicle CSV import route", () => {
       "last_service_date",
       "tags",
       "notes",
+      "drivetrain",
+      "submodel",
     ]) {
       expect(source).toContain(`${field}:`);
     }
@@ -68,6 +70,12 @@ describe("vehicle CSV import route", () => {
 describe("vehicle detail UI", () => {
   it("renders imported vehicle detail fields", () => {
     const source = customerVehicleUiSource();
+
+    expect(source).toContain("formatOdometer");
+    expect(source).toContain("formatPlateWithRegion");
+    expect(source).toContain("Customer since:");
+    expect(source).toContain("compactDate(customer?.created_at)");
+    expect(source).toContain("🚗");
 
     for (const label of [
       "Year / Make / Model / Trim",
@@ -90,6 +98,9 @@ describe("vehicle CSV import card", () => {
   it("can complete guided onboarding after a non-fatal vehicle import", () => {
     const source = cardSource();
 
+    expect(source).toContain("state_province");
+    expect(source).toContain("body_type");
+    expect(source).toContain("last_service_date");
     expect(source).toContain("/steps/vehicles/complete");
     expect(source).toMatch(
       /payload\.counts\.created\s*\+\s*payload\.counts\.updated\s*\+\s*payload\.counts\.skipped\s*>\s*0/,
