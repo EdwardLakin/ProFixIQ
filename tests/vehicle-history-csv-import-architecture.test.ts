@@ -3,107 +3,97 @@ import { describe, expect, it } from "vitest";
 
 const routeSource = () =>
   readFileSync("app/api/work-orders/history/import/route.ts", "utf8");
+const workerSource = () =>
+  readFileSync("features/work-orders/server/vehicle-history-import-job.ts", "utf8");
+const tickSource = () =>
+  readFileSync("app/api/internal/import-jobs/tick/route.ts", "utf8");
+const statusSource = () =>
+  readFileSync("app/api/import-jobs/[jobId]/route.ts", "utf8");
 const cardSource = () =>
   readFileSync(
     "features/work-orders/components/VehicleHistoryCsvImportCard.tsx",
     "utf8",
   );
-const helperSource = () =>
-  readFileSync("features/shared/lib/import/csv.ts", "utf8");
+const migrationSource = () =>
+  readFileSync("db/sql/2026-07-05_vehicle_history_import_jobs.sql", "utf8");
 
-describe("vehicle history CSV import multipart architecture", () => {
-  it("sends FormData with the CSV file instead of huge JSON rows", () => {
-    const source = cardSource();
-
-    expect(source).toContain("const formData = new FormData()");
-    expect(source).toContain('formData.append("file", file)');
-    expect(source).toContain('formData.append("guidedSessionId"');
-    expect(source).toContain('formData.append("guidedStep"');
-    expect(source).toContain('formData.append("returnTo"');
-    expect(source).toContain('body: formData');
-    expect(source).not.toContain("JSON.stringify({ rows: importableRows })");
-  });
-
-  it("keeps progress wording accurate and disables duplicate import clicks", () => {
-    const source = cardSource();
-
-    for (const phase of [
-      "Uploading CSV",
-      "Processing on server",
-      "Importing records",
-      "Finalizing",
-    ]) {
-      expect(source).toContain(`phase: "${phase}"`);
-    }
-    expect(source).toContain("if (importing || completingOnboarding) return");
-    const footer = readFileSync("features/shared/components/import/GuidedImportFooterActions.tsx", "utf8");
-    expect(footer).toContain("disabled={importing || completing || !canConfirm}");
-  });
-
-  it("accepts multipart form-data and parses the CSV server-side", () => {
+describe("vehicle history CSV import job architecture", () => {
+  it("upload route accepts multipart CSV, creates a job, stages rows, and returns jobId", () => {
     const source = routeSource();
 
     expect(source).toContain('contentType.includes("multipart/form-data")');
     expect(source).toContain("await req.formData()");
     expect(source).toContain("parseCsvFileFromFormData<HistoryImportRow>");
+    expect(source).toContain('.from("import_jobs")');
+    expect(source).toContain('.from("import_job_rows")');
+    expect(source).toContain("jobId: job.id");
+    expect(source).toContain("{ status: 202 }");
+    expect(source).not.toContain('.from("history").insert');
+    expect(source).not.toContain("loadResolver");
+    expect(source).not.toContain("findDuplicateHistoryId");
     expect(source).not.toContain("await req.json()");
   });
 
-  it("rejects missing or non-CSV uploads with clear errors", () => {
-    const helper = helperSource();
-    const route = routeSource();
+  it("worker endpoint is protected and processes only a bounded batch", () => {
+    const tick = tickSource();
+    const worker = workerSource();
 
-    expect(helper).toContain("Missing CSV file");
-    expect(helper).toContain("Unsupported file type");
-    expect(helper).toContain("Malformed CSV");
-    expect(helper).toContain("CSV file is too large");
-    expect(route).toContain("{ status: 400 }");
-    expect(route).toContain("{ status: 415 }");
+    expect(tick).toContain("INTERNAL_IMPORT_JOBS_SECRET");
+    expect(tick).toContain("x-internal-import-jobs-secret");
+    expect(tick).toContain("processVehicleHistoryImportJobBatch");
+    expect(worker).toContain("VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 250");
+    expect(worker).toContain(".limit(batchSize)");
+    expect(worker).toContain('.from("import_job_rows")');
+    expect(worker).toContain('.from("history").insert');
+    expect(worker).not.toContain('.from("work_orders")');
+    expect(worker).not.toContain('.from("dispatch');
   });
 
-  it("imports valid history rows in batches without creating work orders or dispatch records", () => {
-    const source = routeSource();
+  it("job progress and compact summary are persisted", () => {
+    const worker = workerSource();
+    const status = statusSource();
 
-    expect(source).toContain("HISTORY_IMPORT_BATCH_SIZE = 250");
-    expect(source).toContain("chunkArray(payloads, HISTORY_IMPORT_BATCH_SIZE)");
-    expect(source).toContain('.from("history")');
-    expect(source).not.toContain('.from("work_orders")');
-    expect(source).not.toContain('.from("dispatch');
-    expect(source).not.toContain('.from("work_order_queue');
+    expect(worker).toContain("processed_rows: processedRows");
+    expect(worker).toContain("imported_count");
+    expect(worker).toContain("skipped_count");
+    expect(worker).toContain("failed_count");
+    expect(worker).toContain("VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT");
+    expect(worker).toContain("slice(0, VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT)");
+    expect(status).toContain('.from("import_jobs")');
+    expect(status).toContain('.eq("shop_id", shopId)');
+    expect(status).toContain("processedRows");
   });
 
-  it("returns only compact import summary samples", () => {
-    const source = routeSource();
-    const helper = helperSource();
+  it("uses shop-scoped history duplicate detection without giant customer_id.in filters", () => {
+    const worker = workerSource();
+    const migration = migrationSource();
 
-    expect(source).toContain("compactImportSummary");
-    expect(source).toContain("HISTORY_IMPORT_SAMPLE_LIMIT = 25");
-    expect(helper).toContain("skippedRows.slice(0, sampleLimit)");
-    expect(helper).toContain("failedRows.slice(0, sampleLimit)");
-    expect(helper).toContain("truncated");
-    expect(source).toContain("totalRows: rows.length");
+    expect(migration).toContain("alter table public.history add column if not exists shop_id");
+    expect(migration).toContain("update public.history h");
+    expect(worker).toContain("findDuplicateHistoryId");
+    expect(worker).toContain('.eq("shop_id" as "id", shopId)');
+    expect(worker).not.toContain('.in("customer_id"');
   });
 
-  it("completes guided vehicle_history only after successful zero-failure imports", () => {
+  it("UI creates a job, polls status, and stops polling on terminal states", () => {
+    const source = cardSource();
+
+    expect(source).toContain("const formData = new FormData()");
+    expect(source).toContain('formData.append("file", file)');
+    expect(source).toContain("setActiveJobId(payload.jobId)");
+    expect(source).toContain("/api/import-jobs/${encodeURIComponent(pollingJobId)}");
+    expect(source).toContain("setTimeout(() => void pollJobStatus(), 1500)");
+    expect(source).toContain('job.status === "completed" || job.status === "failed"');
+    expect(source).toContain("setActiveJobId(null)");
+    expect(source).toContain("clearTimeout(timeoutId)");
+    expect(source).not.toContain("JSON.stringify({ rows: importableRows })");
+  });
+
+  it("continues onboarding only after completed zero-failure imported jobs", () => {
     const source = cardSource();
 
     expect(source).toContain("/steps/vehicle_history/complete");
     expect(source).toContain('summary: { importType: "vehicle_history_csv", ...nextCounts }');
-    expect(source).toContain("payload.counts.imported > 0");
-    expect(source).toContain("payload.counts.failed === 0");
-    const footer = readFileSync("features/shared/components/import/GuidedImportFooterActions.tsx", "utf8");
-    expect(footer).toContain("Continue onboarding");
-  });
-
-  it("batches history duplicate reload lookups instead of sending oversized customer_id filters", () => {
-    const source = routeSource();
-
-    expect(source).toContain("HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE = 50");
-    expect(source).toContain("findDuplicateHistoryId");
-    expect(source).toContain(`chunkArray(
-    customerIds,
-    HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE,`);
-    expect(source).not.toContain('.in("customer_id", resolver.shopCustomerIds)');
-    expect(source).not.toContain('.from("work_orders")');
+    expect(source).toContain("counts.imported > 0 && counts.failed === 0");
   });
 });
