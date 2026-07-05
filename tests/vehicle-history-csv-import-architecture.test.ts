@@ -94,4 +94,16 @@ describe("vehicle history CSV import multipart architecture", () => {
     const footer = readFileSync("features/shared/components/import/GuidedImportFooterActions.tsx", "utf8");
     expect(footer).toContain("Continue onboarding");
   });
+
+  it("batches history duplicate reload lookups instead of sending oversized customer_id filters", () => {
+    const source = routeSource();
+
+    expect(source).toContain("HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE = 50");
+    expect(source).toContain("findDuplicateHistoryId");
+    expect(source).toContain(`chunkArray(
+    customerIds,
+    HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE,`);
+    expect(source).not.toContain('.in("customer_id", resolver.shopCustomerIds)');
+    expect(source).not.toContain('.from("work_orders")');
+  });
 });

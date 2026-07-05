@@ -191,8 +191,33 @@ function resolveVehicle(row: HistoryImportRow, r: Resolver): VehicleRef | null {
 }
 
 const HISTORY_IMPORT_BATCH_SIZE = 250;
+const HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE = 50;
 const HISTORY_IMPORT_SAMPLE_LIMIT = 25;
 const HISTORY_IMPORT_MAX_ROWS = 20_000;
+
+async function findDuplicateHistoryId(
+  supabase: SupabaseClient<DB>,
+  customerIds: string[],
+  column: "work_order_number" | "invoice_number",
+  value: string,
+): Promise<string | null> {
+  for (const customerIdChunk of chunkArray(
+    customerIds,
+    HISTORY_DUPLICATE_LOOKUP_CUSTOMER_CHUNK_SIZE,
+  )) {
+    if (!customerIdChunk.length) continue;
+    const { data, error } = await supabase
+      .from("history")
+      .select("id")
+      .in("customer_id", customerIdChunk)
+      .eq(column as "id", value)
+      .limit(1);
+    if (error) throw error;
+    const duplicate = data?.[0]?.id;
+    if (duplicate) return duplicate;
+  }
+  return null;
+}
 
 type ImportCounts = {
   imported: number;
@@ -343,24 +368,24 @@ export async function POST(req: Request) {
         }
         let duplicateFound = false;
         if (repairOrderNumber) {
-          const { data, error } = await supabase
-            .from("history")
-            .select("id")
-            .in("customer_id", resolver.shopCustomerIds)
-            .eq("work_order_number" as "id", repairOrderNumber)
-            .limit(1);
-          if (error) throw error;
-          duplicateFound = (data ?? []).length > 0;
+          duplicateFound = Boolean(
+            await findDuplicateHistoryId(
+              supabase,
+              resolver.shopCustomerIds,
+              "work_order_number",
+              repairOrderNumber,
+            ),
+          );
         }
         if (!duplicateFound && invoiceNumber) {
-          const { data, error } = await supabase
-            .from("history")
-            .select("id")
-            .in("customer_id", resolver.shopCustomerIds)
-            .eq("invoice_number" as "id", invoiceNumber)
-            .limit(1);
-          if (error) throw error;
-          duplicateFound = (data ?? []).length > 0;
+          duplicateFound = Boolean(
+            await findDuplicateHistoryId(
+              supabase,
+              resolver.shopCustomerIds,
+              "invoice_number",
+              invoiceNumber,
+            ),
+          );
         }
         if (duplicateFound) {
           counts.skipped++;
