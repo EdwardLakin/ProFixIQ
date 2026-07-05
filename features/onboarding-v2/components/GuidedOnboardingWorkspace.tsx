@@ -160,7 +160,7 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
           <div>
             <h1 className="text-3xl font-semibold text-white sm:text-4xl">Guided Setup</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-300">
-              Follow a safe, step-by-step setup path through real ProFixIQ workspaces. Importing shops start with customer files; new shops continue into staff, settings, workflow, parts, invoices, and history.
+              Follow a safe, step-by-step setup path through real ProFixIQ workspaces. Importing shops start with customer and vehicle files, then continue through vehicle history, invoices, parts, staff, pricing defaults, and AI recommendations. New shops skip import-heavy steps and begin with staff.
             </p>
           </div>
           {sessionId ? (

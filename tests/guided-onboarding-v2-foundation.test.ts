@@ -140,14 +140,31 @@ describe("guided onboarding v2 foundation", () => {
     expect(GUIDED_ONBOARDING_STEP_KEYS).toEqual([
       "customers",
       "vehicles",
-      "staff",
-      "labor_tax_shop_settings",
-      "inspection_templates",
-      "service_menu",
-      "inventory_parts",
+      "vehicle_history",
       "invoices",
-      "service_history",
+      "parts",
+      "staff",
+      "pricing_shop_defaults",
+      "analysis",
     ]);
+  });
+
+
+  it("aligns guided onboarding after vehicles and removes manual-builder steps", () => {
+    expect(GUIDED_ONBOARDING_STEP_KEYS[2]).toBe("vehicle_history");
+    expect(GUIDED_ONBOARDING_STEP_KEYS.at(-1)).toBe("analysis");
+    expect(GUIDED_ONBOARDING_STEP_KEYS).not.toContain("inspection_templates");
+    expect(GUIDED_ONBOARDING_STEP_KEYS).not.toContain("service_menu");
+  });
+
+  it("keeps old sessions progressing by seeding new canonical steps and ignoring removed steps", () => {
+    const serverSource = read("features/onboarding-v2/guided/server.ts");
+    const querySource = read("features/onboarding-v2/guided/query.ts");
+
+    expect(serverSource).toContain("const missingSteps = GUIDED_ONBOARDING_STEPS.filter");
+    expect(serverSource).toContain("!isGuidedOnboardingStepKey(session.current_step_key)");
+    expect(querySource).toContain("canonicalKeys");
+    expect(querySource).toContain("filter((step) => canonicalKeys.has");
   });
 
   it("keeps API access shop-scoped through the stable helper", () => {
@@ -223,7 +240,7 @@ describe("guided onboarding v2 foundation", () => {
   it("keeps starting-from-scratch setup active while skipping import-only steps", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");
 
-    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "service_history"] as const');
+    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts"] as const');
     expect(serverSource).toContain('const STARTING_FROM_SCRATCH_FIRST_STEP = "staff"');
     expect(serverSource).toContain("skip_import_steps");
     expect(serverSource).toContain('.in("step_key", STARTING_FROM_SCRATCH_SKIP_STEPS)');

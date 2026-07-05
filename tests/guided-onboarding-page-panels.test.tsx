@@ -96,9 +96,9 @@ describe("guided onboarding page panels", () => {
   it("complete and skip use guided API routes and return to the control room", async () => {
     currentSearchParams = new URLSearchParams({
       guidedSessionId: "session-123",
-      guidedStep: "inventory_parts",
+      guidedStep: "parts",
       returnTo: "/dashboard/onboarding-v2/session-123",
-      highlight: "inventory_parts",
+      highlight: "parts",
     });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -109,7 +109,7 @@ describe("guided onboarding page panels", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark step complete" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/onboarding-v2/guided/sessions/session-123/steps/inventory_parts/complete",
+        "/api/onboarding-v2/guided/sessions/session-123/steps/parts/complete",
         { method: "POST" },
       );
     });
@@ -124,7 +124,7 @@ describe("guided onboarding page panels", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/onboarding-v2/guided/sessions/session-123/steps/inventory_parts/skip",
+        "/api/onboarding-v2/guided/sessions/session-123/steps/parts/skip",
         { method: "POST" },
       );
     });
@@ -176,17 +176,40 @@ describe("guided onboarding page panels", () => {
     expect(context?.returnTo).toBe("/dashboard/onboarding-v2/abc");
   });
 
+
+  it("keeps guided step order focused after vehicles", () => {
+    expect(GUIDED_ONBOARDING_STEPS.map((step) => step.key)).toEqual([
+      "customers",
+      "vehicles",
+      "vehicle_history",
+      "invoices",
+      "parts",
+      "staff",
+      "pricing_shop_defaults",
+      "analysis",
+    ]);
+  });
+
+  it("routes pricing defaults to owner settings and leaves analysis final", () => {
+    const pricingStep = GUIDED_ONBOARDING_STEPS.find((step) => step.key === "pricing_shop_defaults");
+    const analysisStep = GUIDED_ONBOARDING_STEPS.at(-1);
+
+    expect(pricingStep?.destinationPath).toBe("/dashboard/owner/settings");
+    expect(buildGuidedDestination(pricingStep!, "session-xyz")).toContain("/dashboard/owner/settings?");
+    expect(analysisStep?.key).toBe("analysis");
+    expect(buildGuidedDestination(analysisStep!, "session-xyz")).toContain("/dashboard/onboarding-v2/session-xyz/summary?");
+  });
+
   it("maps every guided step to a production destination with guided query params", () => {
     const expectedDestinations: Record<string, string> = {
       customers: "/customers/search",
       vehicles: "/vehicles",
-      staff: "/dashboard/owner/create-user",
-      labor_tax_shop_settings: "/dashboard/owner/settings",
-      inspection_templates: "/inspections/templates",
-      service_menu: "/menu",
-      inventory_parts: "/parts/inventory",
+      vehicle_history: "/work-orders/history",
       invoices: "/billing",
-      service_history: "/work-orders/history",
+      parts: "/parts/inventory",
+      staff: "/dashboard/owner/create-user",
+      pricing_shop_defaults: "/dashboard/owner/settings",
+      analysis: "/dashboard/onboarding-v2/session-xyz/summary",
     };
 
     for (const step of GUIDED_ONBOARDING_STEPS) {

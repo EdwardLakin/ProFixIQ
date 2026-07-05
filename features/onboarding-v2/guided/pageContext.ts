@@ -48,20 +48,18 @@ export function getGuidedStepPageInstructions(stepKey: GuidedOnboardingStepKey):
       return "Import or create your customer records.";
     case "vehicles":
       return "Open a customer file and add the vehicles or fleet units that should be ready before advisors build work orders.";
-    case "staff":
-      return "Provision the user account, choose the initial role, and continue with profile details in People when needed.";
-    case "labor_tax_shop_settings":
-      return "Review labor rates, tax posture, operating defaults, hours, and shop identity without changing shop context.";
-    case "inspection_templates":
-      return "Create, clone, or import the inspection templates technicians should use during guided inspections.";
-    case "service_menu":
-      return "Build or verify common service packages so advisors can quote repeat jobs consistently.";
-    case "inventory_parts":
-      return "Add parts manually or open the existing CSV import tools to prepare inventory for quoting and receiving.";
+    case "vehicle_history":
+      return "Search and review historical work orders or imported service records that should remain visible on customer and vehicle timelines.";
     case "invoices":
       return "Review completed, ready-to-invoice, and invoiced work so closeout paperwork is ready before go-live.";
-    case "service_history":
-      return "Search and review historical work orders or imported service records that should remain visible on customer timelines.";
+    case "parts":
+      return "Add parts manually or open the existing CSV import tools to prepare inventory for quoting and receiving.";
+    case "staff":
+      return "Provision the user account, choose the initial role, and continue with profile details in People when needed.";
+    case "pricing_shop_defaults":
+      return "Review labor rates, tax posture, fees, operating defaults, hours, and shop identity in Owner Settings. The existing owner PIN gate remains responsible for protecting this workspace.";
+    case "analysis":
+      return "Review AI recommendations based on imported and configured shop data. Recommendations should guide inspection templates first, then menu items and canned services, inventory, vendors, customer or fleet segments, maintenance packages, and automation rules; they should not auto-create records.";
   }
 }
 
