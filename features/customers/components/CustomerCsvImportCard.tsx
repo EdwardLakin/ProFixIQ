@@ -4,7 +4,7 @@ import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
-import { OnboardingHighlightFrame } from "@/features/onboarding-v2/components/OnboardingHighlightFrame";
+import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type CustomerImportRow = {
@@ -310,34 +310,37 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
     }
   }
 
-  const content = (
-    <section
-      data-testid="customer-csv-import-card"
-      className="rounded-2xl border border-[color:var(--desktop-border)] bg-[radial-gradient(circle_at_top_left,rgba(197,122,74,0.13),rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.96))] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)]"
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-3xl">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/85">
-            {isOnboarding ? "Guided onboarding · Customers" : "Customer files"}
-          </div>
-          <h2 className="mt-2 text-xl font-semibold text-white">
-            {isOnboarding ? "Upload your customer CSV here" : "Import customers"}
-          </h2>
-          <div className="mt-3 space-y-2 text-sm text-neutral-300">
-            {isOnboarding ? <p>This import lives on the Customers page so you can find it later.</p> : null}
-            <p>Upload a CSV, review the parsed customer preview, then explicitly confirm the import.</p>
-            <p>
-              Supported columns include <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>. Optional fields can be omitted.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-72">
+  return (
+    <GuidedSetupCardShell
+      testId="customer-csv-import-card"
+      eyebrow={isOnboarding ? "Guided onboarding · Customers" : "Customer files"}
+      title={isOnboarding ? "Upload your customer CSV here" : "Import customers"}
+      description={
+        <>
+          {isOnboarding ? <p>This import lives on the Customers page so you can find it later.</p> : null}
+          <p>Upload a CSV, review the parsed customer preview, then explicitly confirm the import.</p>
+          <p>
+            Supported columns include <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>. Optional fields can be omitted.
+          </p>
+        </>
+      }
+      guided={
+        isOnboarding
+          ? {
+              active: true,
+              highlightKey: guidedQuery?.highlight,
+              title: "Customer CSV import",
+              description: "Upload your customer list here to continue guided setup.",
+            }
+          : null
+      }
+      actions={
+        <>
           <input ref={fileInputRef} data-testid="customer-csv-file-input" type="file" accept=".csv,text/csv" onChange={handleFileChange} className="sr-only" />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="rounded-xl border border-[var(--accent-copper-soft)]/60 bg-[linear-gradient(135deg,rgba(197,122,74,0.26),rgba(197,122,74,0.14))] px-4 py-2 text-sm font-semibold text-orange-50 hover:border-[var(--accent-copper)] hover:bg-orange-400/15"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
           >
             Choose CSV file
           </button>
@@ -350,8 +353,9 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
               + Create customer
             </button>
           ) : null}
-        </div>
-      </div>
+        </>
+      }
+    >
 
       <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -477,19 +481,6 @@ export function CustomerCsvImportCard({ guidedQuery, onCreateCustomer }: Props) 
           </>
         ) : null}
       </div>
-    </section>
-  );
-
-  if (!isOnboarding || !guidedQuery) return content;
-
-  return (
-    <OnboardingHighlightFrame
-      active
-      highlightKey={guidedQuery.highlight}
-      title="Customer setup/import"
-      description="Upload your customer CSV on the real Customers page."
-    >
-      {content}
-    </OnboardingHighlightFrame>
+    </GuidedSetupCardShell>
   );
 }
