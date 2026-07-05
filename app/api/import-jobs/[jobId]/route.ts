@@ -1,0 +1,43 @@
+import { NextResponse } from "next/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+
+type Params = { params: { jobId: string } };
+
+export async function GET(_req: Request, { params }: Params) {
+  const access = await requireShopScopedApiAccess({
+    allowRoles: ["owner", "admin", "manager", "advisor"],
+  });
+  if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id;
+  if (!shopId) return NextResponse.json({ error: "No active shop is selected." }, { status: 400 });
+
+  const { data, error } = await (access.supabase as unknown as { from: (table: string) => any })
+    .from("import_jobs")
+    .select("id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at")
+    .eq("id", params.jobId)
+    .eq("shop_id", shopId)
+    .single();
+
+  if (error || !data) {
+    return NextResponse.json({ error: "Import job not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    job: {
+      id: data.id,
+      importType: data.import_type,
+      status: data.status,
+      totalRows: data.total_rows ?? 0,
+      processedRows: data.processed_rows ?? 0,
+      importedCount: data.imported_count ?? 0,
+      skippedCount: data.skipped_count ?? 0,
+      failedCount: data.failed_count ?? 0,
+      errorMessage: data.error_message ?? null,
+      summary: data.summary ?? null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      completedAt: data.completed_at,
+    },
+  });
+}
