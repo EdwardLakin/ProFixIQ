@@ -8589,6 +8589,8 @@ export type Database = {
           quoted_price: number | null
           quote_line_id: string | null
           request_id: string
+          requested_manufacturer: string | null
+          requested_part_number: string | null
           shop_id: string | null
           status: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost: number | null
@@ -8619,6 +8621,8 @@ export type Database = {
           quoted_price?: number | null
           quote_line_id?: string | null
           request_id: string
+          requested_manufacturer?: string | null
+          requested_part_number?: string | null
           shop_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost?: number | null
@@ -8649,6 +8653,8 @@ export type Database = {
           quoted_price?: number | null
           quote_line_id?: string | null
           request_id?: string
+          requested_manufacturer?: string | null
+          requested_part_number?: string | null
           shop_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost?: number | null

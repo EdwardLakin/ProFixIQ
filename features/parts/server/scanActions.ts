@@ -7,7 +7,8 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
  * Strategy (in order):
  *  1) parts_barcodes(code, supplier_id?) -> part_id
  *  2) parts.sku == code (case-insensitive)
- *  3) parts.upc == code  (if you have this column)
+ *  3) parts.part_number == code (case-insensitive; FL-500S style aliases should be normalized in a future pass)
+ *  4) parts.upc == code  (if you have this column)
  */
 export async function resolveScannedCode(input: {
   code: string;
@@ -45,13 +46,22 @@ export async function resolveScannedCode(input: {
     .maybeSingle();
   if (bySku?.id) return { part_id: bySku.id };
 
-  // 3) optional UPC column fallback (if present in your schema)
+  // 3) lightweight part number fallback for receiving scans typed as real catalog numbers.
+  // TODO(parts): also compare normalized aliases (FL500S vs FL-500S) once scan lookup is centralized.
+  const { data: byPartNumber } = await supabase
+    .from("parts")
+    .select("id")
+    .ilike("part_number", code)
+    .maybeSingle();
+  if (byPartNumber?.id) return { part_id: byPartNumber.id };
+
+  // 4) optional UPC column fallback (if present in your schema)
   // Comment out if you don't have this column.
   try {
     const { data: byUpc } = await supabase
       .from("parts")
       .select("id")
-      .eq("upc", code as any)
+      .eq("upc" as never, code as never)
       .maybeSingle();
     if (byUpc?.id) return { part_id: byUpc.id };
   } catch {

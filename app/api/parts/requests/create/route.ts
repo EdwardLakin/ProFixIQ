@@ -9,6 +9,8 @@ type DB = Database;
 type BodyItem = {
   description: string;
   qty: number;
+  partNumber?: string | null;
+  manufacturer?: string | null;
 };
 
 type Body = {
@@ -59,6 +61,14 @@ export async function POST(req: Request) {
     .map((it) => ({
       description: String(it.description ?? "").trim(),
       qty: Math.max(1, Number(it.qty) || 1),
+      partNumber:
+        typeof it.partNumber === "string" && it.partNumber.trim().length > 0
+          ? it.partNumber.trim()
+          : null,
+      manufacturer:
+        typeof it.manufacturer === "string" && it.manufacturer.trim().length > 0
+          ? it.manufacturer.trim()
+          : null,
     }))
     .filter((it) => it.description.length > 0);
 

@@ -2,7 +2,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type PartRow = Pick<
   Database["public"]["Tables"]["parts"]["Row"],
-  "id" | "name" | "sku" | "part_number"
+  "id" | "name" | "sku" | "part_number" | "normalized_part_key"
 >;
 
 type VendorPartNumberRow =
@@ -18,6 +18,7 @@ export type StockMatchReason =
   | "exact part number match"
   | "exact normalized name match"
   | "vendor SKU match"
+  | "alias part number match"
   | "token match"
   | "description match"
   | "in stock"
@@ -36,6 +37,8 @@ export type DeterministicStockSuggestion = {
 
 type MatcherArgs = {
   requestedDescription: string;
+  requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
   requestedQty?: number | null;
   parts: PartRow[];
   vendorPartNumbers?: VendorPartNumberRow[];
@@ -47,6 +50,10 @@ const STOP_TOKENS = new Set(["the", "and", "for", "with", "from", "rear", "front
 
 function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function normalizePartNumber(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
 }
 
 function tokenize(value: string): string[] {
@@ -63,12 +70,16 @@ function overlapScore(requestTokens: string[], candidateTokens: string[]): numbe
 
 export function buildDeterministicStockSuggestions(args: MatcherArgs): DeterministicStockSuggestion[] {
   const text = (args.requestedDescription ?? "").trim();
-  if (text.length < 2) return [];
+  const requestedPartNumber = String(args.requestedPartNumber ?? "").trim();
+  if (text.length < 2 && requestedPartNumber.length < 2) return [];
 
   const requestedQty = Math.max(1, Math.floor(Number(args.requestedQty ?? 1) || 1));
+  const requestedManufacturer = String(args.requestedManufacturer ?? "").trim();
+  const searchText = [requestedPartNumber, text, requestedManufacturer].filter(Boolean).join(" ");
   const requestedNorm = normalize(text);
-  const requestedTokens = tokenize(text);
+  const requestedTokens = tokenize(searchText);
   const requestedTight = requestedNorm.replace(/\s+/g, "");
+  const requestedPartTight = normalizePartNumber(requestedPartNumber);
   const limit = Math.min(5, Math.max(1, args.limit ?? 3));
 
   const vendorByPart = new Map<string, string[]>();
@@ -90,7 +101,7 @@ export function buildDeterministicStockSuggestions(args: MatcherArgs): Determini
     const name = String(part.name ?? "").trim();
     const sku = String(part.sku ?? "").trim();
     const pn = String(part.part_number ?? "").trim();
-    const partKeys = [sku, pn, ...((vendorByPart.get(part.id) ?? []).map((v) => v.trim()))].filter(Boolean);
+    const partKeys = [sku, pn, String(part.normalized_part_key ?? ""), ...((vendorByPart.get(part.id) ?? []).map((v) => v.trim()))].filter(Boolean);
     const candidateText = `${name} ${sku} ${pn}`.trim();
     const candidateNorm = normalize(candidateText);
     const candidateTokens = tokenize(candidateText);
@@ -99,10 +110,15 @@ export function buildDeterministicStockSuggestions(args: MatcherArgs): Determini
     let score = 0;
     let confidence: StockMatchConfidence = "low";
 
-    const exactKey = partKeys.find((key) => normalize(key).replace(/\s+/g, "") === requestedTight);
+    const exactKey = partKeys.find((key) => {
+      const normalizedKey = normalize(key).replace(/\s+/g, "");
+      const partKey = normalizePartNumber(key);
+      return normalizedKey === requestedTight || (!!requestedPartTight && partKey === requestedPartTight);
+    });
     if (exactKey) {
-      if (sku && normalize(sku).replace(/\s+/g, "") === requestedTight) reasons.push("exact sku match");
-      else if (pn && normalize(pn).replace(/\s+/g, "") === requestedTight) reasons.push("exact part number match");
+      if (sku && normalizePartNumber(sku) === requestedPartTight) reasons.push("exact sku match");
+      else if (pn && normalizePartNumber(pn) === requestedPartTight) reasons.push("exact part number match");
+      else if (String(part.normalized_part_key ?? "") && normalizePartNumber(part.normalized_part_key) === requestedPartTight) reasons.push("alias part number match");
       else reasons.push("vendor SKU match");
       score += 120;
       confidence = "high";
