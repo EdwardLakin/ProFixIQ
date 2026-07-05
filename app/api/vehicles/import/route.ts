@@ -366,6 +366,8 @@ export async function POST(req: Request) {
       failed: 0,
     };
     const customers = await loadCustomerResolverIndex(supabase, shopId);
+    const skippedRows: Array<{ row: number; reason: string }> = [];
+    const failedRows: Array<{ row: number; error: string }> = [];
 
     for (const [index, raw] of rows.entries()) {
       const normalizedResult = normalizeRow(
@@ -376,6 +378,7 @@ export async function POST(req: Request) {
 
       if (!normalizedResult.ok) {
         counts.skipped += 1;
+        skippedRows.push({ row: index + 1, reason: normalizedResult.reason });
         continue;
       }
 
@@ -452,13 +455,9 @@ export async function POST(req: Request) {
         counts.created += 1;
       } catch (error) {
         counts.failed += 1;
-        console.warn("Vehicle import row failed", {
-          row: index + 1,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Vehicle row failed to import.",
-        });
+        const message = error instanceof Error ? error.message : "Vehicle row failed to import.";
+        failedRows.push({ row: index + 1, error: message });
+        console.warn("Vehicle import row failed", { row: index + 1, error: message });
       }
     }
 
@@ -468,6 +467,8 @@ export async function POST(req: Request) {
       ok: true,
       counts,
       explanation,
+      skippedRows,
+      failedRows,
     });
   } catch (error) {
     return NextResponse.json(

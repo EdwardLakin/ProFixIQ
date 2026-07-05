@@ -36,6 +36,9 @@ type CustomerImportRow = {
   ar_balance?: string | null;
   tags?: string | null;
   notes?: string | null;
+  created_at?: string | null;
+  customer_since?: string | null;
+  updated_at?: string | null;
 };
 
 type ImportCounts = {
@@ -107,10 +110,13 @@ const SUPPORTED_COLUMNS = [
   "ar_balance",
   "tags",
   "notes",
+  "created_at",
+  "customer_since",
+  "updated_at",
 ] as const;
 
 const RECOMMENDED_COLUMNS =
-  "customer_id, display_name, company_name, first_name, last_name, email, phone_primary, phone_secondary, address1, city, province, postal_code";
+  "customer_id, display_name, company_name, first_name, last_name, email, phone_primary, phone_secondary, address1, city, province, postal_code, customer_since, created_at, updated_at";
 
 function cleanHeader(value: string): string {
   return value
@@ -505,8 +511,7 @@ export function CustomerCsvImportCard({
 
       {counts ? (
         <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
-          Import results: created {counts.created}, updated {counts.updated},
-          skipped {counts.skipped}, failed {counts.failed}.
+          Import results: Imported {counts.created}, Updated {counts.updated}, Skipped {counts.skipped}, Failed {counts.failed}.
         </div>
       ) : null}
       {failedRows.length ? (

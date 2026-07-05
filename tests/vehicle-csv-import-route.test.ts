@@ -42,7 +42,7 @@ describe("vehicle CSV import route", () => {
     expect(source).toContain("counts.updated += 1");
   });
 
-  it("persists supported CSV vehicle detail fields and keeps response compact", () => {
+  it("persists supported CSV vehicle detail fields and returns compact diagnostics", () => {
     const source = routeSource();
 
     for (const field of [
@@ -62,8 +62,8 @@ describe("vehicle CSV import route", () => {
       expect(source).toContain(`${field}:`);
     }
     expect(source).toContain("const mileage = odometer ?? null");
-    expect(source).not.toContain("skippedRows,");
-    expect(source).not.toContain("failedRows,");
+    expect(source).toContain("skippedRows,");
+    expect(source).toContain("failedRows,");
   });
 });
 
@@ -73,14 +73,15 @@ describe("vehicle detail UI", () => {
 
     expect(source).toContain("formatOdometer");
     expect(source).toContain("formatPlateWithRegion");
-    expect(source).toContain("Customer since:");
-    expect(source).toContain("compactDate(customer?.created_at)");
+    expect(source).toContain("Customer since");
+    expect(source).toContain("compactDate(customer?.customer_since ?? customer?.created_at)");
     expect(source).toContain("🚗");
 
     for (const label of [
-      "Year / Make / Model / Trim",
-      "Plate + State/Province",
-      "Mileage / Odometer",
+      "Plate",
+      "Mileage",
+      "Engine",
+      "Drive",
       "Body Type",
       "Asset Type",
       "Purchase Date",

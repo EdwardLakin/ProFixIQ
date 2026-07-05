@@ -25,6 +25,9 @@ export type ImportRow = {
   postal_code?: unknown;
   zip?: unknown;
   notes?: unknown;
+  created_at?: unknown;
+  customer_since?: unknown;
+  updated_at?: unknown;
 };
 
 function cleanString(value: unknown): string | null {
@@ -41,6 +44,14 @@ function cleanPhone(value: unknown): string | null {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, "");
   return digits || raw;
+}
+
+function cleanDate(value: unknown): string | null {
+  const text = cleanString(value);
+  if (!text) return null;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return text;
 }
 
 function splitName(name: string | null): {
@@ -79,6 +90,10 @@ export function normalizeImportedCustomerRow(
 
   if (!displayName && !email && !phone) return null;
 
+  const createdAt = cleanDate(row.created_at);
+  const customerSince = cleanDate(row.customer_since) ?? createdAt;
+  const updatedAt = cleanDate(row.updated_at);
+
   return {
     shop_id: shopId,
     user_id: null,
@@ -98,5 +113,8 @@ export function normalizeImportedCustomerRow(
     province: cleanString(row.province) ?? cleanString(row.state),
     postal_code: cleanString(row.postal_code) ?? cleanString(row.zip),
     notes: cleanString(row.notes),
+    created_at: createdAt ?? undefined,
+    customer_since: customerSince ?? undefined,
+    updated_at: updatedAt ?? undefined,
   } satisfies CustomerInsert;
 }
