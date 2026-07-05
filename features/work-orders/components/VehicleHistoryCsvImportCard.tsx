@@ -3,7 +3,9 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
-import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
+import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
+import { GuidedImportSummary } from "@/features/shared/components/import/GuidedImportSummary";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
@@ -190,7 +192,8 @@ export function VehicleHistoryCsvImportCard({
       return;
     }
     setProgress({
-      phase: "Preparing rows",
+      phase: "Reading file",
+      phaseKey: "reading_file",
       processed: 0,
       total: 0,
       percent: 5,
@@ -207,7 +210,8 @@ export function VehicleHistoryCsvImportCard({
         );
         setRows(parsed);
         setProgress({
-          phase: "Preparing rows",
+          phase: "Validating rows",
+          phaseKey: "validating",
           processed: parsed.length,
           total: parsed.length,
           percent: parsed.length ? 25 : 0,
@@ -264,6 +268,7 @@ export function VehicleHistoryCsvImportCard({
     setResponse(null);
     setProgress({
       phase: "Importing",
+      phaseKey: "importing",
       processed: 0,
       total: importableRows.length,
       percent: 35,
@@ -284,7 +289,8 @@ export function VehicleHistoryCsvImportCard({
         payload.counts.failed === 0
       ) {
         setProgress({
-          phase: "Completing guided step",
+          phase: "Finalizing guided step",
+          phaseKey: "finalizing",
           processed: importableRows.length,
           total: importableRows.length,
           percent: 98,
@@ -292,14 +298,24 @@ export function VehicleHistoryCsvImportCard({
         await completeOnboardingAfterImport(payload.counts);
       }
       setProgress({
-        phase: "Complete",
+        phase:
+          payload.counts.failed > 0
+            ? "Import completed with failures"
+            : "Completed",
+        phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
         processed: importableRows.length,
         total: importableRows.length,
         percent: 100,
       });
       if (payload.counts.imported > 0) onImported?.();
     } catch (error) {
-      setProgress(null);
+      setProgress({
+        phase: "Import failed",
+        phaseKey: "failed",
+        processed: 0,
+        total: importableRows.length,
+        percent: 100,
+      });
       setImportError(
         error instanceof Error
           ? error.message
@@ -311,7 +327,7 @@ export function VehicleHistoryCsvImportCard({
   }
 
   return (
-    <GuidedSetupCardShell
+    <GuidedImportCardLayout
       testId="vehicle-history-csv-import-card"
       eyebrow="Operations · History"
       title={
@@ -333,8 +349,6 @@ export function VehicleHistoryCsvImportCard({
           </p>
         </>
       }
-      guided={null}
-      variant="workspace"
       actions={
         <>
           <input
@@ -455,22 +469,24 @@ export function VehicleHistoryCsvImportCard({
         </div>
       ) : null}
       {rows.length - importableRows.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-sm text-amber-50">
+        <GuidedImportSummary tone="warning">
           Validation results: {rows.length - importableRows.length} row(s) need
           review before import. Fix date, match identifiers, or numeric
           odometer/labor/total values.
-        </div>
+        </GuidedImportSummary>
       ) : null}
       <CsvImportProgress
         progress={progress}
         label="Vehicle history CSV import progress"
       />
       {response?.counts ? (
-        <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
+        <GuidedImportSummary
+          tone={response.counts.failed ? "error" : "success"}
+        >
           Import results: Imported {response.counts.imported}, Skipped{" "}
           {response.counts.skipped}, Duplicates {response.counts.duplicates},
           Failed {response.counts.failed}.
-        </div>
+        </GuidedImportSummary>
       ) : null}
       {response?.skippedRows?.length ? (
         <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-sm text-amber-50">
@@ -491,33 +507,23 @@ export function VehicleHistoryCsvImportCard({
         </div>
       ) : null}
       {importError ? (
-        <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">
-          {importError}
-        </div>
+        <GuidedImportSummary tone="error">{importError}</GuidedImportSummary>
       ) : null}
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        <button
-          type="button"
-          onClick={() => void confirmImport()}
-          disabled={importing || completingOnboarding || !importableRows.length}
-          className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
-        >
-          {importing
-            ? "Importing…"
-            : completingOnboarding
-              ? "Completing onboarding…"
-              : "Confirm import"}
-        </button>
-        {isOnboarding && response?.counts ? (
-          <button
-            type="button"
-            onClick={() => router.push(guidedQuery!.returnTo)}
-            className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
-          >
-            Continue onboarding
-          </button>
-        ) : null}
-      </div>
-    </GuidedSetupCardShell>
+      <GuidedImportFooterActions
+        importing={importing}
+        completing={completingOnboarding}
+        canConfirm={importableRows.length > 0}
+        onConfirm={() => void confirmImport()}
+        isOnboarding={isOnboarding}
+        returnTo={guidedQuery?.returnTo}
+        hasResult={Boolean(response?.counts)}
+        importSucceeded={Boolean(
+          response?.counts &&
+          response.counts.imported > 0 &&
+          response.counts.failed === 0,
+        )}
+        onContinue={() => router.push(guidedQuery!.returnTo)}
+      />
+    </GuidedImportCardLayout>
   );
 }
