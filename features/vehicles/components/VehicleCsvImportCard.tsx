@@ -32,6 +32,15 @@ type VehicleImportRow = {
   engine?: string | null;
   fuel_type?: string | null;
   drive_type?: string | null;
+  state_province?: string | null;
+  body_type?: string | null;
+  asset_type?: string | null;
+  status?: string | null;
+  purchase_date?: string | null;
+  in_service_date?: string | null;
+  last_service_date?: string | null;
+  tags?: string | null;
+  notes?: string | null;
 };
 
 type ImportCounts = {
@@ -77,10 +86,19 @@ const SUPPORTED_COLUMNS = [
   "engine",
   "fuel_type",
   "drive_type",
+  "state_province",
+  "body_type",
+  "asset_type",
+  "status",
+  "purchase_date",
+  "in_service_date",
+  "last_service_date",
+  "tags",
+  "notes",
 ] as const;
 
 const RECOMMENDED_COLUMNS =
-  "vehicle_id, customer_id, unit_number, year, make, model, trim, vin, plate, color, odometer, engine, fuel_type, drive_type";
+  "vehicle_id, customer_id, unit_number, year, make, model, trim, vin, plate, state_province, color, odometer, odometer_unit, engine, fuel_type, body_type, drive_type, asset_type, status, purchase_date, in_service_date, last_service_date, tags, notes";
 
 function cleanHeader(value: string): string {
   return value
