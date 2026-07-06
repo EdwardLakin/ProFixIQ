@@ -21,6 +21,13 @@ const num = (value: unknown) => { const text = clean(value); if (!text) return n
 const date = (value: unknown) => { const text = clean(value); if (!text) return null; const parsed = new Date(text); return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString(); };
 const vin = (value: unknown) => clean(value)?.toUpperCase().replace(/[^A-Z0-9]/g, "") ?? null;
 
+function isInvoiceNumberUniqueConflict(error: unknown) {
+  const candidate = error as { code?: string; message?: string; details?: string; hint?: string } | null | undefined;
+  if (!candidate) return false;
+  const text = [candidate.message, candidate.details, candidate.hint].filter(Boolean).join(" ");
+  return candidate.code === "23505" && text.includes("invoices_shop_invoice_number_idx");
+}
+
 async function duplicateInvoice(client: SupabaseClient, shopId: string, invoiceNumber: string | null, sourceId: string | null) {
   if (invoiceNumber) {
     const { data, error } = await client.from("invoices").select("id").eq("shop_id", shopId).eq("invoice_number", invoiceNumber).limit(1);
@@ -119,6 +126,7 @@ export async function processInvoiceImportJobBatch(supabase: SupabaseClient<DB>,
 
   const counts: Counts = { imported: 0, skipped: 0, failed: 0, duplicates: 0 };
   const sample = samples(job.summary);
+  const pendingInvoiceNumbers = new Set<string>();
   const inserts: Array<{ stagedId: string; rowNumber: number; invoiceNumber: string | null; workOrderNumber: string | null; payload: DB["public"]["Tables"]["invoices"]["Insert"] }> = [];
 
   for (const staged of rows) {
@@ -137,10 +145,10 @@ export async function processInvoiceImportJobBatch(supabase: SupabaseClient<DB>,
         continue;
       }
 
-      if (await duplicateInvoice(client, job.shop_id, invoiceNumber, sourceId)) {
+      if (pendingInvoiceNumbers.has(invoiceNumber) || await duplicateInvoice(client, job.shop_id, invoiceNumber, sourceId)) {
         counts.skipped++;
         counts.duplicates++;
-        const reason = "Duplicate invoice already exists.";
+        const reason = pendingInvoiceNumbers.has(invoiceNumber) ? "Duplicate invoice already exists in this import batch." : "Duplicate invoice already exists.";
         sample.skippedRows.push({ row: staged.row_number, reason, invoiceNumber, workOrderNumber });
         await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id);
         continue;
@@ -162,6 +170,7 @@ export async function processInvoiceImportJobBatch(supabase: SupabaseClient<DB>,
         continue;
       }
 
+      pendingInvoiceNumbers.add(invoiceNumber);
       inserts.push({
         stagedId: staged.id,
         rowNumber: staged.row_number,
@@ -216,9 +225,17 @@ export async function processInvoiceImportJobBatch(supabase: SupabaseClient<DB>,
       for (const entry of batch) {
         const { error: rowError } = await supabase.from("invoices").insert(entry.payload);
         if (rowError) {
-          counts.failed++;
-          sample.failedRows.push({ row: entry.rowNumber, error: rowError.message, invoiceNumber: entry.invoiceNumber, workOrderNumber: entry.workOrderNumber });
-          await client.from("import_job_rows").update({ status: "failed", error_message: rowError.message }).eq("id", entry.stagedId);
+          if (isInvoiceNumberUniqueConflict(rowError)) {
+            counts.skipped++;
+            counts.duplicates++;
+            const reason = "Duplicate invoice already exists.";
+            sample.skippedRows.push({ row: entry.rowNumber, reason, invoiceNumber: entry.invoiceNumber, workOrderNumber: entry.workOrderNumber });
+            await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", entry.stagedId);
+          } else {
+            counts.failed++;
+            sample.failedRows.push({ row: entry.rowNumber, error: rowError.message, invoiceNumber: entry.invoiceNumber, workOrderNumber: entry.workOrderNumber });
+            await client.from("import_job_rows").update({ status: "failed", error_message: rowError.message }).eq("id", entry.stagedId);
+          }
         } else {
           counts.imported++;
           await client.from("import_job_rows").update({ status: "imported" }).eq("id", entry.stagedId);
