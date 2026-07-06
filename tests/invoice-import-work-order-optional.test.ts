@@ -50,10 +50,23 @@ describe("historical invoice imports", () => {
   });
 
   it("does not require paid_at for unpaid, void, or draft imported invoices", () => {
-    expect(normalizeInvoiceImportStatus({ payment_status: "unpaid" })).toBe("imported");
+    expect(normalizeInvoiceImportStatus({ payment_status: "unpaid" })).toBe("issued");
     expect(resolveImportedInvoicePaidAt({ payment_status: "unpaid", paid_date: "2024-03-20" }, "2024-03-18T00:00:00.000Z")).toBeNull();
     expect(resolveImportedInvoicePaidAt({ status: "void" }, "2024-03-18T00:00:00.000Z")).toBeNull();
     expect(resolveImportedInvoicePaidAt({ status: "draft" }, "2024-03-18T00:00:00.000Z")).toBeNull();
+  });
+
+  it("normalizes common CSV invoice statuses to canonical database statuses", () => {
+    expect(normalizeInvoiceImportStatus({ payment_status: "open" })).toBe("issued");
+    expect(normalizeInvoiceImportStatus({ payment_status: "partial" })).toBe("issued");
+    expect(normalizeInvoiceImportStatus({ payment_status: "partially_paid" })).toBe("issued");
+    expect(normalizeInvoiceImportStatus({ payment_status: "paid_in_full" })).toBe("paid");
+    expect(normalizeInvoiceImportStatus({ payment_status: "closed_paid" })).toBe("paid");
+    expect(normalizeInvoiceImportStatus({ payment_status: "void" })).toBe("void");
+    expect(normalizeInvoiceImportStatus({ payment_status: "cancelled" })).toBe("void");
+    expect(normalizeInvoiceImportStatus({ payment_status: "written_off" })).toBe("void");
+    expect(normalizeInvoiceImportStatus({ payment_status: "credit" })).toBeNull();
+    expect(normalizeInvoiceImportStatus({ payment_status: "refunded" })).toBeNull();
   });
 
   it("preserves legacy invoice and work-order numbers as text metadata", () => {
