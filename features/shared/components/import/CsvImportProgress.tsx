@@ -4,6 +4,8 @@ export type CsvImportProgressPhase =
   | "validating"
   | "matching"
   | "importing"
+  | "queued"
+  | "processing"
   | "finalizing"
   | "completed"
   | "failed";
@@ -14,6 +16,11 @@ export type CsvImportProgressState = {
   processed: number;
   total: number;
   percent: number;
+  imported?: number;
+  skipped?: number;
+  failed?: number;
+  status?: string;
+  stalled?: boolean;
 };
 
 type Props = {
@@ -58,13 +65,21 @@ export function CsvImportProgress({
           <div className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">
             {label}
           </div>
-          <div className="font-semibold">{progress.phase}</div>
+          <div className="font-semibold capitalize">{progress.phase}</div>
+          {progress.stalled ? <div className="text-xs opacity-75">Still processing on the server. Progress will update as more rows finish.</div> : null}
         </div>
         <div className="text-xs opacity-80">
           {total > 0 ? `${processed}/${total} rows · ` : ""}
           {percent}%
         </div>
       </div>
+      {(progress.imported !== undefined || progress.skipped !== undefined || progress.failed !== undefined) ? (
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+          <div className="rounded-lg bg-black/20 px-2 py-1">Imported: <span className="font-semibold">{progress.imported ?? 0}</span></div>
+          <div className="rounded-lg bg-black/20 px-2 py-1">Skipped: <span className="font-semibold">{progress.skipped ?? 0}</span></div>
+          <div className="rounded-lg bg-black/20 px-2 py-1">Failed: <span className="font-semibold">{progress.failed ?? 0}</span></div>
+        </div>
+      ) : null}
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/35">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
