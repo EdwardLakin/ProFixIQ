@@ -30,7 +30,17 @@ type Counts = {
   failed: number;
   duplicates: number;
 };
-type MatchedCustomer = { id: string; external_id?: string | null };
+type MatchedCustomer = {
+  id: string;
+  external_id?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  phone_number?: string | null;
+  name?: string | null;
+  business_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+};
 type MatchedVehicle = {
   id: string;
   external_id?: string | null;
@@ -49,6 +59,11 @@ const clean = (value: unknown) => {
   return text || null;
 };
 const key = (value: unknown) => clean(value)?.toLowerCase() ?? null;
+const phone = (value: unknown) => {
+  const text = clean(value);
+  if (!text) return null;
+  return text.replace(/\D/g, "") || text;
+};
 const num = (value: unknown) => {
   const text = clean(value);
   if (!text) return null;
@@ -65,6 +80,14 @@ const vin = (value: unknown) =>
   clean(value)
     ?.toUpperCase()
     .replace(/[^A-Z0-9]/g, "") ?? null;
+
+function matchedCustomerName(customer: MatchedCustomer): string | null {
+  return (
+    clean(customer.name) ??
+    clean(customer.business_name) ??
+    clean([customer.first_name, customer.last_name].filter(Boolean).join(" "))
+  );
+}
 
 function isInvoiceNumberUniqueConflict(error: unknown) {
   const candidate = error as
@@ -251,7 +274,9 @@ export async function processInvoiceImportJobBatch(
     await Promise.all([
       client
         .from("customers")
-        .select("id, external_id")
+        .select(
+          "id, external_id, email, phone, phone_number, name, business_name, first_name, last_name",
+        )
         .eq("shop_id", job.shop_id),
       client
         .from("vehicles")
@@ -264,10 +289,25 @@ export async function processInvoiceImportJobBatch(
     ]);
 
   const customersById = new Map<string, MatchedCustomer>();
+  const customersByEmail = new Map<string, MatchedCustomer>();
+  const customersByPhone = new Map<string, MatchedCustomer>();
+  const customersByName = new Map<string, MatchedCustomer>();
   for (const customer of (customers ?? []) as MatchedCustomer[]) {
     if (customer.id) customersById.set(customer.id, customer);
-    const external = String(customer.external_id ?? "").toLowerCase();
-    if (external) customersById.set(external, customer);
+    const external = key(customer.external_id);
+    if (external && !customersById.has(external))
+      customersById.set(external, customer);
+    const email = key(customer.email);
+    if (email && !customersByEmail.has(email))
+      customersByEmail.set(email, customer);
+    for (const phoneValue of [customer.phone, customer.phone_number]) {
+      const normalizedPhone = phone(phoneValue);
+      if (normalizedPhone && !customersByPhone.has(normalizedPhone)) {
+        customersByPhone.set(normalizedPhone, customer);
+      }
+    }
+    const name = key(matchedCustomerName(customer));
+    if (name && !customersByName.has(name)) customersByName.set(name, customer);
   }
 
   const vehiclesById = new Map<string, MatchedVehicle>();
@@ -353,10 +393,40 @@ export async function processInvoiceImportJobBatch(
           ? (vehiclesById.get(clean(row.vehicle_id)!) ??
             vehiclesById.get(clean(row.vehicle_id)!.toLowerCase()))
           : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
-      const customer = clean(row.customer_id)
-        ? (customersById.get(clean(row.customer_id)!) ??
-          customersById.get(clean(row.customer_id)!.toLowerCase()))
+      const legacyCustomerId = clean(row.customer_id);
+      const customerByLegacyId = legacyCustomerId
+        ? (customersById.get(legacyCustomerId) ??
+          customersById.get(legacyCustomerId.toLowerCase()) ??
+          null)
         : null;
+      const customerEmailKey = key(row.customer_email ?? row.email);
+      const customerByEmail = customerEmailKey
+        ? (customersByEmail.get(customerEmailKey) ?? null)
+        : null;
+      const customerPhoneKey = phone(row.customer_phone ?? row.phone);
+      const customerByPhone = customerPhoneKey
+        ? (customersByPhone.get(customerPhoneKey) ?? null)
+        : null;
+      const customerNameKey = key(
+        row.customer_name ?? row.customer ?? row.name,
+      );
+      const customerByName = customerNameKey
+        ? (customersByName.get(customerNameKey) ?? null)
+        : null;
+      const customer =
+        customerByLegacyId ??
+        customerByEmail ??
+        customerByPhone ??
+        customerByName;
+      const customerMatchSource = customerByLegacyId
+        ? "customer_id"
+        : customerByEmail
+          ? "email"
+          : customerByPhone
+            ? "phone"
+            : customerByName
+              ? "name"
+              : null;
       const customerId =
         customer?.id ?? workOrder?.customer_id ?? vehicle?.customer_id ?? null;
       const vehicleId = vehicle?.id ?? workOrder?.vehicle_id ?? null;
@@ -410,6 +480,17 @@ export async function processInvoiceImportJobBatch(
             read_only: true,
             import_type: "invoice_csv",
             imported_invoice_id: sourceId,
+            legacy_customer_id: legacyCustomerId,
+            legacy_vehicle_id: clean(row.vehicle_id),
+            matched_customer_id: customer?.id ?? null,
+            matched_vehicle_id: vehicle?.id ?? null,
+            customer_match_source:
+              customerMatchSource ??
+              (workOrder?.customer_id
+                ? "work_order_customer_id"
+                : vehicle?.customer_id
+                  ? "vehicle_customer_id"
+                  : null),
             source_system: clean(row.source_system),
             work_order_number: workOrderNumber,
             vehicle_id: vehicleId,

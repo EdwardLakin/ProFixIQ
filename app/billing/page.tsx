@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -32,6 +32,8 @@ type InvoiceMetadata = {
   vehicle_id?: string | null;
   source_system?: string | null;
   raw_row?: Record<string, unknown> | null;
+  legacy_customer_id?: string | null;
+  legacy_vehicle_id?: string | null;
 };
 
 type Status =
@@ -125,6 +127,9 @@ export default function BillingPage(): JSX.Element {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<Status | "">("");
   const [err, setErr] = useState<string | null>(null);
+  const [historicalVisibleLimit, setHistoricalVisibleLimit] = useState(25);
+  const [expandedHistoricalInvoiceId, setExpandedHistoricalInvoiceId] =
+    useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -267,6 +272,8 @@ export default function BillingPage(): JSX.Element {
 
     setRows(filtered);
     setHistoricalInvoices(statusFilteredHistoricalInvoices);
+    setHistoricalVisibleLimit(25);
+    setExpandedHistoricalInvoiceId(null);
     setLoading(false);
   }, [q, status, supabase]);
 
@@ -409,6 +416,10 @@ export default function BillingPage(): JSX.Element {
 
   const total = rows.length + historicalInvoices.length;
   const historicalCount = historicalInvoices.length;
+  const visibleHistoricalInvoices = historicalInvoices.slice(
+    0,
+    historicalVisibleLimit,
+  );
   const completedCount = useMemo(
     () =>
       rows.filter(
@@ -564,7 +575,7 @@ export default function BillingPage(): JSX.Element {
             />
           ))}
         </div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && historicalInvoices.length === 0 ? (
         <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-400">
           No live billing work orders or imported historical invoices match your
           current filters.
@@ -771,7 +782,8 @@ export default function BillingPage(): JSX.Element {
                 </p>
               </div>
               <div className="text-sm font-semibold text-amber-100">
-                {historicalInvoices.length} shown
+                Showing {visibleHistoricalInvoices.length} of{" "}
+                {historicalInvoices.length}
               </div>
             </div>
           </div>
@@ -788,7 +800,7 @@ export default function BillingPage(): JSX.Element {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {historicalInvoices.map((invoice) => {
+                {visibleHistoricalInvoices.map((invoice) => {
                   const metadata = invoice.metadata as InvoiceMetadata | null;
                   const rawRow = metadata?.raw_row ?? {};
                   const customerName =
@@ -810,49 +822,130 @@ export default function BillingPage(): JSX.Element {
                     metadata?.vin ?? String(rawRow.vin ?? "No VIN");
 
                   return (
-                    <tr key={invoice.id} className="text-neutral-200">
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-white">
-                          {invoice.invoice_number ??
-                            `#${invoice.id.slice(0, 8)}`}
-                        </div>
-                        <div className="mt-1 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
-                          Read-only historical
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div>{customerName}</div>
-                        {invoice.customers?.email ? (
-                          <div className="text-xs text-neutral-500">
-                            {invoice.customers.email}
+                    <Fragment key={invoice.id}>
+                      <tr
+                        className="cursor-pointer text-neutral-200 transition hover:bg-white/[0.04]"
+                        onClick={() =>
+                          setExpandedHistoricalInvoiceId((current) =>
+                            current === invoice.id ? null : invoice.id,
+                          )
+                        }
+                      >
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">
+                            {invoice.invoice_number ??
+                              `#${invoice.id.slice(0, 8)}`}
                           </div>
-                        ) : null}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div>{workOrderText}</div>
-                        <div className="text-xs text-neutral-500">
-                          VIN {vinText}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="inline-flex rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-semibold text-[var(--accent-copper-light)]">
-                        {formatMoney(invoice.total)}
-                      </td>
-                      <td className="px-5 py-4 text-neutral-300">
-                        {invoice.issued_at
-                          ? format(new Date(invoice.issued_at), "PP")
-                          : "—"}
-                      </td>
-                    </tr>
+                          <div className="mt-1 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
+                            Read-only historical
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div>{customerName}</div>
+                          {invoice.customers?.email ? (
+                            <div className="text-xs text-neutral-500">
+                              {invoice.customers.email}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div>{workOrderText}</div>
+                          <div className="text-xs text-neutral-500">
+                            VIN {vinText}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="inline-flex rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">
+                            {invoice.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right font-semibold text-[var(--accent-copper-light)]">
+                          {formatMoney(invoice.total)}
+                        </td>
+                        <td className="px-5 py-4 text-neutral-300">
+                          {invoice.issued_at
+                            ? format(new Date(invoice.issued_at), "PP")
+                            : "—"}
+                          <div className="mt-1 text-xs text-amber-100/80">
+                            {expandedHistoricalInvoiceId === invoice.id
+                              ? "Hide details"
+                              : "View details"}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedHistoricalInvoiceId === invoice.id ? (
+                        <tr className="bg-black/20 text-neutral-300">
+                          <td colSpan={6} className="px-5 py-4">
+                            <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-3">
+                              <div>
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                  Legacy customer id
+                                </div>
+                                <div className="mt-1 text-sm text-white">
+                                  {String(
+                                    rawRow.customer_id ??
+                                      metadata?.legacy_customer_id ??
+                                      "—",
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                  Legacy vehicle id
+                                </div>
+                                <div className="mt-1 text-sm text-white">
+                                  {String(
+                                    rawRow.vehicle_id ??
+                                      metadata?.legacy_vehicle_id ??
+                                      "—",
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                  Source
+                                </div>
+                                <div className="mt-1 text-sm text-white">
+                                  {metadata?.source_system ??
+                                    String(
+                                      rawRow.source_system ?? "CSV import",
+                                    )}
+                                </div>
+                              </div>
+                              <div className="md:col-span-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                  Notes
+                                </div>
+                                <div className="mt-1 whitespace-pre-wrap text-sm text-neutral-200">
+                                  {invoice.notes ||
+                                    String(
+                                      rawRow.description ??
+                                        rawRow.notes ??
+                                        "No notes",
+                                    )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          {visibleHistoricalInvoices.length < historicalInvoices.length ? (
+            <div className="border-t border-amber-500/15 px-5 py-4 text-center sm:px-6">
+              <button
+                type="button"
+                onClick={() => setHistoricalVisibleLimit((limit) => limit + 25)}
+                className="rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20"
+              >
+                Show 25 more historical invoices
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>
