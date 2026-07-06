@@ -81,11 +81,11 @@ describe("vehicle history CSV import job architecture", () => {
     expect(source).toContain("const formData = new FormData()");
     expect(source).toContain('formData.append("file", file)');
     expect(source).toContain("setActiveJobId(payload.jobId)");
-    expect(source).toContain("/api/import-jobs/${encodeURIComponent(pollingJobId)}");
-    expect(source).toContain("setTimeout(() => void pollJobStatus(), 1500)");
-    expect(source).toContain('job.status === "completed" || job.status === "failed"');
+    expect(source).toContain("useImportJobProgress(activeJobId");
+    expect(source).toContain("onComplete: handleJobComplete");
+    expect(source).toContain('job.status === "failed"');
     expect(source).toContain("setActiveJobId(null)");
-    expect(source).toContain("clearTimeout(timeoutId)");
+    expect(readFileSync("features/shared/components/import/useImportJobProgress.ts", "utf8")).toContain("clearTimeout(timeoutId)");
     expect(source).not.toContain("JSON.stringify({ rows: importableRows })");
   });
 
