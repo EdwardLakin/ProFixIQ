@@ -89,6 +89,88 @@ function matchedCustomerName(customer: MatchedCustomer): string | null {
   );
 }
 
+type CustomerLookupMaps = {
+  byExternalId: Map<string, MatchedCustomer>;
+  byExternalIdKey: Map<string, MatchedCustomer>;
+  byEmail: Map<string, MatchedCustomer>;
+  byPhone: Map<string, MatchedCustomer>;
+  byName: Map<string, MatchedCustomer>;
+};
+
+export function buildCustomerLookupMaps(
+  customers: MatchedCustomer[],
+): CustomerLookupMaps {
+  const byExternalId = new Map<string, MatchedCustomer>();
+  const byExternalIdKey = new Map<string, MatchedCustomer>();
+  const byEmail = new Map<string, MatchedCustomer>();
+  const byPhone = new Map<string, MatchedCustomer>();
+  const byName = new Map<string, MatchedCustomer>();
+
+  for (const customer of customers) {
+    const externalId = clean(customer.external_id);
+    if (externalId && !byExternalId.has(externalId)) {
+      byExternalId.set(externalId, customer);
+    }
+
+    const externalIdKey = key(customer.external_id);
+    if (externalIdKey && !byExternalIdKey.has(externalIdKey)) {
+      byExternalIdKey.set(externalIdKey, customer);
+    }
+
+    const email = key(customer.email);
+    if (email && !byEmail.has(email)) byEmail.set(email, customer);
+
+    for (const phoneValue of [customer.phone, customer.phone_number]) {
+      const normalizedPhone = phone(phoneValue);
+      if (normalizedPhone && !byPhone.has(normalizedPhone)) {
+        byPhone.set(normalizedPhone, customer);
+      }
+    }
+
+    const name = key(matchedCustomerName(customer));
+    if (name && !byName.has(name)) byName.set(name, customer);
+  }
+
+  return { byExternalId, byExternalIdKey, byEmail, byPhone, byName };
+}
+
+export function resolveInvoiceImportCustomer(
+  row: InvoiceImportRow,
+  customerLookupMaps: CustomerLookupMaps,
+) {
+  const legacyCustomerId = clean(row.customer_id);
+  const customerByLegacyId = legacyCustomerId
+    ? (customerLookupMaps.byExternalId.get(legacyCustomerId) ??
+      customerLookupMaps.byExternalIdKey.get(key(legacyCustomerId)!) ??
+      null)
+    : null;
+  const customerEmailKey = key(row.customer_email ?? row.email);
+  const customerByEmail = customerEmailKey
+    ? (customerLookupMaps.byEmail.get(customerEmailKey) ?? null)
+    : null;
+  const customerPhoneKey = phone(row.customer_phone ?? row.phone);
+  const customerByPhone = customerPhoneKey
+    ? (customerLookupMaps.byPhone.get(customerPhoneKey) ?? null)
+    : null;
+  const customerNameKey = key(row.customer_name ?? row.customer ?? row.name);
+  const customerByName = customerNameKey
+    ? (customerLookupMaps.byName.get(customerNameKey) ?? null)
+    : null;
+  const customer =
+    customerByLegacyId ?? customerByEmail ?? customerByPhone ?? customerByName;
+  const customerMatchSource = customerByLegacyId
+    ? "customer_external_id"
+    : customerByEmail
+      ? "email"
+      : customerByPhone
+        ? "phone"
+        : customerByName
+          ? "name"
+          : null;
+
+  return { customer, customerMatchSource, legacyCustomerId };
+}
+
 function isInvoiceNumberUniqueConflict(error: unknown) {
   const candidate = error as
     | { code?: string; message?: string; details?: string; hint?: string }
@@ -288,27 +370,9 @@ export async function processInvoiceImportJobBatch(
         .eq("shop_id", job.shop_id),
     ]);
 
-  const customersById = new Map<string, MatchedCustomer>();
-  const customersByEmail = new Map<string, MatchedCustomer>();
-  const customersByPhone = new Map<string, MatchedCustomer>();
-  const customersByName = new Map<string, MatchedCustomer>();
-  for (const customer of (customers ?? []) as MatchedCustomer[]) {
-    if (customer.id) customersById.set(customer.id, customer);
-    const external = key(customer.external_id);
-    if (external && !customersById.has(external))
-      customersById.set(external, customer);
-    const email = key(customer.email);
-    if (email && !customersByEmail.has(email))
-      customersByEmail.set(email, customer);
-    for (const phoneValue of [customer.phone, customer.phone_number]) {
-      const normalizedPhone = phone(phoneValue);
-      if (normalizedPhone && !customersByPhone.has(normalizedPhone)) {
-        customersByPhone.set(normalizedPhone, customer);
-      }
-    }
-    const name = key(matchedCustomerName(customer));
-    if (name && !customersByName.has(name)) customersByName.set(name, customer);
-  }
+  const customerLookupMaps = buildCustomerLookupMaps(
+    (customers ?? []) as MatchedCustomer[],
+  );
 
   const vehiclesById = new Map<string, MatchedVehicle>();
   for (const vehicle of (vehicles ?? []) as MatchedVehicle[]) {
@@ -393,41 +457,10 @@ export async function processInvoiceImportJobBatch(
           ? (vehiclesById.get(clean(row.vehicle_id)!) ??
             vehiclesById.get(clean(row.vehicle_id)!.toLowerCase()))
           : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
-      const legacyCustomerId = clean(row.customer_id);
-      const customerByLegacyId = legacyCustomerId
-        ? (customersById.get(legacyCustomerId) ??
-          customersById.get(legacyCustomerId.toLowerCase()) ??
-          null)
-        : null;
-      const customerEmailKey = key(row.customer_email ?? row.email);
-      const customerByEmail = customerEmailKey
-        ? (customersByEmail.get(customerEmailKey) ?? null)
-        : null;
-      const customerPhoneKey = phone(row.customer_phone ?? row.phone);
-      const customerByPhone = customerPhoneKey
-        ? (customersByPhone.get(customerPhoneKey) ?? null)
-        : null;
-      const customerNameKey = key(
-        row.customer_name ?? row.customer ?? row.name,
-      );
-      const customerByName = customerNameKey
-        ? (customersByName.get(customerNameKey) ?? null)
-        : null;
-      const customer =
-        customerByLegacyId ??
-        customerByEmail ??
-        customerByPhone ??
-        customerByName;
-      const customerMatchSource = customerByLegacyId
-        ? "customer_id"
-        : customerByEmail
-          ? "email"
-          : customerByPhone
-            ? "phone"
-            : customerByName
-              ? "name"
-              : null;
-      const fallbackCustomerId = vehicle?.customer_id ?? workOrder?.customer_id ?? null;
+      const { customer, customerMatchSource, legacyCustomerId } =
+        resolveInvoiceImportCustomer(row, customerLookupMaps);
+      const fallbackCustomerId =
+        vehicle?.customer_id ?? workOrder?.customer_id ?? null;
       const customerId = customer?.id ?? fallbackCustomerId;
       const vehicleId = vehicle?.id ?? workOrder?.vehicle_id ?? null;
       const customerMatchSourceResolved =
