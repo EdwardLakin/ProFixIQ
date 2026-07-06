@@ -3,6 +3,10 @@
     {
       "path": "/api/internal/ai/expire-stale",
       "schedule": "17 3 * * *"
+    },
+    {
+      "path": "/api/internal/import-jobs/tick",
+      "schedule": "* * * * *"
     }
   ],
   "git": {
