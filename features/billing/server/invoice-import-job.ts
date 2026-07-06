@@ -37,12 +37,23 @@ async function duplicateInvoice(client: SupabaseClient, shopId: string, invoiceN
   return false;
 }
 
-export function normalizeInvoiceImportStatus(row: InvoiceImportRow) {
-  const raw = key(row.payment_status ?? row.status);
-  if (raw?.includes("void") || raw?.includes("cancel")) return "void";
-  if (raw?.includes("draft")) return "draft";
-  if (raw === "paid" || raw === "closed_paid" || raw === "paid_in_full" || raw?.endsWith("_paid")) return "paid";
-  return "imported";
+export const CANONICAL_INVOICE_IMPORT_STATUSES = ["draft", "issued", "paid", "void"] as const;
+type CanonicalInvoiceImportStatus = (typeof CANONICAL_INVOICE_IMPORT_STATUSES)[number];
+
+const PAID_IMPORT_STATUSES = new Set(["paid", "closed_paid", "paid_in_full", "paid_full", "complete_paid"]);
+const OPEN_IMPORT_STATUSES = new Set(["", "unpaid", "open", "issued", "sent", "partial", "partially_paid", "partial_paid", "payment_due", "past_due", "overdue"]);
+const VOID_IMPORT_STATUSES = new Set(["void", "voided", "cancelled", "canceled", "closed", "written_off", "write_off", "bad_debt", "uncollectible"]);
+const DRAFT_IMPORT_STATUSES = new Set(["draft", "estimate", "pending"]);
+const NEVER_IMPORT_INVOICE_STATUSES = new Set(["credit", "credit_memo", "refund", "refunded", "reversed", "chargeback"]);
+
+export function normalizeInvoiceImportStatus(row: InvoiceImportRow): CanonicalInvoiceImportStatus | null {
+  const raw = key(row.payment_status ?? row.status) ?? "";
+  if (NEVER_IMPORT_INVOICE_STATUSES.has(raw)) return null;
+  if (OPEN_IMPORT_STATUSES.has(raw)) return "issued";
+  if (PAID_IMPORT_STATUSES.has(raw) || raw.endsWith("_paid")) return "paid";
+  if (VOID_IMPORT_STATUSES.has(raw) || raw.includes("void") || raw.includes("cancel")) return "void";
+  if (DRAFT_IMPORT_STATUSES.has(raw)) return "draft";
+  return "issued";
 }
 
 export function resolveImportedInvoicePaidAt(row: InvoiceImportRow, issuedAt: string, status = normalizeInvoiceImportStatus(row)) {
@@ -143,6 +154,13 @@ export async function processInvoiceImportJobBatch(supabase: SupabaseClient<DB>,
       const total = num(row.total) ?? num(row.subtotal) ?? 0;
       const amountPaid = num(row.amount_paid) ?? 0;
       const status = normalizeInvoiceImportStatus(row);
+      if (!status) {
+        const reason = "Invoice status represents a credit/refund reversal and is not imported as an invoice.";
+        counts.skipped++;
+        sample.skippedRows.push({ row: staged.row_number, reason, invoiceNumber, workOrderNumber, sourceStatus: clean(row.payment_status ?? row.status) });
+        await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id);
+        continue;
+      }
 
       inserts.push({
         stagedId: staged.id,
