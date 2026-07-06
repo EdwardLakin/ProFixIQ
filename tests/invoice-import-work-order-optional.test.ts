@@ -73,4 +73,23 @@ describe("historical invoice imports", () => {
     expect(importer).toContain("invoice_number: invoiceNumber");
     expect(importer).toContain("work_order_number: workOrderNumber");
   });
+
+  it("supports imported invoice customer matching sources and fallback ordering", () => {
+    expect(importer).toContain("customer_email");
+    expect(importer).toContain("customer_phone");
+    expect(importer).toContain("customer_name");
+    expect(importer).toContain("const fallbackCustomerId = vehicle?.customer_id ?? workOrder?.customer_id ?? null");
+    expect(importer).toContain("customer_match_source: customerMatchSourceResolved");
+    expect(importer).toContain("vehicle_match_source: vehicleMatchSource");
+    expect(importer).toContain("matched_customer_id: customerId");
+    expect(importer).toContain("matched_vehicle_id: vehicleId");
+  });
+
+  it("counts duplicate imported invoices as skipped rather than failed", () => {
+    expect(importer).toContain("counts.skipped++");
+    expect(importer).toContain("counts.duplicates++");
+    expect(importer).toContain("Duplicate invoice already exists.");
+    expect(importer).toContain("Duplicates are counted as skipped rows.");
+  });
+
 });
