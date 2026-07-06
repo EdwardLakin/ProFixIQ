@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
+import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type DB = Database;
@@ -358,14 +359,6 @@ function formatHistoryDate(iso: string | null | undefined): string {
   return format(d, "PP");
 }
 
-function formatMoney(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
-}
-
 function formatImportedVehicle(
   vehicle: ImportedHistory["vehicles"] | null | undefined,
 ): string | null {
@@ -616,9 +609,11 @@ export default function CustomerProfilePage(): JSX.Element {
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [importedHistory, setImportedHistory] = useState<ImportedHistory[]>([]);
-  const [showAllHistory, setShowAllHistory] = useState<boolean>(false);
-  const [showAllImportedHistory, setShowAllImportedHistory] =
+  const [showAllServiceHistory, setShowAllServiceHistory] =
     useState<boolean>(false);
+  const [expandedImportedHistoryId, setExpandedImportedHistoryId] = useState<
+    string | null
+  >(null);
 
   const [rawVehicleMedia, setRawVehicleMedia] = useState<VehicleMedia[]>([]);
   const [media, setMedia] = useState<DisplayMedia[]>([]);
@@ -665,15 +660,35 @@ export default function CustomerProfilePage(): JSX.Element {
     [selectedVehicle],
   );
 
-  const historySlice = useMemo(() => {
-    if (showAllHistory) return workOrders;
-    return workOrders.slice(0, 3);
-  }, [showAllHistory, workOrders]);
+  const serviceHistory = useMemo(() => {
+    const vehicleById = new Map(
+      vehicles.map((vehicle) => [vehicle.id, vehicle]),
+    );
+    const workOrderEntries = workOrders.map((wo) => ({
+      kind: "work_order" as const,
+      id: wo.id,
+      date: String(wo.created_at ?? ""),
+      workOrder: wo,
+      vehicle: wo.vehicle_id ? (vehicleById.get(wo.vehicle_id) ?? null) : null,
+    }));
+    const importedEntries = importedHistory.map((row) => ({
+      kind: "imported" as const,
+      id: row.id,
+      date: row.service_date ?? row.created_at ?? "",
+      imported: row,
+    }));
 
-  const importedHistorySlice = useMemo(() => {
-    if (showAllImportedHistory) return importedHistory;
-    return importedHistory.slice(0, 5);
-  }, [importedHistory, showAllImportedHistory]);
+    return [...workOrderEntries, ...importedEntries].sort((a, b) => {
+      const bd = new Date(b.date).getTime();
+      const ad = new Date(a.date).getTime();
+      return (Number.isFinite(bd) ? bd : 0) - (Number.isFinite(ad) ? ad : 0);
+    });
+  }, [importedHistory, vehicles, workOrders]);
+
+  const serviceHistorySlice = useMemo(() => {
+    if (showAllServiceHistory) return serviceHistory;
+    return serviceHistory.slice(0, 8);
+  }, [serviceHistory, showAllServiceHistory]);
 
   const selectedVehicleImportedHistory = useMemo(() => {
     if (!selectedVehicleId) return [];
@@ -2147,7 +2162,6 @@ export default function CustomerProfilePage(): JSX.Element {
                 </div>
               </div>
             </div>
-
             {/* Vehicles */}
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2290,31 +2304,67 @@ export default function CustomerProfilePage(): JSX.Element {
                         <div className="mt-2 space-y-2">
                           {selectedVehicleImportedHistory
                             .slice(0, 3)
-                            .map((row) => (
-                              <div
-                                key={row.id}
-                                className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2"
-                              >
-                                <div className="text-xs font-semibold text-white">
-                                  {formatHistoryDate(row.service_date)}
+                            .map((row) => {
+                              const expanded =
+                                expandedImportedHistoryId === row.id;
+                              return (
+                                <div key={row.id} className="space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedImportedHistoryId((current) =>
+                                        current === row.id ? null : row.id,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-left transition hover:border-[var(--accent-copper-soft)]/65 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/45"
+                                    aria-expanded={expanded}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-semibold text-white">
+                                          {formatHistoryDate(row.service_date)}
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-neutral-400">
+                                          {[
+                                            row.work_order_number
+                                              ? `WO ${row.work_order_number}`
+                                              : null,
+                                            row.invoice_number
+                                              ? `Invoice ${row.invoice_number}`
+                                              : null,
+                                            row.odometer != null
+                                              ? `${formatNumberLike(row.odometer)} mi`
+                                              : null,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" • ") ||
+                                            "Imported service record"}
+                                        </div>
+                                      </div>
+                                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-copper,#C57A4A)]">
+                                        {expanded ? "Hide" : "Details"}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  {expanded ? (
+                                    <ImportedHistoryRecordCard
+                                      row={row}
+                                      serviceDateLabel={formatHistoryDate(
+                                        row.service_date,
+                                      )}
+                                      vehicleLabel={formatImportedVehicle(
+                                        row.vehicles,
+                                      )}
+                                      vehicleIdentifiers={formatImportedIdentifiers(
+                                        row.vehicles,
+                                      )}
+                                      summary={importedHistorySummary(row)}
+                                      compact
+                                    />
+                                  ) : null}
                                 </div>
-                                <div className="mt-1 text-[11px] text-neutral-400">
-                                  {[
-                                    row.work_order_number
-                                      ? `WO ${row.work_order_number}`
-                                      : null,
-                                    row.invoice_number
-                                      ? `Invoice ${row.invoice_number}`
-                                      : null,
-                                    row.odometer != null
-                                      ? `${formatNumberLike(row.odometer)} mi`
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" • ") || "Imported service record"}
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       </div>
                     ) : null}
@@ -2322,176 +2372,116 @@ export default function CustomerProfilePage(): JSX.Element {
                 </div>
               ) : null}
             </div>
-
-            {/* History */}
+            {/* Service History */}
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white sm:text-base">
-                    Work Order History
+                    Service History
                   </h2>
                   <p className="mt-1 text-[11px] text-neutral-400">
-                    Showing {showAllHistory ? "all" : "latest 3"} work orders
-                    for this customer.
+                    Unified timeline of live ProFixIQ work orders and read-only
+                    imported vehicle history.
                   </p>
                 </div>
 
-                {workOrders.length > 3 ? (
+                {serviceHistory.length > 8 ? (
                   <button
                     type="button"
-                    onClick={() => setShowAllHistory((v) => !v)}
+                    onClick={() => setShowAllServiceHistory((v) => !v)}
                     className="text-[11px] font-semibold text-[rgba(184,115,51,0.95)] hover:underline"
                   >
-                    {showAllHistory ? "Show less" : "Show all"}
+                    {showAllServiceHistory ? "Show less" : "Show all"}
                   </button>
                 ) : null}
               </div>
 
-              {workOrders.length === 0 ? (
+              {serviceHistory.length === 0 ? (
                 <div
                   className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
                 >
-                  No work orders yet.
-                </div>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {historySlice.map((wo) => (
-                    <button
-                      key={wo.id}
-                      type="button"
-                      onClick={() => router.push(`/work-orders/${wo.id}`)}
-                      className={`${CARD_INNER} w-full p-3 text-left hover:border-[var(--accent-copper-soft)]/65`}
-                      title="Open work order"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-white">
-                            {(wo as unknown as Record<string, unknown>)[
-                              "custom_id"
-                            ]
-                              ? `WO ${(wo as unknown as Record<string, unknown>)["custom_id"] as string}`
-                              : `WO #${wo.id.slice(0, 8)}`}
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-neutral-400">
-                            {safeDate(wo.created_at)}
-                          </div>
-                        </div>
-
-                        <span
-                          className={chipClass(
-                            (wo as unknown as Record<string, unknown>)[
-                              "status"
-                            ] as string | null,
-                          )}
-                        >
-                          {String(
-                            ((wo as unknown as Record<string, unknown>)[
-                              "status"
-                            ] as string | null) ?? "awaiting",
-                          ).replaceAll("_", " ")}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Imported History */}
-            <div className={`${CARD_BASE} p-4`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
-                    Imported Vehicle History
-                  </h2>
-                  <p className="mt-1 text-[11px] text-neutral-400">
-                    Historical-only service records imported into vehicle
-                    history. These do not create active work orders.
-                  </p>
-                </div>
-
-                {importedHistory.length > 5 ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllImportedHistory((v) => !v)}
-                    className="text-[11px] font-semibold text-[rgba(184,115,51,0.95)] hover:underline"
-                  >
-                    {showAllImportedHistory ? "Show less" : "Show all"}
-                  </button>
-                ) : null}
-              </div>
-
-              {importedHistory.length === 0 ? (
-                <div
-                  className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
-                >
-                  No imported vehicle history yet.
+                  No service history yet.
                 </div>
               ) : (
                 <div className="mt-3 space-y-3">
-                  {importedHistorySlice.map((row) => {
-                    const vehicleLabel = formatImportedVehicle(row.vehicles);
-                    const vehicleIds = formatImportedIdentifiers(row.vehicles);
-                    const summary = importedHistorySummary(row);
-                    const moneyParts = [
-                      row.total != null
-                        ? `Total ${formatMoney(row.total)}`
-                        : null,
-                      row.labor_sale != null
-                        ? `Labor ${formatMoney(row.labor_sale)}`
-                        : null,
-                      row.labor_hours != null
-                        ? `${row.labor_hours} labor hrs`
-                        : null,
-                    ].filter(Boolean);
+                  {serviceHistorySlice.map((entry) => {
+                    if (entry.kind === "work_order") {
+                      const wo = entry.workOrder;
+                      const status = String(
+                        ((wo as unknown as Record<string, unknown>)[
+                          "status"
+                        ] as string | null) ?? "awaiting",
+                      );
+                      const normalizedStatus = status.toLowerCase();
+                      const lifecycleLabel =
+                        normalizedStatus.includes("complete") ||
+                        normalizedStatus.includes("invoice")
+                          ? "Completed"
+                          : normalizedStatus.includes("progress")
+                            ? "In progress"
+                            : "Active";
+                      const customId = (
+                        wo as unknown as Record<string, unknown>
+                      )["custom_id"] as string | undefined;
+                      const vehicle = entry.vehicle;
+                      const vehicleLabel = vehicle
+                        ? fmtVehicleLabel(vehicle)
+                        : null;
 
+                      return (
+                        <button
+                          key={`wo-${wo.id}`}
+                          type="button"
+                          onClick={() => router.push(`/work-orders/${wo.id}`)}
+                          className={`${CARD_INNER} w-full p-3 text-left hover:border-[var(--accent-copper-soft)]/65`}
+                          title="Open work order"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-white">
+                                {customId
+                                  ? `WO ${customId}`
+                                  : `WO #${wo.id.slice(0, 8)}`}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-neutral-400">
+                                {safeDate(wo.created_at)}
+                                {vehicleLabel ? ` • ${vehicleLabel}` : ""}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={chipClass(status)}>
+                                {lifecycleLabel}
+                              </span>
+                              <span className="rounded-full border border-slate-600/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-300">
+                                {status.replaceAll("_", " ")}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    }
+
+                    const row = entry.imported;
                     return (
-                      <div key={row.id} className={`${CARD_INNER} p-3`}>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-white">
-                              {formatHistoryDate(row.service_date)}
-                            </div>
-                            <div className="mt-1 text-[11px] text-neutral-400">
-                              {[vehicleLabel, vehicleIds]
-                                .filter(Boolean)
-                                .join(" • ") || "Vehicle not linked"}
-                            </div>
-                          </div>
-                          <span className="rounded-full border border-[var(--accent-copper-soft)]/45 bg-[var(--accent-copper-soft)]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper,#C57A4A)]">
-                            Read-only imported
-                          </span>
-                        </div>
-
-                        <div className="mt-3 grid gap-2 text-xs text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
-                          <DetailRow
-                            label="Work order"
-                            value={row.work_order_number ?? "—"}
-                          />
-                          <DetailRow
-                            label="Invoice"
-                            value={row.invoice_number ?? "—"}
-                          />
-                          <DetailRow
-                            label="Odometer"
-                            value={
-                              row.odometer != null
-                                ? formatNumberLike(row.odometer)
-                                : "—"
-                            }
-                          />
-                          <DetailRow
-                            label="Amount"
-                            value={moneyParts.join(" • ") || "—"}
-                          />
-                        </div>
-
-                        {summary ? (
-                          <div className="mt-3 rounded-lg border border-[color:var(--desktop-border)] bg-black/20 px-3 py-2 text-sm leading-6 text-neutral-200">
-                            {summary}
-                          </div>
-                        ) : null}
-                      </div>
+                      <ImportedHistoryRecordCard
+                        key={`imported-${row.id}`}
+                        row={row}
+                        serviceDateLabel={formatHistoryDate(
+                          row.service_date ?? row.created_at,
+                        )}
+                        vehicleLabel={formatImportedVehicle(row.vehicles)}
+                        vehicleIdentifiers={formatImportedIdentifiers(
+                          row.vehicles,
+                        )}
+                        summary={importedHistorySummary(row)}
+                        collapsed={expandedImportedHistoryId !== row.id}
+                        onToggle={() =>
+                          setExpandedImportedHistoryId((current) =>
+                            current === row.id ? null : row.id,
+                          )
+                        }
+                      />
                     );
                   })}
                 </div>
