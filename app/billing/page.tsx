@@ -7,6 +7,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { InvoiceCsvImportCard } from "@/features/billing/components/InvoiceCsvImportCard";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -412,6 +413,8 @@ export default function BillingPage(): JSX.Element {
           </div>
         </div>
       </section>
+
+      <InvoiceCsvImportCard onImported={() => void load()} />
 
       {err ? (
         <div className="rounded-2xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-200">
