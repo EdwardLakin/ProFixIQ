@@ -41,7 +41,7 @@ describe("vehicle history CSV import job architecture", () => {
     expect(tick).toContain("INTERNAL_IMPORT_JOBS_SECRET");
     expect(tick).toContain("x-internal-import-jobs-secret");
     expect(tick).toContain("processVehicleHistoryImportJobBatch");
-    expect(worker).toContain("VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 250");
+    expect(worker).toContain("VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 1000");
     expect(worker).toContain(".limit(batchSize)");
     expect(worker).toContain('.from("import_job_rows")');
     expect(worker).toContain('.from("history").insert');
