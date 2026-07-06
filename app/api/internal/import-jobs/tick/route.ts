@@ -14,11 +14,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SUPPORTED_IMPORT_TYPES = ["vehicle_history", "invoices"] as const;
+const STALE_PROCESSING_JOB_MINUTES = 15;
 type SupportedImportType = (typeof SUPPORTED_IMPORT_TYPES)[number];
-type ImportJobDispatchRow = { id: string; import_type: string | null };
+type ImportJobDispatchRow = {
+  id: string;
+  import_type: string | null;
+  status: string | null;
+  processed_rows: number | null;
+  updated_at: string | null;
+};
 type ImportJobDispatchClient = {
   from(table: "import_jobs"): {
     select(columns: string): ImportJobDispatchQuery;
+    update(values: Record<string, unknown>): ImportJobDispatchMutation;
   };
 };
 type ImportJobDispatchQuery = {
@@ -26,7 +34,18 @@ type ImportJobDispatchQuery = {
   order(column: string, options: { ascending: boolean }): ImportJobDispatchQuery;
   limit(count: number): ImportJobDispatchQuery;
   eq(column: string, value: string): ImportJobDispatchQuery;
+  lt(column: string, value: string): ImportJobDispatchQuery;
+  gte(column: string, value: string): ImportJobDispatchQuery;
   maybeSingle(): Promise<{ data: ImportJobDispatchRow | null; error: Error | null }>;
+};
+type ImportJobDispatchMutation = {
+  eq(column: string, value: string): ImportJobDispatchMutation;
+  in(column: string, values: readonly string[]): ImportJobDispatchMutation;
+};
+
+type DispatchSelection = {
+  job: ImportJobDispatchRow | null;
+  staleFailedCount: number;
 };
 
 function isSupportedImportType(value: string | null | undefined): value is SupportedImportType {
@@ -49,18 +68,75 @@ function authorize(req: Request) {
   });
 }
 
-async function findDispatchJob(admin: ReturnType<typeof createAdminSupabase>, jobId?: string) {
-  let query = (admin as unknown as ImportJobDispatchClient)
-    .from("import_jobs")
-    .select("id, import_type")
-    .in("status", ["queued", "processing"])
+function staleProcessingCutoff() {
+  return new Date(Date.now() - STALE_PROCESSING_JOB_MINUTES * 60 * 1000).toISOString();
+}
+
+function selectDispatchColumns(query: { select(columns: string): ImportJobDispatchQuery }) {
+  return query.select("id, import_type, status, processed_rows, updated_at");
+}
+
+async function failStaleProcessingJobs(admin: ReturnType<typeof createAdminSupabase>, cutoff: string) {
+  const client = admin as unknown as ImportJobDispatchClient;
+  const { data: staleJob, error: staleSelectError } = await selectDispatchColumns(client.from("import_jobs"))
+    .eq("status", "processing")
     .in("import_type", [...SUPPORTED_IMPORT_TYPES])
-    .order("created_at", { ascending: true })
+    .lt("updated_at", cutoff)
+    .order("updated_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (staleSelectError) throw staleSelectError;
+  if (!staleJob) return 0;
+
+  await client
+    .from("import_jobs")
+    .update({
+      status: "failed",
+      error_message: `Import job was marked failed after no progress for ${STALE_PROCESSING_JOB_MINUTES} minutes.`,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", staleJob.id)
+    .eq("status", "processing");
+  return 1;
+}
+
+async function selectOldestJobByStatus(
+  admin: ReturnType<typeof createAdminSupabase>,
+  status: "queued" | "processing",
+  jobId?: string,
+  cutoff?: string,
+) {
+  let query = selectDispatchColumns((admin as unknown as ImportJobDispatchClient).from("import_jobs"))
+    .eq("status", status)
+    .in("import_type", [...SUPPORTED_IMPORT_TYPES])
+    .order(status === "queued" ? "created_at" : "updated_at", { ascending: true })
     .limit(1);
 
   if (jobId) query = query.eq("id", jobId);
+  if (status === "processing" && cutoff) query = query.gte("updated_at", cutoff);
 
   const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+async function findDispatchJob(admin: ReturnType<typeof createAdminSupabase>, jobId?: string): Promise<DispatchSelection> {
+  const cutoff = staleProcessingCutoff();
+  const staleFailedCount = jobId ? 0 : await failStaleProcessingJobs(admin, cutoff);
+
+  const queuedJob = await selectOldestJobByStatus(admin, "queued", jobId);
+  if (queuedJob) return { job: queuedJob, staleFailedCount };
+
+  const recentProcessingJob = await selectOldestJobByStatus(admin, "processing", jobId, cutoff);
+  return { job: recentProcessingJob, staleFailedCount };
+}
+
+async function loadTargetJob(admin: ReturnType<typeof createAdminSupabase>, jobId: string) {
+  const { data, error } = await selectDispatchColumns((admin as unknown as ImportJobDispatchClient).from("import_jobs"))
+    .eq("id", jobId)
+    .limit(1)
+    .maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
@@ -79,6 +155,27 @@ async function processImportType(
     jobId,
     VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
   );
+}
+
+function responseWithDispatchLog(
+  result: Awaited<ReturnType<typeof processImportType>>,
+  importType: SupportedImportType,
+  selectedJob: ImportJobDispatchRow | null,
+  staleFailedCount = 0,
+) {
+  return NextResponse.json({
+    ...result,
+    importType,
+    dispatch: {
+      selectedJobId: selectedJob?.id ?? result.job?.id ?? null,
+      importType,
+      priorStatus: selectedJob?.status ?? null,
+      priorProcessedRows: selectedJob?.processed_rows ?? null,
+      processed: result.processed,
+      completed: result.completed,
+      staleFailedCount,
+    },
+  });
 }
 
 async function run(req: Request) {
@@ -102,17 +199,27 @@ async function run(req: Request) {
       );
     }
 
+    const selectedJob = jobId ? await loadTargetJob(admin, jobId) : null;
     const result = await processImportType(admin, requestedImportType, jobId);
-    return NextResponse.json({ ...result, importType: requestedImportType });
+    return responseWithDispatchLog(result, requestedImportType, selectedJob);
   }
 
-  const dispatchJob = await findDispatchJob(admin, jobId);
+  const { job: dispatchJob, staleFailedCount } = await findDispatchJob(admin, jobId);
   if (!dispatchJob) {
     return NextResponse.json({
       ok: true,
       processed: 0,
       completed: false,
       job: null,
+      dispatch: {
+        selectedJobId: null,
+        importType: null,
+        priorStatus: null,
+        priorProcessedRows: null,
+        processed: 0,
+        completed: false,
+        staleFailedCount,
+      },
       supportedImportTypes: SUPPORTED_IMPORT_TYPES,
     });
   }
@@ -132,7 +239,7 @@ async function run(req: Request) {
   }
 
   const result = await processImportType(admin, dispatchJob.import_type, dispatchJob.id);
-  return NextResponse.json({ ...result, importType: dispatchJob.import_type });
+  return responseWithDispatchLog(result, dispatchJob.import_type, dispatchJob, staleFailedCount);
 }
 
 export async function GET(req: Request) {
