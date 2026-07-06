@@ -3,7 +3,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { chunkArray, compactImportSummary } from "@/features/shared/lib/import/csv";
 
 type DB = Database;
-export const VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 250;
+export const VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 1000;
 export const VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT = 25;
 export const VEHICLE_HISTORY_IMPORT_MAX_ROWS = 20_000;
 
