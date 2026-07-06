@@ -54,6 +54,7 @@ const BILLING_STATUSES: Status[] = [
 const INPUT_DARK = "desktop-input w-full px-3 py-2 text-sm";
 
 const SELECT_DARK = "desktop-input w-full px-3 py-2 text-sm";
+const HISTORICAL_INVOICE_PAGE_SIZE = 100;
 
 function stageAccent(status: string | null | undefined): {
   badge: string;
@@ -130,9 +131,10 @@ export default function BillingPage(): JSX.Element {
   const [historicalVisibleLimit, setHistoricalVisibleLimit] = useState(25);
   const [expandedHistoricalInvoiceId, setExpandedHistoricalInvoiceId] =
     useState<string | null>(null);
+  const [invoiceImportActive, setInvoiceImportActive] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options?: { background?: boolean }) => {
+    if (!options?.background) setLoading(true);
     setErr(null);
 
     let query = supabase
@@ -158,7 +160,6 @@ export default function BillingPage(): JSX.Element {
     if (error) {
       setErr(error.message);
       setRows([]);
-      setHistoricalInvoices([]);
       setLoading(false);
       return;
     }
@@ -166,14 +167,14 @@ export default function BillingPage(): JSX.Element {
     const { data: invoiceData, error: invoiceError } = await supabase
       .from("invoices")
       .select("*, customers:customers(first_name,last_name,email)")
+      .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
       .order("issued_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
-      .limit(250);
+      .limit(HISTORICAL_INVOICE_PAGE_SIZE);
 
     if (invoiceError) {
       setErr(invoiceError.message);
       setRows([]);
-      setHistoricalInvoices([]);
       setLoading(false);
       return;
     }
@@ -213,12 +214,7 @@ export default function BillingPage(): JSX.Element {
             );
           });
 
-    const baseHistoricalInvoices = (
-      (invoiceData ?? []) as HistoricalInvoiceRow[]
-    ).filter((invoice) => {
-      const metadata = invoice.metadata as InvoiceMetadata | null;
-      return metadata?.imported === true || metadata?.read_only === true;
-    });
+    const baseHistoricalInvoices = (invoiceData ?? []) as HistoricalInvoiceRow[];
 
     const filteredHistoricalInvoices =
       qlc.length === 0
@@ -288,14 +284,14 @@ export default function BillingPage(): JSX.Element {
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders" },
         () => {
-          setTimeout(() => void load(), 60);
+          setTimeout(() => void load({ background: true }), 60);
         },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "invoices" },
         () => {
-          setTimeout(() => void load(), 60);
+          if (!invoiceImportActive) setTimeout(() => void load({ background: true }), 60);
         },
       )
       .subscribe();
@@ -307,7 +303,7 @@ export default function BillingPage(): JSX.Element {
         /* ignore */
       }
     };
-  }, [supabase, load]);
+  }, [supabase, load, invoiceImportActive]);
 
   const handleAiReview = useCallback(async (id: string) => {
     try {
@@ -558,7 +554,7 @@ export default function BillingPage(): JSX.Element {
         </div>
       </section>
 
-      <InvoiceCsvImportCard onImported={() => void load()} />
+      <InvoiceCsvImportCard onImportActiveChange={setInvoiceImportActive} onImported={() => void load({ background: true })} />
 
       {err ? (
         <div className="rounded-2xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-200">

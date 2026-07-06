@@ -427,9 +427,25 @@ export async function processInvoiceImportJobBatch(
             : customerByName
               ? "name"
               : null;
-      const customerId =
-        customer?.id ?? workOrder?.customer_id ?? vehicle?.customer_id ?? null;
+      const fallbackCustomerId = vehicle?.customer_id ?? workOrder?.customer_id ?? null;
+      const customerId = customer?.id ?? fallbackCustomerId;
       const vehicleId = vehicle?.id ?? workOrder?.vehicle_id ?? null;
+      const customerMatchSourceResolved =
+        customerMatchSource ??
+        (vehicle?.customer_id
+          ? "vehicle_customer_id"
+          : workOrder?.customer_id
+            ? "work_order_customer_id"
+            : null);
+      const vehicleMatchSource = vehicle
+        ? clean(row.vehicle_id)
+          ? "vehicle_id"
+          : vin(row.vin)
+            ? "vin"
+            : null
+        : workOrder?.vehicle_id
+          ? "work_order_vehicle_id"
+          : null;
       const total = num(row.total) ?? num(row.subtotal) ?? 0;
       const amountPaid = num(row.amount_paid) ?? 0;
       const status = normalizeInvoiceImportStatus(row);
@@ -482,15 +498,10 @@ export async function processInvoiceImportJobBatch(
             imported_invoice_id: sourceId,
             legacy_customer_id: legacyCustomerId,
             legacy_vehicle_id: clean(row.vehicle_id),
-            matched_customer_id: customer?.id ?? null,
-            matched_vehicle_id: vehicle?.id ?? null,
-            customer_match_source:
-              customerMatchSource ??
-              (workOrder?.customer_id
-                ? "work_order_customer_id"
-                : vehicle?.customer_id
-                  ? "vehicle_customer_id"
-                  : null),
+            matched_customer_id: customerId,
+            matched_vehicle_id: vehicleId,
+            customer_match_source: customerMatchSourceResolved,
+            vehicle_match_source: vehicleMatchSource,
             source_system: clean(row.source_system),
             work_order_number: workOrderNumber,
             vehicle_id: vehicleId,
