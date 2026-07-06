@@ -1,24 +1,62 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-export async function GET(_req: Request, context: { params: Promise<{ jobId: string }> }) {
+type ImportJobApiRow = {
+  id: string;
+  import_type: string | null;
+  status: string | null;
+  total_rows: number | null;
+  processed_rows: number | null;
+  imported_count: number | null;
+  skipped_count: number | null;
+  failed_count: number | null;
+  error_message: string | null;
+  summary: unknown;
+  created_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+};
+
+type ImportJobApiQuery = {
+  select(columns: string): ImportJobApiQuery;
+  eq(column: string, value: string): ImportJobApiQuery;
+  single(): Promise<{ data: ImportJobApiRow | null; error: Error | null }>;
+};
+
+export async function GET(
+  _req: Request,
+  context: { params: Promise<{ jobId: string }> },
+) {
   const { jobId } = await context.params;
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor"],
   });
   if (!access.ok) return access.response;
   const shopId = access.profile.shop_id;
-  if (!shopId) return NextResponse.json({ error: "No active shop is selected." }, { status: 400 });
+  if (!shopId)
+    return NextResponse.json(
+      { error: "No active shop is selected." },
+      { status: 400 },
+    );
 
-  const { data, error } = await (access.supabase as unknown as { from: (table: string) => any })
+  const { data, error } = await (
+    access.supabase as unknown as {
+      from: (table: "import_jobs") => ImportJobApiQuery;
+    }
+  )
     .from("import_jobs")
-    .select("id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at")
+    .select(
+      "id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at",
+    )
     .eq("id", jobId)
     .eq("shop_id", shopId)
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: "Import job not found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Import job not found." },
+      { status: 404 },
+    );
   }
 
   return NextResponse.json({
