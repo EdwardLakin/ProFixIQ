@@ -10,6 +10,7 @@ import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
+import { useImportJobProgress, type ImportJobProgressJob } from "@/features/shared/components/import/useImportJobProgress";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type HistoryImportRow = {
@@ -62,20 +63,6 @@ type ImportResponse = {
     invoiceNumber: string | null;
   }>;
 };
-
-type ImportJobStatus = {
-  id: string;
-  status: "queued" | "processing" | "completed" | "failed";
-  totalRows: number;
-  processedRows: number;
-  importedCount: number;
-  skippedCount: number;
-  failedCount: number;
-  errorMessage: string | null;
-  summary?: { skippedRows?: ImportResponse["skippedRows"]; failedRows?: ImportResponse["failedRows"]; duplicates?: number } | null;
-};
-
-type ImportJobStatusResponse = { ok?: boolean; error?: string; job?: ImportJobStatus };
 
 const SUPPORTED_COLUMNS = [
   "customer_id",
@@ -280,91 +267,20 @@ export function VehicleHistoryCsvImportCard({
     }
   }, [guidedQuery, isOnboarding]);
 
-  useEffect(() => {
-    if (!activeJobId) return;
-    const pollingJobId = activeJobId;
-    let stopped = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    async function pollJobStatus() {
-      try {
-        const res = await fetch(`/api/import-jobs/${encodeURIComponent(pollingJobId)}`);
-        const payload = (await res.json().catch(() => ({}))) as ImportJobStatusResponse;
-        if (!res.ok || payload.ok === false || !payload.job) {
-          throw new Error(payload.error ?? "Unable to load import job status.");
-        }
-        if (stopped) return;
-        const job = payload.job;
-        const total = job.totalRows || importableRows.length || 0;
-        const percent = total ? Math.min(100, Math.round((job.processedRows / total) * 100)) : 0;
-        setProgress({
-          phase:
-            job.status === "completed"
-              ? "Finalizing"
-              : job.status === "failed"
-                ? "Import failed"
-                : "Importing records",
-          phaseKey:
-            job.status === "completed"
-              ? "completed"
-              : job.status === "failed"
-                ? "failed"
-                : "importing",
-          processed: job.processedRows,
-          total,
-          percent: job.status === "completed" || job.status === "failed" ? 100 : percent,
-        });
-        if (job.status === "completed" || job.status === "failed") {
-          const counts: ImportCounts = {
-            imported: job.importedCount,
-            updated: 0,
-            skipped: job.skippedCount,
-            failed: job.failedCount,
-            duplicates: Number(job.summary?.duplicates ?? 0),
-          };
-          const nextResponse: ImportResponse = {
-            ok: job.status === "completed",
-            jobId: job.id,
-            counts,
-            totalRows: job.totalRows,
-            skippedRows: job.summary?.skippedRows ?? [],
-            failedRows: job.summary?.failedRows ?? [],
-            error: job.errorMessage ?? undefined,
-          };
-          setResponse(nextResponse);
-          setImporting(false);
-          setActiveJobId(null);
-          if (job.status === "failed") {
-            setImportError(job.errorMessage ?? "Vehicle history import job failed.");
-            return;
-          }
-          if (isOnboarding && counts.imported > 0 && counts.failed === 0) {
-            await completeOnboardingAfterImport(counts);
-          }
-          if (counts.imported > 0) onImported?.();
-          return;
-        }
-        timeoutId = setTimeout(() => void pollJobStatus(), 1500);
-      } catch (error) {
-        if (stopped) return;
-        setImportError(error instanceof Error ? error.message : "Unable to poll import status.");
-        setImporting(false);
-        setActiveJobId(null);
-      }
-    }
-
-    timeoutId = setTimeout(() => void pollJobStatus(), 1000);
-    return () => {
-      stopped = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [
-    activeJobId,
-    completeOnboardingAfterImport,
-    importableRows.length,
-    isOnboarding,
-    onImported,
-  ]);
+  const handleJobComplete = useCallback(async (job: ImportJobProgressJob) => {
+    const summary = job.summary as { skippedRows?: ImportResponse["skippedRows"]; failedRows?: ImportResponse["failedRows"]; duplicates?: number } | null | undefined;
+    const counts: ImportCounts = { imported: job.importedCount, updated: 0, skipped: job.skippedCount, failed: job.failedCount, duplicates: Number(summary?.duplicates ?? 0) };
+    const nextResponse: ImportResponse = { ok: job.status === "completed", jobId: job.id, counts, totalRows: job.totalRows, skippedRows: summary?.skippedRows ?? [], failedRows: summary?.failedRows ?? [], error: job.errorMessage ?? undefined };
+    setResponse(nextResponse);
+    setImporting(false);
+    setActiveJobId(null);
+    if (job.status === "failed") { setImportError(job.errorMessage ?? "Vehicle history import job failed."); return; }
+    if (isOnboarding && counts.imported > 0 && counts.failed === 0) await completeOnboardingAfterImport(counts);
+    if (counts.imported > 0) onImported?.();
+  }, [completeOnboardingAfterImport, isOnboarding, onImported]);
+  const handleJobPollError = useCallback((message: string, job?: ImportJobProgressJob) => { if (job?.status === "failed") setImportError(message); }, []);
+  const { progress: jobProgress } = useImportJobProgress(activeJobId, { initialTotal: importableRows.length, onComplete: handleJobComplete, onError: handleJobPollError });
+  useEffect(() => { if (jobProgress) setProgress(jobProgress); }, [jobProgress]);
 
   async function confirmImport() {
     if (importing || completingOnboarding) return;

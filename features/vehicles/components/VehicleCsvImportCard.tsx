@@ -331,8 +331,8 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     setImporting(true);
     setImportError(null);
     setImportProgress({
-      phase: "Importing",
-      phaseKey: "importing",
+      phase: "processing",
+      phaseKey: "processing",
       processed: 0,
       total: importableRows.length,
       percent: 30,
@@ -345,7 +345,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     try {
       progressTimer = window.setInterval(() => {
         setImportProgress((current) => {
-          if (!current || current.phase !== "Importing") return current;
+          if (!current || current.phaseKey !== "processing") return current;
           const nextPercent = Math.min(90, current.percent + 3);
           return {
             ...current,
@@ -414,11 +414,14 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         processed: importableRows.length,
         total: importableRows.length,
         percent: 100,
+        imported: payload.counts.created + payload.counts.updated,
+        skipped: payload.counts.skipped,
+        failed: payload.counts.failed,
       });
     } catch (error) {
       if (progressTimer) window.clearInterval(progressTimer);
       setImportProgress({
-        phase: "Import failed",
+        phase: "failed",
         phaseKey: "failed",
         processed: 0,
         total: importableRows.length,
