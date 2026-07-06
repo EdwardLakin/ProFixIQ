@@ -5,6 +5,10 @@ import {
   processVehicleHistoryImportJobBatch,
   VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
 } from "@/features/work-orders/server/vehicle-history-import-job";
+import {
+  INVOICE_IMPORT_BATCH_SIZE,
+  processInvoiceImportJobBatch,
+} from "@/features/billing/server/invoice-import-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,11 +27,15 @@ async function run(req: Request) {
   if (!gate.ok) return gate.response;
   const url = new URL(req.url);
   const jobId = url.searchParams.get("jobId") || undefined;
-  const result = await processVehicleHistoryImportJobBatch(
-    createAdminSupabase(),
-    jobId,
-    VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
-  );
+  const importType = url.searchParams.get("importType") ?? url.searchParams.get("type");
+  const admin = createAdminSupabase();
+  const result = importType === "invoices"
+    ? await processInvoiceImportJobBatch(admin, jobId, INVOICE_IMPORT_BATCH_SIZE)
+    : await processVehicleHistoryImportJobBatch(
+        admin,
+        jobId,
+        VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
+      );
   return NextResponse.json(result);
 }
 
