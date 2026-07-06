@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCustomerLookupMaps,
   normalizeInvoiceImportStatus,
+  isHistoricalInvoiceCsvMetadata,
   resolveImportedInvoicePaidAt,
   resolveInvoiceImportCustomer,
 } from "../features/billing/server/invoice-import-job";
@@ -182,10 +183,56 @@ describe("historical invoice imports", () => {
     );
   });
 
-  it("counts duplicate imported invoices as skipped rather than failed", () => {
-    expect(importer).toContain("counts.skipped++");
-    expect(importer).toContain("counts.duplicates++");
-    expect(importer).toContain("Duplicate invoice already exists.");
-    expect(importer).toContain("Duplicates are counted as skipped rows.");
+  it("refreshes existing invoice_csv rows instead of skipping historical duplicates", () => {
+    expect(importer).toContain("findHistoricalInvoice");
+    expect(importer).toContain(
+      "existingInvoiceId: existingHistoricalInvoice?.id ?? null",
+    );
+    expect(importer).toContain(".update(entry.payload)");
+    expect(importer).toContain("customer_id: customerId");
+    expect(importer).toContain("work_order_id: workOrder?.id ?? null");
+    expect(importer).toContain("matched_customer_id: customerId");
+    expect(importer).toContain(
+      "customer_match_source: customerMatchSourceResolved",
+    );
+  });
+
+  it("does not overwrite live invoices with colliding historical invoice numbers", () => {
+    expect(importer).toContain("hasLiveInvoiceNumberCollision");
+    expect(importer).toContain("live_invoice_number_collision");
+    expect(importer).toContain(
+      "!isHistoricalInvoiceCsvMetadata(invoice.metadata)",
+    );
+  });
+
+  it("prefers source id historical matches before invoice-number fallback", () => {
+    const sourceMatchIndex = importer.indexOf("imported_invoice_id: sourceId");
+    const fallbackIndex = importer.indexOf(
+      '.eq("invoice_number", invoiceNumber)',
+    );
+
+    expect(sourceMatchIndex).toBeGreaterThan(-1);
+    expect(fallbackIndex).toBeGreaterThan(-1);
+    expect(sourceMatchIndex).toBeLessThan(fallbackIndex);
+  });
+
+  it("detects only invoice_csv metadata as historical import metadata", () => {
+    expect(isHistoricalInvoiceCsvMetadata({ import_type: "invoice_csv" })).toBe(
+      true,
+    );
+    expect(isHistoricalInvoiceCsvMetadata({ import_type: "quickbooks" })).toBe(
+      false,
+    );
+    expect(isHistoricalInvoiceCsvMetadata(null)).toBe(false);
+  });
+
+  it("keeps duplicate CSV rows skipped while reruns count refreshed rows as imported", () => {
+    expect(importer).toContain(
+      "Duplicate invoice already exists in this import batch.",
+    );
+    expect(importer).toContain('.update({ status: "imported" })');
+    expect(importer).toContain(
+      "Historical invoice_csv reruns refresh existing imported rows",
+    );
   });
 });

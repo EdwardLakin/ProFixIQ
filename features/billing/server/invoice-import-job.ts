@@ -53,6 +53,10 @@ type MatchedWorkOrder = {
   customer_id?: string | null;
   vehicle_id?: string | null;
 };
+type ExistingInvoiceMatch = {
+  id: string;
+  metadata?: Record<string, unknown> | null;
+};
 
 const clean = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -186,35 +190,67 @@ function isInvoiceNumberUniqueConflict(error: unknown) {
   );
 }
 
-async function duplicateInvoice(
+export function isHistoricalInvoiceCsvMetadata(metadata: unknown) {
+  return (
+    !!metadata &&
+    typeof metadata === "object" &&
+    (metadata as Record<string, unknown>).import_type === "invoice_csv"
+  );
+}
+
+async function findHistoricalInvoice(
   client: SupabaseClient,
   shopId: string,
   invoiceNumber: string | null,
   sourceId: string | null,
-) {
-  if (invoiceNumber) {
-    const { data, error } = await client
-      .from("invoices")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("invoice_number", invoiceNumber)
-      .limit(1);
-    if (error) throw error;
-    if (data?.length) return true;
-  }
-
+): Promise<ExistingInvoiceMatch | null> {
   if (sourceId) {
     const { data, error } = await client
       .from("invoices")
-      .select("id")
+      .select("id, metadata")
       .eq("shop_id", shopId)
-      .contains("metadata", { imported_invoice_id: sourceId })
+      .contains("metadata", {
+        import_type: "invoice_csv",
+        imported_invoice_id: sourceId,
+      })
       .limit(1);
     if (error) throw error;
-    if (data?.length) return true;
+    const match = (data?.[0] as ExistingInvoiceMatch | undefined) ?? null;
+    if (match) return match;
   }
 
-  return false;
+  if (invoiceNumber) {
+    const { data, error } = await client
+      .from("invoices")
+      .select("id, metadata")
+      .eq("shop_id", shopId)
+      .eq("invoice_number", invoiceNumber)
+      .contains("metadata", { import_type: "invoice_csv" })
+      .limit(1);
+    if (error) throw error;
+    return (data?.[0] as ExistingInvoiceMatch | undefined) ?? null;
+  }
+
+  return null;
+}
+
+async function hasLiveInvoiceNumberCollision(
+  client: SupabaseClient,
+  shopId: string,
+  invoiceNumber: string | null,
+) {
+  if (!invoiceNumber) return false;
+  const { data, error } = await client
+    .from("invoices")
+    .select("id, metadata")
+    .eq("shop_id", shopId)
+    .eq("invoice_number", invoiceNumber)
+    .limit(10);
+  if (error) throw error;
+
+  return ((data ?? []) as ExistingInvoiceMatch[]).some(
+    (invoice) => !isHistoricalInvoiceCsvMetadata(invoice.metadata),
+  );
 }
 
 export const CANONICAL_INVOICE_IMPORT_STATUSES = [
@@ -393,11 +429,12 @@ export async function processInvoiceImportJobBatch(
   const counts: Counts = { imported: 0, skipped: 0, failed: 0, duplicates: 0 };
   const sample = samples(job.summary);
   const pendingInvoiceNumbers = new Set<string>();
-  const inserts: Array<{
+  const writes: Array<{
     stagedId: string;
     rowNumber: number;
     invoiceNumber: string | null;
     workOrderNumber: string | null;
+    existingInvoiceId: string | null;
     payload: DB["public"]["Tables"]["invoices"]["Insert"];
   }> = [];
 
@@ -427,15 +464,19 @@ export async function processInvoiceImportJobBatch(
         continue;
       }
 
+      const existingHistoricalInvoice = await findHistoricalInvoice(
+        client,
+        job.shop_id,
+        invoiceNumber,
+        sourceId,
+      );
       if (
-        pendingInvoiceNumbers.has(invoiceNumber) ||
-        (await duplicateInvoice(client, job.shop_id, invoiceNumber, sourceId))
+        pendingInvoiceNumbers.has(invoiceNumber) &&
+        !existingHistoricalInvoice
       ) {
         counts.skipped++;
         counts.duplicates++;
-        const reason = pendingInvoiceNumbers.has(invoiceNumber)
-          ? "Duplicate invoice already exists in this import batch."
-          : "Duplicate invoice already exists.";
+        const reason = "Duplicate invoice already exists in this import batch.";
         sample.skippedRows.push({
           row: staged.row_number,
           reason,
@@ -500,12 +541,36 @@ export async function processInvoiceImportJobBatch(
         continue;
       }
 
+      if (
+        !existingHistoricalInvoice &&
+        (await hasLiveInvoiceNumberCollision(
+          client,
+          job.shop_id,
+          invoiceNumber,
+        ))
+      ) {
+        const reason = "live_invoice_number_collision";
+        counts.skipped++;
+        sample.skippedRows.push({
+          row: staged.row_number,
+          reason,
+          invoiceNumber,
+          workOrderNumber,
+        });
+        await client
+          .from("import_job_rows")
+          .update({ status: "skipped", error_message: reason })
+          .eq("id", staged.id);
+        continue;
+      }
+
       pendingInvoiceNumbers.add(invoiceNumber);
-      inserts.push({
+      writes.push({
         stagedId: staged.id,
         rowNumber: staged.row_number,
         invoiceNumber,
         workOrderNumber,
+        existingInvoiceId: existingHistoricalInvoice?.id ?? null,
         payload: {
           shop_id: job.shop_id,
           customer_id: customerId,
@@ -570,60 +635,54 @@ export async function processInvoiceImportJobBatch(
     }
   }
 
-  for (const batch of chunkArray(inserts, batchSize)) {
-    const { error: insertError } = await supabase
-      .from("invoices")
-      .insert(batch.map((entry) => entry.payload));
-    if (insertError) {
-      for (const entry of batch) {
-        const { error: rowError } = await supabase
-          .from("invoices")
-          .insert(entry.payload);
-        if (rowError) {
-          if (isInvoiceNumberUniqueConflict(rowError)) {
-            counts.skipped++;
-            counts.duplicates++;
-            const reason = "Duplicate invoice already exists.";
-            sample.skippedRows.push({
-              row: entry.rowNumber,
-              reason,
-              invoiceNumber: entry.invoiceNumber,
-              workOrderNumber: entry.workOrderNumber,
-            });
-            await client
-              .from("import_job_rows")
-              .update({ status: "skipped", error_message: reason })
-              .eq("id", entry.stagedId);
-          } else {
-            counts.failed++;
-            sample.failedRows.push({
-              row: entry.rowNumber,
-              error: rowError.message,
-              invoiceNumber: entry.invoiceNumber,
-              workOrderNumber: entry.workOrderNumber,
-            });
-            await client
-              .from("import_job_rows")
-              .update({ status: "failed", error_message: rowError.message })
-              .eq("id", entry.stagedId);
-          }
-        } else {
-          counts.imported++;
+  for (const batch of chunkArray(writes, batchSize)) {
+    for (const entry of batch) {
+      const write = entry.existingInvoiceId
+        ? supabase
+            .from("invoices")
+            .update(entry.payload)
+            .eq("id", entry.existingInvoiceId)
+        : supabase.from("invoices").insert(entry.payload);
+      const { error: rowError } = await write;
+
+      if (rowError) {
+        if (
+          !entry.existingInvoiceId &&
+          isInvoiceNumberUniqueConflict(rowError)
+        ) {
+          counts.skipped++;
+          counts.duplicates++;
+          const reason = "live_invoice_number_collision";
+          sample.skippedRows.push({
+            row: entry.rowNumber,
+            reason,
+            invoiceNumber: entry.invoiceNumber,
+            workOrderNumber: entry.workOrderNumber,
+          });
           await client
             .from("import_job_rows")
-            .update({ status: "imported" })
+            .update({ status: "skipped", error_message: reason })
+            .eq("id", entry.stagedId);
+        } else {
+          counts.failed++;
+          sample.failedRows.push({
+            row: entry.rowNumber,
+            error: rowError.message,
+            invoiceNumber: entry.invoiceNumber,
+            workOrderNumber: entry.workOrderNumber,
+          });
+          await client
+            .from("import_job_rows")
+            .update({ status: "failed", error_message: rowError.message })
             .eq("id", entry.stagedId);
         }
+      } else {
+        counts.imported++;
+        await client
+          .from("import_job_rows")
+          .update({ status: "imported" })
+          .eq("id", entry.stagedId);
       }
-    } else {
-      counts.imported += batch.length;
-      await client
-        .from("import_job_rows")
-        .update({ status: "imported" })
-        .in(
-          "id",
-          batch.map((entry) => entry.stagedId),
-        );
     }
   }
 
@@ -689,7 +748,7 @@ export async function processInvoiceImportJobBatch(
           processed: reconciledProcessed,
           totalRows: job.total_rows ?? reconciledProcessed,
           reconcilesToTotal,
-          note: "Duplicates are counted as skipped rows.",
+          note: "Historical invoice_csv reruns refresh existing imported rows; live invoice number collisions are counted as skipped rows.",
         },
       },
       completed_at: completed ? new Date().toISOString() : null,
