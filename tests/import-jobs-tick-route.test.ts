@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const processVehicleHistoryImportJobBatchMock = vi.fn();
 const processInvoiceImportJobBatchMock = vi.fn();
-let dispatchJob: { id: string; import_type: string | null } | null = null;
+let dispatchJob: { id: string; import_type: string | null; status?: string | null; processed_rows?: number | null; updated_at?: string | null } | null = null;
 const adminClient = { marker: "admin" };
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
@@ -10,13 +10,26 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
     ...adminClient,
     from: vi.fn((table: string) => {
       expect(table).toBe("import_jobs");
+      const filters: Record<string, string> = {};
       const query: any = {
         select: vi.fn(() => query),
+        update: vi.fn(() => query),
         in: vi.fn(() => query),
         order: vi.fn(() => query),
         limit: vi.fn(() => query),
-        eq: vi.fn(() => query),
-        maybeSingle: vi.fn(async () => ({ data: dispatchJob, error: null })),
+        lt: vi.fn(() => query),
+        gte: vi.fn(() => query),
+        eq: vi.fn((column: string, value: string) => {
+          filters[column] = value;
+          return query;
+        }),
+        maybeSingle: vi.fn(async () => {
+          const job = dispatchJob ? { status: "queued", processed_rows: 0, updated_at: new Date().toISOString(), ...dispatchJob } : null;
+          if (!job) return { data: null, error: null };
+          if (filters.id && filters.id !== job.id) return { data: null, error: null };
+          if (filters.status && filters.status !== job.status) return { data: null, error: null };
+          return { data: job, error: null };
+        }),
       };
       return query;
     }),
