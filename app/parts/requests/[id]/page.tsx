@@ -1859,53 +1859,42 @@ if (!lineId || !isUuid(lineId)) {
                           await load();
                         }}
                         onAttachInventory={async (input) => {
-                          const item = r.items.find((candidate) => String(candidate.id) === String(input.itemId));
-                          if (!item) {
-                            toast.error("Request item not found.");
+                          const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                          });
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          if (!res.ok || !body?.ok) {
+                            toast.error(body?.error || "Could not attach inventory part.");
                             return;
                           }
-
-                          updateItem(r.req.id, input.itemId, {
-                            part_id: input.partId,
-                            ui_part_id: input.partId,
-                          });
-
-                          await persistItemFields(input.itemId, {
-                            description: String(item.description ?? "").trim(),
-                            requested_part_number: String(item.requested_part_number ?? "").trim() || null,
-                            requested_manufacturer: String(item.requested_manufacturer ?? "").trim() || null,
-                            qty: Number(item.ui_qty ?? item.qty ?? 1),
-                            quoted_price: item.ui_price ?? item.quoted_price ?? null,
-                          });
-
-                          toast.success(input.warningAccepted ? "Zero-stock inventory part attached." : "Inventory part attached.");
+                          toast.success("Inventory part attached.");
                           await load();
                         }}
                         onCreateInventoryItem={async (itemId, input) => {
-                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
-                          if (!item) {
-                            toast.error("Request item not found.");
+                          const res = await fetch(`/api/parts/requests/items/${itemId}/inventory`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              mode: "create",
+                              name: input.name,
+                              partNumber: input.partNumber,
+                              manufacturer: input.manufacturer,
+                              sku: input.sku,
+                              category: input.category,
+                              sellPrice: input.sellPrice,
+                              initialQty: input.initialQty,
+                              locationId: resolvedDefaultLocId || defaultLocationId || null,
+                            }),
+                          });
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          if (!res.ok || !body?.ok) {
+                            toast.error(body?.error || "Could not create inventory item.");
                             return;
                           }
-
-                          const draft: CreateInventoryDraft = {
-                            requestId: r.req.id,
-                            itemId,
-                            name: input.name,
-                            partNumber: input.partNumber,
-                            manufacturer: input.manufacturer,
-                            sku: input.sku,
-                            category: input.category,
-                            price: input.sellPrice,
-                            supplier:
-                              supplierNameById.get(input.defaultSupplierId) ??
-                              input.manufacturer ??
-                              "",
-                            initialQty: input.initialQty,
-                            locationId: resolvedDefaultLocId || defaultLocationId || "",
-                          };
-                          setCreateInventoryDraft(draft);
-                          await saveCreatedInventoryItem(draft);
+                          toast.success("Inventory item created and attached.");
+                          await load();
                         }}
                         onSubmitOrder={async (itemId, input) => {
                           updateItem(r.req.id, itemId, {
