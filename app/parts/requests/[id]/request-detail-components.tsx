@@ -48,9 +48,9 @@ export function RequestHeaderSection({
 }: {
   title: ReactNode;
   subtitle: string;
-  selectedPo: string;
-  poOptions: Option[];
-  onSelectedPoChange: (next: string) => void;
+  selectedPo?: string;
+  poOptions?: Option[];
+  onSelectedPoChange?: (next: string) => void;
   statusSummary: ReactNode;
 }): JSX.Element {
   return (
@@ -62,22 +62,24 @@ export function RequestHeaderSection({
             <div className="mt-1 text-sm text-neutral-400">{subtitle}</div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">PO</div>
-            <select
-              className={INPUT}
-              value={selectedPo}
-              onChange={(e) => onSelectedPoChange(e.target.value)}
-              title="Optional: choose PO to apply receiving against"
-            >
-              <option value="">— none —</option>
-              {poOptions.map((po) => (
-                <option key={po.value} value={po.value}>
-                  {po.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {onSelectedPoChange ? (
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">PO</div>
+              <select
+                className={INPUT}
+                value={selectedPo ?? ""}
+                onChange={(e) => onSelectedPoChange(e.target.value)}
+                title="Optional: choose PO to apply receiving against"
+              >
+                <option value="">— none —</option>
+                {(poOptions ?? []).map((po) => (
+                  <option key={po.value} value={po.value}>
+                    {po.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-3">{statusSummary}</div>
