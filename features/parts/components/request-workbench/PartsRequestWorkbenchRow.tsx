@@ -18,6 +18,7 @@ export function PartsRequestWorkbenchRow({
   onSave,
   onUseInventory,
   onOrder,
+  onAddToJob,
   onReceive,
   onAddToStock,
   onClearMatch,
@@ -30,6 +31,7 @@ export function PartsRequestWorkbenchRow({
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
+  onAddToJob?: (itemId: string) => void;
   onReceive?: (itemId: string) => void;
   onAddToStock?: (itemId: string) => void;
   onClearMatch?: (itemId: string) => void;
@@ -131,6 +133,7 @@ export function PartsRequestWorkbenchRow({
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
             <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>Use Inventory</button>
             <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button>
+            <button type="button" className={action} onClick={() => onAddToJob?.(item.id)}>Add to Job</button>
             <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button>
             <select
               className={action}

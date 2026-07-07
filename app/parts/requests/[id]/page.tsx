@@ -1896,6 +1896,10 @@ if (!lineId || !isUuid(lineId)) {
                           toast.success("Inventory item created and attached.");
                           await load();
                         }}
+                        onAddToJob={async (itemId) => {
+                          await addAndAttach(r.req.id, itemId);
+                          await load();
+                        }}
                         onSubmitOrder={async (itemId, input) => {
                           updateItem(r.req.id, itemId, {
                             ui_supplier_id: input.supplierId,

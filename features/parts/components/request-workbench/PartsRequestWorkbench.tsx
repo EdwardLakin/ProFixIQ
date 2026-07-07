@@ -27,6 +27,7 @@ export function PartsRequestWorkbench({
   onUseInventory,
   onAttachInventory,
   onOrderItem,
+  onAddToJob,
   onSubmitOrder,
   onReceiveItem,
   onOpenReceiveDrawer,
@@ -40,6 +41,7 @@ export function PartsRequestWorkbench({
   onUseInventory?: (itemId: string) => Promise<void> | void;
   onAttachInventory?: (input: AttachInventoryInput) => Promise<void> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
+  onAddToJob?: (itemId: string) => Promise<void> | void;
   onSubmitOrder?: (itemId: string, input: OrderPartInput) => Promise<void> | void;
   onReceiveItem?: (itemId: string) => Promise<void> | void;
   onOpenReceiveDrawer?: (itemId: string) => Promise<void> | void;
@@ -157,6 +159,7 @@ export function PartsRequestWorkbench({
           setActiveModal({ type: "inventory", itemId });
           await onUseInventory?.(itemId);
         }}
+        onAddToJob={onAddToJob}
         onOrder={async (itemId) => {
           const item = items.find((candidate) => candidate.id === itemId) ?? null;
           setOrderDraft(createOrderDraftFromItem(item, defaultSupplierId));
