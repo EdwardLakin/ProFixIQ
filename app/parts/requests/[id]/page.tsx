@@ -211,6 +211,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
   const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
+  const [stockAvailableByPartId, setStockAvailableByPartId] = useState<Record<string, number>>({});
   const [supplierSuggestionsByItemId, setSupplierSuggestionsByItemId] = useState<Record<string, DeterministicSupplierSuggestion[]>>({});
   const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
   const [conflictWarningByItemId, setConflictWarningByItemId] = useState<Record<string, string>>({});
@@ -367,6 +368,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSuppliers([]);
       setSelectedPo("");
       setStockSuggestionsByItemId({});
+      setStockAvailableByPartId({});
       setSupplierSuggestionsByItemId({});
       setSupplierSuggestionAppliedByItemId({});
       setLoading(false);
@@ -525,12 +527,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       const suggestions: Record<string, DeterministicStockSuggestion[]> = {};
       const supplierSuggestions: Record<string, DeterministicSupplierSuggestion[]> = {};
       const stockSummaryRows = (((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][]);
-      const stockAvailableByPartId = new Map<string, number>();
+      const stockAvailableMap = new Map<string, number>();
+      const stockAvailableRecord: Record<string, number> = {};
       for (const stockRow of stockSummaryRows) {
         if (!stockRow.part_id) continue;
         const qty = Number((stockRow as { qty_available?: number | null }).qty_available ?? stockRow.on_hand ?? 0);
-        stockAvailableByPartId.set(String(stockRow.part_id), Number.isFinite(qty) ? qty : 0);
+        const safeQty = Number.isFinite(qty) ? qty : 0;
+        stockAvailableMap.set(String(stockRow.part_id), safeQty);
+        stockAvailableRecord[String(stockRow.part_id)] = safeQty;
       }
+      setStockAvailableByPartId(stockAvailableRecord);
       for (const req of uiRequests) {
         for (const item of req.items) {
           const desc = String(item.description ?? "").trim();
@@ -549,7 +555,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           const hasAttachedPart = isUuid(item.part_id);
           const topStockSuggestion = ranked[0] ?? null;
           const selectedPartId = isUuid(item.part_id) ? item.part_id : (isUuid(item.ui_part_id) ? item.ui_part_id : null);
-          const selectedPartStock = selectedPartId ? (stockAvailableByPartId.get(String(selectedPartId)) ?? 0) : 0;
+          const selectedPartStock = selectedPartId ? (stockAvailableMap.get(String(selectedPartId)) ?? 0) : 0;
           const shouldSuggestSupplier =
             !hasAttachedPart ||
             !!topStockSuggestion?.recommended_action && topStockSuggestion.recommended_action === "order_part" ||
@@ -599,6 +605,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setSuppliers([]);
       setSelectedPo("");
       setStockSuggestionsByItemId({});
+      setStockAvailableByPartId({});
       setSupplierSuggestionsByItemId({});
       setSupplierSuggestionAppliedByItemId({});
     }
@@ -645,20 +652,38 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   ): Promise<void> {
     setSavingItemId(itemId);
     try {
-      const { data, error } = await supabase
-        .from("part_request_items")
-        .update({
-          ...patch,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", itemId)
-        .select("id")
-        .maybeSingle();
-      if (error) {
-        toast.error(error.message);
+      const res = await fetch(`/api/parts/requests/items/${itemId}/edit`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; item?: ItemRow }
+        | null;
+      if (!res.ok || !body?.ok) {
+        toast.error(body?.error || "Update did not apply.");
         return;
       }
-      if (!data?.id) toast.error("Update did not apply (no matching row or blocked).");
+      if (body.item) {
+        setRequests((prev) =>
+          prev.map((r) => ({
+            ...r,
+            items: r.items.map((it) =>
+              String(it.id) === String(itemId)
+                ? ({
+                    ...it,
+                    ...body.item,
+                    ui_qty: toNum(body.item?.qty, it.ui_qty),
+                    ui_price:
+                      body.item?.quoted_price == null
+                        ? undefined
+                        : toNum(body.item.quoted_price, it.ui_price ?? 0),
+                  } as UiItem)
+                : it,
+            ),
+          })),
+        );
+      }
     } finally {
       setSavingItemId(null);
     }
@@ -1439,6 +1464,12 @@ if (!lineId || !isUuid(lineId)) {
         ? it.work_order_line_id
         : lineId;
 
+      const selectedStockAvailable = stockAvailableByPartId[String(partId)] ?? 0;
+      const shouldAllocateFromStock = Boolean(locId) && selectedStockAvailable > 0;
+      if (locId && selectedStockAvailable <= 0) {
+        toast.warning("No available stock for the selected part. The item will be saved without blocking allocation/order follow-up.");
+      }
+
       const res = await fetch(`/api/parts/requests/items/${itemId}/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1451,8 +1482,8 @@ if (!lineId || !isUuid(lineId)) {
           requestedManufacturer: String(it.requested_manufacturer ?? "").trim() || null,
           workOrderLineId: safeLineId,
           poId,
-          locationId: locId || null,
-          createAllocation: Boolean(locId),
+          locationId: shouldAllocateFromStock ? locId : null,
+          createAllocation: shouldAllocateFromStock,
         }),
       });
       const body = (await res.json().catch(() => null)) as
@@ -1985,108 +2016,70 @@ if (!lineId || !isUuid(lineId)) {
 
 
 
-                                        {showSuggestion && topSuggestion ? (
-                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
-                                            <div className="font-medium text-neutral-100">{suggestionDisplay?.headline ?? "Inventory match"}</div>
-                                            <div className="mt-0.5"><span className="text-neutral-100">{topSuggestion.name}</span>
-                                            {topSuggestion.sku_or_part_number ? <span className="text-neutral-500"> · {topSuggestion.sku_or_part_number}</span> : null}
-                                            <span className="text-neutral-500"> · {topSuggestion.qty_available} available</span></div>
-                                            <details className="mt-1 text-neutral-500">
-                                              <summary className="cursor-pointer text-neutral-400">Why?</summary>
-                                              <div>{suggestionDisplay?.technicalReasons.slice(0, 3).join(" · ")}</div>
+                                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400">
+                                          {showSuggestion && topSuggestion ? (
+                                            <details className="group inline-flex rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1">
+                                              <summary className="cursor-pointer list-none text-neutral-300">
+                                                AI match: <span className="text-neutral-100">{topSuggestion.name}</span>
+                                                <span className={topSuggestion.qty_available > 0 ? "ml-1 text-emerald-300" : "ml-1 text-amber-300"}>
+                                                  {topSuggestion.qty_available > 0 ? `${topSuggestion.qty_available} available` : "no stock — order"}
+                                                </span>
+                                              </summary>
+                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-neutral-950/80 p-2 text-neutral-400 shadow-xl">
+                                                <div className="font-medium text-neutral-100">{suggestionDisplay?.headline ?? "Inventory match"}</div>
+                                                {topSuggestion.sku_or_part_number ? <div>Part/SKU: {topSuggestion.sku_or_part_number}</div> : null}
+                                                <div>{suggestionDisplay?.technicalReasons.slice(0, 3).join(" · ")}</div>
+                                                <button
+                                                  type="button"
+                                                  className="mt-2 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                  onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
+                                                  disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
+                                                >
+                                                  Use this match
+                                                </button>
+                                              </div>
                                             </details>
+                                          ) : null}
+                                          {hasAttachedPart && topSuggestion ? (
+                                            <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-500">
+                                              Alternative match available
+                                            </span>
+                                          ) : null}
+                                          {canCreateInventory ? (
                                             <button
                                               type="button"
-                                              className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
-                                              onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
-                                              disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
-                                            >
-                                              {topSuggestion.qty_available <= 0 || topSuggestion.confidence === "low"
-                                                ? (suggestionDisplay?.actionLabel ?? "Create PO")
-                                                : (suggestionDisplay?.actionLabel ?? "Use inventory")}
-                                            </button>
-                                            {topSuggestion.part_id === it.ui_part_id ? (
-                                              <div className="mt-1 text-neutral-500">Inventory match selected. Click <span className="text-neutral-300">{isQuoteOnlyPreApprovalItem ? "Save Quote" : "Add"}</span> to run the normal {isQuoteOnlyPreApprovalItem ? "pre-approval quote" : "attach"} flow.</div>
-                                            ) : null}
-                                          </div>
-                                        ) : hasAttachedPart && topSuggestion ? (
-                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-500">
-                                            Stock suggestion available as an alternative, but this row already has an attached part.
-                                          </div>
-                                        ) : null}
-                                        {canCreateInventory ? (
-                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
-                                            <div className="font-medium text-neutral-100">No catalog match found</div>
-                                            <div className="text-neutral-500">Create an inventory item and attach it to this request without leaving the page.</div>
-                                            <button
-                                              type="button"
-                                              className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
+                                              className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-300 hover:text-white"
                                               onClick={() => openCreateInventoryModal(r.req.id, it)}
                                               disabled={rowBusy}
                                             >
-                                              Create inventory item
+                                              Add to Stock
                                             </button>
-                                          </div>
-                                        ) : null}
-                                        {supplierSuggestion ? (
-                                          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
-                                            <div>
-                                              Supplier option:{" "}
-                                              <span className="text-neutral-100">
-                                                {supplierSuggestion.supplier_name ?? "No preferred supplier"}
-                                              </span>
-                                              <span className="text-neutral-500"> · {supplierSuggestion.open_po_id ? "Use inventory" : "Order required"}</span>
-                                            </div>
-                                            {supplierSuggestion.open_po_number ? (
-                                              <div className="text-neutral-500">
-                                                Open PO available: {supplierSuggestion.open_po_number}
-                                              </div>
-                                            ) : null}
-                                            {supplierSuggestion.suggested_unit_cost != null ? (
-                                              <div className="text-neutral-500">
-                                                Last cost: ${supplierSuggestion.suggested_unit_cost.toFixed(2)}
-                                              </div>
-                                            ) : null}
-                                            <details className="mt-1 text-neutral-500">
-                                              <summary className="cursor-pointer text-neutral-400">Why?</summary>
-                                              <div className="mt-1 flex flex-wrap gap-1">
-                                                {supplierSuggestion.reasons.slice(0, 3).map((reason) => (
-                                                  <span key={reason} className="rounded-full border border-[color:var(--desktop-border)] px-2 py-0.5 text-[10px] text-neutral-400">
-                                                    {reason}
-                                                  </span>
-                                                ))}
+                                          ) : null}
+                                          {supplierSuggestion ? (
+                                            <details className="group inline-flex rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1">
+                                              <summary className="cursor-pointer list-none text-neutral-300">
+                                                Supplier: <span className="text-neutral-100">{supplierSuggestion.supplier_name ?? "review"}</span>
+                                                <span className="ml-1 text-neutral-500">{supplierSuggestion.open_po_id ? "open PO" : "order"}</span>
+                                              </summary>
+                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-neutral-950/80 p-2 text-neutral-400 shadow-xl">
+                                                {supplierSuggestion.open_po_number ? <div>Open PO: {supplierSuggestion.open_po_number}</div> : null}
+                                                {supplierSuggestion.suggested_unit_cost != null ? <div>Last cost: ${supplierSuggestion.suggested_unit_cost.toFixed(2)}</div> : null}
+                                                <div>{supplierSuggestion.reasons.slice(0, 3).join(" · ")}</div>
+                                                {supplierSuggestion.supplier_id ? (
+                                                  <button
+                                                    type="button"
+                                                    className="mt-2 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                    onClick={() => applySupplierSuggestionSelection(r.req.id, String(it.id), supplierSuggestion)}
+                                                    disabled={rowBusy || (it.ui_supplier_id === supplierSuggestion.supplier_id && (!supplierSuggestion.open_po_id || it.ui_po_id === supplierSuggestion.open_po_id))}
+                                                  >
+                                                    Apply supplier/PO suggestion
+                                                  </button>
+                                                ) : null}
+                                                {supplierSuggestionApplied ? <div className="mt-1 text-neutral-500">Suggested supplier selected — confirm with Create/Re-use PO.</div> : null}
                                               </div>
                                             </details>
-                                            {supplierSuggestion.supplier_id ? (
-                                              <button
-                                                type="button"
-                                                className="mt-1 underline decoration-dotted underline-offset-2 hover:text-white"
-                                                onClick={() =>
-                                                  applySupplierSuggestionSelection(
-                                                    r.req.id,
-                                                    String(it.id),
-                                                    supplierSuggestion,
-                                                  )
-                                                }
-                                                disabled={
-                                                  rowBusy ||
-                                                  (it.ui_supplier_id === supplierSuggestion.supplier_id &&
-                                                    (!supplierSuggestion.open_po_id ||
-                                                      it.ui_po_id === supplierSuggestion.open_po_id))
-                                                }
-                                              >
-                                                {supplierSuggestion.recommended_action === "add_to_existing_open_po"
-                                                  ? "Use inventory"
-                                                  : "Create PO"}
-                                              </button>
-                                            ) : null}
-                                            {supplierSuggestionApplied ? (
-                                              <div className="mt-1 text-neutral-500">
-                                                Suggested supplier selected — confirm with Create/Re-use PO.
-                                              </div>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
+                                          ) : null}
+                                        </div>
                                         {approved > 0 || isQuoteOnlyPreApprovalItem ? (
                                           <div className="text-[11px] text-neutral-500">
                                             State{" "}
