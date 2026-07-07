@@ -803,6 +803,31 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     return { partId: null, error: "Pick a stock part first." };
   }
 
+  function applyInventoryPartToItem(reqId: string, item: UiItem, partId: string | null): void {
+    const selectedPart = partId
+      ? parts.find((part) => String(part.id) === String(partId)) ?? null
+      : null;
+    const partNumber = selectedPart
+      ? String(selectedPart.part_number ?? selectedPart.sku ?? "").trim()
+      : "";
+    const manufacturer = selectedPart
+      ? String(selectedPart.supplier ?? "").trim()
+      : "";
+    const currentDesc = String(item.description ?? "").trim();
+
+    updateItem(reqId, String(item.id), {
+      ui_part_id: partId,
+      requested_part_number: partNumber || item.requested_part_number,
+      requested_manufacturer: manufacturer || item.requested_manufacturer,
+      description: currentDesc
+        ? item.description
+        : (selectedPart?.name ?? item.description ?? "").trim(),
+      ui_price:
+        item.ui_price ??
+        (selectedPart?.price == null ? undefined : toNum(selectedPart.price, 0)),
+    });
+  }
+
   function getPartForConflict(partId: string | null): PartRow | null {
     return partId ? parts.find((p) => String(p.id) === String(partId)) ?? null : null;
   }
@@ -1979,27 +2004,11 @@ if (!lineId || !isUuid(lineId)) {
                                           className={`${selectBase} w-full py-1.5`}
                                           value={it.ui_part_id ?? ""}
                                           onChange={(e) => {
-                                            const nextPartId =
-                                              e.target.value || null;
-                                            const p = parts.find(
-                                              (x) =>
-                                                String(x.id) === String(nextPartId),
+                                            applyInventoryPartToItem(
+                                              r.req.id,
+                                              it,
+                                              e.target.value || null,
                                             );
-
-                                            // ✅ do NOT clobber user's typed request; only fill if empty
-                                            const currentDesc = String(
-                                              it.description ?? "",
-                                            ).trim();
-
-                                            updateItem(r.req.id, String(it.id), {
-                                              ui_part_id: nextPartId,
-                                              description: currentDesc
-                                                ? it.description
-                                                : (p?.name ??
-                                                    it.description ??
-                                                    "").trim(),
-                                              ui_price: it.ui_price ?? (p?.price == null ? undefined : toNum(p.price, 0)),
-                                            });
                                           }}
                                           disabled={rowBusy}
                                         >
@@ -2032,10 +2041,10 @@ if (!lineId || !isUuid(lineId)) {
                                                 <button
                                                   type="button"
                                                   className="mt-2 underline decoration-dotted underline-offset-2 hover:text-white"
-                                                  onClick={() => updateItem(r.req.id, String(it.id), { ui_part_id: topSuggestion.part_id })}
+                                                  onClick={() => applyInventoryPartToItem(r.req.id, it, topSuggestion.part_id)}
                                                   disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
                                                 >
-                                                  Use this match
+                                                  Use Inventory
                                                 </button>
                                               </div>
                                             </details>
@@ -2386,7 +2395,7 @@ if (!lineId || !isUuid(lineId)) {
                                             ? "Saving…"
                                             : isQuoteOnlyPreApprovalItem
                                               ? "Save Quote"
-                                              : "Add"}
+                                              : "Add to Job"}
                                         </button>
 
                                         {isQuoteOnlyPreApprovalItem ? (
