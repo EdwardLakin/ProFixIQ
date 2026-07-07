@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
@@ -205,6 +205,7 @@ function lineLabelFrom(line?: LineLite): string {
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
@@ -1733,7 +1734,7 @@ if (!lineId || !isUuid(lineId)) {
                     ? lineLabelFrom(lineById.get(lineId))
                     : "";
 
-                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG) {
+                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG || searchParams.get("workbenchV2") === "1") {
                   const model = mapRequestToWorkbenchModel({
                     request: r.req as unknown as Record<string, unknown>,
                     items: r.items as unknown as Record<string, unknown>[],
