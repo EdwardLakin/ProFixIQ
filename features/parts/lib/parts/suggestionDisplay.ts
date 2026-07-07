@@ -24,11 +24,11 @@ function reasonLabel(reason: StockMatchReason): string {
     case "description match":
       return "Description match";
     case "in stock":
-      return "In stock";
+      return "Use inventory";
     case "no stock available":
       return "Order required";
     default:
-      return "Review match";
+      return "Likely match";
   }
 }
 
@@ -39,17 +39,19 @@ export function getStockSuggestionDisplay(
     ["exact sku match", "exact part number match", "vendor SKU match", "alias part number match"].includes(reason),
   );
   const matchLabel = hasExactPartNumber
-    ? "Exact part number match"
+    ? "Exact match"
     : suggestion.confidence === "high"
-      ? "Inventory match"
-      : "Review match";
-  const availabilityLabel = suggestion.qty_available > 0 ? "In stock" : "Order required";
+      ? "Likely match"
+      : "No preferred supplier";
+  const availabilityLabel = suggestion.qty_available > 0 ? "Use inventory" : "Order required";
   const actionLabel =
     suggestion.recommended_action === "allocate_from_stock"
       ? "Use inventory"
       : suggestion.recommended_action === "order_part"
         ? "Create PO"
-        : "Review match";
+        : suggestion.qty_available > 0
+          ? "Use inventory"
+          : "Create PO";
 
   return {
     headline: `${matchLabel} · ${availabilityLabel}`,
