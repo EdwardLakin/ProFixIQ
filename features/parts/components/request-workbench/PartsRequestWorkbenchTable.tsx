@@ -9,7 +9,7 @@ export function PartsRequestWorkbenchTable({
   onSave,
   onUseInventory,
   onOrder,
-  onAddToJob,
+  _onAddToJob,
   onReceive,
   onAddToStock,
   onClearMatch,
