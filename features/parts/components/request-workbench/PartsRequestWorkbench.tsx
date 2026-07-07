@@ -200,11 +200,35 @@ export function PartsRequestWorkbench({
         onSelectedPartChange={setSelectedInventoryPartId}
         onAttach={async (result) => {
           if (!activeItem) return;
+
+          const selectedPart = inventoryResults.find((part) => part.value === result.partId) ?? null;
+
+          setItems((current) =>
+            current.map((item) =>
+              item.id === activeItem.id
+                ? {
+                    ...item,
+                    partId: result.partId,
+                    requestedPartNumber:
+                      selectedPart?.partNumber ??
+                      selectedPart?.sku ??
+                      item.requestedPartNumber ??
+                      "",
+                    requestedManufacturer:
+                      selectedPart?.manufacturer ??
+                      item.requestedManufacturer ??
+                      "",
+                  }
+                : item,
+            ),
+          );
+
           await onAttachInventory?.({
             itemId: activeItem.id,
             partId: result.partId,
             warningAccepted: result.warningAccepted,
           });
+
           setActiveModal(null);
         }}
         onClose={() => setActiveModal(null)}
