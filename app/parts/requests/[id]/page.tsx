@@ -782,7 +782,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           p_qty: initialQtyNum,
           p_reason: "receive",
           p_ref_kind: "parts_request_initial_stock",
-          p_ref_id: null,
+          p_ref_id: part.id,
         } as DB["public"]["Functions"]["apply_stock_move"]["Args"]);
 
         if (stockMoveError) {
