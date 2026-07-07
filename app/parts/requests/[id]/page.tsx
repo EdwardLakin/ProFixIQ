@@ -1768,24 +1768,60 @@ if (!lineId || !isUuid(lineId)) {
                       <PartsRequestWorkbench
                         model={model}
                         onSaveItem={async (input: SaveItemInput) => {
+                          const qty = Number(input.qty);
+                          const sellPrice = input.sellPrice == null ? null : Number(input.sellPrice);
+
+                          if (!Number.isFinite(qty) || qty <= 0) {
+                            toast.error("Qty must be greater than zero.");
+                            return;
+                          }
+
+                          if (sellPrice != null && (!Number.isFinite(sellPrice) || sellPrice < 0)) {
+                            toast.error("Sell price must be zero or greater.");
+                            return;
+                          }
+
                           updateItem(r.req.id, input.itemId, {
                             description: input.description,
                             requested_part_number: input.requestedPartNumber ?? null,
                             requested_manufacturer: input.requestedManufacturer ?? null,
-                            ui_qty: input.qty,
-                            ui_price: input.sellPrice ?? undefined,
+                            qty,
+                            ui_qty: qty,
+                            quoted_price: sellPrice,
+                            ui_price: sellPrice ?? undefined,
                           });
+
                           await persistItemFields(input.itemId, {
                             description: input.description,
                             requested_part_number: input.requestedPartNumber ?? null,
                             requested_manufacturer: input.requestedManufacturer ?? null,
-                            qty: input.qty,
-                            quoted_price: input.sellPrice,
+                            qty,
+                            quoted_price: sellPrice,
                           });
+
+                          toast.success("Part request row saved.");
                           await load();
                         }}
                         onAttachInventory={async (input) => {
-                          updateItem(r.req.id, input.itemId, { ui_part_id: input.partId });
+                          const item = r.items.find((candidate) => String(candidate.id) === String(input.itemId));
+                          if (!item) {
+                            toast.error("Request item not found.");
+                            return;
+                          }
+
+                          updateItem(r.req.id, input.itemId, {
+                            part_id: input.partId,
+                            ui_part_id: input.partId,
+                          });
+
+                          await persistItemFields(input.itemId, {
+                            description: String(item.description ?? "").trim(),
+                            requested_part_number: String(item.requested_part_number ?? "").trim() || null,
+                            requested_manufacturer: String(item.requested_manufacturer ?? "").trim() || null,
+                            qty: Number(item.ui_qty ?? item.qty ?? 1),
+                            quoted_price: item.ui_price ?? item.quoted_price ?? null,
+                          });
+
                           toast.success(input.warningAccepted ? "Zero-stock inventory part attached." : "Inventory part attached.");
                           await load();
                         }}
