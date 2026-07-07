@@ -18,6 +18,9 @@ type Invoice = DB["public"]["Tables"]["invoices"]["Row"];
 type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
+  resolved_labor_total?: number | null;
+  resolved_parts_total?: number | null;
+  resolved_invoice_total?: number | null;
 };
 
 type HistoricalInvoiceRow = Invoice & {
@@ -605,12 +608,11 @@ export default function BillingPage(): JSX.Element {
               .toLowerCase()
               .replaceAll(" ", "_");
 
-            const laborTotal = Number(r.labor_total ?? 0);
-            const partsTotal = Number(r.parts_total ?? 0);
-            const invoiceTotal =
-              Number(r.invoice_total ?? 0) > 0
-                ? Number(r.invoice_total ?? 0)
-                : laborTotal + partsTotal;
+            const laborTotal = Number(r.resolved_labor_total ?? 0);
+            const partsTotal = Number(r.resolved_parts_total ?? 0);
+            const invoiceTotal = Number(
+              r.resolved_invoice_total ?? laborTotal + partsTotal,
+            );
 
             const progressValue =
               statusLower === "invoiced"
