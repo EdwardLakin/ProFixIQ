@@ -14,6 +14,8 @@ type Body = {
   vendorId?: string | null;
   vendor?: string | null;
   partId?: string | null;
+  requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
   notes?: string | null;
 };
 
@@ -243,6 +245,8 @@ export async function POST(
 
   const description = cleanString(body.description) ?? cleanString(body.notes);
   const vendor = cleanString(body.vendor);
+  const requestedPartNumber = cleanString(body.requestedPartNumber);
+  const requestedManufacturer = cleanString(body.requestedManufacturer);
   const quoteComplete = Boolean(partId) && quotedPrice != null && quotedPrice >= 0 && (nextQty ?? 0) > 0;
 
   const update: PartRequestItemUpdate = {
@@ -254,6 +258,8 @@ export async function POST(
     ...(vendorId !== null ? { vendor_id: vendorId } : {}),
     ...(vendor !== null ? { vendor } : {}),
     ...(partId !== null ? { part_id: partId } : {}),
+    requested_part_number: requestedPartNumber,
+    requested_manufacturer: requestedManufacturer,
     status: (quoteComplete ? "quoted" : "requested") as PartRequestItemUpdate["status"],
   };
 

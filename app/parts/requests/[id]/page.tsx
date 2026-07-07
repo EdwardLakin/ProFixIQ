@@ -29,6 +29,7 @@ import {
 } from "@/features/parts/lib/trust-signals";
 import {
   buildDeterministicStockSuggestions,
+  detectPartDescriptionConflict,
   type DeterministicStockSuggestion,
 } from "@/features/parts/lib/parts/deterministicStockMatcher";
 import {
@@ -212,6 +213,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [stockSuggestionsByItemId, setStockSuggestionsByItemId] = useState<Record<string, DeterministicStockSuggestion[]>>({});
   const [supplierSuggestionsByItemId, setSupplierSuggestionsByItemId] = useState<Record<string, DeterministicSupplierSuggestion[]>>({});
   const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
+  const [conflictWarningByItemId, setConflictWarningByItemId] = useState<Record<string, string>>({});
+  const [conflictOverrideByItemId, setConflictOverrideByItemId] = useState<Record<string, boolean>>({});
   const [createInventoryDraft, setCreateInventoryDraft] = useState<CreateInventoryDraft | null>(null);
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
@@ -756,6 +759,46 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     setSupplierSuggestionAppliedByItemId((prev) => ({ ...prev, [itemId]: true }));
   }
 
+  function resolveAddPartId(it: UiItem): { partId: string | null; error?: string } {
+    const selected = String(it.ui_part_id ?? it.part_id ?? "").trim();
+    if (selected) return { partId: selected };
+
+    const suggestions = stockSuggestionsByItemId[String(it.id)] ?? [];
+    const strong = suggestions.filter(
+      (s) =>
+        s.confidence === "high" ||
+        s.reasons.some((reason) =>
+          ["exact sku match", "exact part number match", "vendor SKU match", "alias part number match"].includes(reason),
+        ),
+    );
+    if (strong.length === 1) return { partId: strong[0].part_id };
+    if (strong.length > 1 || suggestions.filter((s) => s.confidence !== "low").length > 1) {
+      return { partId: null, error: "Choose an inventory match before adding." };
+    }
+    return { partId: null, error: "Pick a stock part first." };
+  }
+
+  function getPartForConflict(partId: string | null): PartRow | null {
+    return partId ? parts.find((p) => String(p.id) === String(partId)) ?? null : null;
+  }
+
+  async function clearRequestedPartNumber(reqId: string, itemId: string): Promise<void> {
+    updateItem(reqId, itemId, { requested_part_number: null, ui_part_id: null });
+    setConflictWarningByItemId((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    setConflictOverrideByItemId((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    await persistItemFields(itemId, { requested_part_number: null });
+    await load();
+    toast.success("Part number cleared. Suggestions refreshed.");
+  }
+
   async function syncRequestQuotedState(
     reqId: string,
     nextItems: UiItem[],
@@ -1197,9 +1240,24 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const partId = it.ui_part_id || it.part_id || null;
+    const resolved = resolveAddPartId(it);
+    const partId = resolved.partId;
+    if (!partId) {
+      toast.error(resolved.error ?? "Pick a stock part first.");
+      return;
+    }
     if (partId && !isUuid(partId)) {
       toast.error("Invalid part id (must be a UUID).");
+      return;
+    }
+    const conflict = detectPartDescriptionConflict({
+      requestedDescription: it.description,
+      requestedPartNumber: it.requested_part_number,
+      matchedPart: getPartForConflict(partId),
+    });
+    if (conflict && !conflictOverrideByItemId[itemId]) {
+      setConflictWarningByItemId((prev) => ({ ...prev, [itemId]: conflict.message }));
+      toast.warning("Possible mismatch. Review the warning before saving.");
       return;
     }
 
@@ -1222,6 +1280,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           quotedPrice: price,
           partId,
           vendorId: validVendorId,
+          requestedPartNumber: String(it.requested_part_number ?? "").trim() || null,
+          requestedManufacturer: String(it.requested_manufacturer ?? "").trim() || null,
         }),
       });
 
@@ -1279,6 +1339,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       await syncRequestQuotedState(reqId, nextItems, target.req.status);
       window.dispatchEvent(new Event("parts-request:submitted"));
       toast.success(body.notice || "Quote saved. Allocation will unlock after customer approval.");
+      setConflictWarningByItemId((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      setConflictOverrideByItemId((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } finally {
       setSavingItemId(null);
     }
@@ -1289,12 +1359,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const it = target?.items.find((x) => x.id === itemId);
     if (!target || !it) return;
 
-    const partId = it.ui_part_id;
+    const resolved = resolveAddPartId(it);
+    const partId = resolved.partId;
     const qty = toNum(it.ui_qty, 0);
     const price = it.ui_price;
 
     if (!partId) {
-      toast.error("Pick a stock part first.");
+      toast.error(resolved.error ?? "Pick a stock part first.");
       return;
     }
     if (!isUuid(partId)) {
@@ -1307,6 +1378,21 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
     if (price == null || !Number.isFinite(price)) {
       toast.error("Price is missing.");
+      return;
+    }
+    if (price < 0) {
+      toast.error("Enter a quoted unit price of 0 or greater.");
+      return;
+    }
+
+    const conflict = detectPartDescriptionConflict({
+      requestedDescription: it.description,
+      requestedPartNumber: it.requested_part_number,
+      matchedPart: getPartForConflict(partId),
+    });
+    if (conflict && !conflictOverrideByItemId[itemId]) {
+      setConflictWarningByItemId((prev) => ({ ...prev, [itemId]: conflict.message }));
+      toast.warning("Possible mismatch. Review the warning before adding.");
       return;
     }
 
@@ -1341,6 +1427,12 @@ if (!lineId || !isUuid(lineId)) {
         toast.error("Invalid PO id (must be a UUID).");
         return;
       }
+      const supplierId = String(it.ui_supplier_id ?? "").trim();
+      const validSupplierId = supplierId && !supplierId.startsWith("__new__:") ? supplierId : null;
+      if (validSupplierId && !isUuid(validSupplierId)) {
+        toast.error("Invalid supplier id (must be a UUID).");
+        return;
+      }
 
       // ✅ work_order_line_id must be UUID (avoid passing legacy strings)
       const safeLineId = isUuid(it.work_order_line_id)
@@ -1352,7 +1444,10 @@ if (!lineId || !isUuid(lineId)) {
         description: desc || it.description || "Part",
         qty,
         quoted_price: price,
+        requested_part_number: String(it.requested_part_number ?? "").trim() || null,
+        requested_manufacturer: String(it.requested_manufacturer ?? "").trim() || null,
         vendor: null,
+        vendor_id: validSupplierId,
         markup_pct: null,
         work_order_line_id: safeLineId,
         ...(poId ? { po_id: poId } : {}),
@@ -1400,6 +1495,7 @@ if (!lineId || !isUuid(lineId)) {
         return {
           ...x,
           part_id: partId,
+          ui_part_id: partId,
           quoted_price: price,
           qty,
           work_order_line_id: safeLineId,
@@ -1427,6 +1523,7 @@ if (!lineId || !isUuid(lineId)) {
                     : ({
                         ...x,
                         part_id: partId,
+                        ui_part_id: partId,
                         quoted_price: price,
                         qty,
                         work_order_line_id: safeLineId,
@@ -1476,6 +1573,16 @@ if (!lineId || !isUuid(lineId)) {
       }
 
       toast.success("Added to the work order line.");
+      setConflictWarningByItemId((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      setConflictOverrideByItemId((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } finally {
       setSavingReqId(null);
     }
@@ -1745,6 +1852,7 @@ if (!lineId || !isUuid(lineId)) {
                                 const supplierSuggestions = supplierSuggestionsByItemId[String(it.id)] ?? [];
                                 const supplierSuggestion = supplierSuggestions[0] ?? null;
                                 const supplierSuggestionApplied = !!supplierSuggestionAppliedByItemId[String(it.id)];
+                                const conflictWarning = conflictWarningByItemId[String(it.id)] ?? null;
                                 const topSuggestion = stockSuggestions[0] ?? null;
                                 const hasAttachedPart = isUuid(it.part_id);
                                 const showSuggestion = !!topSuggestion && !hasAttachedPart;
@@ -1907,11 +2015,11 @@ if (!lineId || !isUuid(lineId)) {
                                               disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
                                             >
                                               {topSuggestion.qty_available <= 0 || topSuggestion.confidence === "low"
-                                                ? (suggestionDisplay?.actionLabel ?? "Review match")
+                                                ? (suggestionDisplay?.actionLabel ?? "Create PO")
                                                 : (suggestionDisplay?.actionLabel ?? "Use inventory")}
                                             </button>
                                             {topSuggestion.part_id === it.ui_part_id ? (
-                                              <div className="mt-1 text-neutral-500">Selected for review. Click <span className="text-neutral-300">{isQuoteOnlyPreApprovalItem ? "Save Quote" : "Add"}</span> to run the normal {isQuoteOnlyPreApprovalItem ? "pre-approval quote" : "attach"} flow.</div>
+                                              <div className="mt-1 text-neutral-500">Inventory match selected. Click <span className="text-neutral-300">{isQuoteOnlyPreApprovalItem ? "Save Quote" : "Add"}</span> to run the normal {isQuoteOnlyPreApprovalItem ? "pre-approval quote" : "attach"} flow.</div>
                                             ) : null}
                                           </div>
                                         ) : hasAttachedPart && topSuggestion ? (
@@ -1936,11 +2044,11 @@ if (!lineId || !isUuid(lineId)) {
                                         {supplierSuggestion ? (
                                           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1.5 text-[11px] text-neutral-300">
                                             <div>
-                                              Suggested supplier:{" "}
+                                              Supplier option:{" "}
                                               <span className="text-neutral-100">
-                                                {supplierSuggestion.supplier_name ?? "Review / manual"}
+                                                {supplierSuggestion.supplier_name ?? "No preferred supplier"}
                                               </span>
-                                              <span className="text-neutral-500"> · confidence {supplierSuggestion.confidence}</span>
+                                              <span className="text-neutral-500"> · {supplierSuggestion.open_po_id ? "Use inventory" : "Order required"}</span>
                                             </div>
                                             {supplierSuggestion.open_po_number ? (
                                               <div className="text-neutral-500">
@@ -1952,13 +2060,16 @@ if (!lineId || !isUuid(lineId)) {
                                                 Last cost: ${supplierSuggestion.suggested_unit_cost.toFixed(2)}
                                               </div>
                                             ) : null}
-                                            <div className="mt-1 flex flex-wrap gap-1">
-                                              {supplierSuggestion.reasons.slice(0, 3).map((reason) => (
-                                                <span key={reason} className="rounded-full border border-[color:var(--desktop-border)] px-2 py-0.5 text-[10px] text-neutral-400">
-                                                  {reason}
-                                                </span>
-                                              ))}
-                                            </div>
+                                            <details className="mt-1 text-neutral-500">
+                                              <summary className="cursor-pointer text-neutral-400">Why?</summary>
+                                              <div className="mt-1 flex flex-wrap gap-1">
+                                                {supplierSuggestion.reasons.slice(0, 3).map((reason) => (
+                                                  <span key={reason} className="rounded-full border border-[color:var(--desktop-border)] px-2 py-0.5 text-[10px] text-neutral-400">
+                                                    {reason}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </details>
                                             {supplierSuggestion.supplier_id ? (
                                               <button
                                                 type="button"
@@ -1978,12 +2089,8 @@ if (!lineId || !isUuid(lineId)) {
                                                 }
                                               >
                                                 {supplierSuggestion.recommended_action === "add_to_existing_open_po"
-                                                  ? "Select open PO"
-                                                  : supplierSuggestion.recommended_action === "review_supplier"
-                                                    ? "Review supplier"
-                                                    : supplierSuggestion.recommended_action === "create_new_po"
-                                                      ? "Use supplier"
-                                                      : "Use suggested supplier"}
+                                                  ? "Use inventory"
+                                                  : "Create PO"}
                                               </button>
                                             ) : null}
                                             {supplierSuggestionApplied ? (
@@ -2037,6 +2144,38 @@ if (!lineId || !isUuid(lineId)) {
                                         {trustMeta && trustMeta.reasons.length > 0 ? (
                                           <div className="text-[11px] text-[var(--accent-copper-light)]/90">
                                             {trustMeta.reasons.slice(0, 2).join(" · ")}
+                                          </div>
+                                        ) : null}
+                                        {conflictWarning ? (
+                                          <div className="rounded-lg border border-amber-400/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
+                                            <div className="font-semibold">Possible mismatch</div>
+                                            <div className="mt-1 text-amber-100/90">{conflictWarning}</div>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                              <button
+                                                type="button"
+                                                className="rounded-md border border-amber-300/40 px-2 py-1 text-[11px] hover:bg-amber-300/10"
+                                                disabled={rowBusy}
+                                                onClick={() => {
+                                                  setConflictOverrideByItemId((prev) => ({ ...prev, [String(it.id)]: true }));
+                                                  setConflictWarningByItemId((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next[String(it.id)];
+                                                    return next;
+                                                  });
+                                                  toast.success("Mismatch override enabled for this item. Click Add again to continue.");
+                                                }}
+                                              >
+                                                Use anyway
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="rounded-md border border-amber-300/40 px-2 py-1 text-[11px] hover:bg-amber-300/10"
+                                                disabled={rowBusy}
+                                                onClick={() => void clearRequestedPartNumber(r.req.id, String(it.id))}
+                                              >
+                                                Clear part number
+                                              </button>
+                                            </div>
                                           </div>
                                         ) : null}
                                       </div>
@@ -2250,7 +2389,7 @@ if (!lineId || !isUuid(lineId)) {
                                           disabled={
                                             isQuoteOnlyPreApprovalItem
                                               ? quoteSaveDisabled
-                                              : rowBusy || !it.ui_part_id || !canMaterializeToLine
+                                              : rowBusy || !canMaterializeToLine
                                           }
                                           title={
                                             isQuoteOnlyPreApprovalItem
