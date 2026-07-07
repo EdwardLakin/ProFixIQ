@@ -9,7 +9,7 @@ export function PartsRequestWorkbenchTable({
   onSave,
   onUseInventory,
   onOrder,
-  _onAddToJob,
+  onAddToJob,
   onReceive,
   onAddToStock,
   onClearMatch,
@@ -57,6 +57,7 @@ export function PartsRequestWorkbenchTable({
               onSave={onSave}
               onUseInventory={onUseInventory}
               onOrder={onOrder}
+              onAddToJob={onAddToJob}
               onReceive={onReceive}
               onAddToStock={onAddToStock}
               onClearMatch={onClearMatch}
