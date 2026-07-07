@@ -55,6 +55,7 @@ type MatchedWorkOrder = {
 };
 type ExistingInvoiceMatch = {
   id: string;
+  invoice_number?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -172,7 +173,98 @@ export function resolveInvoiceImportCustomer(
           ? "name"
           : null;
 
-  return { customer, customerMatchSource, legacyCustomerId };
+  return {
+    customer,
+    customerMatchSource,
+    legacyCustomerId,
+    customerEmailKey,
+    customerPhoneKey,
+    customerNameKey,
+  };
+}
+
+function postgrestInList(values: Iterable<string>) {
+  return Array.from(values)
+    .map(
+      (value) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
+    )
+    .join(",");
+}
+
+function importedInvoiceId(
+  metadata: Record<string, unknown> | null | undefined,
+) {
+  return clean(metadata?.imported_invoice_id);
+}
+
+async function fetchBatchInvoiceMatches(
+  client: SupabaseClient,
+  shopId: string,
+  invoiceNumbers: Set<string>,
+  sourceIds: Set<string>,
+) {
+  const historicalBySourceId = new Map<string, ExistingInvoiceMatch>();
+  const historicalByInvoiceNumber = new Map<string, ExistingInvoiceMatch>();
+  const liveCollisionsByInvoiceNumber = new Map<string, ExistingInvoiceMatch>();
+
+  const historicalFilters = [
+    sourceIds.size
+      ? `metadata->>imported_invoice_id.in.(${postgrestInList(sourceIds)})`
+      : null,
+    invoiceNumbers.size
+      ? `invoice_number.in.(${postgrestInList(invoiceNumbers)})`
+      : null,
+  ].filter(Boolean);
+
+  const historicalQuery = historicalFilters.length
+    ? client
+        .from("invoices")
+        .select("id, invoice_number, metadata")
+        .eq("shop_id", shopId)
+        .contains("metadata", { import_type: "invoice_csv" })
+        .or(historicalFilters.join(","))
+    : Promise.resolve({ data: [], error: null });
+
+  const liveQuery = invoiceNumbers.size
+    ? client
+        .from("invoices")
+        .select("id, invoice_number, metadata")
+        .eq("shop_id", shopId)
+        .in("invoice_number", Array.from(invoiceNumbers))
+    : Promise.resolve({ data: [], error: null });
+
+  const [
+    { data: historicalRows, error: historicalError },
+    { data: liveRows, error: liveError },
+  ] = await Promise.all([historicalQuery, liveQuery]);
+
+  if (historicalError) throw historicalError;
+  if (liveError) throw liveError;
+
+  for (const invoice of (historicalRows ?? []) as ExistingInvoiceMatch[]) {
+    const sourceId = importedInvoiceId(invoice.metadata);
+    if (sourceId && !historicalBySourceId.has(sourceId)) {
+      historicalBySourceId.set(sourceId, invoice);
+    }
+    const invoiceNumber = clean(invoice.invoice_number);
+    if (invoiceNumber && !historicalByInvoiceNumber.has(invoiceNumber)) {
+      historicalByInvoiceNumber.set(invoiceNumber, invoice);
+    }
+  }
+
+  for (const invoice of (liveRows ?? []) as ExistingInvoiceMatch[]) {
+    if (isHistoricalInvoiceCsvMetadata(invoice.metadata)) continue;
+    const invoiceNumber = clean(invoice.invoice_number);
+    if (invoiceNumber && !liveCollisionsByInvoiceNumber.has(invoiceNumber)) {
+      liveCollisionsByInvoiceNumber.set(invoiceNumber, invoice);
+    }
+  }
+
+  return {
+    historicalBySourceId,
+    historicalByInvoiceNumber,
+    liveCollisionsByInvoiceNumber,
+  };
 }
 
 function isInvoiceNumberUniqueConflict(error: unknown) {
@@ -195,61 +287,6 @@ export function isHistoricalInvoiceCsvMetadata(metadata: unknown) {
     !!metadata &&
     typeof metadata === "object" &&
     (metadata as Record<string, unknown>).import_type === "invoice_csv"
-  );
-}
-
-async function findHistoricalInvoice(
-  client: SupabaseClient,
-  shopId: string,
-  invoiceNumber: string | null,
-  sourceId: string | null,
-): Promise<ExistingInvoiceMatch | null> {
-  if (sourceId) {
-    const { data, error } = await client
-      .from("invoices")
-      .select("id, metadata")
-      .eq("shop_id", shopId)
-      .contains("metadata", {
-        import_type: "invoice_csv",
-        imported_invoice_id: sourceId,
-      })
-      .limit(1);
-    if (error) throw error;
-    const match = (data?.[0] as ExistingInvoiceMatch | undefined) ?? null;
-    if (match) return match;
-  }
-
-  if (invoiceNumber) {
-    const { data, error } = await client
-      .from("invoices")
-      .select("id, metadata")
-      .eq("shop_id", shopId)
-      .eq("invoice_number", invoiceNumber)
-      .contains("metadata", { import_type: "invoice_csv" })
-      .limit(1);
-    if (error) throw error;
-    return (data?.[0] as ExistingInvoiceMatch | undefined) ?? null;
-  }
-
-  return null;
-}
-
-async function hasLiveInvoiceNumberCollision(
-  client: SupabaseClient,
-  shopId: string,
-  invoiceNumber: string | null,
-) {
-  if (!invoiceNumber) return false;
-  const { data, error } = await client
-    .from("invoices")
-    .select("id, metadata")
-    .eq("shop_id", shopId)
-    .eq("invoice_number", invoiceNumber)
-    .limit(10);
-  if (error) throw error;
-
-  return ((data ?? []) as ExistingInvoiceMatch[]).some(
-    (invoice) => !isHistoricalInvoiceCsvMetadata(invoice.metadata),
   );
 }
 
@@ -388,6 +425,16 @@ export async function processInvoiceImportJobBatch(
     return { ok: true, processed: 0, completed: true, job: { id: job.id } };
   }
 
+  const batchInvoiceNumbers = new Set<string>();
+  const batchSourceIds = new Set<string>();
+  for (const staged of rows) {
+    const row = staged.raw_row;
+    const invoiceNumber = clean(row.invoice_number ?? row.invoice_id);
+    const sourceId = clean(row.invoice_id);
+    if (invoiceNumber) batchInvoiceNumbers.add(invoiceNumber);
+    if (sourceId) batchSourceIds.add(sourceId);
+  }
+
   const [{ data: customers }, { data: vehicles }, { data: workOrders }] =
     await Promise.all([
       client
@@ -418,6 +465,17 @@ export async function processInvoiceImportJobBatch(
     const normalizedVin = vin(vehicle.vin);
     if (normalizedVin) vehiclesById.set(normalizedVin, vehicle);
   }
+
+  const {
+    historicalBySourceId,
+    historicalByInvoiceNumber,
+    liveCollisionsByInvoiceNumber,
+  } = await fetchBatchInvoiceMatches(
+    client,
+    job.shop_id,
+    batchInvoiceNumbers,
+    batchSourceIds,
+  );
 
   const workOrdersByNumber = new Map<string, MatchedWorkOrder>();
   for (const workOrder of (workOrders ?? []) as MatchedWorkOrder[]) {
@@ -464,12 +522,10 @@ export async function processInvoiceImportJobBatch(
         continue;
       }
 
-      const existingHistoricalInvoice = await findHistoricalInvoice(
-        client,
-        job.shop_id,
-        invoiceNumber,
-        sourceId,
-      );
+      const existingHistoricalInvoice =
+        (sourceId ? historicalBySourceId.get(sourceId) : null) ??
+        historicalByInvoiceNumber.get(invoiceNumber) ??
+        null;
       if (
         pendingInvoiceNumbers.has(invoiceNumber) &&
         !existingHistoricalInvoice
@@ -498,8 +554,14 @@ export async function processInvoiceImportJobBatch(
           ? (vehiclesById.get(clean(row.vehicle_id)!) ??
             vehiclesById.get(clean(row.vehicle_id)!.toLowerCase()))
           : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
-      const { customer, customerMatchSource, legacyCustomerId } =
-        resolveInvoiceImportCustomer(row, customerLookupMaps);
+      const {
+        customer,
+        customerMatchSource,
+        legacyCustomerId,
+        customerEmailKey,
+        customerPhoneKey,
+        customerNameKey,
+      } = resolveInvoiceImportCustomer(row, customerLookupMaps);
       const fallbackCustomerId =
         vehicle?.customer_id ?? workOrder?.customer_id ?? null;
       const customerId = customer?.id ?? fallbackCustomerId;
@@ -520,6 +582,13 @@ export async function processInvoiceImportJobBatch(
         : workOrder?.vehicle_id
           ? "work_order_vehicle_id"
           : null;
+      const customerMatchFailedReason = customerId
+        ? null
+        : legacyCustomerId
+          ? "legacy_customer_id_not_found"
+          : customerEmailKey || customerPhoneKey || customerNameKey
+            ? "customer_lookup_fields_not_found"
+            : "no_customer_lookup_fields";
       const total = num(row.total) ?? num(row.subtotal) ?? 0;
       const amountPaid = num(row.amount_paid) ?? 0;
       const status = normalizeInvoiceImportStatus(row);
@@ -541,14 +610,10 @@ export async function processInvoiceImportJobBatch(
         continue;
       }
 
-      if (
-        !existingHistoricalInvoice &&
-        (await hasLiveInvoiceNumberCollision(
-          client,
-          job.shop_id,
-          invoiceNumber,
-        ))
-      ) {
+      const liveCollision = !existingHistoricalInvoice
+        ? (liveCollisionsByInvoiceNumber.get(invoiceNumber) ?? null)
+        : null;
+      if (liveCollision) {
         const reason = "live_invoice_number_collision";
         counts.skipped++;
         sample.skippedRows.push({
@@ -556,6 +621,7 @@ export async function processInvoiceImportJobBatch(
           reason,
           invoiceNumber,
           workOrderNumber,
+          liveInvoiceId: liveCollision.id,
         });
         await client
           .from("import_job_rows")
@@ -599,6 +665,7 @@ export async function processInvoiceImportJobBatch(
             matched_customer_id: customerId,
             matched_vehicle_id: vehicleId,
             customer_match_source: customerMatchSourceResolved,
+            customer_match_failed_reason: customerMatchFailedReason,
             vehicle_match_source: vehicleMatchSource,
             source_system: clean(row.source_system),
             work_order_number: workOrderNumber,
