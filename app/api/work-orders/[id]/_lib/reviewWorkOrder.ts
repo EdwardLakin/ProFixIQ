@@ -38,6 +38,26 @@ function numericValue(value: unknown): number | null {
   return null;
 }
 
+
+function hasMeaningfulJson(value: unknown): boolean {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  return Boolean(value);
+}
+
+function lineRequiresParts(line: Record<string, unknown>): boolean {
+  if (line.no_parts_required === true) return false;
+  if (line.parts_required === true) return true;
+  if (hasMeaningfulJson(line.parts_required)) return true;
+  if (hasMeaningfulJson(line.parts_needed)) return true;
+  if (typeof line.parts === "string" && line.parts.trim().length > 0) return true;
+  if (line.parts_verification_required === true) return true;
+  const status = String(line.status ?? "").trim().toLowerCase();
+  return status === "pending_parts" || status === "awaiting_parts";
+}
+
 function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
   const quotedPrice = numericValue(row.quoted_price);
   const unitPrice = numericValue(row.unit_price);
@@ -87,6 +107,24 @@ export async function reviewWorkOrder({
     }
   }
 
+
+  const { data: stagedPartRows } = await supabase
+    .from("work_order_parts")
+    .select("work_order_line_id, quantity, unit_price, total_price")
+    .eq("work_order_id", workOrderId)
+    .eq("shop_id", shopId);
+
+  for (const row of stagedPartRows ?? []) {
+    const record = row as Record<string, unknown>;
+    const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
+    const qty = numericValue(record.quantity) ?? 0;
+    const unitPrice = numericValue(record.unit_price);
+    const totalPrice = numericValue(record.total_price);
+    if (lineId && qty > 0 && ((unitPrice != null && unitPrice > 0) || (totalPrice != null && totalPrice > 0))) {
+      hasBillablePartsByLine.set(lineId, true);
+    }
+  }
+
   const { data: linkedPartRequestRows } = await supabase
     .from("part_request_items")
     .select("work_order_line_id, quote_line_id, status, approved, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost")
@@ -127,6 +165,13 @@ export async function reviewWorkOrder({
       issues: [{ kind: "missing_wo", message: "WO not found" }],
     };
   }
+
+  const { data: shop } = await supabase
+    .from("shops")
+    .select("labor_rate")
+    .eq("id", shopId)
+    .maybeSingle<{ labor_rate: number | null }>();
+  const shopLaborRate = numericValue(shop?.labor_rate);
 
   const { data: lines, error: lnErr } = await supabase
     .from("work_order_lines")
@@ -182,8 +227,36 @@ export async function reviewWorkOrder({
     const noCharge = (ln as Record<string, unknown>)["no_charge"] === true;
     const laborNA = (ln as Record<string, unknown>)["labor_marked_na"] === true;
     const hasBillableParts = hasBillablePartsByLine.get(String(ln.id)) === true;
+    if (lineRequiresParts(ln as Record<string, unknown>) && !hasBillableParts) {
+      issues.push({
+        kind: "missing_required_parts",
+        lineId: ln.id,
+        message: `Required parts are missing from line: ${ln.description ?? ln.complaint ?? "job"}`,
+      });
+    }
+
+    const laborHours = numericValue(ln.labor_time) ?? 0;
+    const lineLaborRate = numericValue((ln as Record<string, unknown>)["labor_rate"]);
+    const effectiveLaborRate = lineLaborRate && lineLaborRate > 0 ? lineLaborRate : shopLaborRate ?? 0;
+    const explicitLaborTotal = numericValue((ln as Record<string, unknown>)["labor_total"]);
+    const laborTotal = explicitLaborTotal != null && explicitLaborTotal > 0 ? explicitLaborTotal : laborHours * effectiveLaborRate;
+
+    if (!noCharge && !laborNA && laborHours > 0 && !(laborTotal > 0) && !hasBillableParts) {
+      issues.push({
+        kind: "invalid_labor_total",
+        lineId: ln.id,
+        message: `Labor pricing is missing or invalid for line: ${ln.description ?? ln.complaint ?? "job"}`,
+      });
+    } else if (!noCharge && !laborNA && laborHours >= 1 && laborTotal > 0 && laborTotal <= laborHours + 0.01 && effectiveLaborRate <= 1) {
+      issues.push({
+        kind: "suspicious_labor_total",
+        lineId: ln.id,
+        message: `Labor total looks like hours were used as dollars for line: ${ln.description ?? ln.complaint ?? "job"}`,
+      });
+    }
+
     const laborRequired = !noCharge && !laborNA && !hasBillableParts;
-    if (laborRequired && !(typeof ln.labor_time === "number" && ln.labor_time > 0)) {
+    if (laborRequired && !(laborHours > 0)) {
       issues.push({
         kind: "no_labor_time",
         lineId: ln.id,

@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolveWorkOrderLinePricing } from "../features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+
+const reviewSource = readFileSync("app/api/work-orders/[id]/_lib/reviewWorkOrder.ts", "utf8");
+const billingPage = readFileSync("app/billing/page.tsx", "utf8");
+const previewClient = readFileSync("features/work-orders/components/InvoicePreviewPageClient.tsx", "utf8");
+const sendRoute = readFileSync("app/api/invoices/send/route.ts", "utf8");
+const snapshotSource = readFileSync("features/invoices/server/getInvoiceSnapshot.ts", "utf8");
+
+describe("regular live invoice flow safety", () => {
+  it("prices 1.0 labor hour from explicit total or labor rate, never as $1.00", () => {
+    expect(resolveWorkOrderLinePricing({
+      line: { labor_time: 1, labor_total: 150, labor_rate: null },
+      shopLaborRate: 125,
+    }).laborTotal).toBe(150);
+
+    expect(resolveWorkOrderLinePricing({
+      line: { labor_time: 1, labor_total: null, labor_rate: null },
+      shopLaborRate: 125,
+    }).laborTotal).toBe(125);
+  });
+
+  it("blocks AI/invoice review when parts are required but no billable parts are attached", () => {
+    expect(reviewSource).toContain("function lineRequiresParts");
+    expect(reviewSource).toContain("missing_required_parts");
+    expect(reviewSource).toContain("work_order_parts");
+    expect(reviewSource).toContain("work_order_part_allocations");
+    expect(reviewSource).toContain("part_request_items");
+  });
+
+  it("flags invalid or suspicious labor totals before invoice readiness passes", () => {
+    expect(reviewSource).toContain("invalid_labor_total");
+    expect(reviewSource).toContain("suspicious_labor_total");
+    expect(reviewSource).toContain("Labor total looks like hours were used as dollars");
+  });
+
+  it("includes persisted parts and labor in the canonical invoice preview totals", () => {
+    expect(snapshotSource).toContain("labor_total");
+    expect(snapshotSource).toContain("labor_rate");
+    expect(snapshotSource).toContain("work_order_part_allocations");
+    expect(snapshotSource).toContain("work_order_parts");
+    expect(snapshotSource).toContain("quote_line_part_request");
+    expect(previewClient).toContain("/api/work-orders/${workOrderId}/invoice");
+    expect(previewClient).toContain("snapshotJson?.snapshot?.parts");
+    expect(previewClient).toContain("canonicalInvoiceTotal");
+  });
+
+  it("billing Invoice button navigates to preview instead of sending", () => {
+    expect(billingPage).toContain("/work-orders/invoice/${row.id}");
+    expect(billingPage).toContain("window.location.assign(previewUrl)");
+    expect(billingPage).not.toContain('fetch("/api/invoices/send"');
+  });
+
+  it("invoice send remains only behind preview confirmation", () => {
+    expect(previewClient).toContain("Send invoice");
+    expect(previewClient).toContain('fetch("/api/invoices/send"');
+    expect(sendRoute).toContain("Invoice review failed. Resolve blocking issues before sending.");
+  });
+});

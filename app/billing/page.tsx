@@ -403,56 +403,12 @@ export default function BillingPage(): JSX.Element {
     [load],
   );
 
-  const handleInvoice = useCallback(
-    async (row: Row) => {
-      if (!confirm("Create and email a Stripe invoice to the customer?"))
-        return;
-
-      try {
-        const customerEmail = row.customers?.email?.trim() ?? "";
-        if (!customerEmail) {
-          toast.error("Customer email is required before sending an invoice.");
-          return;
-        }
-
-        const customerName = [
-          row.customers?.first_name ?? "",
-          row.customers?.last_name ?? "",
-        ]
-          .join(" ")
-          .trim();
-
-        const res = await fetch("/api/invoices/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: row.id,
-            customerEmail,
-            customerName: customerName.length ? customerName : undefined,
-          }),
-        });
-
-        const j = (await res.json().catch(() => null)) as {
-          ok?: boolean;
-          stripeInvoiceId?: string;
-          error?: string;
-        } | null;
-
-        if (!res.ok || !j?.ok) {
-          toast.error(j?.error ?? "Failed to create invoice.");
-          return;
-        }
-
-        toast.success("Invoice created and emailed.");
-        await load();
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to create invoice.";
-        toast.error(msg);
-      }
-    },
-    [load],
-  );
+  const handleInvoice = useCallback((row: Row) => {
+    const previewUrl = `/work-orders/invoice/${row.id}`;
+    if (typeof window !== "undefined") {
+      window.location.assign(previewUrl);
+    }
+  }, []);
 
   const total = rows.length + historicalInvoices.length;
   const historicalCount = historicalInvoices.length;
@@ -796,7 +752,7 @@ export default function BillingPage(): JSX.Element {
                       onClick={() => void handleInvoice(r)}
                       disabled={r.status === "invoiced"}
                       className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Create and email Stripe invoice"
+                      title="Open invoice preview"
                     >
                       Invoice
                     </button>

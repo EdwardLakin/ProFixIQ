@@ -25,7 +25,7 @@ export function normalizeLaborHoursInput(
 }
 
 export function resolveWorkOrderLinePricing(args: {
-  line: Pick<WorkOrderLine, "labor_time"> & { id?: string; price_estimate?: number | null };
+  line: Pick<WorkOrderLine, "labor_time"> & { id?: string; price_estimate?: number | null; labor_total?: number | null; labor_rate?: number | null };
   quote?: Partial<WorkOrderQuoteLine> | null;
   shopLaborRate: number | null;
   stagedParts?: Array<Pick<WorkOrderPart, "quantity" | "unit_price" | "total_price">>;
@@ -63,7 +63,9 @@ export function resolveWorkOrderLinePricing(args: {
   const quotedHours = toNum(quote?.est_labor_hours) ?? toNum(quote?.labor_hours);
   const laborHours = quotedHours ?? lineHours;
 
-  const laborRate = toNum(shopLaborRate) ?? 0;
+  const explicitLineLaborTotal = toNum(line.labor_total);
+  const explicitLineLaborRate = toNum(line.labor_rate);
+  const laborRate = explicitLineLaborRate != null && explicitLineLaborRate > 0 ? explicitLineLaborRate : toNum(shopLaborRate) ?? 0;
   const quotedLaborTotal = toNum(quote?.labor_total);
 
   const stagedPartsTotal = stagedParts.reduce((sum, part) => {
@@ -84,13 +86,16 @@ export function resolveWorkOrderLinePricing(args: {
   const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? toNum(line.price_estimate) ?? (laborHours * laborRate) + partsTotal;
   const computedLaborTotal = laborHours * laborRate;
   const inferredLaborFromLineTotal = Math.max(0, lineTotal - partsTotal);
+  const explicitLineLaborTotalIsUsable = explicitLineLaborTotal != null && explicitLineLaborTotal > 0;
   const quotedLaborTotalIsUsable = quotedLaborTotal != null && quotedLaborTotal > 0;
   const computedLaborTotalIsUsable = computedLaborTotal > 0;
-  const laborTotal = quotedLaborTotalIsUsable
-    ? quotedLaborTotal
-    : computedLaborTotalIsUsable
-      ? computedLaborTotal
-      : inferredLaborFromLineTotal;
+  const laborTotal = explicitLineLaborTotalIsUsable
+    ? explicitLineLaborTotal
+    : quotedLaborTotalIsUsable
+      ? quotedLaborTotal
+      : computedLaborTotalIsUsable
+        ? computedLaborTotal
+        : inferredLaborFromLineTotal;
 
   return { laborHours, laborRate, laborTotal, partsCount, partsTotal, lineTotal };
 }

@@ -39,7 +39,7 @@ export type InvoiceSnapshotPart = {
 export type InvoiceSnapshotLine = Pick<
   WorkOrderLineRow,
   "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time"
->;
+> & { labor_total?: number | null };
 
 export type InvoiceSnapshot = {
   workOrder: Pick<
@@ -391,7 +391,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: linesRaw } = await supabase
     .from("work_order_lines")
-    .select("id, line_no, description, complaint, cause, correction, labor_time")
+    .select("id, line_no, description, complaint, cause, correction, labor_time, labor_total")
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("line_no", { ascending: true })
