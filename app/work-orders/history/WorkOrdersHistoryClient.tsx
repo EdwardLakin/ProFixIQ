@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { format } from "date-fns";
@@ -14,7 +13,7 @@ import {
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { VehicleHistoryCsvImportCard } from "@/features/work-orders/components/VehicleHistoryCsvImportCard";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
-import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 
 type DB = Database;
 type HistoryRow = DB["public"]["Tables"]["history"]["Row"];
@@ -69,13 +68,7 @@ function fmtDate(iso: string | null | undefined, pattern = "PPpp"): string {
 }
 
 export default function WorkOrdersHistoryClient(): JSX.Element {
-  const searchParams = useSearchParams();
-  const guidedQuery = useMemo(
-    () => parseGuidedOnboardingQuery(searchParams),
-    [searchParams],
-  );
-  const vehicleHistoryGuidedQuery =
-    guidedQuery?.onboardingStep === "vehicle_history" ? guidedQuery : null;
+  const vehicleHistoryGuidedQuery = usePersistentGuidedOnboardingQuery("vehicle_history");
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);

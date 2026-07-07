@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { GuidedImportSummary } from "@/features/shared/components/import/GuidedImportSummary";
 import { CsvImportProgress, type CsvImportProgressState } from "@/features/shared/components/import/CsvImportProgress";
 import { useImportJobProgress, type ImportJobProgressJob } from "@/features/shared/components/import/useImportJobProgress";
-import { parseGuidedOnboardingQuery, type GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
+import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type InvoiceImportRow = { invoice_id?: string | null; invoice_number?: string | null; work_order_number?: string | null; customer_id?: string | null; customer_email?: string | null; customer_phone?: string | null; customer_name?: string | null; customer?: string | null; email?: string | null; phone?: string | null; name?: string | null; vehicle_id?: string | null; vin?: string | null; invoice_date?: string | null; due_date?: string | null; paid_date?: string | null; status?: string | null; payment_status?: string | null; service_category?: string | null; description?: string | null; labor_hours?: string | null; labor_total?: string | null; parts_total?: string | null; shop_supplies?: string | null; subtotal?: string | null; tax?: string | null; total?: string | null; amount_paid?: string | null; balance_due?: string | null; advisor?: string | null; technician?: string | null; notes?: string | null; source_system?: string | null };
 type ImportCounts = { imported: number; updated: number; skipped: number; failed: number; duplicates: number };
@@ -25,7 +26,7 @@ function localValidation(row: InvoiceImportRow): string | null { if (!hasValidDa
 function downloadSample() { const blob = new Blob([SAMPLE], { type: "text/csv;charset=utf-8" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "invoice-import-template.csv"; a.click(); URL.revokeObjectURL(a.href); }
 
 export function InvoiceCsvImportCard({ onImported, onImportActiveChange }: { onImported?: () => void; onImportActiveChange?: (active: boolean) => void }) {
-  const router = useRouter(); const searchParams = useSearchParams(); const guidedQuery = useMemo<GuidedOnboardingQuery | null>(() => parseGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const router = useRouter(); const guidedQuery = usePersistentGuidedOnboardingQuery("invoices") as GuidedOnboardingQuery | null;
   const fileInputRef = useRef<HTMLInputElement | null>(null); const [file, setFile] = useState<File | null>(null); const [fileName, setFileName] = useState<string | null>(null); const [headers, setHeaders] = useState<string[]>([]); const [rows, setRows] = useState<InvoiceImportRow[]>([]); const [parseError, setParseError] = useState<string | null>(null); const [importError, setImportError] = useState<string | null>(null); const [response, setResponse] = useState<ImportResponse | null>(null); const [importing, setImporting] = useState(false); const [activeJobId, setActiveJobId] = useState<string | null>(null); const [completingOnboarding, setCompletingOnboarding] = useState(false); const [progress, setProgress] = useState<CsvImportProgressState | null>(null);
   const isOnboarding = Boolean(guidedQuery?.onboardingSession && guidedQuery.onboardingStep === "invoices"); const rowValidation = useMemo(() => rows.map(localValidation), [rows]); const importableRows = useMemo(() => rows.filter((_, index) => !rowValidation[index]), [rows, rowValidation]); const previewRows = importableRows.slice(0, 5);
   function reset() { setRows([]); setHeaders([]); setParseError(null); setImportError(null); setResponse(null); setProgress(null); }
