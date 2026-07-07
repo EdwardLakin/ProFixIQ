@@ -183,8 +183,17 @@ describe("historical invoice imports", () => {
     );
   });
 
+  it("batch fetches historical/live collisions instead of per-row invoice lookups", () => {
+    expect(importer).toContain("fetchBatchInvoiceMatches");
+    expect(importer).toContain("batchInvoiceNumbers");
+    expect(importer).toContain("batchSourceIds");
+    expect(importer).toContain("historicalBySourceId");
+    expect(importer).toContain("liveCollisionsByInvoiceNumber");
+    expect(importer).not.toContain("findHistoricalInvoice");
+    expect(importer).not.toContain("hasLiveInvoiceNumberCollision");
+  });
+
   it("refreshes existing invoice_csv rows instead of skipping historical duplicates", () => {
-    expect(importer).toContain("findHistoricalInvoice");
     expect(importer).toContain(
       "existingInvoiceId: existingHistoricalInvoice?.id ?? null",
     );
@@ -192,23 +201,26 @@ describe("historical invoice imports", () => {
     expect(importer).toContain("customer_id: customerId");
     expect(importer).toContain("work_order_id: workOrder?.id ?? null");
     expect(importer).toContain("matched_customer_id: customerId");
+    expect(importer).toContain("customer_match_failed_reason");
     expect(importer).toContain(
       "customer_match_source: customerMatchSourceResolved",
     );
   });
 
   it("does not overwrite live invoices with colliding historical invoice numbers", () => {
-    expect(importer).toContain("hasLiveInvoiceNumberCollision");
     expect(importer).toContain("live_invoice_number_collision");
+    expect(importer).toContain("liveCollision.id");
     expect(importer).toContain(
-      "!isHistoricalInvoiceCsvMetadata(invoice.metadata)",
+      "isHistoricalInvoiceCsvMetadata(invoice.metadata)",
     );
   });
 
   it("prefers source id historical matches before invoice-number fallback", () => {
-    const sourceMatchIndex = importer.indexOf("imported_invoice_id: sourceId");
+    const sourceMatchIndex = importer.indexOf(
+      "historicalBySourceId.get(sourceId)",
+    );
     const fallbackIndex = importer.indexOf(
-      '.eq("invoice_number", invoiceNumber)',
+      "historicalByInvoiceNumber.get(invoiceNumber)",
     );
 
     expect(sourceMatchIndex).toBeGreaterThan(-1);

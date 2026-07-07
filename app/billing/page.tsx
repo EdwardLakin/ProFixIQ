@@ -34,6 +34,9 @@ type InvoiceMetadata = {
   raw_row?: Record<string, unknown> | null;
   legacy_customer_id?: string | null;
   legacy_vehicle_id?: string | null;
+  customer_match_failed_reason?: string | null;
+  matched_customer_id?: string | null;
+  customer_match_source?: string | null;
 };
 
 type Status =
@@ -54,7 +57,7 @@ const BILLING_STATUSES: Status[] = [
 const INPUT_DARK = "desktop-input w-full px-3 py-2 text-sm";
 
 const SELECT_DARK = "desktop-input w-full px-3 py-2 text-sm";
-const HISTORICAL_INVOICE_PAGE_SIZE = 100;
+const HISTORICAL_INVOICE_PAGE_SIZE = 250;
 
 function stageAccent(status: string | null | undefined): {
   badge: string;
@@ -129,149 +132,160 @@ export default function BillingPage(): JSX.Element {
   const [status, setStatus] = useState<Status | "">("");
   const [err, setErr] = useState<string | null>(null);
   const [historicalVisibleLimit, setHistoricalVisibleLimit] = useState(25);
+  const [historicalHasMore, setHistoricalHasMore] = useState(false);
+  const [historicalLoadingMore, setHistoricalLoadingMore] = useState(false);
   const [expandedHistoricalInvoiceId, setExpandedHistoricalInvoiceId] =
     useState<string | null>(null);
   const [invoiceImportActive, setInvoiceImportActive] = useState(false);
 
-  const load = useCallback(async (options?: { background?: boolean }) => {
-    if (!options?.background) setLoading(true);
-    setErr(null);
+  const load = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!options?.background) setLoading(true);
+      setErr(null);
 
-    let query = supabase
-      .from("work_orders")
-      .select(
-        `
+      let query = supabase
+        .from("work_orders")
+        .select(
+          `
         *,
         customers:customers(first_name,last_name,email),
         vehicles:vehicles(year,make,model,license_plate)
       `,
-      )
-      .order("updated_at", { ascending: false })
-      .limit(100);
-
-    if (status && (BILLING_STATUSES as string[]).includes(status)) {
-      query = query.eq("status", status);
-    } else {
-      query = query.in("status", BILLING_STATUSES as unknown as string[]);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      setErr(error.message);
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-
-    const { data: invoiceData, error: invoiceError } = await supabase
-      .from("invoices")
-      .select("*, customers:customers(first_name,last_name,email)")
-      .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
-      .order("issued_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(HISTORICAL_INVOICE_PAGE_SIZE);
-
-    if (invoiceError) {
-      setErr(invoiceError.message);
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-
-    const baseRows = (data ?? []) as Row[];
-    const qlc = q.trim().toLowerCase();
-
-    const filtered =
-      qlc.length === 0
-        ? baseRows
-        : baseRows.filter((r) => {
-            const name = [
-              r.customers?.first_name ?? "",
-              r.customers?.last_name ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-
-            const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-
-            const ymm = [
-              r.vehicles?.year ?? "",
-              r.vehicles?.make ?? "",
-              r.vehicles?.model ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-
-            const cid = (r.custom_id ?? "").toLowerCase();
-
-            return (
-              r.id.toLowerCase().includes(qlc) ||
-              cid.includes(qlc) ||
-              name.includes(qlc) ||
-              plate.includes(qlc) ||
-              ymm.includes(qlc)
-            );
-          });
-
-    const baseHistoricalInvoices = (invoiceData ?? []) as HistoricalInvoiceRow[];
-
-    const filteredHistoricalInvoices =
-      qlc.length === 0
-        ? baseHistoricalInvoices
-        : baseHistoricalInvoices.filter((invoice) => {
-            const metadata = invoice.metadata as InvoiceMetadata | null;
-            const rawRow = metadata?.raw_row ?? {};
-            const customerName = [
-              invoice.customers?.first_name ?? "",
-              invoice.customers?.last_name ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-            const customerText = [
-              customerName,
-              invoice.customers?.email ?? "",
-              String(rawRow.customer ?? ""),
-              String(rawRow.customer_name ?? ""),
-              String(rawRow.customer_id ?? ""),
-            ]
-              .join(" ")
-              .toLowerCase();
-            const vinText = [metadata?.vin ?? "", String(rawRow.vin ?? "")]
-              .join(" ")
-              .toLowerCase();
-            const workOrderText = [
-              metadata?.work_order_number ?? "",
-              String(rawRow.work_order_number ?? ""),
-              invoice.work_order_id ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-            const invoiceNumber = (invoice.invoice_number ?? "").toLowerCase();
-            const statusText = (invoice.status ?? "").toLowerCase();
-
-            return (
-              invoice.id.toLowerCase().includes(qlc) ||
-              invoiceNumber.includes(qlc) ||
-              customerText.includes(qlc) ||
-              vinText.includes(qlc) ||
-              workOrderText.includes(qlc) ||
-              statusText.includes(qlc)
-            );
-          });
-
-    const statusFilteredHistoricalInvoices = status
-      ? filteredHistoricalInvoices.filter(
-          (invoice) => invoice.status === status,
         )
-      : filteredHistoricalInvoices;
+        .order("updated_at", { ascending: false })
+        .limit(100);
 
-    setRows(filtered);
-    setHistoricalInvoices(statusFilteredHistoricalInvoices);
-    setHistoricalVisibleLimit(25);
-    setExpandedHistoricalInvoiceId(null);
-    setLoading(false);
-  }, [q, status, supabase]);
+      if (status && (BILLING_STATUSES as string[]).includes(status)) {
+        query = query.eq("status", status);
+      } else {
+        query = query.in("status", BILLING_STATUSES as unknown as string[]);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        setErr(error.message);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from("invoices")
+        .select("*, customers:customers(first_name,last_name,email)")
+        .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
+        .order("issued_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(0, HISTORICAL_INVOICE_PAGE_SIZE - 1);
+
+      if (invoiceError) {
+        setErr(invoiceError.message);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
+      const baseRows = (data ?? []) as Row[];
+      const qlc = q.trim().toLowerCase();
+
+      const filtered =
+        qlc.length === 0
+          ? baseRows
+          : baseRows.filter((r) => {
+              const name = [
+                r.customers?.first_name ?? "",
+                r.customers?.last_name ?? "",
+              ]
+                .join(" ")
+                .toLowerCase();
+
+              const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
+
+              const ymm = [
+                r.vehicles?.year ?? "",
+                r.vehicles?.make ?? "",
+                r.vehicles?.model ?? "",
+              ]
+                .join(" ")
+                .toLowerCase();
+
+              const cid = (r.custom_id ?? "").toLowerCase();
+
+              return (
+                r.id.toLowerCase().includes(qlc) ||
+                cid.includes(qlc) ||
+                name.includes(qlc) ||
+                plate.includes(qlc) ||
+                ymm.includes(qlc)
+              );
+            });
+
+      const baseHistoricalInvoices = (invoiceData ??
+        []) as HistoricalInvoiceRow[];
+      setHistoricalHasMore(
+        baseHistoricalInvoices.length === HISTORICAL_INVOICE_PAGE_SIZE,
+      );
+
+      const filteredHistoricalInvoices =
+        qlc.length === 0
+          ? baseHistoricalInvoices
+          : baseHistoricalInvoices.filter((invoice) => {
+              const metadata = invoice.metadata as InvoiceMetadata | null;
+              const rawRow = metadata?.raw_row ?? {};
+              const customerName = [
+                invoice.customers?.first_name ?? "",
+                invoice.customers?.last_name ?? "",
+              ]
+                .join(" ")
+                .toLowerCase();
+              const customerText = [
+                customerName,
+                invoice.customers?.email ?? "",
+                String(rawRow.customer ?? ""),
+                String(rawRow.customer_name ?? ""),
+                String(rawRow.customer_id ?? ""),
+              ]
+                .join(" ")
+                .toLowerCase();
+              const vinText = [metadata?.vin ?? "", String(rawRow.vin ?? "")]
+                .join(" ")
+                .toLowerCase();
+              const workOrderText = [
+                metadata?.work_order_number ?? "",
+                String(rawRow.work_order_number ?? ""),
+                invoice.work_order_id ?? "",
+              ]
+                .join(" ")
+                .toLowerCase();
+              const invoiceNumber = (
+                invoice.invoice_number ?? ""
+              ).toLowerCase();
+              const statusText = (invoice.status ?? "").toLowerCase();
+
+              return (
+                invoice.id.toLowerCase().includes(qlc) ||
+                invoiceNumber.includes(qlc) ||
+                customerText.includes(qlc) ||
+                vinText.includes(qlc) ||
+                workOrderText.includes(qlc) ||
+                statusText.includes(qlc)
+              );
+            });
+
+      const statusFilteredHistoricalInvoices = status
+        ? filteredHistoricalInvoices.filter(
+            (invoice) => invoice.status === status,
+          )
+        : filteredHistoricalInvoices;
+
+      setRows(filtered);
+      setHistoricalInvoices(statusFilteredHistoricalInvoices);
+      setHistoricalVisibleLimit(25);
+      setExpandedHistoricalInvoiceId(null);
+      setLoading(false);
+    },
+    [q, status, supabase],
+  );
 
   useEffect(() => {
     void load();
@@ -291,7 +305,8 @@ export default function BillingPage(): JSX.Element {
         "postgres_changes",
         { event: "*", schema: "public", table: "invoices" },
         () => {
-          if (!invoiceImportActive) setTimeout(() => void load({ background: true }), 60);
+          if (!invoiceImportActive)
+            setTimeout(() => void load({ background: true }), 60);
         },
       )
       .subscribe();
@@ -304,6 +319,35 @@ export default function BillingPage(): JSX.Element {
       }
     };
   }, [supabase, load, invoiceImportActive]);
+
+  const handleLoadMoreHistoricalInvoices = useCallback(async () => {
+    setHistoricalLoadingMore(true);
+    setErr(null);
+
+    const from = historicalInvoices.length;
+    const to = from + HISTORICAL_INVOICE_PAGE_SIZE - 1;
+    const { data: invoiceData, error: invoiceError } = await supabase
+      .from("invoices")
+      .select("*, customers:customers(first_name,last_name,email)")
+      .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
+      .order("issued_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    setHistoricalLoadingMore(false);
+
+    if (invoiceError) {
+      setErr(invoiceError.message);
+      return;
+    }
+
+    const nextInvoices = (invoiceData ?? []) as HistoricalInvoiceRow[];
+    setHistoricalInvoices((current) => [...current, ...nextInvoices]);
+    setHistoricalHasMore(nextInvoices.length === HISTORICAL_INVOICE_PAGE_SIZE);
+    setHistoricalVisibleLimit((current) =>
+      Math.max(current, from + Math.min(nextInvoices.length, 25)),
+    );
+  }, [historicalInvoices.length, supabase]);
 
   const handleAiReview = useCallback(async (id: string) => {
     try {
@@ -554,7 +598,10 @@ export default function BillingPage(): JSX.Element {
         </div>
       </section>
 
-      <InvoiceCsvImportCard onImportActiveChange={setInvoiceImportActive} onImported={() => void load({ background: true })} />
+      <InvoiceCsvImportCard
+        onImportActiveChange={setInvoiceImportActive}
+        onImported={() => void load({ background: true })}
+      />
 
       {err ? (
         <div className="rounded-2xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-200">
@@ -799,6 +846,9 @@ export default function BillingPage(): JSX.Element {
                 {visibleHistoricalInvoices.map((invoice) => {
                   const metadata = invoice.metadata as InvoiceMetadata | null;
                   const rawRow = metadata?.raw_row ?? {};
+                  const legacyCustomerId = String(
+                    rawRow.customer_id ?? metadata?.legacy_customer_id ?? "",
+                  ).trim();
                   const customerName =
                     [
                       invoice.customers?.first_name ?? "",
@@ -806,11 +856,10 @@ export default function BillingPage(): JSX.Element {
                     ]
                       .filter(Boolean)
                       .join(" ") ||
-                    String(
-                      rawRow.customer_name ??
-                        rawRow.customer ??
-                        "Unknown customer",
-                    );
+                    String(rawRow.customer_name ?? rawRow.customer ?? "") ||
+                    (legacyCustomerId
+                      ? `Unknown customer · ${legacyCustomerId}`
+                      : "Unknown customer");
                   const workOrderText =
                     metadata?.work_order_number ??
                     String(rawRow.work_order_number ?? "No work order number");
@@ -887,6 +936,16 @@ export default function BillingPage(): JSX.Element {
                               </div>
                               <div>
                                 <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                  Customer match diagnostics
+                                </div>
+                                <div className="mt-1 text-sm text-white">
+                                  {metadata?.customer_match_source ??
+                                    metadata?.customer_match_failed_reason ??
+                                    "—"}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                                   Legacy vehicle id
                                 </div>
                                 <div className="mt-1 text-sm text-white">
@@ -939,6 +998,19 @@ export default function BillingPage(): JSX.Element {
                 className="rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20"
               >
                 Show 25 more historical invoices
+              </button>
+            </div>
+          ) : historicalHasMore ? (
+            <div className="border-t border-amber-500/15 px-5 py-4 text-center sm:px-6">
+              <button
+                type="button"
+                onClick={handleLoadMoreHistoricalInvoices}
+                disabled={historicalLoadingMore}
+                className="rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {historicalLoadingMore
+                  ? "Loading historical invoices…"
+                  : "Load more historical invoices"}
               </button>
             </div>
           ) : null}
