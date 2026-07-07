@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { VehicleCsvImportCard } from "@/features/vehicles/components/VehicleCsvImportCard";
-import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -108,9 +108,7 @@ function sortVehicleRows(rows: VehicleSearchRow[]): VehicleSearchRow[] {
 
 export default function VehicleFilesPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(searchParams), [searchParams]);
-  const vehicleGuidedQuery = guidedQuery?.onboardingStep === "vehicles" ? guidedQuery : null;
+  const vehicleGuidedQuery = usePersistentGuidedOnboardingQuery("vehicles");
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);

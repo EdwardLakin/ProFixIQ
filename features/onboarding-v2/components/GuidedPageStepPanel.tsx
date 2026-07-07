@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { GuidedOnboardingStepKey } from "@/features/onboarding-v2/guided/types";
 import {
   getGuidedStepPageInstructions,
-  parseGuidedPageContext,
   type GuidedPageContext,
 } from "@/features/onboarding-v2/guided/pageContext";
+import { usePersistentGuidedPageContext } from "@/features/onboarding-v2/guided/persistence";
 
 type GuidedPanelAction = {
   label: string;
@@ -28,8 +28,7 @@ const baseButtonClass =
 
 export default function GuidedPageStepPanel({ context: contextOverride, className = "", actions }: GuidedPageStepPanelProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const parsedContext = useMemo(() => parseGuidedPageContext(searchParams), [searchParams]);
+  const parsedContext = usePersistentGuidedPageContext();
   const context = contextOverride === undefined ? parsedContext : contextOverride;
   const [busyAction, setBusyAction] = useState<FinishAction | null>(null);
   const [error, setError] = useState<string | null>(null);

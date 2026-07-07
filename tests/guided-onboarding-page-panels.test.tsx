@@ -18,11 +18,14 @@ import {
 } from "@/features/onboarding-v2/guided/steps";
 
 const routerPush = vi.fn();
+const routerReplace = vi.fn();
 let currentSearchParams = new URLSearchParams();
+let currentPathname = "/customers/search";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: routerPush }),
+  useRouter: () => ({ push: routerPush, replace: routerReplace }),
   useSearchParams: () => currentSearchParams,
+  usePathname: () => currentPathname,
 }));
 
 function read(path: string) {
@@ -43,7 +46,11 @@ const productionPageFiles = [
 
 beforeEach(() => {
   routerPush.mockReset();
+  routerReplace.mockReset();
   currentSearchParams = new URLSearchParams();
+  currentPathname = "/customers/search";
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -79,6 +86,53 @@ describe("guided onboarding page panels", () => {
     expect(
       screen.getByRole("button", { name: "Back to guided setup" }),
     ).toBeInTheDocument();
+  });
+
+
+  it("restores guided context from storage when safe params are missing", async () => {
+    currentPathname = "/billing";
+    window.sessionStorage.setItem(
+      "profixiq:guided-onboarding:v2:active-context",
+      JSON.stringify({
+        setup: "guided",
+        guidedSessionId: "session-restore",
+        guidedStep: "invoices",
+        returnTo: "/dashboard/onboarding-v2/session-restore",
+        highlight: "invoices",
+        focus: "invoices",
+        savedAt: Date.now(),
+      }),
+    );
+
+    render(<GuidedPageStepPanel />);
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/billing?setup=guided&guidedSessionId=session-restore&guidedStep=invoices&returnTo=%2Fdashboard%2Fonboarding-v2%2Fsession-restore&highlight=invoices&focus=invoices",
+        { scroll: false },
+      );
+    });
+  });
+
+  it("does not restore guided context onto unrelated regular pages", async () => {
+    currentPathname = "/billing";
+    window.sessionStorage.setItem(
+      "profixiq:guided-onboarding:v2:active-context",
+      JSON.stringify({
+        setup: "guided",
+        guidedSessionId: "session-restore",
+        guidedStep: "customers",
+        returnTo: "/dashboard/onboarding-v2/session-restore",
+        highlight: "customer-import",
+        savedAt: Date.now(),
+      }),
+    );
+
+    const { container } = render(<GuidedPageStepPanel />);
+
+    expect(container).toBeEmptyDOMElement();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(routerReplace).not.toHaveBeenCalled();
   });
 
   it("rejects unknown guided steps before rendering", () => {

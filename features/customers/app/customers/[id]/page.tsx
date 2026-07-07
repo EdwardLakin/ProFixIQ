@@ -16,7 +16,7 @@ import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicate
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
-import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 
 type DB = Database;
 
@@ -569,9 +569,7 @@ export default function CustomerProfilePage(): JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(sp), [sp]);
-  const customerGuidedQuery =
-    guidedQuery?.onboardingStep === "customers" ? guidedQuery : null;
+  const customerGuidedQuery = usePersistentGuidedOnboardingQuery("customers");
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
