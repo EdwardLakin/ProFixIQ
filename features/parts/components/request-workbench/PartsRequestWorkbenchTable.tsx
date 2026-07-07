@@ -21,7 +21,7 @@ export function PartsRequestWorkbenchTable({
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
-  onAddToJob?: (itemId: string) => void;
+  onAddToJob?: (item: PartsRequestWorkbenchItem) => void;
   onReceive?: (itemId: string) => void;
   onAddToStock?: (itemId: string) => void;
   onClearMatch?: (itemId: string) => void;

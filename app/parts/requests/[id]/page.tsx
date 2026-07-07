@@ -18,6 +18,7 @@ import {
   PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG,
   PartsRequestWorkbench,
   mapRequestToWorkbenchModel,
+  type PartsRequestWorkbenchItem,
   type SaveItemInput,
 } from "@/features/parts/components/request-workbench";
 import {
@@ -1435,10 +1436,34 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
   }
 
-  async function addAndAttach(reqId: string, itemId: string): Promise<void> {
+  async function addAndAttach(
+    reqId: string,
+    itemId: string,
+    overrides?: {
+      partId?: string | null;
+      qty?: number | null;
+      sellPrice?: number | null;
+      description?: string | null;
+      requestedPartNumber?: string | null;
+      requestedManufacturer?: string | null;
+    },
+  ): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
-    const it = target?.items.find((x) => x.id === itemId);
-    if (!target || !it) return;
+    const baseItem = target?.items.find((x) => String(x.id) === String(itemId));
+    if (!target || !baseItem) return;
+
+    const it = {
+      ...baseItem,
+      part_id: overrides?.partId ?? baseItem.part_id,
+      ui_part_id: overrides?.partId ?? baseItem.ui_part_id,
+      qty: overrides?.qty ?? baseItem.qty,
+      ui_qty: overrides?.qty ?? baseItem.ui_qty,
+      quoted_price: overrides?.sellPrice ?? baseItem.quoted_price,
+      ui_price: overrides?.sellPrice ?? baseItem.ui_price,
+      description: overrides?.description ?? baseItem.description,
+      requested_part_number: overrides?.requestedPartNumber ?? baseItem.requested_part_number,
+      requested_manufacturer: overrides?.requestedManufacturer ?? baseItem.requested_manufacturer,
+    } as UiItem;
 
     const resolved = resolveAddPartId(it);
     const partId = resolved.partId;
@@ -1896,8 +1921,15 @@ if (!lineId || !isUuid(lineId)) {
                           toast.success("Inventory item created and attached.");
                           await load();
                         }}
-                        onAddToJob={async (itemId) => {
-                          await addAndAttach(r.req.id, itemId);
+                        onAddToJob={async (item: PartsRequestWorkbenchItem) => {
+                          await addAndAttach(r.req.id, item.id, {
+                            partId: item.partId ?? null,
+                            qty: item.qty,
+                            sellPrice: item.sellPrice,
+                            description: item.description,
+                            requestedPartNumber: item.requestedPartNumber ?? null,
+                            requestedManufacturer: item.requestedManufacturer ?? null,
+                          });
                           await load();
                         }}
                         onSubmitOrder={async (itemId, input) => {

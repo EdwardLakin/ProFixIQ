@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PartsRequestWorkbenchHeader } from "./PartsRequestWorkbenchHeader";
 import { PartsRequestWorkbenchSummary } from "./PartsRequestWorkbenchSummary";
@@ -41,7 +41,7 @@ export function PartsRequestWorkbench({
   onUseInventory?: (itemId: string) => Promise<void> | void;
   onAttachInventory?: (input: AttachInventoryInput) => Promise<void> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
-  onAddToJob?: (itemId: string) => Promise<void> | void;
+  onAddToJob?: (item: PartsRequestWorkbenchItem) => Promise<void> | void;
   onSubmitOrder?: (itemId: string, input: OrderPartInput) => Promise<void> | void;
   onReceiveItem?: (itemId: string) => Promise<void> | void;
   onOpenReceiveDrawer?: (itemId: string) => Promise<void> | void;
@@ -80,6 +80,10 @@ export function PartsRequestWorkbench({
     : null;
 
   const inventoryResults = model.inventoryResults ?? [];
+
+  useEffect(() => {
+    setItems(model.items);
+  }, [model.items]);
 
   function positiveNumber(value: string, label: string): number | null {
     const parsed = Number(value);
