@@ -96,6 +96,8 @@ type CreateInventoryDraft = {
   category: string;
   price: string;
   supplier: string;
+  initialQty?: string;
+  locationId?: string;
 };
 
 type RequestUi = {
@@ -709,6 +711,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       category: "",
       price: item.ui_price == null ? "" : String(item.ui_price),
       supplier: requestedManufacturer,
+      initialQty: "",
+      locationId: defaultLocationId || "",
     });
   }
 
@@ -726,6 +730,27 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       toast.error("Enter a valid price.");
       return;
     }
+
+    const initialQtyNum = draft.initialQty?.trim() ? Number(draft.initialQty) : 0;
+    if (!Number.isFinite(initialQtyNum) || initialQtyNum < 0) {
+      toast.error("Enter a valid initial quantity.");
+      return;
+    }
+
+    const stockLocationId = String(draft.locationId || defaultLocationId || "").trim();
+    if (initialQtyNum > 0 && !isUuid(stockLocationId)) {
+      toast.error("Select a stock location before adding initial quantity.");
+      return;
+    }
+
+    console.info("[parts-request-v2:add-stock:start]", {
+      requestId: draft.requestId,
+      itemId: draft.itemId,
+      name,
+      partNumber,
+      initialQty: initialQtyNum,
+      stockLocationId,
+    });
 
     setSavingItemId(draft.itemId);
     try {
@@ -745,8 +770,26 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         .select("*")
         .single<PartRow>();
       if (partErr) {
+        console.error("[parts-request-v2:add-stock:part-error]", partErr);
         toast.error(partErr.message);
         return;
+      }
+
+      if (initialQtyNum > 0) {
+        const { error: stockMoveError } = await supabase.rpc("apply_stock_move", {
+          p_part: part.id,
+          p_loc: stockLocationId,
+          p_qty: initialQtyNum,
+          p_reason: "receive",
+          p_ref_kind: "parts_request_initial_stock",
+          p_ref_id: null,
+        } as DB["public"]["Functions"]["apply_stock_move"]["Args"]);
+
+        if (stockMoveError) {
+          console.error("[parts-request-v2:add-stock:stock-move-error]", stockMoveError);
+          toast.error(`Inventory item created, but stock quantity failed: ${stockMoveError.message}`);
+          return;
+        }
       }
 
       const update: DB["public"]["Tables"]["part_request_items"]["Update"] = {
@@ -772,6 +815,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ui_price: priceNum ?? undefined,
       });
       setCreateInventoryDraft(null);
+      console.info("[parts-request-v2:add-stock:success]", {
+        requestId: draft.requestId,
+        itemId: draft.itemId,
+        partId: part.id,
+        initialQty: initialQtyNum,
+      });
       await load();
       toast.success("Inventory item created and attached.");
     } finally {
@@ -1791,6 +1840,13 @@ if (!lineId || !isUuid(lineId)) {
                             ui_price: sellPrice ?? undefined,
                           });
 
+                          console.info("[parts-request-v2:save-row]", {
+                            requestId: r.req.id,
+                            itemId: input.itemId,
+                            qty,
+                            sellPrice,
+                          });
+
                           await persistItemFields(input.itemId, {
                             description: input.description,
                             requested_part_number: input.requestedPartNumber ?? null,
@@ -1845,6 +1901,8 @@ if (!lineId || !isUuid(lineId)) {
                               supplierNameById.get(input.defaultSupplierId) ??
                               input.manufacturer ??
                               "",
+                            initialQty: input.initialQty,
+                            locationId: resolvedDefaultLocId || defaultLocationId || "",
                           };
                           setCreateInventoryDraft(draft);
                           await saveCreatedInventoryItem(draft);
