@@ -1439,69 +1439,55 @@ if (!lineId || !isUuid(lineId)) {
         ? it.work_order_line_id
         : lineId;
 
-      const payload = {
-        part_id: partId,
-        description: desc || it.description || "Part",
-        qty,
-        quoted_price: price,
-        requested_part_number: String(it.requested_part_number ?? "").trim() || null,
-        requested_manufacturer: String(it.requested_manufacturer ?? "").trim() || null,
-        vendor: null,
-        vendor_id: validSupplierId,
-        markup_pct: null,
-        work_order_line_id: safeLineId,
-        ...(poId ? { po_id: poId } : {}),
-      } as unknown as DB["public"]["Tables"]["part_request_items"]["Update"];
+      const res = await fetch(`/api/parts/requests/items/${itemId}/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partId,
+          description: desc || it.description || "Part",
+          qty,
+          quotedPrice: price,
+          requestedPartNumber: String(it.requested_part_number ?? "").trim() || null,
+          requestedManufacturer: String(it.requested_manufacturer ?? "").trim() || null,
+          workOrderLineId: safeLineId,
+          poId,
+          locationId: locId || null,
+          createAllocation: Boolean(locId),
+        }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; item?: ItemRow }
+        | null;
 
-      // ✅ select to detect “no row updated” and avoid silent failures
-      const { data: updated, error: updErr } = await supabase
-        .from("part_request_items")
-        .update(payload)
-        .eq("id", it.id)
-        .select("id")
-        .maybeSingle();
-
-      if (updErr) {
-        toast.error(updErr.message);
-        return;
-      }
-      if (!updated?.id) {
-        toast.error("Update did not apply (no matching row or blocked).");
-        return;
-      }
-
-      if (locId) {
-        const { error } = await supabase.rpc(
-          "upsert_part_allocation_from_request_item",
-          {
-            p_request_item_id: it.id,
-            p_location_id: locId,
-            p_create_stock_move: true,
-          },
+      if (!res.ok || !body?.ok || !body.item) {
+        toast.error(
+          body?.error ||
+            "Could not add this part. The update may have been blocked by shop access.",
         );
+        return;
+      }
 
-        if (error) {
-          toast.error(error.message);
-          return;
-        }
-      } else {
+      if (!locId) {
         toast.warning(
           "No stock location exists for this shop. Item saved, but inventory was not allocated.",
         );
       }
 
+      const updated = body.item;
+
       const nextItems = target.items.map((x) => {
         if (x.id !== itemId) return x;
         return {
           ...x,
-          part_id: partId,
-          ui_part_id: partId,
-          quoted_price: price,
-          qty,
-          work_order_line_id: safeLineId,
+          ...updated,
+          ui_part_id: updated.part_id ?? partId,
+          ui_qty: toNum(updated.qty, qty),
+          ui_price:
+            updated.quoted_price == null
+              ? price
+              : toNum(updated.quoted_price, price),
           ui_added: true,
-          ui_po_id: poId ?? "",
-          po_id: poId ?? null,
+          ui_po_id: updated.po_id ?? poId ?? "",
         } as UiItem;
       });
 
@@ -1522,14 +1508,15 @@ if (!lineId || !isUuid(lineId)) {
                     ? x
                     : ({
                         ...x,
-                        part_id: partId,
-                        ui_part_id: partId,
-                        quoted_price: price,
-                        qty,
-                        work_order_line_id: safeLineId,
+                        ...updated,
+                        ui_part_id: updated.part_id ?? partId,
+                        ui_qty: toNum(updated.qty, qty),
+                        ui_price:
+                          updated.quoted_price == null
+                            ? price
+                            : toNum(updated.quoted_price, price),
                         ui_added: true,
-                        ui_po_id: poId ?? "",
-                        po_id: poId ?? null,
+                        ui_po_id: updated.po_id ?? poId ?? "",
                       } as UiItem),
                 ),
               },
