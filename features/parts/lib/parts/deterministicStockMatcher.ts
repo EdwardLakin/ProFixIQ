@@ -2,7 +2,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type PartRow = Pick<
   Database["public"]["Tables"]["parts"]["Row"],
-  "id" | "name" | "sku" | "part_number" | "normalized_part_key"
+  "id" | "name" | "sku" | "part_number" | "normalized_part_key" | "category"
 >;
 
 type VendorPartNumberRow =
@@ -66,6 +66,114 @@ function overlapScore(requestTokens: string[], candidateTokens: string[]): numbe
   let hits = 0;
   for (const token of requestTokens) if (set.has(token)) hits += 1;
   return hits / requestTokens.length;
+}
+
+const OIL_FLUID_TOKENS = new Set([
+  "oil",
+  "fluid",
+  "5w",
+  "5w20",
+  "5w30",
+  "5w40",
+  "0w",
+  "0w20",
+  "0w30",
+  "10w",
+  "10w30",
+  "10w40",
+  "atf",
+  "coolant",
+  "antifreeze",
+  "dexron",
+  "mercon",
+  "synthetic",
+]);
+
+const FILTER_TOKENS = new Set(["filter", "filters", "oilfilter", "airfilter", "cabinfilter", "fuelfilter"]);
+
+export type PartDescriptionConflict = {
+  title: "Possible mismatch";
+  message: string;
+};
+
+type ConflictCandidatePart = {
+  name?: string | null;
+  sku?: string | null;
+  part_number?: string | null;
+  category?: string | null;
+  description?: string | null;
+};
+
+function containsAnyToken(value: string, tokens: Set<string>): boolean {
+  const compact = normalize(value).replace(/\s+/g, "");
+  return tokenize(value).some((token) => tokens.has(token)) || Array.from(tokens).some((token) => compact.includes(token));
+}
+
+function humanPartKind(partText: string): string {
+  if (containsAnyToken(partText, FILTER_TOKENS)) return "Oil filter";
+  if (containsAnyToken(partText, OIL_FLUID_TOKENS)) return "Oil / fluid";
+  return "a different part category";
+}
+
+export function detectPartDescriptionConflict(args: {
+  requestedDescription?: string | null;
+  requestedPartNumber?: string | null;
+  matchedPart?: ConflictCandidatePart | null;
+}): PartDescriptionConflict | null {
+  const requestedDescription = String(args.requestedDescription ?? "").trim();
+  const requestedPartNumber = String(args.requestedPartNumber ?? "").trim();
+  const matchedPart = args.matchedPart;
+  if (!requestedDescription || !matchedPart) return null;
+
+  const partText = [
+    matchedPart.name,
+    matchedPart.category,
+    matchedPart.description,
+    matchedPart.sku,
+    matchedPart.part_number,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const requestLooksFluid = containsAnyToken(requestedDescription, OIL_FLUID_TOKENS);
+  const requestLooksFilter = containsAnyToken(requestedDescription, FILTER_TOKENS);
+  const partLooksFluid = containsAnyToken(partText, OIL_FLUID_TOKENS);
+  const partLooksFilter = containsAnyToken(partText, FILTER_TOKENS);
+  const partNumberExact =
+    !!requestedPartNumber &&
+    [matchedPart.sku, matchedPart.part_number].some(
+      (value) => normalizePartNumber(value) === normalizePartNumber(requestedPartNumber),
+    );
+
+  if (requestLooksFluid && partLooksFilter) {
+    return {
+      title: "Possible mismatch",
+      message: `Description says ${requestedDescription}, but part # ${requestedPartNumber || matchedPart.sku || matchedPart.part_number || "selected"} matches ${humanPartKind(partText)}.`,
+    };
+  }
+
+  if (requestLooksFilter && partLooksFluid && !partLooksFilter) {
+    return {
+      title: "Possible mismatch",
+      message: `Description says ${requestedDescription}, but part # ${requestedPartNumber || matchedPart.sku || matchedPart.part_number || "selected"} matches ${humanPartKind(partText)}.`,
+    };
+  }
+
+  if (partNumberExact) {
+    const requestTokens = tokenize(requestedDescription).filter(
+      (token) => !OIL_FLUID_TOKENS.has(token) && !FILTER_TOKENS.has(token),
+    );
+    const partTokens = tokenize(partText);
+    const overlap = overlapScore(requestTokens, partTokens);
+    if (requestTokens.length >= 2 && overlap === 0 && (partLooksFilter || partLooksFluid)) {
+      return {
+        title: "Possible mismatch",
+        message: `Description says ${requestedDescription}, but part # ${requestedPartNumber} matches ${humanPartKind(partText)}.`,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function buildDeterministicStockSuggestions(args: MatcherArgs): DeterministicStockSuggestion[] {
