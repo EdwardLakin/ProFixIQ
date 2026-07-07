@@ -15,6 +15,12 @@ import {
   RequestStatusSummary,
 } from "./request-detail-components";
 import {
+  PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG,
+  PartsRequestWorkbench,
+  mapRequestToWorkbenchModel,
+  type SaveItemInput,
+} from "@/features/parts/components/request-workbench";
+import {
   itemFlowLabel,
   requestFlowLabel,
   toItemFlowDisplay,
@@ -705,9 +711,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     });
   }
 
-  async function saveCreatedInventoryItem(): Promise<void> {
-    if (!wo?.shop_id || !createInventoryDraft) return;
-    const draft = createInventoryDraft;
+  async function saveCreatedInventoryItem(nextDraft?: CreateInventoryDraft): Promise<void> {
+    const draft = nextDraft ?? createInventoryDraft;
+    if (!wo?.shop_id || !draft) return;
     const name = draft.name.trim();
     const partNumber = draft.partNumber.trim();
     if (!name) {
@@ -1726,6 +1732,117 @@ if (!lineId || !isUuid(lineId)) {
                   hasValidLineId
                     ? lineLabelFrom(lineById.get(lineId))
                     : "";
+
+                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG) {
+                  const model = mapRequestToWorkbenchModel({
+                    request: r.req as unknown as Record<string, unknown>,
+                    items: r.items as unknown as Record<string, unknown>[],
+                    supplierOptions,
+                    poOptions,
+                    locationOptions: locOptions,
+                    parts: parts as unknown as Record<string, unknown>[],
+                    stockAvailableByPartId,
+                    workOrderId: wo?.id ?? r.req.work_order_id ?? null,
+                    workOrderCustomId: woDisplay,
+                    jobContext: jobText,
+                    defaultLocationId: resolvedDefaultLocId,
+                    defaultSupplierId: "",
+                    stockSuggestionCountByItemId: Object.fromEntries(
+                      r.items.map((item) => [
+                        String(item.id),
+                        stockSuggestionsByItemId[String(item.id)]?.length ?? 0,
+                      ]),
+                    ),
+                    supplierSuggestionCountByItemId: Object.fromEntries(
+                      r.items.map((item) => [
+                        String(item.id),
+                        supplierSuggestionsByItemId[String(item.id)]?.length ?? 0,
+                      ]),
+                    ),
+                    conflictWarningByItemId,
+                  });
+
+                  return (
+                    <div key={r.req.id} className={glassCard}>
+                      <PartsRequestWorkbench
+                        model={model}
+                        onSaveItem={async (input: SaveItemInput) => {
+                          updateItem(r.req.id, input.itemId, {
+                            description: input.description,
+                            requested_part_number: input.requestedPartNumber ?? null,
+                            requested_manufacturer: input.requestedManufacturer ?? null,
+                            ui_qty: input.qty,
+                            ui_price: input.sellPrice ?? undefined,
+                          });
+                          await persistItemFields(input.itemId, {
+                            description: input.description,
+                            requested_part_number: input.requestedPartNumber ?? null,
+                            requested_manufacturer: input.requestedManufacturer ?? null,
+                            qty: input.qty,
+                            quoted_price: input.sellPrice,
+                          });
+                          await load();
+                        }}
+                        onAttachInventory={async (input) => {
+                          updateItem(r.req.id, input.itemId, { ui_part_id: input.partId });
+                          toast.success(input.warningAccepted ? "Zero-stock inventory part attached." : "Inventory part attached.");
+                          await load();
+                        }}
+                        onCreateInventoryItem={async (itemId, input) => {
+                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
+                          if (!item) {
+                            toast.error("Request item not found.");
+                            return;
+                          }
+
+                          const draft: CreateInventoryDraft = {
+                            requestId: r.req.id,
+                            itemId,
+                            name: input.name,
+                            partNumber: input.partNumber,
+                            manufacturer: input.manufacturer,
+                            sku: input.sku,
+                            category: input.category,
+                            price: input.sellPrice,
+                            supplier:
+                              supplierNameById.get(input.defaultSupplierId) ??
+                              input.manufacturer ??
+                              "",
+                          };
+                          setCreateInventoryDraft(draft);
+                          await saveCreatedInventoryItem(draft);
+                        }}
+                        onSubmitOrder={async (itemId, input) => {
+                          updateItem(r.req.id, itemId, {
+                            ui_supplier_id: input.supplierId,
+                            ui_po_id: input.poMode === "existing" ? input.existingPoId : "",
+                          });
+                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
+                          if (!item) {
+                            toast.error("Request item not found.");
+                            return;
+                          }
+                          await createOrReusePoAndAssign(
+                            item,
+                            input.supplierId,
+                            input.poMode === "existing" ? input.existingPoId : null,
+                          );
+                          await load();
+                        }}
+                        onOpenReceiveDrawer={async (itemId) => {
+                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
+                          if (item) openReceiveFor(r.req.id, item);
+                        }}
+                        onClearMatch={async (itemId) => {
+                          updateItem(r.req.id, itemId, { ui_part_id: null });
+                        }}
+                        onDeleteItem={async (itemId) => {
+                          await deleteLine(r.req.id, itemId);
+                        }}
+                      />
+                    </div>
+                  );
+                }
 
                 return (
                   <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
