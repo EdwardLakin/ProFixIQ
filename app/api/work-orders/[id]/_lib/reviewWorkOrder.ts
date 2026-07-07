@@ -54,6 +54,26 @@ function lineRequiresParts(line: Record<string, unknown>): boolean {
   if (hasMeaningfulJson(line.parts_needed)) return true;
   if (typeof line.parts === "string" && line.parts.trim().length > 0) return true;
   if (line.parts_verification_required === true) return true;
+
+  const text = [
+    line.description,
+    line.complaint,
+    line.cause,
+    line.correction,
+    line.notes,
+    line.job_type,
+    line.service_code,
+  ]
+    .map((v) => String(v ?? "").toLowerCase())
+    .join(" ");
+
+  const serviceNeedsParts =
+    /\b(oil|filter|air filter|cabin filter|fuel filter|brake|pads?|rotors?|battery|tire|spark plug|belt|hose|coolant|transmission fluid|differential fluid|wiper)\b/.test(
+      text,
+    );
+
+  if (serviceNeedsParts) return true;
+
   const status = String(line.status ?? "").trim().toLowerCase();
   return status === "pending_parts" || status === "awaiting_parts";
 }
@@ -239,7 +259,13 @@ export async function reviewWorkOrder({
     const lineLaborRate = numericValue((ln as Record<string, unknown>)["labor_rate"]);
     const effectiveLaborRate = lineLaborRate && lineLaborRate > 0 ? lineLaborRate : shopLaborRate ?? 0;
     const explicitLaborTotal = numericValue((ln as Record<string, unknown>)["labor_total"]);
-    const laborTotal = explicitLaborTotal != null && explicitLaborTotal > 0 ? explicitLaborTotal : laborHours * effectiveLaborRate;
+    const priceEstimate = numericValue((ln as Record<string, unknown>)["price_estimate"]);
+    const laborTotal =
+      explicitLaborTotal != null && explicitLaborTotal > 0
+        ? explicitLaborTotal
+        : priceEstimate != null && priceEstimate > 0
+          ? priceEstimate
+          : laborHours * effectiveLaborRate;
 
     if (!noCharge && !laborNA && laborHours > 0 && !(laborTotal > 0) && !hasBillableParts) {
       issues.push({
