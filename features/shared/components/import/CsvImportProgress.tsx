@@ -69,7 +69,9 @@ export function CsvImportProgress({
           {progress.stalled ? <div className="text-xs opacity-75">Still processing on the server. Progress will update as more rows finish.</div> : null}
         </div>
         <div className="text-xs opacity-80">
-          {total > 0 ? `${processed}/${total} rows · ` : ""}
+          {total > 0 ? (
+            <>{processed}/{total} rows · </>
+          ) : null}
           {percent}%
         </div>
       </div>

@@ -7,7 +7,7 @@ import type { Database } from "@shared/types/types/supabase";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { v4 as uuidv4 } from "uuid";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   buildPartTrustMeta,
   trustBadgeTone,
@@ -15,6 +15,9 @@ import {
   type PartTrustMeta,
 } from "@/features/parts/lib/trust-signals";
 import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { CsvImportProgress, type CsvImportProgressState } from "@/features/shared/components/import/CsvImportProgress";
+import { GuidedImportSummary } from "@/features/shared/components/import/GuidedImportSummary";
+import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -165,6 +168,63 @@ function SelectField(props: {
 
 /* ---------------------- CSV parsing helper ---------------------- */
 
+const PART_CSV_FIELDS = [
+  "external_id",
+  "sku",
+  "part_number",
+  "name",
+  "description",
+  "category",
+  "brand",
+  "vendor",
+  "unit",
+  "cost_price",
+  "sell_price",
+  "quantity_on_hand",
+  "min_stock",
+  "location",
+  "bin",
+  "barcode",
+  "taxable",
+  "active",
+] as const;
+
+type PartCsvField = (typeof PART_CSV_FIELDS)[number];
+type PartCsvRow = Partial<Record<PartCsvField, string>>;
+type ParsedPartCsvRow = {
+  rowNumber: number;
+  external_id?: string;
+  sku?: string;
+  part_number?: string;
+  name: string;
+  description?: string;
+  category?: string;
+  brand?: string;
+  vendor?: string;
+  unit?: string;
+  cost_price?: number;
+  sell_price?: number;
+  quantity_on_hand?: number;
+  min_stock?: number;
+  location?: string;
+  bin?: string;
+  barcode?: string;
+  taxable?: boolean;
+  active?: boolean;
+  warnings: string[];
+  errors: string[];
+};
+type PartCsvImportCounts = { created: number; updated: number; skipped: number; failed: number };
+type PartCsvImportResult = {
+  counts: PartCsvImportCounts;
+  errors: Array<{ row: number; error: string }>;
+  skipped: Array<{ row: number; reason: string }>;
+};
+
+function normalizeHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -205,6 +265,77 @@ function parseCSV(text: string): string[][] {
     rows.push(row);
   }
   return rows.filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+}
+
+function parseOptionalNumber(value: string | undefined, field: string, errors: string[]): number | undefined {
+  const cleaned = (value ?? "").trim().replace(/^\$/, "").replace(/,/g, "");
+  if (!cleaned) return undefined;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) {
+    errors.push(`${field} must be numeric`);
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["true", "yes", "y", "1", "active"].includes(normalized)) return true;
+  if (["false", "no", "n", "0", "inactive"].includes(normalized)) return false;
+  return undefined;
+}
+
+function parsePartCsvRows(raw: string): ParsedPartCsvRow[] {
+  const rows = parseCSV(raw);
+  if (!rows.length) return [];
+  const header = rows[0].map(normalizeHeader);
+  const seen = new Set<string>();
+
+  return rows.slice(1).map((cells, index) => {
+    const source = {} as PartCsvRow;
+    header.forEach((name, cellIndex) => {
+      if ((PART_CSV_FIELDS as readonly string[]).includes(name)) {
+        source[name as PartCsvField] = (cells[cellIndex] ?? "").trim();
+      }
+    });
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const name = (source.name ?? "").trim();
+    const sku = (source.sku ?? "").trim();
+    const partNumber = (source.part_number ?? "").trim();
+    if (!name) errors.push("name is required");
+    if (!sku && !partNumber) warnings.push("sku or part_number is recommended for deterministic updates");
+
+    const key = sku ? `sku:${sku.toLowerCase()}` : partNumber ? `part:${partNumber.toLowerCase()}` : "";
+    if (key && seen.has(key)) warnings.push("duplicate sku/part_number in this CSV; later duplicate rows will be skipped");
+    if (key) seen.add(key);
+
+    return {
+      rowNumber: index + 2,
+      external_id: source.external_id?.trim() || undefined,
+      sku: sku || undefined,
+      part_number: partNumber || undefined,
+      name,
+      description: source.description?.trim() || undefined,
+      category: source.category?.trim() || undefined,
+      brand: source.brand?.trim() || undefined,
+      vendor: source.vendor?.trim() || undefined,
+      unit: source.unit?.trim() || undefined,
+      cost_price: parseOptionalNumber(source.cost_price, "cost_price", errors),
+      sell_price: parseOptionalNumber(source.sell_price, "sell_price", errors),
+      quantity_on_hand: parseOptionalNumber(source.quantity_on_hand, "quantity_on_hand", errors),
+      min_stock: parseOptionalNumber(source.min_stock, "min_stock", errors),
+      location: source.location?.trim() || undefined,
+      bin: source.bin?.trim() || undefined,
+      barcode: source.barcode?.trim() || undefined,
+      taxable: parseOptionalBoolean(source.taxable),
+      active: parseOptionalBoolean(source.active),
+      warnings,
+      errors,
+    };
+  });
 }
 
 /* ------------------------- Error helper ------------------------- */
@@ -278,6 +409,8 @@ async function applyStockMoveRPC(
 export default function InventoryPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())), [searchParams]);
   const [shopId, setShopId] = useState<string>("");
 
   const [search, setSearch] = useState<string>("");
@@ -323,14 +456,17 @@ export default function InventoryPage(): JSX.Element {
   const [recvLoc, setRecvLoc] = useState<string>("");
   const [recvQty, setRecvQty] = useState<number | "">("");
 
-  // CSV Import
+  // Import CSV
   const [csvOpen, setCsvOpen] = useState<boolean>(false);
   const [csvText, setCsvText] = useState<string>("");
-  const [csvRows, setCsvRows] = useState<
-    { name: string; sku?: string; category?: string; price?: number; qty?: number }[]
-  >([]);
+  const [csvRows, setCsvRows] = useState<ParsedPartCsvRow[]>([]);
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
+  const [csvImporting, setCsvImporting] = useState<boolean>(false);
+  const [csvCompletingOnboarding, setCsvCompletingOnboarding] = useState<boolean>(false);
+  const [csvProgress, setCsvProgress] = useState<CsvImportProgressState | null>(null);
+  const [csvResult, setCsvResult] = useState<PartCsvImportResult | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
 
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
@@ -668,126 +804,216 @@ export default function InventoryPage(): JSX.Element {
     }
   };
 
-  /* -------------------------- CSV Import -------------------------- */
+  /* -------------------------- Import CSV -------------------------- */
 
   const parseAndPreviewCSV = (raw: string) => {
-    const rows = parseCSV(raw);
-    if (!rows.length) {
-      setCsvRows([]);
-      setCsvPreview(false);
-      return;
-    }
-    const header = rows[0].map((h) => h.toLowerCase().trim());
-    const idx = {
-      name: header.indexOf("name"),
-      sku: header.indexOf("sku"),
-      category: header.indexOf("category"),
-      price: header.indexOf("price"),
-      qty: header.indexOf("qty"),
-    };
-
-    const out: { name: string; sku?: string; category?: string; price?: number; qty?: number }[] = [];
-
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      const nm = idx.name >= 0 ? row[idx.name] : "";
-      const name = (nm ?? "").trim();
-      if (!name) continue;
-
-      const sku = idx.sku >= 0 ? (row[idx.sku] ?? "").trim() : "";
-      const category = idx.category >= 0 ? (row[idx.category] ?? "").trim() : "";
-      const priceStr = idx.price >= 0 ? (row[idx.price] ?? "").trim() : "";
-      const qtyStr = idx.qty >= 0 ? (row[idx.qty] ?? "").trim() : "";
-
-      const priceNum = priceStr ? Number(priceStr) : NaN;
-      const qtyNum = qtyStr ? Number(qtyStr) : NaN;
-
-      out.push({
-        name,
-        sku: sku || undefined,
-        category: category || undefined,
-        price: Number.isFinite(priceNum) ? priceNum : undefined,
-        qty: Number.isFinite(qtyNum) ? qtyNum : undefined,
-      });
-    }
-
-    setCsvRows(out);
-    setCsvPreview(true);
+    const parsed = parsePartCsvRows(raw);
+    setCsvRows(parsed);
+    setCsvPreview(parsed.length > 0);
+    setCsvResult(null);
+    setCsvError(parsed.length ? null : "No parts rows were found in that CSV.");
+    setCsvProgress({
+      phase: parsed.length ? "Validation complete" : "No rows found",
+      phaseKey: parsed.length ? "validating" : "failed",
+      processed: parsed.length,
+      total: parsed.length,
+      percent: parsed.length ? 35 : 100,
+      failed: parsed.filter((row) => row.errors.length > 0).length,
+      skipped: parsed.filter((row) => row.warnings.length > 0).length,
+    });
   };
 
   const handleCsvFile = async (file: File) => {
+    setCsvResult(null);
+    setCsvError(null);
+    setCsvProgress({ phase: "Reading file", phaseKey: "reading_file", processed: 0, total: 0, percent: 5 });
     const text = await file.text();
     setCsvText(text);
     parseAndPreviewCSV(text);
   };
 
-  const runCsvImport = async () => {
-    if (!shopId || !csvRows.length) return;
-
-    // NOTE: intentionally sequential to keep it safe and predictable for now.
-    for (const row of csvRows) {
-      let partId: string | null = null;
-
-      if (row.sku) {
-        const { data: found } = await supabase
-          .from("parts")
-          .select("id")
-          .eq("shop_id", shopId)
-          .eq("sku", row.sku)
-          .maybeSingle();
-
-        if (found?.id) partId = String(found.id);
+  const completePartsOnboardingAfterImport = async (counts: PartCsvImportCounts) => {
+    if (!guidedQuery || guidedQuery.onboardingStep !== "parts") return;
+    setCsvCompletingOnboarding(true);
+    try {
+      const response = await fetch(
+        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/parts/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ summary: { importType: "parts_inventory_csv", ...counts } }),
+        },
+      );
+      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error ?? "Parts import succeeded, but onboarding completion failed.");
       }
+    } finally {
+      setCsvCompletingOnboarding(false);
+    }
+  };
 
-      if (!partId) {
-        const id = uuidv4();
-        const insert: PartInsert = {
-          id,
-          shop_id: shopId,
-          name: row.name,
-          sku: row.sku || undefined,
-          category: row.category || undefined,
-          price: typeof row.price === "number" ? row.price : undefined,
-        };
-        const { error } = await supabase.from("parts").insert(insert);
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.warn("Insert failed:", row, error.message);
+  const resolveCsvLocationId = async (row: ParsedPartCsvRow): Promise<string> => {
+    const requested = row.location?.trim();
+    if (!requested) return csvDefaultLoc;
+    const existing = locs.find((loc) =>
+      [loc.id, loc.code, loc.name].some((value) => String(value ?? "").toLowerCase() === requested.toLowerCase()),
+    );
+    if (existing?.id) return existing.id;
+    return csvDefaultLoc;
+  };
+
+  const runCsvImport = async () => {
+    const importableRows = csvRows.filter((row) => row.errors.length === 0 && row.active !== false);
+    if (!shopId || !importableRows.length || csvImporting) return;
+
+    setCsvImporting(true);
+    setCsvError(null);
+    const counts: PartCsvImportCounts = { created: 0, updated: 0, skipped: 0, failed: 0 };
+    const skipped: PartCsvImportResult["skipped"] = [];
+    const errors: PartCsvImportResult["errors"] = [];
+    const seen = new Set<string>();
+
+    try {
+      for (const [index, row] of importableRows.entries()) {
+        setCsvProgress({
+          phase: "Importing",
+          phaseKey: "importing",
+          processed: index,
+          total: importableRows.length,
+          percent: Math.round((index / importableRows.length) * 90),
+          imported: counts.created + counts.updated,
+          skipped: counts.skipped,
+          failed: counts.failed,
+        });
+
+        const duplicateKey = row.sku ? `sku:${row.sku.toLowerCase()}` : row.part_number ? `part:${row.part_number.toLowerCase()}` : `row:${row.rowNumber}`;
+        if (seen.has(duplicateKey)) {
+          counts.skipped += 1;
+          skipped.push({ row: row.rowNumber, reason: "Duplicate sku/part_number already handled earlier in this CSV." });
           continue;
         }
-        partId = id;
-      } else {
-        const patch: PartUpdate = {
-          name: row.name || undefined,
-          sku: row.sku || undefined,
-          category: row.category || undefined,
-          price: typeof row.price === "number" ? row.price : undefined,
-        };
-        await supabase.from("parts").update(patch).eq("id", partId);
-      }
+        seen.add(duplicateKey);
 
-      if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
         try {
-          await applyStockMoveRPC(supabase, {
-            p_part: partId,
-            p_loc: csvDefaultLoc,
-            p_qty: row.qty,
-            p_reason: "receive",
-            p_ref_kind: "csv_import",
-            p_ref_id: null,
-          });
-        } catch (err: unknown) {
-          // eslint-disable-next-line no-console
-          console.warn("Stock receive failed for row:", row, errMsg(err));
+          let partId: string | null = null;
+          if (row.sku) {
+            const { data: foundBySku } = await supabase
+              .from("parts")
+              .select("id")
+              .eq("shop_id", shopId)
+              .eq("sku", row.sku)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            partId = foundBySku?.id ? String(foundBySku.id) : null;
+          }
+          if (!partId && row.part_number) {
+            const { data: foundByPartNumber } = await supabase
+              .from("parts")
+              .select("id")
+              .eq("shop_id", shopId)
+              .eq("part_number", row.part_number)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            partId = foundByPartNumber?.id ? String(foundByPartNumber.id) : null;
+          }
+
+          const partPayload: PartInsert | PartUpdate = {
+            shop_id: shopId,
+            external_id: row.external_id,
+            sku: row.sku,
+            part_number: row.part_number,
+            name: row.name,
+            description: row.description,
+            category: row.category,
+            supplier: row.vendor,
+            unit: row.unit,
+            cost: row.cost_price,
+            default_cost: row.cost_price,
+            price: row.sell_price,
+            default_price: row.sell_price,
+            low_stock_threshold: row.min_stock,
+            taxable: row.taxable,
+            import_notes: [row.brand ? `Brand: ${row.brand}` : null, row.bin ? `Bin: ${row.bin}` : null]
+              .filter(Boolean)
+              .join(" · ") || undefined,
+          };
+
+          if (partId) {
+            const { error } = await supabase.from("parts").update(partPayload as PartUpdate).eq("id", partId).eq("shop_id", shopId);
+            if (error) throw error;
+            counts.updated += 1;
+          } else {
+            partId = uuidv4();
+            const { error } = await supabase.from("parts").insert({ ...(partPayload as PartInsert), id: partId, shop_id: shopId, name: row.name });
+            if (error) throw error;
+            counts.created += 1;
+          }
+
+          if (partId && row.barcode) {
+            const { error: barcodeError } = await supabase
+              .from("parts_barcodes")
+              .upsert({ shop_id: shopId, part_id: partId, barcode: row.barcode }, { onConflict: "shop_id,barcode" });
+            if (barcodeError) skipped.push({ row: row.rowNumber, reason: `Barcode was not saved: ${barcodeError.message}` });
+          }
+
+          if (partId && typeof row.quantity_on_hand === "number") {
+            const locId = await resolveCsvLocationId(row);
+            if (!locId) {
+              skipped.push({ row: row.rowNumber, reason: "Quantity was not applied because no stock location was selected or matched." });
+            } else {
+              const { data: moves } = await supabase
+                .from("stock_moves")
+                .select("qty_change")
+                .eq("shop_id", shopId)
+                .eq("part_id", partId)
+                .eq("location_id", locId);
+              const currentQty = ((moves ?? []) as Pick<StockMove, "qty_change">[]).reduce((sum, move) => sum + (Number(move.qty_change) || 0), 0);
+              const delta = row.quantity_on_hand - currentQty;
+              if (delta !== 0) {
+                await applyStockMoveRPC(supabase, {
+                  p_part: partId,
+                  p_loc: locId,
+                  p_qty: delta,
+                  p_reason: "adjust",
+                  p_ref_kind: "parts_inventory_csv_import",
+                  p_ref_id: null,
+                });
+              }
+            }
+          }
+        } catch (error) {
+          counts.failed += 1;
+          errors.push({ row: row.rowNumber, error: errMsg(error) });
         }
       }
-    }
 
-    setCsvOpen(false);
-    setCsvPreview(false);
-    setCsvText("");
-    setCsvRows([]);
-    await load(shopId);
+      counts.skipped += csvRows.filter((row) => row.errors.length > 0 || row.active === false).length;
+      const result = { counts, errors, skipped };
+      setCsvResult(result);
+      if (counts.failed === 0 && counts.created + counts.updated > 0) {
+        setCsvProgress({ phase: "Completing guided step", phaseKey: "finalizing", processed: importableRows.length, total: importableRows.length, percent: 96, imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
+        await completePartsOnboardingAfterImport(counts);
+      }
+      setCsvProgress({
+        phase: counts.failed > 0 ? "Import completed with failures" : "Completed",
+        phaseKey: counts.failed > 0 ? "failed" : "completed",
+        processed: importableRows.length,
+        total: importableRows.length,
+        percent: 100,
+        imported: counts.created + counts.updated,
+        skipped: counts.skipped,
+        failed: counts.failed,
+      });
+      await load(shopId);
+    } catch (error) {
+      setCsvError(errMsg(error));
+      setCsvProgress({ phase: "Failed", phaseKey: "failed", processed: 0, total: importableRows.length, percent: 100, failed: counts.failed || 1 });
+    } finally {
+      setCsvImporting(false);
+    }
   };
 
   /* ----------------------------- UI ----------------------------- */
@@ -809,7 +1035,7 @@ export default function InventoryPage(): JSX.Element {
         actions={{
           parts: {
             label: "Open import tools",
-            description: "Uses the existing CSV Import modal on this page; no new import engine or backend route is created.",
+            description: "Upload, preview, validate, and import parts inventory CSV rows into the existing parts and stock tables.",
             onClick: () => setCsvOpen(true),
           },
         }}
@@ -847,7 +1073,7 @@ export default function InventoryPage(): JSX.Element {
               </button>
 
               <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
-                CSV Import
+                Import CSV
               </button>
               <select
                 className={inputBase}
@@ -860,6 +1086,22 @@ export default function InventoryPage(): JSX.Element {
               </select>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className={`${glassCard} p-4`} data-testid="parts-inventory-csv-import-card">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Guided import</div>
+            <h2 className="mt-1 text-lg font-semibold text-white">Import parts inventory CSV</h2>
+            <p className="mt-1 max-w-3xl text-sm text-neutral-400">
+              Preview and validate fields for external_id, SKU, part number, pricing, on-hand quantity, bin/location, barcode,
+              taxable, and active status before updating the existing parts inventory source of truth.
+            </p>
+          </div>
+          <button className={btnCopper} onClick={() => setCsvOpen(true)} disabled={!shopId}>
+            Import CSV
+          </button>
         </div>
       </div>
 
@@ -1106,10 +1348,10 @@ export default function InventoryPage(): JSX.Element {
         )}
       </Modal>
 
-      {/* CSV Import */}
+      {/* Import CSV */}
       <Modal
         open={csvOpen}
-        title="CSV Import"
+        title="Import CSV"
         onClose={() => setCsvOpen(false)}
         widthClass="max-w-3xl"
         footer={
@@ -1144,9 +1386,9 @@ export default function InventoryPage(): JSX.Element {
               <button
                 className={btnBlue}
                 onClick={runCsvImport}
-                disabled={!csvPreview || csvRows.length === 0}
+                disabled={csvImporting || csvCompletingOnboarding || !csvPreview || csvRows.filter((row) => row.errors.length === 0 && row.active !== false).length === 0}
               >
-                Import
+                {csvImporting ? "Importing…" : csvCompletingOnboarding ? "Completing onboarding…" : "Import"}
               </button>
             </div>
           </div>
@@ -1154,8 +1396,8 @@ export default function InventoryPage(): JSX.Element {
       >
         <div className="grid gap-3">
           <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
-            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>name, sku, category, price, qty</code>.
-            Extra columns are ignored.
+            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>{PART_CSV_FIELDS.join(", ")}</code>.
+            Name is required. SKU or part_number is recommended so re-imports update deterministically.
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1191,28 +1433,30 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
           />
 
           {csvPreview && (
-            <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
+            <div className="max-h-96 overflow-auto rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
               <table className="w-full text-sm">
                 <thead className="bg-white/5 text-left text-neutral-400">
                   <tr>
+                    <th className="p-3">Row</th>
                     <th className="p-3">Name</th>
-                    <th className="p-3">SKU</th>
-                    <th className="p-3">Category</th>
-                    <th className="p-3">Price</th>
-                    <th className="p-3">Qty</th>
+                    <th className="p-3">SKU / Part #</th>
+                    <th className="p-3">Vendor</th>
+                    <th className="p-3">Cost / Sell</th>
+                    <th className="p-3">Qty / Min</th>
+                    <th className="p-3">Validation</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {csvRows.map((r, i) => (
-                    <tr key={i} className="border-t border-[color:var(--desktop-border)]">
-                      <td className="p-3">{r.name}</td>
-                      <td className="p-3">{r.sku ?? "—"}</td>
-                      <td className="p-3">{r.category ?? "—"}</td>
-                      <td className="p-3 tabular-nums">
-                        {typeof r.price === "number" ? r.price.toFixed(2) : "—"}
-                      </td>
-                      <td className="p-3 tabular-nums">
-                        {typeof r.qty === "number" ? r.qty : "—"}
+                  {csvRows.slice(0, 50).map((r) => (
+                    <tr key={r.rowNumber} className="border-t border-[color:var(--desktop-border)]">
+                      <td className="p-3 tabular-nums text-neutral-400">{r.rowNumber}</td>
+                      <td className="p-3">{r.name || "—"}</td>
+                      <td className="p-3 font-mono text-xs text-neutral-300">{r.sku ?? "—"} / {r.part_number ?? "—"}</td>
+                      <td className="p-3">{r.vendor ?? r.brand ?? "—"}</td>
+                      <td className="p-3 tabular-nums">{typeof r.cost_price === "number" ? `$${r.cost_price.toFixed(2)}` : "—"} / {typeof r.sell_price === "number" ? `$${r.sell_price.toFixed(2)}` : "—"}</td>
+                      <td className="p-3 tabular-nums">{typeof r.quantity_on_hand === "number" ? r.quantity_on_hand : "—"} / {typeof r.min_stock === "number" ? r.min_stock : "—"}</td>
+                      <td className="p-3 text-xs">
+                        {r.errors.length ? <span className="text-red-300">{r.errors.join(" · ")}</span> : r.warnings.length ? <span className="text-amber-200">{r.warnings.join(" · ")}</span> : <span className="text-emerald-200">Ready</span>}
                       </td>
                     </tr>
                   ))}
@@ -1220,6 +1464,37 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
               </table>
             </div>
           )}
+
+
+          <CsvImportProgress progress={csvProgress} label="Parts inventory CSV import progress" />
+
+          {csvError ? (
+            <GuidedImportSummary tone="error">{csvError}</GuidedImportSummary>
+          ) : null}
+
+          {csvResult ? (
+            <GuidedImportSummary tone={csvResult.counts.failed > 0 ? "warning" : "success"}>
+              <div className="font-semibold">
+                Created {csvResult.counts.created}, updated {csvResult.counts.updated}, skipped {csvResult.counts.skipped}, failed {csvResult.counts.failed}.
+              </div>
+              {csvResult.errors.length > 0 ? (
+                <ul className="mt-2 list-disc pl-5 text-xs">
+                  {csvResult.errors.slice(0, 5).map((item) => (
+                    <li key={`${item.row}-${item.error}`}>Row {item.row}: {item.error}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {guidedQuery?.onboardingStep === "parts" && csvResult.counts.failed === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(guidedQuery.returnTo)}
+                  className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
+                >
+                  Continue onboarding
+                </button>
+              ) : null}
+            </GuidedImportSummary>
+          ) : null}
 
           {csvPreview && (
             <div className="text-xs text-neutral-500">

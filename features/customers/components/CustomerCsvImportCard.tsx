@@ -321,7 +321,7 @@ export function CustomerCsvImportCard({
     setImporting(true);
     setImportError(null);
     setImportProgress({
-      phase: "processing",
+      phase: "Preparing rows",
       phaseKey: "processing",
       processed: 0,
       total: importableRows.length,
@@ -382,7 +382,7 @@ export function CustomerCsvImportCard({
         payload.counts.failed === 0
       ) {
         setImportProgress({
-          phase: "Finalizing guided step",
+          phase: "Completing guided step",
           phaseKey: "finalizing",
           processed: importableRows.length,
           total: importableRows.length,
