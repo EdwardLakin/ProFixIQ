@@ -56,13 +56,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   if (!item) return NextResponse.json({ ok: false, error: "Request item not found." }, { status: 404 });
 
   let partId: string;
+  let selectedPart: Record<string, unknown> | null = null;
 
   if (body.mode === "attach") {
     if (!isUuid(body.partId)) return NextResponse.json({ ok: false, error: "Invalid partId." }, { status: 400 });
 
     const { data: part, error: partError } = await supabase
       .from("parts")
-      .select("id")
+      .select("*")
       .eq("id", body.partId)
       .eq("shop_id", shopId)
       .maybeSingle();
@@ -70,6 +71,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
     if (!part) return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     partId = part.id;
+    selectedPart = part as Record<string, unknown>;
   } else {
     const name = clean(body.name);
     if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
@@ -117,9 +119,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     }
   }
 
+  const requestedPartNumber =
+    typeof selectedPart?.part_number === "string" && selectedPart.part_number.trim()
+      ? selectedPart.part_number.trim()
+      : typeof selectedPart?.sku === "string" && selectedPart.sku.trim()
+        ? selectedPart.sku.trim()
+        : null;
+
+  const requestedManufacturer =
+    typeof selectedPart?.manufacturer === "string" && selectedPart.manufacturer.trim()
+      ? selectedPart.manufacturer.trim()
+      : typeof selectedPart?.supplier === "string" && selectedPart.supplier.trim()
+        ? selectedPart.supplier.trim()
+        : null;
+
   const { data: updatedItem, error: updateError } = await supabase
     .from("part_request_items")
-    .update({ part_id: partId, updated_at: new Date().toISOString() })
+    .update({
+      part_id: partId,
+      requested_part_number: requestedPartNumber,
+      requested_manufacturer: requestedManufacturer,
+      updated_at: new Date().toISOString(),
+    } as DB["public"]["Tables"]["part_request_items"]["Update"])
     .eq("id", itemId)
     .eq("shop_id", shopId)
     .select("*")
