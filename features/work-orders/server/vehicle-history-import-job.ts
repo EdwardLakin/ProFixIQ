@@ -20,7 +20,7 @@ type VehicleRef = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "extern
 type Resolver = { customersById: Map<string, CustomerRef>; customersByExternal: Map<string, CustomerRef>; customersByEmail: Map<string, CustomerRef>; customersByPhone: Map<string, CustomerRef>; customersByName: Map<string, CustomerRef>; vehiclesById: Map<string, VehicleRef>; vehiclesByExternal: Map<string, VehicleRef>; vehiclesByVin: Map<string, VehicleRef>; };
 type ImportCounts = { imported: number; updated: number; skipped: number; failed: number; duplicates: number };
 
-type JobRow = { id: string; shop_id: string; processed_rows: number | null; imported_count: number | null; skipped_count: number | null; failed_count: number | null; summary: Record<string, unknown> | null };
+type JobRow = { id: string; shop_id: string; total_rows: number | null; processed_rows: number | null; imported_count: number | null; skipped_count: number | null; failed_count: number | null; summary: Record<string, unknown> | null };
 type StagedRow = { id: string; row_number: number; raw_row: HistoryImportRow; status: string | null };
 
 function clean(value: unknown): string | null { const text = String(value ?? "").trim(); return text ? text : null; }
@@ -47,8 +47,8 @@ async function loadResolver(supabase: SupabaseClient<DB>, shopId: string): Promi
   for (const v of (vehicles ?? []) as VehicleRef[]) { r.vehiclesById.set(v.id, v); const ex = key(v.external_id); if (ex && !r.vehiclesByExternal.has(ex)) r.vehiclesByExternal.set(ex, v); const vk = vin(v.vin); if (vk && !r.vehiclesByVin.has(vk)) r.vehiclesByVin.set(vk, v); }
   return r;
 }
-function resolveCustomer(row: HistoryImportRow, r: Resolver): CustomerRef | null { const cid = clean(row.customer_id); if (cid && r.customersById.has(cid)) return r.customersById.get(cid)!; const ex = key(row.customer_id); if (ex && r.customersByExternal.has(ex)) return r.customersByExternal.get(ex)!; const em = key(row.customer_email ?? row.email); if (em && r.customersByEmail.has(em)) return r.customersByEmail.get(em)!; const ph = phone(row.customer_phone ?? row.phone); if (ph && r.customersByPhone.has(ph)) return r.customersByPhone.get(ph)!; const nm = key(row.customer_name ?? row.name); if (nm && r.customersByName.has(nm)) return r.customersByName.get(nm)!; return null; }
-function resolveVehicle(row: HistoryImportRow, r: Resolver): VehicleRef | null { const vid = clean(row.vehicle_id); if (vid && r.vehiclesById.has(vid)) return r.vehiclesById.get(vid)!; const ex = key(row.vehicle_id); if (ex && r.vehiclesByExternal.has(ex)) return r.vehiclesByExternal.get(ex)!; const vk = vin(row.vin); if (vk && r.vehiclesByVin.has(vk)) return r.vehiclesByVin.get(vk)!; return null; }
+function resolveCustomer(row: HistoryImportRow, r: Resolver): CustomerRef | null { const ex = key(row.customer_id); if (ex && r.customersByExternal.has(ex)) return r.customersByExternal.get(ex)!; const cid = clean(row.customer_id); if (cid && r.customersById.has(cid)) return r.customersById.get(cid)!; const em = key(row.customer_email ?? row.email); if (em && r.customersByEmail.has(em)) return r.customersByEmail.get(em)!; const ph = phone(row.customer_phone ?? row.phone); if (ph && r.customersByPhone.has(ph)) return r.customersByPhone.get(ph)!; const nm = key(row.customer_name ?? row.name); if (nm && r.customersByName.has(nm)) return r.customersByName.get(nm)!; return null; }
+function resolveVehicle(row: HistoryImportRow, r: Resolver): VehicleRef | null { const ex = key(row.vehicle_id); if (ex && r.vehiclesByExternal.has(ex)) return r.vehiclesByExternal.get(ex)!; const vid = clean(row.vehicle_id); if (vid && r.vehiclesById.has(vid)) return r.vehiclesById.get(vid)!; const vk = vin(row.vin); if (vk && r.vehiclesByVin.has(vk)) return r.vehiclesByVin.get(vk)!; return null; }
 
 async function findDuplicateHistoryId(supabase: SupabaseClient<DB>, customerId: string, column: "work_order_number" | "invoice_number", value: string): Promise<string | null> {
   const { data, error } = await supabase.from("history").select("id").eq("customer_id", customerId).eq(column, value).limit(1);
@@ -64,7 +64,7 @@ function compactSamples(summary: Record<string, unknown> | null) {
 
 export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClient<DB>, jobId?: string, batchSize = VEHICLE_HISTORY_IMPORT_BATCH_SIZE) {
   const client = supabase as unknown as SupabaseClient;
-  let jobQuery = client.from("import_jobs").select("id, shop_id, processed_rows, imported_count, skipped_count, failed_count, summary").eq("import_type", "vehicle_history").in("status", ["queued", "processing"]).order("created_at", { ascending: true }).limit(1);
+  let jobQuery = client.from("import_jobs").select("id, shop_id, total_rows, processed_rows, imported_count, skipped_count, failed_count, summary").eq("import_type", "vehicle_history").in("status", ["queued", "processing"]).order("created_at", { ascending: true }).limit(1);
   if (jobId) jobQuery = jobQuery.eq("id", jobId);
   const { data: job, error: jobError } = await jobQuery.maybeSingle<JobRow>();
   if (jobError) throw jobError;
@@ -115,11 +115,17 @@ export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClie
   }
 
   samples.skippedRows = samples.skippedRows.slice(0, VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT); samples.failedRows = samples.failedRows.slice(0, VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT);
-  const processedRows = (job.processed_rows ?? 0) + rows.length;
+  const totalRows = Math.max(0, job.total_rows ?? 0);
+  const nextImported = (job.imported_count ?? 0) + counts.imported;
+  const nextSkipped = (job.skipped_count ?? 0) + counts.skipped;
+  const nextFailed = (job.failed_count ?? 0) + counts.failed;
+  const processedRows = totalRows > 0 ? Math.min(totalRows, nextImported + nextSkipped + nextFailed) : nextImported + nextSkipped + nextFailed;
   const summary = { skippedRows: samples.skippedRows, failedRows: samples.failedRows, duplicates: Number(job.summary?.duplicates ?? 0) + counts.duplicates };
   const { count: remainingCount, error: remainingError } = await client.from("import_job_rows").select("id", { count: "exact", head: true }).eq("job_id", job.id).eq("status", "queued");
   if (remainingError) throw remainingError;
   const completed = (remainingCount ?? 0) === 0;
-  await client.from("import_jobs").update({ status: completed ? "completed" : "processing", processed_rows: processedRows, imported_count: (job.imported_count ?? 0) + counts.imported, skipped_count: (job.skipped_count ?? 0) + counts.skipped, failed_count: (job.failed_count ?? 0) + counts.failed, summary, completed_at: completed ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq("id", job.id);
+  const reconciledSkipped = completed && totalRows > 0 ? Math.max(0, totalRows - nextImported - nextFailed) : nextSkipped;
+  const reconciledProcessed = completed && totalRows > 0 ? totalRows : processedRows;
+  await client.from("import_jobs").update({ status: completed ? "completed" : "processing", processed_rows: reconciledProcessed, imported_count: nextImported, skipped_count: reconciledSkipped, failed_count: nextFailed, summary, completed_at: completed ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq("id", job.id);
   return { ok: true, processed: rows.length, completed, job: { id: job.id } };
 }

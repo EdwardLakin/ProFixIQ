@@ -989,15 +989,31 @@ function classifyDeterministicCustomerMiss(args: {
 }
 
 function sourceExternalId(domain: "customer" | "vehicle" | "work_order" | "invoice", sourceId: string): string {
-  const normalized = sourceId.trim().toLowerCase();
+  const raw = sourceId.trim();
+  if ((domain === "customer" || domain === "vehicle") && raw) return raw;
+  const normalized = raw.toLowerCase();
   return `import:source:${domain}:${sha1(normalized || sourceId).slice(0, 20)}`;
 }
 
-function sourceIdentityHashes(sourceId: string | null | undefined): string[] {
+function sourceIdentityKeys(sourceId: string | null | undefined): string[] {
   const raw = String(sourceId ?? "").trim();
   if (!raw) return [];
   const normalized = raw.toLowerCase();
-  return Array.from(new Set([sha1(raw).slice(0, 20), sha1(normalized).slice(0, 20)]));
+  return Array.from(new Set([raw, normalized, sha1(raw).slice(0, 20), sha1(normalized).slice(0, 20)]));
+}
+
+function sourceIdentityHashes(sourceId: string | null | undefined): string[] {
+  return sourceIdentityKeys(sourceId);
+}
+
+function rememberExistingExternalId(map: Map<string, string>, externalId: string | null | undefined, linkedId: string): void {
+  if (!linkedId) return;
+  const raw = String(externalId ?? "").trim();
+  if (!raw) return;
+  map.set(raw, linkedId);
+  map.set(raw.toLowerCase(), linkedId);
+  const legacyMatch = raw.match(/^import:source:(?:customer|vehicle):([a-f0-9]{20})$/);
+  if (legacyMatch?.[1]) map.set(legacyMatch[1], linkedId);
 }
 
 function resolveSourceLinkedId(map: Map<string, string>, sourceId: string | null | undefined): string | null {
@@ -1624,8 +1640,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
       addUniqueMatch(uniqueCustomersByEmail, conflictingCustomerEmails, email, id);
       addUniqueMatch(uniqueCustomersByPhone, conflictingCustomerPhones, phone, id);
       addUniqueMatch(uniqueCustomersByName, conflictingCustomerNames, normalizedName, id);
-      const sourceMatch = externalId.match(/^import:source:customer:([a-f0-9]{20})$/);
-      if (sourceMatch?.[1] && id) customersBySourceId.set(sourceMatch[1], id);
+      rememberExistingExternalId(customersBySourceId, externalId, id);
     }
   }
 
@@ -1660,8 +1675,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<ShopBoostImport
         compositeKey(customerId, plate),
         id,
       );
-      const sourceMatch = externalId.match(/^import:source:vehicle:([a-f0-9]{20})$/);
-      if (sourceMatch?.[1] && id) vehiclesBySourceId.set(sourceMatch[1], id);
+      rememberExistingExternalId(vehiclesBySourceId, externalId, id);
     }
   }
 

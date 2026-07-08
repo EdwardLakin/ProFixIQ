@@ -195,8 +195,10 @@ function resolveCustomerId(
   customers: CustomerResolverIndex,
 ): string | null {
   const externalCustomerId = normalizeLookupKey(row.customer_id);
-  if (externalCustomerId)
-    return customers.byExternalId.get(externalCustomerId) ?? null;
+  if (externalCustomerId) {
+    const match = customers.byExternalId.get(externalCustomerId);
+    if (match) return match;
+  }
 
   const email = normalizeLookupKey(row.customer_email ?? row.email);
   if (email) {
