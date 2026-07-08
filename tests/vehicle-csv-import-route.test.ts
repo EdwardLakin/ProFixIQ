@@ -25,8 +25,8 @@ describe("vehicle CSV import route", () => {
     const source = routeSource();
 
     expect(source).toContain('"Customer not found for external customer_id."');
-    expect(source).toContain("counts.skipped++");
-    expect(source).toContain("skippedByReason");
+    expect(source).toContain("counts.skipped += 1");
+    expect(source).toContain("skippedRows.push");
   });
 
   it("matches re-imported vehicles without relying on duplicate insert conflicts", () => {
@@ -37,7 +37,24 @@ describe("vehicle CSV import route", () => {
     );
     expect(source).toContain("loadExistingVehicleIndex");
     expect(source).toContain(".in(field, values[field])");
-    expect(source).toContain("counts.updated++");
+    expect(source).toContain("counts.updated += 1");
+  });
+
+
+
+  it("stays synchronous and does not use import job staging", () => {
+    const source = routeSource();
+    const vehicleSource = `${source}\n${cardSource()}`;
+
+    expect(vehicleSource).toContain('fetch("/api/vehicles/import"');
+    expect(vehicleSource).toContain("processVehicleImportRows");
+    expect(vehicleSource).not.toContain("import_jobs");
+    expect(vehicleSource).not.toContain("import_job_rows");
+    expect(vehicleSource).not.toContain("processVehicleImportJobBatch");
+    expect(vehicleSource).not.toContain("stageVehicleImportRows");
+    expect(vehicleSource).not.toContain("useImportJobProgress");
+    expect(vehicleSource).not.toContain("/api/import-jobs/");
+    expect(vehicleSource).not.toContain("/api/internal/import-jobs/tick");
   });
 
   it("persists supported CSV vehicle detail fields and returns compact diagnostics", () => {
