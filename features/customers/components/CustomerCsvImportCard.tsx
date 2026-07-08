@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
@@ -9,6 +8,9 @@ import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
+import { CsvImportPreviewCard } from "@/features/shared/components/import/CsvImportPreviewCard";
+import { CsvImportCompletionSummary } from "@/features/shared/components/import/CsvImportCompletionSummary";
+import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type CustomerImportRow = {
@@ -515,49 +517,16 @@ export function CustomerCsvImportCard({
         </>
       }
     >
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="font-semibold text-neutral-100">
-              Selected file:
-            </span>{" "}
-            {fileName ?? "No CSV selected"}
-          </div>
-          {headers.length ? (
-            <div className="text-xs text-neutral-400">
-              Detected {headers.length} columns
-            </div>
-          ) : null}
-        </div>
-        {parseError ? (
-          <div className="mt-3 rounded-lg border border-red-500/25 bg-red-950/30 p-2 text-red-100">
-            {parseError}
-          </div>
-        ) : null}
-        {rows.length ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <div className="text-lg font-semibold text-white">
-                {rows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Rows parsed</div>
-            </div>
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2">
-              <div className="text-lg font-semibold text-emerald-100">
-                {importableRows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Ready to import</div>
-            </div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2">
-              <div className="text-lg font-semibold text-amber-100">
-                {skippedPreviewCount}
-              </div>
-              <div className="text-xs text-neutral-400">Missing identity</div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
+      <CsvImportPreviewCard
+        fileName={fileName}
+        headersCount={headers.length}
+        parsedRows={rows.length}
+        readyRows={importableRows.length}
+        needsReviewRows={skippedPreviewCount}
+        duplicateRows={counts?.duplicates ?? counts?.skipped ?? 0}
+        invalidRows={skippedPreviewCount}
+        parseError={parseError}
+      />
       {previewRows.length ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
           <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -595,149 +564,39 @@ export function CustomerCsvImportCard({
           </div>
         </div>
       ) : null}
-
       <CsvImportProgress
         progress={importProgress}
         label="Customer CSV import progress"
       />
-
       {counts ? (
-        <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-950/25 p-3 text-sm text-emerald-50">
-          Import results: Imported {counts.created}, Updated {counts.updated},
-          Skipped {counts.skipped}, Failed {counts.failed}.
-        </div>
-      ) : null}
-      {failedRows.length ? (
-        <div className="mt-4 overflow-hidden rounded-xl border border-red-500/25 bg-red-950/20 text-sm text-red-50">
-          <div className="border-b border-red-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-100">
-            Failed rows
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left">
-              <thead className="text-xs uppercase tracking-[0.12em] text-red-100/70">
-                <tr>
-                  <th className="px-3 py-2">Row</th>
-                  <th className="px-3 py-2">Customer</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Phone</th>
-                  <th className="px-3 py-2">Error</th>
-                  <th className="px-3 py-2">Constraint</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-red-500/15 text-red-50/90">
-                {failedRows.slice(0, 25).map((row) => (
-                  <tr key={`${row.row}-${row.constraint ?? row.error}`}>
-                    <td className="px-3 py-2">{row.row}</td>
-                    <td className="px-3 py-2">{row.customerName ?? "—"}</td>
-                    <td className="px-3 py-2">{row.email ?? "—"}</td>
-                    <td className="px-3 py-2">{row.phone ?? "—"}</td>
-                    <td className="px-3 py-2">{row.error}</td>
-                    <td className="px-3 py-2">{row.constraint ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {failedRows.length > 25 ? (
-            <div className="px-3 py-2 text-xs text-red-100/70">
-              Showing first 25 of {failedRows.length} failed rows.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {skippedRows.length ? (
-        <div className="mt-4 overflow-hidden rounded-xl border border-amber-500/25 bg-amber-950/20 text-sm text-amber-50">
-          <div className="border-b border-amber-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">
-            Skipped rows
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left">
-              <thead className="text-xs uppercase tracking-[0.12em] text-amber-100/70">
-                <tr>
-                  <th className="px-3 py-2">Row</th>
-                  <th className="px-3 py-2">Customer</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Phone</th>
-                  <th className="px-3 py-2">Reason</th>
-                  <th className="px-3 py-2">Matched by</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-amber-500/15 text-amber-50/90">
-                {skippedRows.slice(0, 25).map((row) => (
-                  <tr
-                    key={`${row.row}-${row.matchedBy}-${row.matchedValue ?? row.customerName ?? row.email ?? row.phone ?? "row"}`}
-                  >
-                    <td className="px-3 py-2">{row.row}</td>
-                    <td className="px-3 py-2">{row.customerName ?? "—"}</td>
-                    <td className="px-3 py-2">{row.email ?? "—"}</td>
-                    <td className="px-3 py-2">{row.phone ?? "—"}</td>
-                    <td className="px-3 py-2">{row.reason}</td>
-                    <td className="px-3 py-2">
-                      {row.matchedBy}
-                      {row.matchedValue ? ` · ${row.matchedValue}` : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {skippedRows.length > 25 ? (
-            <div className="px-3 py-2 text-xs text-amber-100/70">
-              Showing first 25 of {skippedRows.length} skipped rows.
-            </div>
-          ) : null}
-        </div>
+        <CsvImportCompletionSummary
+          imported={counts.created + counts.updated}
+          skipped={counts.skipped}
+          failed={counts.failed}
+          duplicates={counts.duplicates ?? counts.skipped}
+          skippedRows={skippedRows}
+          failedRows={failedRows}
+        />
       ) : null}
       {importError ? (
         <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">
           {importError}
         </div>
       ) : null}
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        <button
-          type="button"
-          onClick={() => void confirmImport()}
-          disabled={importing || completingOnboarding || !importableRows.length}
-          className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
-        >
-          {importing
-            ? "Importing…"
-            : completingOnboarding
-              ? "Completing onboarding…"
-              : "Confirm import"}
-        </button>
-        {isOnboarding && importSucceeded ? (
-          <button
-            type="button"
-            onClick={() => router.push(guidedQuery!.returnTo)}
-            className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
-          >
-            Continue onboarding
-          </button>
-        ) : null}
-        {isOnboarding ? (
-          <>
-            <button
-              type="button"
-              onClick={() => void skipOnboardingStep()}
-              disabled={
-                busyAction !== null || importing || completingOnboarding
-              }
-              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
-            >
-              {busyAction === "skip" ? "Skipping…" : "Skip for now"}
-            </button>
-            <Link
-              href={guidedQuery!.returnTo}
-              className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
-            >
-              Return to Data Onboarding
-            </Link>
-          </>
-        ) : null}
-      </div>
+      <GuidedImportFooterActions
+        importing={importing}
+        completing={completingOnboarding}
+        canConfirm={importableRows.length > 0}
+        onConfirm={() => void confirmImport()}
+        isOnboarding={isOnboarding}
+        returnTo={guidedQuery?.returnTo}
+        hasResult={Boolean(counts)}
+        importSucceeded={importSucceeded}
+        onContinue={() => router.push(guidedQuery!.returnTo)}
+        onSkip={isOnboarding ? () => void skipOnboardingStep() : undefined}
+        skipDisabled={busyAction !== null}
+        skipLabel={busyAction === "skip" ? "Skipping…" : "Skip for now"}
+      />{" "}
     </GuidedSetupCardShell>
   );
 }

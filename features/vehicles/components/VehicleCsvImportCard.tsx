@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
+import { CsvImportPreviewCard } from "@/features/shared/components/import/CsvImportPreviewCard";
+import { CsvImportCompletionSummary } from "@/features/shared/components/import/CsvImportCompletionSummary";
+import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type Props = {
@@ -483,79 +485,36 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         </>
       }
     >
-      <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-300">
-        <span className="font-semibold text-neutral-100">Selected file:</span>{" "}
-        {fileName ?? "No CSV selected"}
-      </div>
-
-      {parseError ? (
-        <div className="mt-3 rounded-xl border border-red-500/35 bg-red-950/40 p-3 text-sm text-red-200">
-          {parseError}
-        </div>
-      ) : null}
-
+      <CsvImportPreviewCard
+        fileName={fileName}
+        parsedRows={rows.length}
+        readyRows={importableRows.length}
+        needsReviewRows={skippedPreviewCount}
+        duplicateRows={0}
+        invalidRows={skippedPreviewCount}
+        parseError={parseError}
+      />
       {importError ? (
         <div className="mt-3 rounded-xl border border-red-500/35 bg-red-950/40 p-3 text-sm text-red-200">
           {importError}
         </div>
       ) : null}
-
       <CsvImportProgress
         progress={importProgress}
         label="Vehicle CSV import progress"
       />
-
       {counts ? (
-        <div className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-          Import complete. Imported: {counts.created}. Updated: {counts.updated}
-          . Skipped: {counts.skipped}. Failed: {counts.failed}.
-          {failedRows.length || skippedRows.length ? (
-            <details className="mt-2 text-xs text-emerald-50/80">
-              <summary className="cursor-pointer font-semibold">
-                Developer diagnostics
-              </summary>
-              <div className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/10 bg-black/25 p-2 text-left">
-                {[
-                  ...failedRows.map(
-                    (row) => `Failed row ${row.row}: ${row.error}`,
-                  ),
-                  ...skippedRows.map(
-                    (row) => `Skipped row ${row.row}: ${row.reason}`,
-                  ),
-                ]
-                  .slice(0, 25)
-                  .map((line) => (
-                    <div key={line}>{line}</div>
-                  ))}
-              </div>
-            </details>
-          ) : null}
-        </div>
+        <CsvImportCompletionSummary
+          imported={counts.created + counts.updated}
+          skipped={counts.skipped}
+          failed={counts.failed}
+          duplicates={0}
+          skippedRows={skippedRows}
+          failedRows={failedRows}
+        />
       ) : null}
-
       {rows.length ? (
         <div className="mt-4 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3">
-              <div className="text-lg font-semibold text-white">
-                {rows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Rows found</div>
-            </div>
-            <div className="rounded-xl border border-emerald-500/25 bg-black/20 p-3">
-              <div className="text-lg font-semibold text-emerald-100">
-                {importableRows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Ready to import</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/25 bg-black/20 p-3">
-              <div className="text-lg font-semibold text-amber-100">
-                {skippedPreviewCount}
-              </div>
-              <div className="text-xs text-neutral-400">Missing identity</div>
-            </div>
-          </div>
-
           {previewRows.length ? (
             <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)]">
               <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -579,38 +538,17 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
           ) : null}
         </div>
       ) : null}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={importing || completingOnboarding || !importableRows.length}
-          onClick={() => void confirmImport()}
-          className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {importing
-            ? "Importing…"
-            : completingOnboarding
-              ? "Completing onboarding…"
-              : "Confirm import"}
-        </button>
-        {isOnboarding && importSucceeded ? (
-          <button
-            type="button"
-            onClick={() => router.push(guidedQuery!.returnTo)}
-            className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
-          >
-            Continue onboarding
-          </button>
-        ) : null}
-        {isOnboarding ? (
-          <Link
-            href={guidedQuery!.returnTo}
-            className="rounded-xl border border-sky-500/30 bg-sky-950/25 px-4 py-2 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/30"
-          >
-            Return to Data Onboarding
-          </Link>
-        ) : null}
-      </div>
+      <GuidedImportFooterActions
+        importing={importing}
+        completing={completingOnboarding}
+        canConfirm={importableRows.length > 0}
+        onConfirm={() => void confirmImport()}
+        isOnboarding={isOnboarding}
+        returnTo={guidedQuery?.returnTo}
+        hasResult={Boolean(counts)}
+        importSucceeded={importSucceeded}
+        onContinue={() => router.push(guidedQuery!.returnTo)}
+      />{" "}
     </GuidedSetupCardShell>
   );
 }
