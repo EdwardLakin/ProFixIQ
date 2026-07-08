@@ -7,6 +7,7 @@ type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 
 const VEHICLE_IMPORT_INSERT_BATCH_SIZE = 1000;
+const VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE = 100;
 export const VEHICLE_IMPORT_SAMPLE_LIMIT = 25;
 export const VEHICLE_IMPORT_MAX_ROWS = 20_000;
 
@@ -57,9 +58,14 @@ async function loadExistingVehicleIndex(supabase: SupabaseClient<DB>, shopId: st
   const index = new Map<string, VehicleMatch>();
   for (const field of ["external_id", "vin", "unit_number", "license_plate"] as const) {
     if (!values[field].length) continue;
-    const { data, error } = await supabase.from("vehicles").select("id, external_id, vin, unit_number, license_plate").eq("shop_id", shopId).in(field, values[field]);
-    if (error) throw error;
-    for (const vehicle of (data ?? []) as VehicleMatch[]) addMatch(index, field, vehicle);
+    for (let start = 0; start < values[field].length; start += VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE) {
+      const chunk = values[field].slice(start, start + VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE);
+      const { data, error } = await supabase.from("vehicles").select("id, external_id, vin, unit_number, license_plate").eq("shop_id", shopId).in(field, chunk);
+      if (error) {
+        throw new Error(`Vehicle duplicate lookup failed for ${field} chunk ${Math.floor(start / VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE) + 1} (${chunk.length} values): ${error.message}`);
+      }
+      for (const vehicle of (data ?? []) as VehicleMatch[]) addMatch(index, field, vehicle);
+    }
   }
   return index;
 }
