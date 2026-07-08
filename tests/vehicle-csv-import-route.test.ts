@@ -131,7 +131,7 @@ describe("guided CSV import progress UI", () => {
     expect(customerSource).toContain("Customer CSV import progress");
     expect(vehicleSource).toContain("Vehicle CSV import progress");
     expect(customerSource).toContain('phase: "Preparing rows"');
-    expect(vehicleSource).toContain('phase: "Queueing vehicle import"');
+    expect(vehicleSource).toContain('phase: "Preparing rows"');
     expect(customerSource).toContain('phase: "Completing guided step"');
     expect(vehicleSource).toContain('phase: "Completing guided step"');
   });
