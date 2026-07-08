@@ -1,16 +1,27 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { GuidedImportSummary } from "@/features/shared/components/import/GuidedImportSummary";
+import { CsvImportPreviewCard } from "@/features/shared/components/import/CsvImportPreviewCard";
+import { CsvImportCompletionSummary } from "@/features/shared/components/import/CsvImportCompletionSummary";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
-import { useImportJobProgress, type ImportJobProgressJob } from "@/features/shared/components/import/useImportJobProgress";
+import {
+  useImportJobProgress,
+  type ImportJobProgressJob,
+} from "@/features/shared/components/import/useImportJobProgress";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 type HistoryImportRow = {
@@ -236,51 +247,93 @@ export function VehicleHistoryCsvImportCard({
       },
     });
   }
-  const completeOnboardingAfterImport = useCallback(async (
-    nextCounts: ImportCounts,
-  ) => {
-    if (!guidedQuery || !isOnboarding) return;
-    setCompletingOnboarding(true);
-    try {
-      const res = await fetch(
-        `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicle_history/complete`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            summary: { importType: "vehicle_history_csv", ...nextCounts },
-          }),
-        },
-      );
-      const payload = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-      if (!res.ok || payload.ok === false) {
-        throw new Error(
-          payload.error ??
-            "Vehicle history import succeeded, but onboarding completion failed.",
+  const completeOnboardingAfterImport = useCallback(
+    async (nextCounts: ImportCounts) => {
+      if (!guidedQuery || !isOnboarding) return;
+      setCompletingOnboarding(true);
+      try {
+        const res = await fetch(
+          `/api/onboarding-v2/guided/sessions/${encodeURIComponent(guidedQuery.onboardingSession)}/steps/vehicle_history/complete`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              summary: { importType: "vehicle_history_csv", ...nextCounts },
+            }),
+          },
         );
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+        };
+        if (!res.ok || payload.ok === false) {
+          throw new Error(
+            payload.error ??
+              "Vehicle history import succeeded, but onboarding completion failed.",
+          );
+        }
+      } finally {
+        setCompletingOnboarding(false);
       }
-    } finally {
-      setCompletingOnboarding(false);
-    }
-  }, [guidedQuery, isOnboarding]);
+    },
+    [guidedQuery, isOnboarding],
+  );
 
-  const handleJobComplete = useCallback(async (job: ImportJobProgressJob) => {
-    const summary = job.summary as { skippedRows?: ImportResponse["skippedRows"]; failedRows?: ImportResponse["failedRows"]; duplicates?: number } | null | undefined;
-    const counts: ImportCounts = { imported: job.importedCount, updated: 0, skipped: job.skippedCount, failed: job.failedCount, duplicates: Number(summary?.duplicates ?? 0) };
-    const nextResponse: ImportResponse = { ok: job.status === "completed", jobId: job.id, counts, totalRows: job.totalRows, skippedRows: summary?.skippedRows ?? [], failedRows: summary?.failedRows ?? [], error: job.errorMessage ?? undefined };
-    setResponse(nextResponse);
-    setImporting(false);
-    setActiveJobId(null);
-    if (job.status === "failed") { setImportError(job.errorMessage ?? "Vehicle history import job failed."); return; }
-    if (isOnboarding && counts.imported > 0 && counts.failed === 0) await completeOnboardingAfterImport(counts);
-    if (counts.imported > 0) onImported?.();
-  }, [completeOnboardingAfterImport, isOnboarding, onImported]);
-  const handleJobPollError = useCallback((message: string, job?: ImportJobProgressJob) => { if (job?.status === "failed") setImportError(message); }, []);
-  const { progress: jobProgress } = useImportJobProgress(activeJobId, { initialTotal: importableRows.length, onComplete: handleJobComplete, onError: handleJobPollError });
-  useEffect(() => { if (jobProgress) setProgress(jobProgress); }, [jobProgress]);
+  const handleJobComplete = useCallback(
+    async (job: ImportJobProgressJob) => {
+      const summary = job.summary as
+        | {
+            skippedRows?: ImportResponse["skippedRows"];
+            failedRows?: ImportResponse["failedRows"];
+            duplicates?: number;
+          }
+        | null
+        | undefined;
+      const counts: ImportCounts = {
+        imported: job.importedCount,
+        updated: 0,
+        skipped: job.skippedCount,
+        failed: job.failedCount,
+        duplicates: Number(summary?.duplicates ?? 0),
+      };
+      const nextResponse: ImportResponse = {
+        ok: job.status === "completed",
+        jobId: job.id,
+        counts,
+        totalRows: job.totalRows,
+        skippedRows: summary?.skippedRows ?? [],
+        failedRows: summary?.failedRows ?? [],
+        error: job.errorMessage ?? undefined,
+      };
+      setResponse(nextResponse);
+      setImporting(false);
+      setActiveJobId(null);
+      if (job.status === "failed") {
+        setImportError(
+          job.errorMessage ?? "Vehicle history import job failed.",
+        );
+        return;
+      }
+      if (isOnboarding && counts.imported > 0 && counts.failed === 0)
+        await completeOnboardingAfterImport(counts);
+      if (counts.imported > 0) onImported?.();
+    },
+    [completeOnboardingAfterImport, isOnboarding, onImported],
+  );
+  const handleJobPollError = useCallback(
+    (message: string, job?: ImportJobProgressJob) => {
+      if (job?.status === "failed") setImportError(message);
+    },
+    [],
+  );
+  const { progress: jobProgress } = useImportJobProgress(activeJobId, {
+    initialTotal: importableRows.length,
+    onComplete: handleJobComplete,
+    onError: handleJobPollError,
+  });
+  useEffect(() => {
+    if (jobProgress) setProgress(jobProgress);
+  }, [jobProgress]);
 
   async function confirmImport() {
     if (importing || completingOnboarding) return;
@@ -326,9 +379,15 @@ export function VehicleHistoryCsvImportCard({
       });
       const payload = (await res.json().catch(() => ({}))) as ImportResponse;
       if (!res.ok || payload.ok === false || !payload.jobId) {
-        throw new Error(payload.error ?? "Unable to queue vehicle history import.");
+        throw new Error(
+          payload.error ?? "Unable to queue vehicle history import.",
+        );
       }
-      setResponse({ ok: true, jobId: payload.jobId, totalRows: payload.totalRows });
+      setResponse({
+        ok: true,
+        jobId: payload.jobId,
+        totalRows: payload.totalRows,
+      });
       setProgress({
         phase: "Importing records",
         phaseKey: "importing",
@@ -404,48 +463,16 @@ export function VehicleHistoryCsvImportCard({
         </>
       }
     >
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="font-semibold text-neutral-100">
-              Selected file:
-            </span>{" "}
-            {fileName ?? "No CSV selected"}
-          </div>
-          {headers.length ? (
-            <div className="text-xs text-neutral-400">
-              Detected {headers.length} columns
-            </div>
-          ) : null}
-        </div>
-        {parseError ? (
-          <div className="mt-3 rounded-lg border border-red-500/25 bg-red-950/30 p-2 text-red-100">
-            {parseError}
-          </div>
-        ) : null}
-        {rows.length ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <div className="text-lg font-semibold text-white">
-                {rows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Rows parsed</div>
-            </div>
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2">
-              <div className="text-lg font-semibold text-emerald-100">
-                {importableRows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Ready to import</div>
-            </div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2">
-              <div className="text-lg font-semibold text-amber-100">
-                {rows.length - importableRows.length}
-              </div>
-              <div className="text-xs text-neutral-400">Need review</div>
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <CsvImportPreviewCard
+        fileName={fileName}
+        headersCount={headers.length}
+        parsedRows={rows.length}
+        readyRows={importableRows.length}
+        needsReviewRows={rows.length - importableRows.length}
+        duplicateRows={response?.counts?.duplicates ?? 0}
+        invalidRows={rows.length - importableRows.length}
+        parseError={parseError}
+      />
       {previewRows.length ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
           <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -508,31 +535,14 @@ export function VehicleHistoryCsvImportCard({
         label="Vehicle history CSV import progress"
       />
       {response?.counts ? (
-        <GuidedImportSummary
-          tone={response.counts.failed ? "error" : "success"}
-        >
-          Import results: Imported {response.counts.imported}, Skipped{" "}
-          {response.counts.skipped}, Duplicates {response.counts.duplicates},
-          Failed {response.counts.failed}.
-        </GuidedImportSummary>
-      ) : null}
-      {response?.skippedRows?.length ? (
-        <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-sm text-amber-50">
-          Skipped rows:{" "}
-          {response.skippedRows
-            .slice(0, 8)
-            .map((r) => `Row ${r.row}: ${r.reason}`)
-            .join(" · ")}
-        </div>
-      ) : null}
-      {response?.failedRows?.length ? (
-        <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-50">
-          Failed rows:{" "}
-          {response.failedRows
-            .slice(0, 8)
-            .map((r) => `Row ${r.row}: ${r.error}`)
-            .join(" · ")}
-        </div>
+        <CsvImportCompletionSummary
+          imported={response.counts.imported}
+          skipped={response.counts.skipped}
+          failed={response.counts.failed}
+          duplicates={response.counts.duplicates}
+          skippedRows={response.skippedRows}
+          failedRows={response.failedRows}
+        />
       ) : null}
       {importError ? (
         <GuidedImportSummary tone="error">{importError}</GuidedImportSummary>
