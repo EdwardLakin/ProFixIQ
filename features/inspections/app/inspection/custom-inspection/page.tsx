@@ -102,7 +102,9 @@ function buildAirCornerSection(): Section {
 /* ------------------------------------------------------------------ */
 
 function hasTireGrid(sections: Section[]): boolean {
-  return sections.some((s) => (s.title || "").toLowerCase().includes("tire grid"));
+  return sections.some((s) =>
+    (s.title || "").toLowerCase().includes("tire grid"),
+  );
 }
 
 function buildAirTireGrid(): Section {
@@ -124,8 +126,14 @@ function buildAirTireGrid(): Section {
         items.push({ item: `${axle} ${side} Tire Pressure`, unit: "psi" });
         items.push({ item: `${axle} ${side} Tread Depth`, unit: "mm" });
       } else {
-        items.push({ item: `${axle} ${side} Tire Pressure (Outer)`, unit: "psi" });
-        items.push({ item: `${axle} ${side} Tire Pressure (Inner)`, unit: "psi" });
+        items.push({
+          item: `${axle} ${side} Tire Pressure (Outer)`,
+          unit: "psi",
+        });
+        items.push({
+          item: `${axle} ${side} Tire Pressure (Inner)`,
+          unit: "psi",
+        });
         items.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
         items.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
       }
@@ -172,7 +180,9 @@ function buildHydraulicTireGrid(): Section {
 /* ------------------------------------------------------------------ */
 
 function hasBatteryGrid(sections: Section[]): boolean {
-  return sections.some((s) => (s.title || "").toLowerCase().includes("battery grid"));
+  return sections.some((s) =>
+    (s.title || "").toLowerCase().includes("battery grid"),
+  );
 }
 
 function buildBatteryGrid(count = 1): Section {
@@ -277,18 +287,28 @@ function prepareSections(
     if (looksLikeCornerTitle(title)) return false;
 
     const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test((it.item || it.name || "").trim()));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test((it.item || it.name || "").trim()));
+    const looksHyd = items.some((it) =>
+      HYD_ITEM_RE.test((it.item || it.name || "").trim()),
+    );
+    const looksAir = items.some((it) =>
+      AIR_ITEM_RE.test((it.item || it.name || "").trim()),
+    );
     return !(looksHyd || looksAir);
   });
 
   if (gridMode === "air") sections = [buildAirCornerSection(), ...sections];
-  if (gridMode === "hyd") sections = [buildHydraulicCornerSection(), ...sections];
+  if (gridMode === "hyd")
+    sections = [buildHydraulicCornerSection(), ...sections];
 
   if (includeTires && !hasTireGrid(sections)) {
-    const tire = gridMode === "air" ? buildAirTireGrid() : buildHydraulicTireGrid();
+    const tire =
+      gridMode === "air" ? buildAirTireGrid() : buildHydraulicTireGrid();
     const insertAt = sections.length > 0 ? 1 : 0;
-    sections = [...sections.slice(0, insertAt), tire, ...sections.slice(insertAt)];
+    sections = [
+      ...sections.slice(0, insertAt),
+      tire,
+      ...sections.slice(insertAt),
+    ];
   }
 
   if (includeBattery && !hasBatteryGrid(sections)) {
@@ -343,18 +363,23 @@ function parsePromptTriggers(prompt: string): PromptInferred {
   if (/\bmedium\s*duty\b|\bclass\s*5\b|\bclass\s*6\b/.test(p)) {
     inferred.dutyClass = "medium";
   }
-  if (/\bheavy\s*duty\b|\bclass\s*7\b|\bclass\s*8\b|\btractor\b|\bsemi\b/.test(p)) {
+  if (
+    /\bheavy\s*duty\b|\bclass\s*7\b|\bclass\s*8\b|\btractor\b|\bsemi\b/.test(p)
+  ) {
     inferred.dutyClass = "heavy";
     inferred.vehicleType = inferred.vehicleType ?? "truck";
   }
 
   // --- vehicle type hints
-  if (/\btruck\b|\btractor\b|\bhighway\b|\bsemi\b/.test(p)) inferred.vehicleType = "truck";
+  if (/\btruck\b|\btractor\b|\bhighway\b|\bsemi\b/.test(p))
+    inferred.vehicleType = "truck";
   if (/\btrailer\b/.test(p)) inferred.vehicleType = "trailer";
   if (/\bbus\b|\bcoach\b|\bmotorcoach\b/.test(p)) inferred.vehicleType = "bus";
 
   // --- brake system hints
-  if (/\bair\s*brake\b|\bairbrake\b|\bpush\s*rod\b|\bslack\s*adjuster\b/.test(p)) {
+  if (
+    /\bair\s*brake\b|\bairbrake\b|\bpush\s*rod\b|\bslack\s*adjuster\b/.test(p)
+  ) {
     inferred.brakeSystem = "air_brake";
     inferred.gridMode = inferred.gridMode ?? "air";
   }
@@ -364,24 +389,31 @@ function parsePromptTriggers(prompt: string): PromptInferred {
   }
 
   // --- grids/toggles
-  if (/\btire\s*grid\b|\btires?\b.*\bpressure\b|\btread\b/.test(p)) inferred.includeTireGrid = true;
-  if (/\bbattery\s*grid\b|\bbatter(y|ies)\b|\bcca\b/.test(p)) inferred.includeBatteryGrid = true;
+  if (/\btire\s*grid\b|\btires?\b.*\bpressure\b|\btread\b/.test(p))
+    inferred.includeTireGrid = true;
+  if (/\bbattery\s*grid\b|\bbatter(y|ies)\b|\bcca\b/.test(p))
+    inferred.includeBatteryGrid = true;
   if (/\bgrease\b|\bchassis\b/.test(p)) inferred.includeGreaseChassis = true;
 
   // --- oil hints
-  if (/\boil\s*change\b|\boil\b.*\bfilter\b/.test(p)) inferred.includeOil = true;
+  if (/\boil\s*change\b|\boil\b.*\bfilter\b/.test(p))
+    inferred.includeOil = true;
   if (/\bdiesel\b/.test(p)) inferred.oilEngineType = "diesel";
   if (/\bgas\b|\bgasoline\b/.test(p)) inferred.oilEngineType = "gas";
 
   // --- explicit corner grid disable
-  if (/\bno\s*corner\s*grid\b|\bwithout\s*corner\s*grid\b|\bno\s*grid\b/.test(p)) {
+  if (
+    /\bno\s*corner\s*grid\b|\bwithout\s*corner\s*grid\b|\bno\s*grid\b/.test(p)
+  ) {
     inferred.gridMode = "none";
   }
 
   // --- title hint (very light-touch)
   if (/\bcvip\b/.test(p)) inferred.titleHint = "CVIP Inspection";
-  if (/\bpre\s*trip\b|\bpretrip\b/.test(p)) inferred.titleHint = "Pre-Trip Inspection";
-  if (/\bbrake\b/.test(p) && /\binspect\b|\binspection\b/.test(p)) inferred.titleHint = "Brake Inspection";
+  if (/\bpre\s*trip\b|\bpretrip\b/.test(p))
+    inferred.titleHint = "Pre-Trip Inspection";
+  if (/\bbrake\b/.test(p) && /\binspect\b|\binspection\b/.test(p))
+    inferred.titleHint = "Brake Inspection";
 
   return inferred;
 }
@@ -409,8 +441,10 @@ const CVIP_PRESETS: Record<AiPresetKey, { label: string; prompt: string }> = {
 };
 
 function inferCvipGroup(v: VehicleType, b: BrakeSystem): CvipGroup | undefined {
-  if (v === "truck") return b === "air_brake" ? "cvip_truck_air" : "cvip_truck_hyd";
-  if (v === "trailer") return b === "air_brake" ? "cvip_trailer_air" : "cvip_trailer_hyd";
+  if (v === "truck")
+    return b === "air_brake" ? "cvip_truck_air" : "cvip_truck_hyd";
+  if (v === "trailer")
+    return b === "air_brake" ? "cvip_trailer_air" : "cvip_trailer_hyd";
   if (v === "bus") return b === "air_brake" ? "cvip_bus_air" : "cvip_bus_hyd";
   return undefined;
 }
@@ -437,7 +471,9 @@ export default function CustomBuilderPage() {
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
   const [laborHours, setLaborHours] = useState<string>("");
 
-  const [gridMode, setGridMode] = useState<GridMode>(dutyClass === "heavy" ? "air" : "hyd");
+  const [gridMode, setGridMode] = useState<GridMode>(
+    dutyClass === "heavy" ? "air" : "hyd",
+  );
   const [gridTouched, setGridTouched] = useState(false);
 
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -450,15 +486,21 @@ export default function CustomBuilderPage() {
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
   const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<string, boolean>
+  >({});
 
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPreset, setAiPreset] = useState<AiPresetKey | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const [vehicleType, setVehicleType] = useState<VehicleType>(dutyClass === "light" ? "car" : "truck");
-  const [brakeSystem, setBrakeSystem] = useState<BrakeSystem>(dutyClass === "heavy" ? "air_brake" : "hyd_brake");
+  const [vehicleType, setVehicleType] = useState<VehicleType>(
+    dutyClass === "light" ? "car" : "truck",
+  );
+  const [brakeSystem, setBrakeSystem] = useState<BrakeSystem>(
+    dutyClass === "heavy" ? "air_brake" : "hyd_brake",
+  );
   const [targetCount, setTargetCount] = useState<number>(80);
 
   const [quickTouched, setQuickTouched] = useState(false);
@@ -476,13 +518,24 @@ export default function CustomBuilderPage() {
     setBrakeSystem(dutyClass === "heavy" ? "air_brake" : "hyd_brake");
   }, [dutyClass, quickTouched]);
 
-  const cvipGroup = useMemo(() => inferCvipGroup(vehicleType, brakeSystem), [vehicleType, brakeSystem]);
+  const cvipGroup = useMemo(
+    () => inferCvipGroup(vehicleType, brakeSystem),
+    [vehicleType, brakeSystem],
+  );
 
   const dutyLabel =
-    dutyClass === "light" ? "Light duty" : dutyClass === "medium" ? "Medium duty" : "Heavy duty";
+    dutyClass === "light"
+      ? "Light duty"
+      : dutyClass === "medium"
+        ? "Medium duty"
+        : "Heavy duty";
 
   const totalSelected = useMemo(
-    () => Object.values(selections).reduce((sum, arr) => sum + (arr?.length ?? 0), 0),
+    () =>
+      Object.values(selections).reduce(
+        (sum, arr) => sum + (arr?.length ?? 0),
+        0,
+      ),
     [selections],
   );
 
@@ -494,21 +547,33 @@ export default function CustomBuilderPage() {
       return { ...prev, [section]: [...cur] };
     });
 
-  function selectAllInSection(sectionTitle: string, items: Array<{ item: string }>) {
-    setSelections((prev) => ({ ...prev, [sectionTitle]: items.map((i) => i.item) }));
+  function selectAllInSection(
+    sectionTitle: string,
+    items: Array<{ item: string }>,
+  ) {
+    setSelections((prev) => ({
+      ...prev,
+      [sectionTitle]: items.map((i) => i.item),
+    }));
   }
   function clearSection(sectionTitle: string) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
   }
 
   function toggleSectionCollapsed(sectionTitle: string) {
-    setCollapsedSections((prev) => ({ ...prev, [sectionTitle]: !prev[sectionTitle] }));
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionTitle]: !prev[sectionTitle],
+    }));
   }
 
   function buildOilSection(engine: EngineType): Section {
     return {
       title: engine === "diesel" ? "Oil Change (Diesel)" : "Oil Change (Gas)",
-      items: [{ item: "Drain and fill engine oil" }, { item: "Replace oil filter" }],
+      items: [
+        { item: "Drain and fill engine oil" },
+        { item: "Replace oil filter" },
+      ],
     };
   }
 
@@ -516,10 +581,19 @@ export default function CustomBuilderPage() {
     return { title: "Grease Chassis", items: [{ item: "Grease chassis" }] };
   }
 
-  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
+  function goToRunWithSections(
+    sections: Section[] | unknown,
+    tplTitle: string,
+  ) {
     const base = Array.isArray(sections) ? (sections as Section[]) : [];
 
-    let finalSections = prepareSections(base, gridMode, includeTireGrid, includeBatteryGrid, batteryCount);
+    let finalSections = prepareSections(
+      base,
+      gridMode,
+      includeTireGrid,
+      includeBatteryGrid,
+      batteryCount,
+    );
 
     if (
       includeGreaseChassis &&
@@ -528,7 +602,10 @@ export default function CustomBuilderPage() {
       finalSections = [...finalSections, buildGreaseChassisSection()];
     }
 
-    sessionStorage.setItem("inspection:sections", JSON.stringify(finalSections));
+    sessionStorage.setItem(
+      "inspection:sections",
+      JSON.stringify(finalSections),
+    );
     sessionStorage.setItem("inspection:title", tplTitle);
     sessionStorage.setItem("inspection:template", "generic");
 
@@ -588,7 +665,8 @@ export default function CustomBuilderPage() {
     }) as unknown as Section[];
 
     const withOil =
-      includeOil && !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
+      includeOil &&
+      !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
         ? [...built, buildOilSection(oilEngineType)]
         : built;
 
@@ -602,7 +680,8 @@ export default function CustomBuilderPage() {
     }) as unknown as Section[];
 
     const withOil =
-      includeOil && !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
+      includeOil &&
+      !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
         ? [...built, buildOilSection(oilEngineType)]
         : built;
 
@@ -632,14 +711,21 @@ export default function CustomBuilderPage() {
       setTargetCount(inferred.targetCount);
     }
 
-    if (typeof inferred.includeTireGrid === "boolean") setIncludeTireGrid(inferred.includeTireGrid);
-    if (typeof inferred.includeBatteryGrid === "boolean") setIncludeBatteryGrid(inferred.includeBatteryGrid);
-    if (typeof inferred.includeGreaseChassis === "boolean") setIncludeGreaseChassis(inferred.includeGreaseChassis);
+    if (typeof inferred.includeTireGrid === "boolean")
+      setIncludeTireGrid(inferred.includeTireGrid);
+    if (typeof inferred.includeBatteryGrid === "boolean")
+      setIncludeBatteryGrid(inferred.includeBatteryGrid);
+    if (typeof inferred.includeGreaseChassis === "boolean")
+      setIncludeGreaseChassis(inferred.includeGreaseChassis);
 
-    if (typeof inferred.includeOil === "boolean") setIncludeOil(inferred.includeOil);
+    if (typeof inferred.includeOil === "boolean")
+      setIncludeOil(inferred.includeOil);
     if (inferred.oilEngineType) setOilEngineType(inferred.oilEngineType);
 
-    if (inferred.titleHint && (!title || title.toLowerCase().includes("custom inspection"))) {
+    if (
+      inferred.titleHint &&
+      (!title || title.toLowerCase().includes("custom inspection"))
+    ) {
       setTitle(inferred.titleHint);
     }
   }
@@ -657,17 +743,23 @@ export default function CustomBuilderPage() {
     setAiError(null);
 
     try {
+      const inferred = parsePromptTriggers(aiPrompt);
       applyPromptToControls(aiPrompt);
+
+      const requestDutyClass = inferred.dutyClass ?? dutyClass;
+      const requestVehicleType = inferred.vehicleType ?? vehicleType;
+      const requestBrakeSystem = inferred.brakeSystem ?? brakeSystem;
+      const requestTargetCount = inferred.targetCount ?? targetCount;
 
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: aiPrompt,
-          dutyClass,
-          vehicleType,
-          brakeSystem,
-          targetCount,
+          dutyClass: requestDutyClass,
+          vehicleType: requestVehicleType,
+          brakeSystem: requestBrakeSystem,
+          targetCount: requestTargetCount,
         }),
       });
 
@@ -677,24 +769,35 @@ export default function CustomBuilderPage() {
       }
 
       const payload = (await res.json()) as { sections: Section[] };
-      const aiSections = Array.isArray(payload.sections) ? payload.sections : [];
+      const aiSections = Array.isArray(payload.sections)
+        ? payload.sections
+        : [];
 
       const manualBuilt = buildInspectionFromSelections({
         selections,
         extraServiceItems: [],
       }) as unknown as Section[];
 
-      const aiHasOil = aiSections.some((s) => normalizeTitle(s.title).startsWith("oil change"));
-      const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
+      const aiHasOil = aiSections.some((s) =>
+        normalizeTitle(s.title).startsWith("oil change"),
+      );
+      const manualHasOil = manualBuilt.some((s) =>
+        normalizeTitle(s.title).startsWith("oil change"),
+      );
 
       const base =
-        includeOil && !aiHasOil && !manualHasOil ? [...aiSections, buildOilSection(oilEngineType)] : aiSections;
+        includeOil && !aiHasOil && !manualHasOil
+          ? [...aiSections, buildOilSection(oilEngineType)]
+          : aiSections;
 
-      const merged = mergeSections(base, manualBuilt).filter((s) => Array.isArray(s.items) && s.items.length > 0);
+      const merged = mergeSections(base, manualBuilt).filter(
+        (s) => Array.isArray(s.items) && s.items.length > 0,
+      );
 
       goToRunWithSections(merged, title || "AI Inspection");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to generate inspection.";
+      const msg =
+        e instanceof Error ? e.message : "Failed to generate inspection.";
       setAiError(msg);
     } finally {
       setAiLoading(false);
@@ -713,14 +816,29 @@ export default function CustomBuilderPage() {
 
   const samplePrompts = useMemo(
     () => [
-      { label: "Hydraulic brake (30pt + tires)", prompt: "Brake inspection, hydraulic, include tires, 30 point" },
+      {
+        label: "Hydraulic brake (30pt + tires)",
+        prompt: "Brake inspection, hydraulic, include tires, 30 point",
+      },
       {
         label: "HD pre-trip (60pt + tires + batteries)",
-        prompt: "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
+        prompt:
+          "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
       },
-      { label: "Oil change (diesel, 15pt)", prompt: "Small oil change inspection diesel, 15 point" },
-      { label: "Trailer annual (air, 50pt + tires)", prompt: "Trailer annual inspection, air brakes, include tires, 50 point" },
-      { label: "Battery + charging (20pt + battery grid)", prompt: "Battery + charging system inspection, include battery grid, 20 point" },
+      {
+        label: "Oil change (diesel, 15pt)",
+        prompt: "Small oil change inspection diesel, 15 point",
+      },
+      {
+        label: "Trailer annual (air, 50pt + tires)",
+        prompt:
+          "Trailer annual inspection, air brakes, include tires, 50 point",
+      },
+      {
+        label: "Battery + charging (20pt + battery grid)",
+        prompt:
+          "Battery + charging system inspection, include battery grid, 20 point",
+      },
     ],
     [],
   );
@@ -732,11 +850,24 @@ export default function CustomBuilderPage() {
     chips.push({ k: "Tires", v: includeTireGrid ? "On" : "Off" });
     chips.push({ k: "Batteries", v: includeBatteryGrid ? "On" : "Off" });
     chips.push({ k: "Grease", v: includeGreaseChassis ? "On" : "Off" });
-    chips.push({ k: "Oil", v: includeOil ? oilEngineType.toUpperCase() : "Off" });
+    chips.push({
+      k: "Oil",
+      v: includeOil ? oilEngineType.toUpperCase() : "Off",
+    });
     chips.push({ k: "Selected", v: String(totalSelected) });
     if (laborHours.trim()) chips.push({ k: "Hours", v: laborHours.trim() });
     return chips;
-  }, [dutyLabel, gridMode, includeTireGrid, includeBatteryGrid, includeGreaseChassis, includeOil, oilEngineType, totalSelected, laborHours]);
+  }, [
+    dutyLabel,
+    gridMode,
+    includeTireGrid,
+    includeBatteryGrid,
+    includeGreaseChassis,
+    includeOil,
+    oilEngineType,
+    totalSelected,
+    laborHours,
+  ]);
 
   /* ------------------------------------------------------------------ */
   /* Theme alignment with shared dashboard surfaces                      */
@@ -757,8 +888,10 @@ export default function CustomBuilderPage() {
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
 
-  const pillActive = "border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-slate-900/80 text-slate-100";
-  const pillInactive = "border-transparent bg-transparent text-neutral-400 hover:bg-slate-900/60";
+  const pillActive =
+    "border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-slate-900/80 text-slate-100";
+  const pillInactive =
+    "border-transparent bg-transparent text-neutral-400 hover:bg-slate-900/60";
 
   const inputBase =
     "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
@@ -782,10 +915,16 @@ export default function CustomBuilderPage() {
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         {/* Header */}
-        <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="text-center md:text-left">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Inspections</p>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                Inspections
+              </p>
               <h1
                 className="mt-1 text-2xl uppercase tracking-[0.2em] text-slate-100 md:text-3xl"
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
@@ -793,7 +932,8 @@ export default function CustomBuilderPage() {
                 Custom Inspection Builder
               </h1>
               <p className="mt-1 text-sm text-neutral-400">
-                Quick build, prompt build, or manual selection — all from your master list.
+                Quick build, prompt build, or manual selection — all from your
+                master list.
               </p>
             </div>
 
@@ -807,7 +947,9 @@ export default function CustomBuilderPage() {
                     "text-neutral-200",
                   )}
                 >
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{c.k}</span>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    {c.k}
+                  </span>
                   <span className="font-semibold text-neutral-100">{c.v}</span>
                 </span>
               ))}
@@ -818,19 +960,28 @@ export default function CustomBuilderPage() {
           <div className="relative mt-4 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="text-sm text-neutral-300">Template title</span>
-              <input className={inputBase} value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input
+                className={inputBase}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </label>
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1">
                 <span className="text-sm text-neutral-300">Duty Class</span>
-                <select className={selectBase} value={dutyClass} onChange={(e) => setDutyClass(e.target.value as DutyClass)}>
+                <select
+                  className={selectBase}
+                  value={dutyClass}
+                  onChange={(e) => setDutyClass(e.target.value as DutyClass)}
+                >
                   <option value="light">Light</option>
                   <option value="medium">Medium</option>
                   <option value="heavy">Heavy</option>
                 </select>
                 <span className="mt-1 text-[11px] text-neutral-500">
-                  Influences defaults (vehicle/brake + corner grid). You can override below.
+                  Influences defaults (vehicle/brake + corner grid). You can
+                  override below.
                 </span>
               </label>
 
@@ -843,7 +994,9 @@ export default function CustomBuilderPage() {
                   onChange={(e) => setLaborHours(e.target.value)}
                   placeholder="e.g. 2.5"
                 />
-                <span className="mt-1 text-[11px] text-neutral-500">Optional. Stored in inspection params.</span>
+                <span className="mt-1 text-[11px] text-neutral-500">
+                  Optional. Stored in inspection params.
+                </span>
               </label>
             </div>
           </div>
@@ -855,28 +1008,43 @@ export default function CustomBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIncludeOil((v) => !v)}
-                  className={pillBase + " " + (includeOil ? pillActive : pillInactive)}
+                  className={
+                    pillBase + " " + (includeOil ? pillActive : pillInactive)
+                  }
                 >
-                  Oil {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
+                  Oil{" "}
+                  {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIncludeTireGrid((v) => !v)}
-                  className={pillBase + " " + (includeTireGrid ? pillActive : pillInactive)}
+                  className={
+                    pillBase +
+                    " " +
+                    (includeTireGrid ? pillActive : pillInactive)
+                  }
                 >
                   Tire Grid • {includeTireGrid ? "On" : "Off"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIncludeBatteryGrid((v) => !v)}
-                  className={pillBase + " " + (includeBatteryGrid ? pillActive : pillInactive)}
+                  className={
+                    pillBase +
+                    " " +
+                    (includeBatteryGrid ? pillActive : pillInactive)
+                  }
                 >
                   Battery Grid • {includeBatteryGrid ? "On" : "Off"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIncludeGreaseChassis((v) => !v)}
-                  className={pillBase + " " + (includeGreaseChassis ? pillActive : pillInactive)}
+                  className={
+                    pillBase +
+                    " " +
+                    (includeGreaseChassis ? pillActive : pillInactive)
+                  }
                 >
                   Grease • {includeGreaseChassis ? "On" : "Off"}
                 </button>
@@ -884,14 +1052,18 @@ export default function CustomBuilderPage() {
 
               {includeOil && (
                 <div className="flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-1.5">
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    Engine
+                  </span>
                   <select
                     className={cx(
                       "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
                       `focus:ring-[${FOCUS_RING}]`,
                     )}
                     value={oilEngineType}
-                    onChange={(e) => setOilEngineType(e.target.value as EngineType)}
+                    onChange={(e) =>
+                      setOilEngineType(e.target.value as EngineType)
+                    }
                   >
                     <option value="gas">Gas</option>
                     <option value="diesel">Diesel</option>
@@ -901,7 +1073,9 @@ export default function CustomBuilderPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                Corner grid
+              </span>
               <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))]">
                 {gridModeButtons.map((opt) => {
                   const active = gridMode === opt.value;
@@ -913,7 +1087,9 @@ export default function CustomBuilderPage() {
                         setGridTouched(true);
                         setGridMode(opt.value);
                       }}
-                      className={pillBase + " " + (active ? pillActive : pillInactive)}
+                      className={
+                        pillBase + " " + (active ? pillActive : pillInactive)
+                      }
                     >
                       {opt.label}
                     </button>
@@ -925,7 +1101,11 @@ export default function CustomBuilderPage() {
         </div>
 
         {/* Quick build */}
-        <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div className="relative">
             <div className="mb-1 text-center text-sm font-semibold text-slate-100">
               Quick Build
@@ -936,7 +1116,9 @@ export default function CustomBuilderPage() {
 
             <div className="grid gap-3 md:grid-cols-4">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Vehicle</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Vehicle
+                </span>
                 <select
                   className={selectBase}
                   value={vehicleType}
@@ -953,7 +1135,9 @@ export default function CustomBuilderPage() {
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Brake system</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Brake system
+                </span>
                 <select
                   className={selectBase}
                   value={brakeSystem}
@@ -968,7 +1152,9 @@ export default function CustomBuilderPage() {
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Target count</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Target count
+                </span>
                 <input
                   type="number"
                   min={10}
@@ -984,9 +1170,16 @@ export default function CustomBuilderPage() {
 
               <div className="flex flex-col justify-end gap-2">
                 <div className="text-[11px] text-neutral-500">
-                  CVIP group: <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
+                  CVIP group:{" "}
+                  <span className="font-semibold text-neutral-100">
+                    {cvipGroup ?? "—"}
+                  </span>
                 </div>
-                <button type="button" onClick={startQuickFromMaster} className={primaryBtn}>
+                <button
+                  type="button"
+                  onClick={startQuickFromMaster}
+                  className={primaryBtn}
+                >
                   Start (Quick Build)
                 </button>
               </div>
@@ -995,13 +1188,18 @@ export default function CustomBuilderPage() {
         </div>
 
         {/* Prompt build */}
-        <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div className="relative">
             <div className="mb-1 text-center text-sm font-semibold text-slate-100">
               Prompt Build
             </div>
             <p className="mb-4 text-center text-sm text-slate-400">
-              Triggers auto-apply while typing (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
+              Triggers auto-apply while typing (air/hydraulic, tires, batteries,
+              grease, oil, “60 point”, etc).
             </p>
 
             <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
@@ -1029,7 +1227,11 @@ export default function CustomBuilderPage() {
                     key={key}
                     type="button"
                     onClick={() => applyAiPreset(key)}
-                    className={cx(actionBtn, "px-3 py-1", active && `border-[${COPPER_45}] text-slate-100`)}
+                    className={cx(
+                      actionBtn,
+                      "px-3 py-1",
+                      active && `border-[${COPPER_45}] text-slate-100`,
+                    )}
                   >
                     {CVIP_PRESETS[key].label}
                   </button>
@@ -1056,11 +1258,17 @@ export default function CustomBuilderPage() {
             />
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={primaryBtn}>
+              <button
+                onClick={buildFromPrompt}
+                disabled={aiLoading || !aiPrompt.trim()}
+                className={primaryBtn}
+              >
                 {aiLoading ? "Generating…" : "Build from Prompt"}
               </button>
 
-              {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
+              {aiError ? (
+                <span className="text-xs text-red-400">{aiError}</span>
+              ) : null}
             </div>
 
             <div className="mt-3 text-center text-[11px] text-neutral-500">
@@ -1082,23 +1290,40 @@ export default function CustomBuilderPage() {
             const collapsed = collapsedSections[sec.title] ?? false;
 
             return (
-              <div key={sec.title} className={sectionCard + " px-4 py-4 md:px-6 md:py-5"}>
+              <div
+                key={sec.title}
+                className={sectionCard + " px-4 py-4 md:px-6 md:py-5"}
+              >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-neutral-100">{sec.title}</div>
+                    <div className="font-semibold text-neutral-100">
+                      {sec.title}
+                    </div>
                     <span className="rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-2 py-0.5 text-[11px] text-neutral-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => selectAllInSection(sec.title, sec.items)} className={actionBtn + " px-3 py-1"}>
+                    <button
+                      type="button"
+                      onClick={() => selectAllInSection(sec.title, sec.items)}
+                      className={actionBtn + " px-3 py-1"}
+                    >
                       Select all
                     </button>
-                    <button type="button" onClick={() => clearSection(sec.title)} className={actionBtn + " px-3 py-1"}>
+                    <button
+                      type="button"
+                      onClick={() => clearSection(sec.title)}
+                      className={actionBtn + " px-3 py-1"}
+                    >
                       Clear
                     </button>
-                    <button type="button" onClick={() => toggleSectionCollapsed(sec.title)} className={actionBtn + " px-3 py-1"}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapsed(sec.title)}
+                      className={actionBtn + " px-3 py-1"}
+                    >
                       {collapsed ? "Expand" : "Collapse"}
                     </button>
                   </div>
@@ -1108,7 +1333,9 @@ export default function CustomBuilderPage() {
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {sec.items.map((i) => {
                       const label = i.item;
-                      const checked = (selections[sec.title] ?? []).includes(label);
+                      const checked = (selections[sec.title] ?? []).includes(
+                        label,
+                      );
 
                       return (
                         <label
@@ -1124,7 +1351,9 @@ export default function CustomBuilderPage() {
                             onChange={() => toggle(sec.title, label)}
                             className="h-4 w-4 accent-[rgba(200,122,67,0.85)]"
                           />
-                          <span className="text-sm leading-snug text-neutral-200">{label}</span>
+                          <span className="text-sm leading-snug text-neutral-200">
+                            {label}
+                          </span>
                         </label>
                       );
                     })}
@@ -1132,7 +1361,9 @@ export default function CustomBuilderPage() {
                 )}
 
                 {collapsed && (
-                  <p className="mt-1 text-[11px] text-neutral-500">Collapsed. Expand to adjust individual checks.</p>
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Collapsed. Expand to adjust individual checks.
+                  </p>
                 )}
               </div>
             );
@@ -1149,7 +1380,11 @@ export default function CustomBuilderPage() {
             Start (Quick Build)
           </button>
 
-          <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={actionBtn}>
+          <button
+            onClick={buildFromPrompt}
+            disabled={aiLoading || !aiPrompt.trim()}
+            className={actionBtn}
+          >
             {aiLoading ? "Generating…" : "Start (Prompt)"}
           </button>
         </div>

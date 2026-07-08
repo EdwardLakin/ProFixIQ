@@ -2,6 +2,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import {
   buildFromMaster,
@@ -88,7 +89,7 @@ function sanitizeSections(input: unknown): SectionOut[] {
 
       const providedUnit = asString(raw.unit)?.trim() ?? "";
       const unit =
-        providedUnit.length > 0 ? providedUnit : unitHint(label) ?? null;
+        providedUnit.length > 0 ? providedUnit : (unitHint(label) ?? null);
 
       itemsOut.push({ item: label, unit });
     }
@@ -129,11 +130,23 @@ function promptSaysAutomotive(p: string): boolean {
 
 function inferDutyFromPrompt(p: string): DutyClass | null {
   const l = p.toLowerCase();
-  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger"))
+  if (
+    l.includes("light duty") ||
+    l.includes("automotive") ||
+    l.includes("passenger")
+  )
     return "light";
-  if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6"))
+  if (
+    l.includes("medium duty") ||
+    l.includes("class 5") ||
+    l.includes("class 6")
+  )
     return "medium";
-  if (l.includes("heavy duty") || l.includes("class 7") || l.includes("class 8"))
+  if (
+    l.includes("heavy duty") ||
+    l.includes("class 7") ||
+    l.includes("class 8")
+  )
     return "heavy";
   return null;
 }
@@ -154,12 +167,24 @@ function inferCvipGroupFromPrompt(p: string): CvipGroup | null {
   const isCoach = l.includes("coach") || l.includes("motorcoach");
 
   const mentionsAir = l.includes("air brake") || l.includes("air-brake");
-  const mentionsHyd = l.includes("hydraulic") || l.includes("hyd brake") || l.includes("hyd-brake");
+  const mentionsHyd =
+    l.includes("hydraulic") ||
+    l.includes("hyd brake") ||
+    l.includes("hyd-brake");
 
-  const kind: "truck" | "trailer" | "bus" | "coach" =
-    isCoach ? "coach" : isBus ? "bus" : isTrailer ? "trailer" : "truck";
+  const kind: "truck" | "trailer" | "bus" | "coach" = isCoach
+    ? "coach"
+    : isBus
+      ? "bus"
+      : isTrailer
+        ? "trailer"
+        : "truck";
 
-  const sys: "air" | "hyd" | null = mentionsAir ? "air" : mentionsHyd ? "hyd" : null;
+  const sys: "air" | "hyd" | null = mentionsAir
+    ? "air"
+    : mentionsHyd
+      ? "hyd"
+      : null;
   if (!sys) return null;
 
   const key = `cvip_${kind}_${sys}` as const;
@@ -261,7 +286,42 @@ const SectionsSchema = {
   },
 } as const;
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+
+const AI_AUGMENTATION_TIMEOUT_MS = 8_000;
+
+async function hasAuthenticatedShopScope(): Promise<boolean> {
+  try {
+    const supabase = createServerSupabaseRoute();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    return Boolean(profile?.shop_id);
+  } catch (err) {
+    console.error("Unable to verify shop scope before AI augmentation:", err);
+    return false;
+  }
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | "timeout"> {
+  return Promise.race([
+    promise,
+    new Promise<"timeout">((resolve) => {
+      setTimeout(() => resolve("timeout"), timeoutMs);
+    }),
+  ]);
+}
 
 /* ------------------------------------------------------------------ */
 /* Response parsing (NO any)                                          */
@@ -366,9 +426,11 @@ export async function POST(req: Request) {
           : "car";
     }
 
-    // 2) dutyClass (body > prompt > vehicle fallback)
+    // 2) dutyClass (automotive prompt wins over stale client state)
     let dutyClass: DutyClass;
-    if (isDutyClass(dutyClassIn)) {
+    if (promptIsAuto) {
+      dutyClass = "light";
+    } else if (isDutyClass(dutyClassIn)) {
       dutyClass = dutyClassIn;
     } else {
       const fromPrompt = inferDutyFromPrompt(prompt);
@@ -390,9 +452,11 @@ export async function POST(req: Request) {
             : "air_brake";
     }
 
-    // 4) cvipGroup (body > prompt inference, but never forced)
+    // 4) cvipGroup (body > prompt inference, but never forced; automotive prompts clear stale CVIP)
     let cvipGroup: CvipGroup | undefined;
-    if (isCvipGroup(cvipGroupIn)) {
+    if (promptIsAuto) {
+      cvipGroup = undefined;
+    } else if (isCvipGroup(cvipGroupIn)) {
       cvipGroup = cvipGroupIn;
     } else {
       const inferred = inferCvipGroupFromPrompt(prompt);
@@ -418,9 +482,20 @@ export async function POST(req: Request) {
       cvipGroup,
     });
 
-    // If no OpenAI, return base
+    // Deterministic generation is the reliable path. AI is augmentation only.
+    // Return the master-list build when OpenAI is unavailable or not shop-scoped.
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ sections: baseSections }, { status: 200 });
+      return NextResponse.json(
+        { sections: baseSections, metadata: { source: "base" } },
+        { status: 200 },
+      );
+    }
+
+    if (!(await hasAuthenticatedShopScope())) {
+      return NextResponse.json(
+        { sections: baseSections, metadata: { source: "base" } },
+        { status: 200 },
+      );
     }
 
     // 7) try to augment with OpenAI
@@ -428,7 +503,8 @@ export async function POST(req: Request) {
     try {
       const openai = getOpenAIClient();
 
-      const lightDutyMode = dutyClass === "light" || brakeSystem === "hyd_brake";
+      const lightDutyMode =
+        dutyClass === "light" || brakeSystem === "hyd_brake";
 
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
@@ -452,27 +528,45 @@ export async function POST(req: Request) {
         .filter((v): v is string => Boolean(v))
         .join("\n");
 
-      const resp = await openai.responses.create({
-        model: getOpenAIModelForPurpose("extraction"),
-        input: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: SectionsSchema.name,
-            schema: SectionsSchema.schema,
+      // AI must never be on the critical path long enough to threaten platform timeouts.
+      // If augmentation is slow, return the deterministic master-list sections.
+      const resp = await withTimeout(
+        openai.responses.create({
+          model: getOpenAIModelForPurpose("extraction"),
+          input: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: SectionsSchema.name,
+              schema: SectionsSchema.schema,
+            },
           },
-        },
-        max_output_tokens: 4000,
-      });
+          max_output_tokens: 1200,
+        }),
+        AI_AUGMENTATION_TIMEOUT_MS,
+      );
+
+      if (resp === "timeout") {
+        return NextResponse.json(
+          {
+            sections: baseSections,
+            metadata: { source: "base", warning: "AI enhancement timed out" },
+          },
+          { status: 200 },
+        );
+      }
 
       const aiRaw = extractOutputJson(resp) ?? {};
       aiSections = sanitizeSections(aiRaw);
     } catch (err) {
       console.error("OpenAI augmentation failed, returning base only:", err);
-      return NextResponse.json({ sections: baseSections }, { status: 200 });
+      return NextResponse.json(
+        { sections: baseSections, metadata: { source: "base" } },
+        { status: 200 },
+      );
     }
 
     // 8) AI-only gating: for light-duty/hyd, strip ONLY unambiguous HD-only content
@@ -481,7 +575,9 @@ export async function POST(req: Request) {
       aiSections = aiSections
         .map((sec) => {
           if (isHdOnlySectionTitle(sec.title)) return null;
-          const filteredItems = sec.items.filter((it) => !isHdOnlyItemLabel(it.item));
+          const filteredItems = sec.items.filter(
+            (it) => !isHdOnlyItemLabel(it.item),
+          );
           if (!filteredItems.length) return null;
           return { ...sec, items: filteredItems };
         })
@@ -518,13 +614,22 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ sections: merged }, { status: 200 });
+    return NextResponse.json(
+      {
+        sections: merged,
+        metadata: { source: shouldMerge ? "ai_augmented" : "base" },
+      },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("build-from-prompt route failed:", err);
     return NextResponse.json(
       {
         sections: [
-          { title: "General", items: [{ item: "Visual walkaround", unit: null }] },
+          {
+            title: "General",
+            items: [{ item: "Visual walkaround", unit: null }],
+          },
         ],
       },
       { status: 200 },
