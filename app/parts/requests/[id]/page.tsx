@@ -1909,18 +1909,36 @@ if (!lineId || !isUuid(lineId)) {
                           await load();
                         }}
                         onAttachInventory={async (input) => {
-                          const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                          const selectedPart = parts.find((part) => String(part.id) === String(input.partId)) ?? null;
+                          const selectedRecord = selectedPart as unknown as Record<string, unknown> | null;
+
+                          updateItem(r.req.id, input.itemId, {
+                            ui_part_id: input.partId,
+                            requested_part_number:
+                              typeof selectedRecord?.part_number === "string" && selectedRecord.part_number.trim()
+                                ? selectedRecord.part_number.trim()
+                                : typeof selectedRecord?.sku === "string" && selectedRecord.sku.trim()
+                                  ? selectedRecord.sku.trim()
+                                  : null,
+                            requested_manufacturer:
+                              typeof selectedRecord?.manufacturer === "string" && selectedRecord.manufacturer.trim()
+                                ? selectedRecord.manufacturer.trim()
+                                : typeof selectedRecord?.supplier === "string" && selectedRecord.supplier.trim()
+                                  ? selectedRecord.supplier.trim()
+                                  : null,
+                            ui_price:
+                              typeof selectedRecord?.price === "number"
+                                ? selectedRecord.price
+                                : selectedRecord?.price == null
+                                  ? undefined
+                                  : Number(selectedRecord.price),
                           });
-                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-                          if (!res.ok || !body?.ok) {
-                            toast.error(body?.error || "Could not attach inventory part.");
-                            return;
-                          }
-                          toast.success("Inventory part attached.");
-                          await load();
+
+                          toast.success(
+                            input.warningAccepted
+                              ? "Zero-stock inventory part selected."
+                              : "Inventory part selected.",
+                          );
                         }}
                         onCreateInventoryItem={async (itemId, input) => {
                           const res = await fetch(`/api/parts/requests/items/${itemId}/inventory`, {
