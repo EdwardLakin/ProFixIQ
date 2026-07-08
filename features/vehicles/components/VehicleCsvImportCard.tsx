@@ -390,24 +390,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
       setSkippedRows(payload.skippedRows ?? []);
       setFailedRows(payload.failedRows ?? []);
 
-      if (
-        isOnboarding &&
-        payload.counts.created +
-          payload.counts.updated +
-          payload.counts.skipped >
-          0 &&
-        payload.counts.failed === 0
-      ) {
-        setImportProgress({
-          phase: "Completing guided step",
-          phaseKey: "finalizing",
-          processed: importableRows.length,
-          total: importableRows.length,
-          percent: 98,
-        });
-        await completeOnboardingAfterImport(payload.counts);
-      }
-      setImportProgress({
+      const completedProgress: CsvImportProgressState = {
         phase:
           payload.counts.failed > 0
             ? "Import completed with failures"
@@ -419,7 +402,20 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         imported: payload.counts.created + payload.counts.updated,
         skipped: payload.counts.skipped,
         failed: payload.counts.failed,
-      });
+      };
+      setImportProgress(completedProgress);
+
+      if (
+        isOnboarding &&
+        payload.counts.created +
+          payload.counts.updated +
+          payload.counts.skipped >
+          0 &&
+        payload.counts.failed === 0
+      ) {
+        await completeOnboardingAfterImport(payload.counts);
+        setImportProgress(completedProgress);
+      }
     } catch (error) {
       if (progressTimer) window.clearInterval(progressTimer);
       setImportProgress({

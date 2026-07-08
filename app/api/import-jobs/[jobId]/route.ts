@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  processVehicleHistoryImportJobBatch,
+  VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
+} from "@/features/work-orders/server/vehicle-history-import-job";
 
 type ImportJobApiRow = {
   id: string;
@@ -39,24 +44,38 @@ export async function GET(
       { status: 400 },
     );
 
-  const { data, error } = await (
-    access.supabase as unknown as {
+  const loadJob = () =>
+    (access.supabase as unknown as {
       from: (table: "import_jobs") => ImportJobApiQuery;
-    }
-  )
-    .from("import_jobs")
-    .select(
-      "id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at",
-    )
-    .eq("id", jobId)
-    .eq("shop_id", shopId)
-    .single();
+    })
+      .from("import_jobs")
+      .select(
+        "id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at",
+      )
+      .eq("id", jobId)
+      .eq("shop_id", shopId)
+      .single();
 
-  if (error || !data) {
+  let { data } = await loadJob();
+
+  if (!data) {
     return NextResponse.json(
       { error: "Import job not found." },
       { status: 404 },
     );
+  }
+
+  if (
+    data.import_type === "vehicle_history" &&
+    (data.status === "queued" || data.status === "processing")
+  ) {
+    await processVehicleHistoryImportJobBatch(
+      createAdminSupabase(),
+      jobId,
+      VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
+    );
+    const refreshed = await loadJob();
+    data = refreshed.data ?? data;
   }
 
   return NextResponse.json({
