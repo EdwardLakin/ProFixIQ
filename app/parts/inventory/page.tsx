@@ -1,7 +1,7 @@
 // app/parts/inventory/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
@@ -17,6 +17,8 @@ import {
 import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import { CsvImportProgress, type CsvImportProgressState } from "@/features/shared/components/import/CsvImportProgress";
 import { GuidedImportSummary } from "@/features/shared/components/import/GuidedImportSummary";
+import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
+import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 
 /* ----------------------------- Types ----------------------------- */
@@ -411,6 +413,8 @@ export default function InventoryPage(): JSX.Element {
   const searchParams = useSearchParams();
   const router = useRouter();
   const guidedQuery = useMemo(() => parseGuidedOnboardingQuery(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const csvSectionRef = useRef<HTMLDivElement | null>(null);
   const [shopId, setShopId] = useState<string>("");
 
   const [search, setSearch] = useState<string>("");
@@ -457,9 +461,8 @@ export default function InventoryPage(): JSX.Element {
   const [recvQty, setRecvQty] = useState<number | "">("");
 
   // Import CSV
-  const [csvOpen, setCsvOpen] = useState<boolean>(false);
-  const [csvText, setCsvText] = useState<string>("");
   const [csvRows, setCsvRows] = useState<ParsedPartCsvRow[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
   const [csvImporting, setCsvImporting] = useState<boolean>(false);
@@ -645,12 +648,6 @@ export default function InventoryPage(): JSX.Element {
     [supabase, shopId, locs],
   );
 
-  useEffect(() => {
-    if (searchParams.get("import") === "csv" && shopId) {
-      setCsvOpen(true);
-    }
-  }, [searchParams, shopId]);
-
   /* boot */
   useEffect(() => {
     (async () => {
@@ -807,7 +804,9 @@ export default function InventoryPage(): JSX.Element {
   /* -------------------------- Import CSV -------------------------- */
 
   const parseAndPreviewCSV = (raw: string) => {
+    const rawRows = parseCSV(raw);
     const parsed = parsePartCsvRows(raw);
+    setCsvHeaders(rawRows[0]?.map(normalizeHeader).filter(Boolean) ?? []);
     setCsvRows(parsed);
     setCsvPreview(parsed.length > 0);
     setCsvResult(null);
@@ -828,7 +827,6 @@ export default function InventoryPage(): JSX.Element {
     setCsvError(null);
     setCsvProgress({ phase: "Reading file", phaseKey: "reading_file", processed: 0, total: 0, percent: 5 });
     const text = await file.text();
-    setCsvText(text);
     parseAndPreviewCSV(text);
   };
 
@@ -1029,6 +1027,10 @@ export default function InventoryPage(): JSX.Element {
     return level === "review" || level === "low";
   }).length;
 
+  const csvImportableRows = csvRows.filter((row) => row.errors.length === 0 && row.active !== false);
+  const csvReviewRows = csvRows.filter((row) => row.errors.length > 0 || row.active === false || row.warnings.length > 0);
+  const csvImportSucceeded = Boolean(csvResult && csvResult.counts.failed === 0 && csvResult.counts.created + csvResult.counts.updated > 0);
+
   return (
     <div className={pageWrap}>
       <GuidedPageStepPanel
@@ -1036,7 +1038,7 @@ export default function InventoryPage(): JSX.Element {
           parts: {
             label: "Open import tools",
             description: "Upload, preview, validate, and import parts inventory CSV rows into the existing parts and stock tables.",
-            onClick: () => setCsvOpen(true),
+            onClick: () => csvSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
           },
         }}
       />
@@ -1072,7 +1074,7 @@ export default function InventoryPage(): JSX.Element {
                 Add Part
               </button>
 
-              <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
+              <button className={btnBlue} onClick={() => csvSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} disabled={!shopId}>
                 Import CSV
               </button>
               <select
@@ -1089,20 +1091,164 @@ export default function InventoryPage(): JSX.Element {
         </div>
       </div>
 
-      <div className={`${glassCard} p-4`} data-testid="parts-inventory-csv-import-card">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Guided import</div>
-            <h2 className="mt-1 text-lg font-semibold text-white">Import parts inventory CSV</h2>
-            <p className="mt-1 max-w-3xl text-sm text-neutral-400">
-              Preview and validate fields for external_id, SKU, part number, pricing, on-hand quantity, bin/location, barcode,
-              taxable, and active status before updating the existing parts inventory source of truth.
-            </p>
+      <div ref={csvSectionRef} id="parts-inventory-csv-import" className="scroll-mt-6">
+        <GuidedImportCardLayout
+          testId="parts-inventory-csv-import-card"
+          eyebrow={guidedQuery?.onboardingStep === "parts" ? "Guided onboarding · Parts" : "Parts inventory"}
+          title="Import parts inventory CSV"
+          description={
+            <>
+              <p>
+                Upload a CSV, review validation results, then confirm the import into the existing parts and stock movement records.
+              </p>
+              <p>
+                Supported columns: <span className="text-neutral-100">{PART_CSV_FIELDS.join(", ")}</span>.
+              </p>
+            </>
+          }
+          actions={
+            <>
+              <input
+                ref={csvFileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleCsvFile(file);
+                }}
+                className="sr-only"
+              />
+              <button
+                type="button"
+                onClick={() => csvFileInputRef.current?.click()}
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                disabled={!shopId || csvImporting || csvCompletingOnboarding}
+              >
+                Choose CSV file
+              </button>
+            </>
+          }
+        >
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+              <div className="text-lg font-semibold text-white">{csvRows.length}</div>
+              <div className="text-xs text-neutral-400">Parsed rows</div>
+            </div>
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2">
+              <div className="text-lg font-semibold text-emerald-100">{csvImportableRows.length}</div>
+              <div className="text-xs text-neutral-400">Ready to import</div>
+            </div>
+            <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2">
+              <div className="text-lg font-semibold text-amber-100">{csvReviewRows.length}</div>
+              <div className="text-xs text-neutral-400">Need review</div>
+            </div>
           </div>
-          <button className={btnCopper} onClick={() => setCsvOpen(true)} disabled={!shopId}>
-            Import CSV
-          </button>
-        </div>
+
+          <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">Detected columns</div>
+                <div className="mt-1 text-neutral-200">
+                  {csvHeaders.length ? csvHeaders.join(", ") : "No CSV selected yet."}
+                </div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  Name is required. SKU or part_number is recommended so re-imports update deterministically.
+                </div>
+              </div>
+              <div className="min-w-[260px]">
+                <SelectField
+                  label="Default receive location"
+                  value={csvDefaultLoc}
+                  onChange={setCsvDefaultLoc}
+                  options={[
+                    { value: "", label: "— none —" },
+                    ...locs.map((l) => ({
+                      value: l.id,
+                      label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
+                    })),
+                  ]}
+                />
+              </div>
+            </div>
+          </div>
+
+          {csvPreview ? (
+            <div className="mt-4 max-h-96 overflow-auto rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
+              <table className="w-full min-w-[920px] text-sm">
+                <thead className="bg-white/5 text-left text-neutral-400">
+                  <tr>
+                    <th className="p-3">Row</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">SKU / Part #</th>
+                    <th className="p-3">Vendor</th>
+                    <th className="p-3">Cost / Sell</th>
+                    <th className="p-3">Qty / Min</th>
+                    <th className="p-3">Validation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvRows.slice(0, 50).map((row) => (
+                    <tr key={row.rowNumber} className="border-t border-[color:var(--desktop-border)]">
+                      <td className="p-3 tabular-nums text-neutral-400">{row.rowNumber}</td>
+                      <td className="p-3">{row.name || "—"}</td>
+                      <td className="p-3 font-mono text-xs text-neutral-300">{row.sku ?? "—"} / {row.part_number ?? "—"}</td>
+                      <td className="p-3">{row.vendor ?? row.brand ?? "—"}</td>
+                      <td className="p-3 tabular-nums">{typeof row.cost_price === "number" ? `$${row.cost_price.toFixed(2)}` : "—"} / {typeof row.sell_price === "number" ? `$${row.sell_price.toFixed(2)}` : "—"}</td>
+                      <td className="p-3 tabular-nums">{typeof row.quantity_on_hand === "number" ? row.quantity_on_hand : "—"} / {typeof row.min_stock === "number" ? row.min_stock : "—"}</td>
+                      <td className="p-3 text-xs">
+                        {row.active === false ? <span className="text-amber-200">Inactive row will be skipped</span> : row.errors.length ? <span className="text-red-300">{row.errors.join(" · ")}</span> : row.warnings.length ? <span className="text-amber-200">{row.warnings.join(" · ")}</span> : <span className="text-emerald-200">Ready</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {csvRows.length > 50 ? <div className="border-t border-[color:var(--desktop-border)] p-3 text-xs text-neutral-500">Showing first 50 of {csvRows.length} rows.</div> : null}
+            </div>
+          ) : null}
+
+          <CsvImportProgress progress={csvProgress} label="Parts inventory CSV import progress" />
+
+          {csvError ? <GuidedImportSummary tone="error">{csvError}</GuidedImportSummary> : null}
+
+          {csvResult ? (
+            <GuidedImportSummary tone={csvResult.counts.failed > 0 ? "warning" : "success"}>
+              <div className="font-semibold">
+                Created {csvResult.counts.created}, updated {csvResult.counts.updated}, skipped {csvResult.counts.skipped}, failed {csvResult.counts.failed}.
+              </div>
+              {csvResult.skipped.length > 0 ? (
+                <ul className="mt-2 list-disc pl-5 text-xs">
+                  {csvResult.skipped.slice(0, 5).map((item) => <li key={`skipped-${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</li>)}
+                </ul>
+              ) : null}
+              {csvResult.errors.length > 0 ? (
+                <ul className="mt-2 list-disc pl-5 text-xs">
+                  {csvResult.errors.slice(0, 5).map((item) => <li key={`failed-${item.row}-${item.error}`}>Row {item.row}: {item.error}</li>)}
+                </ul>
+              ) : null}
+              {guidedQuery?.onboardingStep === "parts" && csvImportSucceeded ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(guidedQuery.returnTo)}
+                  className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
+                >
+                  Continue onboarding
+                </button>
+              ) : null}
+            </GuidedImportSummary>
+          ) : null}
+
+          <GuidedImportFooterActions
+            importing={csvImporting}
+            completing={csvCompletingOnboarding}
+            canConfirm={csvImportableRows.length > 0}
+            onConfirm={() => void runCsvImport()}
+            isOnboarding={guidedQuery?.onboardingStep === "parts"}
+            returnTo={guidedQuery?.returnTo}
+            importSucceeded={csvImportSucceeded}
+            hasResult={Boolean(csvResult)}
+            onContinue={guidedQuery ? () => router.push(guidedQuery.returnTo) : undefined}
+          />
+        </GuidedImportCardLayout>
       </div>
 
       {loading ? (
@@ -1348,172 +1494,6 @@ export default function InventoryPage(): JSX.Element {
         )}
       </Modal>
 
-      {/* Import CSV */}
-      <Modal
-        open={csvOpen}
-        title="Import CSV"
-        onClose={() => setCsvOpen(false)}
-        widthClass="max-w-3xl"
-        footer={
-          <div className="flex w-full flex-wrap items-end justify-between gap-3">
-            <div className="min-w-[260px]">
-              <SelectField
-                label="Default receive location (for rows with qty)"
-                value={csvDefaultLoc}
-                onChange={setCsvDefaultLoc}
-                options={[
-                  { value: "", label: "— none —" },
-                  ...locs.map((l) => ({
-                    value: l.id,
-                    label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
-                  })),
-                ]}
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                className={btnGhost}
-                onClick={() => {
-                  setCsvPreview(false);
-                  setCsvText("");
-                  setCsvRows([]);
-                  setCsvOpen(false);
-                }}
-              >
-                Close
-              </button>
-              <button
-                className={btnBlue}
-                onClick={runCsvImport}
-                disabled={csvImporting || csvCompletingOnboarding || !csvPreview || csvRows.filter((row) => row.errors.length === 0 && row.active !== false).length === 0}
-              >
-                {csvImporting ? "Importing…" : csvCompletingOnboarding ? "Completing onboarding…" : "Import"}
-              </button>
-            </div>
-          </div>
-        }
-      >
-        <div className="grid gap-3">
-          <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
-            Expected headers (case-insensitive): <code className={ACCENT_TEXT}>{PART_CSV_FIELDS.join(", ")}</code>.
-            Name is required. SKU or part_number is recommended so re-imports update deterministically.
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleCsvFile(f);
-              }}
-              className="text-sm text-neutral-200"
-            />
-            <button
-              className={btnGhost}
-              onClick={() => {
-                if (csvText.trim().length) parseAndPreviewCSV(csvText);
-              }}
-            >
-              Parse text
-            </button>
-          </div>
-
-          <textarea
-            rows={8}
-            className={`${inputBase} font-mono text-xs`}
-            placeholder={`Paste CSV here… e.g.:
-name,sku,category,price,qty
-Oil Filter – Ford,OF-FORD-01,Filters,9.95,10
-Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
-`}
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-          />
-
-          {csvPreview && (
-            <div className="max-h-96 overflow-auto rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
-              <table className="w-full text-sm">
-                <thead className="bg-white/5 text-left text-neutral-400">
-                  <tr>
-                    <th className="p-3">Row</th>
-                    <th className="p-3">Name</th>
-                    <th className="p-3">SKU / Part #</th>
-                    <th className="p-3">Vendor</th>
-                    <th className="p-3">Cost / Sell</th>
-                    <th className="p-3">Qty / Min</th>
-                    <th className="p-3">Validation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {csvRows.slice(0, 50).map((r) => (
-                    <tr key={r.rowNumber} className="border-t border-[color:var(--desktop-border)]">
-                      <td className="p-3 tabular-nums text-neutral-400">{r.rowNumber}</td>
-                      <td className="p-3">{r.name || "—"}</td>
-                      <td className="p-3 font-mono text-xs text-neutral-300">{r.sku ?? "—"} / {r.part_number ?? "—"}</td>
-                      <td className="p-3">{r.vendor ?? r.brand ?? "—"}</td>
-                      <td className="p-3 tabular-nums">{typeof r.cost_price === "number" ? `$${r.cost_price.toFixed(2)}` : "—"} / {typeof r.sell_price === "number" ? `$${r.sell_price.toFixed(2)}` : "—"}</td>
-                      <td className="p-3 tabular-nums">{typeof r.quantity_on_hand === "number" ? r.quantity_on_hand : "—"} / {typeof r.min_stock === "number" ? r.min_stock : "—"}</td>
-                      <td className="p-3 text-xs">
-                        {r.errors.length ? <span className="text-red-300">{r.errors.join(" · ")}</span> : r.warnings.length ? <span className="text-amber-200">{r.warnings.join(" · ")}</span> : <span className="text-emerald-200">Ready</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-
-          <CsvImportProgress progress={csvProgress} label="Parts inventory CSV import progress" />
-
-          {csvError ? (
-            <GuidedImportSummary tone="error">{csvError}</GuidedImportSummary>
-          ) : null}
-
-          {csvResult ? (
-            <GuidedImportSummary tone={csvResult.counts.failed > 0 ? "warning" : "success"}>
-              <div className="font-semibold">
-                Created {csvResult.counts.created}, updated {csvResult.counts.updated}, skipped {csvResult.counts.skipped}, failed {csvResult.counts.failed}.
-              </div>
-              {csvResult.errors.length > 0 ? (
-                <ul className="mt-2 list-disc pl-5 text-xs">
-                  {csvResult.errors.slice(0, 5).map((item) => (
-                    <li key={`${item.row}-${item.error}`}>Row {item.row}: {item.error}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {guidedQuery?.onboardingStep === "parts" && csvResult.counts.failed === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => router.push(guidedQuery.returnTo)}
-                  className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-900/30"
-                >
-                  Continue onboarding
-                </button>
-              ) : null}
-            </GuidedImportSummary>
-          ) : null}
-
-          {csvPreview && (
-            <div className="text-xs text-neutral-500">
-              Rows: <span className="font-semibold text-white">{csvRows.length}</span>
-              {csvDefaultLoc ? (
-                <>
-                  {" "}
-                  · Default receive loc: <span className={ACCENT_TEXT}>{csvDefaultLoc.slice(0, 8)}</span>
-                </>
-              ) : (
-                <>
-                  {" "}
-                  · <span className="text-neutral-400">No default receive location set</span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 }
