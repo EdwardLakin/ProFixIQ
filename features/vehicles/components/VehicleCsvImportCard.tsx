@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
 import {
@@ -59,10 +59,28 @@ type ImportCounts = {
 type ImportResponse = {
   ok?: boolean;
   error?: string;
-  counts?: ImportCounts;
+  jobId?: string;
+  job?: { id: string; status?: string | null; totalRows?: number | null };
   explanation?: string;
-  skippedRows?: Array<{ row: number; reason: string }>;
-  failedRows?: Array<{ row: number; error: string }>;
+};
+
+type ImportJobResponse = {
+  ok?: boolean;
+  error?: string;
+  job?: {
+    id: string;
+    status: string | null;
+    totalRows: number;
+    processedRows: number;
+    importedCount: number;
+    skippedCount: number;
+    failedCount: number;
+    summary?: {
+      counts?: Partial<ImportCounts & { duplicates: number }>;
+      skippedRows?: Array<{ row: number; reason: string }>;
+      failedRows?: Array<{ row: number; error: string }>;
+    } | null;
+  };
 };
 
 const SUPPORTED_COLUMNS = [
@@ -292,7 +310,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     }
   }
 
-  async function completeOnboardingAfterImport(nextCounts: ImportCounts) {
+  const completeOnboardingAfterImport = useCallback(async (nextCounts: ImportCounts) => {
     if (!guidedQuery) return;
 
     setCompletingOnboarding(true);
@@ -320,7 +338,102 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     } finally {
       setCompletingOnboarding(false);
     }
-  }
+  }, [guidedQuery]);
+
+  const applyJobProgress = useCallback(
+    async (job: NonNullable<ImportJobResponse["job"]>) => {
+      const created = Number(job.summary?.counts?.created ?? 0);
+      const updated = Number(job.summary?.counts?.updated ?? 0);
+      const duplicates = Number(job.summary?.counts?.duplicates ?? 0);
+      const nextCounts: ImportCounts = {
+        created,
+        updated,
+        skipped: Number(job.skippedCount ?? job.summary?.counts?.skipped ?? 0),
+        failed: Number(job.failedCount ?? job.summary?.counts?.failed ?? 0),
+      };
+      const total = job.totalRows || importableRows.length;
+      const processed = Math.min(total, job.processedRows || 0);
+      const percent = total > 0 ? Math.min(99, Math.round((processed / total) * 100)) : 0;
+
+      if (job.status === "completed" || job.status === "failed") {
+        setCounts(nextCounts);
+        setSkippedRows(job.summary?.skippedRows ?? []);
+        setFailedRows(job.summary?.failedRows ?? []);
+        const completedProgress: CsvImportProgressState = {
+          phase:
+            job.status === "failed" || nextCounts.failed > 0
+              ? "Import completed with failures"
+              : "Completed",
+          phaseKey: job.status === "failed" || nextCounts.failed > 0 ? "failed" : "completed",
+          processed: total,
+          total,
+          percent: 100,
+          imported: nextCounts.created + nextCounts.updated,
+          skipped: nextCounts.skipped,
+          failed: nextCounts.failed,
+        };
+        setImportProgress(completedProgress);
+
+        if (
+          isOnboarding &&
+          nextCounts.created + nextCounts.updated + nextCounts.skipped > 0 &&
+          nextCounts.failed === 0
+        ) {
+          setImportProgress({ ...completedProgress, phase: "Completing guided step", phaseKey: "finalizing", percent: 98 });
+          await completeOnboardingAfterImport(nextCounts);
+          setImportProgress(completedProgress);
+        }
+
+        router.refresh();
+        setImporting(false);
+        return true;
+      }
+
+      setImportProgress({
+        phase: `Processing vehicle rows${duplicates ? ` · ${duplicates} duplicate(s)` : ""}`,
+        phaseKey: "processing",
+        processed,
+        total,
+        percent,
+        imported: nextCounts.created + nextCounts.updated,
+        skipped: nextCounts.skipped,
+        failed: nextCounts.failed,
+      });
+      return false;
+    },
+    [completeOnboardingAfterImport, importableRows.length, isOnboarding, router],
+  );
+
+  const pollImportJob = useCallback(async (jobId: string) => {
+    const response = await fetch(`/api/import-jobs/${encodeURIComponent(jobId)}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => ({}))) as ImportJobResponse;
+    if (!response.ok || payload.ok === false || !payload.job) {
+      throw new Error(payload.error ?? "Unable to load vehicle import progress.");
+    }
+    return applyJobProgress(payload.job);
+  }, [applyJobProgress]);
+
+  useEffect(() => {
+    if (!importing || !importProgress || importProgress.phaseKey !== "processing") return;
+    const jobId = (importProgress as CsvImportProgressState & { jobId?: string }).jobId;
+    if (!jobId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void pollImportJob(jobId).catch((error) => {
+        if (cancelled) return;
+        setImportError(error instanceof Error ? error.message : "Unable to load vehicle import progress.");
+        setImportProgress({ phase: "failed", phaseKey: "failed", processed: 0, total: importableRows.length, percent: 100 });
+        setImporting(false);
+      });
+    }, 1200);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [importProgress, importableRows.length, importing, pollImportJob]);
 
   async function confirmImport() {
     if (!importableRows.length) {
@@ -333,91 +446,39 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
     setImporting(true);
     setImportError(null);
     setImportProgress({
-      phase: "Preparing rows",
+      phase: "Queueing vehicle import",
       phaseKey: "processing",
       processed: 0,
       total: importableRows.length,
-      percent: 30,
+      percent: 0,
     });
     setCounts(null);
     setSkippedRows([]);
     setFailedRows([]);
 
-    let progressTimer: number | null = null;
     try {
-      progressTimer = window.setInterval(() => {
-        setImportProgress((current) => {
-          if (!current || current.phaseKey !== "processing") return current;
-          const nextPercent = Math.min(90, current.percent + 3);
-          return {
-            ...current,
-            processed: Math.min(
-              importableRows.length,
-              Math.max(
-                current.processed,
-                Math.floor((nextPercent / 100) * importableRows.length),
-              ),
-            ),
-            percent: nextPercent,
-          };
-        });
-      }, 650);
-
       const response = await fetch("/api/vehicles/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: importableRows }),
       });
 
-      const payload = (await response
-        .json()
-        .catch(() => ({}))) as ImportResponse;
-
-      if (!response.ok || payload.ok === false || !payload.counts) {
-        throw new Error(payload.error ?? "Unable to import vehicles.");
+      const payload = (await response.json().catch(() => ({}))) as ImportResponse;
+      const jobId = payload.jobId ?? payload.job?.id;
+      if (!response.ok || payload.ok === false || !jobId) {
+        throw new Error(payload.error ?? "Unable to queue vehicle import.");
       }
 
-      if (progressTimer) window.clearInterval(progressTimer);
-      progressTimer = null;
       setImportProgress({
-        phase: "Finalizing",
-        phaseKey: "finalizing",
-        processed: importableRows.length,
-        total: importableRows.length,
-        percent: 95,
-      });
-      setCounts(payload.counts);
-      setSkippedRows(payload.skippedRows ?? []);
-      setFailedRows(payload.failedRows ?? []);
-
-      const completedProgress: CsvImportProgressState = {
-        phase:
-          payload.counts.failed > 0
-            ? "Import completed with failures"
-            : "Completed",
-        phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
-        processed: importableRows.length,
-        total: importableRows.length,
-        percent: 100,
-        imported: payload.counts.created + payload.counts.updated,
-        skipped: payload.counts.skipped,
-        failed: payload.counts.failed,
-      };
-      setImportProgress(completedProgress);
-
-      if (
-        isOnboarding &&
-        payload.counts.created +
-          payload.counts.updated +
-          payload.counts.skipped >
-          0 &&
-        payload.counts.failed === 0
-      ) {
-        await completeOnboardingAfterImport(payload.counts);
-        setImportProgress(completedProgress);
-      }
+        phase: "Vehicle import queued",
+        phaseKey: "processing",
+        processed: 0,
+        total: payload.job?.totalRows ?? importableRows.length,
+        percent: 0,
+        jobId,
+      } as CsvImportProgressState & { jobId: string });
+      await pollImportJob(jobId);
     } catch (error) {
-      if (progressTimer) window.clearInterval(progressTimer);
       setImportProgress({
         phase: "failed",
         phaseKey: "failed",
@@ -428,8 +489,6 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
       setImportError(
         error instanceof Error ? error.message : "Unable to import vehicles.",
       );
-    } finally {
-      if (progressTimer) window.clearInterval(progressTimer);
       setImporting(false);
     }
   }

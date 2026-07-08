@@ -9,11 +9,15 @@ import {
   INVOICE_IMPORT_BATCH_SIZE,
   processInvoiceImportJobBatch,
 } from "@/features/billing/server/invoice-import-job";
+import {
+  processVehicleImportJobBatch,
+  VEHICLE_IMPORT_BATCH_SIZE,
+} from "@/features/vehicles/server/vehicle-import-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SUPPORTED_IMPORT_TYPES = ["vehicle_history", "invoices"] as const;
+const SUPPORTED_IMPORT_TYPES = ["vehicle_history", "invoices", "vehicles"] as const;
 const STALE_PROCESSING_JOB_MINUTES = 15;
 type SupportedImportType = (typeof SUPPORTED_IMPORT_TYPES)[number];
 type ImportJobDispatchRow = {
@@ -148,6 +152,10 @@ async function processImportType(
 ) {
   if (importType === "invoices") {
     return processInvoiceImportJobBatch(admin, jobId, INVOICE_IMPORT_BATCH_SIZE);
+  }
+
+  if (importType === "vehicles") {
+    return processVehicleImportJobBatch(admin, jobId, VEHICLE_IMPORT_BATCH_SIZE);
   }
 
   return processVehicleHistoryImportJobBatch(
