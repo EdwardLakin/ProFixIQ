@@ -404,6 +404,8 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         failed: payload.counts.failed,
       };
       setImportProgress(completedProgress);
+      console.info("[vehicle-import:complete-ui]", { totalRows: importableRows.length, processedRows: importableRows.length, counts: payload.counts });
+      router.refresh();
 
       if (
         isOnboarding &&

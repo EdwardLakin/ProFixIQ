@@ -488,6 +488,9 @@ export async function POST(req: Request) {
       ok: true,
       counts,
       explanation,
+      totalRows: rows.length,
+      processedRows: rows.length,
+      status: "completed",
       skippedRows,
       failedRows,
     });
