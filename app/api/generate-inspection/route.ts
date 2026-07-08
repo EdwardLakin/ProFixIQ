@@ -1,10 +1,28 @@
 // app/api/generate-inspection/route.ts
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  getOpenAIModelForPurpose,
+  openAITemperatureParam,
+} from "@/features/shared/lib/server/openai-models";
 import { toInspectionCategories } from "@/features/inspections/lib/inspection/normalize";
 
-const openai = getOpenAIClient();
+async function hasAuthenticatedShopScope(): Promise<boolean> {
+  const supabase = createServerSupabaseRoute();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return Boolean(profile?.shop_id);
+}
 
 type GenerateBody = {
   prompt?: string;
@@ -17,6 +35,12 @@ export async function POST(req: Request) {
     if (!prompt) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
+
+    if (!(await hasAuthenticatedShopScope())) {
+      return NextResponse.json({ categories: [] }, { status: 401 });
+    }
+
+    const openai = getOpenAIClient();
 
     const system =
       "You generate automotive inspection templates. " +
