@@ -47,11 +47,31 @@ async function loadResolver(supabase: SupabaseClient<DB>, shopId: string): Promi
   for (const v of (vehicles ?? []) as VehicleRef[]) { r.vehiclesById.set(v.id, v); const ex = key(v.external_id); if (ex && !r.vehiclesByExternal.has(ex)) r.vehiclesByExternal.set(ex, v); const vk = vin(v.vin); if (vk && !r.vehiclesByVin.has(vk)) r.vehiclesByVin.set(vk, v); }
   return r;
 }
-function resolveCustomer(row: HistoryImportRow, r: Resolver): CustomerRef | null { const ex = key(row.customer_id); if (ex && r.customersByExternal.has(ex)) return r.customersByExternal.get(ex)!; const cid = clean(row.customer_id); if (cid && r.customersById.has(cid)) return r.customersById.get(cid)!; const em = key(row.customer_email ?? row.email); if (em && r.customersByEmail.has(em)) return r.customersByEmail.get(em)!; const ph = phone(row.customer_phone ?? row.phone); if (ph && r.customersByPhone.has(ph)) return r.customersByPhone.get(ph)!; const nm = key(row.customer_name ?? row.name); if (nm && r.customersByName.has(nm)) return r.customersByName.get(nm)!; return null; }
-function resolveVehicle(row: HistoryImportRow, r: Resolver): VehicleRef | null { const ex = key(row.vehicle_id); if (ex && r.vehiclesByExternal.has(ex)) return r.vehiclesByExternal.get(ex)!; const vid = clean(row.vehicle_id); if (vid && r.vehiclesById.has(vid)) return r.vehiclesById.get(vid)!; const vk = vin(row.vin); if (vk && r.vehiclesByVin.has(vk)) return r.vehiclesByVin.get(vk)!; return null; }
+function resolveCustomer(row: HistoryImportRow, r: Resolver): { customer: CustomerRef | null; matchedBy: string | null } {
+  const ex = key(row.customer_id);
+  if (ex && r.customersByExternal.has(ex)) return { customer: r.customersByExternal.get(ex)!, matchedBy: "external_id" };
+  const cid = clean(row.customer_id);
+  if (cid && r.customersById.has(cid)) return { customer: r.customersById.get(cid)!, matchedBy: "id" };
+  const em = key(row.customer_email ?? row.email);
+  if (em && r.customersByEmail.has(em)) return { customer: r.customersByEmail.get(em)!, matchedBy: "email" };
+  const ph = phone(row.customer_phone ?? row.phone);
+  if (ph && r.customersByPhone.has(ph)) return { customer: r.customersByPhone.get(ph)!, matchedBy: "phone" };
+  const nm = key(row.customer_name ?? row.name);
+  if (nm && r.customersByName.has(nm)) return { customer: r.customersByName.get(nm)!, matchedBy: "name" };
+  return { customer: null, matchedBy: null };
+}
+function resolveVehicle(row: HistoryImportRow, r: Resolver): { vehicle: VehicleRef | null; matchedBy: string | null } {
+  const ex = key(row.vehicle_id);
+  if (ex && r.vehiclesByExternal.has(ex)) return { vehicle: r.vehiclesByExternal.get(ex)!, matchedBy: "external_id" };
+  const vid = clean(row.vehicle_id);
+  if (vid && r.vehiclesById.has(vid)) return { vehicle: r.vehiclesById.get(vid)!, matchedBy: "id" };
+  const vk = vin(row.vin);
+  if (vk && r.vehiclesByVin.has(vk)) return { vehicle: r.vehiclesByVin.get(vk)!, matchedBy: "vin" };
+  return { vehicle: null, matchedBy: null };
+}
 
-async function findDuplicateHistoryId(supabase: SupabaseClient<DB>, customerId: string, column: "work_order_number" | "invoice_number", value: string): Promise<string | null> {
-  const { data, error } = await supabase.from("history").select("id").eq("customer_id", customerId).eq(column, value).limit(1);
+async function findDuplicateHistoryId(supabase: SupabaseClient<DB>, shopId: string, customerId: string, column: "work_order_number" | "invoice_number", value: string): Promise<string | null> {
+  const { data, error } = await supabase.from("history").select("id").eq("shop_id", shopId).eq("customer_id", customerId).eq(column, value).limit(1);
   if (error) throw error; return data?.[0]?.id ?? null;
 }
 
@@ -76,7 +96,7 @@ export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClie
   const rows = (stagedRows ?? []) as StagedRow[];
   if (!rows.length) {
     const finalSummary = compactImportSummary({ counts: { imported: job.imported_count ?? 0, updated: 0, skipped: job.skipped_count ?? 0, failed: job.failed_count ?? 0, duplicates: Number(job.summary?.duplicates ?? 0) }, totalRows: job.processed_rows ?? 0, skippedRows: compactSamples(job.summary).skippedRows, failedRows: compactSamples(job.summary).failedRows, sampleLimit: VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT });
-    await client.from("import_jobs").update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString(), summary: finalSummary }).eq("id", job.id);
+    await client.from("import_jobs").update({ status: "completed", processed_rows: job.total_rows ?? job.processed_rows ?? 0, completed_at: new Date().toISOString(), updated_at: new Date().toISOString(), summary: finalSummary }).eq("id", job.id);
     return { ok: true, processed: 0, completed: true, job: { id: job.id } };
   }
 
@@ -90,16 +110,19 @@ export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClie
     try {
       const serviceDate = validDate(row.service_date);
       const invalidNumber = ([ ["odometer", row.odometer], ["labor_hours", row.labor_hours], ["total", row.total] ] as const).find(([, value]) => clean(value) && num(value) === null);
-      if (!serviceDate || invalidNumber) { const reason = !serviceDate ? "Invalid or missing service_date." : `${invalidNumber?.[0]} must be numeric when provided.`; counts.skipped++; samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id); continue; }
-      const vehicle = resolveVehicle(row, resolver); const customer = resolveCustomer(row, resolver) ?? (vehicle?.customer_id ? resolver.customersById.get(vehicle.customer_id) ?? null : null);
-      if (!customer || ((clean(row.vehicle_id) || clean(row.vin)) && !vehicle)) { const reason = !customer ? "Existing customer could not be matched." : "Existing vehicle could not be matched."; counts.skipped++; samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id); continue; }
+      if (!serviceDate || invalidNumber) { const reason = !serviceDate ? "Invalid or missing service_date." : `${invalidNumber?.[0]} must be numeric when provided.`; counts.skipped++; samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber }); console.info("[history-import:skip]", { jobId: job.id, row: rowNumber, reason, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id); continue; }
+      const vehicleMatch = resolveVehicle(row, resolver); const vehicle = vehicleMatch.vehicle;
+      const customerMatch = resolveCustomer(row, resolver); const customer = customerMatch.customer ?? (vehicle?.customer_id ? resolver.customersById.get(vehicle.customer_id) ?? null : null);
+      console.info("[history-import:customer-match]", { jobId: job.id, row: rowNumber, matchedBy: customerMatch.matchedBy ?? (customer ? "vehicle_customer_id" : null), matched: Boolean(customer), csvCustomerId: key(row.customer_id) });
+      console.info("[history-import:vehicle-match]", { jobId: job.id, row: rowNumber, matchedBy: vehicleMatch.matchedBy, matched: Boolean(vehicle), csvVehicleId: key(row.vehicle_id), vin: vin(row.vin) });
+      if (!customer || ((clean(row.vehicle_id) || clean(row.vin)) && !vehicle)) { const reason = !customer ? "Existing customer could not be matched." : "Existing vehicle could not be matched."; counts.skipped++; samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber }); console.info("[history-import:skip]", { jobId: job.id, row: rowNumber, reason, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).eq("id", staged.id); continue; }
       let duplicateFound = false;
-      if (repairOrderNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, customer.id, "work_order_number", repairOrderNumber));
-      if (!duplicateFound && invoiceNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, customer.id, "invoice_number", invoiceNumber));
-      if (duplicateFound) { counts.skipped++; counts.duplicates++; samples.skippedRows.push({ row: rowNumber, reason: "Duplicate repair order/invoice already exists.", repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: "Duplicate repair order/invoice already exists." }).eq("id", staged.id); continue; }
+      if (repairOrderNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, job.shop_id, customer.id, "work_order_number", repairOrderNumber));
+      if (!duplicateFound && invoiceNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, job.shop_id, customer.id, "invoice_number", invoiceNumber));
+      if (duplicateFound) { counts.skipped++; counts.duplicates++; samples.skippedRows.push({ row: rowNumber, reason: "Duplicate repair order/invoice already exists.", repairOrderNumber, invoiceNumber }); console.info("[history-import:duplicate]", { jobId: job.id, row: rowNumber, customerId: customer.id, vehicleId: vehicle?.id ?? null, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "skipped", error_message: "Duplicate repair order/invoice already exists." }).eq("id", staged.id); continue; }
       const parts = clean(row.parts); const notes = [clean(row.notes), parts ? `Parts: ${parts}` : null, clean(row.service_category) ? `Service category: ${clean(row.service_category)}` : null].filter(Boolean).join("\n") || null;
       const description = [clean(row.service_category), clean(row.complaint), clean(row.correction)].filter(Boolean).join(" · ") || "Imported historical service record";
-      payloads.push({ stagedId: staged.id, rowNumber, repairOrderNumber, invoiceNumber, payload: { customer_id: customer.id, vehicle_id: vehicle?.id ?? null, service_date: serviceDate, description, notes, work_order_number: repairOrderNumber, invoice_number: invoiceNumber, odometer: num(row.odometer), symptom: clean(row.complaint), cause: clean(row.cause), correction: clean(row.correction), labor_hours: num(row.labor_hours), total: num(row.total), advisor_name: clean(row.advisor), assigned_tech_name: clean(row.technician), historical_status: "imported", source_system: "vehicle_history_csv", source_row_id: String(rowNumber), source_payload: JSON.parse(JSON.stringify({ imported_at: new Date().toISOString(), raw_row: row, service_category: clean(row.service_category), parts: clean(row.parts) })) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"] } });
+      payloads.push({ stagedId: staged.id, rowNumber, repairOrderNumber, invoiceNumber, payload: { shop_id: job.shop_id, customer_id: customer.id, vehicle_id: vehicle?.id ?? null, service_date: serviceDate, description, notes, work_order_number: repairOrderNumber, invoice_number: invoiceNumber, odometer: num(row.odometer), symptom: clean(row.complaint), cause: clean(row.cause), correction: clean(row.correction), labor_hours: num(row.labor_hours), total: num(row.total), advisor_name: clean(row.advisor), assigned_tech_name: clean(row.technician), historical_status: "imported", source_system: "vehicle_history_csv", source_row_id: String(rowNumber), source_payload: JSON.parse(JSON.stringify({ imported_at: new Date().toISOString(), raw_row: row, service_category: clean(row.service_category), parts: clean(row.parts) })) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"] } });
     } catch (error) { counts.failed++; const message = error instanceof Error ? error.message : "History row failed to import."; samples.failedRows.push({ row: rowNumber, error: message, repairOrderNumber, invoiceNumber }); await client.from("import_job_rows").update({ status: "failed", error_message: message }).eq("id", staged.id); }
   }
 
@@ -121,6 +144,7 @@ export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClie
   const nextFailed = (job.failed_count ?? 0) + counts.failed;
   const processedRows = totalRows > 0 ? Math.min(totalRows, nextImported + nextSkipped + nextFailed) : nextImported + nextSkipped + nextFailed;
   const summary = { skippedRows: samples.skippedRows, failedRows: samples.failedRows, duplicates: Number(job.summary?.duplicates ?? 0) + counts.duplicates };
+  console.info("[history-import:batch-summary]", { jobId: job.id, batchRows: rows.length, imported: counts.imported, skipped: counts.skipped, failed: counts.failed, duplicates: counts.duplicates, processedRows, totalRows });
   const { count: remainingCount, error: remainingError } = await client.from("import_job_rows").select("id", { count: "exact", head: true }).eq("job_id", job.id).eq("status", "queued");
   if (remainingError) throw remainingError;
   const completed = (remainingCount ?? 0) === 0;

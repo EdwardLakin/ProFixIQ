@@ -78,14 +78,26 @@ export async function GET(
     data = refreshed.data ?? data;
   }
 
+  const totalRows = data.total_rows ?? 0;
+  const countedProcessedRows =
+    (data.imported_count ?? 0) +
+    (data.skipped_count ?? 0) +
+    (data.failed_count ?? 0);
+  const processedRows =
+    data.status === "completed" && totalRows > 0
+      ? totalRows
+      : totalRows > 0
+        ? Math.min(totalRows, data.processed_rows ?? countedProcessedRows)
+        : (data.processed_rows ?? countedProcessedRows);
+
   return NextResponse.json({
     ok: true,
     job: {
       id: data.id,
       importType: data.import_type,
       status: data.status,
-      totalRows: data.total_rows ?? 0,
-      processedRows: data.processed_rows ?? 0,
+      totalRows,
+      processedRows,
       importedCount: data.imported_count ?? 0,
       skippedCount: data.skipped_count ?? 0,
       failedCount: data.failed_count ?? 0,
