@@ -36,7 +36,9 @@ describe("vehicle CSV import route", () => {
       '"external_id" | "vin" | "unit_number" | "license_plate"',
     );
     expect(source).toContain("loadExistingVehicleIndex");
-    expect(source).toContain(".in(field, values[field])");
+    expect(source).toContain("VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE = 100");
+    expect(source).toContain("start += VEHICLE_IMPORT_LOOKUP_CHUNK_SIZE");
+    expect(source).toContain(".in(field, chunk)");
     expect(source).toContain("counts.updated += 1");
   });
 
