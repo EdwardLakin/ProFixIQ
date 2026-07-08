@@ -77,7 +77,13 @@ export async function POST(req: Request) {
       .insert(jobPayload)
       .select("id, total_rows, status")
       .single();
-    if (jobError) throw jobError;
+    if (jobError) {
+      console.error("[vehicle-import:job-create-failed]", {
+        message: jobError.message,
+        jobPayload,
+      });
+      throw jobError;
+    }
     if (!job?.id) throw new Error("Vehicle import job could not be created.");
 
     const stagedRows = stageVehicleImportRows(job.id, rows);
