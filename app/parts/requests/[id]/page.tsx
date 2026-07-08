@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
@@ -14,6 +14,13 @@ import {
   RequestReceivingPanel,
   RequestStatusSummary,
 } from "./request-detail-components";
+import {
+  PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG,
+  PartsRequestWorkbench,
+  mapRequestToWorkbenchModel,
+  type PartsRequestWorkbenchItem,
+  type SaveItemInput,
+} from "@/features/parts/components/request-workbench";
 import {
   itemFlowLabel,
   requestFlowLabel,
@@ -90,6 +97,8 @@ type CreateInventoryDraft = {
   category: string;
   price: string;
   supplier: string;
+  initialQty?: string;
+  locationId?: string;
 };
 
 type RequestUi = {
@@ -199,6 +208,7 @@ function lineLabelFrom(line?: LineLite): string {
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
@@ -702,12 +712,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       category: "",
       price: item.ui_price == null ? "" : String(item.ui_price),
       supplier: requestedManufacturer,
+      initialQty: "",
+      locationId: defaultLocationId || "",
     });
   }
 
-  async function saveCreatedInventoryItem(): Promise<void> {
-    if (!wo?.shop_id || !createInventoryDraft) return;
-    const draft = createInventoryDraft;
+  async function saveCreatedInventoryItem(nextDraft?: CreateInventoryDraft): Promise<void> {
+    const draft = nextDraft ?? createInventoryDraft;
+    if (!wo?.shop_id || !draft) return;
     const name = draft.name.trim();
     const partNumber = draft.partNumber.trim();
     if (!name) {
@@ -719,6 +731,27 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       toast.error("Enter a valid price.");
       return;
     }
+
+    const initialQtyNum = draft.initialQty?.trim() ? Number(draft.initialQty) : 0;
+    if (!Number.isFinite(initialQtyNum) || initialQtyNum < 0) {
+      toast.error("Enter a valid initial quantity.");
+      return;
+    }
+
+    const stockLocationId = String(draft.locationId || defaultLocationId || "").trim();
+    if (initialQtyNum > 0 && !isUuid(stockLocationId)) {
+      toast.error("Select a stock location before adding initial quantity.");
+      return;
+    }
+
+    console.info("[parts-request-v2:add-stock:start]", {
+      requestId: draft.requestId,
+      itemId: draft.itemId,
+      name,
+      partNumber,
+      initialQty: initialQtyNum,
+      stockLocationId,
+    });
 
     setSavingItemId(draft.itemId);
     try {
@@ -738,8 +771,26 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         .select("*")
         .single<PartRow>();
       if (partErr) {
+        console.error("[parts-request-v2:add-stock:part-error]", partErr);
         toast.error(partErr.message);
         return;
+      }
+
+      if (initialQtyNum > 0) {
+        const { error: stockMoveError } = await supabase.rpc("apply_stock_move", {
+          p_part: part.id,
+          p_loc: stockLocationId,
+          p_qty: initialQtyNum,
+          p_reason: "receive",
+          p_ref_kind: "parts_request_initial_stock",
+          p_ref_id: part.id,
+        } as DB["public"]["Functions"]["apply_stock_move"]["Args"]);
+
+        if (stockMoveError) {
+          console.error("[parts-request-v2:add-stock:stock-move-error]", stockMoveError);
+          toast.error(`Inventory item created, but stock quantity failed: ${stockMoveError.message}`);
+          return;
+        }
       }
 
       const update: DB["public"]["Tables"]["part_request_items"]["Update"] = {
@@ -765,6 +816,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ui_price: priceNum ?? undefined,
       });
       setCreateInventoryDraft(null);
+      console.info("[parts-request-v2:add-stock:success]", {
+        requestId: draft.requestId,
+        itemId: draft.itemId,
+        partId: part.id,
+        initialQty: initialQtyNum,
+      });
       await load();
       toast.success("Inventory item created and attached.");
     } finally {
@@ -1404,10 +1461,34 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
   }
 
-  async function addAndAttach(reqId: string, itemId: string): Promise<void> {
+  async function addAndAttach(
+    reqId: string,
+    itemId: string,
+    overrides?: {
+      partId?: string | null;
+      qty?: number | null;
+      sellPrice?: number | null;
+      description?: string | null;
+      requestedPartNumber?: string | null;
+      requestedManufacturer?: string | null;
+    },
+  ): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
-    const it = target?.items.find((x) => x.id === itemId);
-    if (!target || !it) return;
+    const baseItem = target?.items.find((x) => String(x.id) === String(itemId));
+    if (!target || !baseItem) return;
+
+    const it = {
+      ...baseItem,
+      part_id: overrides?.partId ?? baseItem.part_id,
+      ui_part_id: overrides?.partId ?? baseItem.ui_part_id,
+      qty: overrides?.qty ?? baseItem.qty,
+      ui_qty: overrides?.qty ?? baseItem.ui_qty,
+      quoted_price: overrides?.sellPrice ?? baseItem.quoted_price,
+      ui_price: overrides?.sellPrice ?? baseItem.ui_price,
+      description: overrides?.description ?? baseItem.description,
+      requested_part_number: overrides?.requestedPartNumber ?? baseItem.requested_part_number,
+      requested_manufacturer: overrides?.requestedManufacturer ?? baseItem.requested_manufacturer,
+    } as UiItem;
 
     const resolved = resolveAddPartId(it);
     const partId = resolved.partId;
@@ -1751,6 +1832,162 @@ if (!lineId || !isUuid(lineId)) {
                   hasValidLineId
                     ? lineLabelFrom(lineById.get(lineId))
                     : "";
+
+                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG || searchParams.get("workbenchV2") === "1") {
+                  const model = mapRequestToWorkbenchModel({
+                    request: r.req as unknown as Record<string, unknown>,
+                    items: r.items as unknown as Record<string, unknown>[],
+                    supplierOptions,
+                    poOptions,
+                    locationOptions: locOptions,
+                    parts: parts as unknown as Record<string, unknown>[],
+                    stockAvailableByPartId,
+                    workOrderId: wo?.id ?? r.req.work_order_id ?? null,
+                    workOrderCustomId: woDisplay,
+                    jobContext: jobText,
+                    defaultLocationId: resolvedDefaultLocId,
+                    defaultSupplierId: "",
+                    stockSuggestionCountByItemId: Object.fromEntries(
+                      r.items.map((item) => [
+                        String(item.id),
+                        stockSuggestionsByItemId[String(item.id)]?.length ?? 0,
+                      ]),
+                    ),
+                    supplierSuggestionCountByItemId: Object.fromEntries(
+                      r.items.map((item) => [
+                        String(item.id),
+                        supplierSuggestionsByItemId[String(item.id)]?.length ?? 0,
+                      ]),
+                    ),
+                    conflictWarningByItemId,
+                  });
+
+                  return (
+                    <div key={r.req.id} className={glassCard}>
+                      <PartsRequestWorkbench
+                        model={model}
+                        onSaveItem={async (input: SaveItemInput) => {
+                          const qty = Number(input.qty);
+                          const sellPrice = input.sellPrice == null ? null : Number(input.sellPrice);
+
+                          if (!Number.isFinite(qty) || qty <= 0) {
+                            toast.error("Qty must be greater than zero.");
+                            return;
+                          }
+
+                          if (sellPrice != null && (!Number.isFinite(sellPrice) || sellPrice < 0)) {
+                            toast.error("Sell price must be zero or greater.");
+                            return;
+                          }
+
+                          updateItem(r.req.id, input.itemId, {
+                            description: input.description,
+                            requested_part_number: input.requestedPartNumber ?? null,
+                            requested_manufacturer: input.requestedManufacturer ?? null,
+                            qty,
+                            ui_qty: qty,
+                            quoted_price: sellPrice,
+                            ui_price: sellPrice ?? undefined,
+                          });
+
+                          console.info("[parts-request-v2:save-row]", {
+                            requestId: r.req.id,
+                            itemId: input.itemId,
+                            qty,
+                            sellPrice,
+                          });
+
+                          await persistItemFields(input.itemId, {
+                            description: input.description,
+                            requested_part_number: input.requestedPartNumber ?? null,
+                            requested_manufacturer: input.requestedManufacturer ?? null,
+                            qty,
+                            quoted_price: sellPrice,
+                          });
+
+                          toast.success("Part request row saved.");
+                          await load();
+                        }}
+                        onAttachInventory={async (input) => {
+                          const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                          });
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          if (!res.ok || !body?.ok) {
+                            toast.error(body?.error || "Could not attach inventory part.");
+                            return;
+                          }
+                          toast.success("Inventory part attached.");
+                          await load();
+                        }}
+                        onCreateInventoryItem={async (itemId, input) => {
+                          const res = await fetch(`/api/parts/requests/items/${itemId}/inventory`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              mode: "create",
+                              name: input.name,
+                              partNumber: input.partNumber,
+                              manufacturer: input.manufacturer,
+                              sku: input.sku,
+                              category: input.category,
+                              sellPrice: input.sellPrice,
+                              initialQty: input.initialQty,
+                              locationId: resolvedDefaultLocId || defaultLocationId || null,
+                            }),
+                          });
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          if (!res.ok || !body?.ok) {
+                            toast.error(body?.error || "Could not create inventory item.");
+                            return;
+                          }
+                          toast.success("Inventory item created and attached.");
+                          await load();
+                        }}
+                        onAddToJob={async (item: PartsRequestWorkbenchItem) => {
+                          await addAndAttach(r.req.id, item.id, {
+                            partId: item.partId ?? null,
+                            qty: item.qty,
+                            sellPrice: item.sellPrice,
+                            description: item.description,
+                            requestedPartNumber: item.requestedPartNumber ?? null,
+                            requestedManufacturer: item.requestedManufacturer ?? null,
+                          });
+                          await load();
+                        }}
+                        onSubmitOrder={async (itemId, input) => {
+                          updateItem(r.req.id, itemId, {
+                            ui_supplier_id: input.supplierId,
+                            ui_po_id: input.poMode === "existing" ? input.existingPoId : "",
+                          });
+                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
+                          if (!item) {
+                            toast.error("Request item not found.");
+                            return;
+                          }
+                          await createOrReusePoAndAssign(
+                            item,
+                            input.supplierId,
+                            input.poMode === "existing" ? input.existingPoId : null,
+                          );
+                          await load();
+                        }}
+                        onOpenReceiveDrawer={async (itemId) => {
+                          const item = r.items.find((candidate) => String(candidate.id) === String(itemId));
+                          if (item) openReceiveFor(r.req.id, item);
+                        }}
+                        onClearMatch={async (itemId) => {
+                          updateItem(r.req.id, itemId, { ui_part_id: null });
+                        }}
+                        onDeleteItem={async (itemId) => {
+                          await deleteLine(r.req.id, itemId);
+                        }}
+                      />
+                    </div>
+                  );
+                }
 
                 return (
                   <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
