@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const routeSource = () =>
-  readFileSync("app/api/vehicles/import/route.ts", "utf8");
+  `${readFileSync("app/api/vehicles/import/route.ts", "utf8")}\n${readFileSync("features/vehicles/server/vehicle-import-job.ts", "utf8")}`;
 const cardSource = () =>
   readFileSync("features/vehicles/components/VehicleCsvImportCard.tsx", "utf8");
 const customerVehicleUiSource = () =>
@@ -24,11 +24,9 @@ describe("vehicle CSV import route", () => {
   it("skips unresolved external customer ids instead of failing the whole import", () => {
     const source = routeSource();
 
-    expect(source).toContain(
-      'reason: "Customer not found for external customer_id."',
-    );
-    expect(source).toContain("counts.skipped += 1");
-    expect(source).toContain('console.warn("Vehicle import row failed"');
+    expect(source).toContain('"Customer not found for external customer_id."');
+    expect(source).toContain("counts.skipped++");
+    expect(source).toContain("skippedByReason");
   });
 
   it("matches re-imported vehicles without relying on duplicate insert conflicts", () => {
@@ -37,9 +35,9 @@ describe("vehicle CSV import route", () => {
     expect(source).toContain(
       '"external_id" | "vin" | "unit_number" | "license_plate"',
     );
-    expect(source).toContain("findVehicleByField");
-    expect(source).toContain(".limit(1)");
-    expect(source).toContain("counts.updated += 1");
+    expect(source).toContain("loadExistingVehicleIndex");
+    expect(source).toContain(".in(field, values[field])");
+    expect(source).toContain("counts.updated++");
   });
 
   it("persists supported CSV vehicle detail fields and returns compact diagnostics", () => {
@@ -61,7 +59,7 @@ describe("vehicle CSV import route", () => {
     ]) {
       expect(source).toContain(`${field}:`);
     }
-    expect(source).toContain("const mileage = odometer ?? null");
+    expect(source).toContain("mileage: cleanString(row.odometer)");
     expect(source).toContain("skippedRows,");
     expect(source).toContain("failedRows,");
   });
@@ -106,9 +104,12 @@ describe("vehicle CSV import card", () => {
     expect(source).toContain("last_service_date");
     expect(source).toContain("/steps/vehicles/complete");
     expect(source).toMatch(
-      /payload\.counts\.created\s*\+\s*payload\.counts\.updated\s*\+\s*payload\.counts\.skipped\s*>\s*0/,
+      /nextCounts\.created\s*\+\s*nextCounts\.updated\s*\+\s*nextCounts\.skipped\s*>\s*0/,
     );
-    expect(source).toContain("Continue onboarding");
+    expect(readFileSync(
+      "features/shared/components/import/GuidedImportFooterActions.tsx",
+      "utf8",
+    )).toContain("Continue onboarding");
   });
 });
 
@@ -130,7 +131,7 @@ describe("guided CSV import progress UI", () => {
     expect(customerSource).toContain("Customer CSV import progress");
     expect(vehicleSource).toContain("Vehicle CSV import progress");
     expect(customerSource).toContain('phase: "Preparing rows"');
-    expect(vehicleSource).toContain('phase: "Preparing rows"');
+    expect(vehicleSource).toContain('phase: "Queueing vehicle import"');
     expect(customerSource).toContain('phase: "Completing guided step"');
     expect(vehicleSource).toContain('phase: "Completing guided step"');
   });
@@ -146,12 +147,12 @@ describe("guided CSV import progress UI", () => {
     expect(vehicleSource).toContain("setCounts(null)");
     expect(customerSource).toContain("setImportProgress(null)");
     expect(vehicleSource).toContain("setImportProgress(null)");
-    expect(customerSource).toContain(
-      "disabled={importing || completingOnboarding || !importableRows.length}",
+    const footerSource = readFileSync(
+      "features/shared/components/import/GuidedImportFooterActions.tsx",
+      "utf8",
     );
-    expect(vehicleSource).toContain(
-      "disabled={importing || completingOnboarding || !importableRows.length}",
-    );
+    expect(footerSource).toContain("disabled={importing || completing || !canConfirm}");
+    expect(vehicleSource).toContain("canConfirm={importableRows.length > 0}");
   });
 
   it("only shows guided Continue onboarding after successful zero-failure imports", () => {
@@ -165,8 +166,11 @@ describe("guided CSV import progress UI", () => {
     expect(vehicleSource).toContain("counts.failed === 0");
     expect(customerSource).toContain("importSucceeded");
     expect(vehicleSource).toContain("importSucceeded");
-    expect(customerSource).toContain("Continue onboarding");
-    expect(vehicleSource).toContain("Continue onboarding");
+    const footerSource = readFileSync(
+      "features/shared/components/import/GuidedImportFooterActions.tsx",
+      "utf8",
+    );
+    expect(footerSource).toContain("Continue onboarding");
   });
 
   it("calls the vehicle guided completion endpoint with the vehicles step key", () => {

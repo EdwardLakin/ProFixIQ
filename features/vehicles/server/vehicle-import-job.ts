@@ -6,12 +6,12 @@ type DB = Database;
 type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
 type VehicleUpdate = DB["public"]["Tables"]["vehicles"]["Update"];
 
-export const VEHICLE_IMPORT_BATCH_SIZE = 250;
+export const VEHICLE_IMPORT_BATCH_SIZE = 1000;
 export const VEHICLE_IMPORT_STAGING_BATCH_SIZE = 1000;
 export const VEHICLE_IMPORT_SAMPLE_LIMIT = 25;
 export const VEHICLE_IMPORT_MAX_ROWS = 20_000;
 
-type VehicleMatch = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id">;
+type VehicleMatch = Pick<DB["public"]["Tables"]["vehicles"]["Row"], "id" | "external_id" | "vin" | "unit_number" | "license_plate">;
 type CustomerResolverRow = Pick<DB["public"]["Tables"]["customers"]["Row"], "id" | "external_id" | "email" | "phone" | "phone_number" | "name" | "business_name">;
 type CustomerResolverIndex = { byExternalId: Map<string, string>; byEmail: Map<string, string>; byPhone: Map<string, string>; byName: Map<string, string> };
 type NormalizedVehicleResult = { ok: true; vehicle: VehicleInsert } | { ok: false; reason: string };
@@ -52,8 +52,23 @@ function normalizeRow(row: VehicleImportRow, shopId: string, customers: Customer
   if (hasCustomerReference && !customerId) return { ok: false, reason: rawCustomerId ? "Customer not found for external customer_id." : "Customer reference could not be resolved." };
   return { ok: true, vehicle: { shop_id: shopId, unit_number: unitNumber, vin, license_plate: plate, state_province: cleanString(row.state_province), year, make, model, customer_id: customerId, external_id: cleanString(row.vehicle_id), submodel: cleanString(row.trim), color: cleanString(row.color), mileage: cleanString(row.odometer), odometer_unit: cleanString(row.odometer_unit), engine: cleanString(row.engine), fuel_type: cleanString(row.fuel_type), drivetrain: cleanString(row.drive_type), body_type: cleanString(row.body_type), asset_type: cleanString(row.asset_type), status: cleanString(row.status), purchase_date: cleanDate(row.purchase_date), in_service_date: cleanDate(row.in_service_date), last_service_date: cleanDate(row.last_service_date), tags: cleanString(row.tags), notes: cleanString(row.notes), import_notes: buildVehicleImportNotes(row) } };
 }
-async function findVehicleByField(supabase: SupabaseClient<DB>, shopId: string, field: "external_id" | "vin" | "unit_number" | "license_plate", value: string | null | undefined): Promise<VehicleMatch | null> { if (!value) return null; const { data, error } = await supabase.from("vehicles").select("id").eq("shop_id", shopId).eq(field, value).limit(1); if (error) throw error; return ((data ?? [])[0] as VehicleMatch | undefined) ?? null; }
-async function findExistingVehicle(supabase: SupabaseClient<DB>, shopId: string, normalized: VehicleInsert): Promise<VehicleMatch | null> { return (await findVehicleByField(supabase, shopId, "external_id", normalized.external_id)) ?? (await findVehicleByField(supabase, shopId, "vin", normalized.vin)) ?? (await findVehicleByField(supabase, shopId, "unit_number", normalized.unit_number)) ?? (await findVehicleByField(supabase, shopId, "license_plate", normalized.license_plate)); }
+function pushUnique(values: string[], value: string | null | undefined) { if (value && !values.includes(value)) values.push(value); }
+function addMatch(index: Map<string, VehicleMatch>, field: "external_id" | "vin" | "unit_number" | "license_plate", vehicle: VehicleMatch) { const value = vehicle[field]; if (value && !index.has(`${field}:${value}`)) index.set(`${field}:${value}`, vehicle); }
+async function loadExistingVehicleIndex(supabase: SupabaseClient<DB>, shopId: string, normalizedRows: VehicleInsert[]): Promise<Map<string, VehicleMatch>> {
+  const values = { external_id: [] as string[], vin: [] as string[], unit_number: [] as string[], license_plate: [] as string[] };
+  for (const row of normalizedRows) { pushUnique(values.external_id, row.external_id); pushUnique(values.vin, row.vin); pushUnique(values.unit_number, row.unit_number); pushUnique(values.license_plate, row.license_plate); }
+  const index = new Map<string, VehicleMatch>();
+  for (const field of ["external_id", "vin", "unit_number", "license_plate"] as const) {
+    if (!values[field].length) continue;
+    const { data, error } = await supabase.from("vehicles").select("id, external_id, vin, unit_number, license_plate").eq("shop_id", shopId).in(field, values[field]);
+    if (error) throw error;
+    for (const vehicle of (data ?? []) as VehicleMatch[]) addMatch(index, field, vehicle);
+  }
+  return index;
+}
+function findExistingVehicleInIndex(index: Map<string, VehicleMatch>, normalized: VehicleInsert): VehicleMatch | null {
+  return (normalized.external_id ? index.get(`external_id:${normalized.external_id}`) : null) ?? (normalized.vin ? index.get(`vin:${normalized.vin}`) : null) ?? (normalized.unit_number ? index.get(`unit_number:${normalized.unit_number}`) : null) ?? (normalized.license_plate ? index.get(`license_plate:${normalized.license_plate}`) : null) ?? null;
+}
 function summaryCount(summary: Record<string, unknown> | null, key: string): number {
   const counts = summary?.counts as Record<string, unknown> | undefined;
   return Number(counts?.[key] ?? summary?.[key] ?? 0);
@@ -69,16 +84,71 @@ export async function processVehicleImportJobBatch(supabase: SupabaseClient<DB>,
   const rows = (stagedRows ?? []) as StagedRow[];
   if (!rows.length) { const finalSummary = compactImportSummary({ counts: { created: summaryCount(job.summary, "created"), updated: summaryCount(job.summary, "updated"), skipped: job.skipped_count ?? 0, failed: job.failed_count ?? 0, duplicates: summaryCount(job.summary, "duplicates") }, totalRows: job.processed_rows ?? 0, skippedRows: samples(job.summary).skippedRows, failedRows: samples(job.summary).failedRows, sampleLimit: VEHICLE_IMPORT_SAMPLE_LIMIT }); await client.from("import_jobs").update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString(), summary: finalSummary }).eq("id", job.id); return { ok: true, processed: 0, completed: true, job: { id: job.id } }; }
   const customers = await loadCustomerResolverIndex(supabase, job.shop_id); const counts: VehicleCounts = { created: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 }; const rowSamples = samples(job.summary);
+  const normalizedRows: Array<{ staged: StagedRow; vehicle: VehicleInsert }> = [];
+  const importedRowIds: string[] = [];
+  const skippedByReason = new Map<string, string[]>();
+  const failedByMessage = new Map<string, string[]>();
+
   for (const staged of rows) {
-    const rowNumber = staged.row_number;
-    try {
-      const normalizedResult = normalizeRow(staged.raw_row, job.shop_id, customers);
-      if (!normalizedResult.ok) { counts.skipped++; rowSamples.skippedRows.push({ row: rowNumber, reason: normalizedResult.reason }); await client.from("import_job_rows").update({ status: "skipped", error_message: normalizedResult.reason }).eq("id", staged.id); continue; }
-      const normalized = normalizedResult.vehicle; const existing = await findExistingVehicle(supabase, job.shop_id, normalized);
-      if (existing) { const { error } = await supabase.from("vehicles").update(updatePayload(normalized)).eq("id", existing.id).eq("shop_id", job.shop_id); if (error) throw error; counts.updated++; await client.from("import_job_rows").update({ status: "imported" }).eq("id", staged.id); continue; }
-      const { error } = await supabase.from("vehicles").insert(normalized); if (error) throw error; counts.created++; await client.from("import_job_rows").update({ status: "imported" }).eq("id", staged.id);
-    } catch (error) { counts.failed++; const message = error instanceof Error ? error.message : "Vehicle row failed to import."; rowSamples.failedRows.push({ row: rowNumber, error: message }); await client.from("import_job_rows").update({ status: "failed", error_message: message }).eq("id", staged.id); }
+    const normalizedResult = normalizeRow(staged.raw_row, job.shop_id, customers);
+    if (!normalizedResult.ok) {
+      counts.skipped++;
+      rowSamples.skippedRows.push({ row: staged.row_number, reason: normalizedResult.reason });
+      const ids = skippedByReason.get(normalizedResult.reason) ?? [];
+      ids.push(staged.id);
+      skippedByReason.set(normalizedResult.reason, ids);
+      continue;
+    }
+    normalizedRows.push({ staged, vehicle: normalizedResult.vehicle });
   }
+
+  const existingVehicles = await loadExistingVehicleIndex(supabase, job.shop_id, normalizedRows.map((entry) => entry.vehicle));
+  const inserts: VehicleInsert[] = [];
+  const insertRowIds: string[] = [];
+  const insertRowNumbers: number[] = [];
+
+  for (const entry of normalizedRows) {
+    try {
+      const existing = findExistingVehicleInIndex(existingVehicles, entry.vehicle);
+      if (existing) {
+        const { error } = await supabase.from("vehicles").update(updatePayload(entry.vehicle)).eq("id", existing.id).eq("shop_id", job.shop_id);
+        if (error) throw error;
+        counts.updated++;
+        importedRowIds.push(entry.staged.id);
+        continue;
+      }
+      inserts.push(entry.vehicle);
+      insertRowIds.push(entry.staged.id);
+      insertRowNumbers.push(entry.staged.row_number);
+    } catch (error) {
+      counts.failed++;
+      const message = error instanceof Error ? error.message : "Vehicle row failed to import.";
+      rowSamples.failedRows.push({ row: entry.staged.row_number, error: message });
+      const ids = failedByMessage.get(message) ?? [];
+      ids.push(entry.staged.id);
+      failedByMessage.set(message, ids);
+    }
+  }
+
+  for (let index = 0; index < inserts.length; index += VEHICLE_IMPORT_STAGING_BATCH_SIZE) {
+    const vehicleBatch = inserts.slice(index, index + VEHICLE_IMPORT_STAGING_BATCH_SIZE);
+    const rowIdBatch = insertRowIds.slice(index, index + VEHICLE_IMPORT_STAGING_BATCH_SIZE);
+    const { error } = await supabase.from("vehicles").insert(vehicleBatch);
+    if (error) {
+      counts.failed += rowIdBatch.length;
+      rowSamples.failedRows.push(...rowIdBatch.map((_, offset) => ({ row: insertRowNumbers[index + offset] ?? 0, error: error.message })));
+      const ids = failedByMessage.get(error.message) ?? [];
+      ids.push(...rowIdBatch);
+      failedByMessage.set(error.message, ids);
+    } else {
+      counts.created += vehicleBatch.length;
+      importedRowIds.push(...rowIdBatch);
+    }
+  }
+
+  for (const ids of chunkArray(importedRowIds, VEHICLE_IMPORT_STAGING_BATCH_SIZE)) { if (ids.length) await client.from("import_job_rows").update({ status: "imported" }).in("id", ids); }
+  for (const [reason, ids] of skippedByReason) { for (const batch of chunkArray(ids, VEHICLE_IMPORT_STAGING_BATCH_SIZE)) await client.from("import_job_rows").update({ status: "skipped", error_message: reason }).in("id", batch); }
+  for (const [message, ids] of failedByMessage) { for (const batch of chunkArray(ids, VEHICLE_IMPORT_STAGING_BATCH_SIZE)) await client.from("import_job_rows").update({ status: "failed", error_message: message }).in("id", batch); }
   rowSamples.skippedRows = rowSamples.skippedRows.slice(0, VEHICLE_IMPORT_SAMPLE_LIMIT); rowSamples.failedRows = rowSamples.failedRows.slice(0, VEHICLE_IMPORT_SAMPLE_LIMIT);
   const totalRows = Math.max(0, job.total_rows ?? 0); const previousCreated = summaryCount(job.summary, "created") || (job.imported_count ?? 0); const previousUpdated = summaryCount(job.summary, "updated"); const nextCreated = previousCreated + counts.created; const nextUpdated = previousUpdated + counts.updated; const nextImported = nextCreated + nextUpdated; const nextSkipped = (job.skipped_count ?? 0) + counts.skipped; const nextFailed = (job.failed_count ?? 0) + counts.failed; const processedRows = totalRows > 0 ? Math.min(totalRows, nextImported + nextSkipped + nextFailed) : nextImported + nextSkipped + nextFailed;
   const { count: remainingCount, error: remainingError } = await client.from("import_job_rows").select("id", { count: "exact", head: true }).eq("job_id", job.id).eq("status", "queued"); if (remainingError) throw remainingError; const completed = (remainingCount ?? 0) === 0;
