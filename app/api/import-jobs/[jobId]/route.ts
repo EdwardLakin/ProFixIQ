@@ -5,10 +5,6 @@ import {
   processVehicleHistoryImportJobBatch,
   VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
 } from "@/features/work-orders/server/vehicle-history-import-job";
-import {
-  processVehicleImportJobBatch,
-  VEHICLE_IMPORT_BATCH_SIZE,
-} from "@/features/vehicles/server/vehicle-import-job";
 
 type ImportJobApiRow = {
   id: string;
@@ -75,14 +71,6 @@ export async function GET(
         createAdminSupabase(),
         jobId,
         VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
-      );
-      const refreshed = await loadJob();
-      data = refreshed.data ?? data;
-    } else if (data.import_type === "vehicles") {
-      await processVehicleImportJobBatch(
-        createAdminSupabase(),
-        jobId,
-        VEHICLE_IMPORT_BATCH_SIZE,
       );
       const refreshed = await loadJob();
       data = refreshed.data ?? data;
