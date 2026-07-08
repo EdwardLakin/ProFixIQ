@@ -151,12 +151,27 @@ async function loadCustomerResolverIndex(
   supabase: SupabaseClient<DB>,
   shopId: string,
 ): Promise<CustomerResolverIndex> {
-  const { data, error } = await supabase
-    .from("customers")
-    .select("id, external_id, email, phone, phone_number, name, business_name")
-    .eq("shop_id", shopId);
+  const rows: CustomerResolverRow[] = [];
+  const pageSize = 1000;
 
-  if (error) throw error;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, external_id, email, phone, phone_number, name, business_name")
+      .eq("shop_id", shopId)
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    rows.push(...((data ?? []) as CustomerResolverRow[]));
+
+    if (!data || data.length < pageSize) break;
+  }
+
+  console.info("[vehicle-import:customer-resolver-loaded]", {
+    shopId,
+    customersLoaded: rows.length,
+  });
 
   const index: CustomerResolverIndex = {
     byExternalId: new Map(),
@@ -165,7 +180,7 @@ async function loadCustomerResolverIndex(
     byName: new Map(),
   };
 
-  for (const customer of (data ?? []) as CustomerResolverRow[]) {
+  for (const customer of rows) {
     const externalId = normalizeLookupKey(customer.external_id);
     if (externalId && !index.byExternalId.has(externalId)) {
       index.byExternalId.set(externalId, customer.id);
