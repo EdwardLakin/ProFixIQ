@@ -13,13 +13,15 @@ type ImportJobInsert = Record<string, unknown>;
 type JobInsertBuilder = {
   insert(values: ImportJobInsert): {
     select(columns: string): {
-      single(): Promise<{ data: { id: string; total_rows: number | null; status: string | null } | null; error: Error | null }>;
+      single(): Promise<{ data: { id: string; total_rows: number | null; status: string | null } | null; error: SupabaseError | null }>;
     };
   };
 };
 
+type SupabaseError = Error & { code?: string; details?: string; hint?: string };
+
 type RowInsertBuilder = {
-  insert(values: Array<Record<string, unknown>>): Promise<{ error: Error | null }>;
+  insert(values: Array<Record<string, unknown>>): Promise<{ error: SupabaseError | null }>;
 };
 
 type LooseSupabase<T> = { from(table: string): T };
@@ -80,18 +82,32 @@ export async function POST(req: Request) {
     if (jobError) {
       console.error("[vehicle-import:job-create-failed]", {
         message: jobError.message,
+        code: jobError.code,
+        details: jobError.details,
+        hint: jobError.hint,
         jobPayload,
       });
       throw jobError;
     }
     if (!job?.id) throw new Error("Vehicle import job could not be created.");
 
-    const stagedRows = stageVehicleImportRows(job.id, rows);
+    const stagedRows = stageVehicleImportRows(job.id, shopId, rows);
     for (const batch of chunkArray(stagedRows, VEHICLE_IMPORT_STAGING_BATCH_SIZE)) {
       const { error } = await (supabase as unknown as LooseSupabase<RowInsertBuilder>)
         .from("import_job_rows")
         .insert(batch);
-      if (error) throw error;
+      if (error) {
+        console.error("[vehicle-import:rows-stage-failed]", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          jobId: job.id,
+          batchSize: batch.length,
+          sampleRow: batch[0],
+        });
+        throw error;
+      }
     }
 
     return NextResponse.json({
@@ -102,7 +118,12 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to queue vehicle import." },
+      {
+        error: error instanceof Error ? error.message : "Unable to queue vehicle import.",
+        details: typeof error === "object" && error && "details" in error ? (error as { details?: unknown }).details : undefined,
+        code: typeof error === "object" && error && "code" in error ? (error as { code?: unknown }).code : undefined,
+        hint: typeof error === "object" && error && "hint" in error ? (error as { hint?: unknown }).hint : undefined,
+      },
       { status: 500 },
     );
   }

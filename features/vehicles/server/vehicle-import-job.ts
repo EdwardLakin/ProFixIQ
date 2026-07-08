@@ -87,7 +87,13 @@ export async function processVehicleImportJobBatch(supabase: SupabaseClient<DB>,
   return { ok: true, processed: rows.length, completed, job: { id: job.id } };
 }
 
-export function stageVehicleImportRows(jobId: string, rows: VehicleImportRow[]) {
-  return rows.map((row, index) => ({ job_id: jobId, row_number: index + 1, raw_row: row as Record<string, unknown>, status: "queued" }));
+export function stageVehicleImportRows(jobId: string, shopId: string, rows: VehicleImportRow[]) {
+  return rows.map((row, index) => ({
+    job_id: jobId,
+    shop_id: shopId,
+    row_number: index + 1,
+    raw_row: row as Record<string, unknown>,
+    status: "queued",
+  }));
 }
 export { chunkArray };

@@ -5965,6 +5965,122 @@ export type Database = {
           },
         ]
       }
+      import_job_rows: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          job_id: string
+          raw_row: Json
+          row_number: number
+          shop_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id: string
+          raw_row: Json
+          row_number: number
+          shop_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          raw_row?: Json
+          row_number?: number
+          shop_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_job_rows_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_job_rows_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          failed_count: number
+          id: string
+          import_type: string
+          imported_count: number
+          processed_rows: number
+          shop_id: string
+          skipped_count: number
+          source_storage_path: string | null
+          status: string
+          summary: Json
+          total_rows: number
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          failed_count?: number
+          id?: string
+          import_type: string
+          imported_count?: number
+          processed_rows?: number
+          shop_id: string
+          skipped_count?: number
+          source_storage_path?: string | null
+          status?: string
+          summary?: Json
+          total_rows?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          failed_count?: number
+          id?: string
+          import_type?: string
+          imported_count?: number
+          processed_rows?: number
+          shop_id?: string
+          skipped_count?: number
+          source_storage_path?: string | null
+          status?: string
+          summary?: Json
+          total_rows?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_jobs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           created_at: string
