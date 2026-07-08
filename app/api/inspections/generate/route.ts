@@ -2,6 +2,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import {
   buildFromMaster,
@@ -25,7 +26,23 @@ type InspectionItem = {
 
 type InspectionSection = { title: string; items: InspectionItem[] };
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+
+async function hasAuthenticatedShopScope(): Promise<boolean> {
+  const supabase = createServerSupabaseRoute();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return Boolean(profile?.shop_id);
+}
 
 /* ------------------------- Type helpers -------------------------- */
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -40,25 +57,37 @@ function unitHint(label: string): string | null {
   const l = label.toLowerCase();
   if (/(tread|pad|lining|rotor|drum|push ?rod|thickness)/.test(l)) return "mm";
   if (/(pressure|psi|kpa)/.test(l)) return l.includes("kpa") ? "kPa" : "psi";
-  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l)) return l.includes("n") ? "N·m" : "ft·lb";
+  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l))
+    return l.includes("n") ? "N·m" : "ft·lb";
   return null;
 }
 
 /* ---------------------- Sanitize AI sections --------------------- */
-function sanitizeSimpleSections(input: unknown): Array<{ title: string; items: Array<{ item: string; unit?: string | null }> }> {
+function sanitizeSimpleSections(
+  input: unknown,
+): Array<{
+  title: string;
+  items: Array<{ item: string; unit?: string | null }>;
+}> {
   const sectionsIn: unknown[] =
-    isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
+    isRecord(input) &&
+    Array.isArray((input as Record<string, unknown>).sections)
       ? ((input as Record<string, unknown>).sections as unknown[])
       : [];
 
-  const clean: Array<{ title: string; items: Array<{ item: string; unit?: string | null }> }> = [];
+  const clean: Array<{
+    title: string;
+    items: Array<{ item: string; unit?: string | null }>;
+  }> = [];
 
   for (const sec of sectionsIn) {
     if (!isRecord(sec)) continue;
     const title = (asString(sec.title) ?? "").trim();
     if (!title) continue;
 
-    const itemsIn: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const itemsIn: unknown[] = Array.isArray(sec.items)
+      ? (sec.items as unknown[])
+      : [];
     const itemsOut: Array<{ item: string; unit: string | null }> = [];
 
     for (const raw of itemsIn) {
@@ -89,15 +118,22 @@ function sanitizeSimpleSections(input: unknown): Array<{ title: string; items: A
 }
 
 /* -------------------- corner-ish detection (light) -------------------- */
-function hasCornerishContent(sections: Array<{ title: string; items: Array<{ item: string }> }>): boolean {
+function hasCornerishContent(
+  sections: Array<{ title: string; items: Array<{ item: string }> }>,
+): boolean {
   return sections.some(
     (s) =>
       /corner|axle|tire|wheel/i.test(s.title) ||
-      s.items.some((i) => /tire|tread|pressure|pad|rotor|lining/i.test(i.item.toLowerCase()))
+      s.items.some((i) =>
+        /tire|tread|pressure|pad|rotor|lining/i.test(i.item.toLowerCase()),
+      ),
   );
 }
 
-function buildHydraulicCorner(): { title: string; items: Array<{ item: string; unit: string | null }> } {
+function buildHydraulicCorner(): {
+  title: string;
+  items: Array<{ item: string; unit: string | null }>;
+} {
   return {
     title: "Corner Grid (Hydraulic)",
     items: [
@@ -119,7 +155,10 @@ function buildHydraulicCorner(): { title: string; items: Array<{ item: string; u
   };
 }
 
-function buildAirCorner(): { title: string; items: Array<{ item: string; unit: string | null }> } {
+function buildAirCorner(): {
+  title: string;
+  items: Array<{ item: string; unit: string | null }>;
+} {
   return {
     title: "Corner Grid (Air)",
     items: [
@@ -154,7 +193,8 @@ export async function POST(req: Request) {
     // 1) infer vehicle + brake
     const vt: VehicleType =
       vehicleType ??
-      (prompt.toLowerCase().includes("truck") || prompt.toLowerCase().includes("bus")
+      (prompt.toLowerCase().includes("truck") ||
+      prompt.toLowerCase().includes("bus")
         ? "truck"
         : "car");
 
@@ -171,7 +211,12 @@ export async function POST(req: Request) {
       targetCount,
     });
 
-    // 4) call OpenAI — same pattern as your build-from-prompt route
+    // 4) call OpenAI as augmentation only after auth/shop-scoped gating.
+    // Deterministic master-list generation above must remain the reliable path.
+    if (!(await hasAuthenticatedShopScope())) {
+      return NextResponse.json({ sections: baseSections });
+    }
+
     const openai = getOpenAIClient();
 
     const system = [
@@ -229,7 +274,7 @@ export async function POST(req: Request) {
           },
         },
       },
-      max_output_tokens: 4000,
+      max_output_tokens: 1200,
     });
 
     // 5) extract JSON from Responses API
@@ -257,17 +302,18 @@ export async function POST(req: Request) {
     // 6) decide whether AI is “good enough” to merge
     const aiItemCount = aiSectionsSimple.reduce(
       (sum, s) => sum + (s.items?.length ?? 0),
-      0
+      0,
     );
     const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5));
-    const useAI = aiSectionsSimple.length >= 3 && aiItemCount >= minItemsToMerge;
+    const useAI =
+      aiSectionsSimple.length >= 3 && aiItemCount >= minItemsToMerge;
 
     // 7) merge AI into base
     const mergedSimple = [...baseSections];
     if (useAI) {
       for (const aiSec of aiSectionsSimple) {
         const existing = mergedSimple.find(
-          (s) => s.title.toLowerCase() === aiSec.title.toLowerCase()
+          (s) => s.title.toLowerCase() === aiSec.title.toLowerCase(),
         );
         if (existing) {
           const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
