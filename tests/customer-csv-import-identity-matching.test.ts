@@ -273,6 +273,40 @@ describe("customer CSV import identity matching", () => {
     ).toEqual(["CUST-101177", "CUST-101310"]);
   });
 
+  it("treats customer_number rows as authoritative external identities", async () => {
+    mockSupabase = createSupabaseMock([
+      {
+        id: "existing-email",
+        external_id: "CUST-100181",
+        email: "dispatch@example.com",
+        phone: "4035550181",
+      },
+    ]);
+
+    const body = await postRows([
+      {
+        customer_number: "CUST-100386",
+        company_name: "Rocky Mountain Towing",
+        email: "dispatch@example.com",
+        phone: "(403) 555-0181",
+      },
+    ]);
+
+    expect(body.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
+    });
+    expect(body.skippedRows).toEqual([]);
+    expect(mockSupabase.updates).toEqual([]);
+    expect(mockSupabase.inserted[0]).toMatchObject({
+      external_id: "CUST-100386",
+      email: "dispatch@example.com",
+    });
+  });
+
   it("still uses fallback duplicate protection when customer_id is missing", async () => {
     const body = await postRows([
       {

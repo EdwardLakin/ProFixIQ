@@ -15,6 +15,7 @@ import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/quer
 
 type CustomerImportRow = {
   customer_id?: string | null;
+  external_id?: string | null;
   customer_type?: string | null;
   company_name?: string | null;
   business_name?: string | null;
@@ -89,6 +90,8 @@ type Props = {
 
 const SUPPORTED_COLUMNS = [
   "customer_id",
+  "external_id",
+  "customer_number",
   "customer_type",
   "company_name",
   "business_name",
@@ -124,6 +127,19 @@ const SUPPORTED_COLUMNS = [
 const RECOMMENDED_COLUMNS =
   "customer_id, display_name, company_name, first_name, last_name, email, phone_primary, phone_secondary, address1, city, province, postal_code, customer_since, created_at, updated_at";
 
+const CUSTOMER_IMPORT_DEBUG =
+  process.env.NEXT_PUBLIC_CUSTOMER_IMPORT_DEBUG === "1" ||
+  process.env.NODE_ENV === "development";
+
+const CUSTOMER_ID_HEADER_ALIASES = new Set([
+  "customer_id",
+  "external_id",
+  "customerid",
+  "customer_number",
+  "customernumber",
+  "customer",
+]);
+
 function cleanHeader(value: string): string {
   return value
     .trim()
@@ -141,7 +157,10 @@ function normalizeParsedRow(row: Record<string, unknown>): CustomerImportRow {
   const normalized: CustomerImportRow = {};
 
   for (const [header, value] of Object.entries(row)) {
-    const key = cleanHeader(header);
+    const cleanedHeader = cleanHeader(header);
+    const key = CUSTOMER_ID_HEADER_ALIASES.has(cleanedHeader)
+      ? "customer_id"
+      : cleanedHeader;
     if (!(SUPPORTED_COLUMNS as readonly string[]).includes(key)) continue;
 
     const cell = cleanCell(value);
@@ -156,8 +175,30 @@ function normalizeParsedRow(row: Record<string, unknown>): CustomerImportRow {
   return normalized;
 }
 
+function logCustomerImportParserTrace(
+  headers: string[],
+  rawRows: Record<string, unknown>[],
+  parsedRows: CustomerImportRow[],
+) {
+  if (!CUSTOMER_IMPORT_DEBUG) return;
+
+  console.info("[customer-csv-import] Detected headers", headers);
+  rawRows.slice(0, 10).forEach((rawRow, index) => {
+    console.info("[customer-csv-import] Raw parsed row", {
+      row: index + 1,
+      rawRow,
+    });
+    console.info("[customer-csv-import] Parsed/normalized UI row", {
+      row: index + 1,
+      parsedRow: parsedRows[index],
+    });
+  });
+}
+
 function hasImportableIdentity(row: CustomerImportRow): boolean {
   return Boolean(
+    row.customer_id ||
+    row.external_id ||
     row.email ||
     row.phone ||
     row.phone_primary ||
@@ -173,6 +214,8 @@ function hasImportableIdentity(row: CustomerImportRow): boolean {
 
 function displayName(row: CustomerImportRow): string {
   return (
+    row.customer_id ||
+    row.external_id ||
     row.company_name ||
     row.business_name ||
     row.display_name ||
@@ -259,12 +302,17 @@ export function CustomerCsvImportCard({
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const parsedRows = (results.data ?? [])
+        const rawParsedRows = results.data ?? [];
+        const detectedHeaders = results.meta.fields ?? [];
+        const parsedRows = rawParsedRows
           .map(normalizeParsedRow)
           .filter((row) => Object.keys(row).length > 0);
-        setHeaders(
-          (results.meta.fields ?? []).map(cleanHeader).filter(Boolean),
+        logCustomerImportParserTrace(
+          detectedHeaders,
+          rawParsedRows,
+          parsedRows,
         );
+        setHeaders(detectedHeaders.map(cleanHeader).filter(Boolean));
         setRows(parsedRows);
         setImportProgress({
           phase: "Reading file",
@@ -355,7 +403,7 @@ export function CustomerCsvImportCard({
       const response = await fetch("/api/customers/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: importableRows }),
+        body: JSON.stringify({ rows: importableRows, headers }),
       });
       const payload = (await response
         .json()

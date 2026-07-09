@@ -72,7 +72,12 @@ type PendingCustomerInsert = {
 
 type CustomerImportBody = {
   rows?: unknown;
+  headers?: unknown;
 };
+
+const CUSTOMER_IMPORT_DEBUG =
+  process.env.CUSTOMER_IMPORT_DEBUG === "1" ||
+  process.env.NODE_ENV === "development";
 
 function cleanString(value: unknown): string | null {
   const text = String(value ?? "").trim();
@@ -234,22 +239,54 @@ function importRowSummary(
   };
 }
 
+function logCustomerImportTrace(label: string, payload: unknown) {
+  if (!CUSTOMER_IMPORT_DEBUG) return;
+  console.info(`[customer-csv-import] ${label}`, payload);
+}
+
 function findExistingCustomer(
   existingIdentities: ExistingCustomerIdentityMaps,
   normalized: CustomerInsert,
+  rowNumber?: number,
 ): CustomerMatch | null {
   const externalKey = customerExternalIdentityKey(normalized);
   if (externalKey) {
     // CSV customer_id/external_id values are authoritative. Rows with an
     // external identity may only update when that exact external_id already
     // exists; company/email/phone/name fallbacks are intentionally disabled.
-    return existingIdentities.byExternalId.get(externalKey) ?? null;
+    const existing = existingIdentities.byExternalId.get(externalKey) ?? null;
+    logCustomerImportTrace("Matching branch", {
+      row: rowNumber,
+      externalId: normalized.external_id ?? null,
+      branch: "EXTERNAL_ID",
+      matchedBy: existing?.matchedBy ?? null,
+      existingCustomer: existing?.matchedValue ?? existing?.id ?? null,
+    });
+    return existing;
   }
 
-  for (const key of customerFallbackIdentityKeys(normalized)) {
+  const fallbackKeys = customerFallbackIdentityKeys(normalized);
+  for (const key of fallbackKeys) {
     const existing = existingIdentities.byFallbackIdentity.get(key);
-    if (existing) return existing;
+    if (existing) {
+      logCustomerImportTrace("Matching branch", {
+        row: rowNumber,
+        externalId: normalized.external_id ?? null,
+        branch: `${(existing.matchedBy ?? "identity").toUpperCase()}_FALLBACK`,
+        reason: "externalId missing",
+        matchedBy: existing.matchedBy ?? null,
+        existingCustomer: existing.matchedValue ?? existing.id,
+      });
+      return existing;
+    }
   }
+  logCustomerImportTrace("Matching branch", {
+    row: rowNumber,
+    externalId: normalized.external_id ?? null,
+    branch: "NO_MATCH",
+    reason: externalKey ? "external_id_not_found" : "externalId missing",
+    fallbackKeys,
+  });
   return null;
 }
 
@@ -356,6 +393,8 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => ({}))) as CustomerImportBody;
     const rawRows = Array.isArray(body.rows) ? body.rows : [];
+    const detectedHeaders = Array.isArray(body.headers) ? body.headers : [];
+    logCustomerImportTrace("Detected headers", detectedHeaders);
 
     const counts = {
       created: 0,
@@ -377,10 +416,26 @@ export async function POST(req: Request) {
 
     for (const [index, raw] of rawRows.entries()) {
       try {
+        if (index < 10) {
+          logCustomerImportTrace("Raw parsed row", { row: index + 1, raw });
+        }
+
         const normalized = normalizeImportedCustomerRow(
           raw as ImportRow,
           shopId,
         );
+
+        if (index < 10) {
+          logCustomerImportTrace("Normalized row", {
+            row: index + 1,
+            externalId: normalized?.external_id ?? null,
+            customerId: (raw as ImportRow).customer_id ?? null,
+            email: normalized?.email ?? null,
+            phone: normalized?.phone ?? normalized?.phone_number ?? null,
+            businessName: normalized?.business_name ?? null,
+            name: normalized?.name ?? null,
+          });
+        }
 
         if (!normalized) {
           counts.skipped += 1;
@@ -412,7 +467,11 @@ export async function POST(req: Request) {
           continue;
         }
 
-        const existing = findExistingCustomer(existingIdentities, normalized);
+        const existing = findExistingCustomer(
+          existingIdentities,
+          normalized,
+          index + 1,
+        );
 
         if (existing?.id) {
           const datePatch: Pick<
