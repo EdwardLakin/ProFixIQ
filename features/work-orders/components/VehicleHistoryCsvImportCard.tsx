@@ -220,11 +220,15 @@ export function VehicleHistoryCsvImportCard({
         );
         setRows(parsed);
         setProgress({
-          phase: "Validating rows",
-          phaseKey: "validating",
+          phase: "Preparing Rows",
+          phaseKey: "processing",
           processed: parsed.length,
           total: parsed.length,
           percent: parsed.length ? 25 : 0,
+          imported: 0,
+          skipped: 0,
+          failed: 0,
+          duplicates: 0,
         });
         if (!parsed.length)
           setParseError("No vehicle history rows were found in that CSV.");
@@ -279,13 +283,41 @@ export function VehicleHistoryCsvImportCard({
     setImportError(null);
     setResponse(null);
     setProgress({
-      phase: "Uploading CSV",
-      phaseKey: "importing",
+      phase: "Preparing Rows",
+      phaseKey: "processing",
       processed: 0,
       total: importableRows.length,
-      percent: 10,
+      percent: 30,
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
     });
+    let progressTimer: number | null = null;
     try {
+      progressTimer = window.setInterval(() => {
+        setProgress((current) => {
+          if (!current || current.phaseKey !== "processing") return current;
+          const nextPercent = Math.min(90, current.percent + 3);
+          const simulatedProcessed = Math.min(
+            importableRows.length,
+            Math.max(
+              current.processed,
+              Math.floor((nextPercent / 100) * importableRows.length),
+            ),
+          );
+          return {
+            ...current,
+            phase: "Importing Rows",
+            processed: simulatedProcessed,
+            percent: nextPercent,
+            imported: simulatedProcessed,
+            skipped: 0,
+            failed: 0,
+            duplicates: 0,
+          };
+        });
+      }, 650);
       const formData = new FormData();
       formData.append("file", file);
       if (guidedQuery?.onboardingSession) {
@@ -297,13 +329,6 @@ export function VehicleHistoryCsvImportCard({
       if (guidedQuery?.returnTo) {
         formData.append("returnTo", guidedQuery.returnTo);
       }
-      setProgress({
-        phase: "Processing on server",
-        phaseKey: "matching",
-        processed: 0,
-        total: importableRows.length,
-        percent: 20,
-      });
       const res = await fetch("/api/work-orders/history/import", {
         method: "POST",
         body: formData,
@@ -314,33 +339,56 @@ export function VehicleHistoryCsvImportCard({
           payload.error ?? "Unable to import vehicle history CSV.",
         );
       }
+      if (progressTimer) window.clearInterval(progressTimer);
+      progressTimer = null;
+      const finalTotal = payload.totalRows ?? importableRows.length;
       setProgress({
-        phase: "Finalizing import",
+        phase: "Finalizing",
         phaseKey: "finalizing",
-        processed: payload.totalRows ?? importableRows.length,
-        total: payload.totalRows ?? importableRows.length,
-        percent: 90,
+        processed: finalTotal,
+        total: finalTotal,
+        percent: 95,
+        imported: payload.counts.imported + payload.counts.updated,
+        skipped: payload.counts.skipped,
+        failed: payload.counts.failed,
+        duplicates: payload.counts.duplicates,
       });
       setResponse(payload);
       setProgress({
-        phase: "Import complete",
-        phaseKey: "completed",
-        processed: payload.totalRows ?? importableRows.length,
-        total: payload.totalRows ?? importableRows.length,
+        phase:
+          payload.counts.failed > 0
+            ? "Import completed with failures"
+            : "Completed",
+        phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
+        processed: finalTotal,
+        total: finalTotal,
         percent: 100,
+        imported: payload.counts.imported + payload.counts.updated,
+        skipped: payload.counts.skipped,
+        failed: payload.counts.failed,
+        duplicates: payload.counts.duplicates,
       });
       setImporting(false);
-      if (isOnboarding && payload.counts.imported > 0 && payload.counts.failed === 0) {
+      if (
+        isOnboarding &&
+        payload.counts.imported > 0 &&
+        payload.counts.failed === 0
+      ) {
         await completeOnboardingAfterImport(payload.counts);
       }
       if (payload.counts.imported > 0) onImported?.();
     } catch (error) {
+      if (progressTimer) window.clearInterval(progressTimer);
       setProgress({
-        phase: "Import failed",
+        phase: "failed",
         phaseKey: "failed",
         processed: 0,
         total: importableRows.length,
         percent: 100,
+        imported: 0,
+        skipped: 0,
+        failed: importableRows.length,
+        duplicates: 0,
       });
       setImportError(
         error instanceof Error
@@ -348,6 +396,8 @@ export function VehicleHistoryCsvImportCard({
           : "Unable to import vehicle history CSV.",
       );
       setImporting(false);
+    } finally {
+      if (progressTimer) window.clearInterval(progressTimer);
     }
   }
 
