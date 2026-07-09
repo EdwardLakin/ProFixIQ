@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildGuidedDestination, GUIDED_ONBOARDING_STEPS, getGuidedOnboardingStep } from "@/features/onboarding-v2/guided/steps";
 import type { GuidedOnboardingSessionDetail, GuidedOnboardingStepRow } from "@/features/onboarding-v2/guided/types";
 import { OnboardingHighlightFrame } from "./OnboardingHighlightFrame";
+import ShopSettingsSetupModal from "./ShopSettingsSetupModal";
 
 type Props = {
   initialSessionId?: string;
@@ -60,6 +61,7 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [shopSettingsOpen, setShopSettingsOpen] = useState(false);
 
   const activeStep = useMemo(() => {
     if (!detail) return null;
@@ -126,7 +128,7 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
     const started = await startOrResume();
     return postJson(`/api/onboarding-v2/guided/sessions/${started.session.id}/existing-system`, {
       existing_system: "starting_from_scratch",
-      current_step_key: "staff",
+      current_step_key: "shop_settings",
       skip_import_steps: true,
     });
   }, [startOrResume]);
@@ -143,6 +145,10 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
     const answered = await postJson(`/api/onboarding-v2/guided/sessions/${detail.session.id}/steps/${activeStep.key}/answer`, {
       answer: { intent: `open_${activeStep.key}`, destinationPath: activeStep.destinationPath },
     });
+    if (activeStep.key === "shop_settings") {
+      setShopSettingsOpen(true);
+      return answered;
+    }
     return { detail: answered, redirectTo: buildGuidedDestination(activeStep, detail.session.id) };
   }, [activeStep, detail]);
 
@@ -160,7 +166,7 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
           <div>
             <h1 className="text-3xl font-semibold text-white sm:text-4xl">Guided Setup</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-300">
-              Follow a safe, step-by-step setup path through real ProFixIQ workspaces. Importing shops start with customer and vehicle files, then continue through vehicle history, invoices, parts, staff, pricing defaults, and AI recommendations. New shops skip import-heavy steps and begin with staff.
+              Follow a safe, step-by-step setup path through real ProFixIQ workspaces. Importing shops start with customer and vehicle files, then continue through vehicle history, invoices, parts, optional Shop Settings, and AI recommendations. Staff setup now lives later in User Management/Create User.
             </p>
           </div>
           {sessionId ? (
@@ -286,6 +292,14 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
           </ol>
         </aside>
       </div>
+      {sessionId ? (
+        <ShopSettingsSetupModal
+          sessionId={sessionId}
+          open={shopSettingsOpen}
+          onClose={() => setShopSettingsOpen(false)}
+          onCompleted={(nextDetail) => setDetail(nextDetail)}
+        />
+      ) : null}
     </main>
   );
 }

@@ -4,8 +4,7 @@ export type GuidedOnboardingStepKey =
   | "vehicle_history"
   | "invoices"
   | "parts"
-  | "staff"
-  | "pricing_shop_defaults"
+  | "shop_settings"
   | "analysis";
 
 export type GuidedOnboardingStepStatus = "not_started" | "in_progress" | "completed" | "skipped";

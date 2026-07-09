@@ -143,8 +143,7 @@ describe("guided onboarding v2 foundation", () => {
       "vehicle_history",
       "invoices",
       "parts",
-      "staff",
-      "pricing_shop_defaults",
+      "shop_settings",
       "analysis",
     ]);
   });
@@ -242,7 +241,7 @@ describe("guided onboarding v2 foundation", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");
 
     expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts"] as const');
-    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_FIRST_STEP = "staff"');
+    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_FIRST_STEP = "shop_settings"');
     expect(serverSource).toContain("skip_import_steps");
     expect(serverSource).toContain('.in("step_key", STARTING_FROM_SCRATCH_SKIP_STEPS)');
   });
@@ -264,7 +263,7 @@ describe("guided onboarding v2 foundation", () => {
 
     expect(workspaceSource).toContain("Do you have an existing shop/system to import?");
     expect(workspaceSource).toContain('existing_system: "starting_from_scratch"');
-    expect(workspaceSource).toContain('current_step_key: "staff"');
+    expect(workspaceSource).toContain('current_step_key: "shop_settings"');
     expect(workspaceSource).toContain("skip_import_steps: true");
     expect(workspaceSource).not.toContain("skip_guided_setup: true");
     expect(workspaceSource).not.toContain('redirectTo: "/dashboard"');
