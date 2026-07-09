@@ -288,6 +288,29 @@ function parseOptionalBoolean(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+
+function normalizeIdentity(value: string | undefined | null): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function csvIdentityKey(row: ParsedPartCsvRow): string {
+  const externalId = normalizeIdentity(row.external_id);
+  if (externalId) return `external_id:${externalId}`;
+  const sku = normalizeIdentity(row.sku);
+  if (sku) return `sku:${sku}`;
+  const partNumber = normalizeIdentity(row.part_number);
+  if (partNumber) return `part_number:${partNumber}`;
+  const barcode = normalizeIdentity(row.barcode);
+  if (barcode) return `barcode:${barcode}`;
+  return `row:${row.rowNumber}`;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
+}
+
 function parsePartCsvRows(raw: string): ParsedPartCsvRow[] {
   const rows = parseCSV(raw);
   if (!rows.length) return [];
@@ -310,9 +333,9 @@ function parsePartCsvRows(raw: string): ParsedPartCsvRow[] {
     if (!name) errors.push("name is required");
     if (!sku && !partNumber) warnings.push("sku or part_number is recommended for deterministic updates");
 
-    const key = sku ? `sku:${sku.toLowerCase()}` : partNumber ? `part:${partNumber.toLowerCase()}` : "";
-    if (key && seen.has(key)) warnings.push("duplicate sku/part_number in this CSV; later duplicate rows will be skipped");
-    if (key) seen.add(key);
+    const key = csvIdentityKey({ rowNumber: index + 2, external_id: source.external_id, sku, part_number: partNumber, name, warnings, errors });
+    if (!key.startsWith("row:") && seen.has(key)) warnings.push("duplicate authoritative identity in this CSV; later duplicate rows will be skipped");
+    if (!key.startsWith("row:")) seen.add(key);
 
     return {
       rowNumber: index + 2,
@@ -586,8 +609,14 @@ export default function InventoryPage(): JSX.Element {
           const aliases = aliasByPart.get(p.id) ?? [];
           const stagingRows = stagingByPart.get(p.id) ?? [];
           nextTrust[p.id] = buildPartTrustMeta({
+            externalId: (p as Part & { external_id?: string | null }).external_id,
             sku: p.sku,
             partNumber: p.part_number,
+            name: p.name,
+            vendor: (p as Part & { supplier?: string | null }).supplier,
+            category: p.category,
+            price: typeof p.price === "number" ? p.price : null,
+            cost: typeof (p as Part & { cost?: number | null }).cost === "number" ? (p as Part & { cost?: number | null }).cost ?? null : null,
             normalizedPartKey: p.normalized_part_key,
             sourceIntakeId: p.source_intake_id,
             aliasCount: aliases.length,
@@ -863,148 +892,104 @@ export default function InventoryPage(): JSX.Element {
 
   const runCsvImport = async () => {
     const importableRows = csvRows.filter((row) => row.errors.length === 0 && row.active !== false);
-    if (!shopId || !importableRows.length || csvImporting) return;
+    if (!shopId || !importableRows.length || csvImporting || csvResult) return;
 
     setCsvImporting(true);
     setCsvError(null);
     const counts: PartCsvImportCounts = { created: 0, updated: 0, skipped: 0, failed: 0 };
     const skipped: PartCsvImportResult["skipped"] = [];
     const errors: PartCsvImportResult["errors"] = [];
-    const seen = new Set<string>();
 
     try {
-      for (const [index, row] of importableRows.entries()) {
-        setCsvProgress({
-          phase: "Importing",
-          phaseKey: "importing",
-          processed: index,
-          total: importableRows.length,
-          percent: Math.round((index / importableRows.length) * 90),
-          imported: counts.created + counts.updated,
-          skipped: counts.skipped,
-          failed: counts.failed,
-        });
+      setCsvProgress({ phase: "Preloading existing parts", phaseKey: "importing", processed: 0, total: importableRows.length, percent: 42, imported: 0, skipped: 0, failed: 0 });
 
-        const duplicateKey = row.sku ? `sku:${row.sku.toLowerCase()}` : row.part_number ? `part:${row.part_number.toLowerCase()}` : `row:${row.rowNumber}`;
-        if (seen.has(duplicateKey)) {
+      const rowsByIdentity: ParsedPartCsvRow[] = [];
+      const seen = new Set<string>();
+      for (const row of importableRows) {
+        const key = csvIdentityKey(row);
+        if (!key.startsWith("row:") && seen.has(key)) {
           counts.skipped += 1;
-          skipped.push({ row: row.rowNumber, reason: "Duplicate sku/part_number already handled earlier in this CSV." });
+          skipped.push({ row: row.rowNumber, reason: "Duplicate authoritative identity already handled earlier in this CSV." });
           continue;
         }
-        seen.add(duplicateKey);
+        if (!key.startsWith("row:")) seen.add(key);
+        rowsByIdentity.push(row);
+      }
 
-        try {
-          let partId: string | null = null;
-          if (row.sku) {
-            const { data: foundBySku } = await supabase
-              .from("parts")
-              .select("id")
-              .eq("shop_id", shopId)
-              .eq("sku", row.sku)
-              .order("created_at", { ascending: true })
-              .limit(1)
-              .maybeSingle();
-            partId = foundBySku?.id ? String(foundBySku.id) : null;
-          }
-          if (!partId && row.part_number) {
-            const { data: foundByPartNumber } = await supabase
-              .from("parts")
-              .select("id")
-              .eq("shop_id", shopId)
-              .eq("part_number", row.part_number)
-              .order("created_at", { ascending: true })
-              .limit(1)
-              .maybeSingle();
-            partId = foundByPartNumber?.id ? String(foundByPartNumber.id) : null;
-          }
+      const externalIds = [...new Set(rowsByIdentity.map((r) => r.external_id).filter(Boolean) as string[])];
+      const skus = [...new Set(rowsByIdentity.map((r) => r.sku).filter(Boolean) as string[])];
+      const partNumbers = [...new Set(rowsByIdentity.map((r) => r.part_number).filter(Boolean) as string[])];
+      const barcodes = [...new Set(rowsByIdentity.map((r) => r.barcode).filter(Boolean) as string[])];
 
-          const partPayload: PartInsert | PartUpdate = {
-            shop_id: shopId,
-            external_id: row.external_id,
-            sku: row.sku,
-            part_number: row.part_number,
-            name: row.name,
-            description: row.description,
-            category: row.category,
-            supplier: row.vendor,
-            unit: row.unit,
-            cost: row.cost_price,
-            default_cost: row.cost_price,
-            price: row.sell_price,
-            default_price: row.sell_price,
-            low_stock_threshold: row.min_stock,
-            taxable: row.taxable,
-            import_notes: [row.brand ? `Brand: ${row.brand}` : null, row.bin ? `Bin: ${row.bin}` : null]
-              .filter(Boolean)
-              .join(" · ") || undefined,
-          };
+      const [externalMatches, skuMatches, partMatches, barcodeMatches] = await Promise.all([
+        externalIds.length ? supabase.from("parts").select("id,external_id,sku,part_number").eq("shop_id", shopId).in("external_id", externalIds) : Promise.resolve({ data: [], error: null }),
+        skus.length ? supabase.from("parts").select("id,external_id,sku,part_number").eq("shop_id", shopId).in("sku", skus) : Promise.resolve({ data: [], error: null }),
+        partNumbers.length ? supabase.from("parts").select("id,external_id,sku,part_number").eq("shop_id", shopId).in("part_number", partNumbers) : Promise.resolve({ data: [], error: null }),
+        barcodes.length ? supabase.from("parts_barcodes").select("part_id,barcode").eq("shop_id", shopId).in("barcode", barcodes) : Promise.resolve({ data: [], error: null }),
+      ]);
+      for (const res of [externalMatches, skuMatches, partMatches, barcodeMatches]) if (res.error) throw res.error;
 
-          if (partId) {
-            const { error } = await supabase.from("parts").update(partPayload as PartUpdate).eq("id", partId).eq("shop_id", shopId);
-            if (error) throw error;
-            counts.updated += 1;
-          } else {
-            partId = uuidv4();
-            const { error } = await supabase.from("parts").insert({ ...(partPayload as PartInsert), id: partId, shop_id: shopId, name: row.name });
-            if (error) throw error;
-            counts.created += 1;
-          }
+      const byExternal = new Map(((externalMatches.data ?? []) as Part[]).map((p) => [normalizeIdentity((p as Part & { external_id?: string | null }).external_id), p.id]));
+      const bySku = new Map(((skuMatches.data ?? []) as Part[]).map((p) => [normalizeIdentity(p.sku), p.id]));
+      const byPart = new Map(((partMatches.data ?? []) as Part[]).map((p) => [normalizeIdentity(p.part_number), p.id]));
+      const byBarcode = new Map(((barcodeMatches.data ?? []) as Array<{ part_id: string; barcode: string }>).map((p) => [normalizeIdentity(p.barcode), p.part_id]));
 
-          if (partId && row.barcode) {
-            const { error: barcodeError } = await supabase
-              .from("parts_barcodes")
-              .upsert({ shop_id: shopId, part_id: partId, barcode: row.barcode }, { onConflict: "shop_id,barcode" });
-            if (barcodeError) skipped.push({ row: row.rowNumber, reason: `Barcode was not saved: ${barcodeError.message}` });
-          }
+      const payloads: PartInsert[] = [];
+      const rowPartIds = new Map<number, string>();
+      for (const row of rowsByIdentity) {
+        const matchedId = byExternal.get(normalizeIdentity(row.external_id)) ?? bySku.get(normalizeIdentity(row.sku)) ?? byPart.get(normalizeIdentity(row.part_number)) ?? byBarcode.get(normalizeIdentity(row.barcode));
+        const partId = matchedId ?? uuidv4();
+        rowPartIds.set(row.rowNumber, partId);
+        if (matchedId) counts.updated += 1;
+        else counts.created += 1;
+        payloads.push({ id: partId, shop_id: shopId, external_id: row.external_id, sku: row.sku, part_number: row.part_number, name: row.name, description: row.description, category: row.category, supplier: row.vendor, unit: row.unit, cost: row.cost_price, default_cost: row.cost_price, price: row.sell_price, default_price: row.sell_price, low_stock_threshold: row.min_stock, taxable: row.taxable, import_notes: [row.brand ? `Brand: ${row.brand}` : null, row.bin ? `Bin: ${row.bin}` : null].filter(Boolean).join(" · ") || undefined });
+      }
 
-          if (partId && typeof row.quantity_on_hand === "number") {
-            const locId = await resolveCsvLocationId(row);
-            if (!locId) {
-              skipped.push({ row: row.rowNumber, reason: "Quantity was not applied because no stock location was selected or matched." });
-            } else {
-              const { data: moves } = await supabase
-                .from("stock_moves")
-                .select("qty_change")
-                .eq("shop_id", shopId)
-                .eq("part_id", partId)
-                .eq("location_id", locId);
-              const currentQty = ((moves ?? []) as Pick<StockMove, "qty_change">[]).reduce((sum, move) => sum + (Number(move.qty_change) || 0), 0);
-              const delta = row.quantity_on_hand - currentQty;
-              if (delta !== 0) {
-                await applyStockMoveRPC(supabase, {
-                  p_part: partId,
-                  p_loc: locId,
-                  p_qty: delta,
-                  p_reason: "adjust",
-                  p_ref_kind: "parts_inventory_csv_import",
-                  p_ref_id: null,
-                });
-              }
-            }
-          }
-        } catch (error) {
-          counts.failed += 1;
-          errors.push({ row: row.rowNumber, error: errMsg(error) });
+      setCsvProgress({ phase: "Saving parts in batches", phaseKey: "importing", processed: 0, total: rowsByIdentity.length, percent: 58, imported: 0, skipped: counts.skipped, failed: 0 });
+      for (const group of chunk(payloads, 500)) {
+        const { error } = await supabase.from("parts").upsert(group, { onConflict: "id" });
+        if (error) throw error;
+        setCsvProgress((prev) => ({ ...(prev ?? { phase: "Saving parts in batches", phaseKey: "importing", processed: 0, total: rowsByIdentity.length, percent: 58 }), processed: Math.min(rowsByIdentity.length, (prev?.processed ?? 0) + group.length), imported: Math.min(rowsByIdentity.length, (prev?.imported ?? 0) + group.length) }));
+      }
+
+      const barcodePayloads = rowsByIdentity.filter((row) => row.barcode && rowPartIds.get(row.rowNumber)).map((row) => ({ shop_id: shopId, part_id: rowPartIds.get(row.rowNumber) as string, barcode: row.barcode as string }));
+      for (const group of chunk(barcodePayloads, 500)) {
+        const { error } = await supabase.from("parts_barcodes").upsert(group, { onConflict: "shop_id,barcode" });
+        if (error) skipped.push(...group.map((_, index) => ({ row: rowsByIdentity[index]?.rowNumber ?? 0, reason: `Barcode batch was not fully saved: ${error.message}` })));
+      }
+
+      const stockRows = rowsByIdentity.filter((row) => typeof row.quantity_on_hand === "number" && rowPartIds.get(row.rowNumber));
+      const stockPartIds = stockRows.map((row) => rowPartIds.get(row.rowNumber) as string);
+      const { data: existingMoves, error: movesError } = stockPartIds.length ? await supabase.from("stock_moves").select("part_id, location_id, qty_change").eq("shop_id", shopId).in("part_id", stockPartIds) : { data: [], error: null };
+      if (movesError) throw movesError;
+      const currentByPartLoc = new Map<string, number>();
+      ((existingMoves ?? []) as Array<{ part_id: string; location_id: string; qty_change: number }>).forEach((move) => {
+        const key = `${move.part_id}:${move.location_id}`;
+        currentByPartLoc.set(key, (currentByPartLoc.get(key) ?? 0) + (Number(move.qty_change) || 0));
+      });
+
+      let adjusted = 0;
+      for (const row of stockRows) {
+        const partId = rowPartIds.get(row.rowNumber);
+        const locId = await resolveCsvLocationId(row);
+        if (!partId || !locId) {
+          skipped.push({ row: row.rowNumber, reason: "Quantity was not applied because no stock location was selected or matched." });
+          continue;
         }
+        const delta = (row.quantity_on_hand as number) - (currentByPartLoc.get(`${partId}:${locId}`) ?? 0);
+        if (delta !== 0) await applyStockMoveRPC(supabase, { p_part: partId, p_loc: locId, p_qty: delta, p_reason: "adjust", p_ref_kind: "parts_inventory_csv_import", p_ref_id: null });
+        adjusted++;
+        if (adjusted % 25 === 0 || adjusted === stockRows.length) setCsvProgress({ phase: "Applying stock adjustments", phaseKey: "importing", processed: adjusted, total: stockRows.length, percent: 84 + Math.round((adjusted / Math.max(1, stockRows.length)) * 10), imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
       }
 
       counts.skipped += csvRows.filter((row) => row.errors.length > 0 || row.active === false).length;
       const result = { counts, errors, skipped };
       setCsvResult(result);
       if (counts.failed === 0 && counts.created + counts.updated > 0) {
-        setCsvProgress({ phase: "Completing guided step", phaseKey: "finalizing", processed: importableRows.length, total: importableRows.length, percent: 96, imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
+        setCsvProgress({ phase: "Completing guided step", phaseKey: "finalizing", processed: rowsByIdentity.length, total: rowsByIdentity.length, percent: 96, imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
         await completePartsOnboardingAfterImport(counts);
       }
-      setCsvProgress({
-        phase: counts.failed > 0 ? "Import completed with failures" : "Completed",
-        phaseKey: counts.failed > 0 ? "failed" : "completed",
-        processed: importableRows.length,
-        total: importableRows.length,
-        percent: 100,
-        imported: counts.created + counts.updated,
-        skipped: counts.skipped,
-        failed: counts.failed,
-      });
+      setCsvProgress({ phase: counts.failed > 0 ? "Import completed with failures" : "Completed", phaseKey: counts.failed > 0 ? "failed" : "completed", processed: rowsByIdentity.length, total: rowsByIdentity.length, percent: 100, imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
       await load(shopId);
     } catch (error) {
       setCsvError(errMsg(error));
@@ -1027,6 +1012,8 @@ export default function InventoryPage(): JSX.Element {
     return level === "review" || level === "low";
   }).length;
 
+  const defaultListLimited = !search.trim() && trustFilter === "all";
+  const displayedParts = defaultListLimited ? visibleParts.slice(0, 25) : visibleParts;
   const csvImportableRows = csvRows.filter((row) => row.errors.length === 0 && row.active !== false);
   const csvReviewRows = csvRows.filter((row) => row.errors.length > 0 || row.active === false || row.warnings.length > 0);
   const csvImportSucceeded = Boolean(csvResult && csvResult.counts.failed === 0 && csvResult.counts.created + csvResult.counts.updated > 0);
@@ -1120,7 +1107,7 @@ export default function InventoryPage(): JSX.Element {
               />
               <button
                 type="button"
-                onClick={() => csvFileInputRef.current?.click()}
+                onClick={() => { setCsvResult(null); csvFileInputRef.current?.click(); }}
                 className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
                 disabled={!shopId || csvImporting || csvCompletingOnboarding}
               >
@@ -1240,7 +1227,7 @@ export default function InventoryPage(): JSX.Element {
           <GuidedImportFooterActions
             importing={csvImporting}
             completing={csvCompletingOnboarding}
-            canConfirm={csvImportableRows.length > 0}
+            canConfirm={csvImportableRows.length > 0 && !csvResult && !csvImporting && !csvCompletingOnboarding}
             onConfirm={() => void runCsvImport()}
             isOnboarding={guidedQuery?.onboardingStep === "parts"}
             returnTo={guidedQuery?.returnTo}
@@ -1274,7 +1261,7 @@ export default function InventoryPage(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {visibleParts.map((p) => {
+                {displayedParts.map((p) => {
                   const summary = toPartDisplaySummary(p);
                   const total = onHand[p.id] ?? 0;
                   const onHandPill = total > 0 ? pillOk : pillZero;
@@ -1329,7 +1316,7 @@ export default function InventoryPage(): JSX.Element {
           </div>
 
           <div className="border-t border-[color:var(--desktop-border)] px-5 py-3 text-xs text-neutral-500">
-            Tip: Click on-hand to see locations. {suspectCount} row(s) currently flagged for trust review.
+            Tip: Click on-hand to see locations. {defaultListLimited ? `Showing ${displayedParts.length} of ${visibleParts.length} inventory rows by default. Search or filter to refine results. ` : null}{suspectCount} row(s) currently flagged for trust review.
           </div>
         </div>
       )}
