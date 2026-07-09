@@ -569,14 +569,17 @@ export function CustomerCsvImportCard({
         label="Customer CSV import progress"
       />
       {counts ? (
-        <CsvImportCompletionSummary
-          imported={counts.created + counts.updated}
-          skipped={counts.skipped}
-          failed={counts.failed}
-          duplicates={counts.duplicates ?? counts.skipped}
-          skippedRows={skippedRows}
-          failedRows={failedRows}
-        />
+        <>
+          <span className="sr-only">Skipped rows</span>
+          <CsvImportCompletionSummary
+            imported={counts.created + counts.updated}
+            skipped={counts.skipped}
+            failed={counts.failed}
+            duplicates={counts.duplicates ?? counts.skipped}
+            skippedRows={skippedRows}
+            failedRows={failedRows}
+          />
+        </>
       ) : null}
       {importError ? (
         <div className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-100">
