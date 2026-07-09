@@ -60,10 +60,18 @@ function toProgress(
         : job.status === "queued"
           ? "queued"
           : "processing";
+  const phaseLabel =
+    job.status === "queued"
+      ? "Queued"
+      : job.status === "processing"
+        ? "Importing Rows"
+        : job.status === "completed"
+          ? "Import complete"
+          : "Import failed";
   const phase =
     stalled && (job.status === "queued" || job.status === "processing")
-      ? `Still processing… ${job.status}`
-      : job.status;
+      ? `Still processing… ${phaseLabel}`
+      : phaseLabel;
 
   const summary = job.summary as { duplicates?: number } | null | undefined;
 

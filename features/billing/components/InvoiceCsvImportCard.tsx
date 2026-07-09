@@ -18,6 +18,10 @@ import {
   CsvImportProgress,
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
+import {
+  useImportJobProgress,
+  type ImportJobProgressJob,
+} from "@/features/shared/components/import/useImportJobProgress";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import {
@@ -38,6 +42,7 @@ type ImportCounts = {
 type ImportResponse = {
   ok?: boolean;
   error?: string;
+  jobId?: string;
   counts?: ImportCounts;
   totalRows?: number;
   skippedRows?: Array<{
@@ -113,7 +118,9 @@ export function InvoiceCsvImportCard({
   const [response, setResponse] = useState<ImportResponse | null>(null);
   const [importing, setImporting] = useState(false);
   const [completingOnboarding, setCompletingOnboarding] = useState(false);
-  const [progress, setProgress] = useState<CsvImportProgressState | null>(null);
+  const [localProgress, setLocalProgress] =
+    useState<CsvImportProgressState | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const isOnboarding = Boolean(
     guidedQuery?.onboardingSession && guidedQuery.onboardingStep === "invoices",
   );
@@ -129,7 +136,8 @@ export function InvoiceCsvImportCard({
     setParseError(null);
     setImportError(null);
     setResponse(null);
-    setProgress(null);
+    setLocalProgress(null);
+    setJobId(null);
   }
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null;
@@ -146,7 +154,7 @@ export function InvoiceCsvImportCard({
       setParseError("Please choose a .csv file.");
       return;
     }
-    setProgress({
+    setLocalProgress({
       phase: "Reading file",
       phaseKey: "reading_file",
       processed: 0,
@@ -166,7 +174,7 @@ export function InvoiceCsvImportCard({
             .filter(Boolean),
         );
         setRows(parsed);
-        setProgress({
+        setLocalProgress({
           phase: "Validating rows",
           phaseKey: "validating",
           processed: parsed.length,
@@ -177,7 +185,7 @@ export function InvoiceCsvImportCard({
           setParseError("No invoice rows were found in that CSV.");
       },
       error: (error) => {
-        setProgress(null);
+        setLocalProgress(null);
         setParseError(error.message || "Unable to parse that CSV file.");
       },
     });
@@ -212,11 +220,56 @@ export function InvoiceCsvImportCard({
     },
     [guidedQuery, isOnboarding],
   );
+  const handleJobComplete = useCallback(
+    async (job: ImportJobProgressJob) => {
+      const summary = (job.summary ?? {}) as Partial<ImportResponse> & {
+        counts?: Partial<ImportCounts>;
+      };
+      const counts: ImportCounts = {
+        imported: job.importedCount,
+        updated: summary.counts?.updated ?? 0,
+        skipped: job.skippedCount,
+        failed: job.failedCount,
+        duplicates: summary.counts?.duplicates ?? 0,
+      };
+      const nextResponse: ImportResponse = {
+        ok: true,
+        jobId: job.id,
+        counts,
+        totalRows: job.totalRows,
+        skippedRows: summary.skippedRows as ImportResponse["skippedRows"],
+        failedRows: summary.failedRows as ImportResponse["failedRows"],
+      };
+      setResponse(nextResponse);
+      setImporting(false);
+      if (job.status === "failed") return;
+      if (isOnboarding && counts.imported > 0 && counts.failed === 0) {
+        await completeOnboardingAfterImport(counts);
+      }
+      // Keep the completion refresh behavior equivalent to the previous synchronous payload path.
+      // if (payload.counts.imported > 0) onImported?.();
+      if (counts.imported > 0) onImported?.();
+    },
+    [completeOnboardingAfterImport, isOnboarding, onImported],
+  );
+
+  const handleJobError = useCallback((message: string) => {
+    setImportError(message);
+    setImporting(false);
+  }, []);
+
+  const { progress: jobProgress } = useImportJobProgress(jobId, {
+    initialTotal: importableRows.length,
+    onComplete: handleJobComplete,
+    onError: handleJobError,
+  });
+  const progress = jobProgress ?? localProgress;
+
   useEffect(() => {
     onImportActiveChange?.(importing);
   }, [importing, onImportActiveChange]);
   async function confirmImport() {
-    if (importing || completingOnboarding) return;
+    if (importing || completingOnboarding || response?.counts) return;
     if (!file || !importableRows.length) {
       setImportError(
         "Upload a CSV with at least one valid invoice row before importing.",
@@ -226,12 +279,17 @@ export function InvoiceCsvImportCard({
     setImporting(true);
     setImportError(null);
     setResponse(null);
-    setProgress({
-      phase: "Uploading CSV",
-      phaseKey: "importing",
+    setJobId(null);
+    setLocalProgress({
+      phase: "Preparing Rows",
+      phaseKey: "processing",
       processed: 0,
       total: importableRows.length,
-      percent: 10,
+      percent: 30,
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
     });
     try {
       const formData = new FormData();
@@ -241,38 +299,32 @@ export function InvoiceCsvImportCard({
         body: formData,
       });
       const payload = (await res.json().catch(() => ({}))) as ImportResponse;
-      if (!res.ok || payload.ok === false || !payload.counts)
+      if (!res.ok || payload.ok === false || !payload.jobId) {
         throw new Error(payload.error ?? "Unable to import invoice CSV.");
-      setProgress({
-        phase: "Finalizing import",
-        phaseKey: "finalizing",
-        processed: payload.totalRows ?? importableRows.length,
+      }
+      setJobId(payload.jobId);
+      setLocalProgress({
+        phase: "Importing Rows",
+        phaseKey: "processing",
+        processed: 0,
         total: payload.totalRows ?? importableRows.length,
-        percent: 90,
+        percent: 0,
+        imported: 0,
+        skipped: 0,
+        failed: 0,
+        duplicates: 0,
       });
-      setResponse(payload);
-      setProgress({
-        phase: "Import complete",
-        phaseKey: "completed",
-        processed: payload.totalRows ?? importableRows.length,
-        total: payload.totalRows ?? importableRows.length,
-        percent: 100,
-      });
-      setImporting(false);
-      if (
-        isOnboarding &&
-        payload.counts.imported > 0 &&
-        payload.counts.failed === 0
-      )
-        await completeOnboardingAfterImport(payload.counts);
-      if (payload.counts.imported > 0) onImported?.();
     } catch (error) {
-      setProgress({
+      setLocalProgress({
         phase: "Import failed",
         phaseKey: "failed",
         processed: 0,
         total: importableRows.length,
         percent: 100,
+        imported: 0,
+        skipped: 0,
+        failed: importableRows.length,
+        duplicates: 0,
       });
       setImportError(
         error instanceof Error
@@ -415,7 +467,7 @@ export function InvoiceCsvImportCard({
         importing={importing}
         completing={completingOnboarding}
         canConfirm={Boolean(
-          file && importableRows.length > 0 && !response?.counts,
+          file && importableRows.length > 0 && !response?.counts && !importing,
         )}
         onConfirm={() => void confirmImport()}
         isOnboarding={isOnboarding}

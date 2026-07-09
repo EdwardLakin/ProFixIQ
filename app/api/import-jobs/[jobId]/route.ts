@@ -5,6 +5,10 @@ import {
   processVehicleHistoryImportJobBatch,
   VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
 } from "@/features/work-orders/server/vehicle-history-import-job";
+import {
+  INVOICE_IMPORT_BATCH_SIZE,
+  processInvoiceImportJobBatch,
+} from "@/features/billing/server/invoice-import-job";
 
 type ImportJobApiRow = {
   id: string;
@@ -45,9 +49,11 @@ export async function GET(
     );
 
   const loadJob = () =>
-    (access.supabase as unknown as {
-      from: (table: "import_jobs") => ImportJobApiQuery;
-    })
+    (
+      access.supabase as unknown as {
+        from: (table: "import_jobs") => ImportJobApiQuery;
+      }
+    )
       .from("import_jobs")
       .select(
         "id, import_type, status, total_rows, processed_rows, imported_count, skipped_count, failed_count, error_message, summary, created_at, updated_at, completed_at",
@@ -71,6 +77,14 @@ export async function GET(
         createAdminSupabase(),
         jobId,
         VEHICLE_HISTORY_IMPORT_BATCH_SIZE,
+      );
+      const refreshed = await loadJob();
+      data = refreshed.data ?? data;
+    } else if (data.import_type === "invoices") {
+      await processInvoiceImportJobBatch(
+        createAdminSupabase(),
+        jobId,
+        INVOICE_IMPORT_BATCH_SIZE,
       );
       const refreshed = await loadJob();
       data = refreshed.data ?? data;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { parseCsvFileFromFormData } from "@/features/shared/lib/import/csv";
 import {
-  importInvoiceRowsSynchronously,
+  createInvoiceImportJob,
   INVOICE_IMPORT_MAX_ROWS,
 } from "@/features/billing/server/invoice-import-job";
 import {
@@ -57,12 +57,14 @@ export async function POST(req: Request) {
         { status: 400 },
       );
 
-    const result = await importInvoiceRowsSynchronously({
+    const userId = profile.id ?? null;
+    const result = await createInvoiceImportJob({
       supabase,
       shopId,
       rows: parsed.rows.map(normalizeInvoiceImportRow),
+      createdBy: userId,
     });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       {
