@@ -8,6 +8,7 @@ export type PartTrustMeta = {
 const TRUST_REASON = {
   missingSku: "Missing SKU",
   missingPartNumber: "Missing part number",
+  missingAuthoritativeIdentity: "Missing authoritative identity",
   weakIdentity: "Weak identity key",
   aliasBackedImport: "Alias-backed import",
   stagingNotFinalized: "Staging not finalized",
@@ -17,8 +18,15 @@ const TRUST_REASON = {
 } as const;
 
 export function buildPartTrustMeta(input: {
+  externalId?: string | null;
   sku?: string | null;
   partNumber?: string | null;
+  barcode?: string | null;
+  name?: string | null;
+  vendor?: string | null;
+  category?: string | null;
+  price?: number | null;
+  cost?: number | null;
   normalizedPartKey?: string | null;
   sourceIntakeId?: string | null;
   aliasCount?: number;
@@ -28,9 +36,17 @@ export function buildPartTrustMeta(input: {
 }): PartTrustMeta {
   const reasons: string[] = [];
 
-  if (!input.sku?.trim()) reasons.push(TRUST_REASON.missingSku);
-  if (!input.partNumber?.trim()) reasons.push(TRUST_REASON.missingPartNumber);
-  if (!input.normalizedPartKey?.trim()) reasons.push(TRUST_REASON.weakIdentity);
+  const hasExternalId = Boolean(input.externalId?.trim());
+  const hasSku = Boolean(input.sku?.trim());
+  const hasPartNumber = Boolean(input.partNumber?.trim());
+  const hasBarcode = Boolean(input.barcode?.trim());
+  const hasAuthoritativeIdentity = hasExternalId || hasSku || hasPartNumber || hasBarcode;
+  const hasDescriptiveSupport = Boolean(input.name?.trim()) && (Boolean(input.vendor?.trim()) || Boolean(input.category?.trim()) || typeof input.price === "number" || typeof input.cost === "number");
+
+  if (!hasSku) reasons.push(TRUST_REASON.missingSku);
+  if (!hasPartNumber) reasons.push(TRUST_REASON.missingPartNumber);
+  if (!hasAuthoritativeIdentity) reasons.push(TRUST_REASON.missingAuthoritativeIdentity);
+  if (!hasAuthoritativeIdentity && !input.normalizedPartKey?.trim()) reasons.push(TRUST_REASON.weakIdentity);
   if ((input.aliasCount ?? 0) > 0) reasons.push(TRUST_REASON.aliasBackedImport);
   if ((input.pendingStagingCount ?? 0) > 0) reasons.push(TRUST_REASON.stagingNotFinalized);
   if ((input.ambiguousCandidateCount ?? 0) > 0) reasons.push(TRUST_REASON.ambiguousLineage);
@@ -39,16 +55,15 @@ export function buildPartTrustMeta(input: {
   }
   if (input.sourceIntakeId?.trim() && reasons.length === 0) reasons.push(TRUST_REASON.importedRecord);
 
-  const low = reasons.some(
-    (r) =>
-      r === TRUST_REASON.weakIdentity ||
-      r === TRUST_REASON.ambiguousLineage ||
-      r === TRUST_REASON.lowImportConfidence,
+  const hasBlockingLineageIssue = reasons.some(
+    (r) => r === TRUST_REASON.ambiguousLineage || r === TRUST_REASON.lowImportConfidence,
   );
+  const low = !hasAuthoritativeIdentity || hasBlockingLineageIssue;
+  const trustedImport = hasExternalId || ((hasSku || hasPartNumber) && hasDescriptiveSupport);
 
   return {
-    level: low ? "low" : reasons.length > 0 ? "review" : "high",
-    reasons,
+    level: low ? "low" : trustedImport ? "high" : reasons.length > 0 ? "review" : "high",
+    reasons: trustedImport ? reasons.filter((r) => r !== TRUST_REASON.importedRecord) : reasons,
   };
 }
 
