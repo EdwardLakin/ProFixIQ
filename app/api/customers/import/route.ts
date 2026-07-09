@@ -25,7 +25,7 @@ type CustomerRow = Pick<
   | "customer_since"
   | "updated_at"
 >;
-type CustomerMatch = Pick<CustomerRow, "id"> & {
+type CustomerMatch = Pick<CustomerRow, "id" | "external_id"> & {
   matchedBy?: string;
   matchedValue?: string | null;
 };
@@ -39,8 +39,12 @@ const CUSTOMER_IDENTITY_PAGE_SIZE = 1000;
 
 type ImportRowSummary = {
   customerName: string | null;
+  businessName: string | null;
   email: string | null;
   phone: string | null;
+  detectedExternalId: string | null;
+  detectedCustomerId: string | null;
+  detectedCustomerNumber: string | null;
 };
 
 type SkippedCustomerImportRow = ImportRowSummary & {
@@ -55,6 +59,8 @@ type SkippedCustomerImportRow = ImportRowSummary & {
     | "missing_identity"
     | "existing_customer";
   matchedValue?: string | null;
+  matchedExistingExternalId?: string | null;
+  matchedExistingCustomerId?: string | null;
 };
 
 type FailedCustomerImportRow = ImportRowSummary & {
@@ -175,6 +181,7 @@ async function loadExistingCustomerIdentities(
         if (!byExternalId.has(externalKey)) {
           byExternalId.set(externalKey, {
             id: customer.id,
+            external_id: customer.external_id,
             ...describeIdentityKey(externalKey),
           });
         }
@@ -185,6 +192,7 @@ async function loadExistingCustomerIdentities(
         if (!byFallbackIdentity.has(key))
           byFallbackIdentity.set(key, {
             id: customer.id,
+            external_id: customer.external_id,
             ...describeIdentityKey(key),
           });
       }
@@ -215,9 +223,13 @@ function importRowSummary(
   row: ImportRow,
   normalized?: CustomerInsert | null,
 ): ImportRowSummary {
-  const rawName =
+  const businessName =
     cleanString(row.company_name) ??
     cleanString(row.business_name) ??
+    normalized?.business_name ??
+    null;
+  const rawName =
+    businessName ??
     cleanString(row.display_name) ??
     cleanString(row.name) ??
     [cleanString(row.first_name), cleanString(row.last_name)]
@@ -227,6 +239,7 @@ function importRowSummary(
   const name = rawName || normalized?.name || normalized?.business_name || null;
   return {
     customerName: name || null,
+    businessName,
     email: cleanString(row.email) ?? normalized?.email ?? null,
     phone:
       cleanPhone(row.phone) ??
@@ -236,6 +249,29 @@ function importRowSummary(
       normalized?.phone ??
       normalized?.phone_number ??
       null,
+    detectedExternalId: cleanString(row.external_id),
+    detectedCustomerId: cleanString(row.customer_id),
+    detectedCustomerNumber: cleanString(row.customer_number),
+  };
+}
+
+function matchedExistingDetails(match: CustomerMatch): {
+  matchedExistingExternalId: string | null;
+  matchedExistingCustomerId: string | null;
+} {
+  return {
+    matchedExistingExternalId: match.external_id ?? null,
+    matchedExistingCustomerId: match.id ?? null,
+  };
+}
+
+function noMatchedExistingDetails(): {
+  matchedExistingExternalId: null;
+  matchedExistingCustomerId: null;
+} {
+  return {
+    matchedExistingExternalId: null,
+    matchedExistingCustomerId: null,
   };
 }
 
@@ -295,7 +331,13 @@ function rememberPendingCustomerIdentity(
   key: string,
   rowIndex: number,
 ) {
-  const match = { id: `pending-${rowIndex}`, ...describeIdentityKey(key) };
+  const match = {
+    id: `pending-${rowIndex}`,
+    external_id: key.startsWith("external:")
+      ? (describeIdentityKey(key).matchedValue ?? null)
+      : null,
+    ...describeIdentityKey(key),
+  };
   if (key.startsWith("external:"))
     existingIdentities.byExternalId.set(key, match);
   else existingIdentities.byFallbackIdentity.set(key, match);
@@ -306,7 +348,13 @@ function rememberCreatedCustomerIdentity(
   key: string,
   row: number,
 ) {
-  const match = { id: `created-${row}`, ...describeIdentityKey(key) };
+  const match = {
+    id: `created-${row}`,
+    external_id: key.startsWith("external:")
+      ? (describeIdentityKey(key).matchedValue ?? null)
+      : null,
+    ...describeIdentityKey(key),
+  };
   if (key.startsWith("external:"))
     existingIdentities.byExternalId.set(key, match);
   else existingIdentities.byFallbackIdentity.set(key, match);
@@ -444,6 +492,7 @@ export async function POST(req: Request) {
             reason: "Missing customer name, company, email, and phone.",
             ...importRowSummary(raw as ImportRow),
             matchedBy: "missing_identity",
+            ...noMatchedExistingDetails(),
           });
           continue;
         }
@@ -463,6 +512,7 @@ export async function POST(req: Request) {
             ...importRowSummary(raw as ImportRow, normalized),
             matchedBy: "duplicate_in_csv",
             matchedValue: duplicateMatch.matchedValue,
+            ...noMatchedExistingDetails(),
           });
           continue;
         }
@@ -509,6 +559,7 @@ export async function POST(req: Request) {
             ...importRowSummary(raw as ImportRow, normalized),
             matchedBy,
             matchedValue: existing.matchedValue ?? existing.id,
+            ...matchedExistingDetails(existing),
           });
           continue;
         }
@@ -555,6 +606,7 @@ export async function POST(req: Request) {
               safeError.constraint === "customers_shop_email_uq"
                 ? normalizeEmail(pending.customer.email)
                 : safeError.constraint,
+            ...noMatchedExistingDetails(),
           });
           continue;
         }

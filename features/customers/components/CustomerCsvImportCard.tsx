@@ -60,10 +60,16 @@ type SkippedImportRow = {
   row: number;
   reason: string;
   customerName: string | null;
+  businessName?: string | null;
   email: string | null;
   phone: string | null;
   matchedBy: string;
   matchedValue?: string | null;
+  detectedExternalId?: string | null;
+  detectedCustomerId?: string | null;
+  detectedCustomerNumber?: string | null;
+  matchedExistingExternalId?: string | null;
+  matchedExistingCustomerId?: string | null;
 };
 
 type FailedImportRow = {
@@ -132,10 +138,7 @@ const CUSTOMER_IMPORT_DEBUG =
   process.env.NODE_ENV === "development";
 
 const CUSTOMER_ID_HEADER_ALIASES = new Set([
-  "customer_id",
-  "external_id",
   "customerid",
-  "customer_number",
   "customernumber",
   "customer",
 ]);
@@ -265,6 +268,9 @@ export function CustomerCsvImportCard({
     counts.created + counts.updated + counts.skipped > 0 &&
     counts.failed === 0,
   );
+  const importCompleted = Boolean(counts);
+  const canConfirmImport =
+    importableRows.length > 0 && !importing && !importCompleted;
 
   function resetImportState() {
     setRows([]);
@@ -362,6 +368,7 @@ export function CustomerCsvImportCard({
   }
 
   async function confirmImport() {
+    if (importCompleted || importing) return;
     if (!importableRows.length) {
       setImportError(
         "Upload a CSV with at least one customer name, company, email, or phone before importing.",
@@ -637,7 +644,7 @@ export function CustomerCsvImportCard({
       <GuidedImportFooterActions
         importing={importing}
         completing={completingOnboarding}
-        canConfirm={importableRows.length > 0}
+        canConfirm={canConfirmImport}
         onConfirm={() => void confirmImport()}
         isOnboarding={isOnboarding}
         returnTo={guidedQuery?.returnTo}
