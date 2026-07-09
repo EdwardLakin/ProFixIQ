@@ -239,8 +239,12 @@ function findExistingCustomer(
   normalized: CustomerInsert,
 ): CustomerMatch | null {
   const externalKey = customerExternalIdentityKey(normalized);
-  if (externalKey)
+  if (externalKey) {
+    // CSV customer_id/external_id values are authoritative. Rows with an
+    // external identity may only update when that exact external_id already
+    // exists; company/email/phone/name fallbacks are intentionally disabled.
     return existingIdentities.byExternalId.get(externalKey) ?? null;
+  }
 
   for (const key of customerFallbackIdentityKeys(normalized)) {
     const existing = existingIdentities.byFallbackIdentity.get(key);

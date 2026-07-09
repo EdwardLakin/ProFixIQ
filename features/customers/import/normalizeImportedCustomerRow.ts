@@ -8,6 +8,7 @@ export type ImportRow = {
   last_name?: unknown;
   name?: unknown;
   customer_id?: unknown;
+  external_id?: unknown;
   company_name?: unknown;
   business_name?: unknown;
   display_name?: unknown;
@@ -97,7 +98,7 @@ export function normalizeImportedCustomerRow(
   return {
     shop_id: shopId,
     user_id: null,
-    external_id: cleanString(row.customer_id),
+    external_id: cleanString(row.customer_id) ?? cleanString(row.external_id),
     first_name: firstName,
     last_name: lastName,
     name: explicitName ?? displayName,
