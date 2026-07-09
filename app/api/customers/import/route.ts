@@ -84,6 +84,7 @@ type CustomerImportBody = {
 const CUSTOMER_IMPORT_DEBUG =
   process.env.CUSTOMER_IMPORT_DEBUG === "1" ||
   process.env.NODE_ENV === "development";
+const CUSTOMER_IMPORT_TRACE_ROW = 385;
 
 function cleanString(value: unknown): string | null {
   const text = String(value ?? "").trim();
@@ -280,23 +281,53 @@ function logCustomerImportTrace(label: string, payload: unknown) {
   console.info(`[customer-csv-import] ${label}`, payload);
 }
 
+function logCustomerImportRow385Trace(label: string, payload: unknown) {
+  console.info(`[customer-csv-import][row-385] ${label}`, payload);
+}
+
+function traceCustomerImportRow(
+  rowNumber: number | undefined,
+  label: string,
+  payload: unknown,
+) {
+  if (rowNumber === CUSTOMER_IMPORT_TRACE_ROW) {
+    logCustomerImportRow385Trace(label, payload);
+    return;
+  }
+
+  logCustomerImportTrace(label, payload);
+}
+
 function findExistingCustomer(
   existingIdentities: ExistingCustomerIdentityMaps,
   normalized: CustomerInsert,
   rowNumber?: number,
 ): CustomerMatch | null {
+  traceCustomerImportRow(rowNumber, "findExistingCustomer input", {
+    normalized,
+    externalIdentityKey: customerExternalIdentityKey(normalized),
+    fallbackIdentityKeys: customerFallbackIdentityKeys(normalized),
+  });
+
   const externalKey = customerExternalIdentityKey(normalized);
   if (externalKey) {
     // CSV customer_id/external_id values are authoritative. Rows with an
     // external identity may only update when that exact external_id already
     // exists; company/email/phone/name fallbacks are intentionally disabled.
     const existing = existingIdentities.byExternalId.get(externalKey) ?? null;
-    logCustomerImportTrace("Matching branch", {
+    traceCustomerImportRow(rowNumber, "Matching branch", {
       row: rowNumber,
       externalId: normalized.external_id ?? null,
       branch: "EXTERNAL_ID",
+      reason:
+        "normalized.external_id is present, so fallback email/phone/name matching is skipped",
       matchedBy: existing?.matchedBy ?? null,
       existingCustomer: existing?.matchedValue ?? existing?.id ?? null,
+    });
+    traceCustomerImportRow(rowNumber, "findExistingCustomer early return", {
+      row: rowNumber,
+      branch: "EXTERNAL_ID",
+      returnValue: existing,
     });
     return existing;
   }
@@ -305,7 +336,7 @@ function findExistingCustomer(
   for (const key of fallbackKeys) {
     const existing = existingIdentities.byFallbackIdentity.get(key);
     if (existing) {
-      logCustomerImportTrace("Matching branch", {
+      traceCustomerImportRow(rowNumber, "Matching branch", {
         row: rowNumber,
         externalId: normalized.external_id ?? null,
         branch: `${(existing.matchedBy ?? "identity").toUpperCase()}_FALLBACK`,
@@ -313,15 +344,25 @@ function findExistingCustomer(
         matchedBy: existing.matchedBy ?? null,
         existingCustomer: existing.matchedValue ?? existing.id,
       });
+      traceCustomerImportRow(rowNumber, "findExistingCustomer early return", {
+        row: rowNumber,
+        branch: `${(existing.matchedBy ?? "identity").toUpperCase()}_FALLBACK`,
+        returnValue: existing,
+      });
       return existing;
     }
   }
-  logCustomerImportTrace("Matching branch", {
+  traceCustomerImportRow(rowNumber, "Matching branch", {
     row: rowNumber,
     externalId: normalized.external_id ?? null,
     branch: "NO_MATCH",
     reason: externalKey ? "external_id_not_found" : "externalId missing",
     fallbackKeys,
+  });
+  traceCustomerImportRow(rowNumber, "findExistingCustomer early return", {
+    row: rowNumber,
+    branch: "NO_MATCH",
+    returnValue: null,
   });
   return null;
 }
@@ -463,9 +504,13 @@ export async function POST(req: Request) {
     const customersToCreate: PendingCustomerInsert[] = [];
 
     for (const [index, raw] of rawRows.entries()) {
+      const rowNumber = index + 1;
       try {
-        if (index < 10) {
-          logCustomerImportTrace("Raw parsed row", { row: index + 1, raw });
+        if (rowNumber === CUSTOMER_IMPORT_TRACE_ROW || index < 10) {
+          traceCustomerImportRow(rowNumber, "Raw CSV row", {
+            row: rowNumber,
+            raw,
+          });
         }
 
         const normalized = normalizeImportedCustomerRow(
@@ -473,22 +518,24 @@ export async function POST(req: Request) {
           shopId,
         );
 
-        if (index < 10) {
-          logCustomerImportTrace("Normalized row", {
-            row: index + 1,
-            externalId: normalized?.external_id ?? null,
-            customerId: (raw as ImportRow).customer_id ?? null,
-            email: normalized?.email ?? null,
-            phone: normalized?.phone ?? normalized?.phone_number ?? null,
-            businessName: normalized?.business_name ?? null,
-            name: normalized?.name ?? null,
+        if (rowNumber === CUSTOMER_IMPORT_TRACE_ROW || index < 10) {
+          traceCustomerImportRow(rowNumber, "Normalized row", {
+            row: rowNumber,
+            normalized,
+            rawCustomerId: (raw as ImportRow).customer_id ?? null,
+            rawExternalId: (raw as ImportRow).external_id ?? null,
+            rawCustomerNumber: (raw as ImportRow).customer_number ?? null,
           });
         }
 
         if (!normalized) {
+          traceCustomerImportRow(rowNumber, "Early return: missing identity", {
+            row: rowNumber,
+            reason: "normalizeImportedCustomerRow returned null",
+          });
           counts.skipped += 1;
           skippedRows.push({
-            row: index + 1,
+            row: rowNumber,
             reason: "Missing customer name, company, email, and phone.",
             ...importRowSummary(raw as ImportRow),
             matchedBy: "missing_identity",
@@ -498,16 +545,26 @@ export async function POST(req: Request) {
         }
 
         const identityKeys = customerIdentityKeys(normalized);
+        traceCustomerImportRow(rowNumber, "Derived identity keys", {
+          row: rowNumber,
+          externalIdentityKey: customerExternalIdentityKey(normalized),
+          fallbackIdentityKeys: customerFallbackIdentityKeys(normalized),
+          selectedIdentityKeys: identityKeys,
+        });
 
         const duplicateKey = identityKeys.find((key) =>
           seenImportIdentities.has(key),
         );
         if (duplicateKey) {
+          traceCustomerImportRow(rowNumber, "Early return: duplicate in CSV", {
+            row: rowNumber,
+            duplicateKey,
+          });
           counts.duplicates += 1;
           counts.skipped += 1;
           const duplicateMatch = describeIdentityKey(duplicateKey);
           skippedRows.push({
-            row: index + 1,
+            row: rowNumber,
             reason: "Duplicate customer identity within this CSV.",
             ...importRowSummary(raw as ImportRow, normalized),
             matchedBy: "duplicate_in_csv",
@@ -520,10 +577,14 @@ export async function POST(req: Request) {
         const existing = findExistingCustomer(
           existingIdentities,
           normalized,
-          index + 1,
+          rowNumber,
         );
 
         if (existing?.id) {
+          traceCustomerImportRow(rowNumber, "Existing customer selected", {
+            row: rowNumber,
+            existing,
+          });
           const datePatch: Pick<
             CustomerInsert,
             "customer_since" | "updated_at"
@@ -534,6 +595,11 @@ export async function POST(req: Request) {
             datePatch.updated_at = normalized.updated_at;
 
           if (Object.keys(datePatch).length > 0) {
+            traceCustomerImportRow(rowNumber, "Updating existing customer", {
+              row: rowNumber,
+              customerId: existing.id,
+              datePatch,
+            });
             const { error } = await supabase
               .from("customers")
               .update(datePatch)
@@ -542,6 +608,10 @@ export async function POST(req: Request) {
             if (error) throw error;
             counts.updated += 1;
           } else {
+            traceCustomerImportRow(rowNumber, "Early return: existing customer skipped", {
+              row: rowNumber,
+              reason: "No date fields changed",
+            });
             counts.skipped += 1;
           }
 
@@ -549,7 +619,7 @@ export async function POST(req: Request) {
             (existing.matchedBy as SkippedCustomerImportRow["matchedBy"]) ??
             "existing_customer";
           skippedRows.push({
-            row: index + 1,
+            row: rowNumber,
             reason:
               Object.keys(datePatch).length > 0
                 ? "Matched existing customer; historical date fields were updated."
@@ -567,13 +637,29 @@ export async function POST(req: Request) {
         for (const key of identityKeys) {
           seenImportIdentities.add(key);
           rememberPendingCustomerIdentity(existingIdentities, key, index);
+          traceCustomerImportRow(rowNumber, "Row identity mutation", {
+            row: rowNumber,
+            mutation:
+              key.startsWith("external:")
+                ? "rememberPendingCustomerIdentity(byExternalId)"
+                : "rememberPendingCustomerIdentity(byFallbackIdentity)",
+            key,
+            customerIdChange: `pending-${index}`,
+            externalIdChange: key.startsWith("external:")
+              ? describeIdentityKey(key).matchedValue
+              : null,
+          });
         }
 
         customersToCreate.push({
-          row: index + 1,
+          row: rowNumber,
           customer: { ...normalized, user_id: null },
           summary: importRowSummary(raw as ImportRow, normalized),
           identityKeys,
+        });
+        traceCustomerImportRow(rowNumber, "Queued customer insert payload", {
+          row: rowNumber,
+          payload: { ...normalized, user_id: null },
         });
       } catch (error) {
         counts.failed += 1;
@@ -587,6 +673,10 @@ export async function POST(req: Request) {
 
     for (const pending of customersToCreate) {
       const payload: CustomerInsert = { ...pending.customer, user_id: null };
+      traceCustomerImportRow(pending.row, "Database insert payload", {
+        row: pending.row,
+        payload,
+      });
       const { error } = await supabase.from("customers").insert(payload);
 
       if (error) {
@@ -594,6 +684,16 @@ export async function POST(req: Request) {
         const duplicateSkipReason = duplicateSkipReasonForConstraint(
           safeError.constraint,
         );
+        traceCustomerImportRow(pending.row, "Database insert error", {
+          row: pending.row,
+          safeError,
+          duplicateSkipReason,
+          selectedMatchedBy: duplicateSkipReason
+            ? matchedByForConstraint(safeError.constraint)
+            : null,
+          note:
+            "This duplicate-constraint path runs after findExistingCustomer returned null; it can report matchedBy=email from the database email constraint even when the row carried an external_id.",
+        });
 
         if (duplicateSkipReason) {
           counts.skipped += 1;
@@ -601,9 +701,13 @@ export async function POST(req: Request) {
             row: pending.row,
             reason: duplicateSkipReason,
             ...pending.summary,
-            matchedBy: matchedByForConstraint(safeError.constraint),
+            matchedBy: pending.customer.external_id
+              ? "external_id"
+              : matchedByForConstraint(safeError.constraint),
             matchedValue:
-              safeError.constraint === "customers_shop_email_uq"
+              pending.customer.external_id
+                ? pending.customer.external_id
+                : safeError.constraint === "customers_shop_email_uq"
                 ? normalizeEmail(pending.customer.email)
                 : safeError.constraint,
             ...noMatchedExistingDetails(),
@@ -625,6 +729,18 @@ export async function POST(req: Request) {
       counts.created += 1;
       for (const key of pending.identityKeys) {
         rememberCreatedCustomerIdentity(existingIdentities, key, pending.row);
+        traceCustomerImportRow(pending.row, "Row identity mutation", {
+          row: pending.row,
+          mutation:
+            key.startsWith("external:")
+              ? "rememberCreatedCustomerIdentity(byExternalId)"
+              : "rememberCreatedCustomerIdentity(byFallbackIdentity)",
+          key,
+          customerIdChange: `created-${pending.row}`,
+          externalIdChange: key.startsWith("external:")
+            ? describeIdentityKey(key).matchedValue
+            : null,
+        });
       }
     }
 
