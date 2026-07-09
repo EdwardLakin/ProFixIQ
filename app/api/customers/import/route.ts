@@ -30,6 +30,13 @@ type CustomerMatch = Pick<CustomerRow, "id"> & {
   matchedValue?: string | null;
 };
 
+type ExistingCustomerIdentityMaps = {
+  byExternalId: Map<string, CustomerMatch>;
+  byFallbackIdentity: Map<string, CustomerMatch>;
+};
+
+const CUSTOMER_IDENTITY_PAGE_SIZE = 1000;
+
 type ImportRowSummary = {
   customerName: string | null;
   email: string | null;
@@ -94,12 +101,17 @@ function normalizeIdentity(value: string | null | undefined): string | null {
   return text.length ? text : null;
 }
 
-function customerIdentityKeys(
+function customerExternalIdentityKey(
+  customer: Partial<CustomerRow | CustomerInsert>,
+): string | null {
+  const externalId = normalizeIdentity(customer.external_id);
+  return externalId ? `external:${externalId}` : null;
+}
+
+function customerFallbackIdentityKeys(
   customer: Partial<CustomerRow | CustomerInsert>,
 ): string[] {
   const keys: string[] = [];
-  const externalId = normalizeIdentity(customer.external_id);
-  if (externalId) keys.push(`external:${externalId}`);
 
   const email = normalizeEmail(customer.email);
   if (email) keys.push(`email:${email}`);
@@ -124,27 +136,60 @@ function customerIdentityKeys(
   return keys;
 }
 
+function customerIdentityKeys(
+  customer: Partial<CustomerRow | CustomerInsert>,
+): string[] {
+  const externalKey = customerExternalIdentityKey(customer);
+  return externalKey ? [externalKey] : customerFallbackIdentityKeys(customer);
+}
+
 async function loadExistingCustomerIdentities(
   supabase: SupabaseClient<DB>,
   shopId: string,
-): Promise<Map<string, CustomerMatch>> {
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code, customer_since, updated_at",
-    )
-    .eq("shop_id", shopId);
-  if (error) throw error;
+): Promise<ExistingCustomerIdentityMaps> {
+  const byExternalId = new Map<string, CustomerMatch>();
+  const byFallbackIdentity = new Map<string, CustomerMatch>();
+  let from = 0;
 
-  const byIdentity = new Map<string, CustomerMatch>();
-  for (const customer of (data ?? []) as CustomerRow[]) {
-    for (const key of customerIdentityKeys(customer)) {
-      if (!byIdentity.has(key))
-        byIdentity.set(key, { id: customer.id, ...describeIdentityKey(key) });
+  while (true) {
+    const to = from + CUSTOMER_IDENTITY_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("customers")
+      .select(
+        "id, external_id, email, phone, phone_number, name, business_name, address, city, province, postal_code, customer_since, updated_at",
+      )
+      .eq("shop_id", shopId)
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+
+    const customers = (data ?? []) as CustomerRow[];
+    for (const customer of customers) {
+      const externalKey = customerExternalIdentityKey(customer);
+      if (externalKey) {
+        if (!byExternalId.has(externalKey)) {
+          byExternalId.set(externalKey, {
+            id: customer.id,
+            ...describeIdentityKey(externalKey),
+          });
+        }
+        continue;
+      }
+
+      for (const key of customerFallbackIdentityKeys(customer)) {
+        if (!byFallbackIdentity.has(key))
+          byFallbackIdentity.set(key, {
+            id: customer.id,
+            ...describeIdentityKey(key),
+          });
+      }
     }
+
+    if (customers.length < CUSTOMER_IDENTITY_PAGE_SIZE) break;
+    from += CUSTOMER_IDENTITY_PAGE_SIZE;
   }
 
-  return byIdentity;
+  return { byExternalId, byFallbackIdentity };
 }
 
 function describeIdentityKey(
@@ -190,14 +235,40 @@ function importRowSummary(
 }
 
 function findExistingCustomer(
-  existingByIdentity: Map<string, CustomerMatch>,
+  existingIdentities: ExistingCustomerIdentityMaps,
   normalized: CustomerInsert,
 ): CustomerMatch | null {
-  for (const key of customerIdentityKeys(normalized)) {
-    const existing = existingByIdentity.get(key);
+  const externalKey = customerExternalIdentityKey(normalized);
+  if (externalKey)
+    return existingIdentities.byExternalId.get(externalKey) ?? null;
+
+  for (const key of customerFallbackIdentityKeys(normalized)) {
+    const existing = existingIdentities.byFallbackIdentity.get(key);
     if (existing) return existing;
   }
   return null;
+}
+
+function rememberPendingCustomerIdentity(
+  existingIdentities: ExistingCustomerIdentityMaps,
+  key: string,
+  rowIndex: number,
+) {
+  const match = { id: `pending-${rowIndex}`, ...describeIdentityKey(key) };
+  if (key.startsWith("external:"))
+    existingIdentities.byExternalId.set(key, match);
+  else existingIdentities.byFallbackIdentity.set(key, match);
+}
+
+function rememberCreatedCustomerIdentity(
+  existingIdentities: ExistingCustomerIdentityMaps,
+  key: string,
+  row: number,
+) {
+  const match = { id: `created-${row}`, ...describeIdentityKey(key) };
+  if (key.startsWith("external:"))
+    existingIdentities.byExternalId.set(key, match);
+  else existingIdentities.byFallbackIdentity.set(key, match);
 }
 
 function extractConstraintName(error: unknown): string | null {
@@ -293,7 +364,7 @@ export async function POST(req: Request) {
     const errors: Array<{ row: number; error: string }> = [];
     const skippedRows: SkippedCustomerImportRow[] = [];
     const failedRows: FailedCustomerImportRow[] = [];
-    const existingByIdentity = await loadExistingCustomerIdentities(
+    const existingIdentities = await loadExistingCustomerIdentities(
       supabase,
       shopId,
     );
@@ -337,12 +408,17 @@ export async function POST(req: Request) {
           continue;
         }
 
-        const existing = findExistingCustomer(existingByIdentity, normalized);
+        const existing = findExistingCustomer(existingIdentities, normalized);
 
         if (existing?.id) {
-          const datePatch: Pick<CustomerInsert, "customer_since" | "updated_at"> = {};
-          if (normalized.customer_since) datePatch.customer_since = normalized.customer_since;
-          if (normalized.updated_at) datePatch.updated_at = normalized.updated_at;
+          const datePatch: Pick<
+            CustomerInsert,
+            "customer_since" | "updated_at"
+          > = {};
+          if (normalized.customer_since)
+            datePatch.customer_since = normalized.customer_since;
+          if (normalized.updated_at)
+            datePatch.updated_at = normalized.updated_at;
 
           if (Object.keys(datePatch).length > 0) {
             const { error } = await supabase
@@ -376,10 +452,7 @@ export async function POST(req: Request) {
 
         for (const key of identityKeys) {
           seenImportIdentities.add(key);
-          existingByIdentity.set(key, {
-            id: `pending-${index}`,
-            ...describeIdentityKey(key),
-          });
+          rememberPendingCustomerIdentity(existingIdentities, key, index);
         }
 
         customersToCreate.push({
@@ -436,10 +509,7 @@ export async function POST(req: Request) {
 
       counts.created += 1;
       for (const key of pending.identityKeys) {
-        existingByIdentity.set(key, {
-          id: `created-${pending.row}`,
-          ...describeIdentityKey(key),
-        });
+        rememberCreatedCustomerIdentity(existingIdentities, key, pending.row);
       }
     }
 
