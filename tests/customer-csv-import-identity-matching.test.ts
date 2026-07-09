@@ -27,7 +27,10 @@ type Customer = {
   updated_at?: string | null;
 };
 
-function createSupabaseMock(existingCustomers: Customer[] = []) {
+function createSupabaseMock(
+  existingCustomers: Customer[] = [],
+  insertError: unknown = null,
+) {
   const inserted: Customer[] = [];
   const updates: Array<{
     patch: Partial<Customer>;
@@ -55,6 +58,7 @@ function createSupabaseMock(existingCustomers: Customer[] = []) {
         };
       }),
       insert: vi.fn(async (payload: Customer) => {
+        if (insertError) return { error: insertError };
         inserted.push({ ...payload, id: `inserted-${inserted.length + 1}` });
         return { error: null };
       }),
@@ -304,6 +308,37 @@ describe("customer CSV import identity matching", () => {
     expect(mockSupabase.inserted[0]).toMatchObject({
       external_id: "CUST-100386",
       email: "dispatch@example.com",
+    });
+  });
+
+  it("does not report matchedBy=email when an external_id insert hits the email unique constraint", async () => {
+    mockSupabase = createSupabaseMock([], {
+      message:
+        'duplicate key value violates unique constraint "customers_shop_email_uq"',
+      constraint: "customers_shop_email_uq",
+    });
+
+    const body = await postRows([
+      {
+        customer_id: "CUST-100385",
+        company_name: "Authoritative Id Co",
+        email: "duplicate@example.com",
+      },
+    ]);
+
+    expect(body.counts).toMatchObject({
+      created: 0,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+      duplicates: 0,
+    });
+    expect(body.skippedRows[0]).toMatchObject({
+      row: 1,
+      matchedBy: "external_id",
+      matchedValue: "CUST-100385",
+      detectedCustomerId: "CUST-100385",
+      email: "duplicate@example.com",
     });
   });
 
